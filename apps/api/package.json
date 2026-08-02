@@ -1,0 +1,45 @@
+{
+  "name": "@repo/api",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./dist/server.js",
+  "types": "./dist/server.d.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsup",
+    "start": "node dist/index.js",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@repo/auth": "workspace:*",
+    "@repo/contracts": "workspace:*",
+    "@repo/db": "workspace:*",
+    "@repo/env": "workspace:*",
+    "@repo/services": "workspace:*",
+    "@repo/trpc": "workspace:*",
+    "@scalar/express-api-reference": "^0.4.6",
+    "@trpc/server": "^11.17.0",
+    "better-auth": "^1.6.22",
+    "cors": "^2.8.5",
+    "drizzle-orm": "^0.45.2",
+    "express": "^4.21.1",
+    "ioredis": "^5.4.1",
+    "trpc-to-openapi": "^3.1.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "workspace:*",
+    "@repo/typescript-config": "workspace:*",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.8.6",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.1",
+    "typescript": "^6.0.3"
+  }
+}
