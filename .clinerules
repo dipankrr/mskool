@@ -1,0 +1,7 @@
+See AGENTS.md at the repo root.
+
+That file is the single entry point for all AI coding agents here — stack, commands,
+the 12 hard rules, the two authorization tracks, and pointers into docs/.
+
+Before starting any task: read AGENTS.md, then docs/TASKS.md (which says what is done
+and what is next). Before changing an architectural choice: read docs/DECISIONS.md.

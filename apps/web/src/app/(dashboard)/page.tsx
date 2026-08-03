@@ -1,12 +1,10 @@
-import { NavbarProfile } from "@/components/navbar-profile"
-
-export default function TodoPage() {
-
+export default function DashboardPage() {
   return (
-    <div>
-      <h1>Todo Page</h1>
-      <p>This is a demo page for todos.</p>
+    <div className="p-6">
+      <h1 className="text-2xl font-bold">mskool</h1>
+      <p className="text-muted-foreground">
+        School management. Dashboard arrives with Phase 1 — see docs/TASKS.md.
+      </p>
     </div>
   );
 }
-

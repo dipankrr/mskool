@@ -1,0 +1,13 @@
+---
+description: mskool — entry point for AI agents
+alwaysApply: true
+---
+
+Read [AGENTS.md](mdc:AGENTS.md) first. It is the single entry point for all AI coding
+agents in this repo: stack, commands, the 12 hard rules, the two authorization tracks,
+and pointers into `docs/`.
+
+Before starting a task, read [docs/TASKS.md](mdc:docs/TASKS.md) — it records what is done
+and what is next. Before changing an architectural choice, read
+[docs/DECISIONS.md](mdc:docs/DECISIONS.md) and supersede the relevant ADR explicitly
+rather than contradicting it silently.

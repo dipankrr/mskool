@@ -18,8 +18,9 @@ export default function Navbar() {
 
         {/* Logo */}
         <div className="text-xl font-bold">
-          Todo
+          mskool
         </div>
+
 
 
         {/* Right side */}
