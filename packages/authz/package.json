@@ -1,5 +1,5 @@
 {
-  "name": "@repo/services",
+  "name": "@repo/authz",
   "version": "0.0.0",
   "private": true,
   "exports": {
@@ -9,11 +9,10 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@repo/authz": "workspace:*",
-
-    "@repo/contracts": "workspace:*",
     "@repo/db": "workspace:*",
+    "@repo/env": "workspace:*",
     "drizzle-orm": "^0.45.2",
+    "ioredis": "^5.4.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {

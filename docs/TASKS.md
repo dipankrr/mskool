@@ -6,28 +6,39 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
-**Phase 0 is done. Start Phase 1 — foundation + authorization.**
+**Phase 1 authorization spine is in. Finish Phase 1, then start Phase 2.**
 
-The repo is now an empty, correctly-shaped shell: docs written, template slice removed,
-`pnpm check-types` green across all 7 packages. `packages/db/src/schema/` contains only
-`auth.ts` (better-auth's tables). There is no domain schema yet.
+`pnpm check-types` is green across all 8 packages. What exists now: the 9 foundation
+tables + the 4 authz tables, `@repo/authz` in full, and `staffProcedure` /
+`studentProcedure` wired into `packages/trpc`. `school.router.ts` is the worked example
+of the whole vertical slice — copy its shape.
 
-Start Phase 1 in this order, since each step unblocks the next:
+**Nothing has touched a real database yet.** No migration has been generated and no
+query has been run. Do this first:
 
-1. `organizations` + `schools` in `packages/db/src/schema/` — nothing else can be scoped
-   until the tenant exists (ADR-001).
-2. The 4 authz tables + `packages/authz` ported from `docs/reference/authz-prototype/`.
-3. `AuthContext` + `staffProcedure` / `studentProcedure` in `packages/trpc`, replacing the
-   placeholder `protectedProcedure`. The comments in `context.ts` describe this target
-   state — make them true.
-4. `staff`, `students`, `guardians` and the rest of the foundation tables.
+1. Create `.env` from `.env.example` (`createEnv()` throws at import without
+   `DATABASE_URL` and `BETTER_AUTH_SECRET`), and start Postgres + Redis.
+2. `pnpm --filter @repo/db db:generate` and read the SQL before applying it. The
+   `snake_case` casing option was switched on in this phase, so verify the generated
+   column names are what you expect.
+3. Write `packages/db/src/seed.ts` — it is still the Phase 1 stub. It needs one org
+   (which seeds `org_role_permissions` from `DEFAULT_ROLE_PERMISSIONS`), one school with
+   its `scope_nodes` row, and one org_admin. Without that seed there is no way to log in
+   and exercise any of this.
+4. Then: better-auth extensions still owed by ADR-007 — nullable email, the username
+   plugin, `must_change_password`.
 
-Two notes before you run anything: create `.env` from `.env.example` (nothing boots
-without `DATABASE_URL` and `BETTER_AUTH_SECRET` — `createEnv()` throws at import), and
-`packages/authz` does not exist as a directory yet despite being referenced in the docs.
+Two known gaps, both deliberate:
+
+- `insertScopeNode` types `tx` structurally rather than as Drizzle's transaction type,
+  to avoid a circular import between `@repo/authz` and `@repo/db`. It is correct at the
+  call site but weakly typed; revisit if a second caller needs it.
+- `invalidateOrgAuthCache` re-reads assignments to find affected users. Fine at current
+  scale, wasteful at 10k staff.
 
 `SMS_PROJECT_CONTEXT.md` at the repo root is superseded by `docs/` but kept deliberately;
 the owner will remove it.
+
 
 
 
@@ -66,24 +77,41 @@ which exists in the repo. `SMS_PROJECT_CONTEXT.md` is kept at the owner's reques
 The two must land together: authz needs `organizations`/`schools` to exist, and every
 later table needs `staffProcedure` to exist.
 
-**Tables (9):** `organizations`, `schools`, `staff`, `guardians`, `students`,
+**Tables (9)** — all written, none migrated yet:
 
-`student_guardians`, `student_relationships`, `previous_school_records`,
-`student_portal_access` (ADR-008), plus better-auth extensions (nullable email,
-username plugin, `must_change_password` — ADR-007).
+- [x] `organizations`, `schools` — `schema/organization.ts` (ADR-001)
+- [x] `staff`, `guardians`, `students`, `student_guardians`, `student_relationships`,
+      `previous_school_records`, `student_portal_access` — `schema/people.ts` (ADR-008)
+- [ ] better-auth extensions: nullable email, username plugin, `must_change_password`
+      (ADR-007)
 
-**`@repo/authz` (4 tables):** `scope_nodes`, `org_role_permissions`, `role_assignments`,
-`authz_audit_log`. Port `types/`, `authz/`, `policies/`, `seeds/` from
-`docs/reference/authz-prototype/`, rewritten for better-auth sessions (not JWT) and
-tRPC middleware (not Express).
+**`@repo/authz` (4 tables)** — ported from `docs/reference/authz-prototype/` and
+rewritten for better-auth sessions (not JWT) and tRPC middleware (not Express):
+
+- [x] `scope_nodes`, `org_role_permissions`, `role_assignments`, `authz_audit_log`
+- [x] `permissions.ts` — `RESOURCE_ACTIONS` as the source of truth; the `Permission`
+      union is derived from it, so an invalid `resource:action` will not compile
+- [x] `roles.ts` — fixed role types, scope hierarchy (ADR-011)
+- [x] `can.ts` — `can()` / `getDataScope()` / `getDataScopes()`, pure and synchronous
+- [x] `scope.ts` — `scopeCovers()`, `scopeWhere()` (the hard-rule-1 query filter)
+- [x] `cache.ts` — Redis auth cache, 5-min TTL, `SENSITIVE_PERMISSIONS` bypass it
+- [x] `defaultPermissions.ts` — the matrix copied into a new org
 
 **Also in this phase:**
 
-- `AuthContext` discriminated union + `staffProcedure` / `studentProcedure` /
-  system-context verification (ADR-005, ADR-009)
-- `insertScopeNode` as a transactional invariant inside the school/class/section create
-  services — hard rule 12
-- Redis auth cache with invalidation on role change
+- [x] `staffProcedure` / `studentProcedure` in `packages/trpc/src/trpc.ts` (ADR-005).
+      `staffProcedure` resolves the scope node, checks the permission, and puts `scope` +
+      `scopes` on ctx. `studentProcedure` has no permission gate — ownership only.
+- [x] `insertScopeNode` as a transactional invariant in `createSchool` — hard rule 12
+- [x] Redis auth cache with invalidation on role change
+- [x] Worked vertical slice: `contracts/organization.ts` → `organization.service.ts` →
+      `school.router.ts`
+- [ ] `system` context verification for webhooks (ADR-009) — deferred to Phase 4, where
+      the payment webhook that needs it lands
+- [ ] `authz_audit_log` is created but nothing writes to it yet; wire it up with the
+      role-assignment service
+- [ ] Seed + first migration (see "Resume here")
+
 
 ---
 

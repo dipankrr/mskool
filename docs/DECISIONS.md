@@ -262,4 +262,45 @@ student-portal feature (`homework`, `homework_submissions`), scheduled after the
 core domains. Recorded so the permission references are understood as forward-looking,
 not as a missing table.
 
+---
+
+## ADR-015 — `scope_nodes` denormalises ancestry; the node id IS the entity id
+
+**Accepted.** Two choices made while implementing `@repo/authz` in Phase 1.
+
+Each `scope_nodes` row carries its own `school_id` and `class_id` rather than a
+`parent_id`. "Does this school-scoped role cover section 7B?" is then one equality
+check — `node.school_id = assignment.scope_id` — instead of a recursive CTE walking to
+the root. This runs on every staff request, so the cost matters. The trade is that
+re-parenting a node (moving a class between schools) means rewriting its descendants'
+denormalised columns; that is a rare administrative act, and a recursive walk on every
+request is not.
+
+The node's primary key is also **not** generated: it is the id of the school, class, or
+section it represents. A request carrying `sectionId` resolves its scope node directly,
+with no lookup to translate entity id → node id. The cost is that `scope_nodes.id` has
+no FK to any one table, since it points at three; the compensating rule is hard rule 12
+— create the entity and its node in the same transaction, or the entity is invisible to
+authorization.
+
+---
+
+## ADR-016 — Cache authorization for 5 minutes, except where it would be dangerous
+
+**Accepted.** A user's assignments and their org's permission matrix are cached in Redis
+for 5 minutes, so `can()` is pure and synchronous with no I/O.
+
+This means a revoked role can keep working for up to 5 minutes. That is acceptable for
+`student:read`; it is not acceptable for `fee_payment:approve`. So
+`SENSITIVE_PERMISSIONS` — financial approvals, publication, and anything that grants
+access — bypasses the cache and re-reads from Postgres. Those endpoints are rare enough
+that the extra query costs nothing.
+
+Explicit invalidation on role change is the normal path; the 5-minute window is the
+failure mode when invalidation is missed, not the expected behaviour. Assignment expiry
+is deliberately checked against the current clock on every call rather than filtered at
+cache-build time, so a time-boxed delegation cannot outlive its `expires_at` by sitting
+in a warm cache entry.
+
+
 

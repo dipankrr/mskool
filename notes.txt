@@ -1,0 +1,18 @@
+- why are you writing contracts outside of /src
+- getDataScope bug
+- list schools proceduare using DataScope instead of DataSchope
+- 
+
+
+
+
+
+
+
+
+
+
+
+
+
+

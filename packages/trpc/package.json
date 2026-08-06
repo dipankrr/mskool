@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@repo/auth": "workspace:*",
+    "@repo/authz": "workspace:*",
     "@repo/contracts": "workspace:*",
+
     "@repo/db": "workspace:*",
     "@repo/env": "workspace:*",
     "@repo/services": "workspace:*",
