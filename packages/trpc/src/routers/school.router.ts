@@ -2,7 +2,7 @@ import { createSchoolSchema, updateSchoolSchema } from "@repo/contracts";
 import { organizationService } from "@repo/services";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { router, staffProcedure } from "../trpc";
+import { router, staffListProcedure, staffProcedure } from "../trpc";
 
 /**
  * Schools — branches under the organization (ADR-001: the tenant is the org,
@@ -16,9 +16,13 @@ import { router, staffProcedure } from "../trpc";
  * endpoint. It also puts `scope` on ctx — the tenancy filter services require.
  */
 export const schoolRouter = router({
-  list: staffProcedure("school:read").query(async ({ ctx }) => {
-    return organizationService.listSchools(ctx.scope);
+  // A list, so the permissive builder: a principal scoped to one branch does
+  // not "cover" the org node they address here, but must still see their own
+  // branch. ctx.scopes is already clipped to the addressed subtree.
+  list: staffListProcedure("school:read").query(async ({ ctx }) => {
+    return organizationService.listSchools(ctx.scopes);
   }),
+
 
   byId: staffProcedure("school:read")
     .input(z.object({ id: z.uuid() }))

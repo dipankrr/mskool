@@ -51,19 +51,23 @@ export type {
 } from "./types";
 
 // The decision functions. Pure and synchronous — no I/O on the hot path.
-export { can, 
-  getDataScope, 
-  getDataScopes, 
-  permissionsInOrg } from "./can";
+//
+// There is no getDataScope(): once can() approves a node, the filter is that
+// node's own scope via dataScopeFromNode(). Deriving it from the granting
+// assignment instead widened the filter to the whole grant (ADR-017).
+export { can, getDataScopes, permissionsInOrg } from "./can";
 
 // Scope maths and the query filter every service must apply (hard rule 1).
 export {
   dataScopeFromNode,
+  intersectScopes,
   isAssignmentExpired,
   orgScopeNode,
   scopeCovers,
   scopeWhere,
+  type ScopeColumns,
 } from "./scope";
+
 
 // Loading and invalidating the cached picture of a user's access.
 export {

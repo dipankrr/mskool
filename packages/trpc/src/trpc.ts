@@ -1,6 +1,6 @@
 import {
   can,
-  getDataScope,
+  dataScopeFromNode,
   getDataScopes,
   getOwnedStudentIds,
   getUserAuthCache,
@@ -25,7 +25,7 @@ export const publicProcedure = t.procedure;
 /**
  * A valid session, nothing more. Use this only where the caller may be either
  * staff or a student — "who am I", "sign out". Anything touching school data
- * must use staffProcedure or studentProcedure, which carry a tenancy filter.
+ * must use a staff or student procedure, which carry a tenancy filter.
  */
 export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
   if (!ctx.session) {
@@ -47,16 +47,54 @@ const staffScopeInput = z.object({
 });
 
 /**
- * The STAFF track (ADR-005). Resolves the request's scope node, checks the
- * permission, and puts a DataScope on the context.
+ * There are two different authorization questions, and mixing them up is how
+ * a tenancy filter goes wrong:
  *
- *   staffProcedure("student:read").input(...).query(...)
+ *   staffProcedure      "may you act on THIS node?"        → ctx.scope
+ *   staffListProcedure  "what may you see UNDER this node?" → ctx.scopes
  *
- * The procedure hands the handler `scope` (single-resource filter) and
- * `scopes` (list filter, for a teacher holding several non-overlapping
- * assignments). Services take these as required arguments, so a query without
- * a tenancy filter does not compile — hard rule 1 enforced by the type system
- * rather than by review.
+ * They are separate builders on purpose. A single builder that answered
+ * whichever question the input happened to imply would let a mutation
+ * addressed at the org node pass on the strength of a section-level grant.
+ */
+
+/** Resolves the addressed node, or 403s. Shared by both staff builders. */
+async function resolveNode(organizationId: string, nodeId: string) {
+  const node =
+    nodeId === organizationId
+      ? orgScopeNode(organizationId)
+      : await loadScopeNode(nodeId, organizationId);
+
+  // Missing node and wrong-tenant node are the same 403 on purpose: a
+  // different message would let a caller probe which ids exist elsewhere.
+  if (!node) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "You do not have access to this resource.",
+    });
+  }
+
+  return node;
+}
+
+/** Most specific wins: a section id implies its class and school. */
+function addressedNodeId(input: z.infer<typeof staffScopeInput>) {
+  return input.sectionId ?? input.classId ?? input.schoolId ?? input.organizationId;
+}
+
+/**
+ * STRICT staff track (ADR-005). For reads of a single resource and for all
+ * mutations.
+ *
+ *   staffProcedure("school:update").input(...).mutation(...)
+ *
+ * Requires an assignment that COVERS the addressed node, so a section-scoped
+ * teacher cannot act at org level. The handler receives `scope` — the addressed
+ * node's own scope, not the granting assignment's.
+ *
+ * That distinction is the fix for a real bug: taking the filter from the
+ * matching assignment meant a class-scoped teacher asking about section 7B got
+ * a filter covering the whole of class 7, and every row in it.
  *
  * Permissions in SENSITIVE_PERMISSIONS bypass the Redis snapshot and re-read
  * from Postgres: a revoked approver must lose the ability to approve
@@ -74,44 +112,24 @@ export function staffProcedure(permission: Permission) {
       }
 
       const userId = ctx.session.user.id;
-      const { organizationId, schoolId, classId, sectionId } = input;
+      const { organizationId } = input;
 
-      // Most specific wins: a section id implies its class and school.
-      const nodeId = sectionId ?? classId ?? schoolId ?? organizationId;
-
-      const node =
-        nodeId === organizationId
-          ? orgScopeNode(organizationId)
-          : await loadScopeNode(nodeId, organizationId);
-
-      // Missing node and wrong-tenant node are the same 403 on purpose: a
-      // different message would let a caller probe which ids exist elsewhere.
-      if (!node) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "You do not have access to this resource.",
-        });
-      }
+      const node = await resolveNode(organizationId, addressedNodeId(input));
 
       const authCache = await getUserAuthCache(userId, {
         skipCache: SENSITIVE_PERMISSIONS.has(permission),
       });
 
-      const resourceCtx: ResourceContext = { organizationId, nodeId, node };
+      const resourceCtx: ResourceContext = {
+        organizationId,
+        nodeId: node.id,
+        node,
+      };
 
       if (!can(authCache, permission, resourceCtx)) {
         throw new TRPCError({
           code: "FORBIDDEN",
           message: `Missing permission: ${permission}`,
-        });
-      }
-
-      const scope = getDataScope(authCache, permission, resourceCtx);
-      if (!scope) {
-        // can() said yes, so this is unreachable unless the two disagree.
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "No data scope for this permission.",
         });
       }
 
@@ -122,10 +140,77 @@ export function staffProcedure(permission: Permission) {
           userId,
           organizationId,
           authCache,
-          /** Tenancy filter for single-resource reads and writes. */
-          scope,
-          /** All granting scopes, for list endpoints. OR these together. */
-          scopes: getDataScopes(authCache, permission, organizationId),
+          /**
+           * The addressed node's scope. can() has already confirmed the user
+           * covers it, so this is the narrowest correct filter — narrower than
+           * the grant, which is what the caller asked about.
+           */
+          scope: dataScopeFromNode(node),
+        },
+      });
+    });
+}
+
+/**
+ * PERMISSIVE staff track. For list endpoints only.
+ *
+ *   staffListProcedure("school:read").query(...)
+ *
+ * Asks the opposite question to staffProcedure: not "do you cover this node"
+ * but "which of your grants fall inside it". A principal scoped to one branch
+ * listing schools addresses the org node, which their grant does not cover —
+ * under the strict check that is a 403, yet listing their own branch is
+ * exactly what the school switcher needs.
+ *
+ * The handler receives `scopes`, already clipped to the addressed subtree, to
+ * be ORed by scopeWhere(). Clipping happens in getDataScopes(); a grant in
+ * another school cannot survive it, so it can never reach the OR.
+ */
+export function staffListProcedure(permission: Permission) {
+  return t.procedure
+    .input(staffScopeInput)
+    .use(async ({ ctx, input, next }) => {
+      if (!ctx.session) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Sign in required.",
+        });
+      }
+
+      const userId = ctx.session.user.id;
+      const { organizationId } = input;
+
+      const node = await resolveNode(organizationId, addressedNodeId(input));
+
+      const authCache = await getUserAuthCache(userId, {
+        skipCache: SENSITIVE_PERMISSIONS.has(permission),
+      });
+
+      const scopes = getDataScopes(
+        authCache,
+        permission,
+        dataScopeFromNode(node),
+      );
+
+      // Empty means no grant overlaps the addressed subtree. It must never be
+      // read as "unfiltered" — scopeWhere() throws on an empty list for the
+      // same reason.
+      if (scopes.length === 0) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: `Missing permission: ${permission}`,
+        });
+      }
+
+      return next({
+        ctx: {
+          ...ctx,
+          session: ctx.session,
+          userId,
+          organizationId,
+          authCache,
+          /** Granted subtrees within the addressed node. OR these. */
+          scopes,
         },
       });
     });

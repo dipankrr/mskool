@@ -1,6 +1,6 @@
 import type { Permission } from "./permissions";
 import type { RoleType } from "./roles";
-import { isAssignmentExpired, scopeCovers } from "./scope";
+import { intersectScopes, isAssignmentExpired, scopeCovers } from "./scope";
 import type { DataScope, ResourceContext, UserAuthCache } from "./types";
 
 /**
@@ -16,6 +16,11 @@ import type { DataScope, ResourceContext, UserAuthCache } from "./types";
  *
  * The first assignment satisfying all four wins. A user with several roles
  * gets the union of what those roles allow.
+ *
+ * This is the STRICT question — "may you act on this node?" — and it is the
+ * one to ask before a mutation. A section teacher does not cover the org node,
+ * so asking it at org level correctly says no. List endpoints want the other
+ * question; see getDataScopes().
  */
 export function can(
   cache: UserAuthCache,
@@ -41,60 +46,43 @@ export function can(
 }
 
 /**
- * The DataScope for a single-resource request — "which rows may this user
- * touch?" Returns the scope of the first assignment that grants the
- * permission, or null if none does.
+ * Every subtree this user may see for a permission, clipped to the subtree the
+ * request addressed. The caller ORs them into one WHERE clause via
+ * scopeWhere().
  *
- * Services take the result as a required argument and filter on it, so a
- * missing tenancy filter cannot compile (hard rule 1).
- */
-export function getDataScope(
-  cache: UserAuthCache,
-  permission: Permission,
-  ctx: ResourceContext,
-): DataScope | null {
-  const orgPerms = cache.orgPermissions[ctx.organizationId];
-  if (!orgPerms) return null;
-  if (ctx.node.organizationId !== ctx.organizationId) return null;
-
-  const now = new Date();
-
-  for (const assignment of cache.assignments) {
-    if (assignment.organizationId !== ctx.organizationId) continue;
-    if (isAssignmentExpired(assignment, now)) continue;
-    if (!scopeCovers(assignment, ctx.node)) continue;
-    if (!roleHas(orgPerms, assignment.roleType, permission)) continue;
-    return assignment.resolvedDataScope;
-  }
-
-  return null;
-}
-
-/**
- * All DataScopes granting the permission in an org, for LIST endpoints.
+ * The clipping is the point. A teacher holding 3A in one school and 5B in
+ * another opens a school-scoped list: only the grant inside that school
+ * survives intersectScopes(), so the other cannot reach the query. Returning
+ * raw grants — as this function used to — leaked rows across schools the
+ * moment the caller ORed them together.
  *
- * A subject teacher may hold non-overlapping assignments — 3A and 5B — which
- * no single DataScope can express. The caller ORs these together, otherwise
- * the teacher would see only whichever section happened to be matched first.
+ * Returns [] when nothing overlaps, which the caller must treat as 403. It is
+ * never safe to read that as "no restriction".
  *
- * No node here: we are listing, not addressing one resource.
+ * Note there is no separate getDataScope() for single-resource reads. Once
+ * can() has approved a node, the filter is simply that node's own scope
+ * (dataScopeFromNode) — deriving it from the matching assignment instead
+ * returned the assignment's whole subtree, so asking about one section
+ * answered with the entire class.
  */
 export function getDataScopes(
   cache: UserAuthCache,
   permission: Permission,
-  organizationId: string,
+  requested: DataScope,
 ): DataScope[] {
-  const orgPerms = cache.orgPermissions[organizationId];
+  const orgPerms = cache.orgPermissions[requested.organizationId];
   if (!orgPerms) return [];
 
   const now = new Date();
   const scopes: DataScope[] = [];
 
   for (const assignment of cache.assignments) {
-    if (assignment.organizationId !== organizationId) continue;
+    if (assignment.organizationId !== requested.organizationId) continue;
     if (isAssignmentExpired(assignment, now)) continue;
     if (!roleHas(orgPerms, assignment.roleType, permission)) continue;
-    scopes.push(assignment.resolvedDataScope);
+
+    const overlap = intersectScopes(requested, assignment.resolvedDataScope);
+    if (overlap) scopes.push(overlap);
   }
 
   return scopes;

@@ -4,6 +4,7 @@ import {
   ROLE_TYPES,
   scopeWhere,
   type DataScope,
+  type ScopeColumns,
 } from "@repo/authz";
 import type {
   CreateOrganizationInput,
@@ -14,6 +15,24 @@ import { db } from "@repo/db";
 import { orgRolePermissions, schools } from "@repo/db/schema";
 import { organizations } from "@repo/db/schema";
 import { and, eq } from "drizzle-orm";
+
+/**
+ * How `schools` expresses each scope level.
+ *
+ * The school level maps to the table's OWN primary key — a school IS its id;
+ * there is no `schools.schoolId`. The previous scopeWhere() guessed columns by
+ * name, found none called `schoolId`, and silently dropped the restriction, so
+ * a principal scoped to one branch listed every school in the trust. Mapping
+ * it explicitly is what makes that class of bug impossible.
+ *
+ * Nothing is mapped for class or section: a scope narrowed to those levels
+ * cannot be expressed against this table, and scopeWhere() will throw rather
+ * than return a wider result than the caller is entitled to.
+ */
+const SCHOOL_SCOPE_COLUMNS: ScopeColumns = {
+  organizationId: schools.organizationId,
+  schoolId: schools.id,
+};
 
 /**
  * Organizations and their schools.
@@ -101,12 +120,22 @@ export class OrganizationService {
     });
   }
 
-  /** Lists schools visible under the caller's scope. */
-  async listSchools(scope: DataScope) {
+  /**
+   * Lists the schools the caller may see.
+   *
+   * Takes the PLURAL scopes: a user may hold grants in several branches, and
+   * no single DataScope can express "school A or school B".
+   */
+  async listSchools(scopes: DataScope[]) {
     return db
       .select()
       .from(schools)
-      .where(and(scopeWhere(scope, schools), eq(schools.isActive, true)));
+      .where(
+        and(
+          scopeWhere(scopes, SCHOOL_SCOPE_COLUMNS),
+          eq(schools.isActive, true),
+        ),
+      );
   }
 
   /**
@@ -117,7 +146,12 @@ export class OrganizationService {
     const [school] = await db
       .select()
       .from(schools)
-      .where(and(eq(schools.id, schoolId), scopeWhere(scope, schools)));
+      .where(
+        and(
+          eq(schools.id, schoolId),
+          scopeWhere(scope, SCHOOL_SCOPE_COLUMNS),
+        ),
+      );
 
     return school ?? null;
   }
@@ -130,7 +164,12 @@ export class OrganizationService {
     const [school] = await db
       .update(schools)
       .set(input)
-      .where(and(eq(schools.id, schoolId), scopeWhere(scope, schools)))
+      .where(
+        and(
+          eq(schools.id, schoolId),
+          scopeWhere(scope, SCHOOL_SCOPE_COLUMNS),
+        ),
+      )
       .returning();
 
     return school ?? null;
@@ -144,8 +183,14 @@ export class OrganizationService {
     const [school] = await db
       .update(schools)
       .set({ isActive: false })
-      .where(and(eq(schools.id, schoolId), scopeWhere(scope, schools)))
+      .where(
+        and(
+          eq(schools.id, schoolId),
+          scopeWhere(scope, SCHOOL_SCOPE_COLUMNS),
+        ),
+      )
       .returning();
+
 
     return school ?? null;
   }

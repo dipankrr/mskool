@@ -302,5 +302,55 @@ is deliberately checked against the current clock on every call rather than filt
 cache-build time, so a time-boxed delegation cannot outlive its `expires_at` by sitting
 in a warm cache entry.
 
+---
+
+## ADR-017 — Two authorization questions: covering a node vs. overlapping it
+
+**Accepted. Refines the `DataScope` contract described in ADR-005.**
+
+Authorization asks one of two questions, and the first implementation conflated them.
+
+```
+STRICT      "does a grant COVER the node you addressed?"        staffProcedure
+            scopeCovers(assignment, node) → ctx.scope: DataScope
+
+PERMISSIVE  "which grants fall INSIDE the node you addressed?"  staffListProcedure
+            intersectScopes(requested, granted) → ctx.scopes: DataScope[]
+```
+
+Strict is right for mutations and single-resource reads: a section-scoped teacher must
+not act at org level, and `scopeCovers` correctly refuses. But it is wrong for lists — a
+principal scoped to one branch addresses the *org* node to list schools, does not cover
+it, and would get a 403 while trying to see their own branch. The school switcher needs
+the permissive question.
+
+Three consequences, each fixing a real defect found in review:
+
+**`getDataScope` is deleted.** It returned the *granting assignment's* scope, so a
+class-scoped teacher asking about section 7B received a filter spanning all of class 7
+and every row in it. Once `can()` has approved the node, the correct filter is the node's
+own scope — `dataScopeFromNode(ctx.node)` — which is always narrower or equal. There is
+nothing left for the function to do.
+
+**`getDataScopes` takes the requested scope and clips to it.** It previously returned
+every grant held anywhere in the org, and its own docstring instructed callers to OR them
+together; doing so on a request addressed at school A emitted rows from school B.
+Intersecting first makes that leak structurally impossible rather than a rule to
+remember.
+
+**`scopeWhere` throws instead of silently widening.** It matched table columns by name
+and skipped any level it could not find. `schools` has no `school_id` column — a school
+*is* its id — so the school restriction was quietly dropped and a branch-scoped principal
+listed every school in the trust. Columns are now mapped explicitly (`ScopeColumns`), and
+a scope that restricts a level the table cannot express raises an error. A loud failure
+in development is strictly better than an over-broad result in production, and the remedy
+is to write the join.
+
+The two builders stay separate entry points rather than one procedure with a flag.
+Permissive with a section-level node degenerates to strict anyway, so the split is not
+about mechanism — it is about making "this is a list" an explicit choice at the call
+site, so a mutation cannot quietly acquire list semantics.
+
+
 
 

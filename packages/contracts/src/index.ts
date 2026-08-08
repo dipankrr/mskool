@@ -10,6 +10,6 @@
 export * from "./contracts/auth.contract";
 
 // The tenant: organizations (the Trust) and the schools beneath them.
-export * from "./organization";
+export * from "./contracts/organization.contract";
 
 

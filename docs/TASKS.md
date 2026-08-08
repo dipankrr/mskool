@@ -28,13 +28,45 @@ query has been run. Do this first:
 4. Then: better-auth extensions still owed by ADR-007 — nullable email, the username
    plugin, `must_change_password`.
 
-Two known gaps, both deliberate:
+### Authorization review — fixed, and still open
 
-- `insertScopeNode` types `tx` structurally rather than as Drizzle's transaction type,
-  to avoid a circular import between `@repo/authz` and `@repo/db`. It is correct at the
-  call site but weakly typed; revisit if a second caller needs it.
-- `invalidateOrgAuthCache` re-reads assignments to find affected users. Fine at current
-  scale, wasteful at 10k staff.
+A review of `@repo/authz` found four defects. Three are fixed (ADR-017): `getDataScope`
+deleted in favour of the addressed node's own scope, `getDataScopes` now clips grants to
+the requested subtree, and `scopeWhere` takes explicit `ScopeColumns` plus an array of
+scopes and **throws** rather than silently widening. `staffProcedure` (strict) and
+`staffListProcedure` (permissive) are now separate builders.
+
+Still open, in rough priority order:
+
+- [ ] **No tests anywhere in the repo.** The scope maths is pure and trivially testable
+      with plain objects — `intersectScopes`, `scopeCovers`, `scopeWhere`. Two of the
+      three bugs above existed because nothing forced the cases to be enumerated. Add
+      Vitest to `packages/authz` before this grows further.
+- [ ] **Subject-level access is not enforced.** A `subject_teacher` scoped to a section
+      can currently write marks for *every* subject in it — the Physics teacher can enter
+      Chemistry marks. The scope tree has no subject axis by design, so `can()` cannot
+      express this; it needs `checkSubjectAccess` against `section_teacher_assignments`
+      (ADR-012). **Blocks shipping marks entry.** Requires `sections` + `subjects`, so
+      Phase 2.
+- [ ] **No CHECK constraint on `role_assignments`.** Nothing guarantees `scope_id` is
+      well-formed for its `scope_type`; `scopeCovers` and `resolveAssignmentScope`
+      disagree about what a malformed org-scoped row means. Hand-written migration
+      (ADR-013).
+- [ ] **No `platformProcedure`.** `createOrganization` runs above tenancy and has no gate.
+      Uncalled today — cheap to add now, awkward once it has callers.
+- [ ] **`authz_audit_log` has no writer.** The table exists; nothing writes to it. Every
+      grant and revoke should append a row.
+- [ ] `buildUserAuthCache` is N+1 — one query per assignment, then one per org. Batch
+      with `inArray`.
+- [ ] `insertScopeNode` types `tx` structurally rather than as Drizzle's transaction type,
+      to avoid a circular import between `@repo/authz` and `@repo/db`. Correct at the call
+      site but weakly typed; revisit if a second caller needs it.
+- [ ] `invalidateOrgAuthCache` re-reads assignments to find affected users. Fine at current
+      scale, wasteful at 10k staff.
+- [ ] Staff `organizationId` arrives in the request body. It *is* verified against the
+      caller's assignments, so it is not exploitable, but subdomain or session would be a
+      better source.
+
 
 `SMS_PROJECT_CONTEXT.md` at the repo root is superseded by `docs/` but kept deliberately;
 the owner will remove it.
@@ -92,20 +124,23 @@ rewritten for better-auth sessions (not JWT) and tRPC middleware (not Express):
 - [x] `permissions.ts` — `RESOURCE_ACTIONS` as the source of truth; the `Permission`
       union is derived from it, so an invalid `resource:action` will not compile
 - [x] `roles.ts` — fixed role types, scope hierarchy (ADR-011)
-- [x] `can.ts` — `can()` / `getDataScope()` / `getDataScopes()`, pure and synchronous
-- [x] `scope.ts` — `scopeCovers()`, `scopeWhere()` (the hard-rule-1 query filter)
+- [x] `can.ts` — `can()` / `getDataScopes()`, pure and synchronous (ADR-017)
+- [x] `scope.ts` — `scopeCovers()`, `intersectScopes()`, `scopeWhere()` (the hard-rule-1
+      query filter)
 - [x] `cache.ts` — Redis auth cache, 5-min TTL, `SENSITIVE_PERMISSIONS` bypass it
 - [x] `defaultPermissions.ts` — the matrix copied into a new org
 
 **Also in this phase:**
 
-- [x] `staffProcedure` / `studentProcedure` in `packages/trpc/src/trpc.ts` (ADR-005).
-      `staffProcedure` resolves the scope node, checks the permission, and puts `scope` +
-      `scopes` on ctx. `studentProcedure` has no permission gate — ownership only.
+- [x] `staffProcedure` / `staffListProcedure` / `studentProcedure` in
+      `packages/trpc/src/trpc.ts` (ADR-005, ADR-017). `staffProcedure` is strict and puts
+      the addressed node's `scope` on ctx; `staffListProcedure` is permissive and puts
+      clipped `scopes` on ctx. `studentProcedure` has no permission gate — ownership only.
 - [x] `insertScopeNode` as a transactional invariant in `createSchool` — hard rule 12
 - [x] Redis auth cache with invalidation on role change
-- [x] Worked vertical slice: `contracts/organization.ts` → `organization.service.ts` →
-      `school.router.ts`
+- [x] Worked vertical slice: `contracts/src/contracts/organization.contract.ts` →
+      `organization.service.ts` → `school.router.ts`
+
 - [ ] `system` context verification for webhooks (ADR-009) — deferred to Phase 4, where
       the payment webhook that needs it lands
 - [ ] `authz_audit_log` is created but nothing writes to it yet; wire it up with the
