@@ -351,6 +351,92 @@ Permissive with a section-level node degenerates to strict anyway, so the split 
 about mechanism — it is about making "this is a list" an explicit choice at the call
 site, so a mutation cannot quietly acquire list semantics.
 
+---
+
+## ADR-018 — Managed Postgres and Redis; pooled and direct connections are different URLs
+
+**Status:** accepted
+
+**Context.** Development has no Docker and no local Postgres, so `localhost:5432` was
+never going to work. We use Neon for Postgres and Upstash for Redis.
+
+Neon exposes two hostnames for the same database. The **pooled** one (`-pooler` in the
+host) is PgBouncer in transaction mode; the **direct** one is a normal Postgres session.
+Transaction pooling is the right default for an API — connections are cheap and
+short-lived — but it withholds two things we depend on elsewhere:
+
+1. **Named prepared statements.** postgres.js uses them by default. Under transaction
+   pooling the prepare and the execute can land on different backend connections, so
+   queries fail with `prepared statement "s1" already exists` — intermittently, only
+   under concurrency, looking exactly like a flaky network.
+2. **Session-scoped DDL and advisory locks**, which drizzle-kit uses to serialise
+   migrations.
+
+**Decision.**
+
+- `DATABASE_URL` is the **pooled** endpoint and is what the app uses. `client.ts` passes
+  `prepare: false`, which is mandatory, not tuning.
+- `DIRECT_DATABASE_URL` is the **direct** endpoint and is used by drizzle-kit alone.
+  It is **optional** in `packages/db/src/env.ts` and falls back to `DATABASE_URL`:
+  a running API never migrates, so requiring it would break a production boot that
+  legitimately only has the pooled URL. The fallback is also the correct behaviour on
+  any Postgres without a pooler in front of it.
+- Redis is Upstash over TLS — `rediss://`, not `redis://`. ioredis needs no other change.
+
+**Consequences.**
+
+- Losing prepared statements costs a little per-query planning. Irrelevant at our scale.
+- Neon's free tier auto-suspends after ~5 minutes idle; the first query afterwards takes
+  roughly half a second. In development that reads as a hang in your own code, which is
+  worth knowing before you go hunting for one.
+- Upstash bills per command, which raises the stakes on the 5-minute auth cache TTL
+  (ADR-016) and on the `buildUserAuthCache` N+1 still open in `docs/TASKS.md`.
+- **Hard rule 3's `SELECT … FOR UPDATE` on receipt sequences (Phase 4) is unaffected** —
+  row locks live inside a transaction, and transaction pooling keeps a transaction on one
+  backend. Worth stating because it is the obvious thing to worry about here.
+- If anyone later adds a `docker-compose.yml` for local Postgres, that supersedes this
+  ADR rather than sitting alongside it: two sources of truth for connection strings is
+  how staging data gets written to a developer's laptop.
+
+---
+
+## ADR-019 — Scope invariants are enforced by CHECK constraints, not convention
+
+**Accepted.** Extends ADR-013 (Postgres-only constructs as hand-written migration SQL)
+and ADR-015 (`scope_nodes` denormalises ancestry; the node id IS the entity id).
+
+`packages/authz` already *assumes* two invariants. Until now nothing enforced them:
+
+1. For an org-scoped `role_assignments` row, `scope_id` must equal `organization_id`.
+   `scopeCovers()` answers such a grant with `node.organizationId === assignment.scopeId`.
+2. A `scope_nodes` row must carry the ancestry its `type` implies — a class node needs
+   `school_id`, a section node needs `school_id` and `class_id`.
+
+Both are now `CHECK` constraints appended to `drizzle/0000_*.sql`:
+`role_assignments_org_scope_id_matches_org` and `scope_nodes_shape_matches_type`.
+
+**Why the database and not a service guard.** A violating row does not raise an error —
+it silently changes an authorization answer. A class node missing `school_id` produces a
+`DataScope` whose `schoolId` is `null`, i.e. a filter that spans the entire org: a
+class teacher reading every student in the trust. That is indistinguishable from correct
+behaviour in logs, and no test that does not specifically construct the malformed row
+will catch it. Service-layer guards protect the paths that remember to call them;
+a constraint also covers the seed script, a support engineer's manual `UPDATE`, and the
+import tooling in Phase 5.
+
+**Cost.** Drizzle does not model these, so they are re-applied by hand if `0000` is ever
+regenerated (the usual ADR-013 tax). `pnpm db:verify` exists so that tax is visible
+rather than discovered later: it asserts each constraint rejects the row it targets *and*
+still accepts the legitimate row that most resembles it — a school-scoped grant, whose
+`scope_id` legitimately differs from `organization_id`.
+
+**Deliberately not constrained.** That an org node has no `scope_nodes` row at all
+(`orgScopeNode()` synthesises it). The constraint only fixes the *shape* if one is ever
+written, because forbidding the row outright would break `insertScopeNode()`, whose
+`type` parameter includes `'org'`.
+
+
+
 
 
 

@@ -40,6 +40,8 @@ pnpm dev              # all apps (web :3000, api :4000)
 pnpm build
 pnpm check-types      # tsc --noEmit everywhere — MUST be green before finishing
 pnpm lint
+pnpm test             # vitest. Currently @repo/authz only (scope maths).
+
 
 pnpm db:generate      # drizzle-kit generate
 pnpm db:migrate

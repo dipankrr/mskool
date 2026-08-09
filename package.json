@@ -12,8 +12,14 @@
     "build": "dotenv -e .env -- turbo run build",
     "lint": "turbo run lint",
     "check-types": "turbo run check-types",
+    "test": "turbo run test",
+
     "clean": "turbo run clean && rm -rf node_modules",
+    "db:check": "dotenv -e .env -- pnpm --filter @repo/db db:check",
+    "db:verify": "dotenv -e .env -- pnpm --filter @repo/db db:verify",
+
     "db:generate": "dotenv -e .env -- pnpm --filter @repo/db db:generate",
+
     "db:migrate": "dotenv -e .env -- pnpm --filter @repo/db db:migrate",
     "db:push": "dotenv -e .env -- pnpm --filter @repo/db db:push",
     "db:studio": "dotenv -e .env -- pnpm --filter @repo/db db:studio",

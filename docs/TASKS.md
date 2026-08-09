@@ -13,20 +13,40 @@ tables + the 4 authz tables, `@repo/authz` in full, and `staffProcedure` /
 `studentProcedure` wired into `packages/trpc`. `school.router.ts` is the worked example
 of the whole vertical slice — copy its shape.
 
-**Nothing has touched a real database yet.** No migration has been generated and no
-query has been run. Do this first:
+**The schema is now live on Neon.** `drizzle/0000_rich_tenebrous.sql` — 17 tables, 33
+indexes, 26 FKs, 10 enums — has been generated, reviewed, and applied. `pnpm db:check`
+confirms connectivity on both endpoints; `pnpm db:verify` confirms the schema behaves.
 
-1. Create `.env` from `.env.example` (`createEnv()` throws at import without
-   `DATABASE_URL` and `BETTER_AUTH_SECRET`), and start Postgres + Redis.
-2. `pnpm --filter @repo/db db:generate` and read the SQL before applying it. The
-   `snake_case` casing option was switched on in this phase, so verify the generated
-   column names are what you expect.
-3. Write `packages/db/src/seed.ts` — it is still the Phase 1 stub. It needs one org
+Two things were fixed on the way in, both worth knowing about:
+
+- **better-auth's four tables used `timestamp` without a time zone**, inherited from the
+  todo-app template and in breach of hard rule 11. postgres.js writes a `Date` as UTC but
+  reads a naive column back as *local* time, so `session.expires_at` was off by the
+  host's offset (5h30m here) — sessions expiring early, or outliving their expiry. All of
+  `user` / `session` / `account` / `verification` are now `timestamptz`. Re-running
+  better-auth's generator reverts this; the file says so at the top.
+- **Two CHECK constraints now enforce what `@repo/authz` had only assumed** (ADR-019):
+  org-scoped grants must have `scope_id = organization_id`, and a `scope_nodes` row must
+  carry the ancestry its `type` implies. `pnpm db:verify` proves each one rejects the row
+  it targets and still accepts the legitimate row that most resembles it. Re-run it after
+  any change to `0000_*.sql`, since drizzle-kit does not model these and will drop them
+  if the migration is ever regenerated.
+
+Do this next:
+
+1. Write `packages/db/src/seed.ts` — it is still the Phase 1 stub. It needs one org
    (which seeds `org_role_permissions` from `DEFAULT_ROLE_PERMISSIONS`), one school with
    its `scope_nodes` row, and one org_admin. Without that seed there is no way to log in
-   and exercise any of this.
-4. Then: better-auth extensions still owed by ADR-007 — nullable email, the username
+   and exercise any of this. Note the constraints above: the org_admin's grant must use
+   `scope_id = organization_id`, and the school's node is inserted in the *same*
+   transaction as the school (hard rule 12).
+2. Exercise `school.create` / `school.list` against the live database as an org_admin and
+   again as a school-scoped principal. That is the first end-to-end proof that
+   `staffProcedure` (strict) and `staffListProcedure` (permissive) behave as ADR-017
+   claims — the 54 unit tests are pure and never touch Postgres or Redis.
+3. Then: better-auth extensions still owed by ADR-007 — nullable email, the username
    plugin, `must_change_password`.
+
 
 ### Authorization review — fixed, and still open
 
@@ -36,24 +56,33 @@ the requested subtree, and `scopeWhere` takes explicit `ScopeColumns` plus an ar
 scopes and **throws** rather than silently widening. `staffProcedure` (strict) and
 `staffListProcedure` (permissive) are now separate builders.
 
-Still open, in rough priority order:
+The scope maths is now tested: **54 tests** across `packages/authz/src/scope.test.ts` and
+`can.test.ts`, run with `pnpm test`. They are pure — plain objects in, booleans or
+compiled SQL out, no database and no mocks. `scopeWhere` assertions compare against SQL
+compiled through `PgDialect({ casing: "snake_case" })` rather than snapshotting Drizzle's
+internals, so they check the parameters that would actually reach Postgres.
 
-- [ ] **No tests anywhere in the repo.** The scope maths is pure and trivially testable
-      with plain objects — `intersectScopes`, `scopeCovers`, `scopeWhere`. Two of the
-      three bugs above existed because nothing forced the cases to be enumerated. Add
-      Vitest to `packages/authz` before this grows further.
+Verified non-vacuous by mutation: reverting the `schools` special case in `scopeCovers`
+fails two tests in two files. Copy that habit — a scope test that cannot fail is worse
+than none, because it looks like coverage.
+
+Still open, in rough priority order:
 - [ ] **Subject-level access is not enforced.** A `subject_teacher` scoped to a section
       can currently write marks for *every* subject in it — the Physics teacher can enter
       Chemistry marks. The scope tree has no subject axis by design, so `can()` cannot
       express this; it needs `checkSubjectAccess` against `section_teacher_assignments`
       (ADR-012). **Blocks shipping marks entry.** Requires `sections` + `subjects`, so
       Phase 2.
-- [ ] **No CHECK constraint on `role_assignments`.** Nothing guarantees `scope_id` is
-      well-formed for its `scope_type`; `scopeCovers` and `resolveAssignmentScope`
-      disagree about what a malformed org-scoped row means. Hand-written migration
-      (ADR-013).
+- [x] **CHECK constraints on `role_assignments` and `scope_nodes`** — done (ADR-019).
+      Org-scoped grants must have `scope_id = organization_id`, and a scope node must
+      carry the ancestry its `type` implies, so a class node can no longer yield a
+      `DataScope` that spans the whole org. Hand-written per ADR-013; `pnpm db:verify`
+      proves both actually reject the rows they target.
 - [ ] **No `platformProcedure`.** `createOrganization` runs above tenancy and has no gate.
-      Uncalled today — cheap to add now, awkward once it has callers.
+      Deliberately deferred: no router exposes it today, so there is nothing to attack.
+      **This gate is a precondition on the first org-creation endpoint** — the service
+      takes no `DataScope`, so there is no tenancy filter to fall back on.
+
 - [ ] **`authz_audit_log` has no writer.** The table exists; nothing writes to it. Every
       grant and revoke should append a row.
 - [ ] `buildUserAuthCache` is N+1 — one query per assignment, then one per org. Batch
@@ -145,7 +174,9 @@ rewritten for better-auth sessions (not JWT) and tRPC middleware (not Express):
       the payment webhook that needs it lands
 - [ ] `authz_audit_log` is created but nothing writes to it yet; wire it up with the
       role-assignment service
-- [ ] Seed + first migration (see "Resume here")
+- [x] First migration generated, reviewed, and applied to Neon (17 tables, 10 enums),
+      plus `pnpm db:verify` asserting the ADR-019 constraints hold
+- [ ] Seed (see "Resume here")
 
 
 ---
