@@ -9,3 +9,4 @@ dist
 !.env.example
 .DS_Store
 rough.md
+*.log

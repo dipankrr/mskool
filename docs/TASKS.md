@@ -32,20 +32,47 @@ Two things were fixed on the way in, both worth knowing about:
   any change to `0000_*.sql`, since drizzle-kit does not model these and will drop them
   if the migration is ever regenerated.
 
+**The authorization spine is now proven end to end against the live database.** The seed
+and the smoke test both exist and both pass:
+
+```bash
+pnpm dev            # in another terminal
+pnpm db:seed        # idempotent — find-or-create, re-running changes nothing
+pnpm smoke:authz    # 7 checks, all passing
+```
+
+`apps/api/scripts/seed.ts` creates one org (`demo-trust`), **two** schools (`MAIN`,
+`NORTH`), and two logins: an org-scoped `org_admin` and a `principal` scoped to school A
+only. Two schools, not one — with a single school a broken tenancy filter and a correct
+one return the same row, so the second school is the negative control.
+
+`apps/api/scripts/smoke-authz.ts` signs in over HTTP and asserts, mostly negatively:
+org_admin sees both schools; the principal sees only school A even when addressing the org
+node; the principal cannot read school B (`FORBIDDEN`); the principal cannot `school.create`
+at org scope, which is `staffProcedure`'s strict check versus the permissive
+`staffListProcedure` from ADR-017; and a revoked grant is refused immediately rather than
+at the end of the 5-minute TTL. It restores what it changed, so it is re-runnable.
+
+That closes what the 54 unit tests structurally could not: `buildUserAuthCache` resolving
+grants, the Redis JSON round-trip, `scopeWhere`'s SQL against real rows, and `resolveNode`.
+
+Two things this shook out, worth knowing:
+
+- **The seed lives in `apps/api`, not `packages/db`** (ADR-020). It needs `@repo/auth` to
+  hash passwords (hard rule 9), `@repo/services` for the school + `scope_nodes`
+  transaction (hard rule 12), and `@repo/authz` for the permission matrix. All three
+  already depend on `@repo/db`, so seeding from inside it would invert the type chain.
+- **better-auth rejects a request with no `Origin` header** (`MISSING_OR_NULL_ORIGIN`, a
+  403 indistinguishable from bad credentials). Node's `fetch` omits it where a browser
+  would not, so any script talking to `/api/auth/*` must set it to match `CORS_ORIGIN`.
+
 Do this next:
 
-1. Write `packages/db/src/seed.ts` — it is still the Phase 1 stub. It needs one org
-   (which seeds `org_role_permissions` from `DEFAULT_ROLE_PERMISSIONS`), one school with
-   its `scope_nodes` row, and one org_admin. Without that seed there is no way to log in
-   and exercise any of this. Note the constraints above: the org_admin's grant must use
-   `scope_id = organization_id`, and the school's node is inserted in the *same*
-   transaction as the school (hard rule 12).
-2. Exercise `school.create` / `school.list` against the live database as an org_admin and
-   again as a school-scoped principal. That is the first end-to-end proof that
-   `staffProcedure` (strict) and `staffListProcedure` (permissive) behave as ADR-017
-   claims — the 54 unit tests are pure and never touch Postgres or Redis.
-3. Then: better-auth extensions still owed by ADR-007 — nullable email, the username
-   plugin, `must_change_password`.
+1. better-auth extensions still owed by ADR-007 — nullable email, the username plugin,
+   `must_change_password`.
+2. Then Phase 2. `school.router.ts` plus the seed and smoke test together are the pattern
+   to copy for every domain that follows: contract → service → thin router → a negative
+   assertion that proves the tenancy filter actually bites.
 
 
 ### Authorization review — fixed, and still open
@@ -176,7 +203,9 @@ rewritten for better-auth sessions (not JWT) and tRPC middleware (not Express):
       role-assignment service
 - [x] First migration generated, reviewed, and applied to Neon (17 tables, 10 enums),
       plus `pnpm db:verify` asserting the ADR-019 constraints hold
-- [ ] Seed (see "Resume here")
+- [x] Seed — `apps/api/scripts/seed.ts`, idempotent, 1 org + 2 schools + 2 grants (ADR-020)
+- [x] End-to-end authz proof — `apps/api/scripts/smoke-authz.ts`, 7 checks over HTTP
+      against live Postgres + Redis, covering the seams the pure tests cannot reach
 
 
 ---

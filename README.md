@@ -25,11 +25,19 @@ better-auth · Tailwind v4 + shadcn
 pnpm install
 cp .env.example .env        # then fill in DATABASE_URL and BETTER_AUTH_SECRET
 pnpm db:migrate
+pnpm db:seed                # demo org, two schools, two logins
 pnpm dev                    # web :3000, api :4000
 ```
 
-Requires PostgreSQL 15+ and Node 20+. Redis is needed once the authz cache lands in
-Phase 1.
+Requires PostgreSQL 15+, Redis, and Node 20+. Redis backs the authz cache, so the API
+will not serve an authorized request without it.
+
+The seed is idempotent and creates one org (`demo-trust`) with two schools and two
+logins — `admin@demo-trust.test` (org_admin, sees both schools) and
+`principal@demo-trust.test` (scoped to one) — password `Password123!` for both.
+
+With `pnpm dev` running, `pnpm smoke:authz` proves the authorization spine end to end:
+who may see which school, and who gets a 403.
 
 ## Commands
 
@@ -39,10 +47,16 @@ pnpm build
 pnpm check-types    # tsc --noEmit everywhere — the gate; must be green
 pnpm lint
 
+pnpm test           # vitest — @repo/authz scope maths
+
 pnpm db:generate    # drizzle-kit generate
 pnpm db:migrate
 pnpm db:studio
-pnpm db:seed
+pnpm db:check       # connectivity, both Neon endpoints
+pnpm db:verify      # asserts the ADR-019 CHECK constraints still bite
+pnpm db:seed        # apps/api/scripts/seed.ts (ADR-020)
+
+pnpm smoke:authz    # end-to-end authz check; needs `pnpm dev` running
 ```
 
 Scripts are wrapped in `dotenv -e .env`, so one root `.env` feeds the whole monorepo.
@@ -77,5 +91,6 @@ surfaces as a compile error in the client. `apps/web` imports only `type AppRout
 
 ## Status
 
-Phase 0 — foundation and documentation. The domain schema begins in Phase 1; see
+Phase 1 — foundation tables and the authorization spine, live on Neon and proven
+end to end by `pnpm smoke:authz`. Phase 2 (academic structure) is next; see
 `docs/TASKS.md`.

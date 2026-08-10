@@ -23,7 +23,8 @@
     "db:migrate": "dotenv -e .env -- pnpm --filter @repo/db db:migrate",
     "db:push": "dotenv -e .env -- pnpm --filter @repo/db db:push",
     "db:studio": "dotenv -e .env -- pnpm --filter @repo/db db:studio",
-    "db:seed": "dotenv -e .env -- pnpm --filter @repo/db db:seed",
+    "db:seed": "dotenv -e .env -- pnpm --filter @repo/api db:seed",
+    "smoke:authz": "dotenv -e .env -- pnpm --filter @repo/api smoke:authz",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\""
   },
   "devDependencies": {

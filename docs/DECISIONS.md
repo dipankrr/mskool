@@ -435,6 +435,44 @@ still accepts the legitimate row that most resembles it — a school-scoped gran
 written, because forbidding the row outright would break `insertScopeNode()`, whose
 `type` parameter includes `'org'`.
 
+---
+
+## ADR-020 — The seed is an application script in `apps/api`, not a `@repo/db` export
+
+**Accepted.** Follows from the type chain in `AGENTS.md`
+(`db → contracts → services → trpc → web`).
+
+`packages/db/src/seed.ts` was the obvious home and is the wrong one. A useful seed needs
+three things `@repo/db` cannot reach:
+
+- `@repo/auth`, to create a login. Hard rule 9 — better-auth owns password hashing and
+  the paired `account` row, and a hand-rolled `INSERT` into `user` yields an account that
+  cannot sign in.
+- `@repo/services`, to create a school *and* its `scope_nodes` row in one transaction
+  (hard rule 12) and to copy `DEFAULT_ROLE_PERMISSIONS` into a new org.
+- `@repo/authz`, to invalidate the auth cache after granting roles.
+
+All three already depend on `@repo/db`. Seeding from inside it would point those arrows
+backwards and put a cycle in turbo's graph. The alternative — duplicating the inserts with
+raw Drizzle — is worse: the seed would stop exercising the code paths it exists to prove,
+and the two copies would drift, with the *seed* being the one that quietly stops
+enforcing hard rule 12.
+
+So the seed lives at `apps/api/scripts/seed.ts`, alongside `smoke-authz.ts`. `apps/api` is
+already the composition root — the only place that legitimately depends on everything.
+`pnpm db:seed` still works from the repo root; it now delegates to `@repo/api`.
+
+**Consequence for `apps/api/tsconfig.json`:** `include` is `["src", "scripts"]`, so these
+scripts are type-checked with everything else, and `rootDir` is gone (it would reject
+`scripts/` as outside the root). Nothing is lost — builds go through tsup, which has its
+own entry points, and `tsc` here only ever runs with `--noEmit`. A seed that silently
+stops compiling is a seed nobody runs until the day they need it.
+
+**Cost.** `packages/db` no longer owns any executable data-authoring step, which is mildly
+surprising if you go looking there first. `pnpm db:check` and `pnpm db:verify` stay in
+`@repo/db`, because both are pure schema/connectivity assertions with no service
+dependencies.
+
 
 
 

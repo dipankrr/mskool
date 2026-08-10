@@ -1,9 +1,16 @@
 {
   "extends": "@repo/typescript-config/node.json",
   "compilerOptions": {
-    "rootDir": "src",
     "outDir": "dist"
   },
-  "include": ["src"],
+  // `scripts` is typechecked too. The seed and the authz smoke test import the
+  // real services and schema, so a column rename must break them the same way
+  // it breaks the app — a seed that silently stops compiling is a seed nobody
+  // runs until it fails at 2am.
+  //
+  // No `rootDir`: it would reject scripts/ as outside the root. Builds go
+  // through tsup (see tsup.config.ts), which has its own entry points, so tsc
+  // here is only ever `--noEmit`.
+  "include": ["src", "scripts"],
   "exclude": ["node_modules", "dist"]
 }
