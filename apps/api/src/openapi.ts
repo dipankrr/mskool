@@ -10,9 +10,8 @@ import { env } from "./env";
  * response schemas in the spec.
  */
 export const openApiDocument = generateOpenApiDocument(appRouter, {
-  title: "Exam Platform API",
-  description: "Multi-vendor merit/talent-search exam management API.",
+  title: "mskool API",
+  description: "Multi-tenant school management API.",
   version: "0.1.0",
   baseUrl: `http://localhost:${env.PORT}/api`,
-  tags: ["exams", "registrations", "marks", "results"],
 });

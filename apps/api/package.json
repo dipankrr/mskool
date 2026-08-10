@@ -15,7 +15,8 @@
     "check-types": "tsc --noEmit",
     "lint": "eslint .",
     "db:seed": "tsx scripts/seed.ts",
-    "smoke:authz": "tsx scripts/smoke-authz.ts"
+    "smoke:authz": "tsx scripts/smoke-authz.ts",
+    "check:openapi": "tsx scripts/check-openapi.ts"
   },
   "dependencies": {
     "@repo/auth": "workspace:*",

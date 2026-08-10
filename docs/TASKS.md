@@ -66,13 +66,37 @@ Two things this shook out, worth knowing:
   403 indistinguishable from bad credentials). Node's `fetch` omits it where a browser
   would not, so any script talking to `/api/auth/*` must set it to match `CORS_ORIGIN`.
 
+**The school router is now dual-transport.** All five procedures carry
+`.meta({ openapi })` + `.output()`, so they serve tRPC *and* REST, and appear in `/docs`:
+
+```bash
+pnpm check:openapi   # 6 endpoints, no server needed
+```
+
+`GET|POST /schools`, `GET|PATCH /schools/{id}`, `POST /schools/{id}/deactivate`, plus
+`/health`. Deactivate is a POST to a sub-resource, not `DELETE /schools/{id}` — the row
+survives (hard rule 2) and DELETE would imply otherwise to a REST client.
+
+Three things worth knowing about the OpenAPI layer:
+
+- **`.output()` is mandatory, not decoration.** `generateOpenApiDocument` throws without
+  it. It is also a promised response shape: a column added to `schools` later cannot leak
+  into a REST response until someone widens the schema in the router.
+- **`check-types` cannot see any of this.** The generator fails at *runtime* — missing
+  `.output()`, a duplicate path+method pair, a zod schema with no JSON Schema equivalent.
+  A green `tsc --noEmit` says nothing about whether `/docs` loads, which is why
+  `apps/api/scripts/check-openapi.ts` exists and why it exits non-zero on an empty spec.
+- **`protect: true` documents, it does not enforce.** The gate is still
+  `staffProcedure` / `staffListProcedure`, which run identically on both transports.
+
 Do this next:
 
 1. better-auth extensions still owed by ADR-007 — nullable email, the username plugin,
    `must_change_password`.
 2. Then Phase 2. `school.router.ts` plus the seed and smoke test together are the pattern
-   to copy for every domain that follows: contract → service → thin router → a negative
-   assertion that proves the tenancy filter actually bites.
+   to copy for every domain that follows: contract → service → thin router → OpenAPI meta
+   → a negative assertion that proves the tenancy filter actually bites.
+
 
 
 ### Authorization review — fixed, and still open
