@@ -12,4 +12,9 @@ export * from "./contracts/auth.contract";
 // The tenant: organizations (the Trust) and the schools beneath them.
 export * from "./contracts/organization.contract";
 
+// The signed-in caller: which orgs they hold a role in, and what they may see
+// inside each. The client's first call after sign-in.
+export * from "./contracts/me.contract";
+
+
 

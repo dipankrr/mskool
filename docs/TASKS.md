@@ -89,13 +89,86 @@ Three things worth knowing about the OpenAPI layer:
 - **`protect: true` documents, it does not enforce.** The gate is still
   `staffProcedure` / `staffListProcedure`, which run identically on both transports.
 
+**`GET /me` now exists, and it unblocks the entire web app.** Every staff procedure
+requires `organizationId` in its input, but a better-auth session carries only the user —
+no org, no role, no scope. There was no legitimate way for the browser to learn which org
+to name, so no staff endpoint was reachable from the UI at all. `me.router.ts` is that
+missing first call: `contracts/me.contract.ts` → `identity.service.ts` → `me.router.ts`.
+
+Three things worth knowing about it:
+
+- **It is `protectedProcedure`, not `staffProcedure`** — deliberately. The staff builders
+  require an `organizationId` and resolve a scope node from it, but this is the endpoint
+  that *tells* the client which orgs it may name; gating it behind one would be circular.
+  It is safe because the response derives entirely from the caller's own assignments:
+  there is no input to tamper with, and a user with no roles gets `[]` rather than
+  somebody else's org.
+- **`identityService.getMemberships` takes an already-loaded `UserAuthCache`, not a
+  userId.** The router has loaded it anyway, so re-reading would double the Redis
+  round-trips on the request that runs on every page load. It is the one service that
+  takes no `DataScope`, and that is not an exemption from hard rule 1 — here the scope
+  *is* the return value, and the schools inside each org still come from
+  `listSchools()` with scopes derived from those same assignments.
+- **`permissions` is a UI hint, never a gate.** It is the union across non-expired
+  assignments in that org, for deciding what to *render*. Authorization stays in `can()`.
+
+Verified against the live API with both seeded logins, which is the part that matters:
+
+```
+org_admin  → 1 org, scopeTypes [org],    115 permissions, 2 schools (MAIN, NORTH)
+principal  → 1 org, scopeTypes [school],  82 permissions, 1 school  (MAIN)
+no session → 401
+```
+
+The principal seeing one school and the admin seeing two is the scope clipping from
+ADR-017 working through a second, independent call path.
+
 Do this next:
 
-1. better-auth extensions still owed by ADR-007 — nullable email, the username plugin,
-   `must_change_password`.
-2. Then Phase 2. `school.router.ts` plus the seed and smoke test together are the pattern
-   to copy for every domain that follows: contract → service → thin router → OpenAPI meta
-   → a negative assertion that proves the tenancy filter actually bites.
+1. **Phase 2** — academic structure. `school.router.ts` plus the seed and smoke test
+   together are the pattern to copy for every domain that follows: contract → service →
+   thin router → OpenAPI meta → a negative assertion that proves the tenancy filter
+   actually bites.
+2. Minimal UI on top of `me`: disable self-registration (see below), app shell, school
+   switcher. Now unblocked.
+
+**ADR-007's better-auth extensions are deliberately deferred** — they were the obvious
+next task and were investigated, then dropped as premature. Nothing depends on them:
+Phase 2's tables hang off `schools` and `organizations` and none reference `user`, so
+making `email` nullable is exactly as cheap later. There is no student portal, no student
+login page, and no `student_portal_access` rows, so the two conflicts found while reading
+the plugin source would be resolved against an imagined feature with nothing to test them
+against. ADR-007's own note says "before the portal ships", not "before Phase 2". Both
+conflicts are recorded there for whoever picks it up:
+
+- better-auth 1.6.23's default username validator is `/^[a-zA-Z0-9_.]+$/` — it **rejects
+  hyphens**, so the literal `{org_slug}-{phone}` would fail on every student signup. The
+  plugin accepts a custom `usernameValidator`; it also adds *two* columns, `username` and
+  `displayUsername`, not one.
+- `RESOURCE_ACTIONS` already has `portal_access: [read, grant, revoke]`, which covers what
+  ADR-007 calls `student_portal:activate`. Adding a second resource would mean two names
+  for one concept.
+
+### Web app — known problems
+
+Found while surveying `apps/web`; none fixed yet, listed worst-first:
+
+- [ ] **`/register` is open self-registration.** Anyone can create an account with any
+      email. Staff are provisioned by the org (ADR-007), so this route should not exist.
+- [ ] **`login-from.tsx` imports from `node_modules/@repo/contracts/src/contracts/...`** —
+      a literal path into `node_modules`. It resolves by accident and bypasses the type
+      chain. Should be `@repo/contracts`. (The filename is also a typo for `login-form`.)
+- [ ] **Three hardcoded `http://localhost:4000`** — `auth-client.ts`, `trpc/client.ts`,
+      and `(dashboard)/layout.tsx` — while `env.ts` declares `NEXT_PUBLIC_API_URL` and
+      only `console.log`s it. Nothing will work off localhost.
+- [ ] **`spinner.tsx` and `spinner4.tsx` both export `Spinner`**, and `loading.tsx`
+      imports `Spinner4` as a default export from a file whose default is a demo wrapper.
+- [ ] **`components.json` points at `src/app/global.css`; the file is `globals.css`** — the
+      shadcn CLI will misfire.
+- [ ] `app/pagee.tsx` is a typo'd leftover from the exam-platform template (it still says
+      "Exams in this org"), unreachable because `(dashboard)/page.tsx` serves `/`. The root
+      `layout.tsx` metadata still reads "Exam Platform" too.
+
 
 
 

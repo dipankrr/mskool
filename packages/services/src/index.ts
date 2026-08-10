@@ -7,3 +7,9 @@
  */
 
 export * from "./organization.service";
+
+// The signed-in caller's own access. Takes an already-loaded auth cache rather
+// than a DataScope: here the scope is the answer, not an argument.
+export * from "./identity.service";
+
+
