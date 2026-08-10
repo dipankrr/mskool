@@ -129,8 +129,9 @@ Do this next:
    together are the pattern to copy for every domain that follows: contract → service →
    thin router → OpenAPI meta → a negative assertion that proves the tenancy filter
    actually bites.
-2. Minimal UI on top of `me`: disable self-registration (see below), app shell, school
-   switcher. Now unblocked.
+2. Minimal UI on top of `me`: app shell, school switcher. Now unblocked — self-registration
+   is gone (ADR-021), and the three hardcoded `localhost:4000` are now `NEXT_PUBLIC_API_URL`.
+
 
 **ADR-007's better-auth extensions are deliberately deferred** — they were the obvious
 next task and were investigated, then dropped as premature. Nothing depends on them:
@@ -151,16 +152,20 @@ conflicts are recorded there for whoever picks it up:
 
 ### Web app — known problems
 
-Found while surveying `apps/web`; none fixed yet, listed worst-first:
+Found while surveying `apps/web`, listed worst-first. The first three are now fixed:
 
-- [ ] **`/register` is open self-registration.** Anyone can create an account with any
-      email. Staff are provisioned by the org (ADR-007), so this route should not exist.
-- [ ] **`login-from.tsx` imports from `node_modules/@repo/contracts/src/contracts/...`** —
-      a literal path into `node_modules`. It resolves by accident and bypasses the type
-      chain. Should be `@repo/contracts`. (The filename is also a typo for `login-form`.)
-- [ ] **Three hardcoded `http://localhost:4000`** — `auth-client.ts`, `trpc/client.ts`,
-      and `(dashboard)/layout.tsx` — while `env.ts` declares `NEXT_PUBLIC_API_URL` and
-      only `console.log`s it. Nothing will work off localhost.
+- [x] **`/register` was open self-registration** — fixed, and it was worse than the page
+      (ADR-021). Deleting the UI leaves `POST /api/auth/sign-up/email` reachable by curl,
+      so the block is a middleware in `apps/api/src/server.ts` ahead of the better-auth
+      handler. **Not** `emailAndPassword.disableSignUp`: better-auth checks that flag
+      inside the sign-up handler, which `auth.api.signUpEmail()` also runs, so it would
+      have broken `pnpm db:seed` and the future staff-invite flow along with it.
+      `useAuth.register` and the login page's Register link are gone too.
+- [x] **`login-from.tsx` imported from `node_modules/@repo/contracts/src/contracts/...`** —
+      fixed: now `@repo/contracts`, and the file is renamed `login-form.tsx`.
+- [x] **Three hardcoded `http://localhost:4000`** — fixed. `auth-client.ts`,
+      `trpc/client.ts`, and `(dashboard)/layout.tsx` all read `env.NEXT_PUBLIC_API_URL`;
+      the `console.log` in `env.ts` is gone.
 - [ ] **`spinner.tsx` and `spinner4.tsx` both export `Spinner`**, and `loading.tsx`
       imports `Spinner4` as a default export from a file whose default is a demo wrapper.
 - [ ] **`components.json` points at `src/app/global.css`; the file is `globals.css`** — the
@@ -168,6 +173,7 @@ Found while surveying `apps/web`; none fixed yet, listed worst-first:
 - [ ] `app/pagee.tsx` is a typo'd leftover from the exam-platform template (it still says
       "Exams in this org"), unreachable because `(dashboard)/page.tsx` serves `/`. The root
       `layout.tsx` metadata still reads "Exam Platform" too.
+
 
 
 

@@ -139,7 +139,39 @@ async function main() {
   const principalCookie = await signIn(PRINCIPAL_EMAIL);
   const orgId = organization.id;
 
-  console.log("org_admin — granted at org scope");
+  console.log("self-registration is closed (ADR-021)");
+
+  // The sign-in below proves /api/auth/* is mounted, so a refusal here cannot be
+  // the whole auth surface being unreachable. Asserted over HTTP because the
+  // block IS transport-level: `auth.api.signUpEmail()` still works by design,
+  // and calling that would test the opposite of what we mean.
+  const strangerEmail = "stranger@not-a-tenant.test";
+  const signUp = await fetch(`${API}/api/auth/sign-up/email`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: WEB_ORIGIN },
+    body: JSON.stringify({
+      email: strangerEmail,
+      password: SEED_PASSWORD,
+      name: "Uninvited Stranger",
+    }),
+  });
+  report(
+    "public sign-up is refused",
+    signUp.status === 404,
+    `HTTP ${signUp.status}`,
+  );
+
+  // The status code is the contract; the absent row is the point. A future
+  // refactor could return 404 from somewhere that still let the insert through.
+  const [stranger] = await db.select().from(user).where(eq(user.email, strangerEmail));
+  report(
+    "no user row was created",
+    stranger === undefined,
+    stranger ? "ROW EXISTS — sign-up wrote through the block" : "",
+  );
+
+  console.log("\norg_admin — granted at org scope");
+
 
   // Exercises buildUserAuthCache → resolveAssignmentScope → can(). If the
   // org grant does not resolve, this returns 0 and everything else is moot.

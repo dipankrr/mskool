@@ -9,22 +9,12 @@ export function useAuth() {
         authClient.useSession();
 
 
-    async function register(
-        name: string,
-        email: string,
-        password: string
-    ) {
-
-        return authClient.signUp.email({
-            name,
-            email,
-            password
-        });
-
-    }
-
+    // No register(): self-registration is closed (ADR-021). Accounts are
+    // provisioned by the organization, and the sign-up route is blocked at the
+    // API edge, so a caller here would only get a 404.
 
     async function login(
+
         email: string,
         password: string
     ) {
@@ -46,9 +36,9 @@ export function useAuth() {
 
     return {
         ...session,
-        register,
         login,
         logout
     };
+
 
 }

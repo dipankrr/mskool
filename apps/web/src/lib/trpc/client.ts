@@ -14,7 +14,8 @@ export function getTrpcClientConfig() {
   return {
     links: [
       httpBatchLink({
-        url: `http://localhost:4000/trpc`,
+        url: `${env.NEXT_PUBLIC_API_URL}/trpc`,
+
         fetch(url, options) {
           return fetch(url, { ...options, credentials: "include" }); // send better-auth cookie
         },

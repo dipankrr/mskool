@@ -2,9 +2,9 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 
 import { useAuth } from "@/features/auth/hooks/use-auth";
+
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -21,7 +21,12 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { LoginUserInput, LoginUserInputT, RegisterUserInput } from "node_modules/@repo/contracts/src/contracts/auth.contract";
+// Package entry point, not a path into node_modules. Reaching into the
+// package's src/ resolved by accident and bypassed the type chain
+// (db → contracts → services → trpc → web), so a schema change would not have
+// surfaced here as an error.
+import { LoginUserInput, type LoginUserInputT } from "@repo/contracts";
+
 import { toast } from "sonner";
 
 
@@ -92,12 +97,16 @@ export function LoginForm({
               </Field>
               <Field>
                 <Button type="submit">{form.formState.isSubmitting ? "Logging in..." : "Login"}</Button>
+                {/*
+                  No "Register" link: accounts are created by the school, not by
+                  the visitor (ADR-021).
+                */}
                 <FieldDescription className="text-center">
-                  Don&apos;t have an account? <Link href="/register" className="underline">
-                    Register
-                  </Link>
+                  Accounts are issued by your school. Contact your administrator
+                  if you cannot sign in.
                 </FieldDescription>
               </Field>
+
             </FieldGroup>
           </form>
         </CardContent>

@@ -473,6 +473,51 @@ surprising if you go looking there first. `pnpm db:check` and `pnpm db:verify` s
 `@repo/db`, because both are pure schema/connectivity assertions with no service
 dependencies.
 
+---
+
+## ADR-021 — There is no public sign-up; accounts are provisioned
+
+**Status:** accepted
+
+**Context.** `apps/web` shipped a `/register` page wired to `authClient.signUp.email()`.
+On a multi-tenant school system that is not a missing feature, it is an open door: anyone
+on the internet could mint a `user` row against our better-auth instance. The account
+would land with no `role_assignments` and no `student_portal_access`, so `can()` would
+deny everything and it could read no data — but it is still an unauthenticated writer
+creating rows in our identity table, which is a spam and enumeration surface at best.
+
+Accounts in this product are *issued*, never self-claimed. Staff are invited by an org
+admin; students are provisioned from the enrolment record (ADR-006, ADR-007). Both flows
+already require an authenticated, authorized actor.
+
+**Decision.** Remove the registration UI, and block the underlying endpoint at the HTTP
+edge in `apps/api/src/server.ts`: a middleware mounted before the better-auth handler
+answers **404** to anything under `/api/auth/sign-up`. 404 rather than 403 because a 403
+confirms the endpoint exists and is merely switched off, which is a hint worth denying;
+to a scanner the route simply is not there. It matches on `req.path` with a regex rather
+than `app.all("/api/auth/sign-up", …)` — Express 5 changed path matching, and a pattern
+that silently fails to match would leave the endpoint open while looking closed. The
+prefix covers any sibling route a future better-auth version adds, so an upgrade cannot
+quietly reopen registration. It must stay above the better-auth mount; Express matches in
+registration order.
+
+
+**Why not `emailAndPassword.disableSignUp`?** Because better-auth checks that flag inside
+the sign-up handler itself, and `auth.api.signUpEmail()` runs that same handler. Setting
+it would disable *server-side* provisioning too — breaking `pnpm db:seed` today and the
+staff-invite flow tomorrow. Blocking at the transport layer stops the untrusted path (an
+HTTP request from a browser) while leaving the trusted path (a server-side function call
+by already-authorized code) intact. The distinction we care about is who is asking, and
+that is exactly what the two paths encode.
+
+**Consequences.** Deleting the UI alone would not have been enough — the endpoint was the
+actual hole, and the page was only the signpost pointing at it. `RegisterUserInput` stays
+in `@repo/contracts`: the staff-invite flow will validate the same shape, just behind
+`staffProcedure`. There is deliberately no self-service path back in; if we ever want
+parent-initiated onboarding it must go through an invitation token, and it supersedes
+this ADR explicitly.
+
+
 
 
 
