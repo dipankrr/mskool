@@ -517,6 +517,95 @@ in `@repo/contracts`: the staff-invite flow will validate the same shape, just b
 parent-initiated onboarding it must go through an invitation token, and it supersedes
 this ADR explicitly.
 
+---
+
+## ADR-022 — The academic-year invariants live in the database, and `db:verify` is what keeps them honest
+
+**Status:** accepted
+
+**Context.** Two rules about `academic_years` cannot be expressed as a UNIQUE index. A
+school must not run two overlapping years — but the collision is between *date ranges*,
+not values, so two rows with different names and different start dates are individually
+unique and still overlap by five months. And a school must have at most one `is_current`
+year, which is a uniqueness rule that applies to only the subset of rows where the flag is
+true.
+
+Both are the kind of rule that application code appears to enforce right up until two
+requests interleave. "Close the old year, open the new one" is two statements; between
+them, a concurrent transaction sees a consistent-looking database and writes the row that
+makes it inconsistent. The damage is not theoretical — a student enrolled in two
+overlapping years has attendance for a date with two homes and fees assessed twice.
+
+**Decision.** Both become `EXCLUDE` constraints in the migration, per ADR-013's general
+rule that Postgres owns invariants Drizzle cannot express:
+
+- `academic_years_no_overlap_excl` — `EXCLUDE USING gist (school_id WITH =, daterange(start_date, end_date, '[]') WITH &&)`.
+- `academic_years_one_current_excl` — `EXCLUDE USING btree (school_id WITH =) WHERE (is_current)`.
+
+The range bound is `'[]'`, inclusive at both ends, so a year ending 2026-03-31 and the
+next starting 2026-03-31 is a **conflict**, not a clean handover. That is deliberate: a
+student cannot be enrolled in two years on the same day. It is also the single most
+likely thing for a future edit to get wrong, so `db:verify` asserts that exact boundary
+case — rewriting it as `'[)'` fails the run rather than silently permitting a one-day
+overlap.
+
+`EXCLUDE … WHERE (is_current)` rather than a partial unique index because the rule reads
+as "no two rows may collide", not "this column is a key", and keeping both constraints in
+the same idiom means one mental model instead of two.
+
+**A third invariant, and it goes somewhere else.** `end_date >= start_date` is also a
+rule about this table, and it is *already* enforced today — but only by accident. The
+no-overlap constraint calls `daterange()`, and `daterange()` throws when the lower bound
+exceeds the upper. So the row is refused, with a message that names neither the table nor
+the rule: *"range lower bound must be less than or equal to range upper bound"*. Two
+problems with relying on that. It sends the reader into Postgres internals instead of at
+the row they just wrote; and it is incidental, so narrowing or rewriting the EXCLUDE
+constraint later removes a guard nobody knew they were depending on.
+
+It is therefore stated explicitly as `academic_years_end_after_start` — but as a Drizzle
+`check()` in `schema/academic.ts`, **not** as hand-written SQL. Everything above is
+hand-written because drizzle-kit cannot represent it; `check()` it can, so this constraint
+appears in a generated migration (`0002`) and survives regeneration like any other column.
+The ADR-013 tax is worth paying only where it buys something, and here it buys nothing.
+
+The bound is `>=`, not `>`. A one-day academic year is absurd, but absurd is not the same
+as corrupting, and a constraint that refuses rows outside its stated rule is as much a
+defect as one that lets bad rows through. `db:verify` asserts the single-day year is
+accepted for exactly that reason.
+
+Both need `CREATE EXTENSION IF NOT EXISTS btree_gist`, which the migration does first. A
+gist index over scalar `uuid` or `boolean` does not work without it, and the failure
+message — *data type uuid has no default operator class for access method gist* — does
+not obviously point at a missing extension.
+
+**Consequences.** **drizzle-kit cannot see `EXCLUDE` constraints at all.** This cuts both
+ways: it will never drop them on a diff, because it does not know they are there — but a
+regenerated `0001` will not contain them either. The block is fenced with a comment in
+the SQL saying so. Since a constraint that is trusted but absent is worse than one that
+was never written, `pnpm db:verify` queries `pg_constraint` for `contype = 'x'` directly:
+their disappearance fails loudly on the next run.
+
+Verification asserts behaviour, not existence. For each constraint there is a rejection
+test *and* an acceptance test for the legitimate row that most resembles the rejected one
+— the same dates in a different school, a second non-current year. A constraint that is
+too broad passes a rejection-only suite while quietly breaking real usage, and the second
+school in each pair is what makes over-reach visible.
+
+It also asserts the rejecting constraint **by name**, and the date check is why that
+matters rather than being pedantry. An inverted range is refused whether or not
+`academic_years_end_after_start` exists, so an assertion that only asked "was this
+rejected?" would pass against a database where our rule had never been applied. Comparing
+`constraint_name` is what distinguishes *our stated rule fired* from *something fired*.
+Postgres evaluates CHECK constraints before exclusion constraints, so the name that comes
+back is the specific one, not the daterange error.
+
+One trap this shook out: the "no rows leaked" assertion originally counted all
+`organizations`. `pnpm db:seed` legitimately leaves rows there, so that check failed on
+any seeded database for a reason having nothing to do with the schema — the sort of
+failure that gets a suite ignored. It now keys on the `verify-trust` slug the script
+itself inserts, which is the invariant actually worth asserting: nothing *this script*
+wrote survived its rollback.
+
 
 
 

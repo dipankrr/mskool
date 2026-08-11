@@ -1,0 +1,1 @@
+ALTER TABLE "academic_years" ADD CONSTRAINT "academic_years_end_after_start" CHECK ("end_date" >= "start_date");

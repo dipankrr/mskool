@@ -1,11 +1,9 @@
-import Spinner4 from "@/components/ui/spinner4";
+import { Spinner } from "@/components/ui/spinner";
 
 export default function Loading() {
   return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="h-16 w-16">
-        <Spinner4 />
-      </div>
+    <div className="flex min-h-screen items-center justify-center">
+      <Spinner className="size-16" />
     </div>
   );
 }

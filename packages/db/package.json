@@ -13,8 +13,6 @@
     "db:studio": "drizzle-kit studio",
     "db:check": "tsx scripts/check-connection.ts",
     "db:verify": "tsx scripts/verify-schema.ts",
-
-
     "check-types": "tsc --noEmit"
   },
   "dependencies": {

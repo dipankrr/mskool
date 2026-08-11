@@ -11,8 +11,8 @@ import Navbar from "@/components/navbar";
 const outfit = Outfit({ subsets: ['latin'], variable: '--font-sans' });
 
 export const metadata: Metadata = {
-  title: "Exam Platform",
-  description: "Multi-vendor merit/talent-search exam management.",
+  title: "mskool",
+  description: "School management for private schools in India.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

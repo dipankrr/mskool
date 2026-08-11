@@ -104,12 +104,29 @@ async function main() {
     WHERE con.contype = 'c'
       AND con.conname IN (
         'role_assignments_org_scope_id_matches_org',
-        'scope_nodes_shape_matches_type'
+        'scope_nodes_shape_matches_type',
+        'academic_years_end_after_start'
       )
     ORDER BY con.conname
   `;
   for (const c of constraints) console.log(`  ${c.table_name}.${c.constraint_name}`);
-  report("both CHECK constraints exist", constraints.length === 2, `found ${constraints.length}/2`);
+  report("all CHECK constraints exist", constraints.length === 3, `found ${constraints.length}/3`);
+
+  // contype 'x' is an EXCLUDE constraint. drizzle-kit cannot see these at all,
+  // so their absence would be silent — hence checking the catalog directly.
+  const exclusions = await sql<{ table_name: string; constraint_name: string }[]>`
+    SELECT rel.relname AS table_name, con.conname AS constraint_name
+    FROM pg_constraint con
+    JOIN pg_class rel ON rel.oid = con.conrelid
+    WHERE con.contype = 'x'
+      AND con.conname IN (
+        'academic_years_no_overlap_excl',
+        'academic_years_one_current_excl'
+      )
+    ORDER BY con.conname
+  `;
+  for (const c of exclusions) console.log(`  ${c.table_name}.${c.constraint_name}`);
+  report("both EXCLUDE constraints exist", exclusions.length === 2, `found ${exclusions.length}/2`);
 
   console.log("\n=== hard rule 11: every timestamp is timestamptz ===");
   const naive = await sql<{ table_name: string; column_name: string }[]>`
@@ -199,10 +216,112 @@ async function main() {
       q`INSERT INTO role_assignments (user_id, organization_id, role_type, scope_type, scope_id)
         VALUES (${u.id}, ${org.id}, 'principal', 'school', ${school.id})`,
     );
+
+    console.log("\n=== academic_years_no_overlap_excl ===");
+
+    // A second school in the same org: the constraint keys on school_id, so
+    // this is what proves it does not over-reach to the whole tenant.
+    const [school2] = await tx<{ id: string }[]>`
+      INSERT INTO schools (organization_id, name, legal_name, code)
+      VALUES (${org.id}, 'Verify School Two', 'Verify School Two', 'VS2')
+      RETURNING id
+    `;
+
+    const year = (
+      q: Queryable,
+      schoolId: string,
+      name: string,
+      start: string,
+      end: string,
+      isCurrent = false,
+    ) =>
+      q`INSERT INTO academic_years
+          (organization_id, school_id, name, start_date, end_date, original_end_date, is_current)
+        VALUES (${org.id}, ${schoolId}, ${name}, ${start}, ${end}, ${end}, ${isCurrent})`;
+
+    await expectAccept(tx, "first academic year is accepted", (q) =>
+      year(q, school.id, "2025-26", "2025-04-01", "2026-03-31"),
+    );
+
+    await expectReject(
+      tx,
+      "overlapping year in same school is rejected",
+      "academic_years_no_overlap_excl",
+      (q) => year(q, school.id, "2025-26-dup", "2026-01-01", "2026-12-31"),
+    );
+
+    // The '[]' bound in the constraint makes a shared boundary date a conflict.
+    // If someone rewrites it as '[)' this is the assertion that notices.
+    await expectReject(
+      tx,
+      "year starting on the previous year's end date is rejected",
+      "academic_years_no_overlap_excl",
+      (q) => year(q, school.id, "2026-27-off", "2026-03-31", "2027-03-30"),
+    );
+
+    await expectAccept(tx, "adjacent non-overlapping year is accepted", (q) =>
+      year(q, school.id, "2026-27", "2026-04-01", "2027-03-31"),
+    );
+
+    await expectAccept(tx, "same dates in a DIFFERENT school are accepted", (q) =>
+      year(q, school2.id, "2025-26", "2025-04-01", "2026-03-31"),
+    );
+
+    console.log("\n=== academic_years_one_current_excl ===");
+
+    // Dates here are deliberately non-overlapping: if they collided, the
+    // overlap constraint would fire first and this test would pass for the
+    // wrong reason.
+    await expectAccept(tx, "first current year is accepted", (q) =>
+      year(q, school2.id, "2026-27", "2026-04-01", "2027-03-31", true),
+    );
+
+    await expectReject(
+      tx,
+      "second current year in same school is rejected",
+      "academic_years_one_current_excl",
+      (q) => year(q, school2.id, "2027-28", "2027-04-01", "2028-03-31", true),
+    );
+
+    await expectAccept(tx, "second NON-current year is accepted", (q) =>
+      year(q, school2.id, "2027-28", "2027-04-01", "2028-03-31"),
+    );
+
+    await expectAccept(tx, "current year in a DIFFERENT school is accepted", (q) =>
+      year(q, school.id, "2027-28", "2027-04-01", "2028-03-31", true),
+    );
+
+    console.log("\n=== academic_years_end_after_start ===");
+
+    // An inverted range is refused even without this constraint, because
+    // daterange() inside the no-overlap EXCLUDE throws on lower > upper. That
+    // makes the NAME the whole point of this assertion: it distinguishes "our
+    // stated rule rejected this" from "a Postgres internal happened to". If
+    // someone narrows the EXCLUDE constraint later, the incidental guard
+    // disappears and only this one remains.
+    await expectReject(
+      tx,
+      "end_date before start_date is rejected",
+      "academic_years_end_after_start",
+      (q) => year(q, school.id, "2028-29-bad", "2029-03-31", "2028-04-01"),
+    );
+
+    // The bound is `>=`, not `>`. A single-day year is absurd but it is not
+    // what this constraint exists to prevent, and a constraint that over-reaches
+    // is as much a bug as one that under-reaches.
+    await expectAccept(tx, "start_date = end_date is accepted", (q) =>
+      year(q, school.id, "2029-30", "2029-04-01", "2029-04-01"),
+    );
   });
 
-  const [{ count }] = await sql<{ count: string }[]>`SELECT count(*) FROM organizations`;
-  report("rollback left no organizations behind", count === "0", `count = ${count}`);
+  // Asserts the rollback, not an empty database: `pnpm db:seed` legitimately
+  // leaves rows here, so counting the whole table would fail spuriously on any
+  // seeded environment. What must be true is that nothing THIS SCRIPT wrote
+  // survived — hence keying on the slug it inserts.
+  const [{ count }] = await sql<{ count: string }[]>`
+    SELECT count(*) FROM organizations WHERE slug = 'verify-trust'
+  `;
+  report("rollback left no verify-trust rows behind", count === "0", `count = ${count}`);
 
   console.log(failures === 0 ? "\nAll checks passed.\n" : `\n${failures} CHECK(S) FAILED.\n`);
   await sql.end({ timeout: 5 });

@@ -13,3 +13,6 @@ export * from "./authz";
 
 // People: staff, guardians, students, and the student portal access map.
 export * from "./people";
+
+// Academic structure: academic years → classes → sections. Phase 2.
+export * from "./academic";

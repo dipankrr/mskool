@@ -174,6 +174,16 @@ Found while surveying `apps/web`, listed worst-first. The first three are now fi
       "Exams in this org"), unreachable because `(dashboard)/page.tsx` serves `/`. The root
       `layout.tsx` metadata still reads "Exam Platform" too.
 
+### Tooling — known problems
+
+- [ ] **`pnpm lint` has never run.** `eslint` is not a dependency of any package, so the
+      only two packages with a `lint` script — `@repo/api` and `@repo/web` — both die with
+      *"'eslint' is not recognized"*. `@repo/eslint-config` exists and exports configs
+      that nothing consumes. Either add `eslint` to those two and wire the config in, or
+      delete the scripts; a command in `AGENTS.md` that has never worked is worse than a
+      missing one, because it gets run once and then ignored. Not urgent — `check-types`
+      is the actual gate and is green — but it should not stay in this state silently.
+
 
 
 
@@ -323,6 +333,49 @@ rewritten for better-auth sessions (not JWT) and tRPC middleware (not Express):
 
 Includes the `EXCLUDE USING gist` constraints on `academic_years` as hand-written
 migration SQL (ADR-013).
+
+### Slice 1 — the spine: `academic_years`, `classes`, `sections` — DB layer done
+
+- [x] `schema/academic.ts` + barrel export; `drizzle/0001_flippant_dragon_lord.sql`
+      generated and applied to Neon.
+- [x] Both `EXCLUDE` constraints hand-written into 0001 (ADR-013): no overlapping years
+      per school, at most one `is_current` year per school. `CREATE EXTENSION btree_gist`
+      precedes them — a gist index over `uuid` / `boolean` does not work without it.
+- [x] `pnpm db:verify` extended to 22 assertions, all green. Each constraint is proven to
+      reject the row it targets **and** accept the legitimate row that most resembles it
+      (same dates in a different school; a second non-current year). The boundary case is
+      asserted explicitly: `daterange(..., '[]')` makes a shared start/end date a
+      conflict, so a rewrite to `'[)'` fails the run.
+- [x] `academic_years_end_after_start` (`end_date >= start_date`) added — as a Drizzle
+      `check()` in the schema, not hand-written SQL. Unlike the EXCLUDE constraints
+      drizzle-kit can see this one, so it survives a migration regeneration; it landed
+      as `0002_ancient_nico_minoru.sql`. The inverted-range case is asserted **by name**,
+      which matters: `daterange()` inside the EXCLUDE would have refused the same row,
+      so a generic "was it rejected?" assertion could have passed while our rule was
+      absent. `start_date = end_date` (a single-day year) is accepted — the bound is
+      `>=`, deliberately not `>`.
+
+Two things worth knowing for whoever picks this up:
+
+- **drizzle-kit cannot see `EXCLUDE` constraints at all.** It will not drop them on a
+  diff, but a regenerated 0001 will not contain them either — the block is marked in the
+  SQL and must be re-pasted. `db:verify` queries `pg_constraint` for `contype = 'x'`
+  directly, so their absence fails loudly rather than silently.
+- **`db:verify`'s cleanup assertion keys on the `verify-trust` slug**, not on
+  `count(*) = 0`. `pnpm db:seed` legitimately leaves an org behind; asserting an empty
+  table fails on any seeded database for a reason that has nothing to do with the schema.
+
+### Slice 1 — remaining
+
+- [ ] `academic.service.ts` — create-year / create-class / create-section, each taking a
+      `DataScope` as a required argument (hard rule 1). Creating a class or section
+      **must** insert its `scope_nodes` row in the same transaction (hard rule 12).
+- [ ] Contracts via drizzle-zod + thin routers with OpenAPI `meta`/`output`, following
+      `school.router.ts`.
+- [ ] Extend `smoke-authz.ts` with a **negative** assertion: a grant scoped to school A
+      must not see school B's academic years. The positive path passing proves the query
+      runs, not that the tenancy filter bites.
+
 
 ---
 
