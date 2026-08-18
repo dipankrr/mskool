@@ -1,4 +1,5 @@
 import { router } from "./trpc";
+import { academicRouter } from "./routers/academic.router";
 import { healthRouter } from "./routers/health.router";
 import { meRouter } from "./routers/me.router";
 import { schoolRouter } from "./routers/school.router";
@@ -11,7 +12,10 @@ export const appRouter = router({
   // the call that supplies the organizationId every other staff route requires.
   me: meRouter,
   school: schoolRouter,
+  // Academic structure: academic.year.*, academic.class.*, academic.section.*.
+  academic: academicRouter,
 });
+
 
 
 

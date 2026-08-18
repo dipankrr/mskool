@@ -367,14 +367,74 @@ Two things worth knowing for whoever picks this up:
 
 ### Slice 1 — remaining
 
-- [ ] `academic.service.ts` — create-year / create-class / create-section, each taking a
-      `DataScope` as a required argument (hard rule 1). Creating a class or section
-      **must** insert its `scope_nodes` row in the same transaction (hard rule 12).
-- [ ] Contracts via drizzle-zod + thin routers with OpenAPI `meta`/`output`, following
-      `school.router.ts`.
+- [x] `academic.contract.ts` — Zod schemas via drizzle-zod for all three entities.
+      Written *before* the service's own input types were removed, which was the right
+      order caught the wrong way round in review: the service had been exporting
+      `Create*Input` derived from `$inferInsert`, a second definition of the same shape
+      that would have drifted from the schema the router validates against. Contracts
+      owns the vocabulary — `db → contracts → services` — and the service now imports
+      from it. Notable choices: `originalEndDate` and `isCurrent` are omitted from the
+      create schema (the service freezes one and `setCurrent` owns the other);
+      `academicYearId` / `classId` are omitted from the section update schema, because
+      moving a section between years or classes would relocate everything hanging off it
+      and leave its scope node's ancestry stale; `numericOrder` allows negatives so
+      Nursery/LKG/UKG sit below Class 1 instead of displacing it.
+
+- [x] `academic.service.ts` — written, `check-types` green (8/8). CRUD for all three
+      entities, every method taking a `DataScope` (hard rule 1); `createClass` and
+      `createSection` insert their `scope_nodes` row in the same transaction (hard rule
+      12); deactivation instead of DELETE (hard rule 2). Academic years get no scope node
+      — the tree is org → school → class → section and nobody is scoped to "2025-26".
+
+- [x] **Year visibility — now a permission (ADR-024, supersedes ADR-023).** Reading a
+      closed session is gated by `academic_year:read_history`, seeded to principal,
+      vice-principal, and accountant. The service no longer knows how the answer is
+      reached: `YearAccess` / `yearAccessFor` are gone, and each year-scoped read takes a
+      plain `includeHistory: boolean` the router computes. ADR-023's original mechanism
+      keyed on "holds an org-scoped assignment", which locked the principal and accountant
+      out of the history their jobs require and put an authz decision where `can()` could
+      not see it — see ADR-024 for the full reversal. The `is_current` join on `sections`
+      is unchanged and still load-bearing: it is what stops an `includeHistory:false`
+      caller reaching a closed year's sections (and its students) with a stale id.
+
+Three judgment calls still worth your eye, all recorded in ADR-023:
+
+  - **`atSchoolLevel` / `atClassLevel` widen a scope before `scopeWhere`.** ADR-017 makes
+    `scopeWhere` *throw* when a scope restricts a level the table cannot express, which is
+    right for owned rows but breaks a class-scoped teacher merely asking which academic
+    years their school runs — `academic_years` has no `class_id`, so the call throws and
+    they get a 500 on a school-level reference table. The widening is justified by a
+    property of the entity, not caller convenience: a year has no class dimension, so "my
+    class's years" and "my school's years" are the same set. **This reasoning does not
+    transfer to students, attendance, marks, or fees** — all of which have a real class
+    dimension, where widening hands a class teacher the whole school.
+  - **`createSection` re-reads both parents through the caller's scope.** The FKs to
+    `classes` and `academic_years` never mention `school_id`, so Postgres permits a
+    section in school A pointing at a class in school B — a cross-tenant link no later
+    query has reason to doubt. The real fix is a composite FK (`UNIQUE (id, school_id)`
+    on the parents, then `FOREIGN KEY (class_id, school_id)`), which makes it
+    unrepresentable rather than merely checked; worth doing once the remaining Phase 2
+    tables repeat the shape a third time.
+  - **`setCurrentAcademicYear` clears before it sets, in one transaction.**
+    `academic_years_one_current_excl` is not deferrable, so it is checked per statement:
+    setting first collides with the outgoing year and aborts. It also verifies the target
+    is in scope *before* clearing — otherwise naming another school's year would clear
+    this school's flag and then fail, leaving the school with no current year.
+
+- [x] Thin routers with OpenAPI `meta`/`output`, following `school.router.ts` —
+      `academic.router.ts`, namespaced `academic.year.*` / `academic.class.*` /
+      `academic.section.*`, registered in `router.ts`. 23 REST endpoints total in
+      `pnpm check:openapi`, `check-types` green (8/8), 54 authz tests still pass. The
+      `read_history` answer is computed **in the router** and passed to the service as
+      `includeHistory` (ADR-024): `ctx.can()` for single-resource reads (strict) and
+      `ctx.canWithin()` for lists (permissive) — the ADR-017 split, because a principal
+      holds `read_history` at their branch, not at the org node they address to list
+      years. Both helpers are bound to the resolved node on the staff ctx in `trpc.ts`.
 - [ ] Extend `smoke-authz.ts` with a **negative** assertion: a grant scoped to school A
-      must not see school B's academic years. The positive path passing proves the query
-      runs, not that the tenancy filter bites.
+      must not see school B's academic years, and a caller without `read_history` gets
+      NOT_FOUND for a non-current year even with a valid id. The positive path passing
+      proves the query runs, not that the tenancy filter and history gate bite. Needs the
+      seed to create a second academic year (currently it creates none).
 
 
 ---

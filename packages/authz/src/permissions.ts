@@ -41,7 +41,12 @@ export const RESOURCE_ACTIONS = {
   class: ["create", "read", "update", "delete"],
   section: ["create", "read", "update", "delete"],
   subject: ["create", "read", "update", "delete"],
-  academic_year: ["create", "read", "update", "delete"],
+  // `read_history` is a distinct action, not a scope inference (ADR-024): it
+  // decides whether the caller may address a NON-current year at all. The year
+  // picker offers past sessions only to a holder; every year-scoped read of a
+  // past year is gated on it. Editable per org like any other permission
+  // (ADR-011) — a school may hand it to whichever roles it trusts with history.
+  academic_year: ["create", "read", "update", "delete", "read_history"],
   exam: ["create", "read", "update", "delete", "publish"],
   enrollment: ["create", "read", "update", "delete"],
 

@@ -146,6 +146,16 @@ export function staffProcedure(permission: Permission) {
            * the grant, which is what the caller asked about.
            */
           scope: dataScopeFromNode(node),
+          /**
+           * Re-runs the STRICT check against this same node for a SECOND
+           * permission, beyond the one that gated entry. The academic router
+           * uses it to fold `academic_year:read_history` into a row filter: the
+           * endpoint is gated on `academic_year:read`, and whether the caller
+           * ALSO holds read_history decides if a non-current session is
+           * addressable (ADR-024). Bound to the already-resolved node so a
+           * caller cannot smuggle in a different one.
+           */
+          can: (p: Permission) => can(authCache, p, resourceCtx),
         },
       });
     });
@@ -211,6 +221,17 @@ export function staffListProcedure(permission: Permission) {
           authCache,
           /** Granted subtrees within the addressed node. OR these. */
           scopes,
+          /**
+           * The PERMISSIVE counterpart of staffProcedure's `can`: does any
+           * grant within the addressed subtree carry `p`? The academic list
+           * endpoints gate on `academic_year:read` and use this to decide
+           * whether `read_history` widens the query to closed sessions
+           * (ADR-024). A school principal holds read_history at their branch,
+           * not at the org node they address to list years, so the strict
+           * question would wrongly deny them — this asks the one the list needs.
+           */
+          canWithin: (p: Permission) =>
+            getDataScopes(authCache, p, dataScopeFromNode(node)).length > 0,
         },
       });
     });

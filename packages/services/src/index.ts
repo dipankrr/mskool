@@ -12,4 +12,8 @@ export * from "./organization.service";
 // than a DataScope: here the scope is the answer, not an argument.
 export * from "./identity.service";
 
+// Academic years, classes, sections — the time and structure dimensions every
+// later domain hangs off.
+export * from "./academic.service";
+
 

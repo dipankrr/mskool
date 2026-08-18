@@ -43,6 +43,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "academic_year:create",
     "academic_year:read",
     "academic_year:update",
+    // Runs the school across sessions: compares this year to last, reopens a
+    // closed year for a revised report card. Default only — an org may revoke
+    // it (ADR-011, ADR-024).
+    "academic_year:read_history",
     "enrollment:create",
     "enrollment:read",
     "enrollment:update",
@@ -118,6 +122,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "section:update",
     "subject:read",
     "academic_year:read",
+    // Deputises for the principal, including across sessions.
+    "academic_year:read_history",
     "enrollment:read",
     "enrollment:update",
     "student:create",
@@ -181,6 +187,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "class:read",
     "section:read",
     "subject:read",
+    // Sees the year list to switch context; without read_history the switcher
+    // offers the current session only.
+    "academic_year:read",
     "student_fee_assignment:read",
     "fee_payment:read",
     "leave:create",
@@ -208,6 +217,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "class:read",
     "section:read",
     "subject:read",
+    "academic_year:read",
     "leave:create",
     "leave:read",
   ],
@@ -238,6 +248,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "enrollment:read",
     "class:read",
     "section:read",
+    // Fees are year-scoped and arrears are chased across sessions, so the
+    // accountant both switches years and opens past ones.
+    "academic_year:read",
+    "academic_year:read_history",
     "school:read",
     "announcement:read",
     "leave:create",

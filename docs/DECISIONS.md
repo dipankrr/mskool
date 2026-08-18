@@ -607,6 +607,145 @@ itself inserts, which is the invariant actually worth asserting: nothing *this s
 wrote survived its rollback.
 
 
+---
+
+## ADR-023 — Only org-level roles see past academic years; everyone else sees the current one
+
+**Status:** superseded by ADR-024.
+**Context:** Phase 2 slice 1, `academic.service.ts`. Qualifies ADR-017.
+The reasoning below stands except for its third bullet ("It is not a permission"). Wiring
+the router revealed that bullet's premise was wrong; ADR-024 replaces the `YearAccess`
+mechanism with an `academic_year:read_history` permission and records why. Read ADR-024
+for the current rule.
+
+A school accumulates a session every year, and almost nobody working inside it has any
+business reading a closed one. A class teacher, a principal, an accountant all work in the
+present: their questions are about the children in front of them now. The Trust is the
+exception — comparing this year's collections to last year's, or auditing a session after
+it closed, is exactly what an org-level role exists to do.
+
+**Decision.** Reads of `academic_years` and `sections` take a `YearAccess` argument.
+`all-years` returns everything; `current-only` adds `academic_years.is_current = true` to
+the predicate. `yearAccessFor(authCache, orgId)` derives it: a caller holding any
+unexpired **org-scoped** assignment in that org gets `all-years`, everyone else
+`current-only`.
+
+Four things about the shape, each of which was the alternative considered first:
+
+- **It is a required argument, not an option with a default.** Either default is wrong in
+  a way that is invisible at the call site: `all-years` quietly hands a section teacher
+  the school's history, `current-only` quietly hides it from the admin who came for it.
+  Requiring it means a new read method cannot forget the question exists.
+- **It cannot be derived from the `DataScope`, which is the counter-intuitive part.** An
+  org admin addressing one school gets `schoolId: <that school>` — *identical* to what a
+  principal at that school gets — because a DataScope describes the addressed node, not
+  the caller's standing. Deriving from `scope.schoolId === null` would strip the org admin
+  of history the moment they opened a branch, and the bug would look like flaky
+  permissions. The answer only exists in the caller's assignments.
+- **It is not a permission.** `academic_year:read` answers *may you read years*, and both
+  roles may. This is about *which rows*, which is what `can()` deliberately does not
+  model. Adding an `academic_year:read_history` permission would be the more conventional
+  move, and was rejected: permissions are per-org editable (ADR-011), so an admin could
+  grant it to a class teacher and silently undo the containment. Row visibility that a
+  tenant can toggle is not a rule, it is a preference.
+- **The section join is where it actually bites.** Filtering `listAcademicYears` alone is
+  theatre — a `current-only` caller with a stale year id from a browser tab or a bookmark
+  can still list that year's sections, and from a section id reach its students,
+  attendance, and marks. So `listSections` and `getSectionById` join `academic_years` and
+  put `is_current` in the predicate, making a non-current id return nothing regardless of
+  where it came from. Every later domain reaches its rows through a section or a year, so
+  the containment is inherited rather than reimplemented per domain.
+
+**Consequences.** A principal cannot read last year's sections. That is a real
+restriction, and the mitigations are deliberate rather than accidental: the current year
+is always readable by everyone, `getCurrentAcademicYear` takes no `YearAccess` at all, and
+promoting a school to a new session is `setCurrentAcademicYear`, an org-level act. If a
+school later needs "the principal may see the year they were principal for", the natural
+implementation is a grant with `valid_from` / `valid_to` covering that session rather than
+a widening of this rule.
+
+The other half of the trade sits in `atSchoolLevel` / `atClassLevel` in the same file:
+ADR-017 makes `scopeWhere` throw when a scope restricts a level the table cannot express,
+which would give a class-scoped teacher a 500 for asking which year their school is in.
+Those helpers widen the scope before the call, justified by a property of the entity — an
+academic year has no class dimension, so "my class's years" and "my school's years" are
+the same set, not a narrower one. **That argument does not transfer to students,
+attendance, marks, or fees**, all of which have a real class dimension where widening
+would hand a class teacher the whole school. The comments there say so at the point
+someone would copy them.
+
+
+---
+
+## ADR-024 — Reading history is a permission (`academic_year:read_history`), asked strict-or-permissive like every other
+
+**Status:** accepted. Supersedes ADR-023.
+**Context:** Phase 2 slice 1, wiring `academic.router.ts` onto the service ADR-023 built.
+
+ADR-023 got the *rule* right — most people inside a school work in the present, the Trust
+audits the past — and the *mechanism* wrong. It derived year visibility from whether the
+caller held any org-scoped assignment, computed by a bespoke `yearAccessFor()` helper
+living in the service, deliberately outside the permission system. Connecting it to tRPC
+made three faults in that choice concrete rather than hypothetical.
+
+**The rejected-alternative bullet in ADR-023 was answering a question nobody had asked.**
+It rejected an `academic_year:read_history` permission on the grounds that an org admin
+could then grant it to a class teacher and "silently undo the containment". But that is
+true of *every* permission — an admin can grant `student:read` at org scope too — and it
+is not a loss of containment, it is the org exercising the per-org editability ADR-011
+made a deliberate feature. The thing being protected against was a tenant configuring
+their own instance, which is not a threat. Meanwhile the bespoke mechanism had a real cost
+the bullet did not weigh: it put an authorization decision somewhere `can()` could not see
+it, so the one audit surface that is supposed to answer "who can do what" was blind to it.
+
+**"Org-scoped assignment" was a proxy for the wrong thing, and it excluded the people the
+rule is actually about.** Under ADR-023 a principal — school-scoped by definition — could
+never read a closed session, not even the one they ran last year. An accountant chasing
+last year's unpaid fees, also school-scoped, was locked out of exactly the records the job
+requires. The Trust/branch line is not the same line as present/past access, and hard-coding
+the first as a stand-in for the second denied history to the roles most likely to need it.
+A permission seeded to principal, vice-principal, and accountant (see
+`defaultPermissions.ts`) draws the line where it actually falls, and leaves it where a
+school can adjust it.
+
+**Decision.** `read_history` becomes a real action on `academic_year` in
+`RESOURCE_ACTIONS`. The service no longer knows how the answer is reached: `YearAccess`
+and `yearAccessFor()` are deleted, and every year-scoped read
+(`listAcademicYears`, `getAcademicYearById`, `listSections`, `getSectionById`) takes a
+plain `includeHistory: boolean`. The router computes it and passes it down — services stay
+HTTP- and policy-agnostic, which is the type chain's whole point.
+
+**The subtlety is which authorization question the router asks, and it is not one question.**
+ADR-017 established that "may you act on this node?" (strict, `can()`) and "what may you see
+under it?" (permissive, `getDataScopes()`) are different, and `read_history` inherits the
+split intact:
+
+- A **single-year read** addresses that year's node. Strict is right — `ctx.can(READ_HISTORY)`.
+- A **list** addresses a parent node (the school, often the org) and asks what is visible
+  beneath it. Strict is wrong here for the exact reason ADR-017 gives: a principal holds
+  `read_history` at their *branch*, not at the org node they must name to list years across
+  the school, so `can()` would deny them a list they are entitled to. The permissive
+  question — does any grant in the addressed subtree carry it? — is the correct one:
+  `ctx.canWithin(READ_HISTORY)`.
+
+Both are exposed as bound helpers on the staff ctx (`can` on `staffProcedure`, `canWithin`
+on `staffListProcedure`), closed over the already-resolved node so a handler cannot ask
+about a different one. Asking the strict question on a list was tried first and produced
+precisely the false 403 ADR-017 warned about; the bug reproduced ADR-017's own example,
+which is what made the fix obvious.
+
+**Consequences.** The `is_current` join in `listSections` / `getSectionById` is unchanged
+and remains load-bearing for exactly ADR-023's reason: it is what stops a `includeHistory:false`
+caller reaching a closed year's sections with a stale or guessed id, and every later domain
+inherits that containment through the section edge. What changed is only *who* gets
+`includeHistory: true` and *how the router decides* — the row-level enforcement ADR-023
+designed is kept wholesale. `getCurrentAcademicYear` still takes no flag: the current year
+is visible to every scope, so there is no question to ask. The mitigation ADR-023 imagined
+for "let the principal see the year they ran" — a time-boxed grant — is no longer needed
+for the common case, since the permission now covers it directly; it remains the right tool
+for genuinely temporary access, such as an external auditor.
+
+
 
 
 

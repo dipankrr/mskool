@@ -16,5 +16,8 @@ export * from "./contracts/organization.contract";
 // inside each. The client's first call after sign-in.
 export * from "./contracts/me.contract";
 
+// Academic structure: years, classes, sections.
+export * from "./contracts/academic.contract";
+
 
 
