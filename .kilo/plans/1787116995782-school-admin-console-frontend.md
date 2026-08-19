@@ -402,15 +402,61 @@ raw permission string or Postgres message ever reaches the screen.
 
 The architectural crux — review closely.
 
-- [ ] `features/session/use-me.ts` — wraps `trpc.me.get` with a long `staleTime`.
-- [ ] `ActiveContextProvider` holding `{ organizationId, schoolId | null, academicYearId | null }`:
+- [x] `features/session/use-me.ts` — wraps `trpc.me.get` with a long `staleTime`.
+- [x] `ActiveContextProvider` holding `{ organizationId, schoolId | null, academicYearId | null }`:
       derive from `me.get`; hydrate from localStorage; **discard ids absent from `me.get`**;
       auto-select a sole org and sole branch; tolerate `schools: []`; resolve the session via
-      `academic.year.current`, treating NOT_FOUND as "no session yet".
-- [ ] Expose `scopeArgs()` → `{ organizationId }` for lists and `writeScopeArgs()` →
+      ~~`academic.year.current`~~ **`academic.year.list` + `isCurrent`** — see below.
+- [x] Expose `scopeArgs()` → `{ organizationId }` for lists and `writeScopeArgs()` →
       `{ organizationId, schoolId }` for mutations, prompting for a branch when none is chosen.
-- [ ] Mount the provider in `(dashboard)/layout.tsx`; temporarily render the resolved context on
+      `writeScopeArgs()` returns **null** when no branch is chosen; the prompt is the caller's,
+      since a context cannot open a dialog.
+- [x] Mount the provider in `(dashboard)/layout.tsx`; temporarily render the resolved context on
       the dashboard page (replaced in Chunk 7).
+
+**`academic.year.current` is not usable, and this was measured, not assumed.** Probing all
+three seeded logins against the live API:
+
+| call | org_admin | principal | class_teacher |
+|---|---|---|---|
+| `/me` | 2 schools, 116 perms | 1 school, 83 perms | **`schools: []`**, 29 perms |
+| `year.current` @ org scope | 200 | **403** | **403** |
+| `year.current` @ schoolId | 200 | 200 | *no school id exists to send* |
+| `year.list` @ org scope | 3 rows, **2 flagged current** | 2 rows | 1 row (current only) |
+
+`current` is a strict `staffProcedure`, so the caller must address a node their grant
+*covers* — a branch principal addressing the org node gets `403 Missing permission`, not the
+`NOT_FOUND` this plan predicted. And a class-scoped teacher has no branch to address instead,
+because `me` shows them none. The permissive `year.list` works for all three, and it is the
+query the session picker needs anyway. **`isCurrent` is per school**, so with several branches
+in view and none selected, `activeSession` is deliberately undefined rather than a guess.
+
+**Two more findings:**
+
+- **`schools: []` is not just the librarian.** The seeded `class_teacher` has it too, so it is
+  the common case for anyone scoped below school level — not an edge case. Such a user can
+  still read (org-scoped lists are clipped server-side) but can never write, which matches
+  their permissions.
+- **`@repo/contracts` row types are not the browser's types.** No superjson transformer means
+  a `timestamp` is a `Date` in the contract and a `string` on the wire. Row shapes now come
+  from `inferRouterOutputs<AppRouter>` in `lib/trpc/types.ts`; contracts remain the source for
+  validation schemas, which omit timestamps entirely. Recorded in `docs/CONVENTIONS.md`, since
+  every later chunk would otherwise hit it.
+
+**Verified** `pnpm check-types` 8/8, console 0 errors across all three roles:
+
+| | org_admin | principal | class_teacher |
+|---|---|---|---|
+| branch auto-select | no (2 visible) | **yes** (sole) | n/a (none) |
+| `writeScopeArgs()` | null until a branch is picked | ready immediately | null |
+| session resolved | after picking a branch | running session | **running session** |
+| `school:create` hint | Yes | No | No |
+| sessions listed | 3 | 2 | 1 |
+| heading word | "Branches" | "Schools" | "Schools" |
+
+Stale-context discard confirmed directly: `localstorage-set` with three fabricated uuids, then
+reload — all three were dropped, the org fell back to the real membership, and there was no 403
+loop. `schools: []` renders an explanation rather than crashing.
 
 **Verify** all three seeded logins (`org_admin` 2 branches, `principal` 1, `class_teacher`);
 `playwright-cli localstorage-set` a bogus branch id and confirm it is discarded rather than

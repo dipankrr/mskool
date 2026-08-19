@@ -172,9 +172,19 @@ Logic in a router cannot be reused by the REST surface, a background job, or a w
 **Runtime imports in `apps/web`.** `import type { AppRouter }` only. A runtime import
 from `@repo/db` pulls Drizzle and your connection string into the browser bundle.
 
+**`@repo/contracts` row types in a web component.** They describe the *server's* shape,
+not the browser's: there is no superjson transformer on the tRPC client, so a `timestamp`
+column that is a `Date` in the contract arrives as a `string`. Row shapes in `apps/web`
+come from `inferRouterOutputs<AppRouter>` — see `apps/web/src/lib/trpc/types.ts`.
+Contracts are still the source for *validation* schemas, which omit every timestamp
+column, so the two never disagree in a form.
+
 **Reading `process.env` outside a package's own `env.ts`.** Each package declares the
 vars it needs via `createEnv()` from `@repo/env`, and that file is the only reader. A
 typo'd env var should fail loudly at boot, not as `undefined` three files deep at 2am.
+In a client-reachable `env.ts`, also pass `runtimeEnv` with one literal
+`process.env.NEXT_PUBLIC_*` per variable — a bundler cannot inline a whole-object read,
+so validation would pass on the server and throw in the browser.
 
 
 **A second source of truth for a permission question.** If `org_role_permissions` answers

@@ -274,6 +274,17 @@ export const copy = {
     needsSession: "Create a session first.",
   },
 
+  /** States the shell itself can be in, before any screen renders. */
+  access: {
+    noStaffAccessTitle: "No school access yet",
+    noStaffAccessBody:
+      "You are signed in, but your account has no role at any school. Ask your administrator to give you access.",
+    loadFailedTitle: "Couldn't load your school",
+    /** Shown when a write is attempted with no branch selected. */
+    chooseBranchTitle: "Choose a branch first",
+    chooseBranchBody: "This has to be saved against one branch. Pick one to continue.",
+  },
+
   /** Read by `lib/errors.ts`. Nothing else should phrase a failure. */
   errors: {
     signedOut: "Your session expired. Please sign in again.",
