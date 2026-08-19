@@ -269,10 +269,33 @@ and pagee.tsx and spinner4.tsx no longer exist.
 
 Generated diff — skim-review, but check each file.
 
-- [ ] `pnpm add @tanstack/react-table` in `apps/web`.
-- [ ] `pnpm dlx shadcn@latest add dialog sheet alert-dialog select table skeleton badge empty sidebar tabs checkbox switch tooltip breadcrumb`
-- [ ] Review every generated file: Base UI `render` (not `asChild`), `lucide-react` icons,
+- [x] `pnpm add @tanstack/react-table` in `apps/web`.
+- [x] `pnpm dlx shadcn@latest add dialog sheet alert-dialog select table skeleton badge empty sidebar tabs checkbox switch tooltip breadcrumb`
+- [x] Review every generated file: Base UI `render` (not `asChild`), `lucide-react` icons,
       aliases matching `components.json`, sub-components inside their groups.
+
+**Four findings that change later chunks:**
+
+- **`@tanstack/react-table` resolved to v9.1.2, not v8.** The API is `useTable` +
+  `tableFeatures` + `table.FlexRender`, *not* `useReactTable` + `getCoreRowModel`. Row models
+  are registered as feature slots, so sorting state does not exist until `rowSortingFeature`
+  is. Every shadcn data-table example on the web is v8 and must be translated. The package
+  ships its own skills — read `apps/web/node_modules/@tanstack/react-table/skills/` (start
+  with `getting-started`, then `migrate-v8-to-v9`) before writing `DataTable` in Chunk 6.
+- **`hooks/use-mobile.ts` arrived as a `sidebar` dependency**, and it is a JS breakpoint
+  detector — the thing this plan forbids. It is safe as written (it returns `undefined` until
+  after mount, so server and first client render agree), but it hardcodes 768px, while the nav
+  breakpoint here is 1024px. Chunk 7 should drive its own layout from CSS and not lean on
+  `Sidebar`'s built-in <768px Sheet mode.
+- **`TooltipProvider` is not mounted anywhere.** The CLI asks for it in the root layout; it
+  only shares a delay between tooltips, and `base-mira`'s `sidebar` does not use tooltips at
+  all, so it is deferred to Chunk 7 — mount it in the dashboard shell when the first tooltip
+  lands, not on `/login`.
+- **The shared Next tsconfig had no DOM lib** (`base.json` sets `lib: ["ES2022"]`), so
+  `window` and `document` did not exist for `tsc` and the generated `sidebar` /
+  `use-mobile` failed the gate with nine errors. Fixed in
+  `packages/typescript-config/nextjs.json`. This also retires the workaround comment written
+  in Chunk 2 about `RequestInit.cache` not type-checking — it does now.
 
 **Verify** `pnpm check-types`; `rg "@radix-ui"` returns nothing; app still boots.
 
@@ -295,7 +318,10 @@ group composition.
 Only if the theme is being changed. Deliberately its own commit: it touches design tokens and
 nothing else, so it is trivially reviewable and trivially revertible.
 
-- [ ] `pnpm dlx shadcn@latest preset resolve` to record the current theme.
+- [x] `pnpm dlx shadcn@latest preset resolve` to record the current theme. **Current preset
+      code: `b5x0G3yOW`** — style `mira`, baseColor `neutral`, theme `yellow`, chartColor
+      `violet`, icons `lucide`, font `outfit`, radius `large`, menuAccent `bold`. Keep this
+      code: re-applying it is how to get back if a candidate theme is worse.
 - [ ] `pnpm dlx shadcn@latest preset decode <code>` to inspect the incoming one.
 - [ ] `pnpm dlx shadcn@latest apply <code> --only theme`.
 - [ ] Fonts, if changing, by hand in `layout.tsx` via next/font — not via the preset, which

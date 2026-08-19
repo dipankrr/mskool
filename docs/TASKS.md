@@ -214,6 +214,11 @@ were already fixed when this list still claimed otherwise:
 
 ### Tooling — known problems
 
+- [x] **The shared Next tsconfig had no DOM lib.** `base.json` sets `lib: ["ES2022"]`, correct
+      for a Node package and wrong for a browser app, and `nextjs.json` did not widen it — so
+      `window`, `document`, `HTMLElement` and `RequestInit.cache` did not exist for `tsc`.
+      Nothing noticed until a generated component used `window`. `nextjs.json` now sets
+      `["DOM", "DOM.Iterable", "ES2022"]`, the same three Next's own generated tsconfig uses.
 - [ ] **`pnpm lint` has never run.** `eslint` is not a dependency of any package, so the
       only two packages with a `lint` script — `@repo/api` and `@repo/web` — both die with
       *"'eslint' is not recognized"*. `@repo/eslint-config` exists and exports configs

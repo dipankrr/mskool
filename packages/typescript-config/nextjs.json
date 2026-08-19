@@ -5,6 +5,11 @@
   "compilerOptions": {
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    // base.json ships `lib: ["ES2022"]`, which is right for a Node package and
+    // wrong for a browser app: without these, `window`, `document`,
+    // `HTMLElement` and `RequestInit.cache` do not exist as far as tsc is
+    // concerned. Next's own generated tsconfig sets the same three.
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
     "jsx": "preserve",
     "noEmit": true,
     "plugins": [{ "name": "next" }]

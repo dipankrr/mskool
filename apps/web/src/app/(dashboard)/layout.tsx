@@ -6,8 +6,7 @@ import { hasServerSession } from "@/lib/auth-server";
 
 /**
  * Never prerender or cache this subtree. Session validity must be evaluated per
- * request — see the note on `hasServerSession`, which cannot express the opt-out
- * on the fetch itself.
+ * request — see the note on `hasServerSession`.
  */
 export const dynamic = "force-dynamic";
 

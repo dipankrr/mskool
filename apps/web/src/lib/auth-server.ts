@@ -17,11 +17,11 @@ type SessionResponse = {
  * inverses — the dashboard redirects when there is NO session, `/login` when
  * there IS one — and two copies of an auth check drift in opposite directions.
  *
- * **Every caller must also export `dynamic = "force-dynamic"`.** A cached "still
- * valid" answer would keep a signed-out user inside the dashboard shell.
- * Declared at route level rather than here because `RequestInit.cache` is not in
- * this app's DOM lib types, so `fetch(..., { cache: "no-store" })` does not
- * type-check in this app.
+ * **Every caller must also export `dynamic = "force-dynamic"`.** Reading
+ * `headers()` already opts a route out of static rendering, and Next has not
+ * cached `fetch` by default since 15, so this is a declaration of intent rather
+ * than a workaround: a cached "still valid" answer would keep a signed-out user
+ * inside the dashboard shell, and that must stay impossible by accident.
  *
  * This is a UX gate, not the security boundary: it only decides what to render.
  * Every read and write is authorized again server-side by the tRPC procedure
