@@ -1,13 +1,13 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import { TrpcProvider } from "@/lib/trpc/provider";
-import { Outfit } from "next/font/google";
+import { Outfit, Inter } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/sonner"
 
 import { ThemeProvider } from "@/components/theme-provider"
 
-const outfit = Outfit({ subsets: ['latin'], variable: '--font-sans' });
+const inter = Inter({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
   title: "mskool",
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={cn("font-sans", outfit.variable)} suppressHydrationWarning>
+    <html lang="en" className={cn("font-sans", inter.variable)} suppressHydrationWarning>
       <body>
         <ThemeProvider
           attribute="class"
