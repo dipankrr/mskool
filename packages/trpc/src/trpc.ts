@@ -15,12 +15,49 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import type { OpenApiMeta } from "trpc-to-openapi";
 import { z } from "zod";
 import type { Context } from "./context";
+import { translateError } from "./errors";
 
 const t = initTRPC.context<Context>().meta<OpenApiMeta>().create();
 
 export const router = t.router;
 export const middleware = t.middleware;
 export const publicProcedure = t.procedure;
+
+/**
+ * Turns a database or service failure into something the user can act on
+ * (ADR-026). The mapping itself is in `errors.ts`; this is only the seam.
+ *
+ * Applied FIRST on both staff builders, so it wraps the authorization
+ * middleware as well as the resolver. That is deliberate: `getUserAuthCache`
+ * talks to Redis and `loadScopeNode` to Postgres, and an outage in either
+ * currently reaches the client as a connection string.
+ *
+ * **This reads a return value rather than using try/catch, and that is not a
+ * style choice.** tRPC does not rethrow out of `next()`. It catches whatever the
+ * resolver threw, wraps it in an INTERNAL_SERVER_ERROR `TRPCError` whose message
+ * is the original exception's, and hands it back as `{ ok: false }`. A
+ * try/catch here would compile, read correctly, and never fire.
+ *
+ * Not on `protectedProcedure` or `studentProcedure`. Every write that can trip a
+ * constraint is a staff call, and both of those tracks only read today; ADR-026
+ * records the boundary and when widening it becomes worthwhile.
+ */
+const translateErrors = t.middleware(async ({ next }) => {
+  const result = await next();
+  if (result.ok) return result;
+
+  const error = translateError(result.error);
+
+  // The client now gets deliberately vague wording, so the detail has to land
+  // somewhere or an untranslated failure becomes invisible — worse than the
+  // leak this replaces. There is no logger in this package yet; when there is,
+  // this is the call site.
+  if (error.code === "INTERNAL_SERVER_ERROR") {
+    console.error("[trpc] untranslated error:", error.cause ?? result.error);
+  }
+
+  throw error;
+});
 
 /**
  * A valid session, nothing more. Use this only where the caller may be either
@@ -103,6 +140,7 @@ function addressedNodeId(input: z.infer<typeof staffScopeInput>) {
 export function staffProcedure(permission: Permission) {
   return t.procedure
     .input(staffScopeInput)
+    .use(translateErrors)
     .use(async ({ ctx, input, next }) => {
       if (!ctx.session) {
         throw new TRPCError({
@@ -179,6 +217,7 @@ export function staffProcedure(permission: Permission) {
 export function staffListProcedure(permission: Permission) {
   return t.procedure
     .input(staffScopeInput)
+    .use(translateErrors)
     .use(async ({ ctx, input, next }) => {
       if (!ctx.session) {
         throw new TRPCError({

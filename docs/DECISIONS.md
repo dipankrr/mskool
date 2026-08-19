@@ -787,6 +787,98 @@ test *divergence* from the defaults — a test that needs an org which has delib
 dropped a default permission must create a second org, because this seed re-adds anything
 removed.
 
+---
+
+## ADR-026 — Database and service failures become user-facing errors at the transport, not in the service or the client
+
+**Status:** accepted.
+**Context:** Phase 2, building the admin console. Follows ADR-022; does not change it.
+
+ADR-022 put the academic-year invariants in the database and said, correctly, that
+application code must not re-check them: a SELECT-then-INSERT guard races, and a
+constraint does not. Nothing was ever written to handle the *other* half of that bargain.
+When Postgres refuses a row, somebody has to say so in words.
+
+Nobody did. There is no `errorFormatter`, and tRPC's default handling of an unknown throw
+is to wrap it in an `INTERNAL_SERVER_ERROR` whose message is the original exception's. So
+the most likely mistake anyone makes on their first day — entering a session whose dates
+overlap the one already there — arrived as HTTP 500 reading *conflicting key value
+violates exclusion constraint "academic_years_no_overlap_excl"*. A second failure mode was
+worse because it looked like a bug in us: `requireSchoolId` throws a plain `Error`, so a
+create that simply forgot to name a branch returned 500 with a paragraph of internal
+explanation, when the honest answer is 400 and "choose a branch".
+
+**Decision.** A middleware on both staff builders, `translateErrors` in `trpc.ts`, calling
+a pure `translateError()` in `errors.ts`:
+
+- A Postgres error is looked up **by constraint name** and becomes `CONFLICT` with a
+  written-out message. Eight names are mapped today, covering every constraint a caller
+  can currently trip across `academic_years`, `classes`, `sections` and `schools`.
+- A known service `Error` — `requireSchoolId`, `createSection`'s two cross-branch parent
+  guards — becomes `BAD_REQUEST` with user-safe wording.
+- Everything else becomes `INTERNAL_SERVER_ERROR` with a fixed generic message.
+
+**Why the transport rather than the service.** A constraint name is a database fact; a
+`CONFLICT` is a transport fact. The service is the only layer that must know nothing about
+either the caller or HTTP — that is what makes it callable from a script, a job, or a test
+— so mapping there would mean teaching it about status codes. The transport is where both
+facts are already in view.
+
+**Why not in the web client.** Because the routers have two transports. Every procedure
+with `.meta({ openapi })` is also a REST endpoint under `/api`, reached by curl, a future
+mobile app, or a partner integration, none of which will import our error mapper. Doing it
+server-side means one implementation and identical behaviour on both. The web client still
+maps *codes* to copy for the cases it owns (expired session, forbidden, offline) — that is
+presentation of an outcome, not interpretation of a database failure.
+
+**Why a middleware and not an `errorFormatter`.** The formatter can rewrite the response
+shape but not the error code, and the code is what is wrong here: a duplicate name has to
+stop being a 500 and start being a 409. The HTTP status is derived from the `TRPCError`
+code before any formatter runs.
+
+**Why constraint names and not message text.** The name is ours — written in
+`schema/academic.ts` or the `0001` migration — and changing one is a migration somebody
+notices. The sentence wrapped around it belongs to Postgres and is localised by
+`lc_messages`, so matching on it would make our error handling depend on a server setting
+nobody in this repo controls.
+
+Interpolated values (`2025-26`, the code `MAIN`, the overlapped session's dates) come from
+the error's DETAIL line, which Postgres omits when the caller lacks SELECT on the indexed
+columns. Every message therefore has a second wording that reads correctly without them.
+The dates are rendered `DD/MM/YYYY` here rather than as ISO, because these strings are
+shown to the user verbatim; and the printed upper bound of a `daterange` is the day *after*
+the session ends, so it is decremented — reporting 01/04/2025 for a session ending
+31/03/2025 sends someone hunting for a row that does not exist.
+
+**Consequences.** Adding a constraint without adding a map entry degrades rather than
+breaks: an unmapped `23505`/`23P01`/`23514` still becomes `CONFLICT`, with generic wording,
+because "something already exists" is actionable even when we cannot say what. Any other
+SQLSTATE is infrastructure — a dropped connection, a column missing after a bad deploy —
+and becomes the generic 500.
+
+**The service-error half is matched on message text, which is exactly what the paragraph
+above forbids.** The difference is ownership: those strings are ours, in
+`packages/services`, and nothing but a regex connects them to the map. Rewording one drops
+it through to the generic 500 — less helpful, still not a leak, which is the right way for
+this to fail. A shared error type thrown by services and read here removes the matching
+altogether, and is worth introducing the first time a fourth condition needs it; three
+entries do not pay for a new cross-package vocabulary.
+
+Because an untranslated failure no longer reaches the client, it is `console.error`'d with
+its cause. Without that the change would trade a leak for a blind spot, which is not an
+improvement. Deliberate `TRPCError`s pass through untouched — a router's `NOT_FOUND`, the
+permission gate's `FORBIDDEN` — so authorization messaging stays where it was decided and
+`smoke-authz.ts` still asserts the same codes.
+
+The boundary is the two staff builders, not `protectedProcedure` or `studentProcedure`.
+Every write that can trip a constraint is a staff call today, and the other two tracks only
+read. When the student portal gains writes, the same middleware goes on that builder; the
+mapping is already independent of which builder calls it.
+
+There is no unit-test harness in `@repo/trpc`, so this is verified by tripping the
+constraints through `/docs` or curl and confirming a 409 with a human message and a 400 for
+a missing branch. `pnpm check-types` cannot see any of it.
+
 
 
 
