@@ -27,6 +27,8 @@ import { Input } from "@/components/ui/input"
 // surfaced here as an error.
 import { LoginUserInput, type LoginUserInputT } from "@repo/contracts";
 
+import { copy } from "@/lib/copy";
+
 import { toast } from "sonner";
 
 
@@ -50,11 +52,13 @@ export function LoginForm({
     const result = await login(data.email, data.password);
 
     if (result.error) {
-      console.log("error", result.error);
-      toast.error(result.error.message || "An error occurred while logging in.");
+      // better-auth's own message, not a tRPC error, so `lib/errors.ts` does not
+      // apply here — it already says "Invalid email or password" and deliberately
+      // does not reveal which half was wrong.
+      toast.error(result.error.message || copy.errors.unknown);
       return;
     }
-    toast.success("Logged in successfully!");
+    toast.success(copy.auth.signedIn);
     router.replace("/");
   });
 
@@ -62,16 +66,14 @@ export function LoginForm({
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card>
         <CardHeader>
-          <CardTitle>Login to your account</CardTitle>
-          <CardDescription>
-            Enter your email below to login to your account
-          </CardDescription>
+          <CardTitle>{copy.auth.signInTitle}</CardTitle>
+          <CardDescription>{copy.auth.signInSubtitle}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit}>
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="email">Email</FieldLabel>
+                <FieldLabel htmlFor="email">{copy.auth.email}</FieldLabel>
                 <Input
                   id="email"
                   type="email"
@@ -83,25 +85,26 @@ export function LoginForm({
               </Field>
               <Field>
                 <div className="flex items-center">
-                  <FieldLabel htmlFor="password">Password</FieldLabel>
+                  <FieldLabel htmlFor="password">{copy.auth.password}</FieldLabel>
                   <a
                     href="#"
                     className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
                   >
-                    Forgot your password?
+                    {copy.auth.forgotPassword}
                   </a>
                 </div>
                 <Input id="password" type="password" autoComplete="current-password" required {...form.register("password")} />
               </Field>
               <Field>
-                <Button type="submit">{form.formState.isSubmitting ? "Logging in..." : "Login"}</Button>
+                <Button type="submit">
+                  {form.formState.isSubmitting ? copy.auth.signingIn : copy.auth.signIn}
+                </Button>
                 {/*
                   No "Register" link: accounts are created by the school, not by
                   the visitor (ADR-021).
                 */}
                 <FieldDescription className="text-center">
-                  Accounts are issued by your school. Contact your administrator
-                  if you cannot sign in.
+                  {copy.auth.noSelfSignUp}
                 </FieldDescription>
               </Field>
 

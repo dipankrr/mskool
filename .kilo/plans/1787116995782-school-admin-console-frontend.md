@@ -349,13 +349,37 @@ because the preset's font block conflicts with the --font-sans mapping in the
 
 Hand-written — review carefully.
 
-- [ ] `lib/copy.ts` — all user-facing strings plus the terminology table.
-- [ ] `lib/format.ts` — `DD/MM/YYYY` display ⇄ ISO wire helpers.
-- [ ] `lib/errors.ts` — `TRPCClientError` → plain message: UNAUTHORIZED → "Your session
+- [x] `lib/copy.ts` — all user-facing strings plus the terminology table. `login-form.tsx`
+      now reads from it, so the module is the single source rather than an aspiration.
+      `branchWord(count)` implements the School-vs-Branch rule; `countLabel` handles plurals.
+- [x] `lib/format.ts` — `DD/MM/YYYY` display ⇄ ISO wire helpers.
+- [x] `lib/errors.ts` — `TRPCClientError` → plain message: UNAUTHORIZED → "Your session
       expired. Please sign in again." + redirect to `/login`; FORBIDDEN → "You don't have
       permission. Ask your administrator."; NOT_FOUND → "This record is no longer available.";
       CONFLICT → server message verbatim (already human after Chunk 1); network/5xx →
       "Couldn't reach the server. Check your connection." + Retry.
+
+**Notes for later chunks:**
+
+- **`toFriendlyError` returns flags, not effects.** `{ kind, message, retryable,
+  requiresSignIn }`. The module imports nothing from `next/navigation`, so it is readable from
+  a server component; the `/login` redirect on `requiresSignIn` and the Retry control on
+  `retryable` are the caller's job — wire both into the shared components in Chunk 6.
+- **There is still no `errorFormatter` in `packages/trpc`**, so a zod input failure arrives as
+  a JSON array in `message` rather than as `data.zodError`. `looksTechnical` catches it and
+  falls back to form-level wording, which is enough for these screens. If a later chunk wants
+  *field-level* server validation, that is the moment to add the formatter — not before.
+- **Calendar dates never become `Date` objects.** `new Date("2026-03-31").getDate()` is the
+  30th west of Greenwich; `formatTimestamp` is the one deliberate exception, for `timestamptz`.
+- **Chunk 9's preset is already built**: `sessionFromStartYear`, `currentSessionStartYear`,
+  `sessionStartYearOptions`.
+
+**Verified** `pnpm check-types` 8/8. 25 date assertions and 13 error-mapping assertions run
+against the real modules (throwaway scripts, not committed — the plan adds no web test
+harness): both April/March boundaries, leap years, two-digit years, half-typed input,
+`todayIso` local-vs-UTC, and — the ones that matter most — a raw exclusion-constraint string,
+a zod issue array, `Missing permission: school:create` and a stack trace all degrading to
+generic wording instead of reaching the screen.
 
 **Verify** `pnpm check-types`; hand-check date conversions at the 1 Apr / 31 Mar boundaries.
 
