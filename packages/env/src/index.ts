@@ -26,10 +26,34 @@ import { z } from "zod";
  * - apps/web is the one exception: only NEXT_PUBLIC_* vars are readable in
  *   the browser bundle, so its env.ts validates those separately from any
  *   server-only vars used in Next.js server components/route handlers.
+ *   It must also pass `runtimeEnv` — see below.
  */
-export function createEnv<TShape extends z.ZodRawShape>(shape: TShape) {
+export function createEnv<TShape extends z.ZodRawShape>(
+  shape: TShape,
+  /**
+   * The values to validate. Defaults to `process.env`, which is correct
+   * everywhere that runs in Node.
+   *
+   * **The browser is not one of those places.** A bundler cannot know which keys
+   * a whole-object read of `process.env` will touch, so it cannot inline them;
+   * Next replaces literal `process.env.NEXT_PUBLIC_FOO` member expressions and
+   * nothing else. Handing this function `process.env` from a module that reaches
+   * the browser therefore validates an object with no NEXT_PUBLIC_* keys in it,
+   * fails, and throws at module evaluation — taking down whichever component
+   * imported it, while the identical code passes on the server.
+   *
+   * So a client-reachable env.ts passes the values explicitly, one literal
+   * member expression per variable, which is the form the bundler can see:
+   *
+   *   createEnv(
+   *     { NEXT_PUBLIC_API_URL: z.url() },
+   *     { NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL },
+   *   );
+   */
+  runtimeEnv: Record<string, string | undefined> = process.env,
+) {
   const schema = z.object(shape);
-  const parsed = schema.safeParse(process.env);
+  const parsed = schema.safeParse(runtimeEnv);
 
   if (!parsed.success) {
     console.error("❌ Invalid environment variables:\n", parsed.error.flatten().fieldErrors);

@@ -37,12 +37,9 @@ export function LoginForm({
 
   const router = useRouter();
 
-  const {login, ...session} = useAuth();
-
-  // i want to check if the user is already logged in, if so redirect to home page
-  if (session.data?.session) {
-    router.push("/");
-  }
+  // No "already signed in?" check here. That belongs to the route, not the form:
+  // `(auth)/login/page.tsx` redirects on the server before this renders.
+  const { login } = useAuth();
 
   const form = useForm<LoginUserInputT>({
     resolver: zodResolver(LoginUserInput),
@@ -78,6 +75,7 @@ export function LoginForm({
                 <Input
                   id="email"
                   type="email"
+                  autoComplete="email"
                   placeholder="m@example.com"
                   required
                   {...form.register("email")}
@@ -93,7 +91,7 @@ export function LoginForm({
                     Forgot your password?
                   </a>
                 </div>
-                <Input id="password" type="password" required {...form.register("password")} />
+                <Input id="password" type="password" autoComplete="current-password" required {...form.register("password")} />
               </Field>
               <Field>
                 <Button type="submit">{form.formState.isSubmitting ? "Logging in..." : "Login"}</Button>

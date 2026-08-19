@@ -129,14 +129,27 @@ no session → 401
 The principal seeing one school and the admin seeing two is the scope clipping from
 ADR-017 working through a second, independent call path.
 
+**Database failures now reach the user in words** (ADR-026). A middleware on both staff
+builders maps known constraint names to `CONFLICT` and known service `Error`s to
+`BAD_REQUEST`; the map is `packages/trpc/src/errors.ts`. Anything unmapped becomes a
+generic 500 and is logged rather than leaked. Services still let Postgres refuse instead of
+pre-checking (ADR-022) — this changes only how the refusal is worded.
+
 Do this next:
 
-1. **Phase 2** — academic structure. `school.router.ts` plus the seed and smoke test
-   together are the pattern to copy for every domain that follows: contract → service →
-   thin router → OpenAPI meta → a negative assertion that proves the tenancy filter
-   actually bites.
-2. Minimal UI on top of `me`: app shell, school switcher. Now unblocked — self-registration
-   is gone (ADR-021), and the three hardcoded `localhost:4000` are now `NEXT_PUBLIC_API_URL`.
+1. **The web console — now the active workstream.** Phase 2 slice 1 was the last backend
+   prerequisite: `me` plus schools, academic years, classes and sections is enough surface
+   for an admin to stand up a school from nothing. The chunk-by-chunk plan is
+   `.kilo/plans/1787116995782-school-admin-console-frontend.md` — **read it before touching
+   `apps/web`.** Its load-bearing decisions: client-side tRPC + TanStack Query throughout,
+   Branch and Session as the user-facing words for school and academic year, sections nested
+   under a class rather than a top-level screen, and unauthorized actions hidden rather than
+   disabled. Lists send `organizationId` only and let the server clip; mutations must also
+   send `schoolId`.
+2. **Phase 2, the rest** — subjects, terms, enrollments. `school.router.ts` and
+   `academic.router.ts`, plus the seed and smoke test, are the pattern to copy for every
+   domain that follows: contract → service → thin router → OpenAPI meta → a negative
+   assertion that proves the tenancy filter actually bites.
 
 
 **ADR-007's better-auth extensions are deliberately deferred** — they were the obvious
@@ -158,7 +171,8 @@ conflicts are recorded there for whoever picks it up:
 
 ### Web app — known problems
 
-Found while surveying `apps/web`, listed worst-first. The first three are now fixed:
+Found while surveying `apps/web`, listed worst-first. All are now fixed — three of them
+were already fixed when this list still claimed otherwise:
 
 - [x] **`/register` was open self-registration** — fixed, and it was worse than the page
       (ADR-021). Deleting the UI leaves `POST /api/auth/sign-up/email` reachable by curl,
@@ -172,13 +186,31 @@ Found while surveying `apps/web`, listed worst-first. The first three are now fi
 - [x] **Three hardcoded `http://localhost:4000`** — fixed. `auth-client.ts`,
       `trpc/client.ts`, and `(dashboard)/layout.tsx` all read `env.NEXT_PUBLIC_API_URL`;
       the `console.log` in `env.ts` is gone.
-- [ ] **`spinner.tsx` and `spinner4.tsx` both export `Spinner`**, and `loading.tsx`
-      imports `Spinner4` as a default export from a file whose default is a demo wrapper.
-- [ ] **`components.json` points at `src/app/global.css`; the file is `globals.css`** — the
-      shadcn CLI will misfire.
-- [ ] `app/pagee.tsx` is a typo'd leftover from the exam-platform template (it still says
-      "Exams in this org"), unreachable because `(dashboard)/page.tsx` serves `/`. The root
-      `layout.tsx` metadata still reads "Exam Platform" too.
+- [x] **`spinner4.tsx` and `app/pagee.tsx` no longer exist**, and the root `layout.tsx`
+      metadata reads "mskool" — `loading.tsx` imports the real `Spinner` from
+      `components/ui/spinner.tsx`. These three lines described a state the repo had already
+      left; corrected rather than deleted so the next survey trusts the list less.
+- [x] **`components.json` already points at `src/app/globals.css`.** The survey line was
+      wrong, not the file; the shadcn CLI resolves correctly.
+- [x] **`Navbar` was mounted in the root layout**, so `/login` rendered an app navigation
+      bar and a profile menu for a visitor who is not signed in. It now lives in
+      `(dashboard)/layout.tsx`, with the rest of the authenticated shell.
+- [x] **`login-form.tsx` called `router.push` during render** when a session already
+      existed — a side effect in the render body, which React may run twice or discard, and
+      which flashed the form before navigating. `/login` now decides it on the server and
+      shares one session read with the dashboard gate via `lib/auth-server.ts`.
+- [x] **`apps/web/src/env.ts` threw in the browser, breaking sign-in.** `createEnv` validated
+      `process.env` as a whole object, and a bundler cannot inline a whole-object read — Next
+      replaces only literal `process.env.NEXT_PUBLIC_FOO` member expressions. So the browser
+      validated an object with no `NEXT_PUBLIC_*` keys, threw at module evaluation, and took
+      down every client module importing it: `auth-client.ts` and `trpc/client.ts`, i.e. the
+      login form itself. Identical code passed on the server, which is why it survived this
+      long. `createEnv` now takes an optional `runtimeEnv` and `apps/web` passes the values as
+      literals. **Any future client-reachable `env.ts` must do the same.**
+- [x] **The dashboard session gate crashed for signed-out visitors.** better-auth answers "no
+      session" with `200` and a JSON `null` body — not `401`, not `{}` — so reading `.session`
+      off it threw a TypeError and the gate hit an error boundary instead of redirecting the
+      one visitor it exists to redirect. Now `session?.session`, in `lib/auth-server.ts`.
 
 ### Tooling — known problems
 

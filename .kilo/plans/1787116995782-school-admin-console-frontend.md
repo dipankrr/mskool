@@ -18,9 +18,13 @@ the word "deactivate".
 
 1. Implement **exactly one** chunk. Do not begin the next one.
 2. Run that chunk's **Verify** steps.
-3. Run `git status` and `git diff --stat`, and summarise what changed and why.
-4. Propose the commit message from that chunk verbatim.
-5. **Stop and wait.** The user reviews the diff and commits.
+3. Tick that chunk's boxes **in this file**, as part of the same diff. Only what actually
+   passed Verify — an unticked box in a finished chunk is a finding to report, not an
+   oversight. The ticks live in the commit under review, so rejecting the chunk reverts the
+   plan's state along with the code, and the file never claims more than the tree delivers.
+4. Run `git status` and `git diff --stat`, and summarise what changed and why.
+5. Propose the commit message from that chunk verbatim.
+6. **Stop and wait.** The user reviews the diff and commits.
 
 **Never run** `git add`, `git commit`, `git push`, `git checkout`, or any history-rewriting
 command. Never chain two chunks in one turn, even if a chunk is small.
@@ -35,11 +39,13 @@ finished cleanly, stop and report rather than leaving a broken intermediate stat
 - [x] Browser CLIs installed globally: `@playwright/cli@0.1.18` (`playwright-cli`) and
       `agent-browser@0.27.0`. **Use `playwright-cli` only** — running both in one session
       creates two browsers and confusion over which holds the saved auth state.
-- [ ] `pnpm dev` (web :3000, api :4000) and `pnpm db:seed` for the three seeded logins.
-- [ ] Save an auth state per role once, then reuse it instead of retyping credentials:
+- [x] `pnpm dev` (web :3000, api :4000) and `pnpm db:seed` for the three seeded logins.
+- [x] Save an auth state per role once, then reuse it instead of retyping credentials:
       `playwright-cli open http://localhost:3000/login` → sign in → `playwright-cli state-save
-      auth-orgadmin.json` (repeat for principal and class_teacher).
-- [ ] Confirm `apps/web/node_modules/next/dist/docs/01-app/` is present — the pinned Next 16
+      auth-orgadmin.json` (repeat for principal and class_teacher). Done: `auth-orgadmin.json`,
+      `auth-principal.json`, `auth-classteacher.json` at the repo root, gitignored because each
+      holds a live session cookie.
+- [x] Confirm `apps/web/node_modules/next/dist/docs/01-app/` is present — the pinned Next 16
       App Router docs, preferred over web search.
 
 ---
@@ -180,13 +186,13 @@ tool reports a name as unavailable, the session predates its installation; read
 Do this first; good UX is impossible without it, and it removes a 500 the UI would otherwise
 have to work around.
 
-- [ ] Middleware in `packages/trpc/src/trpc.ts`, applied to both staff builders, wrapping
+- [x] Middleware in `packages/trpc/src/trpc.ts`, applied to both staff builders, wrapping
       `next()` and translating:
       - Postgres `23P01` / `23505` / `23514` **by constraint name** → `TRPCError` `CONFLICT`.
       - Plain service `Error`s (`requireSchoolId`, cross-school parents in `createSection`,
         "Failed to create…") → `BAD_REQUEST` / `CONFLICT` with user-safe text. Never leak
         developer-facing strings.
-- [ ] Constraint→message map in a new `packages/trpc/src/errors.ts`:
+- [x] Constraint→message map in a new `packages/trpc/src/errors.ts`:
       - `academic_years_no_overlap_excl` → "These dates overlap the session {name} ({start} – {end})."
       - `academic_years_school_name_uq` → "This branch already has a session named {name}."
       - `academic_years_one_current_excl` → "Another session is already the running session."
@@ -195,7 +201,11 @@ have to work around.
       - `classes_school_order_uq` → "Another class already uses that position in the order."
       - `sections_year_class_name_uq` → "{class} already has a Section {name} this session."
       - `schools_org_code_uq` → "Code {code} is already used by another branch."
-- [ ] ADR in `docs/DECISIONS.md`.
+- [x] ADR in `docs/DECISIONS.md`.
+
+**Verified** (in a prior session): `check-types` 8/8, `smoke:authz` 15/15, `check:openapi`
+23 endpoints, and nine live HTTP checks against the seeded fixture, each designed to fail at
+the database so nothing was inserted. Landed as `de094fb`.
 
 **Verify** `pnpm check-types`; `pnpm smoke:authz` still 15/15; via `/docs` or curl, a duplicate
 session name returns 409 with a human message, and omitting `schoolId` on a create returns 400,
@@ -220,9 +230,24 @@ the database remains the authority.
 
 ## Chunk 2 — navbar and login hygiene
 
-- [ ] Move `Navbar` from `app/layout.tsx` into `app/(dashboard)/layout.tsx`.
-- [ ] Remove `router.push` from `login-form.tsx`'s render body (effect or server redirect).
-- [ ] Correct the stale web items in `docs/TASKS.md`.
+- [x] Move `Navbar` from `app/layout.tsx` into `app/(dashboard)/layout.tsx`.
+- [x] Remove `router.push` from `login-form.tsx`'s render body (effect or server redirect).
+      Done as a server redirect in `(auth)/login/page.tsx`, sharing one session read with the
+      dashboard gate via the new `lib/auth-server.ts`.
+- [x] Correct the stale web items in `docs/TASKS.md`.
+
+**Two blocking bugs found while verifying, both fixed here** — neither was in the plan, and
+the chunk could not be verified without them:
+
+- [x] **`apps/web/src/env.ts` threw in the browser.** `createEnv` validated `process.env` as a
+      whole object; a bundler can only inline literal `process.env.NEXT_PUBLIC_FOO` accesses,
+      so in the browser it validated an empty object, threw at module evaluation, and took
+      `auth-client.ts` and `trpc/client.ts` — the login form — down with it. `createEnv` now
+      accepts `runtimeEnv`; `apps/web` passes literals. This would have blocked every chunk
+      from 5 onward.
+- [x] **The session gate crashed for signed-out visitors.** better-auth returns `200` with a
+      JSON `null` body for "no session", so `.session` threw instead of redirecting.
+- [x] `autocomplete` on the two login inputs, which the console was asking for.
 
 **Verify** `/login` renders no navbar or profile menu; sign-in redirects once; `playwright-cli
 console` shows no render-loop or hydration warning; `pnpm check-types`.

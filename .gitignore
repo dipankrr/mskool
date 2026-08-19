@@ -10,3 +10,10 @@ dist
 .DS_Store
 rough.md
 *.log
+
+# playwright-cli scratch: page snapshots and console logs.
+.playwright-cli/
+# Saved browser auth state per seeded role. Holds a LIVE session cookie —
+# committing one hands over a working login. Root-anchored so it cannot swallow
+# anything inside packages/auth.
+/auth-*.json

@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/sonner"
 
 import { ThemeProvider } from "@/components/theme-provider"
-import Navbar from "@/components/navbar";
 
 const outfit = Outfit({ subsets: ['latin'], variable: '--font-sans' });
 
@@ -25,7 +24,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           enableSystem
           disableTransitionOnChange>
           <TrpcProvider>
-            <Navbar />
             {children}
           </TrpcProvider>
         </ThemeProvider>
