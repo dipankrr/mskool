@@ -38,20 +38,26 @@ and the smoke test both exist and both pass:
 ```bash
 pnpm dev            # in another terminal
 pnpm db:seed        # idempotent — find-or-create, re-running changes nothing
-pnpm smoke:authz    # 7 checks, all passing
+pnpm smoke:authz    # 15 checks, all passing
 ```
 
 `apps/api/scripts/seed.ts` creates one org (`demo-trust`), **two** schools (`MAIN`,
-`NORTH`), and two logins: an org-scoped `org_admin` and a `principal` scoped to school A
-only. Two schools, not one — with a single school a broken tenancy filter and a correct
-one return the same row, so the second school is the negative control.
+`NORTH`), and three logins: an org-scoped `org_admin`, a `principal` scoped to school A
+only, and a class-scoped `class_teacher` (the one default role that holds
+`academic_year:read` without `read_history`). It also seeds school A's current **and**
+closed academic years, school B's current year, and one class in school A — the structure
+the academic assertions below address. Two schools, not one — with a single school a
+broken tenancy filter and a correct one return the same row, so the second school is the
+negative control.
 
 `apps/api/scripts/smoke-authz.ts` signs in over HTTP and asserts, mostly negatively:
 org_admin sees both schools; the principal sees only school A even when addressing the org
 node; the principal cannot read school B (`FORBIDDEN`); the principal cannot `school.create`
 at org scope, which is `staffProcedure`'s strict check versus the permissive
 `staffListProcedure` from ADR-017; and a revoked grant is refused immediately rather than
-at the end of the 5-minute TTL. It restores what it changed, so it is re-runnable.
+at the end of the 5-minute TTL. It restores what it changed, so it is re-runnable. It now
+also proves the academic-year tenancy filter and the `read_history` gate — see Phase 2
+slice 1 below.
 
 That closes what the 54 unit tests structurally could not: `buildUserAuthCache` resolving
 grants, the Redis JSON round-trip, `scopeWhere`'s SQL against real rows, and `resolveNode`.
@@ -430,11 +436,25 @@ Three judgment calls still worth your eye, all recorded in ADR-023:
       `ctx.canWithin()` for lists (permissive) — the ADR-017 split, because a principal
       holds `read_history` at their branch, not at the org node they address to list
       years. Both helpers are bound to the resolved node on the staff ctx in `trpc.ts`.
-- [ ] Extend `smoke-authz.ts` with a **negative** assertion: a grant scoped to school A
-      must not see school B's academic years, and a caller without `read_history` gets
-      NOT_FOUND for a non-current year even with a valid id. The positive path passing
-      proves the query runs, not that the tenancy filter and history gate bite. Needs the
-      seed to create a second academic year (currently it creates none).
+- [x] Extended `smoke-authz.ts` with the **negative** academic assertions — 15 checks
+      total, up from 9. A school-A principal lists only school A's years (never school B's)
+      and gets NOT_FOUND for school B's year id **even when addressing their own school
+      node** — the row-level filter biting a layer below the node gate that already 403s a
+      direct school-B address. A `class_teacher` — the seed's third login, and the only
+      default role holding `academic_year:read` without `read_history` — gets NOT_FOUND for
+      a closed year by valid id and sees only the current year in its list, while the
+      principal reads that same closed year: the non-vacuity control, proving it is the
+      permission that gates and not a row nobody can read. The seed now creates the years
+      this needs (school A current + closed, school B current) plus one class to scope the
+      teacher to.
+
+      Running it live surfaced a latent fixture bug and its fix: `demo-trust` predated these
+      permissions, and because `createOrganization` snapshots the defaults once and never
+      refreshes an existing org (ADR-011), the principal held no `read_history` and the class
+      teacher no `academic_year:read` — so the gate checks failed against a stale matrix, not
+      broken code. The seed now backfills the fixture's `org_role_permissions` to match
+      `DEFAULT_ROLE_PERMISSIONS` on every run (insert-only; real tenants are never seeded).
+      See ADR-025.
 
 
 ---

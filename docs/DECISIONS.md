@@ -745,6 +745,48 @@ for "let the principal see the year they ran" — a time-boxed grant — is no l
 for the common case, since the permission now covers it directly; it remains the right tool
 for genuinely temporary access, such as an external auditor.
 
+---
+
+## ADR-025 — The dev seed keeps the fixture org's permission matrix current; real orgs stay frozen
+
+**Status:** accepted.
+**Context:** Phase 2 slice 1, extending `smoke-authz.ts` to prove the
+`academic_year:read_history` gate (ADR-024) end to end against the live database.
+
+`org_role_permissions` is a per-org snapshot: `createOrganization` copies
+`DEFAULT_ROLE_PERMISSIONS` once, and from then on the org owns its rows — editing the
+defaults file never touches an existing org (`defaultPermissions.ts`; the per-org
+editability ADR-011 calls a feature). Correct for a real tenant, which may have
+deliberately diverged.
+
+Wrong for the **demo fixture**. `demo-trust` was first seeded before ADR-024 added
+`academic_year:read_history` (and the class teacher's `academic_year:read`), so its stored
+matrix lacked both. The new smoke assertions then failed for a reason that had nothing to
+do with the gate: the principal held no `read_history` and the class teacher no `read`, so
+each got the wrong answer from correct code. A green run against a stale fixture would be a
+false negative; the red run we got is a false alarm that buries the real signal. Either way
+the fixture, not the code, was the variable.
+
+**Decision.** `seed.ts` gains `syncDefaultPermissions(orgId)`, run for the demo org on
+every seed. It re-derives the `DEFAULT_ROLE_PERMISSIONS` pairs and inserts them with
+`onConflictDoNothing`. It is **insert-only**: it backfills what the matrix lacks and never
+deletes, so it cannot clobber a deliberate edit and is a no-op on a fresh org that
+`createOrganization` already filled.
+
+This does **not** contradict ADR-011. The frozen-snapshot rule governs *real tenants*,
+which are never seeded — ADR-020 keeps the seed a dev-only script and it refuses
+`NODE_ENV=production`. The fixture is test scaffolding whose whole purpose is to exercise
+the current code; keeping it aligned to the defaults is maintenance of scaffolding, not a
+change to tenant semantics.
+
+**Consequences.** Adding a permission to `defaultPermissions.ts` now flows into the demo
+org the next time anyone seeds, so a smoke test for it works without a manual matrix edit
+or a database reset. Real orgs are untouched: whatever drift a live tenant has from the
+defaults is theirs to keep. The trade-off is that `demo-trust` can no longer be used to
+test *divergence* from the defaults — a test that needs an org which has deliberately
+dropped a default permission must create a second org, because this seed re-adds anything
+removed.
+
 
 
 

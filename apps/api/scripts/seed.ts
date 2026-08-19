@@ -22,10 +22,26 @@
  * database and re-migrate.
  */
 import { auth } from "@repo/auth";
-import { invalidateUserAuthCache, type RoleType, type ScopeType } from "@repo/authz";
+import {
+  DEFAULT_ROLE_PERMISSIONS,
+  invalidateUserAuthCache,
+  ROLE_TYPES,
+  type DataScope,
+  type RoleType,
+  type ScopeType,
+} from "@repo/authz";
 import { db } from "@repo/db";
-import { organizations, roleAssignments, schools, staff, user } from "@repo/db/schema";
-import { organizationService } from "@repo/services";
+import {
+  academicYears,
+  classes,
+  organizations,
+  orgRolePermissions,
+  roleAssignments,
+  schools,
+  staff,
+  user,
+} from "@repo/db/schema";
+import { academicService, organizationService } from "@repo/services";
 import { and, eq, isNull } from "drizzle-orm";
 
 // Stable identifiers. The seed finds rows by these, which is what makes
@@ -36,8 +52,30 @@ const SCHOOL_B_CODE = "NORTH";
 
 const ADMIN_EMAIL = "admin@demo-trust.test";
 const PRINCIPAL_EMAIL = "principal@demo-trust.test";
+const TEACHER_EMAIL = "teacher@demo-trust.test";
 /** Dev only. The production bootstrap is a separate, deliberate flow. */
 const SEED_PASSWORD = "Password123!";
+
+// Academic structure — the minimum that lets the smoke test prove the year
+// tenancy filter and the read_history gate. School A gets TWO years, one
+// current and one closed: with a single year a broken history gate and a
+// correct one return the same row, so the closed year is the control. The
+// ranges do not overlap and only one year per school is promoted to current,
+// because both are EXCLUDE constraints checked per statement (ADR-013) — a
+// seed that violates either aborts the run rather than warning.
+const CLASS_A_NAME = "Class 6";
+const CLASS_A_ORDER = 6;
+
+const YEAR_CURRENT = {
+  name: "2025-26",
+  startDate: "2025-04-01",
+  endDate: "2026-03-31",
+} as const;
+const YEAR_CLOSED = {
+  name: "2024-25",
+  startDate: "2024-04-01",
+  endDate: "2025-03-31",
+} as const;
 
 async function findOrCreateOrganization() {
   const [existing] = await db
@@ -67,6 +105,46 @@ async function findOrCreateOrganization() {
 
   console.log(`  + organization ${ORG_SLUG}`);
   return organization;
+}
+
+/**
+ * Backfill the org's permission matrix to match DEFAULT_ROLE_PERMISSIONS.
+ *
+ * The demo org is a FIXTURE, not a real tenant. `createOrganization` copies the
+ * defaults once at creation and — per ADR-011 — never touches them again, so an
+ * org seeded before a permission was added (e.g. `academic_year:read_history`,
+ * ADR-024, or the class teacher's `academic_year:read`) is missing it forever.
+ * That is correct for a real trust, which owns its matrix; it is wrong for a
+ * test fixture that must exercise the CURRENT code — without this, the smoke
+ * test's history-gate checks fail on any org first seeded before those
+ * permissions existed.
+ *
+ * INSERT-only (onConflictDoNothing): it adds the pairs the matrix lacks and
+ * never removes one, so it is a no-op on a fresh org and cannot clobber a real
+ * org's deliberate edits. Mirrors the copy in
+ * organization.service.createOrganization; the production invariant is untouched
+ * because production orgs are never seeded.
+ */
+async function syncDefaultPermissions(organizationId: string) {
+  const rows = ROLE_TYPES.flatMap((roleType) =>
+    DEFAULT_ROLE_PERMISSIONS[roleType].map((permission) => ({
+      organizationId,
+      roleType,
+      permission,
+    })),
+  );
+
+  const inserted = await db
+    .insert(orgRolePermissions)
+    .values(rows)
+    .onConflictDoNothing()
+    .returning();
+
+  console.log(
+    inserted.length > 0
+      ? `  + backfilled ${inserted.length} permission(s) to match defaults`
+      : `  = permission matrix already current`,
+  );
 }
 
 async function findOrCreateSchool(
@@ -215,6 +293,65 @@ async function findOrCreateAssignment(
   return created;
 }
 
+/**
+ * Find-or-create an academic year through the service, so it is written exactly
+ * the way the API writes it (frozen originalEndDate, no isCurrent). Keyed on
+ * (schoolId, name) — the table's unique index — so re-running finds rather than
+ * duplicates. A new year is never current; the caller promotes one below.
+ *
+ * The scope carries a school (schoolId: string, not the nullable DataScope
+ * form) because a year always belongs to one branch.
+ */
+async function findOrCreateAcademicYear(
+  scope: DataScope & { schoolId: string },
+  input: { name: string; startDate: string; endDate: string },
+) {
+  const [existing] = await db
+    .select()
+    .from(academicYears)
+    .where(
+      and(
+        eq(academicYears.schoolId, scope.schoolId),
+        eq(academicYears.name, input.name),
+      ),
+    );
+
+  if (existing) {
+    console.log(`  = academic year ${input.name} (exists)`);
+    return existing;
+  }
+
+  const academicYear = await academicService.createAcademicYear(scope, input);
+  console.log(`  + academic year ${input.name}`);
+  return academicYear;
+}
+
+/**
+ * Find-or-create a class through the service, which inserts its scope_nodes row
+ * in the same transaction (hard rule 12). Without that node the class is
+ * unreachable and every request against it — including the class teacher's
+ * below — 403s. Keyed on (schoolId, name).
+ */
+async function findOrCreateClass(
+  scope: DataScope & { schoolId: string },
+  name: string,
+  numericOrder: number,
+) {
+  const [existing] = await db
+    .select()
+    .from(classes)
+    .where(and(eq(classes.schoolId, scope.schoolId), eq(classes.name, name)));
+
+  if (existing) {
+    console.log(`  = class ${name} (exists)`);
+    return existing;
+  }
+
+  const cls = await academicService.createClass(scope, { name, numericOrder });
+  console.log(`  + class ${name}`);
+  return cls;
+}
+
 async function main() {
   // The seed writes known-password logins. That must never touch production.
   if (process.env.NODE_ENV === "production") {
@@ -224,6 +361,10 @@ async function main() {
   console.log("\nSeeding…\n");
 
   const organization = await findOrCreateOrganization();
+
+  // Keep the fixture's permission matrix current before anything relies on it
+  // (the class teacher's read / the principal's read_history below).
+  await syncDefaultPermissions(organization.id);
 
   const schoolA = await findOrCreateSchool(
     organization.id,
@@ -283,9 +424,76 @@ async function main() {
     adminUser.id,
   );
 
+  // --- Academic structure + a third login for the year-visibility tests -----
+  //
+  // The smoke test needs two things this seed did not previously provide: a
+  // school-B year, to prove a school-A grant cannot see it; and a caller who
+  // holds academic_year:read but NOT read_history, to prove the history gate.
+  // Only class_teacher and subject_teacher lack read_history by default
+  // (defaultPermissions.ts), so neither the org_admin nor the principal above
+  // can demonstrate it — hence a class teacher.
+  //
+  // scopeA / scopeB are left unannotated so their schoolId stays `string`
+  // (not the nullable DataScope form), which is what the helpers require.
+  const scopeA = {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    classId: null,
+    sectionId: null,
+  };
+  const scopeB = {
+    organizationId: organization.id,
+    schoolId: schoolB.id,
+    classId: null,
+    sectionId: null,
+  };
+
+  // School A: a closed year and the current one. Neither is current on creation;
+  // only 2025-26 is promoted, so the one-current-per-school constraint is never
+  // contended. Guarding setCurrent on isCurrent keeps a re-run a true no-op.
+  const closedYearA = await findOrCreateAcademicYear(scopeA, YEAR_CLOSED);
+  const currentYearA = await findOrCreateAcademicYear(scopeA, YEAR_CURRENT);
+  if (!currentYearA.isCurrent) {
+    await academicService.setCurrentAcademicYear(scopeA, currentYearA.id);
+  }
+
+  // School B: one current year — the negative control for the tenancy test.
+  const yearB = await findOrCreateAcademicYear(scopeB, YEAR_CURRENT);
+  if (!yearB.isCurrent) {
+    await academicService.setCurrentAcademicYear(scopeB, yearB.id);
+  }
+
+  // One class in school A to scope the class teacher to.
+  const classA = await findOrCreateClass(scopeA, CLASS_A_NAME, CLASS_A_ORDER);
+
+  const teacherUser = await findOrCreateUser(TEACHER_EMAIL, "Demo Class Teacher");
+
+  await findOrCreateStaff(
+    organization.id,
+    schoolA.id,
+    teacherUser.id,
+    "EMP-TEACH",
+    "Meera",
+    "Nair",
+    "Class Teacher",
+  );
+
+  // class_teacher scoped to the class NODE (scopeId === class id). This role
+  // holds academic_year:read but not read_history — exactly the caller the
+  // history-gate assertion needs.
+  await findOrCreateAssignment(
+    teacherUser.id,
+    organization.id,
+    "class_teacher",
+    "class",
+    classA.id,
+    adminUser.id,
+  );
+
   // A previous run may have left a cached snapshot that predates these grants.
   await invalidateUserAuthCache(adminUser.id);
   await invalidateUserAuthCache(principalUser.id);
+  await invalidateUserAuthCache(teacherUser.id);
 
   console.log(`
 Done.
@@ -294,10 +502,15 @@ Done.
   school A       ${schoolA.id}  (${SCHOOL_A_CODE})
   school B       ${schoolB.id}  (${SCHOOL_B_CODE})
 
-  ${ADMIN_EMAIL}      org_admin @ org      → both schools
-  ${PRINCIPAL_EMAIL}  principal @ school A → school A only
+  school A years ${currentYearA.name} (current), ${closedYearA.name} (closed)
+  school B year  ${yearB.name} (current)
+  class          ${classA.name}  (${classA.id})
 
-  password for both: ${SEED_PASSWORD}
+  ${ADMIN_EMAIL}      org_admin @ org         → both schools
+  ${PRINCIPAL_EMAIL}  principal @ school A    → school A only
+  ${TEACHER_EMAIL}    class_teacher @ Class 6 → no read_history
+
+  password for all: ${SEED_PASSWORD}
 `);
 }
 

@@ -23,7 +23,14 @@
  */
 import { getRedis, invalidateUserAuthCache } from "@repo/authz";
 import { db } from "@repo/db";
-import { organizations, roleAssignments, schools, user } from "@repo/db/schema";
+import {
+  academicYears,
+  classes,
+  organizations,
+  roleAssignments,
+  schools,
+  user,
+} from "@repo/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 
 const API = process.env.SMOKE_API_URL ?? "http://localhost:4000";
@@ -40,6 +47,7 @@ const WEB_ORIGIN = process.env.CORS_ORIGIN ?? "http://localhost:3000";
 
 const ADMIN_EMAIL = "admin@demo-trust.test";
 const PRINCIPAL_EMAIL = "principal@demo-trust.test";
+const TEACHER_EMAIL = "teacher@demo-trust.test";
 const SEED_PASSWORD = "Password123!";
 
 let failures = 0;
@@ -135,8 +143,36 @@ async function main() {
   const schoolB = orgSchools.find((s) => s.code === "NORTH");
   if (!schoolA || !schoolB) throw new Error("Seed is incomplete — expected MAIN and NORTH.");
 
+  // Academic rows the assertions below address. The seed gives school A a
+  // current and a closed year, school B a current year, and school A one class
+  // to scope the class teacher to.
+  const yearsA = await db
+    .select()
+    .from(academicYears)
+    .where(eq(academicYears.schoolId, schoolA.id));
+  const currentYearA = yearsA.find((y) => y.isCurrent);
+  const closedYearA = yearsA.find((y) => !y.isCurrent);
+
+  const [yearB] = await db
+    .select()
+    .from(academicYears)
+    .where(eq(academicYears.schoolId, schoolB.id));
+
+  const [classA] = await db
+    .select()
+    .from(classes)
+    .where(eq(classes.schoolId, schoolA.id));
+
+  if (!currentYearA || !closedYearA || !yearB || !classA) {
+    throw new Error(
+      "Academic seed incomplete — expected a current + closed year in school A, " +
+        "a year in school B, and a class in school A. Run `pnpm db:seed`.",
+    );
+  }
+
   const adminCookie = await signIn(ADMIN_EMAIL);
   const principalCookie = await signIn(PRINCIPAL_EMAIL);
+  const teacherCookie = await signIn(TEACHER_EMAIL);
   const orgId = organization.id;
 
   console.log("self-registration is closed (ADR-021)");
@@ -242,6 +278,108 @@ async function main() {
     "principal CANNOT create a school at org scope",
     !principalCreates.ok && principalCreates.code === "FORBIDDEN",
     principalCreates.ok ? "CREATE SUCCEEDED — strict check bypassed" : `code ${principalCreates.code}`,
+  );
+
+  console.log("\nacademic years — tenancy (principal @ school A)");
+
+  // Principal is scoped to school A. Listing years at the org node must clip to
+  // their branch: both of A's years and NONE of B's. yearB appearing here is a
+  // cross-tenant leak the single-school school.list test could never catch.
+  const principalYears = await query(principalCookie, "academic.year.list", {
+    organizationId: orgId,
+  });
+  report(
+    "principal lists ONLY school A's years",
+    principalYears.ok &&
+      Array.isArray(principalYears.data) &&
+      principalYears.data.length === 2 &&
+      principalYears.data.every((y: any) => y.schoolId === schoolA.id) &&
+      !principalYears.data.some((y: any) => y.id === yearB.id),
+    principalYears.ok
+      ? `got ${principalYears.data?.length}`
+      : `HTTP ${principalYears.status}`,
+  );
+
+  // Addresses their OWN school node — the gate passes — but with school B's year
+  // id. scopeWhere must still exclude it. This is the row-level filter, a layer
+  // beneath the node gate that already 403s a direct school-B address.
+  const principalReadsYearB = await query(principalCookie, "academic.year.byId", {
+    organizationId: orgId,
+    schoolId: schoolA.id,
+    id: yearB.id,
+  });
+  report(
+    "principal CANNOT read school B's year",
+    !principalReadsYearB.ok && principalReadsYearB.code === "NOT_FOUND",
+    principalReadsYearB.ok
+      ? "READ SUCCEEDED — cross-branch year leak"
+      : `code ${principalReadsYearB.code}`,
+  );
+
+  console.log("\nacademic years — history gate (class_teacher lacks read_history)");
+
+  // The teacher addresses their CLASS node — their grant covers nothing wider.
+  // The service widens years to school level, so reading the CURRENT year works.
+  // This is the positive control: it proves the read path and node addressing,
+  // so the closed-year NOT_FOUND below can only be the history gate biting.
+  const teacherReadsCurrent = await query(teacherCookie, "academic.year.byId", {
+    organizationId: orgId,
+    classId: classA.id,
+    id: currentYearA.id,
+  });
+  report(
+    "class_teacher reads the current year",
+    teacherReadsCurrent.ok && teacherReadsCurrent.data?.id === currentYearA.id,
+    teacherReadsCurrent.ok
+      ? ""
+      : `HTTP ${teacherReadsCurrent.status} code ${teacherReadsCurrent.code}`,
+  );
+
+  // THE assertion. Same call, closed year: without read_history the service pins
+  // the query to isCurrent, so a valid id for a closed year returns nothing.
+  const teacherReadsClosed = await query(teacherCookie, "academic.year.byId", {
+    organizationId: orgId,
+    classId: classA.id,
+    id: closedYearA.id,
+  });
+  report(
+    "class_teacher CANNOT read a closed year",
+    !teacherReadsClosed.ok && teacherReadsClosed.code === "NOT_FOUND",
+    teacherReadsClosed.ok
+      ? "READ SUCCEEDED — history gate bypassed"
+      : `code ${teacherReadsClosed.code}`,
+  );
+
+  // Non-vacuity control: the principal HOLDS read_history, so the SAME closed
+  // year is readable for them. Without this, a bug that hid the row from
+  // everyone would masquerade as a passing history gate.
+  const principalReadsClosed = await query(principalCookie, "academic.year.byId", {
+    organizationId: orgId,
+    schoolId: schoolA.id,
+    id: closedYearA.id,
+  });
+  report(
+    "principal (has read_history) reads the same closed year",
+    principalReadsClosed.ok && principalReadsClosed.data?.id === closedYearA.id,
+    principalReadsClosed.ok
+      ? ""
+      : `HTTP ${principalReadsClosed.status} code ${principalReadsClosed.code}`,
+  );
+
+  // List-level gate: without read_history the year picker offers only the
+  // current session, never the closed one.
+  const teacherYears = await query(teacherCookie, "academic.year.list", {
+    organizationId: orgId,
+    classId: classA.id,
+  });
+  report(
+    "class_teacher's year list omits the closed year",
+    teacherYears.ok &&
+      teacherYears.data?.length === 1 &&
+      teacherYears.data[0]?.id === currentYearA.id,
+    teacherYears.ok
+      ? `got ${teacherYears.data?.length}`
+      : `HTTP ${teacherYears.status}`,
   );
 
   console.log("\nrevocation");
