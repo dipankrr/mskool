@@ -876,15 +876,41 @@ step keeps the common case to a single interaction.
 
 ## Chunk 12 — home checklist, final QA, docs
 
-- [ ] Home: when setup is incomplete, a 3-step checklist in dependency order — create the running
+- [x] Home: when setup is incomplete, a 3-step checklist in dependency order — create the running
       session → add classes → add sections. **Only step 3 is hard-gated** on a session existing
       (classes are not year-scoped); steps are merely *presented* in order. When complete, show a
       summary (running session, counts, quick actions).
-- [ ] Full matrix: 360 / 414 / 768 / 1024 / 1366 × the three seeded roles. Every list has
+- [x] Full matrix: 360 / 414 / 768 / 1024 / 1366 × the three seeded roles. Every list has
       explicit loading, empty (with CTA), and error (with Retry) states.
-- [ ] `prefers-reduced-motion` respected; keyboard focus visible throughout.
-- [ ] `pnpm check-types` green. If any router `meta` changed, `pnpm check:openapi`.
-- [ ] Update `docs/TASKS.md` with what the frontend now covers.
+- [x] `prefers-reduced-motion` respected; keyboard focus visible throughout.
+- [x] `pnpm check-types` green. If any router `meta` changed, `pnpm check:openapi`.
+- [x] Update `docs/TASKS.md` with what the frontend now covers.
+
+**One real bug, and it was in the exact case this chunk exists for.** A **disabled** TanStack
+query reports `isPending: true` indefinitely — it has never been allowed to run — so gating Home
+on `isPending` left it showing skeletons forever on a branch with no session, which is precisely
+the first-run state the checklist is for. Every list loading gate now uses `isLoading`
+(`isPending && isFetching`). Recorded in `docs/TASKS.md`, because it will catch the next person.
+
+**One self-inflicted incident, recorded honestly.** A PowerShell loop used `Get-Content $f` without
+`-LiteralPath` on `classes/[classId]/page.tsx`; the brackets were read as a wildcard, the read
+returned nothing, and `Set-Content` truncated the file to 0 bytes. It was rewritten from the
+committed version plus the intended change, and `git diff` confirms the restored file differs by
+exactly those lines. **Never touch a bracketed App Router path with a wildcard-expanding cmdlet.**
+
+**Verified**
+
+- empty-branch path, on EAST (5 classes, no sessions): step 1 pending, **step 2 Done** — proving
+  classes are not year-scoped — step 3 blocked reading "Create a session first."
+- complete path, on MAIN: running session with dates and a Current badge, plus
+  `1 school` / `2 sessions` / `1 class · 4 sections`
+- `principal` across all five routes at 360 and 1366: **no horizontal scroll anywhere**, content
+  present on every one
+- `class_teacher` and `org_admin` across Home, Classes and Profile at 360: no overflow, and the
+  right content per role — `org_admin` with no branch chosen gets "Choose a branch first",
+  `class_teacher` gets a read-only class list with no create control
+- `prefers-reduced-motion` rule confirmed present in the served stylesheet
+- `pnpm check-types` 8/8, `pnpm check:openapi` 23 endpoints, console 0 errors
 
 **Verify the empty-org path without touching the seed:** as `org_admin`, create a **new branch**
 (Chunk 8) and select it — it has no sessions, so the checklist is genuinely reachable.

@@ -11,7 +11,6 @@ import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { PermissionGate } from "@/components/permission-gate";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -20,6 +19,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -238,7 +238,11 @@ export default function ClassDetailPage() {
           columns={columns}
           getRowId={(row) => row.id}
           caption={copy.sections.subtitle}
-          isLoading={sections.isPending}
+          /*
+            `isLoading`, not `isPending`: a query disabled while no session exists sits
+            at "pending" forever, which would show a skeleton that never resolves.
+          */
+          isLoading={sections.isLoading}
           error={sections.error}
           onRetry={() => void sections.refetch()}
           renderCard={(row) => (

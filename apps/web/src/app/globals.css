@@ -130,3 +130,23 @@
     @apply font-sans;
     }
 }
+
+/*
+ * Motion is decoration here, never information: no state in this console is conveyed
+ * only by something moving. So when the reader has asked their operating system for
+ * less of it, they get none — dialogs and sheets appear instead of sliding, and the
+ * skeleton stops pulsing.
+ *
+ * `0.01ms` rather than `0`, because a zero duration skips `transitionend` in some
+ * engines and Base UI waits for it before unmounting a popup.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

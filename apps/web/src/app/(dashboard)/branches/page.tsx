@@ -182,7 +182,7 @@ export default function BranchesPage() {
         columns={columns}
         getRowId={(row) => row.id}
         caption={copy.branches.subtitle}
-        isLoading={branches.isPending}
+        isLoading={branches.isLoading}
         error={branches.error}
         onRetry={() => void branches.refetch()}
         renderCard={(row) => (

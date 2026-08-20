@@ -186,7 +186,7 @@ export default function SessionsPage() {
             columns={columns}
             getRowId={(row) => row.id}
             caption={copy.sessions.subtitle}
-            isLoading={sessions.isPending}
+            isLoading={sessions.isLoading}
             error={sessions.error}
             onRetry={() => void sessions.refetch()}
             renderCard={(row) => (

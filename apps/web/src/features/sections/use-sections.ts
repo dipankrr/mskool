@@ -27,7 +27,14 @@ import type { UpdateSectionInput } from "@repo/contracts";
 
 const THIRTY_SECONDS = 30 * 1000;
 
-export function useSections(classId: string) {
+/**
+ * Sections for the active session.
+ *
+ * `classId` narrows to one class, which is what the class detail route wants. Omitted,
+ * it returns every section in the session — how Home decides whether setup is finished
+ * without asking for a class first.
+ */
+export function useSections(classId?: string) {
   const { organizationId, schoolId, academicYearId } = useActiveContext();
 
   return trpc.academic.section.list.useQuery(
@@ -36,7 +43,7 @@ export function useSections(classId: string) {
       ...(schoolId ? { schoolId } : {}),
       // Never sent as a placeholder: the query below is disabled until it is real.
       academicYearId: academicYearId ?? "",
-      classId,
+      ...(classId ? { classId } : {}),
     },
     {
       enabled: Boolean(academicYearId),

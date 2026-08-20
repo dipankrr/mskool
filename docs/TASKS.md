@@ -135,21 +135,43 @@ builders maps known constraint names to `CONFLICT` and known service `Error`s to
 generic 500 and is logged rather than leaked. Services still let Postgres refuse instead of
 pre-checking (ADR-022) — this changes only how the refusal is worded.
 
+**The web console is delivered** for the Phase 1-2 surface. An `org_admin` or `principal` can
+sign in and stand up a school's academic skeleton — branches, sessions, classes, sections —
+from a phone or a desktop. Built chunk by chunk against
+`.kilo/plans/1787116995782-school-admin-console-frontend.md`, which records every decision and
+every correction found while building; read it before changing `apps/web`.
+
+What it covers:
+
+- **Shell** — sidebar ≥1024px, bottom tabs below, switched in CSS. Org, branch and session
+  switchers, each rendered only when the caller actually has a choice. Profile is a page, not a
+  dropdown.
+- **Screens** — Home (a three-step setup checklist before setup is complete, a summary after),
+  Branches, Sessions, Classes, Sections under `/classes/[classId]`, Profile.
+- **Foundations** — `lib/copy.ts` holds every user-facing string and the India-facing
+  vocabulary (Branch, Session, Close-not-delete); `lib/format.ts` converts ISO ⇄ DD/MM/YYYY
+  without ever constructing a `Date` for a calendar date; `lib/errors.ts` turns a
+  `TRPCClientError` into something a teacher can act on and refuses to pass through anything
+  that reads technical.
+- **Two things worth knowing before extending it.** Row types come from
+  `inferRouterOutputs<AppRouter>`, not `@repo/contracts` — see `docs/CONVENTIONS.md`. And a
+  *disabled* TanStack query reports `isPending: true` forever, so list loading gates use
+  `isLoading`.
+
+Deliberately not built, because no backend exists: students, enrollments, subjects, terms,
+attendance, fees, exams, staff management, role assignment, the student portal, and org
+creation (there is no `platformProcedure`).
+
 Do this next:
 
-1. **The web console — now the active workstream.** Phase 2 slice 1 was the last backend
-   prerequisite: `me` plus schools, academic years, classes and sections is enough surface
-   for an admin to stand up a school from nothing. The chunk-by-chunk plan is
-   `.kilo/plans/1787116995782-school-admin-console-frontend.md` — **read it before touching
-   `apps/web`.** Its load-bearing decisions: client-side tRPC + TanStack Query throughout,
-   Branch and Session as the user-facing words for school and academic year, sections nested
-   under a class rather than a top-level screen, and unauthorized actions hidden rather than
-   disabled. Lists send `organizationId` only and let the server clip; mutations must also
-   send `schoolId`.
-2. **Phase 2, the rest** — subjects, terms, enrollments. `school.router.ts` and
+1. **Phase 2, the rest** — subjects, terms, enrollments. `school.router.ts` and
    `academic.router.ts`, plus the seed and smoke test, are the pattern to copy for every
    domain that follows: contract → service → thin router → OpenAPI meta → a negative
-   assertion that proves the tenancy filter actually bites.
+   assertion that proves the tenancy filter actually bites. Each one then needs a screen; the
+   four verticals in `apps/web/src/features/` are the template, and they are deliberately
+   similar to each other.
+2. **`pnpm lint` still has never run** — see Tooling below. Now that `apps/web` has real
+   surface area, it is worth more than it was.
 
 
 **ADR-007's better-auth extensions are deliberately deferred** — they were the obvious
@@ -172,7 +194,8 @@ conflicts are recorded there for whoever picks it up:
 ### Web app — known problems
 
 Found while surveying `apps/web`, listed worst-first. All are now fixed — three of them
-were already fixed when this list still claimed otherwise:
+were already fixed when this list still claimed otherwise, and the last four surfaced only
+once the console was built on top:
 
 - [x] **`/register` was open self-registration** — fixed, and it was worse than the page
       (ADR-021). Deleting the UI leaves `POST /api/auth/sign-up/email` reachable by curl,
@@ -211,6 +234,20 @@ were already fixed when this list still claimed otherwise:
       session" with `200` and a JSON `null` body — not `401`, not `{}` — so reading `.session`
       off it threw a TypeError and the gate hit an error boundary instead of redirecting the
       one visitor it exists to redirect. Now `session?.session`, in `lib/auth-server.ts`.
+- [x] **A form dialog could be filled in but not submitted.** The desktop `Dialog` had no
+      scroll handling, so an eleven-field form grew past a 768px-tall viewport and pushed its
+      own submit button below the bottom edge with nothing to scroll. Only the field area
+      scrolls now; the title and buttons stay put.
+- [x] **A failing list looked like a hang for 17 seconds.** TanStack retries three times with
+      exponential backoff by default, so the loading skeleton outlived the user's patience
+      before any error appeared. List queries now retry once, and not at all for a permission
+      or not-found answer, which re-asking cannot change.
+- [x] **A disabled query reports `isPending: true` forever**, so gating a screen on it shows a
+      skeleton that never resolves. Home did exactly that whenever a branch had no session —
+      the first-run case it exists to serve. Loading gates use `isLoading`
+      (`isPending && isFetching`).
+- [x] **`Button render={<Link/>}` strips button semantics** and Base UI logs an error about it.
+      For navigation the correct element is an `<a>` styled with `buttonVariants()`.
 
 ### Tooling — known problems
 

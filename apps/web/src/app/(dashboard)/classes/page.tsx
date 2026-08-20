@@ -177,7 +177,7 @@ export default function ClassesPage() {
           columns={columns}
           getRowId={(row) => row.id}
           caption={copy.classes.subtitle}
-          isLoading={classes.isPending}
+          isLoading={classes.isLoading}
           error={classes.error}
           onRetry={() => void classes.refetch()}
           renderCard={(row) => (
