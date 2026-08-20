@@ -481,14 +481,58 @@ librarian has, is a valid state and renders rather than erroring.
 
 ## Chunk 6 — shared building blocks
 
-- [ ] `PageHeader`, `DataTable` (responsive, `renderCard` prop for <768px), `EmptyState` (uses
+- [x] `PageHeader`, `DataTable` (responsive, `renderCard` prop for <768px), `EmptyState` (uses
       `Empty`), `ConfirmDialog` (`AlertDialog`, consequence text required), `FormDialog`
       (`Dialog` ≥768px / `Sheet` below), `ListSkeleton`, `PermissionGate`.
-- [ ] Contrast check against **whatever theme is in place**: verify `--primary` /
-      `--primary-foreground` meets WCAG AA for body text on the primary button, the most-used
-      control in the app. If it fails, adjust only the single offending variable — do not
-      redesign the palette. (The pre-Chunk-3b default is a light amber,
-      `oklch(0.852 0.199 91.936)`, which is a plausible failure.)
+- [x] Contrast check against **whatever theme is in place**. The amber is gone — the theme
+      applied in `5e9f969` is a mid-dark green, and **every pair clears WCAG AA for body text**,
+      so no variable was touched:
+
+      | pair | light | dark |
+      |---|---|---|
+      | primary button text | 5.09 AA | 7.19 AAA |
+      | body on background | 19.71 AAA | 19.00 AAA |
+      | muted text on background | 4.61 AA | 8.07 AAA |
+      | destructive on background | 4.76 AA | 6.82 AA |
+      | secondary button text | 16.11 AAA | 14.26 AAA |
+
+**Four things worth knowing:**
+
+- **`lib/table.ts` uses v9's `createTableHook`**, not a hand-rolled wrapper. It is the
+  library's own "configure once" primitive and returns `useAppTable` plus a column helper
+  already bound to the feature set, so columns built in one screen are assignable in another.
+  Only `rowSortingFeature` is registered; filtering and pagination stay out of the bundle until
+  a Phase 3-5 grid needs them. The four `sortFns` are registered because a column's default
+  `sortingFn` is `'auto'` and `'auto'` resolves only *registered* functions — omitting them
+  type-checks cleanly and fails at runtime.
+- **`FormDialog` is the one sanctioned JS breakpoint**, and the reasoning does not generalise:
+  Dialog and Sheet have separate portals and focus traps, so rendering both and hiding one with
+  CSS would mount two modals and two copies of every field id. The hydration objection does not
+  apply because a modal only exists after the user opens it — necessarily after hydration.
+  Layout switching (`DataTable`'s cards vs table) stays pure CSS.
+- **Base UI's `AlertDialog` is deliberately non-dismissible.** Escape and outside clicks do
+  nothing, so `ConfirmDialog` can only be resolved by Cancel or the action. Verified, and it is
+  the right semantics — but any code path that opens it must be able to close it, or the user is
+  stuck behind a modal overlay.
+- **`consequence` is a required prop** on `ConfirmDialog`, so "Are you sure?" is unrepresentable.
+
+**Verified** `pnpm check-types` 8/8, console 0 errors throughout, exercised live rather than
+only compiled:
+
+- desktop 1366px → semantic `<table>` with an sr-only caption and sortable header buttons;
+  clicking a header sorts and sets `aria-sort="descending"`
+- mobile 360px → the table is still in the DOM but `checkVisibility()` is false, two cards
+  render, and **the desktop sort order is preserved in the cards** — proving both shapes read
+  the same row model. No horizontal page scroll.
+- `ConfirmDialog` → `role="alertdialog"`, title as an `h2`, consequence as its description,
+  Cancel focused on open
+- `FormDialog` → `dialog` at 1366px, `sheet` anchored to the bottom edge at 360px, both with a
+  real `<form>` and a `type="submit"` button
+- `PermissionGate` → the principal holds `academic_year:create`, so the create button renders;
+  `school:create` is absent and Chunk 8 is where that becomes visible
+
+`EmptyState`'s empty and error paths are reached through `DataTable` but were not triggered here
+(the seeded list is never empty) — Chunk 8 forces both with `playwright-cli route`.
 
 **Verify** `pnpm check-types`. Full exercise arrives in Chunk 8.
 
