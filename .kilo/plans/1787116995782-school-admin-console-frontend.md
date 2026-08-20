@@ -639,8 +639,40 @@ full-page spinner so the shell stays on screen through a cold database start.
 
 Simplest vertical first — establishes the CRUD template with the least to go wrong.
 
-- [ ] `school.*`: list, create, edit, **Close** (`deactivate`, hard rule 2 — say "records are
+- [x] `school.*`: list, create, edit, **Close** (`deactivate`, hard rule 2 — say "records are
       kept"). Create gated behind `school:create` via `PermissionGate`.
+
+**Scope per call is not the blanket rule.** `school.create` addresses the **org** node, not the
+selected branch: the school being created has no `scope_nodes` row yet, and the service reads
+`ctx.organizationId`. `update`/`deactivate` address **the row being changed**
+(`schoolId: row.id`), not the active context — a principal does not cover the org node, so
+addressing the org would 403 them out of editing their own branch. Every mutation invalidates
+`me.get` as well as the list, because `me.memberships[].schools` feeds the branch switcher.
+
+**Two bugs found and fixed while verifying:**
+
+- **The desktop `FormDialog` had no scroll handling**, so an eleven-field form grew past the
+  viewport and the submit button sat below the bottom edge with nothing to scroll — fillable and
+  unsaveable at 768px height. The Sheet scrolled; the Dialog did not. Both now scroll only the
+  field area, keeping title and buttons fixed.
+- **A failed list took ~17 seconds to admit it.** TanStack's default three retries with
+  exponential backoff kept a skeleton on screen long enough to read as a hang. Now one retry,
+  and none at all for a permission or not-found answer, which re-asking cannot change. Also
+  corrected the error title, which read "Couldn't load your school" on a branch list.
+
+**Verified** `check-types` 8/8, console clean:
+
+- **duplicate code → the full chain works**: `schools_org_code_uq` → Postgres 23505 → Chunk 1's
+  translator → 409 → Chunk 4's passthrough → toast reading *"Code MAIN is already used by
+  another branch. Pick a different code."* No Postgres string reached the screen.
+- `principal` → heading reads "Schools", **no create button**, list clipped server-side to one row
+- 360px → cards, table hidden, no horizontal scroll; 1366px → table
+- forced 500 on `school.list` → mapped message plus a Retry that recovers the list
+- create → toast, row appears, code auto-uppercased (`east` → `EAST`), and the new branch shows
+  in the switcher immediately, which is the `me.get` invalidation working
+
+A third branch, **EAST (Howrah)**, was created during verification and left in place — Chunk 12
+needs a branch with no sessions to reach the first-run checklist.
 
 **Verify** `principal` sees no create button; a duplicate branch code shows the friendly
 conflict from Chunk 1; cards <768px, table ≥768px; `route "**/trpc/**" --status=500` shows the

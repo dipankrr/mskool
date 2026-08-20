@@ -167,6 +167,19 @@ export const copy = {
     closed: "Branch closed. Records are kept.",
     created: "Branch added.",
     updated: "Branch updated.",
+    /**
+     * `board_type` values as schools say them. The enum stores lowercase keys;
+     * nobody outside the database calls it "unaffiliated" without explanation.
+     */
+    boards: {
+      cbse: "CBSE",
+      icse: "ICSE",
+      state: "State board",
+      ib: "IB",
+      unaffiliated: "Not affiliated yet",
+    },
+    boardLabel: "Board",
+    boardHelp: "Which examination board this school follows.",
   },
 
   /** Chunk 9. `academic.year.*` — sessions. */
@@ -311,6 +324,8 @@ export const copy = {
 
   /** Read by `lib/errors.ts`. Nothing else should phrase a failure. */
   errors: {
+    /** Title for a list that failed to load. The body comes from `lib/errors.ts`. */
+    listFailedTitle: "Couldn't load this list",
     signedOut: "Your session expired. Please sign in again.",
     forbidden: "You don't have permission to do this. Ask your administrator.",
     notFound: "This record is no longer available. It may have been closed or moved.",

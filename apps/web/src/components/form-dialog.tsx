@@ -71,8 +71,8 @@ export function FormDialog({
   if (isMobile) {
     return (
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="bottom" className="max-h-[90svh] overflow-y-auto">
-          <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        <SheetContent side="bottom" className="flex max-h-[90svh] flex-col">
+          <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col gap-4">
             <SheetHeader className="p-0">
               <SheetTitle>{title}</SheetTitle>
               {description ? <SheetDescription>{description}</SheetDescription> : null}
@@ -100,8 +100,8 @@ export function FormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+      <DialogContent className="flex max-h-[85svh] flex-col">
+        <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col gap-4">
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
             {description ? <DialogDescription>{description}</DialogDescription> : null}
@@ -127,7 +127,20 @@ export function FormDialog({
   );
 }
 
-/** Keeps the two branches above identical in everything but their chrome. */
+/**
+ * The scrolling region, and the reason the footer is always reachable.
+ *
+ * Found the hard way: a branch form has eleven fields, which on a 768px-tall screen
+ * is taller than the dialog. Without this the whole popup grew past the viewport and
+ * the submit button ended up somewhere below the bottom edge with nothing to scroll —
+ * the form could be filled in and not saved. Only the fields scroll; the title and
+ * the buttons stay put. `min-h-0` is what lets a flex child actually shrink instead
+ * of forcing its parent to grow.
+ */
 function FormBody({ children }: { children: ReactNode }) {
-  return <div className="flex flex-col gap-4">{children}</div>;
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-1">
+      {children}
+    </div>
+  );
 }

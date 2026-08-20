@@ -80,7 +80,7 @@ export function DataTable<TRow extends RowData>({
   if (error) {
     return (
       <EmptyState
-        title={copy.access.loadFailedTitle}
+        title={copy.errors.listFailedTitle}
         description={errorMessage(error)}
         action={
           onRetry ? <Button onClick={onRetry}>{copy.common.retry}</Button> : undefined
