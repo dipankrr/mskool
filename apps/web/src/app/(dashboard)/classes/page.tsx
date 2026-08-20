@@ -1,6 +1,7 @@
 "use client";
 
 import { GraduationCapIcon, MoreHorizontalIcon, PlusIcon } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -47,7 +48,22 @@ function makeColumns({
   canClose: boolean;
 }): DataTableColumns<Class> {
   return column.columns([
-    column.accessor("name", { header: copy.classes.fields.name }),
+    column.accessor("name", {
+      header: copy.classes.fields.name,
+      /**
+       * The class name is the way into its sections. A separate "view" action would
+       * be one more thing to find, and the row's own label is where a user already
+       * expects to click.
+       */
+      cell: ({ row }) => (
+        <Link
+          href={`/classes/${row.original.id}`}
+          className="font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2"
+        >
+          {row.original.name}
+        </Link>
+      ),
+    }),
     column.accessor("description", {
       header: copy.classes.fields.description,
       cell: ({ row }) => row.original.description ?? copy.common.none,
@@ -166,14 +182,21 @@ export default function ClassesPage() {
           onRetry={() => void classes.refetch()}
           renderCard={(row) => (
             <div className="flex items-start justify-between gap-3 rounded-lg border p-4">
-              <div className="flex min-w-0 flex-col gap-1">
+              <Link
+                href={`/classes/${row.id}`}
+                className="flex min-w-0 flex-col gap-1 focus-visible:outline-2 focus-visible:outline-offset-2"
+              >
                 <span className="truncate font-medium">{row.name}</span>
                 {row.description ? (
                   <span className="text-muted-foreground truncate text-xs">
                     {row.description}
                   </span>
-                ) : null}
-              </div>
+                ) : (
+                  <span className="text-muted-foreground text-xs">
+                    {copy.terms.sections}
+                  </span>
+                )}
+              </Link>
               <RowActions
                 cls={row}
                 onEdit={onEdit}

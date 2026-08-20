@@ -818,11 +818,43 @@ the mistake the order constraint would otherwise catch too late.
 
 ## Chunk 11 — sections
 
-- [ ] Route `/classes/[classId]`; sections for the **active session**. List, create ("add A, B,
+- [x] Route `/classes/[classId]`; sections for the **active session**. List, create ("add A, B,
       C" in one go), edit, Close.
-- [ ] `academicYearId` / `classId` are **not** patchable (the contract omits them) — a misplaced
+- [x] `academicYearId` / `classId` are **not** patchable (the contract omits them) — a misplaced
       section is closed and re-created. Say so in the UI.
-- [ ] `stream` / `house` / `roomNumber` / `maxStudents` are optional.
+- [x] `stream` / `house` / `roomNumber` / `maxStudents` are optional.
+
+**`section.list` is the only query that needs an id beyond scope** — `academicYearId` — so it is
+disabled until a session resolves rather than called with a placeholder. The page states which
+session it is showing, because the same class has different sections each year.
+
+**Names that already exist are dropped from the bulk queue, not sent.** Typing `A, C, D` where A
+exists says "A already exists… so it will be skipped" and previews "Will add 2: C, D". Queuing a
+request whose only outcome is failure, then reporting that failure as if it were news, is worse
+than saying so first.
+
+**Verified** `check-types` 8/8, console 0 errors. Through the API:
+
+| case | result |
+|---|---|
+| duplicate section name | 409 *"This class already has a Section A this session. Pick a different name."* |
+| section for another branch's class | 400 *"That class is not at this branch. Choose a class from the branch you are working in."* |
+| reading another branch's class | 404 *"Class not found."* |
+| closed session's sections, `principal` | 1 row (has `read_history`) |
+| closed session's sections, `class_teacher` | **0 rows**, while still seeing 2 in the current session |
+| PATCH carrying `classId`/`academicYearId` | 200, and **both silently ignored** — the section stayed put |
+
+That last one matters: the contract's `.omit()` drops the fields rather than rejecting them, so a
+client cannot rely on an error to learn it tried to move a section. This UI never sends them, and
+the edit form explains why the option does not exist.
+
+Browser: breadcrumb `Classes / Class 6`, heading "Sections in Class 6", description naming the
+`2025-26` session, and the bulk runner adding C and D with a per-row report while skipping A.
+
+**Base UI finding:** `Button render={<Link/>}` logs an error — Base UI's Button assumes a native
+`<button>` and rendering an anchor through it strips button semantics. For navigation the right
+answer is a real `<a>` styled with `buttonVariants()`, which is what the no-session empty state now
+uses. `SidebarMenuButton` and `BreadcrumbLink` accept a Link without complaint.
 
 **Verify** duplicate section name friendly; a class id from another branch is not reachable; a
 closed session's sections stay hidden without `read_history`.

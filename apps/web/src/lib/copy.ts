@@ -294,6 +294,17 @@ export const copy = {
     closed: "Section closed. Records are kept.",
     created: "Sections added.",
     updated: "Section updated.",
+    /** The one hard prerequisite: sections hang off a session. */
+    needsSession: "Create a session first — sections belong to one academic year.",
+    /** Bulk entry, the same shape as the class ladder. */
+    bulkLabel: "Section names",
+    bulkHelp: "One per line, or separated by commas: A, B, C.",
+    bulkEmpty: "Type at least one name.",
+    bulkPartial: "Some sections were not added.",
+    bulkRetryFailed: "Try the ones that failed again",
+    bulkAdded: (added: number, total: number) => `Added ${added} of ${total} sections.`,
+    /** Shown on the class detail header. */
+    inClass: (className: string) => `Sections in ${className}`,
   },
 
   /** Chunk 12. The first-run checklist on Home. */
