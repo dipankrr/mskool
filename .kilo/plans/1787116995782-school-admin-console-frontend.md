@@ -696,12 +696,44 @@ principal sees no create control at all rather than a button that fails.
 
 Adds constraints, a preset, a consequence-bearing confirm, and history gating.
 
-- [ ] `academic.year.*`: list, create, edit, and **Make this the running session**
+- [x] `academic.year.*`: list, create, edit, and **Make this the running session**
       (`setCurrent`) behind a `ConfirmDialog` explaining it changes what every colleague sees.
-- [ ] Create form offers an **Indian session preset**: pick a start year → 1 Apr YYYY –
+- [x] Create form offers an **Indian session preset**: pick a start year → 1 Apr YYYY –
       31 Mar YYYY+1, auto-named `YYYY-YY`. Manual dates stay available.
-- [ ] Show past sessions only when `read_history` is held. `originalEndDate` and `isCurrent` are
+- [x] Show past sessions only when `read_history` is held. `originalEndDate` and `isCurrent` are
       **not** form fields (the contract omits them).
+
+**Every write needs a branch named.** `createAcademicYear` and `setCurrentAcademicYear` both call
+`requireSchoolId`, so all three mutations use `writeScopeArgs()`. A `withBranch` guard turns the
+"no branch chosen" case into a message instead of a doomed request, and the screen shows a
+choose-a-branch state rather than a list of actions that cannot work.
+
+**Preset detail:** the hidden name and date inputs stay *registered* while the preset drives
+them — hiding an input does not unregister it, and those values are exactly what is submitted.
+Dates use native `type="date"`, so the phone's own picker opens, the value is already the ISO
+string the wire wants, and it displays in the reader's locale.
+
+**Verified** `check-types` 8/8, console clean. Logic checked through the API, where it is
+deterministic, rather than inferred from screenshots:
+
+| case | result |
+|---|---|
+| duplicate name | 409 *"This branch already has a session named 2025-26. Pick a different name."* |
+| overlapping dates | 409 *"These dates overlap another session at this branch (01/04/2025 – 31/03/2026)…"* |
+| end before start | 400, not 500 |
+| no `schoolId` | 400 *"Choose a branch first — this has to be saved against one branch."* |
+| `principal` list | 2 rows, closed session included; reads it by id → 200 |
+| `class_teacher` list | 1 row, closed session excluded |
+| fresh EAST branch | 0 sessions, so the empty state is reachable |
+
+Browser: the preset defaults to `2026-27` and fills name, 01/04/2026 and 31/03/2027; the switch
+reveals the manual fields and hides the preset; the list shows running vs past.
+
+**Plan correction:** this chunk expected a `class_teacher` to get "a clean not-found for a closed
+session". They actually get **403**, because addressing `schoolId` requires covering the school
+node and a class-scoped grant does not — the Chunk 5 finding again. It never surfaces in the UI,
+which only ever lists (permissive, org-scoped), and both codes map to safe wording in
+`lib/errors.ts`.
 
 **Verify** overlapping dates and duplicate names both show friendly messages;
 `class_teacher` sees only the current session and a clean not-found for a closed one;
