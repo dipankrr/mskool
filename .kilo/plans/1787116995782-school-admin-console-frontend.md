@@ -556,11 +556,62 @@ theme.
 
 ## Chunk 7 — responsive app shell
 
-- [ ] Sidebar ≥1024px; bottom tab bar + hamburger `Sheet` below. Destinations: Home, Branches,
+- [x] Sidebar ≥1024px; bottom tab bar + hamburger `Sheet` below. Destinations: Home, Branches,
       Sessions, Classes, Profile.
-- [ ] Org switcher (conditional), branch switcher (conditional), session indicator/picker,
+- [x] Org switcher (conditional), branch switcher (conditional), session indicator/picker,
       profile menu, theme toggle.
-- [ ] Skeletons while `me.get` resolves — never a full-page spinner (Neon cold-starts ~500ms).
+- [x] Skeletons while `me.get` resolves — never a full-page spinner (Neon cold-starts ~500ms).
+
+**Five things worth knowing:**
+
+- **`Sidebar collapsible="none"` is what makes the 1024px breakpoint possible.** In that mode it
+  renders a plain flex column and never consults `useIsMobile`, whose hardcoded 768px would
+  otherwise turn the sidebar into a second, competing drawer between 768 and 1023px. Wrapped in
+  `hidden lg:flex`, so the switch stays CSS.
+- **The provider was split from its gate.** `ActiveContextProvider` now always renders its
+  children and exposes a `{ loading | error | no-access | ready }` state;
+  `ActiveContextGate`, mounted *inside* the shell, holds back only page content. That is what
+  keeps navigation and the theme toggle on screen through a cold start.
+  `useActiveContext()` still throws unless resolved, so Chunks 8-11 are unaffected.
+- **Navigation is bottom tabs; the hamburger sheet is context.** Repeating five destinations in
+  both places would be noise, so the sheet holds what the tabs cannot: trust, branch, session
+  and sign-out. Its trigger is labelled with the current context (`MAIN · 2025-26`) rather than
+  being a bare icon, because a user needs to see which branch they are in before trusting the
+  screen.
+- **Profile is a page, not a dropdown.** The template hid the account behind an avatar menu; the
+  things inside it — who am I, what may I do, how do I leave — are exactly what a confused user
+  hunts for. `navbar.tsx`, `navbar-profile.tsx` and `hooks/use-current-user.ts` are deleted:
+  the last was a second identity fetch alongside `me.get`, and the profile menu had an
+  unreachable "Login" branch inside the authenticated shell.
+- **`SessionPicker` hides itself when a branch must be chosen.** Found in the browser: an
+  org admin with two branches and none selected got a picker labelled `—` offering a list that
+  mixed both branches' years, because `isCurrent` is per school. It now renders nothing until a
+  branch makes it meaningful.
+
+**Verified** `pnpm check-types` 8/8, console 0 errors. Measured, not eyeballed:
+
+| width | horizontal scroll | sidebar | bottom tabs | content covered |
+|---|---|---|---|---|
+| 360 / 414 / 768 | none | hidden | visible | no |
+| 1024 / 1366 | none | visible | hidden | no |
+
+The covered-content check scrolls to the bottom first — the tabs are `fixed`, so measuring
+without scrolling reports a false overlap.
+
+| | org_admin | principal | class_teacher |
+|---|---|---|---|
+| org switcher | label (1 membership) | label | label |
+| branch switcher | **dropdown** (2) | label only (sole school) | **absent** (`schools: []`) |
+| session picker | hidden until a branch is picked | **dropdown** (history) | label only (no history) |
+
+Keyboard focus is visible throughout: sidebar links carry a 2px ring from
+`sidebarMenuButtonVariants`, and the links written here carry a 2px outline in the ring colour
+the base layer already sets. One correction for the record — an earlier reading of "no focus
+indicator" was a truncated `box-shadow` string, not a real defect.
+
+Placeholder pages: `/branches`, `/sessions` and `/classes` render a header plus a
+"not built yet" empty state so nothing dead-ends. Chunks 8, 9 and 10 replace them. `/profile`
+and Home are real, and Chunk 12 replaces Home with the setup checklist.
 
 **Verify** `playwright-cli resize` at 360×640, 414×896, 768×1024, 1024×768, 1366×768: no
 horizontal page scroll, bottom tabs do not cover content, no clipped dialogs. `org_admin` sees a

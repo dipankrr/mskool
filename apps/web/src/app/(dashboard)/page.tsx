@@ -1,16 +1,10 @@
 "use client";
 
-import { CalendarIcon, PlusIcon } from "lucide-react";
-import { useState } from "react";
+import { Building2Icon, CalendarDaysIcon, GraduationCapIcon } from "lucide-react";
+import Link from "next/link";
 
-import { ConfirmDialog } from "@/components/confirm-dialog";
-import { DataTable } from "@/components/data-table";
-import { EmptyState } from "@/components/empty-state";
-import { FormDialog } from "@/components/form-dialog";
 import { PageHeader } from "@/components/page-header";
-import { PermissionGate } from "@/components/permission-gate";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -18,216 +12,110 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { useActiveContext } from "@/features/session/active-context";
-import { branchWord, copy } from "@/lib/copy";
+import { branchWord, copy, countLabel } from "@/lib/copy";
 import { formatIsoDateRange } from "@/lib/format";
-import { createAppColumnHelper, type DataTableColumns } from "@/lib/table";
-import type { AcademicYear } from "@/lib/trpc/types";
 
 /**
- * TEMPORARY. A readout of the resolved active context plus a live exercise of the
- * shared building blocks, so Chunk 6 is verified in a browser rather than only by
- * `tsc`. Chunk 7 replaces this with the shell and Chunk 12 with the checklist.
+ * Home. A summary of what this user is working in, and the way into each area.
+ *
+ * Chunk 12 replaces this with the first-run checklist — session, then classes, then
+ * sections — for the case where setup is incomplete, keeping a summary like this one
+ * for when it is done.
  */
+export default function HomePage() {
+  const { me, membership, schools, sessions, activeSession, currentSession } =
+    useActiveContext();
 
-/**
- * Module scope, not inside the component. v9 memoises row and column work by
- * reference, so rebuilding this array every render invalidates all of it and can
- * drive the adapter into a render loop.
- */
-const column = createAppColumnHelper<AcademicYear>();
-
-const sessionColumns: DataTableColumns<AcademicYear> = column.columns([
-  column.accessor("name", { header: copy.sessions.fields.name }),
-  column.accessor("startDate", {
-    header: "Dates",
-    cell: ({ row }) => formatIsoDateRange(row.original.startDate, row.original.endDate),
-  }),
-  column.accessor("isCurrent", {
-    header: "Status",
-    cell: ({ row }) =>
-      row.original.isCurrent ? (
-        <Badge variant="secondary">{copy.sessions.running}</Badge>
-      ) : (
-        <span className="text-muted-foreground">{copy.common.closed}</span>
-      ),
-  }),
-]);
-
-export default function DashboardPage() {
-  const {
-    me,
-    membership,
-    organizationId,
-    schoolId,
-    schools,
-    sessions,
-    activeSession,
-    currentSession,
-    sessionsLoading,
-    needsBranchChoice,
-    canSeeHistory,
-    has,
-    selectSchool,
-    selectSession,
-    scopeArgs,
-    writeScopeArgs,
-  } = useActiveContext();
-
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [formOpen, setFormOpen] = useState(false);
-
-  const writeArgs = writeScopeArgs();
+  const destinations = [
+    {
+      href: "/branches",
+      icon: Building2Icon,
+      title: branchWord(schools.length, true),
+      body:
+        schools.length === 0
+          ? copy.nav.noBranch
+          : countLabel(
+              schools.length,
+              copy.terms.school.toLowerCase(),
+              copy.terms.schools.toLowerCase(),
+            ),
+    },
+    {
+      href: "/sessions",
+      icon: CalendarDaysIcon,
+      title: copy.terms.sessions,
+      body:
+        sessions.length === 0
+          ? copy.sessions.emptyTitle
+          : countLabel(
+              sessions.length,
+              copy.terms.session.toLowerCase(),
+              copy.terms.sessions.toLowerCase(),
+            ),
+    },
+    {
+      href: "/classes",
+      icon: GraduationCapIcon,
+      title: copy.terms.classes,
+      body: copy.classes.subtitle,
+    },
+  ];
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-4 md:p-6">
+    <>
       <PageHeader
-        title={copy.terms.sessions}
-        description={`${membership.organization.name} · ${me.user.name}`}
-        actions={
-          <PermissionGate permission="academic_year:create">
-            <Button onClick={() => setFormOpen(true)}>
-              <PlusIcon data-icon="inline-start" />
-              {copy.sessions.add}
-            </Button>
-          </PermissionGate>
-        }
-      />
-
-      <DataTable
-        data={sessions}
-        columns={sessionColumns}
-        getRowId={(row) => row.id}
-        isLoading={sessionsLoading}
-        caption={copy.sessions.subtitle}
-        renderCard={(row) => (
-          <button
-            type="button"
-            onClick={() => selectSession(row.id)}
-            className="flex w-full flex-col items-start gap-1 rounded-lg border p-4 text-left hover:bg-muted/50"
-          >
-            <div className="flex w-full items-center justify-between gap-2">
-              <span className="font-medium">{row.name}</span>
-              {row.isCurrent ? (
-                <Badge variant="secondary">{copy.sessions.running}</Badge>
-              ) : null}
-            </div>
-            <span className="text-muted-foreground text-xs">
-              {formatIsoDateRange(row.startDate, row.endDate)}
-            </span>
-          </button>
-        )}
-        empty={
-          <EmptyState
-            icon={CalendarIcon}
-            title={copy.sessions.emptyTitle}
-            description={copy.sessions.emptyBody}
-            action={
-              <PermissionGate permission="academic_year:create">
-                <Button onClick={() => setFormOpen(true)}>{copy.sessions.add}</Button>
-              </PermissionGate>
-            }
-          />
-        }
+        title={`Hello, ${me.user.name.split(" ")[0]}`}
+        description={membership.organization.name}
       />
 
       <Card>
         <CardHeader>
-          <CardTitle>Resolved context</CardTitle>
-          <CardDescription>
-            {membership.roleTypes.join(", ")} · {membership.permissions.length} permissions
-          </CardDescription>
+          <CardTitle>{copy.sessions.running}</CardTitle>
+          <CardDescription>{copy.sessions.runningHint}</CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-3 text-sm">
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-            <dt className="text-muted-foreground">organizationId</dt>
-            <dd className="font-mono text-xs">{organizationId}</dd>
-
-            <dt className="text-muted-foreground">schoolId</dt>
-            <dd className="font-mono text-xs">{schoolId ?? "null"}</dd>
-
-            <dt className="text-muted-foreground">academicYearId</dt>
-            <dd className="font-mono text-xs">{activeSession?.id ?? "null"}</dd>
-
-            <dt className="text-muted-foreground">scopeArgs()</dt>
-            <dd className="font-mono text-xs">{JSON.stringify(scopeArgs())}</dd>
-
-            <dt className="text-muted-foreground">writeScopeArgs()</dt>
-            <dd className="font-mono text-xs">
-              {writeArgs ? JSON.stringify(writeArgs) : "null — needs a branch"}
-            </dd>
-
-            <dt className="text-muted-foreground">running session</dt>
-            <dd>{currentSession?.name ?? "none"}</dd>
-
-            <dt className="text-muted-foreground">read_history</dt>
-            <dd>{canSeeHistory ? copy.common.yes : copy.common.no}</dd>
-
-            <dt className="text-muted-foreground">school:create</dt>
-            <dd>{has("school:create") ? copy.common.yes : copy.common.no}</dd>
-
-            <dt className="text-muted-foreground">needsBranchChoice</dt>
-            <dd>{needsBranchChoice ? copy.common.yes : copy.common.no}</dd>
-          </dl>
-
-          <div className="flex flex-wrap gap-2">
-            {schools.map((school) => (
-              <Button
-                key={school.id}
-                variant={school.id === schoolId ? "default" : "outline"}
-                size="sm"
-                onClick={() => selectSchool(school.id === schoolId ? null : school.id)}
-              >
-                {school.code}
-              </Button>
-            ))}
-            {schools.length === 0 ? (
-              <span className="text-muted-foreground text-xs">
-                No {branchWord(0, true).toLowerCase()} visible — scoped below school level.
+        <CardContent className="flex flex-wrap items-center gap-3">
+          {activeSession ? (
+            <>
+              <span className="font-heading text-lg font-semibold">
+                {activeSession.name}
               </span>
-            ) : null}
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => setConfirmOpen(true)}>
-              Open ConfirmDialog
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setFormOpen(true)}>
-              Open FormDialog
-            </Button>
-          </div>
+              <span className="text-muted-foreground text-sm">
+                {formatIsoDateRange(activeSession.startDate, activeSession.endDate)}
+              </span>
+              {activeSession.id === currentSession?.id ? (
+                <Badge variant="secondary">{copy.common.current}</Badge>
+              ) : (
+                <Badge variant="outline">{copy.sessions.past}</Badge>
+              )}
+            </>
+          ) : (
+            <span className="text-muted-foreground text-sm">
+              {copy.sessions.emptyBody}
+            </span>
+          )}
         </CardContent>
       </Card>
 
-      <ConfirmDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        title={copy.sessions.setCurrentTitle}
-        consequence={copy.sessions.setCurrentBody}
-        confirmLabel={copy.sessions.setCurrentConfirm}
-        onConfirm={() => setConfirmOpen(false)}
-      />
-
-      <FormDialog
-        open={formOpen}
-        onOpenChange={setFormOpen}
-        title={copy.sessions.addTitle}
-        description={copy.sessions.fields.startYearHelp}
-        submitLabel={copy.common.save}
-        onSubmit={(event) => {
-          event.preventDefault();
-          setFormOpen(false);
-        }}
-      >
-        <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="smoke-name">{copy.sessions.fields.name}</FieldLabel>
-            <Input id="smoke-name" placeholder="2026-27" />
-          </Field>
-        </FieldGroup>
-      </FormDialog>
-    </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {destinations.map((destination) => (
+          <Link
+            key={destination.href}
+            href={destination.href}
+            className="rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2"
+          >
+            <Card className="hover:bg-muted/40 h-full transition-colors">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <destination.icon className="size-4" />
+                  {destination.title}
+                </CardTitle>
+                <CardDescription>{destination.body}</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+        ))}
+      </div>
+    </>
   );
 }

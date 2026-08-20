@@ -64,6 +64,27 @@ export const copy = {
     closeMenu: "Close menu",
     toggleTheme: "Toggle theme",
     signOut: "Sign out",
+    /** The hamburger sheet: everything that decides what the app is showing you. */
+    contextTitle: "What you're working on",
+    contextSubtitle: "Choose the branch and session these screens apply to.",
+    chooseBranch: "Choose a branch",
+    noBranch: "No branch",
+    organization: "Trust",
+    signedInAs: "Signed in as",
+  },
+
+  /** The Profile destination. Not a dropdown — a page, so nothing is hidden. */
+  profile: {
+    title: "Profile",
+    subtitle: "Your account and how this app is set up for you.",
+    account: "Account",
+    access: "Access",
+    roles: "Roles",
+    scope: "Scope",
+    permissionCount: "Permissions",
+    appearance: "Appearance",
+    appearanceHelp: "Light, dark, or whatever your phone is set to.",
+    signOutHelp: "You will need your email and password to sign back in.",
   },
 
   /** Reused controls. If a verb appears twice in the app it belongs here. */
@@ -91,6 +112,9 @@ export const copy = {
     current: "Current",
     /** Placeholder for a value the row does not have. */
     none: "—",
+    /** A destination that exists in the navigation before its screen does. */
+    notBuiltYetTitle: "Not built yet",
+    notBuiltYetBody: "This screen is coming next. The navigation is here first so nothing dead-ends.",
   },
 
   auth: {

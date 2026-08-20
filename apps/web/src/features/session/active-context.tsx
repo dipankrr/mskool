@@ -211,22 +211,94 @@ export type ActiveContextValue = {
   writeScopeArgs: () => WriteScopeArgs | null;
 };
 
-const ActiveContext = createContext<ActiveContextValue | null>(null);
+/**
+ * What the shell may know before the page may render.
+ *
+ * Two consumers with different needs, which is why this is a state machine rather
+ * than a nullable value. A **screen** requires a resolved organization — every call
+ * it makes needs one — so it reads `useActiveContext()` and is not rendered until
+ * `ready`. The **shell** must stay on screen throughout, including while `me.get`
+ * is in flight, so it reads `useActiveContextState()` and renders skeletons in the
+ * switcher slots instead of disappearing.
+ *
+ * That split is the whole reason the chrome does not blink on a cold start.
+ */
+export type ActiveContextState =
+  | { status: "loading" }
+  | { status: "error"; message: string; retry: () => void }
+  /** A valid session with no staff role: a student, or every grant revoked. */
+  | { status: "no-access" }
+  | { status: "ready"; value: ActiveContextValue };
 
+const ActiveContext = createContext<ActiveContextState | null>(null);
+
+/**
+ * For screens. Guaranteed resolved, because `ActiveContextGate` does not render
+ * children until it is — so `organizationId` is a string, not `string | null`, at
+ * every call site in the app.
+ */
 export function useActiveContext(): ActiveContextValue {
-  const value = useContext(ActiveContext);
+  const state = useContext(ActiveContext);
 
-  if (!value) {
+  if (!state) {
     throw new Error("useActiveContext must be used inside ActiveContextProvider.");
   }
 
-  return value;
+  if (state.status !== "ready") {
+    throw new Error(
+      "useActiveContext must be used inside ActiveContextGate, which renders its children only when the context has resolved.",
+    );
+  }
+
+  return state.value;
 }
 
-/** Placeholder chrome. Chunks 6 and 7 replace these with the real shell. */
+/** For the shell, which renders in every state including the failures. */
+export function useActiveContextState(): ActiveContextState {
+  const state = useContext(ActiveContext);
+
+  if (!state) {
+    throw new Error("useActiveContextState must be used inside ActiveContextProvider.");
+  }
+
+  return state;
+}
+
+/**
+ * Holds page content back until the context resolves, and explains it when it does
+ * not. Mounted *inside* the shell, so the navigation, the org name and the theme
+ * toggle stay usable while this shows a skeleton.
+ */
+export function ActiveContextGate({ children }: { children: ReactNode }) {
+  const state = useActiveContextState();
+
+  if (state.status === "loading") return <ContextSkeleton />;
+
+  if (state.status === "error") {
+    return (
+      <ContextMessage
+        title={copy.access.loadFailedTitle}
+        body={state.message}
+        onRetry={state.retry}
+      />
+    );
+  }
+
+  if (state.status === "no-access") {
+    return (
+      <ContextMessage
+        title={copy.access.noStaffAccessTitle}
+        body={copy.access.noStaffAccessBody}
+      />
+    );
+  }
+
+  return <>{children}</>;
+}
+
 function ContextSkeleton() {
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 p-6">
+    <div className="flex w-full flex-col gap-4">
       <Skeleton className="h-8 w-48" />
       <Skeleton className="h-4 w-72" />
       <Skeleton className="h-32 w-full" />
@@ -244,19 +316,17 @@ function ContextMessage({
   onRetry?: () => void;
 }) {
   return (
-    <div className="mx-auto flex w-full max-w-7xl p-6">
-      <Empty className="border">
-        <EmptyHeader>
-          <EmptyTitle>{title}</EmptyTitle>
-          <EmptyDescription>{body}</EmptyDescription>
-        </EmptyHeader>
-        {onRetry ? (
-          <EmptyContent>
-            <Button onClick={onRetry}>{copy.common.retry}</Button>
-          </EmptyContent>
-        ) : null}
-      </Empty>
-    </div>
+    <Empty className="border">
+      <EmptyHeader>
+        <EmptyTitle>{title}</EmptyTitle>
+        <EmptyDescription>{body}</EmptyDescription>
+      </EmptyHeader>
+      {onRetry ? (
+        <EmptyContent>
+          <Button onClick={onRetry}>{copy.common.retry}</Button>
+        </EmptyContent>
+      ) : null}
+    </Empty>
   );
 }
 
@@ -440,35 +510,35 @@ export function ActiveContextProvider({ children }: { children: ReactNode }) {
     selectSession,
   ]);
 
-  // Storage not yet read, or the bootstrap call still in flight. Skeletons rather
-  // than a spinner: Neon cold-starts in around half a second and a full-page
-  // spinner reads as a hang.
-  if (stored === null || me.isPending || meRequiresSignIn) {
-    return <ContextSkeleton />;
-  }
-
-  if (me.error) {
-    return (
-      <ContextMessage
-        title={copy.access.loadFailedTitle}
-        body={errorMessage(me.error)}
-        onRetry={() => void me.refetch()}
-      />
-    );
-  }
-
   /**
-   * A valid session with no staff role. Not an error — a student, or someone whose
-   * assignments were all revoked — so it gets an explanation and no retry.
+   * The state, rather than an early return. The provider always renders its
+   * children now — the shell is one of them, and it must not vanish while `me.get`
+   * is in flight. `ActiveContextGate`, mounted inside the shell, is what holds page
+   * content back.
    */
-  if (!value) {
-    return (
-      <ContextMessage
-        title={copy.access.noStaffAccessTitle}
-        body={copy.access.noStaffAccessBody}
-      />
-    );
-  }
+  const state = useMemo<ActiveContextState>(() => {
+    // Storage not yet read, the bootstrap call still in flight, or a redirect to
+    // /login already scheduled. All three are "not yet", not "broken".
+    if (stored === null || me.isPending || meRequiresSignIn) {
+      return { status: "loading" };
+    }
 
-  return <ActiveContext.Provider value={value}>{children}</ActiveContext.Provider>;
+    if (me.error) {
+      return {
+        status: "error",
+        message: errorMessage(me.error),
+        retry: () => void me.refetch(),
+      };
+    }
+
+    /**
+     * A valid session with no staff role. Not an error — a student, or someone
+     * whose assignments were all revoked — so it gets an explanation and no retry.
+     */
+    if (!value) return { status: "no-access" };
+
+    return { status: "ready", value };
+  }, [stored, me.isPending, me.error, me.refetch, meRequiresSignIn, value]);
+
+  return <ActiveContext.Provider value={state}>{children}</ActiveContext.Provider>;
 }
