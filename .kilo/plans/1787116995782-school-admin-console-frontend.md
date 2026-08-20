@@ -758,14 +758,44 @@ lists and the strict one for a single session, as the router already does.
 
 ## Chunk 10 — classes and bulk ladder
 
-- [ ] `academic.class.*`: list ordered by `numericOrder`, create, edit, Close.
-- [ ] **Never expose a raw `numericOrder` input** — `classes_school_order_uq` makes it a
+- [x] `academic.class.*`: list ordered by `numericOrder`, create, edit, Close.
+- [x] **Never expose a raw `numericOrder` input** — `classes_school_order_uq` makes it a
       collision trap. Offer a **curated ladder** (Nursery −3, LKG −2, UKG −1, Class 1…12,
       matching `academic.contract.ts:99`) with tick-boxes and auto-assigned order.
-- [ ] Copy must state that **Class 11 Science/Commerce are *sections* with a `stream`**, not two
+- [x] Copy must state that **Class 11 Science/Commerce are *sections* with a `stream`**, not two
       classes — two "Class 11" rows collide on both name and order.
-- [ ] Bulk create loops single `create` calls: report per-row outcome and allow retrying only
+- [x] Bulk create loops single `create` calls: report per-row outcome and allow retrying only
       the failures. There is no transactional bulk endpoint.
+
+**No `numericOrder` field exists anywhere in the UI**, including the edit form. The ladder owns
+it on create, and a class in the wrong place is closed rather than renumbered — reordering is not
+something a school does, and the constraint makes a free-text order field a trap. The edit form
+also skips a zod resolver deliberately: `updateClassSchema` is a partial of the create schema, so
+validating against it would accept the very field this form must not carry.
+
+**`alert` was missing.** Chunk 3 installed `alert-dialog` but not `alert`, so the Class 11 callout
+had nothing to render into. Added.
+
+**Verified** `check-types` 8/8. Logic through the API:
+
+| case | result |
+|---|---|
+| duplicate class name | 409 *"Class 1 already exists at this branch. Pick a different name."* |
+| duplicate numeric order | 409 *"Another class already uses that position in the class order…"* |
+| no `schoolId` | 400 *"Choose a branch first…"* |
+| sequential batch of 3, one colliding | 2 added, 1 failed, each reported separately |
+| retry of the failed row | fails the same way; the two that landed are untouched |
+| list order | `Nursery(-3), LKG(-2), Class 1(1)` — pre-primary below Class 1 |
+
+Browser, on the fresh EAST branch: the ladder shows all 15 rungs with the three already present
+checked and disabled, and the Class 11 note above them. Forcing `class.create` to 500 produced a
+**per-row report** with each row's own message and a button reading "Try the ones that failed
+again"; lifting the failure and retrying turned both rows to Done, the button became "Close", and
+the list refreshed to `Nursery, LKG, UKG, Class 1, Class 2` in ladder order.
+
+Base UI note: `Checkbox` and `Switch` put the `id` on their hidden native input, not the visible
+control, so `FieldLabel htmlFor` associates correctly — but a test that clicks by `#id` clicks the
+input, and one that checks `disabled` finds `data-disabled`/`aria-disabled` instead.
 
 **Verify** duplicate name and duplicate order both friendly; interrupt the network mid-bulk
 (`playwright-cli route`) and confirm a per-row report plus working retry.
