@@ -143,7 +143,12 @@ export default function ClassDetailPage() {
 
   const { has, activeSession, needsBranchChoice } = useActiveContext();
   const cls = useClass(classId);
-  const sections = useSections(classId);
+  /*
+    Not asked until the class is known to be one this caller may see. `classId` doubles
+    as the addressed node on the server, so asking for a foreign class answers 403 —
+    a request whose only outcome is a console error and a wasted round trip.
+  */
+  const sections = useSections(classId, { enabled: Boolean(cls.data) });
   const { update, close } = useSectionMutations(classId);
 
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -174,7 +179,9 @@ export default function ClassDetailPage() {
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>{cls.data?.name ?? copy.common.loading}</BreadcrumbPage>
+            <BreadcrumbPage>
+              {cls.data?.name ?? (cls.isLoading ? copy.common.loading : copy.terms.class)}
+            </BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
@@ -187,7 +194,12 @@ export default function ClassDetailPage() {
             : copy.sections.subtitle
         }
         actions={
-          activeSession && !needsBranchChoice ? (
+          /*
+            Also requires the class itself to be resolved. Offering "Add sections" for a
+            class the caller cannot see would send a create the cross-school guard in
+            `createSection` must refuse.
+          */
+          cls.data && activeSession && !needsBranchChoice ? (
             <PermissionGate permission="section:create">
               <Button onClick={() => setBulkOpen(true)}>
                 <PlusIcon data-icon="inline-start" />
@@ -199,15 +211,33 @@ export default function ClassDetailPage() {
       />
 
       {/*
-        Three preconditions, in the order the user can act on them. A class from
-        another branch resolves to NOT_FOUND server-side, which surfaces here rather
-        than as an empty section list that looks like a setup problem.
+        Preconditions in the order the user can act on them. The class lookup comes
+        first because a class that is not theirs makes everything below meaningless —
+        but it resolves from the permissive list, so a legitimate caller of any scope
+        depth passes it. Previously this branch fired for a class-scoped teacher and
+        blanked a section list that had already loaded correctly.
       */}
       {cls.error ? (
         <EmptyState
           icon={LayersIcon}
           title={copy.errors.listFailedTitle}
           description={errorMessage(cls.error)}
+          action={
+            <Link href="/classes" className={buttonVariants({ variant: "outline" })}>
+              {copy.terms.classes}
+            </Link>
+          }
+        />
+      ) : cls.notFound ? (
+        <EmptyState
+          icon={LayersIcon}
+          title={copy.classes.notFoundTitle}
+          description={copy.classes.notFoundBody}
+          action={
+            <Link href="/classes" className={buttonVariants({ variant: "outline" })}>
+              {copy.terms.classes}
+            </Link>
+          }
         />
       ) : needsBranchChoice ? (
         <EmptyState

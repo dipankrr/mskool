@@ -63,6 +63,7 @@ export default function HomePage() {
     currentSession,
     sessionsLoading,
     needsBranchChoice,
+    has,
   } = useActiveContext();
 
   const classes = useClasses();
@@ -186,16 +187,23 @@ export default function HomePage() {
       </Card>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <SummaryCard
-          href="/branches"
-          icon={Building2Icon}
-          title={branchWord(schools.length, true)}
-          body={countLabel(
-            schools.length,
-            copy.terms.school.toLowerCase(),
-            copy.terms.schools.toLowerCase(),
-          )}
-        />
+        {/*
+          Same rule as the navigation: a caller without `school:read` cannot open this,
+          so it is not offered. A class-scoped teacher holds class and section read but
+          not school read.
+        */}
+        {has("school:read") ? (
+          <SummaryCard
+            href="/branches"
+            icon={Building2Icon}
+            title={branchWord(schools.length, true)}
+            body={countLabel(
+              schools.length,
+              copy.terms.school.toLowerCase(),
+              copy.terms.schools.toLowerCase(),
+            )}
+          />
+        ) : null}
         <SummaryCard
           href="/sessions"
           icon={CalendarDaysIcon}

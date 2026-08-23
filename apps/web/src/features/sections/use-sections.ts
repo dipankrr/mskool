@@ -33,8 +33,13 @@ const THIRTY_SECONDS = 30 * 1000;
  * `classId` narrows to one class, which is what the class detail route wants. Omitted,
  * it returns every section in the session — how Home decides whether setup is finished
  * without asking for a class first.
+ *
+ * **`classId` is not only a filter.** It is part of `staffScopeInput`, so it also becomes
+ * the addressed node: passing a class the caller has no grant inside makes even this
+ * permissive endpoint answer 403. That is correct defence in depth, but it means the
+ * caller should not ask until the class is known to be theirs — hence `enabled`.
  */
-export function useSections(classId?: string) {
+export function useSections(classId?: string, options?: { enabled?: boolean }) {
   const { organizationId, schoolId, academicYearId } = useActiveContext();
 
   return trpc.academic.section.list.useQuery(
@@ -46,7 +51,7 @@ export function useSections(classId?: string) {
       ...(classId ? { classId } : {}),
     },
     {
-      enabled: Boolean(academicYearId),
+      enabled: Boolean(academicYearId) && (options?.enabled ?? true),
       staleTime: THIRTY_SECONDS,
       retry: (failureCount, error) => {
         const friendly = toFriendlyError(error);
@@ -56,14 +61,42 @@ export function useSections(classId?: string) {
   );
 }
 
-/** The class itself, so the page can name it — and 404 a class from another branch. */
+/**
+ * The class this route is about, resolved from the **permissive** list rather than
+ * `class.byId`.
+ *
+ * `byId` is a strict `staffProcedure`, so it authorizes against the node the request
+ * addresses — and the client has no reliable way to name a node the caller covers.
+ * Addressing the organization 403s a class-scoped teacher; addressing the class node
+ * fixes that but still 403s a *section*-scoped one; and a caller scoped below school
+ * level has no `schoolId` to send either, because `me` shows them no schools.
+ *
+ * The list endpoint asks the opposite question — "which of your grants fall inside
+ * this subtree" — so it returns exactly the classes this caller may see, whatever
+ * their scope depth. Finding one row in that answer is therefore both correct and
+ * unfailable, and a class the caller cannot see is simply absent, which is the same
+ * "not found" the strict endpoint would have produced for another branch's class.
+ */
 export function useClass(classId: string) {
   const { organizationId, schoolId } = useActiveContext();
 
-  return trpc.academic.class.byId.useQuery(
-    { organizationId, ...(schoolId ? { schoolId } : {}), id: classId },
-    { staleTime: THIRTY_SECONDS, retry: false },
+  const query = trpc.academic.class.list.useQuery(
+    { organizationId, ...(schoolId ? { schoolId } : {}) },
+    {
+      staleTime: THIRTY_SECONDS,
+      retry: (failureCount, error) => {
+        const friendly = toFriendlyError(error);
+        return friendly.retryable && !friendly.requiresSignIn && failureCount < 1;
+      },
+    },
   );
+
+  return {
+    ...query,
+    data: query.data?.find((cls) => cls.id === classId),
+    /** Loaded successfully, but this id is not among the classes they may see. */
+    notFound: query.isSuccess && !query.data.some((cls) => cls.id === classId),
+  };
 }
 
 export function useSectionMutations(classId: string) {

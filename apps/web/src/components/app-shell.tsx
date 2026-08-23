@@ -51,7 +51,7 @@ import { cn } from "@/lib/utils";
 /**
  * THE SHELL. Sidebar on a desktop, bottom tabs on a phone.
  *
- * Bottom tabs rather than a hamburger for navigation, because that is what these
+ * Bottom tabs ra/orgs/{o}/schools/{s}/classes/{c}/sections/{x} nestingther than a hamburger for navigation, because that is what these
  * users already know: every Android app they use daily puts its destinations within
  * thumb reach at the bottom of the screen. A drawer hides navigation behind a
  * gesture that has to be learned, and this app is used by people who did not choose
@@ -78,13 +78,37 @@ type NavItem = {
   href: string;
   label: string;
   icon: ComponentType<{ className?: string }>;
+  /**
+   * Hide the destination when the caller lacks this permission.
+   *
+   * Not cosmetic. A class-scoped teacher holds `class:read` and `section:read` but not
+   * `school:read`, so Branches was a dead end for them: the list 403s and the screen
+   * can only apologise. A navigation item that cannot work is worse than an absent one,
+   * for the same reason `PermissionGate` hides actions rather than disabling them.
+   */
+  permission?: string;
 };
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/", label: copy.nav.home, icon: HomeIcon },
-  { href: "/branches", label: copy.nav.branches, icon: Building2Icon },
-  { href: "/sessions", label: copy.nav.sessions, icon: CalendarDaysIcon },
-  { href: "/classes", label: copy.nav.classes, icon: GraduationCapIcon },
+  {
+    href: "/branches",
+    label: copy.nav.branches,
+    icon: Building2Icon,
+    permission: "school:read",
+  },
+  {
+    href: "/sessions",
+    label: copy.nav.sessions,
+    icon: CalendarDaysIcon,
+    permission: "academic_year:read",
+  },
+  {
+    href: "/classes",
+    label: copy.nav.classes,
+    icon: GraduationCapIcon,
+    permission: "class:read",
+  },
   { href: "/profile", label: copy.nav.profile, icon: UserIcon },
 ];
 
@@ -104,9 +128,15 @@ export function AppShell({ children }: { children: ReactNode }) {
    * The label for Branches follows what the user can see: one school is "School",
    * several are "Branches". Falls back to the plural while `me` is still loading,
    * since guessing wrong for a moment is worse than being generic.
+   *
+   * Destinations the caller has no permission to read are dropped entirely. While
+   * `me` is still resolving nothing is dropped, because the permission list is not
+   * known yet and a nav bar that reshuffles as it loads is worse than one that waits.
    */
   const schoolCount = ready ? state.value.schools.length : 0;
-  const navItems = NAV_ITEMS.map((item) =>
+  const navItems = NAV_ITEMS.filter(
+    (item) => !ready || !item.permission || state.value.has(item.permission),
+  ).map((item) =>
     item.href === "/branches" && ready
       ? { ...item, label: branchWord(schoolCount, true) }
       : item,
@@ -231,7 +261,15 @@ export function AppShell({ children }: { children: ReactNode }) {
 
           <nav
             aria-label={copy.nav.menu}
-            className="bg-background fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t pb-[env(safe-area-inset-bottom)] lg:hidden"
+            /*
+              Column count follows the item count, since permission filtering can drop
+              a destination. A hardcoded grid-cols-5 would leave a dead gap for a
+              teacher who cannot see Branches.
+            */
+            style={{
+              gridTemplateColumns: `repeat(${navItems.length}, minmax(0, 1fr))`,
+            }}
+            className="bg-background fixed inset-x-0 bottom-0 z-20 grid border-t pb-[env(safe-area-inset-bottom)] lg:hidden"
           >
             {navItems.map((item) => {
               const active = isActiveHref(pathname, item.href);

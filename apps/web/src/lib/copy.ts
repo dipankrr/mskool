@@ -254,6 +254,10 @@ export const copy = {
     closed: "Class closed. Records are kept.",
     created: "Classes added.",
     updated: "Class updated.",
+    /** Reached by pasting or bookmarking a class id the caller cannot see. */
+    notFoundTitle: "Class not available",
+    notFoundBody:
+      "This class is not in the branch you are working in, or you do not have access to it.",
     /** Bulk create is N calls, so partial success is a normal outcome. */
     bulkPartial: "Some classes were not added.",
     bulkRetryFailed: "Try the ones that failed again",
