@@ -164,13 +164,20 @@ creation (there is no `platformProcedure`).
 
 Do this next:
 
-1. **Phase 2, the rest** — subjects, terms, enrollments. `school.router.ts` and
+1. **The authz API-shape refactor + safety nets** — the active workstream. Plan:
+   `.kilo/plans/1787570451000-authz-api-shape-refactor.md`. Start with chunk **A2**, the
+   route × role net, which is what would have caught the class-detail permission bug found
+   by clicking one link. Its ADRs (027 and 028) gate every transport change and need
+   acceptance before that code moves. Chunk **B6** has a hard ordering constraint against
+   item 2 below: the owning-node resolution layer must land before `student_enrollments`,
+   because a student is the first entity whose authorizing node is a join away.
+2. **Phase 2, the rest** — subjects, terms, enrollments. `school.router.ts` and
    `academic.router.ts`, plus the seed and smoke test, are the pattern to copy for every
    domain that follows: contract → service → thin router → OpenAPI meta → a negative
    assertion that proves the tenancy filter actually bites. Each one then needs a screen; the
    four verticals in `apps/web/src/features/` are the template, and they are deliberately
    similar to each other.
-2. **`pnpm lint` still has never run** — see Tooling below. Now that `apps/web` has real
+3. **`pnpm lint` still has never run** — see Tooling below. Now that `apps/web` has real
    surface area, it is worth more than it was.
 
 
