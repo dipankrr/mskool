@@ -16,6 +16,11 @@
 
 // The permission vocabulary. RESOURCE_ACTIONS is the source of truth; the
 // Permission type is derived from it, so invalid pairs do not compile.
+//
+// Most of this group has no caller yet: it exists for the permissions editor
+// (unbuilt — see TASKS.md), which will render resources × actions per scope
+// from these maps and guards. Kept deliberately; deleting them would mean
+// rewriting them from the same spec later.
 export {
   ALL_PERMISSIONS,
   isPermission,
@@ -26,7 +31,8 @@ export {
   type Resource,
 } from "./permissions";
 
-// Fixed role types and the scope hierarchy they are granted at.
+// Fixed role types and the scope hierarchy they are granted at. Same story as
+// the group above: editor-facing, carried until the editor exists.
 export {
   DEFAULT_SCOPE_LEVEL,
   isBroaderOrEqual,
@@ -58,20 +64,25 @@ export type {
 export { can, getDataScopes, permissionsInOrg } from "./can";
 
 // Scope maths and the query filter every service must apply (hard rule 1).
+//
+// scopeCovers / intersectScopes / isAssignmentExpired are internal to this
+// package now (can() and getDataScopes() are their only callers) — the unit
+// tests import them from ./scope directly. Re-export them only when something
+// outside genuinely needs the raw maths.
 export {
   dataScopeFromNode,
-  intersectScopes,
-  isAssignmentExpired,
   orgScopeNode,
-  scopeCovers,
   scopeWhere,
   type ScopeColumns,
 } from "./scope";
 
-
 // Loading and invalidating the cached picture of a user's access.
+//
+// buildUserAuthCache is internal: it runs at first request inside
+// getUserAuthCache and nowhere else. The two invalidators are the public
+// contract for role/structure changes (ADR-016) — seed and future admin
+// endpoints call them after every mutation to grants or nodes.
 export {
-  buildUserAuthCache,
   getOwnedStudentIds,
   getRedis,
   getUserAuthCache,

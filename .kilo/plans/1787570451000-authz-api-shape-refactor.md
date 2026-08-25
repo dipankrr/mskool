@@ -643,18 +643,21 @@ now that the endpoint it needs behaves correctly.
 
 ## Workstream C · authz barrel triage
 
-- [ ] Un-export ~4: `scopeCovers`, `intersectScopes`, `isAssignmentExpired`, `buildUserAuthCache`.
-- [ ] Keep ~15 with in-place comments next to the export group —
+- [x] Un-export ~4: `scopeCovers`, `intersectScopes`, `isAssignmentExpired`, `buildUserAuthCache`.
+      (Barrel re-exports dropped; module exports kept — `scope.test.ts` imports `./scope`
+      directly. Verified no external consumer first.)
+- [x] Keep ~15 with in-place comments next to the export group —
       `// kept for the permissions editor (unbuilt) — see TASKS.md` — covering `ALL_PERMISSIONS`,
       `isPermission`, `RESOURCE_ACTIONS`, `RESOURCE_CATEGORIES`, `RESOURCE_MIN_SCOPE`,
       `resourcesForScope`, `ROLE_LABELS`, `DEFAULT_SCOPE_LEVEL`, `isRoleType`, `isScopeType`,
       `isBroaderOrEqual`, `SCOPE_TYPES`, `scopeDepth`, plus both invalidators.
-- [ ] Delete **0**.
-- [ ] One unit test each for `invalidateOrgAuthCache` and `invalidateScopeNode`.
-- [ ] `scopeCovers` is un-exported but is the subject of `scope.test.ts`'s truth table — the test
-      imports from the module, so keep the module export and drop only the barrel re-export.
+      (Two group comments in `index.ts`: editor-facing maps/guards, and the invalidator contract.)
+- [x] Delete **0**.
+- [x] One unit test each for `invalidateOrgAuthCache` and `invalidateScopeNode`.
+      (`src/cache.test.ts`; ioredis/env/db mocked at the socket boundary, so no live Redis.)
 
 **Verify** `pnpm test` reports **56** (54 + 2 invalidators); `pnpm check-types` green.
+Verified 2026-08-26: 56 authz + 38 web, check-types 8/8, smoke all green against the live API.
 
 ```
 refactor(authz): mark carried exports and test the cache invalidators

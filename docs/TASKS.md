@@ -6,12 +6,28 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
-**Phase 1 authorization spine is in. Finish Phase 1, then start Phase 2.**
+**The authz API-shape refactor (ADR-027/028, chunks A1–A6 + B1–B7 + C) is COMPLETE.**
+Its plan and every decision record live in
+`.kilo/plans/1787570451000-authz-api-shape-refactor.md`; the two new ADRs and the B1 amendment
+are in `docs/DECISIONS.md`. New gated endpoints follow the five recipes in
+`docs/CONVENTIONS.md` → "Staff procedure configuration" — that section is the lookup, not this
+file.
+
+Next up is **Phase 2, the rest** — subjects, terms, enrollments — but note its ordering
+constraint: the enrollment slice must arrive AFTER a student owner-resolver exists on the
+B6 pattern (`OwnerResolver` in `packages/trpc/src/trpc.ts`; `resolveYearOwner` in
+`academic.router.ts` is the template), because a student's authorizing node is one join away.
+
+**Phase 1 authorization spine is in. Finish Phase 1 leftovers, then start Phase 2.**
 
 `pnpm check-types` is green across all 8 packages. What exists now: the 9 foundation
 tables + the 4 authz tables, `@repo/authz` in full, and `staffProcedure` /
 `studentProcedure` wired into `packages/trpc`. `school.router.ts` is the worked example
 of the whole vertical slice — copy its shape.
+
+Verification surface as of the refactor: `pnpm test` = 56 authz + 38 web unit tests;
+`pnpm smoke:authz` = 59 HTTP checks incl. the roles × procedures matrix;
+`pnpm test:e2e` = 4 browser role walks; plus `check:openapi` / `check:builders`.
 
 **The schema is now live on Neon.** `drizzle/0000_rich_tenebrous.sql` — 17 tables, 33
 indexes, 26 FKs, 10 enums — has been generated, reviewed, and applied. `pnpm db:check`
