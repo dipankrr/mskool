@@ -55,10 +55,11 @@ C   ──── independent, any time
 
 ## Preconditions (no diff; do once)
 
-- [ ] `pnpm dev` (web :3000, api :4000) and `pnpm db:seed`.
-- [ ] Saved auth states exist from the frontend plan: `auth-orgadmin.json`,
+- [x] `pnpm dev` (web :3000, api :4000) and `pnpm db:seed`.
+- [x] Saved auth states exist from the frontend plan: `auth-orgadmin.json`,
       `auth-principal.json`, `auth-classteacher.json` (gitignored). A2 adds a fourth.
-- [ ] `pnpm smoke:authz` passes at its current baseline before anything changes.
+      (A2's global-setup now refreshes all four over HTTP on every run.)
+- [x] `pnpm smoke:authz` passes at its current baseline before anything changes.
 
 ---
 
@@ -118,7 +119,7 @@ the same transaction. Go through the section service rather than inserting direc
 
 ### A2 · The net, both halves — LAND FIRST
 
-- [ ] **Seed prerequisite.** In `apps/api/scripts/seed.ts`, after `classA`:
+- [x] **Seed prerequisite.** In `apps/api/scripts/seed.ts`, after `classA`:
       - create **one section** under Class 6 in school A's current session, **through the section
         service** so the `scope_nodes` row lands in the same transaction (hard rule 12);
       - create a `subject_teacher` user via the existing `findOrCreate…` helper;
@@ -127,16 +128,16 @@ the same transaction. Go through the section service rather than inserting direc
         `:484-491`;
       - add her to the `invalidateUserAuthCache` block at `:494-496`;
       - add her line to the printed login summary near `:511`.
-- [ ] **API half.** Extend `smoke-authz.ts` with a roles × procedures baseline matrix: the four
+- [x] **API half.** Extend `smoke-authz.ts` with a roles × procedures baseline matrix: the four
       logins × `me.get`, `school.list`, `year.list`, `year.current`, `class.list`, `class.byId`,
       `section.list`, plus one mutation each. Pin expected 200 / 403 / 404 so the transport
       changes in B4–B5 cannot silently alter authorization outcomes.
-- [ ] **Browser half.** Add `@playwright/test` to `apps/web`. One spec iterating the four logins ×
+- [x] **Browser half.** Add `@playwright/test` to `apps/web`. One spec iterating the four logins ×
       every route, asserting: no permission-error text, no console error, non-empty `main`.
       Use the saved auth states; add `auth-subjectteacher.json`.
-- [ ] Wire `test:e2e` as its own script. Do **not** put the browser spec behind `pnpm test` — it
+- [x] Wire `test:e2e` as its own script. Do **not** put the browser spec behind `pnpm test` — it
       needs a running web server, a running API and a seeded database.
-- [ ] Confirm vitest's `include` does not pick up `e2e/**` and Playwright's `testDir` does not pick
+- [x] Confirm vitest's `include` does not pick up `e2e/**` and Playwright's `testDir` does not pick
       up `*.test.ts`.
 
 **Acceptance criterion — per fix, not per commit.** `d8eca60` bundles three fixes, so reverting
@@ -148,6 +149,18 @@ the whole commit only proves aggregate coverage. Each must be individually pinne
 
 **Verify** `pnpm db:seed` idempotent on a second run; `pnpm smoke:authz` green with the new
 matrix; `pnpm test:e2e` green for all four logins; the three reverts above each fail.
+All four verified 2026-08-25.
+
+**A2 outcome notes (facts that supersede assumptions above):**
+- `subject_teacher × class.byId` is **200 today**, not the anticipated throw: she addresses her
+  own section node, `can()` passes at that node, and `getClassById` widens a section scope to
+  class level (`atClassLevel`) before filtering. The strict-read gap for section-scoped callers
+  is therefore an *addressing* problem (org/class nodes 403 her), not a service-widening one —
+  relevant to B4/B7 design. The matrix pins both of her cells (byId@section-node and list) at 200.
+- The dev fixture has drifted from the seed (a third school "EAST", extra classes, sections B–D
+  in Class 6) from manual UI testing. Matrix shape checks are property-based for org-wide roles
+  ("contains the seeded rows") and EXACT-count only for clipped roles, where the count is itself
+  the tenancy property.
 
 Note that `subject_teacher` passes **today**: `useClass` reads `class.list`, and `listClasses`
 widens her section grant to class level, so Class 6 is in her list. The matrix asserts 200 now,

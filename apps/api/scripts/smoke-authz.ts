@@ -29,6 +29,7 @@ import {
   organizations,
   roleAssignments,
   schools,
+  sections,
   user,
 } from "@repo/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
@@ -48,6 +49,7 @@ const WEB_ORIGIN = process.env.CORS_ORIGIN ?? "http://localhost:3000";
 const ADMIN_EMAIL = "admin@demo-trust.test";
 const PRINCIPAL_EMAIL = "principal@demo-trust.test";
 const TEACHER_EMAIL = "teacher@demo-trust.test";
+const SUBJECT_TEACHER_EMAIL = "subject-teacher@demo-trust.test";
 const SEED_PASSWORD = "Password123!";
 
 let failures = 0;
@@ -109,8 +111,15 @@ async function readEnvelope(res: Response): Promise<TrpcResult> {
 }
 
 async function query(cookie: string, path: string, input: unknown): Promise<TrpcResult> {
-  const url = `${API}/trpc/${path}?input=${encodeURIComponent(JSON.stringify(input))}`;
-  return readEnvelope(await fetch(url, { headers: { cookie, origin: WEB_ORIGIN } }));
+  // A z.undefined() input (me.get) must be omitted, not sent as `{}` — an
+  // empty object fails the schema on the server.
+  const qs =
+    input === undefined ? "" : `?input=${encodeURIComponent(JSON.stringify(input))}`;
+  return readEnvelope(
+    await fetch(`${API}/trpc/${path}${qs}`, {
+      headers: { cookie, origin: WEB_ORIGIN },
+    }),
+  );
 }
 
 async function mutate(cookie: string, path: string, input: unknown): Promise<TrpcResult> {
@@ -170,9 +179,22 @@ async function main() {
     );
   }
 
+  const [sectionA] = await db
+    .select()
+    .from(sections)
+    .where(eq(sections.classId, classA.id));
+
+  if (!sectionA) {
+    throw new Error(
+      "No section under Class 6. The section-scoped subject_teacher needs it — " +
+        "run `pnpm db:seed` (re-seeding is idempotent).",
+    );
+  }
+
   const adminCookie = await signIn(ADMIN_EMAIL);
   const principalCookie = await signIn(PRINCIPAL_EMAIL);
   const teacherCookie = await signIn(TEACHER_EMAIL);
+  const subjectTeacherCookie = await signIn(SUBJECT_TEACHER_EMAIL);
   const orgId = organization.id;
 
   console.log("self-registration is closed (ADR-021)");
@@ -211,10 +233,15 @@ async function main() {
 
   // Exercises buildUserAuthCache → resolveAssignmentScope → can(). If the
   // org grant does not resolve, this returns 0 and everything else is moot.
+  // Both seeded branches must appear; the exact count is not asserted because
+  // manual UI testing may have added schools to this fixture, and an org-wide
+  // caller seeing them is correct, not a leak.
   const adminList = await query(adminCookie, "school.list", { organizationId: orgId });
   report(
     "org_admin lists both schools",
-    adminList.ok && adminList.data?.length === 2,
+    adminList.ok &&
+      adminList.data?.some((s: any) => s.id === schoolA.id) &&
+      adminList.data?.some((s: any) => s.id === schoolB.id),
     adminList.ok ? `got ${adminList.data?.length}` : `HTTP ${adminList.status}`,
   );
 
@@ -381,6 +408,243 @@ async function main() {
       ? `got ${teacherYears.data?.length}`
       : `HTTP ${teacherYears.status}`,
   );
+
+  console.log("\nroles × procedures — baseline matrix");
+
+  /**
+   * A PINNED OUTCOME FOR EVERY SEEDDED ROLE × THE ENDPOINTS THE WEB APP CALLS,
+   * so the transport refactor (B4–B7) cannot silently change what a role may
+   * reach. Each role addresses nodes the way the browser does — the org node
+   * for lists, the deepest node it knows for strict reads — because that
+   * assembly is the contract being frozen, not just the handler behind it.
+   *
+   * One cell pins the workaround the web depends on: subject_teacher ×
+   * class.byId is 200 ONLY because she addresses her own section node (the
+   * service widens a section scope to class level for the `classes` table) —
+   * address it any other way and the strict builder refuses her. Her list cell
+   * pins 200 too, which is what `useClass` actually reads. When B7 lands both
+   * stay 200 deliberately, in the open.
+   *
+   * Mutations are chosen to leave no trace: setCurrent re-promotes the year
+   * that is already current (a true no-op), and the two create attempts are
+   * refused at the permission gate before any row is written.
+   */
+  type Expectation = { kind: "ok" } | { kind: "code"; code: string };
+  const OK: Expectation = { kind: "ok" };
+  const forbidden: Expectation = { kind: "code", code: "FORBIDDEN" };
+
+  type MatrixRow = {
+    role: string;
+    cookie: string;
+    path: string;
+    input: unknown;
+    /** Queries go over GET, mutations over POST — the transport is part of the pin. */
+    method: "query" | "mutation";
+    expect: Expectation;
+    /** Extra shape check applied to a success, e.g. which rows must come back. */
+    dataCheck?: (data: any) => boolean;
+  };
+
+  /**
+   * Shape checks are PROPERTY-based wherever fixture drift would otherwise
+   * make an exact count lie: this database carries a third school and extra
+   * classes/sections from manual UI testing, so "exactly two" is false while
+   * the authorization behaviour is fine. Counts stay EXACT only where the
+   * count itself is the tenancy property — a clipped caller must not gain
+   * rows when the fixture grows around them.
+   */
+
+  const rows: MatrixRow[] = [];
+  const addQueryRows = (
+    role: string,
+    cookie: string,
+    listInput: Record<string, unknown>,
+  ) => {
+    rows.push(
+      { role, cookie, path: "me.get", input: undefined, method: "query", expect: OK },
+      {
+        role,
+        cookie,
+        path: "school.list",
+        input: listInput,
+        method: "query",
+        expect: role === "org_admin" || role === "principal" ? OK : forbidden,
+        dataCheck:
+          role === "org_admin"
+            ? // Org-wide: both seeded branches must appear, whatever else drifted in.
+              (d) =>
+                Array.isArray(d) &&
+                d.some((s: any) => s.id === schoolA.id) &&
+                d.some((s: any) => s.id === schoolB.id)
+            : role === "principal"
+              ? // THE clipping property: only school A, whatever exists elsewhere.
+                (d) => Array.isArray(d) && d.length === 1 && d[0]?.id === schoolA.id
+              : undefined,
+      },
+      {
+        role,
+        cookie,
+        path: "academic.year.list",
+        input: { organizationId: orgId },
+        method: "query",
+        expect: OK,
+        dataCheck:
+          role === "org_admin"
+            ? (d) =>
+                Array.isArray(d) &&
+                d.some((y: any) => y.id === currentYearA.id) &&
+                d.some((y: any) => y.id === closedYearA.id) &&
+                d.some((y: any) => y.id === yearB.id)
+            : role === "principal"
+              ? (d) =>
+                  Array.isArray(d) &&
+                  d.length === 2 &&
+                  d.every((y: any) => y.schoolId === schoolA.id)
+              : (d) =>
+                  Array.isArray(d) &&
+                  d.length === 1 &&
+                  d[0]?.id === currentYearA.id,
+      },
+      {
+        role,
+        cookie,
+        path: "academic.year.current",
+        input:
+          role === "org_admin" || role === "principal"
+            ? { organizationId: orgId, schoolId: schoolA.id }
+            : role === "class_teacher"
+              ? { organizationId: orgId, classId: classA.id }
+              : { organizationId: orgId, sectionId: sectionA.id },
+        method: "query",
+        expect: OK,
+        dataCheck: (d) => d?.id === currentYearA.id,
+      },
+      {
+        role,
+        cookie,
+        path: "academic.class.list",
+        input: { organizationId: orgId },
+        method: "query",
+        expect: OK,
+        dataCheck:
+          role === "class_teacher" || role === "subject_teacher"
+            ? // Clipped callers see exactly their one class even as the fixture grows.
+              (d) => Array.isArray(d) && d.length === 1 && d[0]?.id === classA.id
+            : (d) => Array.isArray(d) && d.some((c: any) => c.id === classA.id),
+      },
+      {
+        role,
+        cookie,
+        path: "academic.class.byId",
+        input: {
+          organizationId: orgId,
+          ...(role === "org_admin" || role === "principal"
+            ? { schoolId: schoolA.id }
+            : role === "class_teacher"
+              ? { classId: classA.id }
+              : { sectionId: sectionA.id }),
+          id: classA.id,
+        },
+        method: "query",
+        // She must address the section node she covers — the org or class node
+        // would 403, and that addressing is part of what this pins.
+        expect: OK,
+        dataCheck: (d) => d?.id === classA.id,
+      },
+      {
+        role,
+        cookie,
+        path: "academic.section.list",
+        input: { organizationId: orgId, academicYearId: currentYearA.id },
+        method: "query",
+        expect: OK,
+        dataCheck:
+          role === "subject_teacher"
+            ? // The strongest cell: a section grant clips the roster to ONE row.
+              (d) => Array.isArray(d) && d.length === 1 && d[0]?.id === sectionA.id
+            : role === "class_teacher"
+              ? (d) =>
+                  Array.isArray(d) &&
+                  d.some((s: any) => s.id === sectionA.id) &&
+                  d.every((s: any) => s.classId === classA.id)
+              : (d) =>
+                  Array.isArray(d) &&
+                  d.some((s: any) => s.id === sectionA.id) &&
+                  d.every((s: any) => s.schoolId === schoolA.id),
+      },
+    );
+  };
+
+  addQueryRows("org_admin", adminCookie, { organizationId: orgId });
+  addQueryRows("principal", principalCookie, { organizationId: orgId });
+  addQueryRows("class_teacher", teacherCookie, { organizationId: orgId });
+  addQueryRows("subject_teacher", subjectTeacherCookie, { organizationId: orgId });
+
+  // One mutation each, none of them leaving a row behind.
+  rows.push(
+    {
+      role: "org_admin",
+      cookie: adminCookie,
+      path: "academic.year.setCurrent",
+      input: { organizationId: orgId, schoolId: schoolA.id, id: currentYearA.id },
+      method: "mutation",
+      expect: OK,
+      dataCheck: (d) => d?.id === currentYearA.id,
+    },
+    {
+      role: "principal",
+      cookie: principalCookie,
+      path: "academic.year.setCurrent",
+      input: { organizationId: orgId, schoolId: schoolA.id, id: currentYearA.id },
+      method: "mutation",
+      expect: OK,
+      dataCheck: (d) => d?.id === currentYearA.id,
+    },
+    {
+      role: "class_teacher",
+      cookie: teacherCookie,
+      path: "academic.class.create",
+      input: {
+        organizationId: orgId,
+        classId: classA.id,
+        data: { name: "Smoke Class", numericOrder: 99 },
+      },
+      method: "mutation",
+      expect: forbidden,
+    },
+    {
+      role: "subject_teacher",
+      cookie: subjectTeacherCookie,
+      path: "academic.section.create",
+      input: {
+        organizationId: orgId,
+        sectionId: sectionA.id,
+        data: { name: "Smoke Section", academicYearId: currentYearA.id, classId: classA.id },
+      },
+      method: "mutation",
+      expect: forbidden,
+    },
+  );
+
+  for (const row of rows) {
+    const result =
+      row.method === "query"
+        ? await query(row.cookie, row.path, row.input)
+        : await mutate(row.cookie, row.path, row.input);
+    const passed =
+      row.expect.kind === "ok"
+        ? result.ok && (!row.dataCheck || row.dataCheck(result.data))
+        : !result.ok && result.code === row.expect.code;
+    report(
+      `${row.role} × ${row.path}`,
+      passed,
+      row.expect.kind === "ok"
+        ? result.ok
+          ? ""
+          : `expected ok, got HTTP ${result.status} code ${result.code}`
+        : `expected ${row.expect.code}, got ${result.ok ? "ok" : result.code}`,
+    );
+  }
 
   console.log("\nrevocation");
 

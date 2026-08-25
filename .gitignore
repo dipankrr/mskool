@@ -17,3 +17,7 @@ rough.md
 # committing one hands over a working login. Root-anchored so it cannot swallow
 # anything inside packages/auth.
 /auth-*.json
+
+# Playwright artifacts (screenshots/traces from failed e2e runs).
+test-results/
+playwright-report/

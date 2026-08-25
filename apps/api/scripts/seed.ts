@@ -38,6 +38,7 @@ import {
   orgRolePermissions,
   roleAssignments,
   schools,
+  sections,
   staff,
   user,
 } from "@repo/db/schema";
@@ -53,6 +54,7 @@ const SCHOOL_B_CODE = "NORTH";
 const ADMIN_EMAIL = "admin@demo-trust.test";
 const PRINCIPAL_EMAIL = "principal@demo-trust.test";
 const TEACHER_EMAIL = "teacher@demo-trust.test";
+const SUBJECT_TEACHER_EMAIL = "subject-teacher@demo-trust.test";
 /** Dev only. The production bootstrap is a separate, deliberate flow. */
 const SEED_PASSWORD = "Password123!";
 
@@ -65,6 +67,8 @@ const SEED_PASSWORD = "Password123!";
 // seed that violates either aborts the run rather than warning.
 const CLASS_A_NAME = "Class 6";
 const CLASS_A_ORDER = 6;
+/** The one section under Class 6, scoped to the subject teacher below. */
+const SECTION_A_NAME = "A";
 
 const YEAR_CURRENT = {
   name: "2025-26",
@@ -352,6 +356,44 @@ async function findOrCreateClass(
   return cls;
 }
 
+/**
+ * Find-or-create a section through the service, which verifies both parents and
+ * inserts the section's scope_nodes row in the same transaction (hard rule 12).
+ * The seed had NO sections at all before this — a section-scoped persona could
+ * not exist, and neither could a test of what one may and may not reach. Keyed
+ * on (classId, academicYearId, name).
+ */
+async function findOrCreateSection(
+  scope: DataScope & { schoolId: string },
+  academicYearId: string,
+  classId: string,
+  name: string,
+) {
+  const [existing] = await db
+    .select()
+    .from(sections)
+    .where(
+      and(
+        eq(sections.classId, classId),
+        eq(sections.academicYearId, academicYearId),
+        eq(sections.name, name),
+      ),
+    );
+
+  if (existing) {
+    console.log(`  = section ${name} (exists)`);
+    return existing;
+  }
+
+  const section = await academicService.createSection(scope, {
+    name,
+    academicYearId,
+    classId,
+  });
+  console.log(`  + section ${name}`);
+  return section;
+}
+
 async function main() {
   // The seed writes known-password logins. That must never touch production.
   if (process.env.NODE_ENV === "production") {
@@ -490,10 +532,51 @@ async function main() {
     adminUser.id,
   );
 
+  // --- A fourth login: a SECTION-scoped subject_teacher ----------------------
+  //
+  // The modal user of the real product, and until now unseedable — there was
+  // not one section row in the database. Her grant sits one level deeper than
+  // the class teacher's, which is what makes the permissive-read question
+  // (B7) concrete: she may list Class 6, whose sections include hers, yet no
+  // strict single-row endpoint can be addressed by her grant today.
+  const sectionA = await findOrCreateSection(
+    scopeA,
+    currentYearA.id,
+    classA.id,
+    SECTION_A_NAME,
+  );
+
+  const subjectTeacherUser = await findOrCreateUser(
+    SUBJECT_TEACHER_EMAIL,
+    "Demo Subject Teacher",
+  );
+
+  await findOrCreateStaff(
+    organization.id,
+    schoolA.id,
+    subjectTeacherUser.id,
+    "EMP-SUBJECT",
+    "Priya",
+    "Chatterjee",
+    "Subject Teacher",
+  );
+
+  // subject_teacher scoped to the section NODE (scopeId === section id) — the
+  // same shape as the class_teacher grant above, one rung down the tree.
+  await findOrCreateAssignment(
+    subjectTeacherUser.id,
+    organization.id,
+    "subject_teacher",
+    "section",
+    sectionA.id,
+    adminUser.id,
+  );
+
   // A previous run may have left a cached snapshot that predates these grants.
   await invalidateUserAuthCache(adminUser.id);
   await invalidateUserAuthCache(principalUser.id);
   await invalidateUserAuthCache(teacherUser.id);
+  await invalidateUserAuthCache(subjectTeacherUser.id);
 
   console.log(`
 Done.
@@ -505,10 +588,12 @@ Done.
   school A years ${currentYearA.name} (current), ${closedYearA.name} (closed)
   school B year  ${yearB.name} (current)
   class          ${classA.name}  (${classA.id})
+  section        ${sectionA.name}  (${sectionA.id})
 
-  ${ADMIN_EMAIL}      org_admin @ org         → both schools
-  ${PRINCIPAL_EMAIL}  principal @ school A    → school A only
-  ${TEACHER_EMAIL}    class_teacher @ Class 6 → no read_history
+  ${ADMIN_EMAIL}            org_admin @ org         → both schools
+  ${PRINCIPAL_EMAIL}        principal @ school A    → school A only
+  ${TEACHER_EMAIL}          class_teacher @ Class 6 → no read_history
+  ${SUBJECT_TEACHER_EMAIL}  subject_teacher @ Class 6-A
 
   password for all: ${SEED_PASSWORD}
 `);
