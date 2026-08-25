@@ -349,14 +349,20 @@ server runtime code out of the browser bundle, and a type has no runtime.
 
 ### B1 · Split the 403 message
 
-- [ ] `packages/trpc/src/trpc.ts:167-172` and `:247-252`, using `permissionsInOrg`
+- [x] `packages/trpc/src/trpc.ts:167-172` and `:247-252`, using `permissionsInOrg`
       (exported, `packages/authz/src/index.ts:58`).
-- [ ] Wording: **"a role you hold has X but not at this {node.type}"** vs. the plain missing-
+- [x] Wording: **"a role you hold has X but not at this {node.type}"** vs. the plain missing-
       permission case.
-- [ ] Note in the ADR that `trpc-openapi` puts `message` on the wire, so REST consumers see it
+- [x] Note in the ADR that `trpc-openapi` puts `message` on the wire, so REST consumers see it
       raw. Acceptable: it discloses only the caller's own grant state.
+      (Recorded as an amendment paragraph on ADR-026, which owned the pass-through rule.)
 
 **Verify** `pnpm smoke:authz` 15/15 (plus A2's matrix); two curls produce two different messages.
+Verified 2026-08-25: smoke all green (codes unchanged); live curls show
+`A role you hold has class:read but not at this org.` (strict site),
+`A role you hold has academic_year:read but not at this school.` (list site), and
+`Missing permission: school:read.` for a caller holding nothing — three outcomes, both
+wordings exercised on both builders. e2e 4/4.
 
 ```
 fix(trpc): distinguish a missing permission from a permission out of scope

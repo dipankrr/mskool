@@ -879,6 +879,20 @@ There is no unit-test harness in `@repo/trpc`, so this is verified by tripping t
 constraints through `/docs` or curl and confirming a 409 with a human message and a 400 for
 a missing branch. `pnpm check-types` cannot see any of it.
 
+**Amendment (authz API-shape refactor, chunk B1).** The permission gate's `FORBIDDEN` now
+carries two wordings instead of one: a caller who holds the permission *somewhere* in the
+organization but not covering the addressed node gets *"A role you hold has X but not at
+this {org|school|class|section}."*, while a caller who does not hold it at all keeps the
+plain *"Missing permission: X."* This deliberately narrows this ADR's vagueness principle
+for exactly one case, because the two failures have different fixes — a role change versus
+an addressing change — and support could not tell them apart. It stays inside the leak
+rule: both messages describe only the caller's own grant state, which `/me` already
+enumerates for them, so nothing about other tenants or other users is disclosed. Note
+that `trpc-to-openapi` puts tRPC error `message`s on the wire verbatim, so REST consumers
+see these strings raw; that is acceptable for the same reason. Codes are unchanged
+(`FORBIDDEN` either way), so every existing assertion and the web client's kind-mapping
+are unaffected.
+
 
 
 

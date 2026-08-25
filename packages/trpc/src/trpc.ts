@@ -6,10 +6,12 @@ import {
   getUserAuthCache,
   loadScopeNode,
   orgScopeNode,
+  permissionsInOrg,
   SENSITIVE_PERMISSIONS,
   type DataScope,
   type Permission,
   type ResourceContext,
+  type UserAuthCache,
 } from "@repo/authz";
 import { initTRPC, TRPCError } from "@trpc/server";
 import type { OpenApiMeta } from "trpc-to-openapi";
@@ -119,6 +121,36 @@ function addressedNodeId(input: z.infer<typeof staffScopeInput>) {
 }
 
 /**
+ * THE TWO 403s, DISTINGUISHED (ADR-026 amendment).
+ *
+ * "May not act on this node" has two different causes with two different fixes:
+ * the caller's role lacks the permission entirely — a role change for an admin —
+ * or their role has it but their grant does not reach this node — usually an
+ * addressing or assignment-scope problem, and the single most common real-world
+ * support question ("why can she see Class 6 but not Class 7?"). Both used to
+ * read `Missing permission: X`, which told the reader to fix the wrong thing.
+ *
+ * The out-of-scope wording names the NODE TYPE rather than its id: the id is
+ * meaningless to the reader and the type is the actionable part. Both messages
+ * disclose only the caller's own grant state, which `/me` already shows them.
+ *
+ * The distinction costs nothing extra at the gate: `can()` already ran, and
+ * this asks the org-level question the cache can answer without I/O.
+ */
+function forbiddenMessage(
+  authCache: UserAuthCache,
+  organizationId: string,
+  permission: Permission,
+  nodeType: string,
+): string {
+  const heldInOrg = permissionsInOrg(authCache, organizationId).includes(permission);
+
+  return heldInOrg
+    ? `A role you hold has ${permission} but not at this ${nodeType}.`
+    : `Missing permission: ${permission}`;
+}
+
+/**
  * STRICT staff track (ADR-005). For reads of a single resource and for all
  * mutations.
  *
@@ -166,7 +198,7 @@ export function staffProcedure(permission: Permission) {
       if (!can(authCache, permission, resourceCtx)) {
         throw new TRPCError({
           code: "FORBIDDEN",
-          message: `Missing permission: ${permission}`,
+          message: forbiddenMessage(authCache, organizationId, permission, node.type),
         });
       }
 
@@ -246,7 +278,7 @@ export function staffListProcedure(permission: Permission) {
       if (scopes.length === 0) {
         throw new TRPCError({
           code: "FORBIDDEN",
-          message: `Missing permission: ${permission}`,
+          message: forbiddenMessage(authCache, organizationId, permission, node.type),
         });
       }
 
