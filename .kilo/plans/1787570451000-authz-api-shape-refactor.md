@@ -189,17 +189,23 @@ defect rather than their sum.
 
 ### A3 · Close the ungated-builder hole, then guard it
 
-- [ ] Inline `t.procedure` in `health.router.ts` and **delete the `publicProcedure` export** from
+- [x] Inline `t.procedure` in `health.router.ts` and **delete the `publicProcedure` export** from
       `packages/trpc/src/trpc.ts:24`. With one consumer, this makes an ungated staff endpoint
       *unconstructible* from the package's exported surface rather than merely detectable.
-- [ ] Add a static guard as a script alongside `smoke:authz` / `check:openapi` (preferred — no new
+      (As done: the health router moved INTO `trpc.ts` beside the builders — exporting `t` or a
+      renamed bare builder would have reopened the hole. `routers/health.router.ts` is gone.)
+- [x] Add a static guard as a script alongside `smoke:authz` / `check:openapi` (preferred — no new
       test harness in `packages/trpc`): assert no file under `packages/trpc/src/routers/`
       references `t.procedure` or `publicProcedure`. No allow-list needed once health is inlined.
-- [ ] Do **not** implement this by walking `appRouter._def.procedures`. It cannot prove builder
+      (`apps/api/scripts/check-builders.ts`, root `pnpm check:builders`; matches ANY `.procedure`
+      access so renamed locals like `t2.procedure` cannot slip past.)
+- [x] Do **not** implement this by walking `appRouter._def.procedures`. It cannot prove builder
       provenance (see Hard context) and depends on `unstable-core-do-not-import`.
 
 **Verify** non-vacuous: temporarily add an ungated procedure under `routers/` in a scratch working
 tree and watch the guard fail. `pnpm check-types`; `pnpm smoke:authz` unchanged.
+All three verified 2026-08-25 — scratch router with `t2.procedure` tripped the guard, then
+check-types / check:openapi / smoke:authz / e2e all green after removal.
 
 ```
 refactor(trpc): make an ungated procedure unconstructible

@@ -1,6 +1,7 @@
-import { router } from "./trpc";
+// The health check lives in trpc.ts beside the builders it needs — see the
+// comment there for why no ungated builder is exported instead.
+import { healthRouter, router } from "./trpc";
 import { academicRouter } from "./routers/academic.router";
-import { healthRouter } from "./routers/health.router";
 import { meRouter } from "./routers/me.router";
 import { schoolRouter } from "./routers/school.router";
 

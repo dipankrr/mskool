@@ -16,7 +16,8 @@
     "lint": "eslint .",
     "db:seed": "tsx scripts/seed.ts",
     "smoke:authz": "tsx scripts/smoke-authz.ts",
-    "check:openapi": "tsx scripts/check-openapi.ts"
+    "check:openapi": "tsx scripts/check-openapi.ts",
+    "check:builders": "tsx scripts/check-builders.ts"
   },
   "dependencies": {
     "@repo/auth": "workspace:*",

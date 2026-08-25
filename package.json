@@ -27,6 +27,7 @@
     "db:seed": "dotenv -e .env -- pnpm --filter @repo/api db:seed",
     "smoke:authz": "dotenv -e .env -- pnpm --filter @repo/api smoke:authz",
     "check:openapi": "dotenv -e .env -- pnpm --filter @repo/api check:openapi",
+    "check:builders": "pnpm --filter @repo/api check:builders",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\""
   },
   "devDependencies": {

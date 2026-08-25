@@ -21,7 +21,6 @@ const t = initTRPC.context<Context>().meta<OpenApiMeta>().create();
 
 export const router = t.router;
 export const middleware = t.middleware;
-export const publicProcedure = t.procedure;
 
 /**
  * Turns a database or service failure into something the user can act on
@@ -327,3 +326,40 @@ export const studentProcedure = t.procedure.use(async ({ ctx, next }) => {
 });
 
 export type StaffDataScope = DataScope;
+
+// ---------------------------------------------------------------------------
+// The health check
+// ---------------------------------------------------------------------------
+
+/**
+ * Lives HERE, inside the builder module, and that placement is the point.
+ *
+ * The health check is the one route that must run on a valid session alone —
+ * gating "is the API up" behind a role would make monitoring depend on
+ * credentials. But an exported ungated builder (`publicProcedure = t.procedure`)
+ * offered every future router an authorization-free starting point, reachable
+ * by reflex from muscle memory. Deleting the export makes such a procedure
+ * unconstructible outside this file: there is no longer a bare builder on the
+ * package's surface to reach for, and `scripts/check:builders` keeps routers/
+ * free of both `t.procedure` and local re-creations.
+ *
+ * So the single legitimate consumer moved in with the builders rather than the
+ * builders moving out. If a second genuinely ungated route ever appears, do not
+ * export `t` or rename this one — give the route its own explicit gated
+ * builder, or reopen this decision in an ADR.
+ */
+export const healthRouter = router({
+  health: t.procedure
+    .meta({
+      openapi: {
+        method: "GET",
+        path: "/health",
+        tags: ["health"],
+        summary: "Liveness check",
+        protect: false,
+      },
+    })
+    .input(z.undefined())
+    .output(z.string())
+    .query(() => "Healthy"),
+});
