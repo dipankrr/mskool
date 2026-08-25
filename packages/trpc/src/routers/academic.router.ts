@@ -12,7 +12,7 @@ import {
 import { academicService } from "@repo/services";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { router, staffListProcedure, staffProcedure } from "../trpc";
+import { router, staffListProcedure, staffProcedure, type OwnerResolver } from "../trpc";
 
 /**
  * ACADEMIC STRUCTURE — years, classes, sections (Phase 2 slice 1).
@@ -45,6 +45,26 @@ const READ_HISTORY = "academic_year:read_history" as const;
 // ---------------------------------------------------------------------------
 // Academic years
 // ---------------------------------------------------------------------------
+
+/**
+ * The B6 owner resolver for years (ADR-028 context): a year's owning node is
+ * its branch, looked up from the row. Null — no such year in this org — and
+ * a cross-tenant id are deliberately indistinguishable, so this throws the
+ * same NOT_FOUND wording the endpoint itself uses; nothing here confirms that
+ * an id exists anywhere.
+ */
+const resolveYearOwner: OwnerResolver = async (organizationId, id) => {
+  const schoolId = await academicService.getAcademicYearOwnerId(organizationId, id);
+
+  if (!schoolId) {
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      message: "Academic year not found.",
+    });
+  }
+
+  return { type: "school", id: schoolId };
+};
 
 const academicYearRouter = router({
   // List: permissive builder. A branch principal does not COVER the org node
@@ -124,7 +144,15 @@ const academicYearRouter = router({
       return year;
     }),
 
-  byId: staffProcedure("academic_year:read")
+  // B6: years are not scope nodes, so the owning branch comes from the
+  // resolver, and the gate asks the overlap question (ADR-028) — a section-
+  // scoped teacher does not COVER her school, but the year she reads belongs
+  // to it. The service still filters by scope and history; a cross-tenant id
+  // and a nonexistent one are the same NOT_FOUND.
+  byId: staffProcedure("academic_year:read", {
+    resolveOwner: resolveYearOwner,
+    gate: "overlap",
+  })
     .meta({
       openapi: {
         method: "GET",
@@ -176,7 +204,12 @@ const academicYearRouter = router({
       return academicService.createAcademicYear(ctx.scope, input.data);
     }),
 
-  update: staffProcedure("academic_year:update")
+  // B6: owner-resolved like byId, but a MUTATION — the gate stays "cover"
+  // (ADR-017 strict). Teachers hold no academic_year:update, so the overlap
+  // question never arises here.
+  update: staffProcedure("academic_year:update", {
+    resolveOwner: resolveYearOwner,
+  })
     .meta({
       openapi: {
         method: "PATCH",
@@ -211,7 +244,9 @@ const academicYearRouter = router({
    * sub-resource rather than a PATCH of `is_current`: the flag is a transition
    * between two rows (at most one current per school), not a field to set.
    */
-  setCurrent: staffProcedure("academic_year:update")
+  setCurrent: staffProcedure("academic_year:update", {
+    resolveOwner: resolveYearOwner,
+  })
     .meta({
       openapi: {
         method: "POST",

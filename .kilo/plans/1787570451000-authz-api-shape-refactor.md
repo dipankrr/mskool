@@ -558,14 +558,29 @@ not a scope node, so the addressed-node machinery cannot validate it.
 
 **Deadline: before the enrollment slice.**
 
-- [ ] Per-resource resolver returning the owning node spec. Async and allowed to traverse —
+- [x] Per-resource resolver returning the owning node spec. Async and allowed to traverse —
       the interface is shaped by the **student** case (`student → current enrollment → section`),
       not by years.
-- [ ] Years ship as the trivial one-column adapter (`academicYears.schoolId`), migrating
+      (`OwnerResolver` exported from `trpc.ts`; `staffProcedure` gains `resolveOwner` (implies
+      id-addressing; null → NOT_FOUND) and a `gate: "cover" | "overlap"` option. The router-local
+      `resolveYearOwner` throws its own NOT_FOUND wording so a cross-tenant id and a nonexistent
+      one are indistinguishable.)
+- [x] Years ship as the trivial one-column adapter (`academicYears.schoolId`), migrating
       `year.byId` / `update` / `setCurrent` to `{ id }` and retiring the stage-1 TODOs.
+      (`getAcademicYearOwnerId(organizationId, id)` in `academic.service.ts`, org-filtered.
+      Reads gate with **overlap**, mutations stay strict **cover** — without overlap, B6's own
+      verify ("teacher semantics unchanged") is impossible, since a sub-school grant does not
+      cover the owning school node. An overlap miss splits: no permission anywhere → FORBIDDEN;
+      permission held but not reaching this owner → NOT_FOUND, matching what the service's
+      scope filter produced before. Smoke caught this — first cut 403'd the principal on
+      school B's year.)
 
 **Verify** a cross-tenant year id → 404; the class teacher's year semantics unchanged
 (pin against A2's matrix).
+Verified 2026-08-25: smoke all green incl. NEW cells — subject_teacher × current year via
+overlap gate → 200; nonexistent valid uuid → NOT_FOUND; principal × school B year → NOT_FOUND
+(not 403); history-gate negatives and principal positive control intact. Web update/setCurrent
+submits drop `schoolId`. check-types, unit 38+54, e2e 4/4.
 
 ```
 feat(trpc): resolve the owning node for entities that are not scope nodes

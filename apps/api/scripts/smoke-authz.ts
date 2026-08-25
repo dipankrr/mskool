@@ -327,12 +327,12 @@ async function main() {
       : `HTTP ${principalYears.status}`,
   );
 
-  // Addresses their OWN school node — the gate passes — but with school B's year
-  // id. scopeWhere must still exclude it. This is the row-level filter, a layer
-  // beneath the node gate that already 403s a direct school-B address.
+  // B6: years are owner-resolved — {organizationId, id}, no scope-node naming.
+  // The principal addresses nothing; the resolver finds school B's node, and
+  // the service's scope filter must still exclude the row. This is the
+  // row-level filter, a layer beneath the gate.
   const principalReadsYearB = await query(principalCookie, "academic.year.byId", {
     organizationId: orgId,
-    schoolId: schoolA.id,
     id: yearB.id,
   });
   report(
@@ -343,15 +343,26 @@ async function main() {
       : `code ${principalReadsYearB.code}`,
   );
 
+  // A valid-format uuid for no row that exists in this org. Same NOT_FOUND as
+  // the cross-branch case above: neither confirms an id exists anywhere.
+  const adminReadsNothing = await query(adminCookie, "academic.year.byId", {
+    organizationId: orgId,
+    id: "00000000-0000-4000-8000-000000000000",
+  });
+  report(
+    "nonexistent year id is NOT_FOUND, not an error",
+    !adminReadsNothing.ok && adminReadsNothing.code === "NOT_FOUND",
+    adminReadsNothing.ok ? "READ SUCCEEDED" : `code ${adminReadsNothing.code}`,
+  );
+
   console.log("\nacademic years — history gate (class_teacher lacks read_history)");
 
-  // The teacher addresses their CLASS node — their grant covers nothing wider.
-  // The service widens years to school level, so reading the CURRENT year works.
-  // This is the positive control: it proves the read path and node addressing,
+  // The overlap gate (ADR-028) judges the owning SCHOOL node against every
+  // grant: the class-scoped teacher does not cover her school, but her grant
+  // reaches into it, so reading the CURRENT year works. Positive control —
   // so the closed-year NOT_FOUND below can only be the history gate biting.
   const teacherReadsCurrent = await query(teacherCookie, "academic.year.byId", {
     organizationId: orgId,
-    classId: classA.id,
     id: currentYearA.id,
   });
   report(
@@ -366,7 +377,6 @@ async function main() {
   // the query to isCurrent, so a valid id for a closed year returns nothing.
   const teacherReadsClosed = await query(teacherCookie, "academic.year.byId", {
     organizationId: orgId,
-    classId: classA.id,
     id: closedYearA.id,
   });
   report(
@@ -382,7 +392,6 @@ async function main() {
   // everyone would masquerade as a passing history gate.
   const principalReadsClosed = await query(principalCookie, "academic.year.byId", {
     organizationId: orgId,
-    schoolId: schoolA.id,
     id: closedYearA.id,
   });
   report(
@@ -391,6 +400,25 @@ async function main() {
     principalReadsClosed.ok
       ? ""
       : `HTTP ${principalReadsClosed.status} code ${principalReadsClosed.code}`,
+  );
+
+  // The section-scoped teacher has no grant covering ANY named node — under the
+  // old addressing she needed her sectionId to reach this endpoint at all. The
+  // overlap gate makes that luck unnecessary: her grant reaches into school A's
+  // subtree, so the current year is hers to read. (The closed one is not —
+  // history pinning below is role-independent.)
+  const subjectTeacherReadsCurrent = await query(
+    subjectTeacherCookie,
+    "academic.year.byId",
+    { organizationId: orgId, id: currentYearA.id },
+  );
+  report(
+    "subject_teacher reads the current year (overlap gate)",
+    subjectTeacherReadsCurrent.ok &&
+      subjectTeacherReadsCurrent.data?.id === currentYearA.id,
+    subjectTeacherReadsCurrent.ok
+      ? ""
+      : `HTTP ${subjectTeacherReadsCurrent.status} code ${subjectTeacherReadsCurrent.code}`,
   );
 
   // List-level gate: without read_history the year picker offers only the
@@ -611,7 +639,8 @@ async function main() {
       role: "org_admin",
       cookie: adminCookie,
       path: "academic.year.setCurrent",
-      input: { organizationId: orgId, schoolId: schoolA.id, id: currentYearA.id },
+      // B6: owner-resolved by id; the mutation gate stays strict "cover".
+      input: { organizationId: orgId, id: currentYearA.id },
       method: "mutation",
       expect: OK,
       dataCheck: (d) => d?.id === currentYearA.id,
@@ -620,7 +649,7 @@ async function main() {
       role: "principal",
       cookie: principalCookie,
       path: "academic.year.setCurrent",
-      input: { organizationId: orgId, schoolId: schoolA.id, id: currentYearA.id },
+      input: { organizationId: orgId, id: currentYearA.id },
       method: "mutation",
       expect: OK,
       dataCheck: (d) => d?.id === currentYearA.id,

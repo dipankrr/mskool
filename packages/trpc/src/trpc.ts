@@ -168,11 +168,42 @@ function forbiddenMessage(
  * from Postgres: a revoked approver must lose the ability to approve
  * immediately, not at the end of a cache TTL.
  */
+/**
+ * The per-resource owner resolver (B6, the resolution layer).
+ *
+ * Entities that are not scope nodes — a student, today an academic year — have
+ * an owning node that must be LOOKED UP before the gate can judge anything.
+ * Async and allowed to traverse joins: the interface is shaped by the student
+ * case (student → current enrollment → section), not by the one-column year
+ * adapter that ships first. Returns null for "no such row in this org"; the
+ * middleware turns that into NOT_FOUND, so a cross-tenant id is never
+ * distinguishable from a made-up one.
+ *
+ * Authorization-neutral by contract: this answers "who owns it", never "may
+ * you see it".
+ */
+export type OwnerResolver = (
+  organizationId: string,
+  id: string,
+) => Promise<{ type: string; id: string } | null>;
+
 export function staffProcedure(
   permission: Permission,
-  opts: { addressedBy?: "scope" | "id" } = {},
+  opts: {
+    addressedBy?: "scope" | "id";
+    resolveOwner?: OwnerResolver;
+    /**
+     * How the gate judges the RESOLVED owning node (meaningful with
+     * resolveOwner). "cover" is ADR-017 strict — mandatory for mutations.
+     * "overlap" is the ADR-028 read question: does any grant holding this
+     * permission reach INTO the owner's subtree? Required for reads owned by
+     * nodes above the caller's grant — a section-scoped teacher does not cover
+     * her school, but every year she may read belongs to it.
+     */
+    gate?: "cover" | "overlap";
+  } = {},
 ) {
-  const addressedById = opts.addressedBy === "id";
+  const addressedById = opts.addressedBy === "id" || Boolean(opts.resolveOwner);
 
   return t.procedure
     // ADR-027: when addressedBy:"id", the builder itself attaches a validated
@@ -195,12 +226,28 @@ export function staffProcedure(
       // addressedBy:"id": the node IS the resource being touched, so
       // authorization is evaluated against exactly the row the handler will
       // read or write — never against a node the client merely claimed.
-      const node = await resolveNode(
-        organizationId,
-        "id" in input && typeof input.id === "string"
-          ? input.id
-          : addressedNodeId(input),
-      );
+      // With resolveOwner, that id names an entity which is NOT a scope node;
+      // its owning node comes from the resolver, and a null means no such row
+      // exists in this org.
+      let resolvedNodeId: string;
+      if ("id" in input && typeof input.id === "string") {
+        if (opts.resolveOwner) {
+          const owner = await opts.resolveOwner(organizationId, input.id);
+          if (!owner) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Resource not found.",
+            });
+          }
+          resolvedNodeId = owner.id;
+        } else {
+          resolvedNodeId = input.id;
+        }
+      } else {
+        resolvedNodeId = addressedNodeId(input);
+      }
+
+      const node = await resolveNode(organizationId, resolvedNodeId);
 
       const authCache = await getUserAuthCache(userId, {
         skipCache: SENSITIVE_PERMISSIONS.has(permission),
@@ -212,7 +259,45 @@ export function staffProcedure(
         node,
       };
 
-      if (!can(authCache, permission, resourceCtx)) {
+      // The two gates over one resolved node. "cover" (ADR-017 strict) guards
+      // every mutation. "overlap" (ADR-028) guards owner-resolved reads: some
+      // grant holding the permission must reach into the owning subtree. The
+      // overlap test answers only the GATE; ctx.scope below stays the owner's
+      // own scope, so service-level filters (history pinning, widening) see
+      // exactly what they saw before.
+      //
+      // An overlap miss splits by whether the caller holds the permission at
+      // all: without it anywhere, FORBIDDEN — the request itself is illegitimate
+      // and no row was consulted. Holding it but not reaching this owner means
+      // the row is simply not theirs: NOT_FOUND, indistinguishable from a made-
+      // up id, which is exactly how the service-level filters behaved before
+      // owner resolution moved the question ahead of the query.
+      if (opts.gate === "overlap") {
+        const scopes = getDataScopes(authCache, permission, dataScopeFromNode(node));
+
+        if (scopes.length === 0) {
+          const heldInOrg = permissionsInOrg(authCache, organizationId).includes(
+            permission,
+          );
+
+          if (!heldInOrg) {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: forbiddenMessage(
+                authCache,
+                organizationId,
+                permission,
+                node.type,
+              ),
+            });
+          }
+
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Resource not found.",
+          });
+        }
+      } else if (!can(authCache, permission, resourceCtx)) {
         throw new TRPCError({
           code: "FORBIDDEN",
           message: forbiddenMessage(authCache, organizationId, permission, node.type),

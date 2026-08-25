@@ -105,13 +105,18 @@ export function useSessionMutations() {
     },
     update: {
       ...update,
+      // B6: owner-resolved by id — the branch comes from the year's own row,
+      // so no scope fields. The withBranch guard stays only because the caller
+      // still needs a branch to have picked this year from.
       submit: withBranch((scope, id: string, data: UpdateAcademicYearInput) =>
-        update.mutate({ ...scope, id, data }),
+        update.mutate({ organizationId: scope.organizationId, id, data }),
       ),
     },
     setCurrent: {
       ...setCurrent,
-      submit: withBranch((scope, id: string) => setCurrent.mutate({ ...scope, id })),
+      submit: withBranch((_scope, id: string) =>
+        setCurrent.mutate({ organizationId: _scope.organizationId, id }),
+      ),
     },
   };
 }

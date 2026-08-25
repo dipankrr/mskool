@@ -256,6 +256,36 @@ export class AcademicService {
   }
 
   /**
+   * The owning branch of an academic year — the B6 resolution layer's trivial
+   * adapter (ADR-028 context; the interface exists for the student case, where
+   * the owner is a join away, but years ship first to prove it).
+   *
+   * A year is not a scope node: its owning node must be LOOKED UP from its
+   * schoolId column before the gate can judge coverage. Filtered by org so a
+   * cross-tenant id and a nonexistent one are indistinguishable — both return
+   * null, both become NOT_FOUND, and neither confirms the id exists elsewhere.
+   *
+   * Authorization-neutral by design: this answers "who owns it", never "may
+   * you see it".
+   */
+  async getAcademicYearOwnerId(
+    organizationId: string,
+    academicYearId: string,
+  ): Promise<string | null> {
+    const [row] = await db
+      .select({ schoolId: academicYears.schoolId })
+      .from(academicYears)
+      .where(
+        and(
+          eq(academicYears.id, academicYearId),
+          eq(academicYears.organizationId, organizationId),
+        ),
+      );
+
+    return row?.schoolId ?? null;
+  }
+
+  /**
    * Reads one year, filtered by scope AND by visibility. Fetching by id alone
    * would let a principal at one branch read another branch's by guessing an
    * id, and would hand a closed session to a caller restricted to the current
