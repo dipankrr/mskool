@@ -61,7 +61,9 @@ function looksTechnical(message: string): boolean {
   // A zod issue array arrives as JSON, because the routers set no errorFormatter.
   if (message.startsWith("[") || message.startsWith("{")) return true;
 
-  return /missing permission|\bat \w+ \(|constraint|postgres|drizzle|relation "|column "|sqlstate|econnrefused|undefined is not|cannot read propert/i.test(
+  // "at fn (" covers classic frames; "at async fn (" is what Node actually
+  // prints for awaited calls, and it slipped the narrower pattern.
+  return /missing permission|\bat (?:async )?\w+ \(|constraint|postgres|drizzle|relation "|column "|sqlstate|econnrefused|undefined is not|cannot read propert/i.test(
     message,
   );
 }

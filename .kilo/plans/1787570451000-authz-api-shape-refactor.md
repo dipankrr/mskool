@@ -225,18 +225,22 @@ unstable-core-do-not-import.
 
 ### A1 · Test harness for `apps/web` + restore the 38 assertions
 
-- [ ] Add vitest to `apps/web` (root `pnpm test` is `turbo run test`; only `@repo/authz`
+- [x] Add vitest to `apps/web` (root `pnpm test` is `turbo run test`; only `@repo/authz`
       participates today).
-- [ ] `format.test.ts` — 25 assertions: April/March session boundaries, leap years, two-digit
+- [x] `format.test.ts` — 25 assertions: April/March session boundaries, leap years, two-digit
       years, half-typed input, `todayIso` local-vs-UTC.
-- [ ] `errors.test.ts` — 13 assertions: raw exclusion-constraint string, zod issue array,
+- [x] `errors.test.ts` — 13 assertions: raw exclusion-constraint string, zod issue array,
       `Missing permission: school:create`, a stack trace — all degrade to generic wording.
-- [ ] **Coordinate with A5.** These tests import helpers A5 removes from the public surface
+      (Found a real gap: `looksTechnical`'s stack-frame pattern missed `at async fn (` frames;
+      the regex now covers both, which is what made the stack-trace case actually degrade.)
+- [x] **Coordinate with A5.** These tests import helpers A5 removes from the public surface
       (`isIsoDate`, `formatIsoDate`, `todayIso`, `isoYear`, `currentSessionStartYear`, `ErrorKind`).
       Import them from their module paths, not a barrel, so A5 can shrink the barrel without
       breaking the suite. Whichever chunk lands second must not regress the other.
 
 **Verify** `pnpm test` green including web; the counts are 25 and 13 as reported by vitest.
+Verified 2026-08-25: 25 + 13 exactly as vitest reports them; authz still 54; e2e specs are NOT
+collected by vitest (`test.include` pinned to `src/**/*.test.ts`).
 
 ```
 test(web): add a test harness and cover the date and error modules
