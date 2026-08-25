@@ -602,17 +602,25 @@ for the one that actually needs it.
 
 Gated on ADR-028.
 
-- [ ] **Node half ships independently of B6** — a class row's scope derives from its own columns.
-- [ ] Non-node entities (`year.byId`) wait for B6's resolver.
-- [ ] **On landing, delete `useClass`'s list workaround** and revert to `class.byId`.
+- [x] **Node half ships independently of B6** — a class row's scope derives from its own columns.
+      (`gate: "overlap"` added to school/class/section `byId`; updates/deactivates stay strict.
+      The overlap-miss semantics from B6 carry over: permission held but not reaching the row →
+      NOT_FOUND, indistinguishable from absent.)
+- [x] Non-node entities (`year.byId`) wait for B6's resolver. (Done in B6 itself.)
+- [x] **On landing, delete `useClass`'s list workaround** and revert to `class.byId`.
+      (`notFound` now keys off the query's NOT_FOUND error instead of absence-from-list.)
 
 **Verify — including the ADR-024 negatives:**
 - `class_teacher` still gets NOT_FOUND for a closed year addressed by valid id (pin the existing
-  smoke assertion);
-- `subject_teacher` (section-scoped) likewise;
-- **`principal` still reads that closed year** — the non-vacuity control, without which the two
-  negatives above could pass because reads broke for everyone;
-- section-scoped grant → parent class `byId` **200**, sibling class **404**.
+  smoke assertion); ✅
+- `subject_teacher` likewise; ✅ (her current-year read via overlap gate also pinned since B6)
+- **`principal` still reads that closed year** — the non-vacuity control; ✅
+- section-scoped grant → parent class `byId` **200**, sibling class **404**. ✅
+  All verified 2026-08-25, plus: seed grew an ungranted sibling "Class 7" in school A as the
+  discriminator, with an org_admin positive control on the same row. One old pin deliberately
+  flipped: principal × `school.byId(schoolB)` was FORBIDDEN under strict reads, now NOT_FOUND —
+  consistent with the year endpoint and the router's own wording. Smoke all green, unit 38+54,
+  e2e 4/4 (subject_teacher's class-detail walk goes through the restored direct read).
 
 ```
 refactor(authz): single-row reads ask whether the row is inside a grant

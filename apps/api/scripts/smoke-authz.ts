@@ -191,6 +191,19 @@ async function main() {
     );
   }
 
+  // The B7 sibling: same branch, deliberately unscoped to nobody.
+  const [classSibling] = await db
+    .select()
+    .from(classes)
+    .where(and(eq(classes.schoolId, schoolA.id), eq(classes.name, "Class 7")));
+
+  if (!classSibling) {
+    throw new Error(
+      "No sibling class (Class 7) in school A. The overlap-read discriminator " +
+        "needs it — run `pnpm db:seed` (re-seeding is idempotent).",
+    );
+  }
+
   const adminCookie = await signIn(ADMIN_EMAIL);
   const principalCookie = await signIn(PRINCIPAL_EMAIL);
   const teacherCookie = await signIn(TEACHER_EMAIL);
@@ -277,15 +290,16 @@ async function main() {
   });
   report("principal reads their own school", principalReadsA.ok);
 
-  // Cross-branch read. Must not distinguish "exists elsewhere" from "absent".
+  // Cross-branch read. B7 flipped this from FORBIDDEN to NOT_FOUND: under the
+  // overlap read the row is outside every grant the caller holds, so it is
+  // indistinguishable from absent — the wording the router itself documents.
   const principalReadsB = await query(principalCookie, "school.byId", {
     organizationId: orgId,
-    schoolId: schoolB.id,
     id: schoolB.id,
   });
   report(
     "principal CANNOT read school B",
-    !principalReadsB.ok && principalReadsB.code === "FORBIDDEN",
+    !principalReadsB.ok && principalReadsB.code === "NOT_FOUND",
     principalReadsB.ok ? "READ SUCCEEDED — cross-branch leak" : `code ${principalReadsB.code}`,
   );
 
@@ -569,20 +583,36 @@ async function main() {
         role,
         cookie,
         path: "academic.class.byId",
-        // ADR-027 (B4): single-resource reads address their OWN resource —
-        // {organizationId, id}, no scope-node naming.
-        //
-        // The subject_teacher cell pins the TRANSITIONAL truth: her section
-        // grant does not COVER the parent class node (coverage is downwards),
-        // so strict id-addressing refuses her until B7's permissive reads
-        // re-frame the question as "is this row inside one of my grants?" —
-        // then this cell flips to 200 deliberately, and `useClass`'s list
-        // workaround (kept, see plan B4) is what keeps her screen working
-        // in the meantime.
+        // B7 (ADR-028): overlap read — the row asks the grants. The
+        // subject_teacher cell that spent B4–B6 pinned at FORBIDDEN flips to
+        // 200 exactly as planned: her section grant reaches into Class 6's
+        // subtree even though it does not cover the class node.
         input: { organizationId: orgId, id: classA.id },
         method: "query",
-        expect: role === "subject_teacher" ? forbidden : OK,
-        dataCheck: role === "subject_teacher" ? undefined : (d) => d?.id === classA.id,
+        expect: OK,
+        dataCheck: (d) => d?.id === classA.id,
+      },
+      // The discriminator: same branch, but a row her grant does NOT reach.
+      // NOT_FOUND, not 403 — indistinguishable from a made-up id, which is
+      // what stops a teacher from mapping the school's class list by probing.
+      {
+        role: "class_teacher",
+        cookie: teacherCookie,
+        path: "academic.class.byId",
+        input: { organizationId: orgId, id: classSibling.id },
+        method: "query",
+        expect: { kind: "code", code: "NOT_FOUND" },
+      },
+      // Non-vacuity control for the cell above: an org-wide caller reads the
+      // SAME sibling row, so the 404 can only be the scope test biting.
+      {
+        role: "org_admin",
+        cookie: adminCookie,
+        path: "academic.class.byId",
+        input: { organizationId: orgId, id: classSibling.id },
+        method: "query",
+        expect: OK,
+        dataCheck: (d) => d?.id === classSibling.id,
       },
       {
         role,

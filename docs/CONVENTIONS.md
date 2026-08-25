@@ -164,6 +164,47 @@ follow-up call that can fail independently.
 
 ---
 
+## Staff procedure configuration
+
+Every gated endpoint is one of five recipes. Start from what the endpoint DOES; the options
+fall out. (ADR-027 for addressing, ADR-028 for the read question.)
+
+```ts
+// 1. LIST — "everything I may see here". Bare, always.
+list: staffListProcedure("homework:read")
+
+// 2. CREATE — bare, with the parent named in .input() (B5), never in data.
+create: staffProcedure("homework:create")
+  .input(z.object({ sectionId: z.uuid(), data: createHomeworkSchema }))
+
+// 3. READ one row by id — overlap: "is this row inside any grant I hold?"
+byId: staffProcedure("homework:read", { addressedBy: "id", gate: "overlap" })
+
+// 4. UPDATE / DEACTIVATE — strict by id. Writes are NEVER overlap.
+update: staffProcedure("homework:update", { addressedBy: "id" })
+```
+
+The fifth shape is rare: an entity that is NOT a scope node (a year today, a student later)
+cannot be judged by its own row — it needs an owner lookup:
+
+```ts
+// 5. NON-NODE ENTITY — resolver finds the owning node; reads overlap, writes cover.
+byId:   staffProcedure("student:read",   { resolveOwner: resolveStudentOwner, gate: "overlap" })
+update: staffProcedure("student:update", { resolveOwner: resolveStudentOwner })
+```
+
+The resolver itself lives next to the router (`resolveYearOwner` in `academic.router.ts` is
+the template): org-filtered, throws the endpoint's own NOT_FOUND wording on null.
+
+Two invariants, regardless of recipe:
+
+- **Writes are never `"overlap"`.** Containment is mandatory when changing data. If you are
+  about to type `gate: "overlap"` on anything that mutates, stop.
+- **Creates name their parent in `.input()`**, not inside `data` (tenant fields are omitted
+  from contract schemas on purpose) and not by hoping the scope input happens to carry it.
+
+---
+
 ## Anti-patterns
 
 **Business logic in a tRPC router.** Routers validate input, call a service, return.

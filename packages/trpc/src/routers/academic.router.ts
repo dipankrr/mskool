@@ -297,7 +297,14 @@ const classRouter = router({
       return academicService.listClasses(ctx.scopes);
     }),
 
-  byId: staffProcedure("class:read", { addressedBy: "id" })
+  // B7 (ADR-028): a single-row read asks whether the row is inside one of the
+  // caller's grants — overlap, not cover. A section-scoped teacher reads the
+  // class her section belongs to; a teacher of the sibling class next door
+  // gets NOT_FOUND, indistinguishable from a made-up id.
+  byId: staffProcedure("class:read", {
+    addressedBy: "id",
+    gate: "overlap",
+  })
     .meta({
       openapi: {
         method: "GET",
@@ -429,7 +436,13 @@ const sectionRouter = router({
     }),
 
 
-  byId: staffProcedure("section:read", { addressedBy: "id" })
+  // B7 (ADR-028): overlap read, like class.byId. The class teacher covers her
+  // whole class, so every section in it passes; the section-scoped teacher
+  // passes only her own.
+  byId: staffProcedure("section:read", {
+    addressedBy: "id",
+    gate: "overlap",
+  })
     .meta({
       openapi: {
         method: "GET",

@@ -58,35 +58,32 @@ export function useSections(classId?: string, options?: { enabled?: boolean }) {
 }
 
 /**
- * The class this route is about, resolved from the **permissive** list rather than
- * `class.byId`.
+ * The class this route is about, by id.
  *
- * `byId` is a strict `staffProcedure`, so it authorizes against the node the request
- * addresses — and the client has no reliable way to name a node the caller covers.
- * Addressing the organization 403s a class-scoped teacher; addressing the class node
- * fixes that but still 403s a *section*-scoped one; and a caller scoped below school
- * level has no `schoolId` to send either, because `me` shows them no schools.
- *
- * The list endpoint asks the opposite question — "which of your grants fall inside
- * this subtree" — so it returns exactly the classes this caller may see, whatever
- * their scope depth. Finding one row in that answer is therefore both correct and
- * unfailable, and a class the caller cannot see is simply absent, which is the same
- * "not found" the strict endpoint would have produced for another branch's class.
+ * This used to read the permissive `class.list` and pick one row, because
+ * `class.byId` was a strict read that a section-scoped teacher could not pass:
+ * her grant does not cover the class node above her section. B7 (ADR-028)
+ * made single-row reads ask "is this row inside one of my grants?" instead,
+ * so the direct read now answers for every role that owns a piece of it — and
+ * a class the caller cannot see is a NOT_FOUND, the same answer the list
+ * trick produced by absence.
  */
 export function useClass(classId: string) {
-  const { organizationId, schoolId } = useActiveContext();
+  const { organizationId } = useActiveContext();
 
-  const query = trpc.academic.class.list.useQuery(
-    { organizationId, ...(schoolId ? { schoolId } : {}) },
+  const query = trpc.academic.class.byId.useQuery(
+    { organizationId, id: classId },
     // Retry policy comes from the QueryClient default (see provider.tsx).
     { staleTime: THIRTY_SECONDS },
   );
 
   return {
     ...query,
-    data: query.data?.find((cls) => cls.id === classId),
-    /** Loaded successfully, but this id is not among the classes they may see. */
-    notFound: query.isSuccess && !query.data.some((cls) => cls.id === classId),
+    data: query.data ?? undefined,
+    /** The row exists but is not inside any grant this caller holds — or it
+     * genuinely does not exist. Same wording either way, by design. */
+    notFound:
+      !query.isLoading && !query.isSuccess && query.error?.data?.code === "NOT_FOUND",
   };
 }
 

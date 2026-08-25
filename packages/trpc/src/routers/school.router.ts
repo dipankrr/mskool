@@ -45,7 +45,10 @@ export const schoolRouter = router({
       return organizationService.listSchools(ctx.scopes);
     }),
 
-  byId: staffProcedure("school:read", { addressedBy: "id" })
+  // B7 (ADR-028): overlap read — same rule as class.byId. For seeded roles
+  // nothing observable changes: only org-scoped and branch principals hold
+  // school:read, and both cover any school they can address by id.
+  byId: staffProcedure("school:read", { addressedBy: "id", gate: "overlap" })
     .meta({
       openapi: {
         method: "GET",

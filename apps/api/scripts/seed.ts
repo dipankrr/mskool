@@ -67,6 +67,15 @@ const SEED_PASSWORD = "Password123!";
 // seed that violates either aborts the run rather than warning.
 const CLASS_A_NAME = "Class 6";
 const CLASS_A_ORDER = 6;
+/**
+ * A second class in school A that NOBODY is scoped to. It is the sibling the
+ * B7 verification needs: a class-scoped teacher asking for it by id must get
+ * NOT_FOUND (her grant does not reach it), while an org- or school-scoped
+ * caller reads it fine — proof that overlap reads discriminate between rows,
+ * not just between roles.
+ */
+const CLASS_SIBLING_NAME = "Class 7";
+const CLASS_SIBLING_ORDER = 7;
 /** The one section under Class 6, scoped to the subject teacher below. */
 const SECTION_A_NAME = "A";
 
@@ -508,6 +517,13 @@ async function main() {
   // One class in school A to scope the class teacher to.
   const classA = await findOrCreateClass(scopeA, CLASS_A_NAME, CLASS_A_ORDER);
 
+  // Its sibling: same branch, no grants anywhere. B7's discriminator.
+  const classSibling = await findOrCreateClass(
+    scopeA,
+    CLASS_SIBLING_NAME,
+    CLASS_SIBLING_ORDER,
+  );
+
   const teacherUser = await findOrCreateUser(TEACHER_EMAIL, "Demo Class Teacher");
 
   await findOrCreateStaff(
@@ -588,6 +604,7 @@ Done.
   school A years ${currentYearA.name} (current), ${closedYearA.name} (closed)
   school B year  ${yearB.name} (current)
   class          ${classA.name}  (${classA.id})
+  class          ${classSibling.name}  (${classSibling.id})  — no grants
   section        ${sectionA.name}  (${sectionA.id})
 
   ${ADMIN_EMAIL}            org_admin @ org         → both schools
