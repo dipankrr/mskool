@@ -55,7 +55,7 @@ export const { appFeatures, useAppTable, createAppColumnHelper } = createTableHo
   }),
 });
 
-export type AppFeatures = typeof appFeatures;
+type AppFeatures = typeof appFeatures;
 
 /**
  * Columns for `DataTable`, built with `createAppColumnHelper<Row>()`.

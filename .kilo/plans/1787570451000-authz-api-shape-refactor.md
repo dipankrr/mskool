@@ -279,14 +279,18 @@ while the root boundary catches a failure in the shell itself.
 
 ### A5 · Dead code in web `lib/`
 
-- [ ] Delete `parseDisplayDate`, `formatTimestamp`, `RouterInputs` — no callers.
-- [ ] Remove from the public surface: `EMPTY_VALUE`, `isIsoDate`, `formatIsoDate`, `todayIso`,
-      `isoYear`, `currentSessionStartYear`, `ErrorKind`, `FriendlyError`, `RouterOutputs`,
-      `AppFeatures`. 39 → 26 public.
-- [ ] **Read A1's note first.** Keep module-level exports so the tests can import them directly;
+- [x] Delete `formatTimestamp`, `RouterInputs` — no callers. (`parseDisplayDate` was also
+      caller-less when planned, but A1's suite now exercises it in 6 tests; per the A1↔A5
+      non-regression clause it is KEPT and stays exported. Revisit if no form ever consumes it.)
+- [x] Remove from the public surface: `EMPTY_VALUE`, `ErrorKind`, `FriendlyError`, `RouterOutputs`,
+      `AppFeatures` (un-exported from their modules). The six names the A1 tests import
+      (`isIsoDate`, `formatIsoDate`, `todayIso`, `isoYear`, `currentSessionStartYear`) keep their
+      module-level exports per the coordination note. 39 → 28 exports.
+- [x] **Read A1's note first.** Keep module-level exports so the tests can import them directly;
       shrink the barrel, not the module.
 
-**Verify** `pnpm check-types`; `pnpm test` still green (if A1 has landed).
+**Verify** `pnpm check-types`; `pnpm test` still green (A1 landed).
+Verified 2026-08-25: check-types green, web 38/38 + authz 54/54, e2e 4/4.
 
 ```
 refactor(web): remove unused exports from lib

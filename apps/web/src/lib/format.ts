@@ -15,13 +15,11 @@
  * **A calendar date never becomes a `Date` in this file.** `new Date("2026-03-31")`
  * parses as UTC midnight, so `.getDate()` anywhere west of Greenwich returns 30.
  * A session ending 31 March would display as 30 March to a user in London. String
- * slicing has no timezone to get wrong. `formatTimestamp` is the one deliberate
- * exception: a `timestamptz` is a real instant and *should* render in the
- * reader's own zone.
+ * slicing has no timezone to get wrong.
  */
 
 /** Shown where a value is absent. An em dash reads as "nothing here", not zero. */
-export const EMPTY_VALUE = "—";
+const EMPTY_VALUE = "—";
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
@@ -176,20 +174,4 @@ export function sessionStartYearOptions(
   const current = currentSessionStartYear(today);
 
   return [current + 1, current, current - 1];
-}
-
-/**
- * A `timestamptz` as `DD/MM/YYYY` in the reader's timezone.
- *
- * Unlike the functions above this one *does* construct a `Date`, because an
- * instant genuinely has a timezone and the local rendering is the correct one.
- */
-export function formatTimestamp(value: string | Date | null | undefined): string {
-  if (value === null || value === undefined) return EMPTY_VALUE;
-
-  const instant = value instanceof Date ? value : new Date(value);
-
-  if (Number.isNaN(instant.getTime())) return EMPTY_VALUE;
-
-  return `${pad(instant.getDate())}/${pad(instant.getMonth() + 1)}/${pad(instant.getFullYear(), 4)}`;
 }

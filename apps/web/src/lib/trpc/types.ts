@@ -1,4 +1,4 @@
-import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
+import type { inferRouterOutputs } from "@trpc/server";
 // Type-only, and it must stay that way: this is the whole mechanism that keeps
 // apps/web from bundling express, drizzle and postgres (AGENTS.md's type chain).
 import type { AppRouter } from "@repo/trpc";
@@ -21,8 +21,7 @@ import type { AppRouter } from "@repo/trpc";
  * Everything is still derived from `AppRouter`, so a column change remains a
  * compile error in this app rather than a runtime surprise.
  */
-export type RouterOutputs = inferRouterOutputs<AppRouter>;
-export type RouterInputs = inferRouterInputs<AppRouter>;
+type RouterOutputs = inferRouterOutputs<AppRouter>;
 
 export type Me = RouterOutputs["me"]["get"];
 export type Membership = Me["memberships"][number];

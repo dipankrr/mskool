@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Imported from the module, not a barrel: A5 shrinks the barrel's public
-// surface while these tests keep importing the module directly (A1/A5 note).
+// Imported from the module, not a barrel: A5 keeps these module-level exports
+// while removing everything else from lib's public surface (A1/A5 note).
+//
+// This file is deliberately pure ASCII: the em/en dashes under test are
+// written as \u2014 / \u2013 escapes so no editor or shell encoding can
+// corrupt the assertions.
 import {
-  EMPTY_VALUE,
   currentSessionStartYear,
   formatIsoDate,
   formatIsoDateRange,
@@ -15,12 +18,15 @@ import {
   todayIso,
 } from "./format";
 
-describe("isIsoDate — well-formed AND real", () => {
+/** The absent-value marker, duplicated here so the constant stays internal. */
+const ABSENT = "\u2014";
+
+describe("isIsoDate - well-formed AND real", () => {
   it("accepts a well-formed date that exists", () => {
     expect(isIsoDate("2026-03-31")).toBe(true);
   });
 
-  it("rejects 30 February — regex passes, reality fails", () => {
+  it("rejects 30 February - regex passes, reality fails", () => {
     expect(isIsoDate("2026-02-30")).toBe(false);
   });
 
@@ -32,11 +38,11 @@ describe("isIsoDate — well-formed AND real", () => {
     expect(isIsoDate("2024-02-29")).toBe(true);
   });
 
-  it("rejects 1900-02-29 — divisible by 100 but not 400", () => {
+  it("rejects 1900-02-29 - divisible by 100 but not 400", () => {
     expect(isIsoDate("1900-02-29")).toBe(false);
   });
 
-  it("accepts 2000-02-29 — divisible by 400", () => {
+  it("accepts 2000-02-29 - divisible by 400", () => {
     expect(isIsoDate("2000-02-29")).toBe(true);
   });
 
@@ -49,36 +55,36 @@ describe("isIsoDate — well-formed AND real", () => {
   });
 });
 
-describe("formatIsoDate — ISO wire to DD/MM/YYYY screen", () => {
+describe("formatIsoDate - ISO wire to DD/MM/YYYY screen", () => {
   it("formats day-first with slashes", () => {
     expect(formatIsoDate("2026-03-31")).toBe("31/03/2026");
   });
 
-  it("renders the em dash for absent values", () => {
-    expect(formatIsoDate(null)).toBe(EMPTY_VALUE);
-    expect(formatIsoDate(undefined)).toBe(EMPTY_VALUE);
+  it("renders an em dash for absent values", () => {
+    expect(formatIsoDate(null)).toBe(ABSENT);
+    expect(formatIsoDate(undefined)).toBe(ABSENT);
   });
 
-  it("renders the em dash for junk rather than throwing", () => {
-    expect(formatIsoDate("not-a-date")).toBe(EMPTY_VALUE);
+  it("renders an em dash for junk rather than throwing", () => {
+    expect(formatIsoDate("not-a-date")).toBe(ABSENT);
   });
 });
 
-describe("formatIsoDateRange — en dash between two dates", () => {
+describe("formatIsoDateRange - en dash between two dates", () => {
   it("joins two dates day-first with an en dash", () => {
     expect(formatIsoDateRange("2025-04-01", "2026-03-31")).toBe(
-      "01/04/2025 – 31/03/2026",
+      "01/04/2025 \u2013 31/03/2026",
     );
   });
 
   it("keeps both slots even when one side is missing", () => {
     expect(formatIsoDateRange(null, "2026-03-31")).toBe(
-      `${EMPTY_VALUE} – 31/03/2026`,
+      `${ABSENT} \u2013 31/03/2026`,
     );
   });
 });
 
-describe("parseDisplayDate — half-typed input is normal input", () => {
+describe("parseDisplayDate - half-typed input is normal input", () => {
   it("converts DD/MM/YYYY to padded ISO", () => {
     expect(parseDisplayDate("31/03/2026")).toBe("2026-03-31");
   });
@@ -103,7 +109,7 @@ describe("parseDisplayDate — half-typed input is normal input", () => {
   });
 });
 
-describe("todayIso — the reader's calendar, not UTC's", () => {
+describe("todayIso - the reader's calendar, not UTC's", () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -140,7 +146,7 @@ describe("isoYear", () => {
   });
 });
 
-describe("academic session maths — April/March boundaries", () => {
+describe("academic session maths - April/March boundaries", () => {
   it("names the session and freezes 1 April to 31 March", () => {
     const session = sessionFromStartYear(2025);
     expect(session.name).toBe("2025-26");
@@ -154,7 +160,7 @@ describe("academic session maths — April/March boundaries", () => {
     expect(sessionFromStartYear(2099).name).toBe("2099-00");
   });
 
-  it("puts April onwards in this calendar year and Jan–Mar in the previous one", () => {
+  it("puts April onwards in this calendar year and Jan-Mar in the previous one", () => {
     expect(currentSessionStartYear("2025-04-01")).toBe(2025);
     expect(currentSessionStartYear("2025-09-15")).toBe(2025);
     expect(currentSessionStartYear("2025-03-31")).toBe(2024);

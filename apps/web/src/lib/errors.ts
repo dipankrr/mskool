@@ -25,7 +25,7 @@ import { copy } from "@/lib/copy";
  * one.
  */
 
-export type ErrorKind =
+type ErrorKind =
   | "signedOut"
   | "forbidden"
   | "notFound"
@@ -35,7 +35,7 @@ export type ErrorKind =
   | "server"
   | "unknown";
 
-export type FriendlyError = {
+type FriendlyError = {
   kind: ErrorKind;
   /** Ready to render. Never null, never a raw exception message. */
   message: string;
