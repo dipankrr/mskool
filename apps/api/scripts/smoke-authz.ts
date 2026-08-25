@@ -631,6 +631,7 @@ async function main() {
       path: "academic.class.create",
       input: {
         organizationId: orgId,
+        schoolId: schoolA.id,
         classId: classA.id,
         data: { name: "Smoke Class", numericOrder: 99 },
       },

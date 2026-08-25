@@ -523,13 +523,21 @@ section-scoped teacher able to open her own class until permissive reads land.
 
 ### B5 · Creates name their parent
 
-- [ ] `school.create({ organizationId })`, `year.create({ schoolId })`, `class.create({ schoolId })`,
+- [x] `school.create({ organizationId })`, `year.create({ schoolId })`, `class.create({ schoolId })`,
       `section.create({ classId })` — required in each endpoint's own input
       (`optional & required` resolves to required).
-- [ ] `requireSchoolId` stays as a runtime guard.
-- [ ] `section.create`'s `academicYearId` same-school check stays — a year is not a node.
+      (As done: `organizationId` was already required in `staffScopeInput`, and
+      `section.create` already requires `classId` — inside its data schema, which is compile-
+      checked the same way. Only `year.create` and `class.create` gained an explicit
+      top-level `schoolId`; the contracts deliberately omit tenant fields from `data`, so the
+      parent arrives as addressing, not payload.)
+- [x] `requireSchoolId` stays as a runtime guard.
+- [x] `section.create`'s `academicYearId` same-school check stays — a year is not a node.
 
 **Verify** omitting the parent is a **compile error at the call site**, not a runtime 400.
+Verified 2026-08-25: planted a `create.mutate({ organizationId, data })` without `schoolId` →
+TS2345 at the call site (also confirming tRPC's client input type is the MERGE of all chained
+`.input()` schemas); reverted. Smoke all green, check:openapi clean, unit 38+54.
 
 ```
 refactor(trpc): creates name their parent explicitly

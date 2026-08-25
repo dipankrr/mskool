@@ -166,7 +166,11 @@ const academicYearRouter = router({
         protect: true,
       },
     })
-    .input(z.object({ data: createAcademicYearSchema }))
+    // B5: the parent is named in the endpoint's own input, not inherited as an
+    // optional scope field — omitting it is a compile error at the call site,
+    // not a runtime 500 from requireSchoolId. The service still re-checks:
+    // REST callers are not type-checked against this router.
+    .input(z.object({ schoolId: z.uuid(), data: createAcademicYearSchema }))
     .output(academicYearSelectSchema)
     .mutation(async ({ ctx, input }) => {
       return academicService.createAcademicYear(ctx.scope, input.data);
@@ -290,7 +294,8 @@ const classRouter = router({
         protect: true,
       },
     })
-    .input(z.object({ data: createClassSchema }))
+    // B5: schoolId named explicitly — see the year create above.
+    .input(z.object({ schoolId: z.uuid(), data: createClassSchema }))
     .output(classSelectSchema)
     .mutation(async ({ ctx, input }) => {
       // The service creates the class and its scope_nodes row in one
