@@ -171,6 +171,10 @@ Logic in a router cannot be reused by the REST surface, a background job, or a w
 
 **Runtime imports in `apps/web`.** `import type { AppRouter }` only. A runtime import
 from `@repo/db` pulls Drizzle and your connection string into the browser bundle.
+One sanctioned exception: a **type-only** import from `@repo/authz` (e.g. the
+`Permission` union for typed permission checks) is allowed as a devDependency —
+a type has no runtime, so nothing reaches the bundle. A *runtime* import from
+`@repo/authz` in web code is still forbidden.
 
 **`@repo/contracts` row types in a web component.** They describe the *server's* shape,
 not the browser's: there is no superjson transformer on the tRPC client, so a `timestamp`

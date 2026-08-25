@@ -4,7 +4,7 @@ import { toast } from "sonner";
 
 import { useActiveContext } from "@/features/session/active-context";
 import { copy } from "@/lib/copy";
-import { errorMessage, toFriendlyError } from "@/lib/errors";
+import { errorMessage } from "@/lib/errors";
 import { trpc } from "@/lib/trpc/client";
 import type { CreateSchoolInput, UpdateSchoolInput } from "@repo/contracts";
 
@@ -40,22 +40,7 @@ export function useBranches() {
 
   return trpc.school.list.useQuery(scopeArgs(), {
     staleTime: THIRTY_SECONDS,
-    /**
-     * One retry, not TanStack's default three.
-     *
-     * Measured: with the default policy and exponential backoff, a failing list
-     * showed a loading skeleton for about seventeen seconds before admitting
-     * anything was wrong. A user reads that as a hang and reloads the page — which
-     * restarts the same seventeen seconds. One retry covers the genuinely transient
-     * case (a dropped connection, a cold database) and then says so.
-     *
-     * A permission or not-found answer is not retried at all, because asking the
-     * same question again cannot change it.
-     */
-    retry: (failureCount, error) => {
-      const friendly = toFriendlyError(error);
-      return friendly.retryable && !friendly.requiresSignIn && failureCount < 1;
-    },
+    // Retry policy comes from the QueryClient default (see provider.tsx).
   });
 }
 

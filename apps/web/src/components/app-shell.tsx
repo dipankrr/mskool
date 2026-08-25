@@ -15,6 +15,8 @@ import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { SignOutButton } from "@/components/sign-out-button";
 import { ModeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+// Type-only, per the CONVENTIONS.md sanction — nothing reaches the bundle.
+import type { Permission } from "@repo/authz";
 import {
   Sheet,
   SheetContent,
@@ -86,7 +88,7 @@ type NavItem = {
    * can only apologise. A navigation item that cannot work is worse than an absent one,
    * for the same reason `PermissionGate` hides actions rather than disabling them.
    */
-  permission?: string;
+  permission?: Permission;
 };
 
 const NAV_ITEMS: NavItem[] = [

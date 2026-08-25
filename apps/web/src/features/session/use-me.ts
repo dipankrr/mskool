@@ -1,7 +1,6 @@
 "use client";
 
 import { trpc } from "@/lib/trpc/client";
-import { toFriendlyError } from "@/lib/errors";
 
 /**
  * The first call after sign-in, and the one every other call depends on.
@@ -27,12 +26,7 @@ export function useMe() {
     gcTime: FIVE_MINUTES * 2,
     // The window regaining focus is not news about someone's role.
     refetchOnWindowFocus: false,
-    /**
-     * Retrying an expired session three times just delays the redirect by three
-     * round-trips. Anything else — a cold Neon start, a dropped connection — is
-     * worth one retry, since this call gates the entire shell.
-     */
-    retry: (failureCount, error) =>
-      !toFriendlyError(error).requiresSignIn && failureCount < 1,
+    // Retry policy comes from the QueryClient default (see provider.tsx):
+    // an expired session is never retried, so the redirect is not delayed.
   });
 }

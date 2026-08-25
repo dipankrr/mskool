@@ -312,16 +312,21 @@ module rather than the barrel.
 
 ### A6 · QueryClient defaults + typed permissions
 
-- [ ] **Prerequisite.** Add `"@repo/authz": "workspace:*"` to `apps/web` **devDependencies**
+- [x] **Prerequisite.** Add `"@repo/authz": "workspace:*"` to `apps/web` **devDependencies**
       (type-only use) and record in `docs/CONVENTIONS.md` that a *type-only* import from
       `@repo/authz` is sanctioned. The type-chain rule bans runtime imports; this is not one.
-- [ ] Default `retry` via `toFriendlyError` in `provider.tsx`, deleting the identical retry lambda
+- [x] Default `retry` via `toFriendlyError` in `provider.tsx`, deleting the identical retry lambda
       copy-pasted 7× across 6 files.
-- [ ] `has(permission: Permission)` and `PermissionGate<P extends Permission>` become generic;
-      replace the 21 hardcoded permission literals across 8 files.
+- [x] `has(permission: Permission)` and `PermissionGate<P extends Permission>` become generic;
+      replace the 21 hardcoded permission literals across 8 files. (As done: the surfaces are
+      typed — `ActiveContextValue.has`, `PermissionGate.permission`, `NavItem.permission` — so
+      every literal is compile-checked without touching its call site; the union import is
+      type-only in three files.)
 
 **Verify** `pnpm check-types`; zero remaining `retry: (failureCount` copies; a deliberately
 misspelled permission literal is now a compile error.
+All three verified 2026-08-25: check-types green, grep clean, and a planted
+`has("school:raed")` failed with TS2345 before being reverted. Unit 38+54, e2e 4/4.
 
 ```
 refactor(web): centralize query retry policy and type the permission checks

@@ -4,7 +4,7 @@ import { toast } from "sonner";
 
 import { useActiveContext } from "@/features/session/active-context";
 import { copy } from "@/lib/copy";
-import { errorMessage, toFriendlyError } from "@/lib/errors";
+import { errorMessage } from "@/lib/errors";
 import { trpc } from "@/lib/trpc/client";
 import type {
   CreateAcademicYearInput,
@@ -37,13 +37,8 @@ export function useSessions() {
 
   return trpc.academic.year.list.useQuery(
     { organizationId, ...(schoolId ? { schoolId } : {}) },
-    {
-      staleTime: THIRTY_SECONDS,
-      retry: (failureCount, error) => {
-        const friendly = toFriendlyError(error);
-        return friendly.retryable && !friendly.requiresSignIn && failureCount < 1;
-      },
-    },
+    // Retry policy comes from the QueryClient default (see provider.tsx).
+    { staleTime: THIRTY_SECONDS },
   );
 }
 

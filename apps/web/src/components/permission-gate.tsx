@@ -1,6 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
+// Type-only, per the CONVENTIONS.md sanction — nothing reaches the bundle.
+import type { Permission } from "@repo/authz";
 
 import { useActiveContext } from "@/features/session/active-context";
 
@@ -26,8 +28,8 @@ export function PermissionGate({
   children,
   fallback = null,
 }: {
-  /** A `<resource>:<action>` string, e.g. `school:create`. */
-  permission: string;
+  /** A `<resource>:<action>` pair from the Permission union, e.g. `school:create`. */
+  permission: Permission;
   children: ReactNode;
   fallback?: ReactNode;
 }) {

@@ -4,7 +4,7 @@ import { toast } from "sonner";
 
 import { useActiveContext } from "@/features/session/active-context";
 import { copy } from "@/lib/copy";
-import { errorMessage, toFriendlyError } from "@/lib/errors";
+import { errorMessage } from "@/lib/errors";
 import { trpc } from "@/lib/trpc/client";
 import type { UpdateSectionInput } from "@repo/contracts";
 
@@ -53,10 +53,6 @@ export function useSections(classId?: string, options?: { enabled?: boolean }) {
     {
       enabled: Boolean(academicYearId) && (options?.enabled ?? true),
       staleTime: THIRTY_SECONDS,
-      retry: (failureCount, error) => {
-        const friendly = toFriendlyError(error);
-        return friendly.retryable && !friendly.requiresSignIn && failureCount < 1;
-      },
     },
   );
 }
@@ -82,13 +78,8 @@ export function useClass(classId: string) {
 
   const query = trpc.academic.class.list.useQuery(
     { organizationId, ...(schoolId ? { schoolId } : {}) },
-    {
-      staleTime: THIRTY_SECONDS,
-      retry: (failureCount, error) => {
-        const friendly = toFriendlyError(error);
-        return friendly.retryable && !friendly.requiresSignIn && failureCount < 1;
-      },
-    },
+    // Retry policy comes from the QueryClient default (see provider.tsx).
+    { staleTime: THIRTY_SECONDS },
   );
 
   return {

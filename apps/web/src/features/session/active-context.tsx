@@ -23,6 +23,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { copy } from "@/lib/copy";
 import { errorMessage, toFriendlyError } from "@/lib/errors";
 import { trpc } from "@/lib/trpc/client";
+// Type-only, per the CONVENTIONS.md sanction: a type has no runtime, so nothing
+// from @repo/authz reaches the browser bundle.
+import type { Permission } from "@repo/authz";
 // Wire shapes, not contract shapes: `createdAt` is a string here. See the note in
 // that file — the two differ because this client has no superjson transformer.
 import type {
@@ -198,8 +201,12 @@ export type ActiveContextValue = {
   /**
    * A render hint from `me`, never a gate (ADR-017). The server re-checks every
    * call, so a tampered permission list buys a visible button and a 403.
+   *
+   * The argument is the real `Permission` union, so a misspelled permission in a
+   * `has("school:read")` call is a compile error rather than a silently hidden
+   * control.
    */
-  has: (permission: string) => boolean;
+  has: (permission: Permission) => boolean;
 
   selectOrganization: (organizationId: string) => void;
   selectSchool: (schoolId: string | null) => void;
@@ -384,15 +391,10 @@ export function ActiveContextProvider({ children }: { children: ReactNode }) {
     {
       enabled: Boolean(organizationId) && stored !== null,
       staleTime: ONE_MINUTE,
-      /**
-       * A role without `academic_year:read` gets FORBIDDEN here, and that is a
-       * legitimate state — a librarian has no business reading sessions. Retrying
-       * would not change the answer, and the shell must still render.
-       */
-      retry: (failureCount, error) => {
-        const friendly = toFriendlyError(error);
-        return !friendly.requiresSignIn && friendly.retryable && failureCount < 1;
-      },
+      // Retry policy comes from the QueryClient default (see provider.tsx). A
+      // role without `academic_year:read` gets FORBIDDEN here, and that is a
+      // legitimate state — a librarian has no business reading sessions. The
+      // default never retries it, and the shell must still render.
     },
   );
 
@@ -486,7 +488,7 @@ export function ActiveContextProvider({ children }: { children: ReactNode }) {
       sessionsLoading: sessionsQuery.isPending,
       needsBranchChoice: schools.length > 1 && !schoolId,
       canSeeHistory: permissions.has("academic_year:read_history"),
-      has: (permission: string) => permissions.has(permission),
+      has: (permission: Permission) => permissions.has(permission),
       selectOrganization,
       selectSchool,
       selectSession,
