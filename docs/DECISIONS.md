@@ -893,6 +893,126 @@ see these strings raw; that is acceptable for the same reason. Codes are unchang
 (`FORBIDDEN` either way), so every existing assertion and the web client's kind-mapping
 are unaffected.
 
+---
+
+## ADR-027 — A single-resource endpoint addresses its own resource
+
+**Status:** accepted.
+
+**Context.** Both staff builders derive the *addressed node* from whatever scope fields the
+client chose to send — `sectionId ?? classId ?? schoolId ?? organizationId`
+(`addressedNodeId`, `trpc.ts`) — and ignore `input.id`. For `byId`, `update` and `deactivate`,
+that means authorization is evaluated against **a different node than the row being touched**.
+The client must guess which node to name, and the gate checks an answer to a question nobody
+asked. Two concrete failures fall out of the decoupling:
+
+- A section-scoped teacher who belongs to Class 6-A is refused `class.byId` for Class 6 unless
+  she thinks to name her section in the input — the row is inside her grant, but she addressed
+  something else and was judged on that.
+- Conversely, a caller may authorize against a node their grant covers while mutating a row
+  somewhere else entirely; nothing ties the checked node to the written one.
+
+This was an oversight of assembly, not a decision: no ADR ever weighed "authorize on the
+claimed node" against "authorize on the target row". Recording it now so B4 implements a
+decision rather than a reflex.
+
+**Decision.** A single-resource endpoint addresses its own resource: when the input carries
+`id`, the addressed node IS that id's node. Implemented as an `addressedBy: "id"` option on
+the existing `staffProcedure` — not a third builder — which attaches
+`staffScopeInput.extend({ id: z.uuid() })` itself, because tRPC middleware only sees input
+that was parsed *before* it was attached; the validated id must exist by the time the gate
+runs.
+
+`organizationId` deliberately stays in the input. It is what gives `can()`'s cross-tenant
+check (`ctx.node.organizationId !== ctx.organizationId`, `can.ts`) something to compare: a
+row id from another trust fails it even though the node lookup would have succeeded. If a
+later refinement derives the organization from the resolved node instead — dropping
+`organizationId` from these inputs — that check becomes vacuous and the surviving tenant
+guard is the belt-and-braces comparison in `scopeCovers` (`scope.ts`: assignment org vs node
+org). That trade is noted here so whoever makes it makes it knowingly.
+
+**Rejected alternative — keep deriving from scope fields.** It is the status quo that
+motivated this ADR: it forces every client to know addressing rules per endpoint (the web
+app carries a comment-length explanation per hook), and it authorizes a different node than
+the one mutated, which is a correctness hole wearing a usability problem.
+
+**Consequences.** Clients stop sending `schoolId` on update/deactivate calls; REST paths are
+unchanged; the smoke matrix's addressing choices stop being part of the contract for these
+nine endpoints, and its cells are updated accordingly, one router at a time. `useClass`'s
+list-based workaround stays until ADR-028 lands (see there).
+
+---
+
+## ADR-028 — Permissive single-row reads: the row asks the grants, in memory
+
+**Status:** accepted. **Amends ADR-017's read half** — strict stays authoritative for
+mutations, and `getDataScopes` clipping stays authoritative for lists. Nothing else in
+ADR-017 changes.
+
+**Context.** ADR-017 routed single-resource reads through the strict question with the
+addressed node taken from the client's scope fields, then filtered the fetch with that
+node's `scopeWhere`. Three things break when the reader's grant sits *below* the table's
+shallowest column:
+
+- `classes` has no section column and `schools` has none at all, so a section-scoped teacher
+  either trips the loud throw ADR-017 added or needs hand-written widening per service —
+  each one an invitation to widen too far.
+- The web app already carries the workaround: `useClass` reads `class.list` (permissive,
+  widened) and picks the row, because the strict read cannot be addressed reliably (ADR-027).
+  A workaround living in application code is a decision made by accident.
+- The real question a single-row read asks is not "do you cover a node you named" but "**is
+  this row inside one of my grants?**" — a property of the row and the cache, computable
+  without asking SQL to express scope at all.
+
+**Decision.** For reads of an existing row, the fetch is filtered by organization alone
+(the tenant clip), and authorization is the in-memory coverage test:
+
+```
+getDataScopes(cache, permission, dataScopeFromRow(row)).length > 0
+```
+
+No `scopeWhere` on the resource table, no per-service widening helper for reads. This reuses
+the function ADR-017 built for lists, asked once about one row; the clipping semantics are
+already decided and tested there.
+
+**Rejected alternative — stricter single-row reads** (cover-the-named-node only). It blinds
+a section teacher to the class she belongs to and the sections she teaches in, which is the
+exact defect the frontend workaround papers over. Strictness here buys nothing: the row is
+one already-fetched record, not a filter that could over-reach.
+
+**Sub-node grants and `read_history`, decided in writing.** The permissive computation
+admits a grant *narrower* than the row's node when the role holds the permission at that
+grant — a class-scoped grant answers a school-row question. That is deliberate, and the
+codebase already says so: `defaultPermissions.ts` grants `academic_year:read` to the
+class-scoped teacher with the comment *"Sees the year list to switch context; without
+read_history the switcher offers the current session only."* The principle this fixes:
+**the grant limits which school; the permission gates the capability.** Scope narrows where
+in the tree you work; it does not silently subtract capabilities the role was given. For the
+seeded roles nothing observable changes — `class_teacher` holds no `read_history` at any
+scope — but the widening is structural and would otherwise be decided by implementation
+accident during B7.
+
+**Reconciling `RESOURCE_MIN_SCOPE`.** The map says `academic_year: "school"`, yet the default
+matrix deliberately grants year permissions to class-scoped roles — the map contradicts the
+matrix. Resolution, in order:
+
+1. Min-scope stays **advisory**, as its own doc comment states ("Advisory only, never
+   enforced in `can()`", `roles.ts`). It exists to hide noise in the permissions editor, not
+   to second-grant the matrix.
+2. The `academic_year` entry is annotated (not deleted) to say sub-school grants are valid
+   for this resource, citing this ADR. Deleting it would also drop academic-year rows from
+   `resourcesForScope("section")` editor views; annotating keeps the editor helpful while
+   ending the contradiction.
+3. **Enforcing min-scope inside `can()` is recorded as rejected.** It contradicts the map's
+   stated contract, regresses ADR-024's direction — year visibility moved from scope
+   mechanics into permissions precisely because scope-keying locked legitimate users out —
+   and would break the seeded, commented session-picker grant.
+
+**Consequences.** B7 replaces the strict-read calls in the academic services with the
+coverage test and deletes the per-service widening-for-reads paths; `useClass` drops its
+list workaround and returns to `byId`; the smoke matrix flips both subject_teacher cells
+deliberately. Mutations and lists are untouched, so A2's other cells hold.
+
 
 
 

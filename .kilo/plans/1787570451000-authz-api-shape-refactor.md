@@ -419,12 +419,12 @@ so the fix is to stop letting the call be made without it.
 
 ### B3 · The ADRs — written and accepted BEFORE B4–B7
 
-- [ ] **ADR-027 — single-resource endpoints address their own resource.** `addressedNodeId`
+- [x] **ADR-027 — single-resource endpoints address their own resource.** `addressedNodeId`
       ignoring `input.id` was an oversight, not a decision. Precision note: `organizationId`
       stays in the input, so `can.ts:34`'s cross-tenant check stays meaningful. If
       org-derived-from-node ever lands as a refinement, that check becomes vacuous and the
       surviving tenant guard is `scope.ts:24` (assignment org vs node org).
-- [ ] **ADR-028 — amends ADR-017's read half.** Permissive single-row reads via the in-memory
+- [x] **ADR-028 — amends ADR-017's read half.** Permissive single-row reads via the in-memory
       coverage test (`getDataScopes(cache, perm, rowScope).length > 0` — no `scopeWhere`, no
       widening, fetch still org-filtered).
       - Record the **rejected** alternative: stricter lists. It blinds section teachers to the
@@ -442,6 +442,8 @@ so the fix is to stop letting the call be made without it.
         `academic_year: "school"` entry: it is inconsistent with the deliberate class-scoped
         `class_teacher` grant, and a permissions editor rendering `resourcesForScope("class")`
         would hide academic-year rows for a role the default matrix grants one to.
+        (As done: annotated — deleting would drop academic_year from section-level editor views;
+        annotation keeps them while ending the contradiction.)
       - Record **"enforce min-scope in `can()`" as rejected**: it contradicts the map's stated
         contract, regresses ADR-024's direction (year visibility moved from scope-mechanics to
         permissions precisely because scope-keying locked out legitimate users), and would break
@@ -450,6 +452,8 @@ so the fix is to stop letting the call be made without it.
 **Verify** both ADRs in `docs/DECISIONS.md`, each with alternatives recorded and rejected rather
 than presented as open. Neither silently contradicts an existing ADR; ADR-028 supersedes ADR-017's
 read half explicitly.
+Written 2026-08-25. ⚠️ **AWAITING USER ACCEPTANCE — B4–B7 stay blocked until accepted**, per this
+chunk's gate.
 
 ```
 docs: record the scope-encoding decisions as ADRs

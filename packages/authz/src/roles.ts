@@ -94,6 +94,10 @@ export const RESOURCE_MIN_SCOPE: Record<Resource, ScopeType> = {
   class: "school",
   section: "school",
   subject: "school",
+  // "school" is the EDITOR default, not a cap: sub-school grants of year
+  // permissions are valid by design — the class-scoped teacher reads the year
+  // list to switch context (ADR-028). See DEFAULT_ROLE_PERMISSIONS before
+  // "fixing" this entry.
   academic_year: "school",
   school_settings: "school",
   fee_head: "school",
