@@ -45,7 +45,7 @@ export const schoolRouter = router({
       return organizationService.listSchools(ctx.scopes);
     }),
 
-  byId: staffProcedure("school:read")
+  byId: staffProcedure("school:read", { addressedBy: "id" })
     .meta({
       openapi: {
         method: "GET",
@@ -87,7 +87,7 @@ export const schoolRouter = router({
       return organizationService.createSchool(ctx.organizationId, input.data);
     }),
 
-  update: staffProcedure("school:update")
+  update: staffProcedure("school:update", { addressedBy: "id" })
     .meta({
       openapi: {
         method: "PATCH",
@@ -115,7 +115,7 @@ export const schoolRouter = router({
    * POST to a sub-resource rather than DELETE /schools/{id}: the row survives,
    * and a REST client seeing DELETE would reasonably assume otherwise.
    */
-  deactivate: staffProcedure("school:delete")
+  deactivate: staffProcedure("school:delete", { addressedBy: "id" })
     .meta({
       openapi: {
         method: "POST",

@@ -38,7 +38,7 @@ export function useClasses() {
 }
 
 export function useClassMutations() {
-  const { writeScopeArgs } = useActiveContext();
+  const { organizationId, writeScopeArgs } = useActiveContext();
   const utils = trpc.useUtils();
 
   const refresh = async () => {
@@ -79,28 +79,16 @@ export function useClassMutations() {
     refresh,
     update: {
       ...update,
+      // ADR-027: id-addressed — the branch the class lives in is derived from
+      // its own node, so no "choose a branch first" gate and no scope fields.
       submit: (id: string, data: UpdateClassInput) => {
-        const scope = writeScopeArgs();
-
-        if (!scope) {
-          toast.error(copy.errors.needsBranch);
-          return;
-        }
-
-        update.mutate({ ...scope, id, data });
+        update.mutate({ organizationId, id, data });
       },
     },
     close: {
       ...close,
       submit: (id: string) => {
-        const scope = writeScopeArgs();
-
-        if (!scope) {
-          toast.error(copy.errors.needsBranch);
-          return;
-        }
-
-        close.mutate({ ...scope, id });
+        close.mutate({ organizationId, id });
       },
     },
   };

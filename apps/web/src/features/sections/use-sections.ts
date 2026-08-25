@@ -91,7 +91,7 @@ export function useClass(classId: string) {
 }
 
 export function useSectionMutations(classId: string) {
-  const { writeScopeArgs, academicYearId } = useActiveContext();
+  const { organizationId, writeScopeArgs, academicYearId } = useActiveContext();
   const utils = trpc.useUtils();
 
   const refresh = async () => {
@@ -136,28 +136,15 @@ export function useSectionMutations(classId: string) {
     refresh,
     update: {
       ...update,
+      // ADR-027: id-addressed — no branch naming, no "choose a branch" gate.
       submit: (id: string, data: UpdateSectionInput) => {
-        const scope = writeScopeArgs();
-
-        if (!scope) {
-          toast.error(copy.errors.needsBranch);
-          return;
-        }
-
-        update.mutate({ ...scope, id, data });
+        update.mutate({ organizationId, id, data });
       },
     },
     close: {
       ...close,
       submit: (id: string) => {
-        const scope = writeScopeArgs();
-
-        if (!scope) {
-          toast.error(copy.errors.needsBranch);
-          return;
-        }
-
-        close.mutate({ ...scope, id });
+        close.mutate({ organizationId, id });
       },
     },
   };

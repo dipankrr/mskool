@@ -541,20 +541,20 @@ async function main() {
         role,
         cookie,
         path: "academic.class.byId",
-        input: {
-          organizationId: orgId,
-          ...(role === "org_admin" || role === "principal"
-            ? { schoolId: schoolA.id }
-            : role === "class_teacher"
-              ? { classId: classA.id }
-              : { sectionId: sectionA.id }),
-          id: classA.id,
-        },
+        // ADR-027 (B4): single-resource reads address their OWN resource —
+        // {organizationId, id}, no scope-node naming.
+        //
+        // The subject_teacher cell pins the TRANSITIONAL truth: her section
+        // grant does not COVER the parent class node (coverage is downwards),
+        // so strict id-addressing refuses her until B7's permissive reads
+        // re-frame the question as "is this row inside one of my grants?" —
+        // then this cell flips to 200 deliberately, and `useClass`'s list
+        // workaround (kept, see plan B4) is what keeps her screen working
+        // in the meantime.
+        input: { organizationId: orgId, id: classA.id },
         method: "query",
-        // She must address the section node she covers — the org or class node
-        // would 403, and that addressing is part of what this pins.
-        expect: OK,
-        dataCheck: (d) => d?.id === classA.id,
+        expect: role === "subject_teacher" ? forbidden : OK,
+        dataCheck: role === "subject_teacher" ? undefined : (d) => d?.id === classA.id,
       },
       {
         role,

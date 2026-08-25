@@ -168,9 +168,18 @@ function forbiddenMessage(
  * from Postgres: a revoked approver must lose the ability to approve
  * immediately, not at the end of a cache TTL.
  */
-export function staffProcedure(permission: Permission) {
+export function staffProcedure(
+  permission: Permission,
+  opts: { addressedBy?: "scope" | "id" } = {},
+) {
+  const addressedById = opts.addressedBy === "id";
+
   return t.procedure
-    .input(staffScopeInput)
+    // ADR-027: when addressedBy:"id", the builder itself attaches a validated
+    // row id to the input, because this middleware only sees input parsed
+    // before it was attached — a router-level `.input()` runs later and could
+    // not hand the gate anything.
+    .input(addressedById ? staffScopeInput.extend({ id: z.uuid() }) : staffScopeInput)
     .use(translateErrors)
     .use(async ({ ctx, input, next }) => {
       if (!ctx.session) {
@@ -183,7 +192,15 @@ export function staffProcedure(permission: Permission) {
       const userId = ctx.session.user.id;
       const { organizationId } = input;
 
-      const node = await resolveNode(organizationId, addressedNodeId(input));
+      // addressedBy:"id": the node IS the resource being touched, so
+      // authorization is evaluated against exactly the row the handler will
+      // read or write — never against a node the client merely claimed.
+      const node = await resolveNode(
+        organizationId,
+        "id" in input && typeof input.id === "string"
+          ? input.id
+          : addressedNodeId(input),
+      );
 
       const authCache = await getUserAuthCache(userId, {
         skipCache: SENSITIVE_PERMISSIONS.has(permission),

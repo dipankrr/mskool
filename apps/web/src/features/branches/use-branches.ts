@@ -87,12 +87,14 @@ export function useBranchMutations() {
     },
     update: {
       ...update,
+      // ADR-027: the endpoint addresses its own resource by id — no branch
+      // naming, and no "choose a branch first" gate.
       submit: (id: string, data: UpdateSchoolInput) =>
-        update.mutate({ organizationId, schoolId: id, id, data }),
+        update.mutate({ organizationId, id, data }),
     },
     close: {
       ...close,
-      submit: (id: string) => close.mutate({ organizationId, schoolId: id, id }),
+      submit: (id: string) => close.mutate({ organizationId, id }),
     },
   };
 }

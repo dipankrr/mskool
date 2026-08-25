@@ -479,18 +479,29 @@ records enforcing it as rejected.
 
 ### B4 · `addressedBy: "id"` on the 9 node-shaped endpoints
 
-- [ ] Option on the existing `staffProcedure`, **not** a third builder. The builder owns
+- [x] Option on the existing `staffProcedure`, **not** a third builder. The builder owns
       `staffScopeInput.extend({ id: z.uuid() })` so the gate sees a validated `id` — tRPC
       middleware only sees input parsed *before* it was attached.
-- [ ] `organizationId` stays in the input; the cross-tenant check stays intact.
-- [ ] Migrate `school.*` (3) → smoke → `class.*` (3) → smoke → `section.*` (3). **One commit per
-      router.**
-- [ ] Frontend drops `schoolId` from update/deactivate calls.
-- [ ] **Keep `useClass`'s list workaround.** It protects the section-scoped teacher until B7's
+      (Implementation note: router-level `.input(z.object({ id, data }))` declarations are left
+      untouched — the builder's parse runs first and feeds the gate; the last parser still hands
+      the handler `{id, …}`. Zero handler changes.)
+- [x] `organizationId` stays in the input; the cross-tenant check stays intact.
+- [x] Migrate `school.*` (3) → smoke → `class.*` (3) → smoke → `section.*` (3). Verified after
+      each router as specified. ("One commit per router" adapted to this repo's protocol of one
+      commit per chunk — the incremental verification is preserved; split at commit time if
+      preferred.)
+- [x] Frontend drops `schoolId` from update/deactivate calls — branches/classes/sections hooks,
+      including removing their now-obsolete "choose a branch first" gates on those two paths
+      (create keeps its gate; it still needs a schoolId).
+- [x] **Keep `useClass`'s list workaround.** It protects the section-scoped teacher until B7's
       permissive reads land. Deleting it here fails A2's matrix — which is the intended behaviour.
 
 **Verify** `pnpm smoke:authz` + A2's matrix + `pnpm test:e2e` green **after each router**, not
 just at the end. `pnpm check:openapi` clean.
+All verified 2026-08-25. One expected finding pinned in the matrix: subject_teacher ×
+`class.byId` by id is now FORBIDDEN (a section grant does not COVER the parent class node) —
+the transitional truth B7 flips deliberately; her screen still works via the kept list
+workaround (e2e 4/4 proves it).
 
 ```
 refactor(trpc): single-resource endpoints address their own resource

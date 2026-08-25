@@ -258,7 +258,7 @@ const classRouter = router({
       return academicService.listClasses(ctx.scopes);
     }),
 
-  byId: staffProcedure("class:read")
+  byId: staffProcedure("class:read", { addressedBy: "id" })
     .meta({
       openapi: {
         method: "GET",
@@ -298,7 +298,7 @@ const classRouter = router({
       return academicService.createClass(ctx.scope, input.data);
     }),
 
-  update: staffProcedure("class:update")
+  update: staffProcedure("class:update", { addressedBy: "id" })
     .meta({
       openapi: {
         method: "PATCH",
@@ -325,7 +325,7 @@ const classRouter = router({
     }),
 
   /** Soft delete (hard rule 2) — enrollments, fee structures and results point here. */
-  deactivate: staffProcedure("class:delete")
+  deactivate: staffProcedure("class:delete", { addressedBy: "id" })
     .meta({
       openapi: {
         method: "POST",
@@ -389,7 +389,7 @@ const sectionRouter = router({
     }),
 
 
-  byId: staffProcedure("section:read")
+  byId: staffProcedure("section:read", { addressedBy: "id" })
     .meta({
       openapi: {
         method: "GET",
@@ -437,7 +437,7 @@ const sectionRouter = router({
       return academicService.createSection(ctx.scope, input.data);
     }),
 
-  update: staffProcedure("section:update")
+  update: staffProcedure("section:update", { addressedBy: "id" })
     .meta({
       openapi: {
         method: "PATCH",
@@ -467,7 +467,7 @@ const sectionRouter = router({
     }),
 
   /** Soft delete (hard rule 2) — a year's attendance and results hang off it. */
-  deactivate: staffProcedure("section:delete")
+  deactivate: staffProcedure("section:delete", { addressedBy: "id" })
     .meta({
       openapi: {
         method: "POST",
