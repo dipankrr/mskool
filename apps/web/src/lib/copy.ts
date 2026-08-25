@@ -352,6 +352,11 @@ export const copy = {
     unknown: "Something went wrong. Please try again.",
     /** Shown when a write arrives with no branch chosen. */
     needsBranch: "Choose a branch first — this has to be saved against one branch.",
+    /** Rendered by the error boundaries (app/error.tsx and the nested one).
+     *  The underlying failure is never shown; the digest line is for support. */
+    boundaryTitle: "This page hit a problem.",
+    boundaryBody: "Trying again usually fixes it. If it keeps happening, ask your administrator.",
+    boundaryDigest: "Reference",
   },
 } as const;
 

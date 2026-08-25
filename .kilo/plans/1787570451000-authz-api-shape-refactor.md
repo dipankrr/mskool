@@ -258,11 +258,17 @@ developer-facing string reaching the UI, not a missing translation.
 
 ### A4 · Error boundaries
 
-- [ ] `app/error.tsx` and `app/(dashboard)/error.tsx` (nested).
-- [ ] Rationale: `useActiveContext()` throws by design when used outside the gate. In production
+- [x] `app/error.tsx` and `app/(dashboard)/error.tsx` (nested).
+- [x] Rationale: `useActiveContext()` throws by design when used outside the gate. In production
       that is a blank screen today.
 
 **Verify** throw in a page → message + working retry, at both nesting levels.
+Verified 2026-08-25 with temporary planted throws run against the live dev server:
+- nested: `/?throw=1` (client-hydration-only throw in the home page) → boundary message,
+  AppShell nav still visible, retry re-renders without crashing;
+- root: planted throw in the login page → root boundary, message + retry;
+- throws removed afterwards; routes.spec 4/4, unit 38+54, check-types all green.
+Boundaries never render `error.message`; the digest line is the only trace shown.
 
 ```
 fix(web): add error boundaries so a render failure explains itself
