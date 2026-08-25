@@ -380,13 +380,28 @@ from /me, so the REST surface exposing the message raw is not a new disclosure.
 
 ### B2 · `year.current` requires `schoolId`
 
-- [ ] Live bug: at org scope, `current` returns an arbitrary branch's session — `isCurrent` is per
+- [x] Live bug: at org scope, `current` returns an arbitrary branch's session — `isCurrent` is per
       school.
-- [ ] **Frontend fallout:** the active-context provider resolves the current session. It must now
-      pass `schoolId` and must not fire until a branch is chosen. Check the `enabled` gate.
+- [x] **Frontend fallout:** NONE EXISTS — verified by grep that no web code calls
+      `academic.year.current`; the provider deliberately resolves the session from `year.list`
+      (comment at `active-context.tsx:57`), filtered to the chosen branch, so the indicator was
+      already empty-rather-than-wrong. The endpoint serves REST/OpenAPI consumers; that is who
+      this fix protects.
 
-**Verify** an org-scope call is rejected at validation; `principal` still gets 200; the session
-indicator stays empty rather than wrong when no branch is selected.
+**As done — a refinement of the literal wording:** requiring a bare `schoolId` key would 403 every
+class- and section-scoped teacher at the strict gate (they do not COVER the school node), locking
+the modal user out of the one question their screen depends on. The input instead REFUSES bare org
+scope: `{organizationId}` alone fails a `.refine()` with "Name a branch…", while
+`schoolId`/`classId`/`sectionId` all answer it correctly, because any of them implies exactly one
+branch. Verified against the running API:
+
+- org_admin × `{organizationId}` alone → **BAD_REQUEST** ("Name a branch…") — pinned as a new
+  smoke cell;
+- class_teacher × bare `{schoolId}` → **FORBIDDEN** (out-of-scope addressing, B1 wording) — also
+  pinned;
+- all four roles × their natural addressing → **200** with the same current year (matrix cells
+  updated back to class/section addressing for teachers);
+- principal × `{organizationId, schoolId}` → **200** (live curl).
 
 ```
 fix(academic): require a branch when asking for the current session

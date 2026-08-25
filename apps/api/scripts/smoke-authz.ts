@@ -509,6 +509,11 @@ async function main() {
         role,
         cookie,
         path: "academic.year.current",
+        // Org scope is refused (B2): isCurrent is per school, so an org-scoped
+        // call used to return whichever school's row came first — a wrong
+        // answer wearing a 200. Teachers address their own class/section node,
+        // which implies the school; the strict gate passes at that node and
+        // the service widens to exactly its branch.
         input:
           role === "org_admin" || role === "principal"
             ? { organizationId: orgId, schoolId: schoolA.id }
@@ -580,8 +585,28 @@ async function main() {
   addQueryRows("class_teacher", teacherCookie, { organizationId: orgId });
   addQueryRows("subject_teacher", subjectTeacherCookie, { organizationId: orgId });
 
-  // One mutation each, none of them leaving a row behind.
+  // One mutation each, none of them leaving a row behind. Plus the B2 pin:
+  // asking for "the current year" with no branch named is a validation error,
+  // not an arbitrary school's answer.
   rows.push(
+    {
+      role: "org_admin",
+      cookie: adminCookie,
+      path: "academic.year.current",
+      input: { organizationId: orgId },
+      method: "query",
+      expect: { kind: "code", code: "BAD_REQUEST" },
+    },
+    // A teacher naming a school she does not cover is refused by the strict
+    // gate — the addressing question, not the org-scope one.
+    {
+      role: "class_teacher",
+      cookie: teacherCookie,
+      path: "academic.year.current",
+      input: { organizationId: orgId, schoolId: schoolA.id },
+      method: "query",
+      expect: forbidden,
+    },
     {
       role: "org_admin",
       cookie: adminCookie,

@@ -71,16 +71,42 @@ const academicYearRouter = router({
   // Registered before `byId` so the static segment is matched first: "current"
   // is not a UUID, and the id route validates one, but routing precedes
   // validation. The current year is visible to every scope, so no read_history.
+  //
+  // Org scope is REFUSED. `isCurrent` is per school — the exclusion constraint
+  // is (school_id) WHERE is_current — so "the current year" is only a question
+  // with an answer once a branch is named. Asked at org scope this used to
+  // return whichever school's row the database ordered first: a wrong answer
+  // wearing a 200.
+  //
+  // A class or section id is accepted alongside a school id, deliberately: a
+  // class- or section-scoped teacher does not COVER the school node, so a bare
+  // `schoolId` requirement would 403 the modal user out of the one question
+  // their whole screen depends on. Their node implies its school, and the
+  // service widens to exactly that school — one row, never an arbitrary one.
   current: staffProcedure("academic_year:read")
     .meta({
       openapi: {
         method: "GET",
         path: "/academic-years/current",
         tags: ["academic-years"],
-        summary: "The school's current academic year",
+        summary: "The current academic year of the addressed branch",
         protect: true,
       },
     })
+    .input(
+      z
+        .object({
+          organizationId: z.uuid(),
+          schoolId: z.uuid().optional(),
+          classId: z.uuid().optional(),
+          sectionId: z.uuid().optional(),
+        })
+        .refine(
+          (v) => Boolean(v.schoolId ?? v.classId ?? v.sectionId),
+          "Name a branch (a schoolId, or a classId/sectionId inside one): " +
+            "the current session is per branch.",
+        ),
+    )
     .output(academicYearSelectSchema)
     .query(async ({ ctx }) => {
       const year = await academicService.getCurrentAcademicYear(ctx.scope);
