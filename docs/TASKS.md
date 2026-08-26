@@ -6,7 +6,29 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
-**The authz API-shape refactor (ADR-027/028, chunks A1–A6 + B1–B7 + C) is COMPLETE.**
+**Security review + test ecosystem (2026-08-26) is COMPLETE** — eight chunks, each a
+separate commit. What changed and what it means for the next agent:
+
+- **Verification surface (supersedes the counts below):** `pnpm check-types` 8/8;
+  `pnpm test` = 86 authz + 38 web + 24 trpc unit tests; `pnpm test:integration` = 27
+  real-Postgres tests over a tenancy-isolated fixture pair (`packages/trpc/src/integration/`);
+  `pnpm smoke:authz`; `pnpm test:e2e`; `check:builders` (now ALSO fails on
+  `gate:"overlap"` mutations — writes stay strict cover); `check:openapi`. CI runs the
+  hermetic subset on every push/PR (`.github/workflows/ci.yml`); integration/smoke/e2e
+  stay local until someone wires a Neon branch into CI.
+- **Fixed:** corrupt Redis entries self-heal (evict + rebuild, shape-checked revives —
+  `cache.ts`); infra failures on `/me`'s and the student track degrade to generic wording
+  (`translateErrors` on all four builders; ADR-026 amended); rate limiting + helmet +
+  trust proxy + explicit body limit in `apps/api/src/server.ts`.
+- **Known trap, documented where you'd hit it:** Express 4 silently skips
+  `app.use(/regex/, middleware)` mounts — the sign-in limiter's first version never ran.
+  Predicate middleware only.
+- **Accepted exposures (owner decision, revisit before portal launch):** `/me`
+  memberships embed the FULL organization row (`panNumber`, registration number, address)
+  for every staff member — prune `membershipSchema.organization` when convenient. No RLS:
+  tenancy is application-level by design.
+
+The authz API-shape refactor (ADR-027/028, chunks A1–A6 + B1–B7 + C) is COMPLETE.
 Its plan and every decision record live in
 `.kilo/plans/1787570451000-authz-api-shape-refactor.md`; the two new ADRs and the B1 amendment
 are in `docs/DECISIONS.md`. New gated endpoints follow the five recipes in
