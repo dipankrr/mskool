@@ -42,6 +42,33 @@ const nodeCacheKey = (nodeId: string) => `authz:node:${nodeId}`;
 const portalCacheKey = (userId: string) => `authz:portal:${userId}`;
 
 /**
+ * A corrupt cache entry must not take its readers down with it. An
+ * unvalidated JSON.parse turns one bad entry into a 500 on every request
+ * that touches it, for as long as the TTL has left to run — and nothing
+ * ever repairs it. Instead the entry is evicted and the caller reads
+ * through to Postgres, which re-caches a good copy on the way back: the
+ * damage is one cold read, not an outage.
+ *
+ * The revive callback is responsible for shape: it parses, and throws on
+ * anything that is not what the caller expects. Null means "not cached";
+ * a corrupt value never escapes as data.
+ */
+async function readCacheJson<T>(
+  key: string,
+  revive: (raw: string) => T,
+): Promise<T | null> {
+  const cached = await getRedis().get(key);
+  if (cached === null) return null;
+
+  try {
+    return revive(cached);
+  } catch {
+    await getRedis().del(key);
+    return null;
+  }
+}
+
+/**
  * Loads a user's assignments and their org permission sets, resolving each
  * assignment's DataScope as it goes so that can() stays pure.
  *
@@ -114,8 +141,8 @@ export async function getUserAuthCache(
   const key = userCacheKey(userId);
 
   if (!options.skipCache) {
-    const cached = await getRedis().get(key);
-    if (cached) return reviveUserAuthCache(cached);
+    const cached = await readCacheJson(key, reviveUserAuthCache);
+    if (cached) return cached;
   }
 
   const built = await buildUserAuthCache(userId);
@@ -159,6 +186,19 @@ export async function invalidateScopeNode(nodeId: string): Promise<void> {
   await getRedis().del(nodeCacheKey(nodeId));
 }
 
+/** Shape guard for the node cache — anything not shaped like a node is corrupt. */
+function reviveScopeNode(raw: string): ScopeNode {
+  const node = JSON.parse(raw) as ScopeNode | null;
+  if (
+    !node ||
+    typeof node.id !== "string" ||
+    typeof node.organizationId !== "string"
+  ) {
+    throw new Error("Corrupt scope-node cache entry.");
+  }
+  return node;
+}
+
 /**
  * Loads a scope node, verifying it belongs to the expected org. Returns null on
  * a miss or a cross-tenant mismatch — callers turn that into a 403 without
@@ -173,10 +213,9 @@ export async function loadScopeNode(
     return orgScopeNode(expectedOrganizationId);
   }
 
-  const cached = await getRedis().get(nodeCacheKey(nodeId));
+  const cached = await readCacheJson(nodeCacheKey(nodeId), reviveScopeNode);
   if (cached) {
-    const node = JSON.parse(cached) as ScopeNode;
-    return node.organizationId === expectedOrganizationId ? node : null;
+    return cached.organizationId === expectedOrganizationId ? cached : null;
   }
 
   const [row] = await db
@@ -208,10 +247,19 @@ export async function loadScopeNode(
  * The student track (ADR-005): which students this login may act for. No roles,
  * no permissions — just ownership. Cached with the same TTL as staff auth.
  */
+/** Shape guard for the portal-ownership cache. */
+function reviveStudentIds(raw: string): string[] {
+  const ids: unknown = JSON.parse(raw);
+  if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {
+    throw new Error("Corrupt portal cache entry.");
+  }
+  return ids as string[];
+}
+
 export async function getOwnedStudentIds(userId: string): Promise<string[]> {
   const key = portalCacheKey(userId);
-  const cached = await getRedis().get(key);
-  if (cached) return JSON.parse(cached) as string[];
+  const cached = await readCacheJson(key, reviveStudentIds);
+  if (cached) return cached;
 
   const rows = await db
     .select({ studentId: studentPortalAccess.studentId })
@@ -248,6 +296,12 @@ async function resolveAssignmentScope(
 /** JSON has no Date type, so expiresAt comes back as a string. */
 function reviveUserAuthCache(raw: string): UserAuthCache {
   const parsed = JSON.parse(raw) as UserAuthCache;
+  // The map below assumes an array. A non-array entry is corrupt, and
+  // readCacheJson evicts it — building an empty-but-valid snapshot here
+  // instead would silently deny permissions the user actually holds.
+  if (!Array.isArray(parsed.assignments)) {
+    throw new Error("Corrupt user cache entry.");
+  }
   return {
     ...parsed,
     assignments: parsed.assignments.map((a) => ({
