@@ -8,7 +8,8 @@
   "scripts": {
     "check-types": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:integration": "dotenv -e ../../.env -- vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
     "@repo/auth": "workspace:*",

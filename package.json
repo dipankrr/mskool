@@ -13,6 +13,7 @@
     "lint": "turbo run lint",
     "check-types": "turbo run check-types",
     "test": "turbo run test",
+    "test:integration": "pnpm --filter @repo/trpc test:integration",
     "test:e2e": "dotenv -e .env -- pnpm --filter @repo/web test:e2e",
 
     "clean": "turbo run clean && rm -rf node_modules",
