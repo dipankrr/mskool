@@ -1,0 +1,64 @@
+# CI — the gate nobody can skip.
+#
+# Runs the HERMETIC checks only: typecheck, unit tests, and the static
+# guards. Deliberately NOT here:
+#
+#   pnpm test:integration — needs DATABASE_URL against a real database
+#   pnpm smoke:authz      — needs a running API and seeded data
+#   pnpm test:e2e         — needs running web + API servers
+#
+# Those run locally per the chunk protocol. Wiring them into CI is worth
+# doing eventually (a Neon branch + a job that seeds and boots the stack),
+# but half-wired integration CI that flakes on infra noise would teach
+# everyone to ignore red builds.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Reads packageManager (pnpm@9.12.0) from package.json.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm check-types
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Static builder guards
+        run: pnpm check:builders
+
+      # The OpenAPI generator imports the whole router tree, whose packages
+      # validate env at import time. These are throwaway values — nothing
+      # actually connects at import (postgres.js and ioredis both connect
+      # lazily on first use).
+      - name: OpenAPI document generates
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+          DIRECT_DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+          BETTER_AUTH_SECRET: ci-not-a-real-secret-0123456789abcdef
+          BETTER_AUTH_URL: http://localhost:4000
+          CORS_ORIGIN: http://localhost:3000
+          REDIS_URL: redis://localhost:6379
+        run: pnpm check:openapi

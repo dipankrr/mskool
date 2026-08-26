@@ -51,14 +51,56 @@ function scan(file: string) {
   });
 }
 
+/**
+ * Second guard: the overlap gate is READS-only.
+ *
+ * ADR-028 made single-row reads ask whether the row is inside a grant — but
+ * `gate: "overlap"` on a MUTATION would make every write permissive, the one
+ * direction the decision forbids ("cover is mandatory for mutations" is
+ * currently enforced by a comment in trpc.ts, and comments do not block
+ * merges). Routers here are formulaic enough for a static check: from each
+ * `gate: "overlap"` occurrence up to the next builder call, the chain must be
+ * a query. A grep is dumber than introspection and cannot lie — same
+ * reasoning as the builder scan above.
+ */
+function scanOverlapOnMutations(file: string) {
+  const content = fs.readFileSync(file, "utf8");
+  for (const match of content.matchAll(/gate:\s*"overlap"/g)) {
+    const rest = content.slice(match.index!);
+    const nextCall = ["staffProcedure(", "staffListProcedure("]
+      .map((needle) => {
+        const idx = rest.indexOf(needle, 10);
+        return idx === -1 ? Number.POSITIVE_INFINITY : idx;
+      })
+      .reduce((a, b) => Math.min(a, b));
+
+    // Everything from this option to the next builder call is ONE procedure
+    // chain. A mutation anywhere in it means a write authorized permissively.
+    if (/\.mutation\(/.test(rest.slice(0, nextCall))) {
+      failures++;
+      const lineNo = content.slice(0, match.index!).split(/\r?\n/).length;
+      console.error(
+        `FAIL ${path.relative(process.cwd(), file)}:${lineNo}\n` +
+          `      ${match[0]}\n` +
+          `      → gate: "overlap" on a mutation chain — writes must stay strict cover (ADR-028)`,
+      );
+    }
+  }
+}
+
 for (const entry of fs.readdirSync(routersDir, { recursive: true })) {
   const full = path.join(routersDir, entry.toString());
-  if (full.endsWith(".ts")) scan(full);
+  if (full.endsWith(".ts")) {
+    scan(full);
+    scanOverlapOnMutations(full);
+  }
 }
 
 if (failures > 0) {
-  console.error(`\n${failures} ungated-builder reference(s) under routers/.`);
+  console.error(`\n${failures} builder-surface violation(s) under routers/.`);
   process.exit(1);
 }
 
-console.log("check:builders — no ungated builder references under routers/.");
+console.log(
+  "check:builders — no ungated builders, no overlap-gated mutations under routers/.",
+);
