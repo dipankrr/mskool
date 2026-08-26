@@ -6,7 +6,9 @@
     ".": "./src/router.ts"
   },
   "scripts": {
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@repo/auth": "workspace:*",
@@ -27,6 +29,8 @@
     "@repo/typescript-config": "workspace:*",
     "typescript": "^6.0.3",
     "@types/express": "^5.0.0",
-    "@types/node": "^22.8.6"
+    "@types/node": "^22.8.6",
+    "ioredis": "^5.4.1",
+    "vitest": "^3.2.4"
   }
 }
