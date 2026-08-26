@@ -893,6 +893,15 @@ see these strings raw; that is acceptable for the same reason. Codes are unchang
 (`FORBIDDEN` either way), so every existing assertion and the web client's kind-mapping
 are unaffected.
 
+**Amendment (2026-08-26, security review).** The boundary moves: `translateErrors` now
+runs on `protectedProcedure` and `studentProcedure` as well. The original reasoning —
+those tracks only read — missed that reading is exactly where infrastructure lives: `/me`
+talks to Redis and Postgres on every page load, and an outage there used to hand the
+browser the driver's connection error verbatim. The student track is included before its
+first router exists so the convention never has to be remembered under pressure later.
+The mapping itself is unchanged and independent of which builder calls it; deliberate
+`TRPCError`s still pass through untouched, so all existing codes and wordings hold.
+
 ---
 
 ## ADR-027 — A single-resource endpoint addresses its own resource

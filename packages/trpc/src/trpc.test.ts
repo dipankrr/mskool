@@ -110,6 +110,7 @@ import {
   studentPortalAccess,
 } from "@repo/db/schema";
 import {
+  protectedProcedure,
   router as makeRouter,
   staffListProcedure,
   staffProcedure,
@@ -632,6 +633,59 @@ describe("staffListProcedure", () => {
       "FORBIDDEN",
       "A role you hold has school:read but not at this school.",
     );
+  });
+});
+
+// --- error translation on the non-staff tracks ------------------------------
+
+describe("error translation on the non-staff tracks", () => {
+  // A realistic infra failure: the resolver's raw exception used to reach the
+  // client verbatim on these two tracks, connection string and all.
+  const LEAK = "postgres://app:s3cret@db.internal:5432/mskool — connection refused";
+
+  async function thrownMessage(procedure: typeof protectedProcedure, userId?: string) {
+    const router = makeRouter({
+      probe: procedure.query(async () => {
+        throw new Error(LEAK);
+      }),
+    });
+    const inner = router.createCaller({
+      session: userId ? { user: { id: userId } } : { user: { id: "user-x" } },
+    } as never);
+    let caught: unknown;
+    try {
+      // Procedures without .input() have a `void` input type; call bare.
+      await (inner as { probe: () => Promise<unknown> }).probe();
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(TRPCError);
+    return (caught as TRPCError).message;
+  }
+
+  it("a raw infra failure on /me's track degrades to generic wording", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const message = await thrownMessage(protectedProcedure);
+      expect(message).toBe("Something went wrong. Please try again.");
+      expect(message).not.toContain("postgres");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("the student track degrades identically", async () => {
+    dbState.rows.set(TABLE.portal, [
+      { userId: "user-parent", studentId: "3f2504e0-4f89-41d3-9a0c-0305e82c3301", isActive: true },
+    ]);
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const message = await thrownMessage(studentProcedure, "user-parent");
+      expect(message).toBe("Something went wrong. Please try again.");
+      expect(message).not.toContain("postgres");
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

@@ -28,10 +28,11 @@ export const middleware = t.middleware;
  * Turns a database or service failure into something the user can act on
  * (ADR-026). The mapping itself is in `errors.ts`; this is only the seam.
  *
- * Applied FIRST on both staff builders, so it wraps the authorization
- * middleware as well as the resolver. That is deliberate: `getUserAuthCache`
- * talks to Redis and `loadScopeNode` to Postgres, and an outage in either
- * currently reaches the client as a connection string.
+ * Applied FIRST on every authed builder — both staff builders,
+ * `protectedProcedure`, and `studentProcedure` — so it wraps authorization as
+ * well as the resolver. That is deliberate: `getUserAuthCache` talks to Redis
+ * and `loadScopeNode` to Postgres, and an outage in either must not reach the
+ * client as a connection string.
  *
  * **This reads a return value rather than using try/catch, and that is not a
  * style choice.** tRPC does not rethrow out of `next()`. It catches whatever the
@@ -39,9 +40,9 @@ export const middleware = t.middleware;
  * is the original exception's, and hands it back as `{ ok: false }`. A
  * try/catch here would compile, read correctly, and never fire.
  *
- * Not on `protectedProcedure` or `studentProcedure`. Every write that can trip a
- * constraint is a staff call, and both of those tracks only read today; ADR-026
- * records the boundary and when widening it becomes worthwhile.
+ * Originally scoped to the two staff builders alone; widened to the other two
+ * authed tracks after a security review noted that `/me` reads Redis and
+ * Postgres on every page load. Recorded as an amendment on ADR-026.
  */
 const translateErrors = t.middleware(async ({ next }) => {
   const result = await next();
@@ -65,12 +66,16 @@ const translateErrors = t.middleware(async ({ next }) => {
  * staff or a student — "who am I", "sign out". Anything touching school data
  * must use a staff or student procedure, which carry a tenancy filter.
  */
-export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
-  if (!ctx.session) {
-    throw new TRPCError({ code: "UNAUTHORIZED", message: "Sign in required." });
-  }
-  return next({ ctx: { ...ctx, session: ctx.session } });
-});
+export const protectedProcedure = t.procedure
+  // Same seam as the staff builders: this track touches Redis and Postgres
+  // (`/me`), so an infra failure must degrade, not leak.
+  .use(translateErrors)
+  .use(({ ctx, next }) => {
+    if (!ctx.session) {
+      throw new TRPCError({ code: "UNAUTHORIZED", message: "Sign in required." });
+    }
+    return next({ ctx: { ...ctx, session: ctx.session } });
+  });
 
 /**
  * Every staff call names the org it is acting in, and optionally a narrower
@@ -420,7 +425,10 @@ export function staffListProcedure(permission: Permission) {
  * Namespace these routers `portal.*`, and remember hard rule 8 — student-facing
  * results come from published_report_cards only.
  */
-export const studentProcedure = t.procedure.use(async ({ ctx, next }) => {
+export const studentProcedure = t.procedure
+  // Same seam as everywhere else authed: portal access is a database read.
+  .use(translateErrors)
+  .use(async ({ ctx, next }) => {
   if (!ctx.session) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "Sign in required." });
   }
