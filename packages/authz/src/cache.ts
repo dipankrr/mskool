@@ -296,11 +296,30 @@ async function resolveAssignmentScope(
 /** JSON has no Date type, so expiresAt comes back as a string. */
 function reviveUserAuthCache(raw: string): UserAuthCache {
   const parsed = JSON.parse(raw) as UserAuthCache;
-  // The map below assumes an array. A non-array entry is corrupt, and
-  // readCacheJson evicts it — building an empty-but-valid snapshot here
-  // instead would silently deny permissions the user actually holds.
-  if (!Array.isArray(parsed.assignments)) {
+  // Shape guards, not decoration: anything that passes them gets served to
+  // can() as data. A partially-formed assignment — say an entry whose
+  // elements lack roleType or organizationId — would otherwise ride out the
+  // TTL as a "valid" snapshot, denying permissions the user actually holds,
+  // while never looking corrupt enough to evict.
+  if (
+    !Array.isArray(parsed.assignments) ||
+    !parsed.orgPermissions ||
+    typeof parsed.orgPermissions !== "object"
+  ) {
     throw new Error("Corrupt user cache entry.");
+  }
+  for (const a of parsed.assignments) {
+    if (
+      !a ||
+      typeof a.id !== "string" ||
+      typeof a.roleType !== "string" ||
+      typeof a.organizationId !== "string" ||
+      typeof a.scopeType !== "string" ||
+      typeof a.scopeId !== "string" ||
+      typeof a.resolvedDataScope?.organizationId !== "string"
+    ) {
+      throw new Error("Corrupt user cache entry.");
+    }
   }
   return {
     ...parsed,
