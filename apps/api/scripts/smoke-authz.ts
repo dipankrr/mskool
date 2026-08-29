@@ -30,6 +30,7 @@ import {
   roleAssignments,
   schools,
   sections,
+  subjects,
   user,
 } from "@repo/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
@@ -201,6 +202,25 @@ async function main() {
     throw new Error(
       "No sibling class (Class 7) in school A. The overlap-read discriminator " +
         "needs it — run `pnpm db:seed` (re-seeding is idempotent).",
+    );
+  }
+
+  // School A's catalogue and school B's same-named "Mathematics". The B subject
+  // id is what the negative assertions address: if a tenancy filter ever leaks
+  // across branches, the caller sees a row whose NAME they expected — only the
+  // id betrays that it came from the wrong school.
+  const subjectsA = await db.select().from(subjects).where(eq(subjects.schoolId, schoolA.id));
+  const subjectMathA = subjectsA.find((s) => s.name === "Mathematics");
+  const subjectPhysicsA = subjectsA.find((s) => s.name === "Physics");
+  const [subjectMathB] = await db
+    .select()
+    .from(subjects)
+    .where(eq(subjects.schoolId, schoolB.id));
+
+  if (!subjectMathA || !subjectPhysicsA || !subjectMathB) {
+    throw new Error(
+      "Subject seed incomplete — expected Mathematics + Physics in school A and " +
+        "Mathematics in school B. Run `pnpm db:seed` (re-seeding is idempotent).",
     );
   }
 
@@ -451,6 +471,67 @@ async function main() {
       : `HTTP ${teacherYears.status}`,
   );
 
+  console.log("\nsubjects — the school-level catalogue (no scope node)");
+
+  // Positive control: the principal sees school A's catalogue. Property-based,
+  // not exact-count: manual UI testing may have added subjects to the demo
+  // school, and an admin-added row appearing is correct behaviour.
+  const principalSubjects = await query(principalCookie, "subject.list", {
+    organizationId: orgId,
+    schoolId: schoolA.id,
+  });
+  report(
+    "principal lists school A's subjects (both seeded rows present)",
+    principalSubjects.ok &&
+      principalSubjects.data?.some((s: any) => s.id === subjectMathA.id) &&
+      principalSubjects.data?.some((s: any) => s.id === subjectPhysicsA.id),
+    principalSubjects.ok
+      ? ""
+      : `HTTP ${principalSubjects.status} code ${principalSubjects.code}`,
+  );
+
+  // THE tenancy assertion, and the reason the seed gives both schools a
+  // subject with the SAME NAME: school B's "Mathematics" must not appear in
+  // school A's list, and only the id can betray it if it does.
+  report(
+    "principal's subject list omits school B's same-named subject",
+    principalSubjects.ok &&
+      !principalSubjects.data?.some((s: any) => s.id === subjectMathB.id),
+    principalSubjects.ok
+      ? ""
+      : `HTTP ${principalSubjects.status} code ${principalSubjects.code}`,
+  );
+
+  // By id across the branch boundary: the B6 resolver finds the owner node,
+  // the overlap gate refuses the principal's A1-only grant — NOT_FOUND, not
+  // 403, indistinguishable from a fabricated id.
+  const principalReadsSubjectB = await query(principalCookie, "subject.byId", {
+    organizationId: orgId,
+    id: subjectMathB.id,
+  });
+  report(
+    "principal CANNOT read school B's subject by id",
+    !principalReadsSubjectB.ok && principalReadsSubjectB.code === "NOT_FOUND",
+    principalReadsSubjectB.ok
+      ? "READ SUCCEEDED — branch tenancy leaked"
+      : `code ${principalReadsSubjectB.code}`,
+  );
+
+  // The section-scoped teacher reads the catalogue widened to her school —
+  // the same set the principal sees (subjects have no class dimension).
+  const subjectTeacherSubjects = await query(subjectTeacherCookie, "subject.list", {
+    organizationId: orgId,
+    schoolId: schoolA.id,
+  });
+  report(
+    "subject_teacher lists her school's subjects (school-level widening)",
+    subjectTeacherSubjects.ok &&
+      subjectTeacherSubjects.data?.some((s: any) => s.id === subjectMathA.id),
+    subjectTeacherSubjects.ok
+      ? ""
+      : `HTTP ${subjectTeacherSubjects.status} code ${subjectTeacherSubjects.code}`,
+  );
+
   console.log("\nroles × procedures — baseline matrix");
 
   /**
@@ -582,6 +663,24 @@ async function main() {
       {
         role,
         cookie,
+        path: "subject.list",
+        input: { organizationId: orgId },
+        method: "query",
+        expect: OK,
+        dataCheck:
+          role === "org_admin"
+            ? // Org-wide: school A's rows must appear, whatever else drifted in.
+              (d) => Array.isArray(d) && d.some((s: any) => s.id === subjectMathA.id)
+            : // Clipped callers: school A's rows present, and EVERY row from
+              // school A — school B's same-named subject must never appear.
+              (d) =>
+                Array.isArray(d) &&
+                d.some((s: any) => s.id === subjectMathA.id) &&
+                d.every((s: any) => s.schoolId === schoolA.id),
+      },
+      {
+        role,
+        cookie,
         path: "academic.class.byId",
         // B7 (ADR-028): overlap read — the row asks the grants. The
         // subject_teacher cell that spent B4–B6 pinned at FORBIDDEN flips to
@@ -600,6 +699,17 @@ async function main() {
         cookie: teacherCookie,
         path: "academic.class.byId",
         input: { organizationId: orgId, id: classSibling.id },
+        method: "query",
+        expect: { kind: "code", code: "NOT_FOUND" },
+      },
+      // Same property for the catalogue, with the extra cruelty that the
+      // foreign row's NAME is one the caller expects: only the id betrays
+      // which school it belongs to.
+      {
+        role: "principal",
+        cookie: principalCookie,
+        path: "subject.byId",
+        input: { organizationId: orgId, id: subjectMathB.id },
         method: "query",
         expect: { kind: "code", code: "NOT_FOUND" },
       },

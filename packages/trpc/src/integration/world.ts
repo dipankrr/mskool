@@ -17,9 +17,10 @@ import {
   sections,
   studentPortalAccess,
   students,
+  subjects,
   user,
 } from "@repo/db/schema";
-import { academicService, organizationService } from "@repo/services";
+import { academicService, organizationService, subjectService } from "@repo/services";
 import { and, eq, isNull } from "drizzle-orm";
 
 /**
@@ -194,6 +195,16 @@ async function findOrCreateSection(
   return academicService.createSection(scope, { name, academicYearId, classId });
 }
 
+async function findOrCreateSubject(scope: SchoolScope, name: string, code: string) {
+  const [existing] = await db
+    .select()
+    .from(subjects)
+    .where(and(eq(subjects.schoolId, scope.schoolId), eq(subjects.name, name)));
+  if (existing) return existing;
+
+  return subjectService.createSubject(scope, { name, code });
+}
+
 async function findOrCreateStudent(
   organizationId: string,
   schoolId: string,
@@ -264,6 +275,11 @@ export interface IntegrationWorld {
 
   section6aId: string;
   section6bId: string;
+
+  subjectA1MathId: string;
+  subjectA1PhysicsId: string;
+  subjectA2MathId: string; // same name, sibling branch — the per-school unique index
+  subjectB1MathId: string; // same name, foreign org — the cross-tenant control
 
   users: {
     adminA: string;
@@ -400,6 +416,20 @@ export async function buildWorld(): Promise<IntegrationWorld> {
     9,
   );
 
+  // --- Subjects: the catalogue, school-level (not scope nodes) -----------------
+  // "ITG Mathematics" is created THREE times — once per school — deliberately:
+  // the unique index is per school, so the same name is legal everywhere, and
+  // the scope filter is the only thing keeping a foreign row out of a list.
+  // That collision is the leak the subject assertions pin.
+  const subjectMathA1 = await findOrCreateSubject(scopeA1, "ITG Mathematics", "MAT");
+  const subjectPhysicsA1 = await findOrCreateSubject(scopeA1, "ITG Physics", "PHY");
+  const subjectMathA2 = await findOrCreateSubject(scopeA2, "ITG Mathematics", "MAT");
+  const subjectMathB1 = await findOrCreateSubject(
+    { organizationId: orgB.id, schoolId: schoolB1.id, classId: null, sectionId: null },
+    "ITG Mathematics",
+    "MAT",
+  );
+
   // --- Student track -----------------------------------------------------------
   const parent = await findOrCreateUser("parent");
   const ownedStudent = await findOrCreateStudent(orgA.id, schoolA1.id, "ITG-0001");
@@ -422,6 +452,10 @@ export async function buildWorld(): Promise<IntegrationWorld> {
     classB1Id: classB1.id,
     section6aId: section6a.id,
     section6bId: section6b.id,
+    subjectA1MathId: subjectMathA1.id,
+    subjectA1PhysicsId: subjectPhysicsA1.id,
+    subjectA2MathId: subjectMathA2.id,
+    subjectB1MathId: subjectMathB1.id,
     users: {
       adminA: adminA.id,
       principalA1: principalA1.id,

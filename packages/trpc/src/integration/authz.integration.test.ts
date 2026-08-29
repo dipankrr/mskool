@@ -37,7 +37,7 @@ vi.mock("ioredis", () => {
 
 import { TRPCError } from "@trpc/server";
 import type { Permission } from "@repo/authz";
-import { academicService, organizationService } from "@repo/services";
+import { academicService, organizationService, subjectService } from "@repo/services";
 import { getOwnedStudentIds } from "@repo/authz";
 import { db } from "@repo/db";
 import { classes } from "@repo/db/schema";
@@ -187,6 +187,31 @@ const studentProbeRouter = makeRouter({
       ctx.assertOwnsStudent(input.studentId);
       return { owned: true };
     }),
+});
+
+const subjectListRouter = makeRouter({
+  probe: staffListProcedure("subject:read").query(({ ctx }) =>
+    subjectService.listSubjects(ctx.scopes),
+  ),
+});
+
+const subjectOwner: OwnerResolver = async (organizationId, id) => {
+  const schoolId = await subjectService.getSubjectOwnerId(organizationId, id);
+  return schoolId ? { type: "school", id: schoolId } : null;
+};
+
+/** Mirrors subject.byId: owner-resolved overlap read; no history pin (not year-scoped). */
+const subjectByIdRouter = makeRouter({
+  probe: staffProcedure("subject:read", {
+    resolveOwner: subjectOwner,
+    gate: "overlap",
+  }).query(async ({ ctx, input }) => {
+    const subject = await subjectService.getSubjectById(ctx.scope, rowId(input));
+    if (!subject) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Subject not found." });
+    }
+    return subject;
+  }),
 });
 
 // --- harness -----------------------------------------------------------------
@@ -396,6 +421,106 @@ describe("classes — exact data per role", () => {
       id: world.class6Id,
     });
     expect(cls.id).toBe(world.class6Id);
+  });
+});
+
+// --- subjects — the school-level catalogue, no scope node ----------------------
+
+describe("subjects — the school-level catalogue", () => {
+  it("wide roles list exactly their branches' subjects", async () => {
+    const cases = [
+      [
+        "org admin — both A1 subjects",
+        U().adminA,
+        [world.subjectA1MathId, world.subjectA1PhysicsId],
+      ],
+      ["branch principal", U().principalA1, [world.subjectA1MathId, world.subjectA1PhysicsId]],
+      // Subjects have no class dimension, so a section-scoped teacher's list
+      // widens to school level — the SAME set the principal sees, not more
+      // (atSchoolLevel's entity-shape reasoning, now pinned by a live row set).
+      [
+        "section teacher widened to school level",
+        U().subjectS6A,
+        [world.subjectA1MathId, world.subjectA1PhysicsId],
+      ],
+    ] as const;
+
+    for (const [name, userId, want] of cases) {
+      const ids = await okIds(
+        callerOf(subjectListRouter, userId).probe({
+          organizationId: world.orgAId,
+          schoolId: world.schoolA1Id,
+        }),
+      );
+      expect(ids, name).toEqual([...want].sort());
+    }
+  });
+
+  it("the A1 principal's list never contains the sibling branch's same-named subject", async () => {
+    // "ITG Mathematics" exists in A1, A2 AND B1 — the unique index is per
+    // school, so the same name is legal everywhere and NO name-based filter
+    // could have saved a broken tenancy filter. If A2's row reaches A1's
+    // answer, this exact-count assertion fails; that is the leak it pins.
+    const ids = await okIds(
+      callerOf(subjectListRouter, U().principalA1).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
+      }),
+    );
+    expect(ids).toEqual([world.subjectA1MathId, world.subjectA1PhysicsId].sort());
+    expect(ids).not.toContain(world.subjectA2MathId);
+  });
+
+  it("an outsider org is 403 on subject.list", async () => {
+    await expectTrpcError(
+      callerOf(subjectListRouter, U().adminB).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
+      }),
+      "FORBIDDEN",
+      "Missing permission: subject:read",
+    );
+  });
+
+  it("subject.byId: her branch resolves; a foreign-branch id is NOT_FOUND in the gate", async () => {
+    const own = await callerOf(subjectByIdRouter, U().principalA1).probe({
+      organizationId: world.orgAId,
+      id: world.subjectA1PhysicsId,
+    });
+    expect(own.id).toBe(world.subjectA1PhysicsId);
+
+    // The resolver finds A2's school node (same org), then the overlap gate
+    // refuses her A1 grant — the generic wording, decided IN THE GATE.
+    await expectTrpcError(
+      callerOf(subjectByIdRouter, U().principalA1).probe({
+        organizationId: world.orgAId,
+        id: world.subjectA2MathId,
+      }),
+      "NOT_FOUND",
+      "Resource not found.",
+    );
+  });
+
+  it("a cross-ORG subject id is NOT_FOUND, indistinguishable from a nonexistent one", async () => {
+    // The owner resolver is org-filtered, so org B's subject yields the same
+    // null a fabricated id would: nothing here confirms the id exists
+    // elsewhere (the property that makes cross-tenant probing useless).
+    await expectTrpcError(
+      callerOf(subjectByIdRouter, U().adminA).probe({
+        organizationId: world.orgAId,
+        id: world.subjectB1MathId,
+      }),
+      "NOT_FOUND",
+      "Resource not found.",
+    );
+  });
+
+  it("a section-scoped teacher reads her branch's subject by id (overlap reach)", async () => {
+    const subject = await callerOf(subjectByIdRouter, U().subjectS6A).probe({
+      organizationId: world.orgAId,
+      id: world.subjectA1MathId,
+    });
+    expect(subject.id).toBe(world.subjectA1MathId);
   });
 });
 

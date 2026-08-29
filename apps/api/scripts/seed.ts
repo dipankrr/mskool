@@ -40,9 +40,10 @@ import {
   schools,
   sections,
   staff,
+  subjects,
   user,
 } from "@repo/db/schema";
-import { academicService, organizationService } from "@repo/services";
+import { academicService, organizationService, subjectService } from "@repo/services";
 import { and, eq, isNull } from "drizzle-orm";
 
 // Stable identifiers. The seed finds rows by these, which is what makes
@@ -78,6 +79,15 @@ const CLASS_SIBLING_NAME = "Class 7";
 const CLASS_SIBLING_ORDER = 7;
 /** The one section under Class 6, scoped to the subject teacher below. */
 const SECTION_A_NAME = "A";
+
+// School A's catalogue: two subjects. School B gets "Mathematics" too — the
+// SAME NAME, deliberately: the unique index is per school, so a broken
+// tenancy filter cannot be saved by a name-based filter, and the smoke's
+// negative assertions are the only thing that notices the leak.
+const SUBJECT_MATH_NAME = "Mathematics";
+const SUBJECT_MATH_CODE = "MAT";
+const SUBJECT_PHYSICS_NAME = "Physics";
+const SUBJECT_PHYSICS_CODE = "PHY";
 
 const YEAR_CURRENT = {
   name: "2025-26",
@@ -403,6 +413,25 @@ async function findOrCreateSection(
   return section;
 }
 
+async function findOrCreateSubject(
+  scope: DataScope & { schoolId: string },
+  name: string,
+  code: string,
+) {
+  const [existing] = await db
+    .select()
+    .from(subjects)
+    .where(and(eq(subjects.schoolId, scope.schoolId), eq(subjects.name, name)));
+  if (existing) {
+    console.log(`  = subject ${name} (exists)`);
+    return existing;
+  }
+
+  const subject = await subjectService.createSubject(scope, { name, code });
+  console.log(`  + subject ${name}`);
+  return subject;
+}
+
 async function main() {
   // The seed writes known-password logins. That must never touch production.
   if (process.env.NODE_ENV === "production") {
@@ -524,6 +553,29 @@ async function main() {
     CLASS_SIBLING_ORDER,
   );
 
+  // School A's catalogue: two subjects. No scope_nodes rows — subjects are not
+  // in the authorization tree; their tenancy is the org+school columns filtered
+  // by scopeWhere like every academic table.
+  const subjectMathA = await findOrCreateSubject(
+    scopeA,
+    SUBJECT_MATH_NAME,
+    SUBJECT_MATH_CODE,
+  );
+  const subjectPhysicsA = await findOrCreateSubject(
+    scopeA,
+    SUBJECT_PHYSICS_NAME,
+    SUBJECT_PHYSICS_CODE,
+  );
+
+  // School B's catalogue: the SAME "Mathematics" name. Identical names across
+  // branches are exactly why the smoke asserts by ID, not by name — a broken
+  // filter cannot hide behind the string differing.
+  const subjectMathB = await findOrCreateSubject(
+    scopeB,
+    SUBJECT_MATH_NAME,
+    SUBJECT_MATH_CODE,
+  );
+
   const teacherUser = await findOrCreateUser(TEACHER_EMAIL, "Demo Class Teacher");
 
   await findOrCreateStaff(
@@ -606,6 +658,9 @@ Done.
   class          ${classA.name}  (${classA.id})
   class          ${classSibling.name}  (${classSibling.id})  — no grants
   section        ${sectionA.name}  (${sectionA.id})
+
+  subjects (A)   ${subjectMathA.name}, ${subjectPhysicsA.name}
+  subjects (B)   ${subjectMathB.name}  — same name as A's, by design
 
   ${ADMIN_EMAIL}            org_admin @ org         → both schools
   ${PRINCIPAL_EMAIL}        principal @ school A    → school A only

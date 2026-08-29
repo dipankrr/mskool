@@ -193,20 +193,32 @@ imports from `@repo/trpc` or better-auth anywhere in the two new files.
 ungated builders, no overlap-gated mutations); `check:openapi` green — 5 new
 `/subjects` endpoints listed.
 
-### S1.4 · `test: subjects in integration, smoke, and seed`
+### S1.4 · `test: subjects in integration, smoke, and seed` — ✅ DONE
 
-- [ ] `world.ts`: subjects for both fixture orgs' schools (idempotent find-or-create on
-      `(schoolId, code)`).
-- [ ] `authz.integration.test.ts`: role-matrix rows for the subject endpoints + the
-      cross-tenant denial — a subject in org A is indistinguishable from nonexistent to
-      org B.
-- [ ] `seed.ts`: subjects in school A (and B, so the smoke negative controls have
-      something to be denied).
-- [ ] `smoke-authz.ts`: principal lists school A's subjects but gets NOT_FOUND for
-      school B's by id; class_teacher sees none of the subject-write surface.
+- [x] **Integration fixture (`world.ts`)** — `findOrCreateSubject` helper; four subjects
+      across the three schools (A1: Mathematics + Physics, A2: Mathematics, B1:
+      Mathematics) so the same-name-across-branches collision is a live row set. World
+      fields exported: `subjectA1MathId`, `subjectA1PhysicsId`, `subjectA2MathId`,
+      `subjectB1MathId`.
+- [x] **`authz.integration.test.ts`** — 5 new tests in a `subjects — the school-level
+      catalogue` block (33 total, up from 27): per-role exact lists (incl. the section
+      teacher widening to school level), the sibling-branch same-named subject never
+      reaches A1's list, outsider org 403, branch-boundary `byId` NOT_FOUND in the gate,
+      cross-org id indistinguishable from nonexistent. Probes mirror `subject.list` /
+      `subject.byId` with the same builder options as the real router.
+- [x] **`seed.ts`** — `findOrCreateSubject` (idempotent, through the service); Mathematics
+      + Physics in school A, the SAME-named Mathematics in school B (the negative
+      control); printed in the login summary.
+- [x] **`smoke-authz.ts`** — 4 direct assertions + matrix cells: principal sees A's
+      subjects incl. both seeded rows, omits B's same-named subject, CANNOT read B's
+      subject by id (NOT_FOUND), subject_teacher widens to her school. Matrix: `subject.list`
+      for all 4 logins (clipped callers: every row schoolId === A), `subject.byId` ×
+      principal on B's subject → NOT_FOUND (non-vacuity proven by the principal's
+      positive list).
 
-**Verify** `pnpm test:integration` green (count grows); `pnpm smoke:authz` green (count
-grows); seed idempotent on a second run.
+**Verify** ✅ `pnpm check-types` 8/8; seed idempotent (subjects "exists" on re-run);
+`pnpm test:integration` 33 passed (was 27); `pnpm smoke:authz` all-pass against a live
+API incl. all new subject rows (server started, then stopped).
 
 ### S1.5 · `docs: TASKS.md — slice 1 done`
 
