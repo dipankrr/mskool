@@ -220,12 +220,18 @@ ungated builders, no overlap-gated mutations); `check:openapi` green — 5 new
 `pnpm test:integration` 33 passed (was 27); `pnpm smoke:authz` all-pass against a live
 API incl. all new subject rows (server started, then stopped).
 
-### S1.5 · `docs: TASKS.md — slice 1 done`
+### S1.5 · `docs: TASKS.md — slice 1 done` — ✅ DONE
 
-- [ ] Update the "resume here" section: S1 complete, point at this plan file, note the
-      permission set chosen in S1.3 and whether `read_history` was split.
+- [x] "Resume here" rewritten: S1 complete summary (4 commits, key decisions), the
+      verification numbers (integration 33, was 27), and the authoritative next-up order
+      (S2 → S3 → S4 → S5) pointing at this plan file. The stale "Phase 2, the rest"
+      paragraph and a duplicated authz-refactor line were cleaned up; the security-review
+      block keeps its own heading.
+- [x] The Phase-1 leftover "subject-level access is not enforced" now records its
+      prerequisite as met (`sections` + `subjects` exist) and names slice S4 as its
+      landing spot.
 
-**Verify** `pnpm check-types` still green (docs-only, but cheap to confirm).
+**Verify** ✅ docs-only; `pnpm check-types` 8/8 confirmed unchanged (see S1.4 run).
 
 ---
 
@@ -239,27 +245,29 @@ exams-phase need), `system_subject_catalog` (needs a platform-seeding story; sub
 codes stay school-local until then), `subject_name_history`, `student_subject_enrollments`
 (auto-generated from csm; needed for electives, not the core flow).
 
-- [ ] **S2.1 `feat(db): class_subject_mappings + section_teacher_assignments`** — one
-      migration, one layer. Full column spec written when the chunk starts; the shape:
-
+- [x] **S2.1 `feat(db): class_subject_mappings + section_teacher_assignments`** — one
+      migration (`0004_quick_blizzard.sql`), one layer. **DONE**:
       - `class_subject_mappings`: org+school denormalised; FKs to `academic_years` /
-        `classes` / `subjects`; unique `(academicYearId, classId, subjectId)` per the
-        reference `uq_csm_class_subject`; `isElective` boolean default false (true =
-        not auto-assigned to every student); `sequenceNumber` smallint default 0
-        (report-card display order). No scope node. **Cross-tenant parent smuggling
-        applies here** (the section-service docstring's warning): a class in school B
-        pointing at a subject in school A is unrepresentable only via composite FKs or a
-        scope-checked parent re-read inside the transaction — decide while writing.
+        `classes` / `subjects`; unique `(academicYearId, classId, subjectId)`
+        (`class_subject_mappings_year_class_subject_uq`); `isElective` boolean default
+        false (`is_elective` — the checkbox for "core subjects every child takes");
+        `sequenceNumber` smallint default 0; `createdBy` (house pattern, CONVENTIONS.md).
+        No scope node. `subject_group_id` deferred — no `subject_groups` table yet
+        (exams-phase), the reference itself adds such cross-table FKs by later ALTER.
       - `section_teacher_assignments`: org+school denormalised; FKs to `sections` /
-        `academic_years` / `user`; `role` pgEnum `teacher_assignment_role`:
-        `class_teacher` / `subject_teacher` / `co_teacher` / `activity_teacher`
-        (lowercase house values; the reference capitals them, we don't); `subjectId`
-        uuid NULLable with a CHECK — populated iff role = `subject_teacher`;
-        `effectiveFrom` date notNull default today; `effectiveTo` date nullable
-        (NULL = current). **Append-on-change**: ending or replacing an assignment closes
-        the row (`effectiveTo` = today) and inserts the successor — the one sanctioned
-        UPDATE, documented as such. Partial index on `(sectionId) WHERE effectiveTo IS
-        NULL` per the reference.
+        `academic_years` / `user`; `role` pgEnum `teacher_assignment_role`
+        (`class_teacher` / `subject_teacher` / `co_teacher` / `activity_teacher`,
+        lowercase); `subjectId` uuid NULLable with a **Drizzle-modeled** CHECK
+        `sta_subject_matches_role` — populated iff role = `subject_teacher`;
+        `effectiveFrom` date notNull default `CURRENT_DATE`; `effectiveTo` date nullable
+        (NULL = currently active). **Append-on-change** (the one sanctioned UPDATE, a
+        service concern — S2.2 `endAssignment` closes + inserts; the tiny-bit partial
+        index just serves "who teaches now"). Partial index
+        `section_teacher_assignments_active_idx` on `(sectionId) WHERE effectiveTo IS
+        NULL` (reference table 11). Both tables carry `createdAt`/`updatedAt`
+        `timestamptz` (updatedAt covers the `effectiveTo` UPDATE; reference had only
+        created_at). The **cross-tenant parent-smuggling** decision is deliberately a
+        S2.2 service concern (scope-checked parent re-read inside the transaction).
 
 - [ ] S2.2 `feat(contracts,services): the assignment layer` — one service covering both
       tables (they are one workflow: map, then staff) or two mirroring the tables;
@@ -341,7 +349,7 @@ fix commit, an owner-requested squash), update the ledger and flag it in the sum
 | 2 | `feat(contracts,services): subjects` | S1.2 |
 | 3 | `feat(trpc): subject router` | S1.3 |
 | 4 | `test: subjects in integration, smoke, and seed` | S1.4 |
-| 5 | `docs: TASKS.md — slice 1 done` | S1.5 |
+| 5 | `feat(db): class_subject_mappings + section_teacher_assignments` + S1.5's docs (owner folds them, as with commit 1) | S1.5 + S2.1 |
 | 6 | `feat(db): class_subject_mappings + section_teacher_assignments` | S2.1 |
 | 7 | `feat(contracts,services): the assignment layer` | S2.2 |
 | 8 | `feat(trpc): assignment + mapping routers` | S2.3 |

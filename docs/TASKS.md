@@ -6,6 +6,44 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
+**Phase 2 slice 1 — subjects — is COMPLETE (2026-08-29).** Four commits: `feat(db):
+subjects table` (incl. the no-self-commit agreement + this plan's start), `feat(contracts,
+services): subjects`, `feat(trpc): subject router`, `test: subjects in integration,
+smoke, and seed`.
+
+- `subjects` table in `packages/db/src/schema/academic.ts` (`0003_lowly_sentinel.sql`,
+  purely additive): org+school denormalised, `name` unique per school, `subject_category`
+  enum, `counts_toward_result`, `is_graded_only`. **NOT in the scope tree** — no
+  `scope_nodes` row; a teacher's subject authority is a `section_teacher_assignments`
+  fact (ADR-012), enforced by `checkSubjectAccess` in slice S4.
+- `subject.contract.ts` + `subject.service.ts` (school-level; `atSchoolLevel` and
+  `requireSchoolId` are now exported from `academic.service.ts`, one definition) →
+  `subject.router.ts`: 5 procedures, owner-resolved reads per B6/ADR-028, **no
+  `read_history`** (subjects are not year-scoped; recorded in the router docstring as a
+  decision, not an omission). The `subject:*` permissions already existed in
+  `RESOURCE_ACTIONS` / `DEFAULT_ROLE_PERMISSIONS`, so no authz changes were needed.
+- Verification: `pnpm test:integration` = **33** (was 27); smoke all-pass incl. the new
+  subject rows; `check-types` 8/8.
+
+**The full Phase 2 plan and the commit ledger live in
+`.kilo/plans/1788048000000-phase2-subjects-terms-enrollments.md`** — read it, tick its
+boxes. Next, in order:
+
+1. **S2 — the teaching-assignment layer (NEXT):** `class_subject_mappings` (which
+   subjects a class takes in a year) + `section_teacher_assignments` (who teaches what
+   where, dated, append-on-change). Added to the plan after review — the access slice
+   cannot ship without them.
+2. **S3 — terms** (keyed to `academicYearId`).
+3. **S4 — `checkSubjectAccess`** (ADR-gated, reads the S2 table) **+ the student
+   owner-resolver** on the B6 pattern (`resolveYearOwner` is the template). **Deadline:
+   before the enrollment slice.**
+4. **S5 — enrollments** (LAST; needs S4's owner-resolver).
+
+The security-review and authz-refactor status below is history — the current numbers are
+the ones above.
+
+---
+
 **Security review + test ecosystem (2026-08-26) is COMPLETE** — eight chunks, each a
 separate commit. What changed and what it means for the next agent:
 
@@ -35,10 +73,9 @@ are in `docs/DECISIONS.md`. New gated endpoints follow the five recipes in
 `docs/CONVENTIONS.md` → "Staff procedure configuration" — that section is the lookup, not this
 file.
 
-Next up is **Phase 2, the rest** — subjects, terms, enrollments — but note its ordering
-constraint: the enrollment slice must arrive AFTER a student owner-resolver exists on the
-B6 pattern (`OwnerResolver` in `packages/trpc/src/trpc.ts`; `resolveYearOwner` in
-`academic.router.ts` is the template), because a student's authorizing node is one join away.
+(The "next up" framing has moved to the top of this file — Phase 2's order is
+governed by the subjects-terms-enrollments plan, whose ledger and checkboxes are
+authoritative.)
 
 **Phase 1 authorization spine is in. Finish Phase 1 leftovers, then start Phase 2.**
 
@@ -336,8 +373,9 @@ Still open, in rough priority order:
       can currently write marks for *every* subject in it — the Physics teacher can enter
       Chemistry marks. The scope tree has no subject axis by design, so `can()` cannot
       express this; it needs `checkSubjectAccess` against `section_teacher_assignments`
-      (ADR-012). **Blocks shipping marks entry.** Requires `sections` + `subjects`, so
-      Phase 2.
+      (ADR-012). **Blocks shipping marks entry.** Prerequisite now met: `sections` and
+      `subjects` both exist (slice S1). Landing in Phase 2 slice S4, which first creates
+      `section_teacher_assignments` (slice S2) and gates it behind an ADR.
 - [x] **CHECK constraints on `role_assignments` and `scope_nodes`** — done (ADR-019).
       Org-scoped grants must have `scope_id = organization_id`, and a scope node must
       carry the ancestry its `type` implies, so a class node can no longer yield a

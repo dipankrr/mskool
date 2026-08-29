@@ -7,11 +7,13 @@ import {
   pgEnum,
   pgTable,
   smallint,
+  text,
   timestamp,
   uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import { user } from "./auth";
 import { organizations, schools } from "./organization";
 
 /**
@@ -299,6 +301,159 @@ export const subjects = pgTable(
   ],
 );
 
+export const teacherAssignmentRoleEnum = pgEnum("teacher_assignment_role", [
+  "class_teacher",
+  "subject_teacher",
+  "co_teacher",
+  "activity_teacher",
+]);
+
+/**
+ * WHICH SUBJECTS A CLASS TAKES IN A GIVEN YEAR — the template layer.
+ *
+ * `subjects` is the school-wide catalogue; THIS table is "Class 6 studies
+ * Mathematics in 2025-26". One row per (year, class, subject) — the is_elective
+ * flag is what says "not every student is auto-assigned this one", and the
+ * auto-generation of `student_subject_enrollments` starts from here
+ * (reference SQL table 16).
+ *
+ * NOT a scope node (hard rule 12 names school/class/section only), so no
+ * scope_nodes row and no transaction. The unique (year, class, subject) triple
+ * is what prevents "Physics twice for Class 6" — the same name collision the
+ * subjects table handles at school level, one level down.
+ *
+ * `subject_group_id` from the reference (CBSE/ICSE grouping) is deliberately
+ * absent — `subject_groups` does not exist yet and grouping is an
+ * exams-phase need (see this plan's S2 header). The FK would be a second
+ * ALTER like the reference itself performs.
+ */
+export const classSubjectMappings = pgTable(
+  "class_subject_mappings",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    organizationId: uuid()
+      .notNull()
+      .references(() => organizations.id),
+    schoolId: uuid()
+      .notNull()
+      .references(() => schools.id),
+    academicYearId: uuid()
+      .notNull()
+      .references(() => academicYears.id),
+    classId: uuid()
+      .notNull()
+      .references(() => classes.id),
+    subjectId: uuid()
+      .notNull()
+      .references(() => subjects.id),
+
+    // true = NOT auto-assigned to every student; the class-count list that
+    // matters for the template is "core subjects every child takes".
+    isElective: boolean().notNull().default(false),
+    // Display order on the report card — "0" first, ascending.
+    sequenceNumber: smallint().notNull().default(0),
+
+    createdBy: text().references(() => user.id),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex("class_subject_mappings_year_class_subject_uq").on(
+      t.academicYearId,
+      t.classId,
+      t.subjectId,
+    ),
+    index("class_subject_mappings_class_year_idx").on(t.classId, t.academicYearId),
+    index("class_subject_mappings_school_idx").on(t.schoolId),
+    index("class_subject_mappings_org_idx").on(t.organizationId),
+  ],
+);
+
+/**
+ * WHO TEACHES WHAT, WHERE, WHEN — the delivery layer. The fact
+ * `checkSubjectAccess` (ADR-012) reads when marks arrive.
+ *
+ * A NEW row every time a teacher's assignment changes — ending or replacing
+ * one closes the old row (`effectiveTo` = the handover day) and inserts the
+ * successor. That makes `subjectId` nullable-with-a-role-rule rather than
+ * optional: a Class Teacher or Co-Teacher has no subject, a Subject Teacher
+ * must have exactly one. Enforced by `sta_subject_matches_role` below, so a
+ * row that breaks the rule is rejected by the database, not by the app's
+ * good intentions.
+ *
+ * ADR-012's boundary, worth restating where the table lives: this is the
+ * TIMETABLE fact. What a person may DO is `role_assignments`. `checkSubjectAccess`
+ * reads both — the authorization question is "does a live assignment row say
+ * the caller teaches this section/subject?"; it never GRANTS from here.
+ */
+export const sectionTeacherAssignments = pgTable(
+  "section_teacher_assignments",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    organizationId: uuid()
+      .notNull()
+      .references(() => organizations.id),
+    schoolId: uuid()
+      .notNull()
+      .references(() => schools.id),
+
+    // Section implies the year (a section IS year-scoped), yet the year is
+    // kept denormalised like every academic table — a query for "who taught
+    // 6-A last term" should not have to join through the section.
+    sectionId: uuid()
+      .notNull()
+      .references(() => sections.id),
+    academicYearId: uuid()
+      .notNull()
+      .references(() => academicYears.id),
+
+    // text, not uuid — better-auth owns the user table (hard rule 10).
+    userId: text()
+      .notNull()
+      .references(() => user.id),
+
+    role: teacherAssignmentRoleEnum().notNull(),
+    // Populated iff role = 'subject_teacher' — see the CHECK constraint.
+    subjectId: uuid().references(() => subjects.id),
+
+    // NULL = currently active. A date-range model, not a status flag: "who
+    // taught this in September" is answerable without ever touching the past.
+    effectiveFrom: date().notNull().default(sql`CURRENT_DATE`),
+    effectiveTo: date(),
+
+    createdBy: text().references(() => user.id),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    // The subject/role pairing is a structural invariant, not a preference:
+    // a subject-scoped teacher WITH no subject would be denied every subject;
+    // a class teacher WITH one would be offered a scope she cannot fill.
+    check(
+      "sta_subject_matches_role",
+      sql`(${t.role} = 'subject_teacher' AND ${t.subjectId} IS NOT NULL)
+          OR (${t.role} <> 'subject_teacher' AND ${t.subjectId} IS NULL)`,
+    ),
+    index("section_teacher_assignments_section_idx").on(t.sectionId),
+    index("section_teacher_assignments_user_idx").on(t.userId),
+    index("section_teacher_assignments_school_idx").on(t.schoolId),
+    index("section_teacher_assignments_org_idx").on(t.organizationId),
+    // "Who is teaching here right now?" — the hot query, served by a small
+    // index of only the open rows (reference table 11).
+    index("section_teacher_assignments_active_idx")
+      .on(t.sectionId)
+      .where(sql`${t.effectiveTo} IS NULL`),
+  ],
+);
+
 export const academicYearRelations = relations(
   academicYears,
   ({ one, many }) => ({
@@ -355,3 +510,59 @@ export const subjectRelations = relations(subjects, ({ one }) => ({
     references: [schools.id],
   }),
 }));
+
+export const classSubjectMappingRelations = relations(
+  classSubjectMappings,
+  ({ one }) => ({
+    organization: one(organizations, {
+      fields: [classSubjectMappings.organizationId],
+      references: [organizations.id],
+    }),
+    school: one(schools, {
+      fields: [classSubjectMappings.schoolId],
+      references: [schools.id],
+    }),
+    academicYear: one(academicYears, {
+      fields: [classSubjectMappings.academicYearId],
+      references: [academicYears.id],
+    }),
+    class: one(classes, {
+      fields: [classSubjectMappings.classId],
+      references: [classes.id],
+    }),
+    subject: one(subjects, {
+      fields: [classSubjectMappings.subjectId],
+      references: [subjects.id],
+    }),
+  }),
+);
+
+export const sectionTeacherAssignmentRelations = relations(
+  sectionTeacherAssignments,
+  ({ one }) => ({
+    organization: one(organizations, {
+      fields: [sectionTeacherAssignments.organizationId],
+      references: [organizations.id],
+    }),
+    school: one(schools, {
+      fields: [sectionTeacherAssignments.schoolId],
+      references: [schools.id],
+    }),
+    section: one(sections, {
+      fields: [sectionTeacherAssignments.sectionId],
+      references: [sections.id],
+    }),
+    academicYear: one(academicYears, {
+      fields: [sectionTeacherAssignments.academicYearId],
+      references: [academicYears.id],
+    }),
+    user: one(user, {
+      fields: [sectionTeacherAssignments.userId],
+      references: [user.id],
+    }),
+    subject: one(subjects, {
+      fields: [sectionTeacherAssignments.subjectId],
+      references: [subjects.id],
+    }),
+  }),
+);
