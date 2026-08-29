@@ -4,6 +4,7 @@ import { healthRouter, router } from "./trpc";
 import { academicRouter } from "./routers/academic.router";
 import { meRouter } from "./routers/me.router";
 import { schoolRouter } from "./routers/school.router";
+import { subjectRouter } from "./routers/subject.router";
 
 // Domain routers land here as each phase ships — see docs/TASKS.md.
 // Staff routers are namespaced <domain>.*; student portal routers portal.*.
@@ -15,6 +16,8 @@ export const appRouter = router({
   school: schoolRouter,
   // Academic structure: academic.year.*, academic.class.*, academic.section.*.
   academic: academicRouter,
+  // The school's subject catalogue: subject.list, subject.byId, …
+  subject: subjectRouter,
 });
 
 

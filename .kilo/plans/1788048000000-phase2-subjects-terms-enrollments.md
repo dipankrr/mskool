@@ -171,20 +171,27 @@ closed: seed idempotent on a second run, `pnpm smoke:authz` green at baseline
 chunk — the service's behaviour is exercised by the integration suite in S1.4); no
 imports from `@repo/trpc` or better-auth anywhere in the two new files.
 
-### S1.3 · `feat(trpc): subject router`
+### S1.3 · `feat(trpc): subject router` — ✅ DONE
 
-- [ ] `packages/trpc/src/routers/subject.router.ts` — copy `academic.router.ts`'s shape:
-      `staffProcedure('subject:create')` for the mutation, `staffListProcedure` for
-      lists (ADR-017 split), `addressedBy` on single-resource reads.
-- [ ] Every procedure carries `.meta({ openapi })` + `.output()` — the generator throws
-      without them and REST appears in `/docs`.
-- [ ] Add the permission strings to `DEFAULT_ROLE_PERMISSIONS` in `@repo/authz` —
-      decide the exact set while writing; `subject:read_history` only if subjects turn
-      out to have a history worth separating (they may not — flag it).
-- [ ] Wire the router into `router.ts`.
+- [x] `packages/trpc/src/routers/subject.router.ts` — copies the YEAR router's shape
+      (subjects are school-level, not scope nodes): `staffListProcedure("subject:read")`
+      for the list (ADR-017 permissive), `byId` with `resolveSubjectOwner` (the B6
+      adapter, `gate: "overlap"` per ADR-028), create with the B5 explicit-`schoolId`
+      input, update/deactivate owner-resolved with the default COVER gate (teachers hold
+      no write permissions, so the overlap question never arises on a write).
+- [x] **NO `read_history` gate** — flagged as the plan asked: subjects are not
+      year-scoped, so there is no history to gate. Recorded in the router's docstring;
+      if the catalogue is ever year-differentiated, that is a new decision.
+- [x] Permission strings — **already existed**: `subject: ["create","read","update",
+      "delete"]` was in `RESOURCE_ACTIONS` from the start, and DEFAULT_ROLE_PERMISSIONS
+      already grants the full set to `principal` and `subject:read` to `class_teacher`
+      and `subject_teacher` (written forward-looking). **No authz changes needed.**
+- [x] Every procedure carries `.meta({ openapi })` + `.output()` — 5 REST endpoints.
+- [x] Wired into `router.ts` as `subject` (root level, like `school`).
 
-**Verify** `pnpm check-types` green; `pnpm test` still green; `check:builders` and
-`check:openapi` green with the new endpoints.
+**Verify** ✅ `pnpm check-types` 8/8; `pnpm test` green; `check:builders` green (no
+ungated builders, no overlap-gated mutations); `check:openapi` green — 5 new
+`/subjects` endpoints listed.
 
 ### S1.4 · `test: subjects in integration, smoke, and seed`
 
