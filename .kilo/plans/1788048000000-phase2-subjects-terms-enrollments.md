@@ -269,10 +269,27 @@ codes stay school-local until then), `subject_name_history`, `student_subject_en
         created_at). The **cross-tenant parent-smuggling** decision is deliberately a
         S2.2 service concern (scope-checked parent re-read inside the transaction).
 
-- [ ] S2.2 `feat(contracts,services): the assignment layer` — one service covering both
-      tables (they are one workflow: map, then staff) or two mirroring the tables;
-      decided while writing. Ending an assignment is NOT a generic patch — a dedicated
-      `endAssignment` (and `reassign` = close + insert in one transaction).
+- [x] **S2.2 `feat(contracts,services): the assignment layer`** — one service
+      (`assignment.service.ts`, `assignmentService` singleton) covering both tables:
+      - **Mappings**: `createClassSubjectMapping` (transaction — re-reads year/class/
+        subject through the caller's scope, closing the cross-tenant-parent-smuggling
+        hole the plan flagged), `listClassSubjectMappings(scopes, academicYearId,
+        classId)`, `getClassSubjectMappingById`, `updateClassSubjectMapping`
+        (isElective/sequenceNumber only; the year/class/subject triple is not
+        patchable). **No remove-procedure** — a wrong mapping is fixed structurally,
+        not by mutating a row into meaning something else (and `isElective` is a real
+        flag, not a delete tombstone). Both B6 adapters (`getClassSubjectMapping OwnerId`,
+        `getSectionTeacherAssignment OwnerId`) included.
+      - **Assignments**: `createSectionTeacherAssignment` (transaction — verifies the
+        section belongs to the caller's school AND that `academicYearId` matches the
+        section's own; subject presence/absence is the database's CHECK, not re-checked);
+        `listSectionTeacherAssignments` (open rows only, `isNull(effectiveTo)` — served
+        by the partial index), `getSectionTeacherAssignmentById`, and **`endAssignment`
+        (the one sanctioned UPDATE)** — closes the open row, optionally inserts a
+        successor, atomically.
+      - Contracts: `assignment.contract.ts` (mapping + assignment select/create/update
+        schemas; NO assignment update schema — ending is a dedicated operation, so a
+        generic PATCH cannot bypass append-on-change); wired into both barrels.
 - [ ] S2.3 `feat(trpc): assignment + mapping routers` — permission namespaces decided
       while writing (leaning `subject_mapping.*` and `teacher_assignment.*`); openapi
       meta + output on every procedure; no `scope_nodes` writes anywhere.
@@ -349,8 +366,7 @@ fix commit, an owner-requested squash), update the ledger and flag it in the sum
 | 2 | `feat(contracts,services): subjects` | S1.2 |
 | 3 | `feat(trpc): subject router` | S1.3 |
 | 4 | `test: subjects in integration, smoke, and seed` | S1.4 |
-| 5 | `feat(db): class_subject_mappings + section_teacher_assignments` + S1.5's docs (owner folds them, as with commit 1) | S1.5 + S2.1 |
-| 6 | `feat(db): class_subject_mappings + section_teacher_assignments` | S2.1 |
+| 5 | `feat(db): class_subject_mappings + section_teacher_assignments` + S1.5's docs (owner folds them, as with commit 1) | S2.1 (+ S1.5 docs folded in) |
 | 7 | `feat(contracts,services): the assignment layer` | S2.2 |
 | 8 | `feat(trpc): assignment + mapping routers` | S2.3 |
 | 9 | `test: the assignment layer in integration, smoke, and seed` | S2.4 |

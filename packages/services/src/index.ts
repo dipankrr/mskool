@@ -20,4 +20,8 @@ export * from "./academic.service";
 // subject-authority check (checkSubjectAccess) arrives with marks, S3.
 export * from "./subject.service";
 
+// The teaching-assignment layer: which subjects a class takes in a year, and
+// who teaches what where — the fact checkSubjectAccess reads (ADR-012).
+export * from "./assignment.service";
+
 

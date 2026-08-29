@@ -22,5 +22,9 @@ export * from "./contracts/academic.contract";
 // Subjects: the school's subject catalogue.
 export * from "./contracts/subject.contract";
 
+// The teaching-assignment layer: which subjects a class takes in a year, and
+// who teaches what where — the fact checkSubjectAccess reads (ADR-012).
+export * from "./contracts/assignment.contract";
+
 
 
