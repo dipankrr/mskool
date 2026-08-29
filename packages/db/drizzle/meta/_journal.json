@@ -22,6 +22,13 @@
       "when": 1786420347789,
       "tag": "0002_ancient_nico_minoru",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788017739265,
+      "tag": "0003_lowly_sentinel",
+      "breakpoints": true
     }
   ]
 }

@@ -147,6 +147,10 @@ login — the student account is the family account. See ADR-005 … ADR-009.
 ## Working agreement
 
 - **Read `docs/TASKS.md` before starting.** It says what is done and what is next.
+- **Never commit or push yourself.** Prepare the change, run the gates, and hand the user
+  a ready-to-paste commit message plus the exact file list. The user reviews and commits
+  manually. Keep commits small — one layer or one concern per commit, not one
+  mega-commit per feature.
 - **Update `docs/TASKS.md` when you finish.** The next agent depends on it.
 - **Record architectural choices in `docs/DECISIONS.md`** as a new ADR. Never silently
   contradict an existing one — supersede it explicitly, with reasoning.

@@ -230,6 +230,75 @@ export const sections = pgTable(
   ],
 );
 
+export const subjectCategoryEnum = pgEnum("subject_category", [
+  "scholastic",
+  "coscholastic",
+  "vocational",
+  "language",
+]);
+
+/**
+ * A subject as one school teaches it: "Mathematics" with the school's own code
+ * and category. School-scoped, NOT year-scoped — Maths is the same subject
+ * every year; what changes yearly lives on sections and enrollments.
+ *
+ * Columns follow reference SQL table 13: `category` separates the co-scholastic
+ * pipeline (ADR on exams; DOMAIN.md "separate pipeline, grades only"),
+ * `countsTowardResult = false` excludes a subject from totals, and
+ * `isGradedOnly` marks subjects with no numeric marks at all.
+ *
+ * NOT in the scope tree — no `scope_nodes` row (hard rule 12 names
+ * school/class/section only). A teacher's subject authority is a
+ * `section_teacher_assignments` fact (ADR-012), checked by `checkSubjectAccess`,
+ * not by `can()`. The board-code catalog (`system_subject_catalog`) and its FK
+ * arrive with the exams phase; the reference itself adds that FK by later ALTER.
+ */
+export const subjects = pgTable(
+  "subjects",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    organizationId: uuid()
+      .notNull()
+      .references(() => organizations.id),
+    schoolId: uuid()
+      .notNull()
+      .references(() => schools.id),
+
+    // "Mathematics", "हिन्दी". Unique per school — two branches of one trust
+    // both run "Mathematics", and inside one school the name is the label
+    // teachers pick from.
+    name: varchar({ length: 150 }).notNull(),
+    // "Maths", "Phy" — printed on timetables and report cards.
+    shortName: varchar({ length: 20 }),
+    // The school's own code ("MATH101"). Board-assigned codes (CBSE 041)
+    // arrive with the catalog; this stays the school's local handle.
+    code: varchar({ length: 20 }),
+
+    category: subjectCategoryEnum().notNull().default("scholastic"),
+
+    // false = excluded from totals and pass calculation (co-scholastic areas,
+    // activity subjects). DOMAIN.md's report-card maths branches on this.
+    countsTowardResult: boolean().notNull().default(true),
+    // true = no numeric marks; a grade is entered directly (Art, PE).
+    isGradedOnly: boolean().notNull().default(false),
+
+    // Never hard-deleted (hard rule 2): results, fee structures and teacher
+    // assignments all point here.
+    isActive: boolean().notNull().default(true),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex("subjects_school_name_uq").on(t.schoolId, t.name),
+    index("subjects_school_idx").on(t.schoolId),
+    index("subjects_org_idx").on(t.organizationId),
+  ],
+);
+
 export const academicYearRelations = relations(
   academicYears,
   ({ one, many }) => ({
@@ -273,5 +342,16 @@ export const sectionRelations = relations(sections, ({ one }) => ({
   class: one(classes, {
     fields: [sections.classId],
     references: [classes.id],
+  }),
+}));
+
+export const subjectRelations = relations(subjects, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [subjects.organizationId],
+    references: [organizations.id],
+  }),
+  school: one(schools, {
+    fields: [subjects.schoolId],
+    references: [schools.id],
   }),
 }));
