@@ -19,5 +19,8 @@ export * from "./contracts/me.contract";
 // Academic structure: years, classes, sections.
 export * from "./contracts/academic.contract";
 
+// Subjects: the school's subject catalogue.
+export * from "./contracts/subject.contract";
+
 
 

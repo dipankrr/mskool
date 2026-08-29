@@ -123,8 +123,11 @@ const SECTION_SCOPE_COLUMNS: ScopeColumns = {
  * attendance, marks, and fees all have a real class dimension, so widening
  * there hands a class teacher the whole school. If you find yourself reaching
  * for this in one of those services, the answer is a join, not a wider filter.
+ *
+ * Exported because it is about the ENTITY'S shape, not about years: subjects
+ * are school-level for the same reason (see subject.service.ts).
  */
-function atSchoolLevel(scope: DataScope): DataScope {
+export function atSchoolLevel(scope: DataScope): DataScope {
   return {
     organizationId: scope.organizationId,
     schoolId: scope.schoolId,
@@ -156,8 +159,10 @@ function atClassLevel(scope: DataScope): DataScope {
  * have to guess which branch the class is for. The caller names a school in the
  * request, `staffProcedure` resolves that to the school node, and the scope
  * arrives populated. Reaching this error means the input carried no school.
+ *
+ * Exported: every school-scoped write in every service needs the same check.
  */
-function requireSchoolId(scope: DataScope): string {
+export function requireSchoolId(scope: DataScope): string {
   if (!scope.schoolId) {
     throw new Error(
       "This operation needs a school. The request must name a schoolId so the " +

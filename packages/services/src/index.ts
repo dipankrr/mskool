@@ -16,4 +16,8 @@ export * from "./identity.service";
 // later domain hangs off.
 export * from "./academic.service";
 
+// The school's subject catalogue. School-level like years and classes; the
+// subject-authority check (checkSubjectAccess) arrives with marks, S3.
+export * from "./subject.service";
+
 

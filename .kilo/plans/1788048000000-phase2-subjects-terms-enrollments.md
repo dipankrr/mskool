@@ -1,18 +1,28 @@
 # mskool — Phase 2: subjects, terms, enrollments
 
-Four slices: **S1** subjects, **S2** terms, **S3** subject-level access + the student
-owner-resolver, **S4** enrollments. Each slice lands as 4–5 small commits, one layer per
-commit. Tests ride with the commit that introduces the code they cover.
+Five slices: **S1** subjects, **S2** the teaching-assignment layer
+(`class_subject_mappings` + `section_teacher_assignments`), **S3** terms, **S4**
+subject-level access + the student owner-resolver, **S5** enrollments. Each slice lands
+as 4–5 small commits, one layer per commit. Tests ride with the commit that introduces
+the code they cover.
 
 No ADRs are needed to start S1/S2 (the patterns exist: `school.router.ts`, the academic
-tables' denormalised tenancy columns). S3 opens with an ADR and is gated on the owner
-accepting it. S4 needs S3's resolver.
+tables' denormalised tenancy columns). S4 opens with an ADR and is gated on the owner
+accepting it. S5 needs S4's resolver.
+
+Amended 2026-08-29 (owner question: "why no class/section on subjects?"): the original
+four-slice plan omitted the two tables the subject domain actually needs, making the
+access slice unimplementable (`checkSubjectAccess` reads `section_teacher_assignments`)
+and marks entry sourceless (no answer to "which subjects does this section teach").
+The three-layer model from the reference SQL is now explicit: subjects = catalogue
+(once per school), class_subject_mappings = which subjects a class takes in a year,
+section_teacher_assignments = who teaches what where, dated, append-on-change.
 
 ## Goal
 
-Finish Phase 2 — subjects, terms, enrollments — and close the Phase 1 leftover
-"subject-level access is not enforced" (the Physics teacher can currently enter Chemistry
-marks), which TASKS.md marks as **blocking marks entry**.
+Finish Phase 2 — subjects, the teaching-assignment layer, terms, enrollments — and close
+the Phase 1 leftover "subject-level access is not enforced" (the Physics teacher can
+currently enter Chemistry marks), which TASKS.md marks as **blocking marks entry**.
 
 ---
 
@@ -39,13 +49,16 @@ be finished cleanly, stop and report rather than leaving a broken intermediate s
 ## Execution order — do not read this file top-to-bottom as an order
 
 ```
-S1.1 ──── FIRST. The table. Everything else in S1 sits on it.
+S1.1 ──── FIRST. The table. Everything else in S1 sits on it.      [DONE]
 S1.2 ── S1.3 ── S1.4 ── S1.5 (the type chain, then tests, then docs)
-S2.1 ── S2.2 ── S2.3 ── S2.4 ── S2.5   (same shape as S1; needs S1's patterns)
-S3.1 ──── ADR. Owner accepts or rejects BEFORE S3.2 moves.
-  ├─ S3.2 ── S3.3
-  └─ S3.4 ──── deadline: before any marks-entry slice
-S4.1 ── S4.2 ── S4.3 ── S4.4 ── S4.5   (LAST — needs S3.2's OwnerResolver)
+S2.1 ── S2.2 ── S2.3 ── S2.4 ── S2.5   (csm + sta: the teaching-assignment layer;
+                                        unblocks S4 AND the teacher-assignment UI)
+S3.1 ── S3.2 ── S3.3 ── S3.4 ── S3.5   (terms; independent of S2, after it for
+                                        ledger tidiness)
+S4.1 ──── ADR. Owner accepts or rejects BEFORE S4.3 moves.
+  ├─ S4.2 ── S4.3
+  └─ S4.4 ──── deadline: before any marks-entry slice
+S5.1 ── S5.2 ── S5.3 ── S5.4 ── S5.5   (LAST — needs S4.2's OwnerResolver)
 ```
 
 ---
@@ -137,15 +150,26 @@ keys; nothing deleted — hard rule 2). New entities for S1–S4 follow the same
 closed: seed idempotent on a second run, `pnpm smoke:authz` green at baseline
 (live API, then stopped).
 
-### S1.2 · `feat(contracts,services): subjects`
+### S1.2 · `feat(contracts,services): subjects` — ✅ DONE
 
-- [ ] `packages/contracts`: `subject.contract.ts` — drizzle-zod derived, same shape as
-      the academic contracts (create / update / list inputs).
-- [ ] `packages/services`: `subject.service.ts` — class + exported singleton, **no HTTP
+- [x] `packages/contracts`: `subject.contract.ts` — drizzle-zod derived, same shape as
+      the academic contracts (select / create / update). `isActive` omitted from both
+      input schemas: closing a subject is `subject.deactivate`, not a patch, so hard
+      rule 2 is not bypassable by a generic update (same reasoning as the class
+      contract). Barrel wired into `index.ts`.
+- [x] `packages/services`: `subject.service.ts` — class + exported singleton, **no HTTP
       awareness**; every query takes `DataScope` as a required argument (hard rule 1).
-      Create/update wrap nothing transactional (no scope_nodes), so plain awaits.
+      List takes the plural `scopes` (multi-branch grants); create/update/deactivate take
+      the single resolved scope. No transaction and no `scope_nodes` row — subjects are
+      not in the scope tree; duplicate names are refused by the unique index (ADR-022),
+      not pre-checked. Ships `getSubjectOwnerId`, the B6 adapter, same shape as
+      `getAcademicYearOwnerId`. `atSchoolLevel` + `requireSchoolId` are now EXPORTED from
+      `academic.service.ts` (one definition; subjects are school-level for the same
+      entity-shape reason years are). Barrel wired into `index.ts`.
 
-**Verify** `pnpm check-types` green. Service has no import from `@repo/trpc` or better-auth.
+**Verify** ✅ `pnpm check-types` 8/8 green; `pnpm test` green (no new unit tests this
+chunk — the service's behaviour is exercised by the integration suite in S1.4); no
+imports from `@repo/trpc` or better-auth anywhere in the two new files.
 
 ### S1.3 · `feat(trpc): subject router`
 
@@ -186,52 +210,104 @@ grows); seed idempotent on a second run.
 
 ---
 
-## Slice S2 — terms
+## Slice S2 — the teaching-assignment layer (csm + sta)
 
-Same shape as S1. Before S2.1, confirm against `docs/DOMAIN.md` whether the domain
-models a separate term-structure table or terms alone — the migration depends on it.
-Checkboxes are written when the slice starts — do not pre-tick, do not pre-write.
+Two tables, one workflow: map subjects onto classes for a year, then staff the sections.
+Amended into the plan 2026-08-29 — the original plan omitted both, which left the access
+slice (S4) reading a table that didn't exist. Deferred from the reference on purpose:
+`subject_groups` (and csm's nullable `subject_group_id` FK with it — CBSE grouping is an
+exams-phase need), `system_subject_catalog` (needs a platform-seeding story; subject
+codes stay school-local until then), `subject_name_history`, `student_subject_enrollments`
+(auto-generated from csm; needed for electives, not the core flow).
 
-- [ ] S2.1 `feat(db): terms table(s)` — keyed to `academicYearId`; term dates CHECKed
-      within the parent year's range (in Drizzle if expressible, else hand-written SQL
-      beside the existing `EXCLUDE` block).
-- [ ] S2.2 `feat(contracts,services): terms`
-- [ ] S2.3 `feat(trpc): term router` — creating a term does NOT touch `scope_nodes`.
-- [ ] S2.4 `test: terms in integration, smoke, and seed`
+- [ ] **S2.1 `feat(db): class_subject_mappings + section_teacher_assignments`** — one
+      migration, one layer. Full column spec written when the chunk starts; the shape:
+
+      - `class_subject_mappings`: org+school denormalised; FKs to `academic_years` /
+        `classes` / `subjects`; unique `(academicYearId, classId, subjectId)` per the
+        reference `uq_csm_class_subject`; `isElective` boolean default false (true =
+        not auto-assigned to every student); `sequenceNumber` smallint default 0
+        (report-card display order). No scope node. **Cross-tenant parent smuggling
+        applies here** (the section-service docstring's warning): a class in school B
+        pointing at a subject in school A is unrepresentable only via composite FKs or a
+        scope-checked parent re-read inside the transaction — decide while writing.
+      - `section_teacher_assignments`: org+school denormalised; FKs to `sections` /
+        `academic_years` / `user`; `role` pgEnum `teacher_assignment_role`:
+        `class_teacher` / `subject_teacher` / `co_teacher` / `activity_teacher`
+        (lowercase house values; the reference capitals them, we don't); `subjectId`
+        uuid NULLable with a CHECK — populated iff role = `subject_teacher`;
+        `effectiveFrom` date notNull default today; `effectiveTo` date nullable
+        (NULL = current). **Append-on-change**: ending or replacing an assignment closes
+        the row (`effectiveTo` = today) and inserts the successor — the one sanctioned
+        UPDATE, documented as such. Partial index on `(sectionId) WHERE effectiveTo IS
+        NULL` per the reference.
+
+- [ ] S2.2 `feat(contracts,services): the assignment layer` — one service covering both
+      tables (they are one workflow: map, then staff) or two mirroring the tables;
+      decided while writing. Ending an assignment is NOT a generic patch — a dedicated
+      `endAssignment` (and `reassign` = close + insert in one transaction).
+- [ ] S2.3 `feat(trpc): assignment + mapping routers` — permission namespaces decided
+      while writing (leaning `subject_mapping.*` and `teacher_assignment.*`); openapi
+      meta + output on every procedure; no `scope_nodes` writes anywhere.
+- [ ] S2.4 `test: the assignment layer in integration, smoke, and seed` — cross-tenant
+      denial (org A cannot map or assign into org B's classes/sections); the seed's
+      subject_teacher persona finally gets her assignment rows (she has been scoped to
+      6-A with no assignment to her name since the authz plan).
 - [ ] S2.5 `docs: TASKS.md — slice 2 done`
 
 ---
 
-## Slice S3 — subject-level access + the student owner-resolver
+## Slice S3 — terms
 
-- [ ] **S3.1 ADR — GATE.** `checkSubjectAccess`: where it lives (services vs authz), its
-      signature, how mark-entry procedures compose it with `staffProcedure` (a second
-      gate on the same context, or a new builder?), and its failure mode (FORBIDDEN vs
-      NOT_FOUND — an unassigned section should ideally be indistinguishable from a
-      nonexistent one). **Owner accepts before S3.3 moves.**
-- [ ] S3.2 `feat(trpc): student owner resolver` — in `trpc.ts` on the B6 pattern
-      (`resolveYearOwner` is the template): owned `studentId`s from
-      `student_portal_access`. Unit tests in `trpc.test.ts` — pure gate logic, no DB.
-- [ ] S3.3 `feat(authz,services): checkSubjectAccess` — per the accepted ADR + unit
-      tests for the pure part.
-- [ ] S3.4 `test: subject-level denial in integration + smoke` — the phase-1 leftover
-      closes: a `subject_teacher` scoped to one section is denied the adjacent
-      section's subject.
-- [ ] S3.5 `docs: TASKS.md — slice 3 done` (tick the phase-1 leftover checkbox)
+Same shape as S1. Before S3.1, confirm against `docs/DOMAIN.md` whether the domain
+models a separate term-structure table or terms alone — the migration depends on it.
+Checkboxes are written when the slice starts — do not pre-tick, do not pre-write.
+
+- [ ] S3.1 `feat(db): terms table(s)` — keyed to `academicYearId`; term dates CHECKed
+      within the parent year's range (in Drizzle if expressible, else hand-written SQL
+      beside the existing `EXCLUDE` block).
+- [ ] S3.2 `feat(contracts,services): terms`
+- [ ] S3.3 `feat(trpc): term router` — creating a term does NOT touch `scope_nodes`.
+- [ ] S3.4 `test: terms in integration, smoke, and seed`
+- [ ] S3.5 `docs: TASKS.md — slice 3 done`
+
+
 
 ---
 
-## Slice S4 — enrollments (LAST — needs S3.2)
+## Slice S4 — subject-level access + the student owner-resolver
 
-- [ ] S4.1 `feat(db): student_enrollments table` — per `docs/DOMAIN.md`; year-scoped
+- [ ] **S4.1 ADR — GATE.** `checkSubjectAccess`: where it lives (services vs authz), its
+      signature, how mark-entry procedures compose it with `staffProcedure` (a second
+      gate on the same context, or a new builder?), and its failure mode (FORBIDDEN vs
+      NOT_FOUND — an unassigned section should ideally be indistinguishable from a
+      nonexistent one). Reads `section_teacher_assignments`, which exists as of S2.
+      **Owner accepts before S4.3 moves.**
+- [ ] S4.2 `feat(trpc): student owner resolver` — in `trpc.ts` on the B6 pattern
+      (`resolveYearOwner` is the template): owned `studentId`s from
+      `student_portal_access`. Unit tests in `trpc.test.ts` — pure gate logic, no DB.
+- [ ] S4.3 `feat(authz,services): checkSubjectAccess` — per the accepted ADR + unit
+      tests for the pure part. ADR-012's boundary applies: `role_assignments` is the
+      authorization authority; `section_teacher_assignments` records the timetable fact.
+- [ ] S4.4 `test: subject-level denial in integration + smoke` — the phase-1 leftover
+      closes: a `subject_teacher` scoped to one section is denied the adjacent
+      section's subject, and a SubjectTeacher WITHOUT the matching assignment row is
+      denied the subject inside her own section.
+- [ ] S4.5 `docs: TASKS.md — slice 4 done` (tick the phase-1 leftover checkbox)
+
+---
+
+## Slice S5 — enrollments (LAST — needs S4.2)
+
+- [ ] S5.1 `feat(db): student_enrollments table` — per `docs/DOMAIN.md`; year-scoped
       via the section FK; hard rule 6: the service only inserts and sets `status`, it
       never rewrites history.
-- [ ] S4.2 `feat(contracts,services): enrollments` — staff track takes `DataScope`;
+- [ ] S5.2 `feat(contracts,services): enrollments` — staff track takes `DataScope`;
       the student track reads via owned `studentId` only.
-- [ ] S4.3 `feat(trpc): enrollment router` — staff (`enrollment.*`) + portal
+- [ ] S5.3 `feat(trpc): enrollment router` — staff (`enrollment.*`) + portal
       (`portal.*`) namespaces.
-- [ ] S4.4 `test: enrollments in integration, smoke, and seed`
-- [ ] S4.5 `docs: TASKS.md — Phase 2 complete`
+- [ ] S5.4 `test: enrollments in integration, smoke, and seed`
+- [ ] S5.5 `docs: TASKS.md — Phase 2 complete`
 
 ---
 
@@ -242,20 +318,30 @@ fix commit, an owner-requested squash), update the ledger and flag it in the sum
 
 | # | Commit | Chunk |
 |---|---|---|
-| 1 | `feat(db): subjects table` + AGENTS.md rule + this plan file (owner chose to fold the docs in) | preconditions + S1.1 |
+| 1 | `feat(db): subjects table` + AGENTS.md rule + this plan file (owner chose to fold the docs in) — **COMMITTED** | preconditions + S1.1 |
 | 2 | `feat(contracts,services): subjects` | S1.2 |
 | 3 | `feat(trpc): subject router` | S1.3 |
 | 4 | `test: subjects in integration, smoke, and seed` | S1.4 |
 | 5 | `docs: TASKS.md — slice 1 done` | S1.5 |
-| 6–10 | terms slice (same five shapes) | S2.1–S2.5 |
-| 11 | ADR + `feat: checkSubjectAccess` | S3.1 + S3.3 |
-| 12 | `feat(trpc): student owner resolver` | S3.2 |
-| 13 | `test: subject-level denial in integration + smoke` | S3.4 |
-| 14 | `docs: TASKS.md — slice 3 done` | S3.5 |
-| 15–19 | enrollments slice (same five shapes) | S4.1–S4.5 |
+| 6 | `feat(db): class_subject_mappings + section_teacher_assignments` | S2.1 |
+| 7 | `feat(contracts,services): the assignment layer` | S2.2 |
+| 8 | `feat(trpc): assignment + mapping routers` | S2.3 |
+| 9 | `test: the assignment layer in integration, smoke, and seed` | S2.4 |
+| 10 | `docs: TASKS.md — slice 2 done` | S2.5 |
+| 11–15 | terms slice (same five shapes) | S3.1–S3.5 |
+| 16 | ADR + `feat: checkSubjectAccess` | S4.1 + S4.3 |
+| 17 | `feat(trpc): student owner resolver` | S4.2 |
+| 18 | `test: subject-level denial in integration + smoke` | S4.4 |
+| 19 | `docs: TASKS.md — slice 4 done` | S4.5 |
+| 20–24 | enrollments slice (same five shapes) | S5.1–S5.5 |
 
-Drift note 2026-08-29: 20 → 19 commits — the owner folds the AGENTS.md rule and this
-plan file into the S1.1 commit instead of a separate docs commit.
+Drift notes:
+- 2026-08-29: 20 → 19 commits — the owner folds the AGENTS.md rule and this plan file
+  into the S1.1 commit instead of a separate docs commit.
+- 2026-08-29: 19 → ~24 commits — new slice S2 (the teaching-assignment layer). The
+  original plan omitted `class_subject_mappings` and `section_teacher_assignments`,
+  which left the access slice reading a table that didn't exist and marks entry with no
+  data source. Renumbered: terms → S3, access → S4, enrollments → S5.
 
 
 
