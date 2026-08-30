@@ -383,11 +383,19 @@ endpoints ✅; unit suite green ✅.
 all-pass (first post-change run; re-captured clean after the limiter
 window) ✅.
 
-## Chunk C8 — `docs: TASKS.md — Phase 3 done`
+## Chunk C8 — `docs: TASKS.md — Phase 3 done` — ✅ DONE (2026-08-31)
 
-- [ ] Resume-here: Phase 3 recorded, the deferral list shrinks by
-      `academic_calendar`, ADR-030 noted, the verification surface updated,
-      next-up pointer (Phase 4 fees or the UI milestone — owner's call).
+- [x] Resume-here rewritten: Phase 3 recorded (what ships, the calendar gate,
+      hard rule 5, the snapshot rule, ADR-030, the 0007/0008 schema incl. the
+      hand-written double-mark guard, the C4 partial-index deviation, the C7
+      builder-clip discovery), the deferral list shrinks by
+      `academic_calendar` and grows the attendance-specific deferrals, the
+      verification surface updated (integration 93, smoke 158, db:verify 72,
+      unit 86+38+32), and the next-up pointer set to Phase 4 fees OR the UI
+      milestone — owner's call. The `## Phase 3 — Attendance` section lower
+      in the file now carries the completion note and the
+      `attendance_corrections` DROPPED marker so it cannot contradict the
+      resume-here.
 
 ## Commit ledger (owner commits; agent prepares messages)
 

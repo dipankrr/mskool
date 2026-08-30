@@ -6,102 +6,87 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
-**PHASE 2 IS COMPLETE (2026-08-30).** All five slices — subjects, the teaching-
-assignment layer, terms, subject-level access + the student owner-resolver, and
-enrollments — are done, integrated, smoke-proven, and seeded. The slice-by-slice
-plan and commit ledger live in `.kilo/plans/1788048000000-phase2-subjects-terms-
-enrollments.md`. **What ships:** 38 REST endpoints over the academic structure,
-subjects, the teaching-assignment layer, terms, enrollments, and the student
-portal's first read; the subject-level access enforcement (ADR-029) that was
-Phase 1's one open authorization hole; and the ownership-only portal track.
+**PHASE 3 IS COMPLETE (2026-08-31).** Attendance ships end to end: the
+academic calendar (the marking gate), the per-school marking policy, periods,
+the record layer with section snapshots, the authoritative daily-status layer
+(hard rule 5 is now enforced by design — the summary is its read-model), and
+the marking flow behind 12 REST endpoints. The slice-by-slice plan and commit
+ledger live in `.kilo/plans/1788134400000-phase3-attendance.md`.
 
+- **What ships:** `attendance.calendar.generate/upsert/list` (idempotent bulk
+  generator fills missing dates only; overrides go through upsert),
+  `attendance.policy.get/upsert` (one row per school, created lazily),
+  `attendance.period.*` (section-attached config, STA year-consistency),
+  `attendance.mark` (the one `attendance:create` consumer: calendar gate →
+  roster check → record upsert → daily-status derivation → summary
+  recompute, one transaction), `attendance.status` (permissive, no
+  widening), and `attendance.summary` (scoped through the enrollment join).
+- **The calendar gate:** marking is refused — worded in `translateErrors` —
+  on a holiday, a weekend, or a date with NO calendar row (strict; the bulk
+  generator makes filling it a non-event). Working/half_day/exam_day accept.
+- **Hard rule 5 lands:** `attendance_records` is write-only ground truth;
+  `daily_attendance_status` is the only table downstream may read, one row
+  per student per year per date; `attendance_summary` (monthly/term/annual,
+  database-GENERATED percentage) is recomputed inside the marking
+  transaction. Working days are calendar truth, never "days someone marked".
+- **The snapshot rule:** section+class are copied onto records and daily
+  status at INSERT time and never updated — a mid-year transfer cannot
+  rewrite history (integration-proven; the test performs the transfer the
+  product cannot yet, see the deferral below).
+- **ADR-030 (owner-settled):** `attendance_corrections` is DROPPED. Records
+  edit in place; a nullable `correctionReason` on the record carries the why
+  for past-date edits (frontend convention — asked for past edits, not
+  same-day; backend stores, never enforces), and an update WITHOUT a reason
+  never wipes a stored one (the don't-wipe rule, integration-proven). The
+  additive retrofit path is recorded in the ADR.
+- **Schema:** `academic_calendar`, `attendance_policies`, `periods` (0007);
+  `attendance_records`, `daily_attendance_status`, `attendance_summary`
+  (0008) — all purely additive. The daily-mode double-mark guard is
+  hand-written SQL in 0008 (marked like 0001's EXCLUDEs):
+  `UNIQUE (student_id, date, COALESCE(period_id, sentinel))` — a plain
+  unique index treats NULL period_ids as DISTINCT, so a daily-mode school
+  could double-mark. `pnpm db:verify` re-proves the guard by name.
+- **A C4 deviation, owner-reviewable in the plan:** the summary's planned
+  composite unique key put nullable columns (`month`, `term_id`) inside a
+  unique key — NULLs are DISTINCT, the very trap the double-mark guard
+  fixes — so uniqueness is THREE partial unique indexes (monthly/term/
+  annual) plus per-type shape CHECKs instead.
+- **A C7 discovery worth keeping:** a section teacher reading a NEIGHBOURING
+  section's attendance day is FORBIDDEN at the BUILDER — the permissive
+  list clips grants to the addressed subtree and finds nothing (ADR-017's
+  zero-scopes answer) — before the service's four-column filter ever runs.
+  Two layers, both pinned.
+- **Verification surface:** `pnpm check-types` 8/8; `pnpm test:integration`
+  = 93 (was 80; the attendance block adds 13); `pnpm smoke:authz` = 158
+  checks, all-pass over the full 8-role matrix (NOTE: the sign-in limiter
+  is 20 per 15 min and a smoke run signs in 9 roles — restart the dev API
+  between consecutive runs); `pnpm test` = 86 authz + 38 web + 32 trpc unit
+  tests; `pnpm db:verify` = 72.
 - **Deliberately deferred, recorded so nobody assumes they shipped:**
-  `section_transfer_log` (mid-year section moves — the enrollment service
-  refuses to re-point an assigned section in words, so the history-preserving
-  path cannot be skipped), `student_subject_enrollments` (electives; the exam
-  chain's authority), `subject_groups` + `system_subject_catalog` (CBSE
-  grouping and board codes), `subject_name_history` (marksheet reprints), and
-  `academic_calendar`. Each lands with the flow that needs it.
-- **Schema:** `subjects`, `class_subject_mappings`, `section_teacher_assignments`
-  (`0003`/`0004`), `terms` (`0005`), `student_enrollments` (`0006`) — all purely
-  additive. `terms` carries a hand-written `terms_dates_within_year_trg`
-  trigger; `db:verify` is **37** assertions and proves every constraint beyond
-  drizzle-kit's sight by name. None of these tables is a scope node; every one
-  carries the denormalised `organizationId` + `schoolId` for `scopeWhere`.
-- **The vertical slices** all follow `school.router.ts` / the academic routers:
-  contract → service (required `DataScope`, parent re-reads inside the
-  transaction, per-table scope columns) → thin router (B5 explicit-parent
-  creates, B6 owner-resolved reads with overlap gates, cover mutations) →
-  OpenAPI meta/output → negative integration + smoke assertions. Terms reuse
-  the `academic_year:*` permission family; `yearVisibilityWhere` is the one
-  definition of the year-edge rule and `includeHistory` is a REQUIRED argument
-  on every year-scoped read.
-- **Subject-level access (ADR-029) is enforced.** A subject-content write
-  composes TWO facts at the builder: the role grant and
-  `assignmentService.hasSubjectAssignment` via `staffProcedure(permission,
-  { subjectGate: true })`; a miss is NOT_FOUND, generic, indistinguishable from
-  a nonexistent pair. `SUBJECT_GATED_WRITES` is enforced statically by
-  `check:builders`. The HTTP smoke leg of this proof rides with the first
-  consumer endpoint (marks entry, Phase 5).
-- **The portal track is live** (`portal.enrollment.list`): ownership only, no
-  `can()`, no `organizationId` in input — the owned-student list is the whole
-  filter, and the smoke proves the inactive access row stays invisible over
-  HTTP. Every future portal domain joins `portalRouter` under the same rules.
-- **The students slice is done (post-Phase-2 admission backend, 2026-08-30):**
-  `student.*` (list with front-desk search / byId / create / update /
-  deactivate) through the real contract schema; `deactivate` is the registry's
-  soft delete (hard rule 2) and `student:delete` is SENSITIVE (fresh gate
-  read). **Rosters now carry names:** `enrollment.list` returns
-  `{ enrollment, student }` pairs — the year anchor read through the identity
-  registry. Deliberately deferred: guardians + `student_guardians` (their own
-  slice before portal activation), portal login activation (ADR-007's
-  better-auth phone+password work), sibling links, previous-school records.
-  The admission flow end to end is now: `student.create` → `enrollment.create`
-  → `enrollment.assignSection` (all API-proven; the screens are the next UI
-  slice).
-- **Verification surface:** `pnpm test:integration` = **80** (was 27 pre-Phase 2);
-  `pnpm smoke:authz` = **152 checks, all-pass, over the FULL role matrix** — all
-  eight roles now have seeded logins and pinned cells (vice_principal, accountant,
-  librarian, staff_coordinator joined the original four); `pnpm test` = 86 authz +
-  38 web + 32 trpc unit tests; `pnpm db:verify` = 37. **The integration probes
-  validate through the REAL contract schemas** (create/update inputs are imported
-  from `@repo/contracts`, not hand-rolled), so an input-shape drift between the
-  contracts and the routers surfaces in the suite. One happy-path create
-  (subject, create → deactivate, self-cleaning) runs through tRPC; the other
-  creates' happy paths are service-covered and their contract shapes are
-  validated by every denial test.
-- **Matrix decision (owner, 2026-08-30):** `subject_teacher` holds
-  `enrollment:read` — her roster is read through the year anchor, and the
-  subjectGate decides what she may WRITE, not what she may see. The
-  `enrollment` min-scope entry carries the same editor-trap annotation as
-  `academic_year`. Extended-matrix cells pin the other four roles AS WRITTEN
-  (staff_coordinator is org-scoped and legitimately sees both branches'
-  structure; it holds no academic-data reads).
-- **A lesson worth keeping:** S2's create paths shipped type-clean but BROKEN —
-  the parent re-reads compiled `scopeWhere` columns from the wrong table (a
-  runtime SQL error, invisible to `tsc`), and `endAssignment`'s successor insert
-  ran in an independent transaction. Nothing caught either until the first
-  integration run exercised them against real Postgres. New write paths are not
-  proven by `check-types`; they are proven by the suite's first live run.
-  Corollary: **scope columns are per-table**, and **B6 owner resolvers resolve
-  the DEEPEST owning node** (the enrollment byId bug: resolving the school made
-  every branch row readable by id).
-- **Authz matrix additions** (owner-reviewed): `subject_mapping.*` and
-  `teacher_assignment.*` (S2.3); one fixture-only grant (subject_teacher ×
-  `enrollment:read` in the demo + integration orgs) marks an OPEN policy
-  question — should the default matrix carry it? A wider role-matrix rewrite
-  was rejected as unrequested policy change; treat every
-  `defaultPermissions.ts` diff as policy.
+  timetabling (periods' times are informational), the leave-approval
+  workflow (On_Leave is marker-entered in v1), a real corrections/history
+  table (the ADR-030 retrofit), and summary backfill automation beyond the
+  explicit `recomputeSummary` op. The Phase 2 deferral list SHRINKS by
+  `academic_calendar` (landed here); the rest stands: `section_transfer_log`
+  (now doubly relevant — the snapshot tests perform the move the product
+  cannot yet), `student_subject_enrollments`, `subject_groups` +
+  `system_subject_catalog`, `subject_name_history`. The students slice's
+  deferrals (guardians, portal login activation per ADR-007, sibling links,
+  previous-school records) also stand.
 
-**Next phase: Phase 3 — attendance** (`attendance_policies`, `periods`,
-`attendance_records`, `attendance_corrections`, `daily_attendance_status`,
-`attendance_summary`). Read `docs/DOMAIN.md` §4 first: the section snapshot at
-marking time, the daily/periodwise normalisation, and the
-read-`daily_attendance_status`-only rule (hard rule 5) are the load-bearing
-decisions. Marks entry (Phase 5) is the first `subjectGate` consumer —
-`check:builders` will enforce its shape.
+**Next: Phase 4 — fees** (14 tables: `fee_heads` → `fee_structures` →
+`fee_structure_lines` → `student_fee_assignments` → `fee_concessions`,
+optional-fee subscriptions, late-fee rules, installments, opening balances,
+payments, allocations, refunds, `financial_transactions`, receipt-number
+sequences). Hard rule 3 (append-only ledger, corrections are offsetting
+rows), `SELECT … FOR UPDATE` on the receipt sequence, and the webhook
+`system` context (ADR-009) are the load-bearing decisions. The alternative
+is the UI milestone — the admission flow
+(`student.create` → `enrollment.create` → `enrollment.assignSection`) and
+the attendance marking screens exist only as APIs — owner's call.
 
-The security-review and authz-refactor history below is superseded by the numbers
+The security-review and authz-refactor history below is superseded by the
+numbers above.
 above.
 
 ---
@@ -685,14 +670,19 @@ Three judgment calls still worth your eye, all recorded in ADR-023:
 
 ---
 
-## Phase 3 — Attendance (6 tables)
+## Phase 3 — Attendance — ✅ COMPLETE (2026-08-31)
 
+Shipped: `academic_calendar` (pulled in from the Phase 2 deferrals — the
+marking gate), `attendance_policies` (minus `can_mark_roles` /
+`can_correct_roles` — ADR-012), `periods`, `attendance_records`,
+`daily_attendance_status`, `attendance_summary`. **`attendance_corrections`
+was DROPPED (ADR-030)** — records edit in place with a nullable
+`correctionReason`; the table never existed in this codebase.
 
-`attendance_policies` (minus `can_mark_roles` / `can_correct_roles` — ADR-012), `periods`,
-`attendance_records`, `attendance_corrections`, `daily_attendance_status`,
-`attendance_summary`.
-
-Key invariant: only `daily_attendance_status` is read downstream (hard rule 5).
+Key invariant, now enforced by design: only `daily_attendance_status` is read
+downstream (hard rule 5); the summary is its recomputed read-model. What
+shipped, the deviations, and the verification numbers live in the resume-here
+at the top and in `.kilo/plans/1788134400000-phase3-attendance.md`.
 
 ---
 
