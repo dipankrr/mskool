@@ -13,6 +13,7 @@ import { academicService } from "@repo/services";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { router, staffListProcedure, staffProcedure, type OwnerResolver } from "../trpc";
+import { termRouter } from "./term.router";
 
 /**
  * ACADEMIC STRUCTURE — years, classes, sections (Phase 2 slice 1).
@@ -558,4 +559,7 @@ export const academicRouter = router({
   year: academicYearRouter,
   class: classRouter,
   section: sectionRouter,
+  // Terms are the year's own subdivisions, so they ride the academic namespace
+  // (academic.term.list …) — the year visibility question is the same edge.
+  term: termRouter,
 });

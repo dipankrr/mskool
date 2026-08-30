@@ -65,8 +65,11 @@ import { and, asc, eq } from "drizzle-orm";
  * is wrong invisibly: `true` hands a class teacher the school's history, `false`
  * hides it from the accountant chasing last year's arrears. Requiring it means
  * a new year-scoped read cannot forget the question exists.
+ *
+ * Exported because the rule is about the YEAR edge, not about years: terms
+ * hang off the same edge and must answer the same question (term.service.ts).
  */
-function yearVisibilityWhere(includeHistory: boolean) {
+export function yearVisibilityWhere(includeHistory: boolean) {
   return includeHistory ? undefined : eq(academicYears.isCurrent, true);
 }
 

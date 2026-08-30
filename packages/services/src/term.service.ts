@@ -1,6 +1,7 @@
 import {
   atSchoolLevel,
   requireSchoolId,
+  yearVisibilityWhere,
 } from "./academic.service";
 import { scopeWhere, type DataScope } from "@repo/authz";
 import type { CreateTermInput, UpdateTermInput } from "@repo/contracts";
@@ -102,38 +103,60 @@ export class TermService {
    * One year's terms in report-card order. Takes the PLURAL scopes (a user
    * may hold grants in several branches), and the year input pins the school
    * the way it does for sections.
+   *
+   * `includeHistory` is required, not optional — either default is wrong
+   * invisibly (the yearVisibilityWhere docstring owns that argument). A term
+   * is the entry point to a year's exam schedule, so a caller without
+   * `academic_year:read_history` must not reach a closed year's terms by
+   * naming its id: the join with `yearVisibilityWhere` pins the answer to the
+   * current year, the same mechanism the section reads use. This is the other
+   * side of the year→term edge the ADR-024 note calls load-bearing.
    */
-  async listTerms(scopes: DataScope[], academicYearId: string) {
-    return db
-      .select()
+  async listTerms(
+    scopes: DataScope[],
+    academicYearId: string,
+    includeHistory: boolean,
+  ) {
+    const rows = await db
+      .select({ term: terms })
       .from(terms)
+      .innerJoin(academicYears, eq(terms.academicYearId, academicYears.id))
       .where(
         and(
           eq(terms.academicYearId, academicYearId),
           scopeWhere(scopes.map(atSchoolLevel), TERM_SCOPE_COLUMNS),
+          yearVisibilityWhere(includeHistory),
         ),
       )
       .orderBy(asc(terms.sequenceNumber));
+
+    return rows.map((r) => r.term);
   }
 
   /**
-   * Reads one term. No active-only filter — there is no active flag — and no
-   * history gate: terms are year-scoped, but the year's own `read_history`
-   * gate already decides whether the caller may address its terms, and the
-   * router composes that answer before this query runs (S3.3).
+   * Reads one term. Same join as the list, for the same reason: out of scope,
+   * wrong tenant, and closed-year-without-read_history all collapse to null —
+   * the router makes them the same NOT_FOUND, so nothing here confirms an id
+   * exists somewhere the caller may not look.
    */
-  async getTermById(scope: DataScope, termId: string) {
-    const [term] = await db
-      .select()
+  async getTermById(
+    scope: DataScope,
+    termId: string,
+    includeHistory: boolean,
+  ) {
+    const [row] = await db
+      .select({ term: terms })
       .from(terms)
+      .innerJoin(academicYears, eq(terms.academicYearId, academicYears.id))
       .where(
         and(
           eq(terms.id, termId),
           scopeWhere(atSchoolLevel(scope), TERM_SCOPE_COLUMNS),
+          yearVisibilityWhere(includeHistory),
         ),
       );
 
-    return term ?? null;
+    return row?.term ?? null;
   }
 
   /**

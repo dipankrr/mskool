@@ -385,7 +385,26 @@ SQL: terms stand ALONE (no separate term-structure table). `terms.result_mode`
       one-line fix when the audit story lands (`authz_audit_log`, also unwritten).
       Verify ✅ check-types 8/8; unit 86+38+24 (no new unit tests this chunk — the
       service's behaviour is exercised by S3.4's integration run).
-- [ ] S3.3 `feat(trpc): term router` — creating a term does NOT touch `scope_nodes`.
+- [x] S3.3 `feat(trpc): term router` — **DONE (2026-08-30)**.
+      `term.router.ts`, composed as `academic.term.*` (terms ride the academic
+      namespace — the year-visibility question is the same edge). Four procedures,
+      OpenAPI meta + output on each: `academic.term.list` (GET /terms, permissive,
+      input `academicYearId`), `academic.term.byId` (GET /terms/{id}, B6
+      `resolveTermOwner` + overlap), `academic.term.create` (POST /terms, B5
+      explicit `schoolId`), `academic.term.update` (PATCH /terms/{id}, cover). No
+      delete (the service has no remove-procedure). **No `scope_nodes` writes.**
+      **Permission decision: terms reuse the `academic_year:*` family** — same
+      screens, same managers; a separate `term` resource would be two names for one
+      concept (the `portal_access` precedent). No authz changes needed.
+      **`read_history` composes like the year router's** (ADR-024): `ctx.canWithin`
+      for the list, `ctx.can` for byId, and the SERVICE pins both queries to the
+      current year via `yearVisibilityWhere` — exported from academic.service (the
+      one definition of the year-edge rule) and required (not optional) on both term
+      reads, per its "a new year-scoped read cannot forget the question" rule.
+      Verify ✅ check-types 8/8; check:builders green (no ungated builders, no
+      overlap mutations); check:openapi lists the 4 `/terms` endpoints (31 total);
+      unit 86+38+24; integration 50/50 (term procedures not yet exercised — that is
+      S3.4).
 - [ ] S3.4 `test: terms in integration, smoke, and seed`
 - [ ] S3.5 `docs: TASKS.md — slice 3 done` (add `terms` to the resume-here schema line)
 
