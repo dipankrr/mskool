@@ -47,8 +47,20 @@ Phase 1's one open authorization hole; and the ownership-only portal track.
   `can()`, no `organizationId` in input — the owned-student list is the whole
   filter, and the smoke proves the inactive access row stays invisible over
   HTTP. Every future portal domain joins `portalRouter` under the same rules.
-- **Verification surface:** `pnpm test:integration` = **74** (was 27 pre-Phase 2);
-  `pnpm smoke:authz` = **144 checks, all-pass, over the FULL role matrix** — all
+- **The students slice is done (post-Phase-2 admission backend, 2026-08-30):**
+  `student.*` (list with front-desk search / byId / create / update /
+  deactivate) through the real contract schema; `deactivate` is the registry's
+  soft delete (hard rule 2) and `student:delete` is SENSITIVE (fresh gate
+  read). **Rosters now carry names:** `enrollment.list` returns
+  `{ enrollment, student }` pairs — the year anchor read through the identity
+  registry. Deliberately deferred: guardians + `student_guardians` (their own
+  slice before portal activation), portal login activation (ADR-007's
+  better-auth phone+password work), sibling links, previous-school records.
+  The admission flow end to end is now: `student.create` → `enrollment.create`
+  → `enrollment.assignSection` (all API-proven; the screens are the next UI
+  slice).
+- **Verification surface:** `pnpm test:integration` = **80** (was 27 pre-Phase 2);
+  `pnpm smoke:authz` = **152 checks, all-pass, over the FULL role matrix** — all
   eight roles now have seeded logins and pinned cells (vice_principal, accountant,
   librarian, staff_coordinator joined the original four); `pnpm test` = 86 authz +
   38 web + 32 trpc unit tests; `pnpm db:verify` = 37. **The integration probes
