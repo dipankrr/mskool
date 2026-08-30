@@ -3,6 +3,7 @@
 import { healthRouter, router } from "./trpc";
 import { academicRouter } from "./routers/academic.router";
 import { assignmentRouter } from "./routers/assignment.router";
+import { attendanceRouter } from "./routers/attendance.router";
 import { enrollmentRouter, portalRouter } from "./routers/enrollment.router";
 import { meRouter } from "./routers/me.router";
 import { schoolRouter } from "./routers/school.router";
@@ -30,6 +31,9 @@ export const appRouter = router({
   assignment: assignmentRouter,
   // The year anchor: enrollment.* on the staff track.
   enrollment: enrollmentRouter,
+  // Attendance: attendance.calendar.* (the marking gate), attendance.policy.*,
+  // attendance.period.* — marking/status/summary join in C6.
+  attendance: attendanceRouter,
   // The student portal: portal.enrollment.* — ownership only, no can(). More
   // portal domains join this sub-router as they land.
   portal: portalRouter,

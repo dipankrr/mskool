@@ -179,16 +179,23 @@ export class AttendanceService {
 
     // ~365 rows, one statement, conflicts skipped. A batch that collided
     // loudly would make the generator fail on its second run — the opposite
-    // of idempotent.
-    return db.transaction(async (tx) =>
-      tx.insert(academicCalendar).values(rows).onConflictDoNothing({
-        target: [
-          academicCalendar.schoolId,
-          academicCalendar.academicYearId,
-          academicCalendar.date,
-        ],
-      }),
-    );
+    // of idempotent. Returns how many rows were actually INSERTED (re-runs
+    // fill nothing and report 0), so the caller sees the effect, not the
+    // intent.
+    return db.transaction(async (tx) => {
+      const inserted = await tx
+        .insert(academicCalendar)
+        .values(rows)
+        .onConflictDoNothing({
+          target: [
+            academicCalendar.schoolId,
+            academicCalendar.academicYearId,
+            academicCalendar.date,
+          ],
+        })
+        .returning({ id: academicCalendar.id });
+      return { generated: inserted.length };
+    });
   }
 
   /**
@@ -307,6 +314,27 @@ export class AttendanceService {
       .where(
         and(
           scopeWhere(atSchoolLevel(scope), POLICY_SCOPE_COLUMNS),
+        ),
+      );
+    return policy ?? null;
+  }
+
+  /**
+   * The same read on the PERMISSIVE track (ADR-017): the caller addresses a
+   * school and ctx.scopes is clipped to whatever of their grants reach into
+   * it. A section-scoped teacher does not COVER her school, yet the policy is
+   * school-level config with no class dimension — `atSchoolLevel` widens her
+   * clipped class scope to the school it belongs to, the same entity-shape
+   * reasoning the terms list uses. A school outside every grant yields null.
+   */
+  async getPolicyForSchool(scopes: DataScope[], schoolId: string) {
+    const [policy] = await db
+      .select()
+      .from(attendancePolicies)
+      .where(
+        and(
+          eq(attendancePolicies.schoolId, schoolId),
+          scopeWhere(scopes.map(atSchoolLevel), POLICY_SCOPE_COLUMNS),
         ),
       );
     return policy ?? null;

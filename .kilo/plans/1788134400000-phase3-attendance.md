@@ -195,17 +195,30 @@ structure, but its only v1 consumer is marking — the routers live under
 **Verify:** `check-types` 8/8 ✅; unit suite green ✅ (86 authz + 38 web + 32
 trpc).
 
-## Chunk C3 — `feat(trpc): attendance.calendar / policy / periods`
+## Chunk C3 — `feat(trpc): attendance.calendar / policy / periods` — ✅ DONE (2026-08-31)
 
-- [ ] `attendance.router.ts` with `calendar.generate` / `calendar.upsert` /
-      `calendar.list`, `policy.get` / `policy.upsert`, `period.*` CRUD —
-      OpenAPI meta + output everywhere; cover gates on mutations; gate choices
-      (`attendance:update` for calendar/policy/period surfaces,
-      `attendance:create` RESERVED for marking — recorded here when written).
-- [ ] Registered under `attendance` in the root router.
+- [x] `attendance.router.ts` with `calendar.generate` / `calendar.upsert` /
+      `calendar.list`, `policy.get` / `policy.upsert`, `period.list` /
+      `period.byId` / `period.create` / `period.update` — OpenAPI meta +
+      output everywhere; **gate choices recorded in the router header:
+      `attendance:update` gates every configuration surface,
+      `attendance:create` RESERVED for marking (C6)** — deliberately
+      different from the matrix's subject_teacher cell (create yes, update
+      no: she marks but does not configure). Reads are `attendance:read`;
+      calendar/policy lists are permissive (school-level facts,
+      `atSchoolLevel` widening); `period.byId` is B7 overlap with a
+      `resolvePeriodOwner` B6 resolver; mutations cover.
+- [x] Registered under `attendance` in the root router
+      (`attendance.calendar.*` / `attendance.policy.*` /
+      `attendance.period.*`).
+- [x] Small evolutions the routers forced: `generateYearCalendar` now
+      returns `{ generated }` (an output needs an effect, not an intent);
+      `getPolicyForSchool(scopes, schoolId)` added for the permissive policy
+      read; one `translateErrors` entry for the date-outside-year refusal
+      (the rest of the service's wordings already matched existing regexes).
 
-**Verify:** `check-types` 8/8; `check:builders`; `check:openapi` lists the new
-endpoints.
+**Verify:** `check-types` 8/8 ✅; `check:builders` clean ✅; `check:openapi`
+lists all 9 attendance endpoints ✅; unit suite green ✅.
 
 ## Chunk C4 — `feat(db): records + daily status + summary` (`0008`)
 

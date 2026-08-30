@@ -466,12 +466,20 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
     code: "BAD_REQUEST",
     message:
       "This enrollment already has a section. Moving a student mid-year needs a transfer — that flow is not built yet.",
-  },
-  {
+  },  {
     match: /^Only an admitted enrollment can be assigned a section/i,
     code: "BAD_REQUEST",
     message:
       "Only an enrollment still in the admission flow can be assigned a section. This one has already moved on.",
+  },
+  {
+    // upsertCalendarDay (attendance.service.ts): the unique index would
+    // happily accept a date filed under the wrong session, so the service
+    // checks it against the parent year's own bounds and refuses.
+    match: /^The date is outside the academic year/i,
+    code: "BAD_REQUEST",
+    message:
+      "That date is outside the session's dates. Pick a date the session covers.",
   },
   {
     // The status machine's refusal (dynamic detail is in the thrown message;
