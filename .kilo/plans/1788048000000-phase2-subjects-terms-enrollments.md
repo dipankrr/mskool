@@ -290,9 +290,36 @@ codes stay school-local until then), `subject_name_history`, `student_subject_en
       - Contracts: `assignment.contract.ts` (mapping + assignment select/create/update
         schemas; NO assignment update schema — ending is a dedicated operation, so a
         generic PATCH cannot bypass append-on-change); wired into both barrels.
-- [ ] S2.3 `feat(trpc): assignment + mapping routers` — permission namespaces decided
-      while writing (leaning `subject_mapping.*` and `teacher_assignment.*`); openapi
-      meta + output on every procedure; no `scope_nodes` writes anywhere.
+- [x] S2.3 `feat(trpc): assignment + mapping routers` — **DONE (2026-08-30)**.
+      Permission namespaces: `subject_mapping.*` and `teacher_assignment.*` (see the
+      sanctioned authz set below). Router at `packages/trpc/src/routers/assignment.router.ts`:
+      `assignment.subjectMapping.*` (list/byId/create/update) and
+      `assignment.teacherAssignment.*` (list/byId/create/end — `end` is the one
+      sanctioned append-on-change UPDATE, POST to `/teacher-assignments/{id}/end`).
+      Single-resource reads ask overlap (ADR-028), mutations stay strict cover, every
+      procedure carries OpenAPI meta + output, no `scope_nodes` writes. Registered in
+      `router.ts` under `assignment`. Verify ✅ check-types 8/8; check:openapi lists the
+      8 new REST endpoints; check:builders green; unit 86+24+38; integration 33/33.
+      **NOT yet covered by integration/smoke/seed — that is S2.4.**
+
+      **Authz diff — the complete, sanctioned set (owner-reviewed 2026-08-30):**
+      `RESOURCE_ACTIONS` + `subject_mapping`/`teacher_assignment` (create/read/update,
+      no delete — mappings are structurally corrected, assignments are ended);
+      + both in `RESOURCE_CATEGORIES.Structure`; `RESOURCE_MIN_SCOPE` +2 entries
+      (advisory-only, never enforced in `can()`); `DEFAULT_ROLE_PERMISSIONS`: principal
+      + both triples, class_teacher + `subject_mapping:read`, subject_teacher
+      + `subject_mapping:read` + `teacher_assignment:read`; org_admin is covered via
+      `ALL_PERMISSIONS`. **Nothing else.**
+      A wider matrix rewrite found in the working tree was REJECTED as an unrequested
+      role-policy change and removed: vice_principal gutted ~20 grants including
+      `academic_year:read_history` (contradicts ADR-024's seeded list),
+      class_teacher − `student:export`/`enrollment:read` with its comment replaced by
+      subject_teacher's, subject_teacher widened with `attendance:update/export`,
+      `marks:export`, `report_card:read`, staff_coordinator + `teacher_assignment:*`.
+      If any of that policy is wanted, re-propose it as its OWN owner-approved commit
+      with an ADR/decision note — never as a rider on a router chunk. No test pins
+      the matrix, so a matrix change cannot be caught by the suite; treat every
+      `defaultPermissions.ts` diff as policy.
 - [ ] S2.4 `test: the assignment layer in integration, smoke, and seed` — cross-tenant
       denial (org A cannot map or assign into org B's classes/sections); the seed's
       subject_teacher persona finally gets her assignment rows (she has been scoped to

@@ -109,6 +109,8 @@ export const RESOURCE_MIN_SCOPE: Record<Resource, ScopeType> = {
   fee_report: "school",
   exam: "school",
   enrollment: "school",
+  subject_mapping: "school",
+  teacher_assignment: "section",
   timetable: "class",
   syllabus: "class",
   student: "section",

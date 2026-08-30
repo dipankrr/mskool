@@ -47,6 +47,11 @@ export const RESOURCE_ACTIONS = {
   // past year is gated on it. Editable per org like any other permission
   // (ADR-011) — a school may hand it to whichever roles it trusts with history.
   academic_year: ["create", "read", "update", "delete", "read_history"],
+  // The teaching-assignment layer (Phase 2 S2): which subjects a class takes in a
+  // year, and who teaches what where. No `delete` — mappings are structurally
+  // corrected, assignments are ended via endAssignment (append-on-change).
+  subject_mapping: ["create", "read", "update"],
+  teacher_assignment: ["create", "read", "update"],
   exam: ["create", "read", "update", "delete", "publish"],
   enrollment: ["create", "read", "update", "delete"],
 
@@ -115,7 +120,10 @@ export const RESOURCE_CATEGORIES: Record<string, Resource[]> = {
   ],
   Staff: ["staff", "leave"],
   Communication: ["announcement"],
-  Structure: ["school", "class", "section", "subject", "academic_year", "exam"],
+  Structure: [
+    "school", "class", "section", "subject", "academic_year", "exam",
+    "subject_mapping", "teacher_assignment",
+  ],
   Configuration: ["school_settings", "org_settings"],
   Auth: ["role_permission", "role_assignment", "portal_access"],
 };

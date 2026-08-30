@@ -2,6 +2,7 @@
 // comment there for why no ungated builder is exported instead.
 import { healthRouter, router } from "./trpc";
 import { academicRouter } from "./routers/academic.router";
+import { assignmentRouter } from "./routers/assignment.router";
 import { meRouter } from "./routers/me.router";
 import { schoolRouter } from "./routers/school.router";
 import { subjectRouter } from "./routers/subject.router";
@@ -18,6 +19,10 @@ export const appRouter = router({
   academic: academicRouter,
   // The school's subject catalogue: subject.list, subject.byId, …
   subject: subjectRouter,
+  // The teaching-assignment layer: assignment.subjectMapping.* (which subjects
+  // a class takes in a year) and assignment.teacherAssignment.* (who teaches
+  // what where, append-on-change).
+  assignment: assignmentRouter,
 });
 
 

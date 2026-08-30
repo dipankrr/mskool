@@ -109,6 +109,14 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "portal_access:read",
     "portal_access:grant",
     "portal_access:revoke",
+    // Manages the teaching-assignment layer (Phase 2 S2): which subjects each
+    // class takes in a year, and who teaches what where.
+    "subject_mapping:create",
+    "subject_mapping:read",
+    "subject_mapping:update",
+    "teacher_assignment:create",
+    "teacher_assignment:read",
+    "teacher_assignment:update",
   ],
 
   // Deputises for the principal on academics. No financial approvals and no
@@ -190,6 +198,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     // Sees the year list to switch context; without read_history the switcher
     // offers the current session only.
     "academic_year:read",
+    // Sees which subjects their class takes — populates the subject pickers.
+    "subject_mapping:read",
     "student_fee_assignment:read",
     "fee_payment:read",
     "leave:create",
@@ -218,6 +228,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "section:read",
     "subject:read",
     "academic_year:read",
+    // Sees which subjects their class teaches and their own assignments.
+    "subject_mapping:read",
+    "teacher_assignment:read",
     "leave:create",
     "leave:read",
   ],
