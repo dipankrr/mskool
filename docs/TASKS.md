@@ -6,34 +6,43 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
-**Phase 2 slices 1–2 — subjects + the teaching-assignment layer — are COMPLETE
-(2026-08-30).** The authoritative slice-by-slice plan and commit ledger live in
-`.kilo/plans/1788048000000-phase2-subjects-terms-enrollments.md`; its slice order is
-S1 subjects → S2 the assignment layer (`class_subject_mappings` +
+**Phase 2 slices 1–3 — subjects, the teaching-assignment layer, terms — are
+COMPLETE (2026-08-30).** The authoritative slice-by-slice plan and commit ledger
+live in `.kilo/plans/1788048000000-phase2-subjects-terms-enrollments.md`; its
+slice order is S1 subjects → S2 the assignment layer (`class_subject_mappings` +
 `section_teacher_assignments`) → S3 terms → S4 `checkSubjectAccess` + the student
-owner-resolver (ADR-gated) → S5 enrollments. **S1 and S2 are done; S3 is next.**
+owner-resolver (ADR-gated) → S5 enrollments. **S1–S3 are done; S4 is next, and it
+opens with an ADR the owner must accept before implementation moves.**
 
 - **Schema:** `subjects`, `class_subject_mappings`, `section_teacher_assignments`
-  (`0003`/`0004`, purely additive). Subjects, mappings and assignments are NOT scope
-  nodes; every table carries the denormalised `organizationId` + `schoolId` for
-  `scopeWhere`. Every constraint the migrations carry beyond drizzle-kit's sight
-  (CHECKs, EXCLUDEs) is proven by name in `pnpm db:verify`.
+  (`0003`/`0004`), `terms` (`0005`) — all purely additive. `terms` carries a
+  hand-written `terms_dates_within_year_trg` trigger (a term's dates must sit
+  inside its year's — a cross-table rule no CHECK can hold); `db:verify` is now
+  **34** assertions and proves the trigger bites on INSERT and UPDATE. Subjects,
+  mappings, assignments and terms are NOT scope nodes; every table carries the
+  denormalised `organizationId` + `schoolId` for `scopeWhere`.
 - **The vertical slices** all follow `school.router.ts` / the academic routers:
   contract → service (required `DataScope`, parent re-reads inside the transaction)
   → thin router (B5 explicit-parent creates, B6 owner-resolved reads with overlap
   gates, cover mutations) → OpenAPI meta/output → negative integration + smoke
   assertions. REST surface: 5 `/subjects`, 4 `/subject-mappings`, 4
-  `/teacher-assignments` (incl. `POST /teacher-assignments/{id}/end`, the one
-  sanctioned append-on-change UPDATE).
-- **Verification surface:** `pnpm test:integration` = 50 (was 27 pre-S1);
-  `pnpm smoke:authz` all-pass incl. `assignment.*` matrix cells; `pnpm test` =
-  86 authz + 38 web + 24 trpc unit tests.
+  `/teacher-assignments`, 4 `/terms` (31 total). **Terms reuse the
+  `academic_year:*` permission family** (same screens, same managers — two names
+  for one concept was refused, per the `portal_access` precedent), and their reads
+  compose `read_history` exactly as the year router's does: `yearVisibilityWhere`
+  is exported from academic.service as the one definition of the year-edge rule,
+  and every year-scoped read takes `includeHistory` as a REQUIRED argument.
+- **Verification surface:** `pnpm test:integration` = **59** (was 27 pre-S1);
+  `pnpm smoke:authz` all-pass incl. `assignment.*` and term matrix cells;
+  `pnpm test` = 86 authz + 38 web + 24 trpc unit tests.
 - **A lesson worth keeping:** S2's create paths shipped type-clean but BROKEN —
   the parent re-reads compiled `scopeWhere` columns from the wrong table (a runtime
   SQL error, invisible to `tsc`), and `endAssignment`'s successor insert ran in an
   independent transaction. Nothing caught either until the first integration run
   exercised them against real Postgres. New write paths are not proven by
-  `check-types`; they are proven by the suite's first live run.
+  `check-types`; they are proven by the suite's first live run. Corollary now
+  written into the services: **scope columns are per-table** — hand a `scopeWhere`
+  a column set from another table and you get the missing-FROM-clause error above.
 - **Authz matrix additions** (S2.3, owner-reviewed): `subject_mapping.*` and
   `teacher_assignment.*` resources (no `delete` — mappings are corrected
   structurally, assignments are ended); principal manages both, class_teacher reads
