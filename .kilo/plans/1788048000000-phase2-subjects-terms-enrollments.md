@@ -344,17 +344,33 @@ codes stay school-local until then), `subject_name_history`, `student_subject_en
 
 ## Slice S3 — terms
 
-Same shape as S1. Before S3.1, confirm against `docs/DOMAIN.md` whether the domain
-models a separate term-structure table or terms alone — the migration depends on it.
-Checkboxes are written when the slice starts — do not pre-tick, do not pre-write.
+Same shape as S1. Confirmed at slice start against `docs/DOMAIN.md` + the reference
+SQL: terms stand ALONE (no separate term-structure table). `terms.result_mode`
+(`cumulative` | `terminal`) is what the exam computation chain reads, and
+`weightage` carries each term's share of the annual result.
 
-- [ ] S3.1 `feat(db): terms table(s)` — keyed to `academicYearId`; term dates CHECKed
-      within the parent year's range (in Drizzle if expressible, else hand-written SQL
-      beside the existing `EXCLUDE` block).
+- [x] S3.1 `feat(db): terms table` — **DONE (2026-08-30)**. `0005_bitter_hydra.sql`,
+      purely additive (enum + table + 4 FKs + 4 indexes, zero drops). org+school
+      denormalised; FKs to `academic_years` / `user` (createdBy); `name` varchar(100);
+      `sequenceNumber` smallint; dates; `term_result_mode` enum (lowercase house
+      style) default `cumulative`; `weightage` numeric(5,2) default 100.00 — the
+      year-sums-to-100 rule is a SOFT invariant (a CHECK demanding it would make
+      adding the second term impossible); the term UI owns the sum. Drizzle-visible
+      CHECKs: `terms_end_after_start`, `terms_weightage_range`; unique
+      `(academicYearId, sequenceNumber)` — per YEAR, every year restarts at Term 1.
+      **Hand-written:** `terms_dates_within_year_trg` — a term's dates must sit
+      INSIDE its year's, a cross-table rule no CHECK can express. A trigger beside
+      the EXCLUDE block, marked for regeneration, reporting itself via
+      `USING CONSTRAINT` so `translateErrors` words it (entry added to errors.ts)
+      and `db:verify` can name it. `pnpm db:verify` extended to **34** assertions:
+      the trigger bites on INSERT and UPDATE, boundary dates (a term spanning the
+      whole year) are accepted, the sequence key is proven per-year, and the
+      weightage bounds are pinned on both sides. Verify ✅ check-types 8/8;
+      db:verify all green.
 - [ ] S3.2 `feat(contracts,services): terms`
 - [ ] S3.3 `feat(trpc): term router` — creating a term does NOT touch `scope_nodes`.
 - [ ] S3.4 `test: terms in integration, smoke, and seed`
-- [ ] S3.5 `docs: TASKS.md — slice 3 done`
+- [ ] S3.5 `docs: TASKS.md — slice 3 done` (add `terms` to the resume-here schema line)
 
 
 

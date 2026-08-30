@@ -105,12 +105,14 @@ async function main() {
       AND con.conname IN (
         'role_assignments_org_scope_id_matches_org',
         'scope_nodes_shape_matches_type',
-        'academic_years_end_after_start'
+        'academic_years_end_after_start',
+        'terms_end_after_start',
+        'terms_weightage_range'
       )
     ORDER BY con.conname
   `;
   for (const c of constraints) console.log(`  ${c.table_name}.${c.constraint_name}`);
-  report("all CHECK constraints exist", constraints.length === 3, `found ${constraints.length}/3`);
+  report("all CHECK constraints exist", constraints.length === 5, `found ${constraints.length}/5`);
 
   // contype 'x' is an EXCLUDE constraint. drizzle-kit cannot see these at all,
   // so their absence would be silent — hence checking the catalog directly.
@@ -127,6 +129,19 @@ async function main() {
   `;
   for (const c of exclusions) console.log(`  ${c.table_name}.${c.constraint_name}`);
   report("both EXCLUDE constraints exist", exclusions.length === 2, `found ${exclusions.length}/2`);
+
+  // A term's dates must sit inside its parent year's dates — a cross-table
+  // rule no CHECK can hold, so it is a trigger in hand-written migration SQL.
+  // drizzle-kit cannot see it and the catalog table differs; same silence-as-
+  // absence risk as the EXCLUDEs, same catalog check as the answer.
+  const triggers = await sql<{ tgname: string }[]>`
+    SELECT tg.tgname FROM pg_trigger tg
+    JOIN pg_class rel ON rel.oid = tg.tgrelid
+    WHERE rel.relname = 'terms'
+      AND tg.tgname = 'terms_dates_within_year_trg'
+      AND NOT tg.tgisinternal
+  `;
+  report("the terms date trigger exists", triggers.length === 1, `found ${triggers.length}/1`);
 
   console.log("\n=== hard rule 11: every timestamp is timestamptz ===");
   const naive = await sql<{ table_name: string; column_name: string }[]>`
@@ -311,6 +326,120 @@ async function main() {
     // is as much a bug as one that under-reaches.
     await expectAccept(tx, "start_date = end_date is accepted", (q) =>
       year(q, school.id, "2029-30", "2029-04-01", "2029-04-01"),
+    );
+
+    console.log("\n=== terms_dates_within_year_trg ===");
+
+    // A year for the term assertions to hang off, dated far from the years
+    // above so nothing else can fire first.
+    await expectAccept(tx, "the terms test year is accepted", (q) =>
+      year(q, school.id, "2030-31", "2030-04-01", "2031-03-31"),
+    );
+    const [termYear] = await tx<{ id: string }[]>`
+      SELECT id FROM academic_years WHERE name = '2030-31' AND school_id = ${school.id}
+    `;
+
+    const term = (
+      q: Queryable,
+      name: string,
+      seq: number,
+      start: string,
+      end: string,
+      weightage = "100.00",
+    ) =>
+      q`INSERT INTO terms
+          (organization_id, school_id, academic_year_id, name, sequence_number,
+           start_date, end_date, weightage)
+        VALUES (${org.id}, ${school.id}, ${termYear.id}, ${name}, ${seq},
+                ${start}, ${end}, ${weightage})`;
+
+    await expectAccept(tx, "a term inside the year is accepted", (q) =>
+      term(q, "Term 1", 1, "2030-04-01", "2030-09-30"),
+    );
+
+    // Boundary: a term may share its year's first and last day. If the trigger's
+    // comparison ever hardened to strict `<`/`>`, this is the assertion that
+    // notices — the mirror of the '[]' bound check on the year overlap above.
+    await expectAccept(tx, "a term spanning the WHOLE year is accepted", (q) =>
+      term(q, "Full Year", 2, "2030-04-01", "2031-03-31"),
+    );
+
+    await expectReject(
+      tx,
+      "a term starting BEFORE the year is rejected",
+      "terms_dates_within_year_trg",
+      (q) => term(q, "Early", 3, "2030-03-01", "2030-09-30"),
+    );
+
+    await expectReject(
+      tx,
+      "a term ending AFTER the year is rejected",
+      "terms_dates_within_year_trg",
+      (q) => term(q, "Late", 3, "2030-10-01", "2031-04-30"),
+    );
+
+    // The trigger guards UPDATEs of the dates too, not only inserts — a year
+    // extended backwards, or a term dragged out past its year's end, is the
+    // same violation arriving by a different statement.
+    await expectReject(
+      tx,
+      "extending a term past the year end is rejected",
+      "terms_dates_within_year_trg",
+      (q) =>
+        q`UPDATE terms SET end_date = '2031-04-30'
+          WHERE academic_year_id = ${termYear.id} AND name = 'Term 1'`,
+    );
+
+    console.log("\n=== terms row-level CHECKs ===");
+
+    // No EXCLUDE here makes daterange() throw first, so unlike the year case
+    // the CHECK is genuinely the only guard — but the NAME still distinguishes
+    // "our rule rejected this" from a NOT NULL or a typo.
+    await expectReject(
+      tx,
+      "end_date before start_date is rejected",
+      "terms_end_after_start",
+      (q) => term(q, "Inverted", 4, "2030-12-01", "2030-11-01"),
+    );
+
+    await expectAccept(tx, "a single-day term is accepted", (q) =>
+      term(q, "One Day", 4, "2030-12-01", "2030-12-01"),
+    );
+
+    await expectReject(
+      tx,
+      "a duplicate sequence number in one year is rejected",
+      "terms_year_sequence_uq",
+      (q) => term(q, "Dup Seq", 1, "2030-10-01", "2030-12-31"),
+    );
+
+    // The sequence key is per YEAR, not per school: a second year restarts at
+    // Term 1. (Non-overlapping with 2030-31, so the year constraint stays out
+    // of the way.)
+    await expectAccept(tx, "the terms second test year is accepted", (q) =>
+      year(q, school.id, "2031-32", "2031-04-01", "2032-03-31"),
+    );
+    const [nextYear] = await tx<{ id: string }[]>`
+      SELECT id FROM academic_years WHERE name = '2031-32' AND school_id = ${school.id}
+    `;
+    await expectAccept(tx, "the same sequence in a DIFFERENT year is accepted", (q) =>
+      q`INSERT INTO terms
+          (organization_id, school_id, academic_year_id, name, sequence_number, start_date, end_date)
+        VALUES (${org.id}, ${school.id}, ${nextYear.id}, 'Term 1', 1, '2031-04-01', '2031-09-30')`,
+    );
+
+    await expectReject(
+      tx,
+      "weightage 0 is rejected",
+      "terms_weightage_range",
+      (q) => term(q, "Zero Weight", 5, "2030-10-01", "2030-12-31", "0.00"),
+    );
+
+    await expectReject(
+      tx,
+      "weightage above 100 is rejected",
+      "terms_weightage_range",
+      (q) => term(q, "Overweight", 5, "2030-10-01", "2030-12-31", "100.01"),
     );
   });
 

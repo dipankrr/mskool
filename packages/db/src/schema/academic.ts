@@ -4,6 +4,7 @@ import {
   check,
   date,
   index,
+  numeric,
   pgEnum,
   pgTable,
   smallint,
@@ -454,6 +455,79 @@ export const sectionTeacherAssignments = pgTable(
   ],
 );
 
+export const termResultModeEnum = pgEnum("term_result_mode", [
+  "cumulative",
+  "terminal",
+]);
+
+/**
+ * A subdivision of an academic year — "Term 1", "Term 2", or a single "Full
+ * Year" row when a school does not split. Every year gets at least one term;
+ * that invariant lives at the application layer (the reference SQL's own
+ * note), because a database version would make a year impossible to create
+ * before its terms.
+ *
+ * The exam computation chain reads `result_mode` (DOMAIN.md): cumulative
+ * terms roll up into the annual result, terminal terms stand alone.
+ *
+ * A term's dates must sit INSIDE its parent year's dates. That is a
+ * cross-table rule, which no CHECK constraint can express, so it lives in
+ * hand-written migration SQL as a trigger (`terms_dates_within_year_trg`)
+ * beside the academic_years EXCLUDE block — marked there like the EXCLUDEs,
+ * because drizzle-kit cannot see it either. `pnpm db:verify` proves it still
+ * bites after any migration change.
+ */
+export const terms = pgTable(
+  "terms",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    organizationId: uuid()
+      .notNull()
+      .references(() => organizations.id),
+    schoolId: uuid()
+      .notNull()
+      .references(() => schools.id),
+    academicYearId: uuid()
+      .notNull()
+      .references(() => academicYears.id),
+
+    // "Term 1", "First Term", "Full Year". Unique per YEAR with the sequence
+    // below — every year of every school restarts at Term 1, so neither key
+    // is per-school.
+    name: varchar({ length: 100 }).notNull(),
+    sequenceNumber: smallint().notNull(),
+
+    startDate: date().notNull(),
+    endDate: date().notNull(),
+
+    // How this term contributes to the annual result.
+    resultMode: termResultModeEnum().notNull().default("cumulative"),
+    // Percentage weight toward the annual result (reference: DECIMAL(5,2)).
+    // All terms of a year summing to 100 is a SOFT invariant no single-row
+    // constraint can express: a CHECK that demanded it would make adding the
+    // second term impossible. The term UI owns the sum; the row-level bound
+    // is the terms_weightage_range CHECK below.
+    weightage: numeric({ precision: 5, scale: 2 })
+      .notNull()
+      .default("100.00"),
+
+    createdBy: text().references(() => user.id),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex("terms_year_sequence_uq").on(t.academicYearId, t.sequenceNumber),
+    index("terms_year_idx").on(t.academicYearId),
+    index("terms_school_idx").on(t.schoolId),
+    index("terms_org_idx").on(t.organizationId),
+    check("terms_end_after_start", sql`"end_date" >= "start_date"`),
+    check("terms_weightage_range", sql`"weightage" > 0 AND "weightage" <= 100`),
+  ],
+);
+
 export const academicYearRelations = relations(
   academicYears,
   ({ one, many }) => ({
@@ -466,6 +540,7 @@ export const academicYearRelations = relations(
       references: [schools.id],
     }),
     sections: many(sections),
+    terms: many(terms),
   }),
 );
 
@@ -566,3 +641,18 @@ export const sectionTeacherAssignmentRelations = relations(
     }),
   }),
 );
+
+export const termRelations = relations(terms, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [terms.organizationId],
+    references: [organizations.id],
+  }),
+  school: one(schools, {
+    fields: [terms.schoolId],
+    references: [schools.id],
+  }),
+  academicYear: one(academicYears, {
+    fields: [terms.academicYearId],
+    references: [academicYears.id],
+  }),
+}));

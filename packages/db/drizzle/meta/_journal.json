@@ -36,6 +36,13 @@
       "when": 1788023922552,
       "tag": "0004_quick_blizzard",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788065354388,
+      "tag": "0005_bitter_hydra",
+      "breakpoints": true
     }
   ]
 }

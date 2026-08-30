@@ -316,6 +316,16 @@ const CONSTRAINT_TRANSLATIONS: Record<string, ConstraintTranslation> = {
         : "That code is already used by another branch. Pick a different code.";
     },
   },
+
+  // terms ----------------------------------------------------------------
+  // A trigger, not a constraint — a CHECK cannot reference another table —
+  // but it reports itself with this name via USING CONSTRAINT, so the same
+  // map catches it.
+  terms_dates_within_year_trg: {
+    code: "CONFLICT",
+    message: () =>
+      "A term's dates must sit inside its session's dates. Check the term's start and end date against the session.",
+  },
 };
 
 // ---------------------------------------------------------------------------
