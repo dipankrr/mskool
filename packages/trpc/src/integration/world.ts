@@ -9,18 +9,25 @@ import {
 import { db } from "@repo/db";
 import {
   academicYears,
+  classSubjectMappings,
   classes,
   organizations,
   orgRolePermissions,
   roleAssignments,
   schools,
   sections,
+  sectionTeacherAssignments,
   studentPortalAccess,
   students,
   subjects,
   user,
 } from "@repo/db/schema";
-import { academicService, organizationService, subjectService } from "@repo/services";
+import {
+  academicService,
+  assignmentService,
+  organizationService,
+  subjectService,
+} from "@repo/services";
 import { and, eq, isNull } from "drizzle-orm";
 
 /**
@@ -205,6 +212,66 @@ async function findOrCreateSubject(scope: SchoolScope, name: string, code: strin
   return subjectService.createSubject(scope, { name, code });
 }
 
+async function findOrCreateClassSubjectMapping(
+  scope: SchoolScope,
+  input: {
+    academicYearId: string;
+    classId: string;
+    subjectId: string;
+    isElective?: boolean;
+    sequenceNumber?: number;
+  },
+) {
+  const [existing] = await db
+    .select()
+    .from(classSubjectMappings)
+    .where(
+      and(
+        eq(classSubjectMappings.academicYearId, input.academicYearId),
+        eq(classSubjectMappings.classId, input.classId),
+        eq(classSubjectMappings.subjectId, input.subjectId),
+      ),
+    );
+  if (existing) return existing;
+
+  return assignmentService.createClassSubjectMapping(scope, input);
+}
+
+/**
+ * Keyed on the OPEN row's natural key (section, user, role, subject). Ending an
+ * assignment closes the row, so a re-run finds no open one and creates it —
+ * the same philosophy as the revoked grant above: the fixture guarantees the
+ * state the assertions need, and history accumulates rather than being deleted.
+ */
+async function findOrCreateSectionTeacherAssignment(
+  scope: SchoolScope,
+  input: {
+    sectionId: string;
+    academicYearId: string;
+    userId: string;
+    role: "class_teacher" | "subject_teacher" | "co_teacher" | "activity_teacher";
+    subjectId?: string | null;
+  },
+) {
+  const [existing] = await db
+    .select()
+    .from(sectionTeacherAssignments)
+    .where(
+      and(
+        eq(sectionTeacherAssignments.sectionId, input.sectionId),
+        eq(sectionTeacherAssignments.userId, input.userId),
+        eq(sectionTeacherAssignments.role, input.role),
+        isNull(sectionTeacherAssignments.effectiveTo),
+        input.subjectId
+          ? eq(sectionTeacherAssignments.subjectId, input.subjectId)
+          : isNull(sectionTeacherAssignments.subjectId),
+      ),
+    );
+  if (existing) return existing;
+
+  return assignmentService.createSectionTeacherAssignment(scope, input);
+}
+
 async function findOrCreateStudent(
   organizationId: string,
   schoolId: string,
@@ -280,6 +347,20 @@ export interface IntegrationWorld {
   subjectA1PhysicsId: string;
   subjectA2MathId: string; // same name, sibling branch — the per-school unique index
   subjectB1MathId: string; // same name, foreign org — the cross-tenant control
+
+  yearB1Id: string;
+  sectionB1Id: string;
+
+  mappingA1MathId: string;
+  mappingA1PhysicsId: string;
+  mappingA2MathId: string; // sibling branch — never in an A1 list
+  mappingB1MathId: string; // foreign org — the byId control
+
+  staMath6aId: string;
+  staHomeroom6aId: string;
+  /** Closed by the end test; the fixture re-opens it on the next run. */
+  staScratch6bId: string;
+  staB1Id: string;
 
   users: {
     adminA: string;
@@ -430,6 +511,83 @@ export async function buildWorld(): Promise<IntegrationWorld> {
     "MAT",
   );
 
+  // --- The teaching-assignment layer ------------------------------------------
+  // Mappings are the template (which subjects a class takes); assignments are
+  // the staffing facts (who teaches what where). Org B gets the same skeleton
+  // minus staff, because a cross-tenant denial is only interesting when the
+  // foreign row EXISTS — a refusal against nothing proves nothing.
+  const scopeB1: SchoolScope = {
+    organizationId: orgB.id,
+    schoolId: schoolB1.id,
+    classId: null,
+    sectionId: null,
+  };
+  const yearB1 = await findOrCreateYear(scopeB1, {
+    name: "ITG 2025-26",
+    startDate: "2025-04-01",
+    endDate: "2026-03-31",
+  });
+  const sectionB1 = await findOrCreateSection(scopeB1, yearB1.id, classB1.id, "A");
+  // A staffing fact needs a user, not a grant — B1's teacher never signs in.
+  const teacherB1 = await findOrCreateUser("teacher-b1");
+
+  const mappingMathA1 = await findOrCreateClassSubjectMapping(scopeA1, {
+    academicYearId: currentYearA.id,
+    classId: class6.id,
+    subjectId: subjectMathA1.id,
+    sequenceNumber: 1,
+  });
+  const mappingPhysicsA1 = await findOrCreateClassSubjectMapping(scopeA1, {
+    academicYearId: currentYearA.id,
+    classId: class6.id,
+    subjectId: subjectPhysicsA1.id,
+    sequenceNumber: 2,
+  });
+  const mappingMathA2 = await findOrCreateClassSubjectMapping(scopeA2, {
+    academicYearId: currentYearB.id,
+    classId: classA2.id,
+    subjectId: subjectMathA2.id,
+    sequenceNumber: 1,
+  });
+  const mappingMathB1 = await findOrCreateClassSubjectMapping(scopeB1, {
+    academicYearId: yearB1.id,
+    classId: classB1.id,
+    subjectId: subjectMathB1.id,
+    sequenceNumber: 1,
+  });
+
+  // Her subject fact and the homeroom fact on the same section — the exact
+  // "who teaches 6-A now" answer is TWO rows of different roles.
+  const staMath6a = await findOrCreateSectionTeacherAssignment(scopeA1, {
+    sectionId: section6a.id,
+    academicYearId: currentYearA.id,
+    userId: subjectS6A.id,
+    role: "subject_teacher",
+    subjectId: subjectMathA1.id,
+  });
+  const staHomeroom6a = await findOrCreateSectionTeacherAssignment(scopeA1, {
+    sectionId: section6a.id,
+    academicYearId: currentYearA.id,
+    userId: teacherC6.id,
+    role: "class_teacher",
+  });
+  // The end-test's scratch row. The test closes it and the fixture re-opens it
+  // on the next run, so the end assertions always have an open row to close.
+  const staScratch6b = await findOrCreateSectionTeacherAssignment(scopeA1, {
+    sectionId: section6b.id,
+    academicYearId: currentYearA.id,
+    userId: subjectS6A.id,
+    role: "subject_teacher",
+    subjectId: subjectPhysicsA1.id,
+  });
+  const staB1 = await findOrCreateSectionTeacherAssignment(scopeB1, {
+    sectionId: sectionB1.id,
+    academicYearId: yearB1.id,
+    userId: teacherB1.id,
+    role: "subject_teacher",
+    subjectId: subjectMathB1.id,
+  });
+
   // --- Student track -----------------------------------------------------------
   const parent = await findOrCreateUser("parent");
   const ownedStudent = await findOrCreateStudent(orgA.id, schoolA1.id, "ITG-0001");
@@ -456,6 +614,16 @@ export async function buildWorld(): Promise<IntegrationWorld> {
     subjectA1PhysicsId: subjectPhysicsA1.id,
     subjectA2MathId: subjectMathA2.id,
     subjectB1MathId: subjectMathB1.id,
+    yearB1Id: yearB1.id,
+    sectionB1Id: sectionB1.id,
+    mappingA1MathId: mappingMathA1.id,
+    mappingA1PhysicsId: mappingPhysicsA1.id,
+    mappingA2MathId: mappingMathA2.id,
+    mappingB1MathId: mappingMathB1.id,
+    staMath6aId: staMath6a.id,
+    staHomeroom6aId: staHomeroom6a.id,
+    staScratch6bId: staScratch6b.id,
+    staB1Id: staB1.id,
     users: {
       adminA: adminA.id,
       principalA1: principalA1.id,

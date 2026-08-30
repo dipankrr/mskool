@@ -33,17 +33,24 @@ import {
 import { db } from "@repo/db";
 import {
   academicYears,
+  classSubjectMappings,
   classes,
   organizations,
   orgRolePermissions,
   roleAssignments,
   schools,
   sections,
+  sectionTeacherAssignments,
   staff,
   subjects,
   user,
 } from "@repo/db/schema";
-import { academicService, organizationService, subjectService } from "@repo/services";
+import {
+  academicService,
+  assignmentService,
+  organizationService,
+  subjectService,
+} from "@repo/services";
 import { and, eq, isNull } from "drizzle-orm";
 
 // Stable identifiers. The seed finds rows by these, which is what makes
@@ -99,6 +106,15 @@ const YEAR_CLOSED = {
   startDate: "2024-04-01",
   endDate: "2025-03-31",
 } as const;
+
+/**
+ * School B's mirror of Class 6. The SAME NAME, deliberately, like the
+ * subjects: classes are unique per school, so a broken tenancy filter cannot
+ * be saved by a name-based filter, and the smoke's cross-branch create
+ * attempts name this row and must be refused.
+ */
+const CLASS_B_NAME = "Class 6";
+const CLASS_B_ORDER = 6;
 
 async function findOrCreateOrganization() {
   const [existing] = await db
@@ -432,6 +448,88 @@ async function findOrCreateSubject(
   return subject;
 }
 
+/**
+ * Find-or-create the mapping row (which subjects a class takes this session),
+ * keyed on (year, class, subject) — the unique index's own triple. Through the
+ * service, which re-reads all three parents through the caller's scope inside
+ * the transaction; a seed that could link cross-branch rows would seed the
+ * exact hole the tests look for.
+ */
+async function findOrCreateClassSubjectMapping(
+  scope: DataScope & { schoolId: string },
+  academicYearId: string,
+  classId: string,
+  subjectId: string,
+  sequenceNumber: number,
+) {
+  const [existing] = await db
+    .select()
+    .from(classSubjectMappings)
+    .where(
+      and(
+        eq(classSubjectMappings.academicYearId, academicYearId),
+        eq(classSubjectMappings.classId, classId),
+        eq(classSubjectMappings.subjectId, subjectId),
+      ),
+    );
+  if (existing) {
+    console.log("  = class-subject mapping (exists)");
+    return existing;
+  }
+
+  const mapping = await assignmentService.createClassSubjectMapping(scope, {
+    academicYearId,
+    classId,
+    subjectId,
+    sequenceNumber,
+  });
+  console.log("  + class-subject mapping");
+  return mapping;
+}
+
+/**
+ * Find-or-create the staffing fact (who teaches what where), keyed on the OPEN
+ * row's natural key (section, user, role, subject). Nothing here ends rows —
+ * ending is append-on-change owned by the service, and a seed has no reason
+ * to close what it just opened.
+ */
+async function findOrCreateSectionTeacherAssignment(
+  scope: DataScope & { schoolId: string },
+  input: {
+    sectionId: string;
+    academicYearId: string;
+    userId: string;
+    role: "class_teacher" | "subject_teacher" | "co_teacher" | "activity_teacher";
+    subjectId?: string | null;
+  },
+) {
+  const [existing] = await db
+    .select()
+    .from(sectionTeacherAssignments)
+    .where(
+      and(
+        eq(sectionTeacherAssignments.sectionId, input.sectionId),
+        eq(sectionTeacherAssignments.userId, input.userId),
+        eq(sectionTeacherAssignments.role, input.role),
+        isNull(sectionTeacherAssignments.effectiveTo),
+        input.subjectId
+          ? eq(sectionTeacherAssignments.subjectId, input.subjectId)
+          : isNull(sectionTeacherAssignments.subjectId),
+      ),
+    );
+  if (existing) {
+    console.log(`  = ${input.role} assignment (exists)`);
+    return existing;
+  }
+
+  const assignment = await assignmentService.createSectionTeacherAssignment(
+    scope,
+    input,
+  );
+  console.log(`  + ${input.role} assignment`);
+  return assignment;
+}
+
 async function main() {
   // The seed writes known-password logins. That must never touch production.
   if (process.env.NODE_ENV === "production") {
@@ -640,6 +738,56 @@ async function main() {
     adminUser.id,
   );
 
+  // --- The teaching-assignment layer -----------------------------------------
+  //
+  // Mappings say which subjects Class 6 takes this session; assignment rows
+  // say who actually teaches them. The subject_teacher login has been scoped
+  // to 6-A with no assignment to her name until now — the smoke's staffing
+  // assertions need the fact rows to exist, and "who teaches 6-A" is two rows
+  // of different roles, which is what makes exactness meaningful.
+  const mappingMathA = await findOrCreateClassSubjectMapping(
+    scopeA,
+    currentYearA.id,
+    classA.id,
+    subjectMathA.id,
+    1,
+  );
+  const mappingPhysicsA = await findOrCreateClassSubjectMapping(
+    scopeA,
+    currentYearA.id,
+    classA.id,
+    subjectPhysicsA.id,
+    2,
+  );
+
+  const staSubjectTeacher = await findOrCreateSectionTeacherAssignment(scopeA, {
+    sectionId: sectionA.id,
+    academicYearId: currentYearA.id,
+    userId: subjectTeacherUser.id,
+    role: "subject_teacher",
+    subjectId: subjectMathA.id,
+  });
+  const staHomeroom = await findOrCreateSectionTeacherAssignment(scopeA, {
+    sectionId: sectionA.id,
+    academicYearId: currentYearA.id,
+    userId: teacherUser.id,
+    role: "class_teacher",
+  });
+
+  // School B's mirror: same-named class, its own section, its own mapping —
+  // but NO staff. The smoke's cross-branch create attempts name these rows and
+  // must be refused; a control row that exists is what makes the refusal mean
+  // something.
+  const classB = await findOrCreateClass(scopeB, CLASS_B_NAME, CLASS_B_ORDER);
+  const sectionB = await findOrCreateSection(scopeB, yearB.id, classB.id, SECTION_A_NAME);
+  const mappingMathB = await findOrCreateClassSubjectMapping(
+    scopeB,
+    yearB.id,
+    classB.id,
+    subjectMathB.id,
+    1,
+  );
+
   // A previous run may have left a cached snapshot that predates these grants.
   await invalidateUserAuthCache(adminUser.id);
   await invalidateUserAuthCache(principalUser.id);
@@ -661,6 +809,10 @@ Done.
 
   subjects (A)   ${subjectMathA.name}, ${subjectPhysicsA.name}
   subjects (B)   ${subjectMathB.name}  — same name as A's, by design
+
+  mappings (A)   ${mappingMathA.sequenceNumber}. ${subjectMathA.name}, ${mappingPhysicsA.sequenceNumber}. ${subjectPhysicsA.name} → ${classA.name}
+  mappings (B)   ${mappingMathB.sequenceNumber}. ${subjectMathB.name} → ${classB.name}  — same name as A's, by design
+  assignments    6-A: subject_teacher (${staSubjectTeacher.userId.slice(0, 8)}…), class_teacher homeroom (${staHomeroom.userId.slice(0, 8)}…)
 
   ${ADMIN_EMAIL}            org_admin @ org         → both schools
   ${PRINCIPAL_EMAIL}        principal @ school A    → school A only

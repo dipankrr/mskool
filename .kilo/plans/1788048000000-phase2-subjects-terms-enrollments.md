@@ -320,10 +320,24 @@ codes stay school-local until then), `subject_name_history`, `student_subject_en
       with an ADR/decision note — never as a rider on a router chunk. No test pins
       the matrix, so a matrix change cannot be caught by the suite; treat every
       `defaultPermissions.ts` diff as policy.
-- [ ] S2.4 `test: the assignment layer in integration, smoke, and seed` — cross-tenant
-      denial (org A cannot map or assign into org B's classes/sections); the seed's
-      subject_teacher persona finally gets her assignment rows (she has been scoped to
-      6-A with no assignment to her name since the authz plan).
+- [x] S2.4 `test: the assignment layer in integration, smoke, and seed` — **DONE
+      (2026-08-30)**. Integration **50** (was 33): exact per-role lists for mappings and
+      open assignments; the sibling-branch and cross-org negatives; the two-layer
+      refusal structure (the GATE refuses a parent the caller does not cover — the
+      create input names it top-level, so the builder addresses it; the SERVICE
+      re-read refuses what the gate cannot see — a smuggled subject, a year that is
+      not the section's — including for an org admin whose coverage passes the gate);
+      the end flow (close + successor on one transaction, double-end CONFLICT). Smoke
+      all-pass live over HTTP: 9 direct assertions plus `subject_mapping` /
+      `teacher_assignment` matrix cells for all four seeded roles. Seed: the
+      subject_teacher persona finally has assignment rows to her name (6-A's subject
+      fact + the homeroom fact), Class 6's Mathematics/Physics mappings, and a
+      school-B class + section + mapping for the cross-branch denials.
+      **Its first run caught two real S2.2 bugs** — see the fix commit: every parent
+      re-read compiled scope columns from the WRONG table (missing-FROM-clause SQL
+      error on any create), and `endAssignment`'s successor insert ran in an
+      independent transaction. Both fixed; five new `SERVICE_TRANSLATIONS` entries
+      word the refusals.
 - [ ] S2.5 `docs: TASKS.md — slice 2 done`
 
 ---
@@ -412,6 +426,10 @@ Drift notes:
   original plan omitted `class_subject_mappings` and `section_teacher_assignments`,
   which left the access slice reading a table that didn't exist and marks entry with no
   data source. Renumbered: terms → S3, access → S4, enrollments → S5.
+- 2026-08-30: +1 fix commit between rows 8 and 9 — S2.4's first integration run exposed
+  two latent S2.2 bugs (wrong-table scope columns in every parent re-read; the
+  `endAssignment` successor insert in a nested independent transaction) and the five
+  error translations the new tests pin. Rows 9 onward shift by one.
 
 
 

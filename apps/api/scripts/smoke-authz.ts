@@ -25,11 +25,13 @@ import { getRedis, invalidateUserAuthCache } from "@repo/authz";
 import { db } from "@repo/db";
 import {
   academicYears,
+  classSubjectMappings,
   classes,
   organizations,
   roleAssignments,
   schools,
   sections,
+  sectionTeacherAssignments,
   subjects,
   user,
 } from "@repo/db/schema";
@@ -221,6 +223,52 @@ async function main() {
     throw new Error(
       "Subject seed incomplete — expected Mathematics + Physics in school A and " +
         "Mathematics in school B. Run `pnpm db:seed` (re-seeding is idempotent).",
+    );
+  }
+
+  // The teaching-assignment layer: Class 6's subject template, the staffing
+  // facts on 6-A, and school B's mirror (class, section, mapping) — the rows
+  // the cross-branch create attempts below name and must be refused.
+  const mappingsA = await db
+    .select()
+    .from(classSubjectMappings)
+    .where(eq(classSubjectMappings.classId, classA.id));
+  const mappingMathA = mappingsA.find((m) => m.subjectId === subjectMathA.id);
+  const [classB] = await db
+    .select()
+    .from(classes)
+    .where(eq(classes.schoolId, schoolB.id));
+  const [sectionB] = await db
+    .select()
+    .from(sections)
+    .where(eq(sections.classId, classB?.id ?? ""));
+  // School B's Mathematics is mapped onto exactly one class — its own.
+  const [mappingMathB] = await db
+    .select()
+    .from(classSubjectMappings)
+    .where(eq(classSubjectMappings.subjectId, subjectMathB.id));
+
+  const staRows = await db
+    .select()
+    .from(sectionTeacherAssignments)
+    .where(eq(sectionTeacherAssignments.sectionId, sectionA.id));
+  const staSubjectTeacher = staRows.find(
+    (r) => r.role === "subject_teacher" && r.effectiveTo === null,
+  );
+
+  if (
+    !mappingMathA ||
+    mappingsA.length < 2 ||
+    !mappingMathB ||
+    !classB ||
+    !sectionB ||
+    staRows.length < 2 ||
+    !staSubjectTeacher
+  ) {
+    throw new Error(
+      "Assignment seed incomplete — expected Mathematics + Physics mapped onto " +
+        "Class 6, two open assignments on 6-A, and a class + section + mapping in " +
+        "school B. Run `pnpm db:seed` (re-seeding is idempotent).",
     );
   }
 
@@ -532,6 +580,174 @@ async function main() {
       : `HTTP ${subjectTeacherSubjects.status} code ${subjectTeacherSubjects.code}`,
   );
 
+  console.log("\nthe teaching-assignment layer — template + staffing");
+
+  // The template: which subjects Class 6 takes this session. Both staffed
+  // personas read it — subject_mapping:read reaches class and section grants
+  // alike, and the school-level widening is the entity-shape reasoning the
+  // service documents, not an accident to be fixed.
+  const mappingList = await query(principalCookie, "assignment.subjectMapping.list", {
+    organizationId: orgId,
+    academicYearId: currentYearA.id,
+    classId: classA.id,
+  });
+  report(
+    "principal lists Class 6's mappings",
+    mappingList.ok &&
+      Array.isArray(mappingList.data) &&
+      mappingList.data.length === 2 &&
+      mappingList.data.every((m: any) => m.schoolId === schoolA.id),
+    mappingList.ok ? `got ${mappingList.data?.length}` : `code ${mappingList.code}`,
+  );
+
+  const teacherMappingList = await query(
+    teacherCookie,
+    "assignment.subjectMapping.list",
+    {
+      organizationId: orgId,
+      academicYearId: currentYearA.id,
+      classId: classA.id,
+    },
+  );
+  report(
+    "class_teacher lists the same two mappings",
+    teacherMappingList.ok &&
+      Array.isArray(teacherMappingList.data) &&
+      teacherMappingList.data.length === 2 &&
+      teacherMappingList.data.every((m: any) => m.schoolId === schoolA.id),
+  );
+
+  // The staffing facts: "who teaches 6-A now" is two rows of different roles,
+  // and the subject teacher reads them with her section-scoped grant.
+  const staList = await query(
+    subjectTeacherCookie,
+    "assignment.teacherAssignment.list",
+    { organizationId: orgId, sectionId: sectionA.id },
+  );
+  report(
+    "subject_teacher lists 6-A's open assignments",
+    staList.ok &&
+      Array.isArray(staList.data) &&
+      staList.data.length === 2 &&
+      staList.data.some((r: any) => r.id === staSubjectTeacher.id) &&
+      staList.data.every((r: any) => r.sectionId === sectionA.id),
+    staList.ok ? `got ${staList.data?.length}` : `code ${staList.code}`,
+  );
+
+  // The matrix boundary: she reads the template but not the staffing.
+  const teacherStaList = await query(
+    teacherCookie,
+    "assignment.teacherAssignment.list",
+    { organizationId: orgId, sectionId: sectionA.id },
+  );
+  report(
+    "class_teacher holds NO teacher_assignment:read",
+    teacherStaList.code === "FORBIDDEN",
+    `code ${teacherStaList.code}`,
+  );
+
+  // Same pair as the subject.byId cells: the foreign row's NAME is one the
+  // caller expects ("Mathematics") — only the id betrays the school.
+  const principalReadsBMapping = await query(
+    principalCookie,
+    "assignment.subjectMapping.byId",
+    { organizationId: orgId, id: mappingMathB.id },
+  );
+  report(
+    "principal CANNOT read school B's mapping",
+    principalReadsBMapping.code === "NOT_FOUND",
+    `code ${principalReadsBMapping.code}`,
+  );
+  const adminReadsBMapping = await query(
+    adminCookie,
+    "assignment.subjectMapping.byId",
+    { organizationId: orgId, id: mappingMathB.id },
+  );
+  report(
+    "org_admin reads school B's mapping (non-vacuity)",
+    adminReadsBMapping.ok && adminReadsBMapping.data?.id === mappingMathB.id,
+  );
+
+  // Cross-branch creates. The create input names its parent top-level, so the
+  // builder addresses that node and the GATE refuses before the service runs.
+  // School B belongs to this org, so the node resolves — the refusal is the
+  // strict coverage test, not an unresolvable id.
+  const createIntoB = await mutate(
+    principalCookie,
+    "assignment.subjectMapping.create",
+    {
+      organizationId: orgId,
+      schoolId: schoolA.id,
+      academicYearId: currentYearA.id,
+      classId: classB.id,
+      subjectId: subjectMathA.id,
+      data: {},
+    },
+  );
+  report(
+    "principal CANNOT map a subject onto school B's class",
+    createIntoB.code === "FORBIDDEN",
+    `code ${createIntoB.code}`,
+  );
+
+  const assignIntoB = await mutate(
+    principalCookie,
+    "assignment.teacherAssignment.create",
+    {
+      organizationId: orgId,
+      schoolId: schoolA.id,
+      sectionId: sectionB.id,
+      academicYearId: yearB.id,
+      // The gate refuses before any row is written, so the user id is never
+      // validated — a marker string keeps the intent obvious if that changes.
+      userId: "smoke-no-write",
+      role: "class_teacher",
+    },
+  );
+  report(
+    "principal CANNOT assign a teacher into school B's section",
+    assignIntoB.code === "FORBIDDEN",
+    `code ${assignIntoB.code}`,
+  );
+
+  // Service-level guard the gate cannot see: the section is covered, the year
+  // is in the caller's own school, but the pairing is a lie.
+  const yearMismatch = await mutate(
+    principalCookie,
+    "assignment.teacherAssignment.create",
+    {
+      organizationId: orgId,
+      schoolId: schoolA.id,
+      sectionId: sectionA.id,
+      academicYearId: closedYearA.id,
+      userId: "smoke-no-write",
+      role: "class_teacher",
+    },
+  );
+  report(
+    "an assignment's year must match its section's year",
+    yearMismatch.code === "BAD_REQUEST",
+    `code ${yearMismatch.code}`,
+  );
+
+  const teacherCreatesMapping = await mutate(
+    subjectTeacherCookie,
+    "assignment.subjectMapping.create",
+    {
+      organizationId: orgId,
+      schoolId: schoolA.id,
+      academicYearId: currentYearA.id,
+      classId: classA.id,
+      subjectId: subjectMathA.id,
+      data: {},
+    },
+  );
+  report(
+    "subject_teacher holds NO subject_mapping:create",
+    teacherCreatesMapping.code === "FORBIDDEN",
+    `code ${teacherCreatesMapping.code}`,
+  );
+
   console.log("\nroles × procedures — baseline matrix");
 
   /**
@@ -744,6 +960,40 @@ async function main() {
                   Array.isArray(d) &&
                   d.some((s: any) => s.id === sectionA.id) &&
                   d.every((s: any) => s.schoolId === schoolA.id),
+      },
+      {
+        role,
+        cookie,
+        path: "assignment.subjectMapping.list",
+        input: {
+          organizationId: orgId,
+          academicYearId: currentYearA.id,
+          classId: classA.id,
+        },
+        method: "query",
+        expect: OK,
+        dataCheck: (d) =>
+          Array.isArray(d) &&
+          d.length === 2 &&
+          d.some((m: any) => m.id === mappingMathA.id) &&
+          d.every((m: any) => m.schoolId === schoolA.id),
+      },
+      {
+        role,
+        cookie,
+        path: "assignment.teacherAssignment.list",
+        input: { organizationId: orgId, sectionId: sectionA.id },
+        method: "query",
+        // The matrix boundary: the class teacher reads the template but holds
+        // no teacher_assignment:read — staffing is not her view.
+        expect: role === "class_teacher" ? forbidden : OK,
+        dataCheck:
+          role === "class_teacher"
+            ? undefined
+            : (d) =>
+                Array.isArray(d) &&
+                d.length === 2 &&
+                d.every((r: any) => r.sectionId === sectionA.id),
       },
     );
   };

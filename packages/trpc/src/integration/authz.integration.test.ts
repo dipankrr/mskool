@@ -37,7 +37,7 @@ vi.mock("ioredis", () => {
 
 import { TRPCError } from "@trpc/server";
 import type { Permission } from "@repo/authz";
-import { academicService, organizationService, subjectService } from "@repo/services";
+import { academicService, assignmentService, organizationService, subjectService } from "@repo/services";
 import { getOwnedStudentIds } from "@repo/authz";
 import { db } from "@repo/db";
 import { classes } from "@repo/db/schema";
@@ -212,6 +212,149 @@ const subjectByIdRouter = makeRouter({
     }
     return subject;
   }),
+});
+
+// --- probes: the teaching-assignment layer ------------------------------------
+// Each mirrors its real router in assignment.router.ts, including the resolver
+// messages — a resolver null and a gate overlap-miss answer with DIFFERENT
+// NOT_FOUND wordings, and the tests below pin both.
+
+const mappingOwner: OwnerResolver = async (organizationId, id) => {
+  const schoolId = await assignmentService.getClassSubjectMappingOwnerId(organizationId, id);
+  if (!schoolId) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Subject mapping not found." });
+  }
+  return { type: "school", id: schoolId };
+};
+
+const mappingListRouter = makeRouter({
+  probe: staffListProcedure("subject_mapping:read")
+    .input(z.object({ academicYearId: z.uuid(), classId: z.uuid() }))
+    .query(({ ctx, input }) =>
+      assignmentService.listClassSubjectMappings(
+        ctx.scopes,
+        input.academicYearId,
+        input.classId,
+      ),
+    ),
+});
+
+const mappingByIdRouter = makeRouter({
+  probe: staffProcedure("subject_mapping:read", {
+    resolveOwner: mappingOwner,
+    gate: "overlap",
+  }).query(async ({ ctx, input }) => {
+    const mapping = await assignmentService.getClassSubjectMappingById(
+      ctx.scope,
+      rowId(input),
+    );
+    if (!mapping) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Subject mapping not found." });
+    }
+    return mapping;
+  }),
+});
+
+const createMappingRouter = makeRouter({
+  probe: staffProcedure("subject_mapping:create")
+    .input(
+      z.object({
+        academicYearId: z.uuid(),
+        classId: z.uuid(),
+        subjectId: z.uuid(),
+        data: z.object({
+          isElective: z.boolean().optional(),
+          sequenceNumber: z.number().int().optional(),
+        }),
+      }),
+    )
+    .mutation(({ ctx, input }) =>
+      assignmentService.createClassSubjectMapping(ctx.scope as never, {
+        ...input.data,
+        academicYearId: input.academicYearId,
+        classId: input.classId,
+        subjectId: input.subjectId,
+      }),
+    ),
+});
+
+const staOwner: OwnerResolver = async (organizationId, id) => {
+  const schoolId = await assignmentService.getSectionTeacherAssignmentOwnerId(
+    organizationId,
+    id,
+  );
+  if (!schoolId) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Teacher assignment not found." });
+  }
+  return { type: "school", id: schoolId };
+};
+
+const staListRouter = makeRouter({
+  probe: staffListProcedure("teacher_assignment:read")
+    .input(z.object({ sectionId: z.uuid() }))
+    .query(({ ctx, input }) =>
+      assignmentService.listSectionTeacherAssignments(ctx.scopes, input.sectionId),
+    ),
+});
+
+const staByIdRouter = makeRouter({
+  probe: staffProcedure("teacher_assignment:read", {
+    resolveOwner: staOwner,
+    gate: "overlap",
+  }).query(async ({ ctx, input }) => {
+    const sta = await assignmentService.getSectionTeacherAssignmentById(
+      ctx.scope,
+      rowId(input),
+    );
+    if (!sta) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Teacher assignment not found." });
+    }
+    return sta;
+  }),
+});
+
+const staRoles = z.enum([
+  "class_teacher",
+  "subject_teacher",
+  "co_teacher",
+  "activity_teacher",
+]);
+
+const createStaRouter = makeRouter({
+  probe: staffProcedure("teacher_assignment:create")
+    .input(
+      z.object({
+        sectionId: z.uuid(),
+        academicYearId: z.uuid(),
+        userId: z.string(),
+        role: staRoles,
+        subjectId: z.uuid().nullable().optional(),
+      }),
+    )
+    .mutation(({ ctx, input }) =>
+      assignmentService.createSectionTeacherAssignment(ctx.scope as never, input),
+    ),
+});
+
+const endStaRouter = makeRouter({
+  probe: staffProcedure("teacher_assignment:update", { resolveOwner: staOwner })
+    .input(
+      z.object({
+        id: z.uuid(),
+        successor: z
+          .object({
+            sectionId: z.uuid(),
+            academicYearId: z.uuid(),
+            userId: z.string(),
+            role: staRoles,
+            subjectId: z.uuid().nullable().optional(),
+          })
+          .optional(),
+      }),
+    )
+    .mutation(({ ctx, input }) =>
+      assignmentService.endAssignment(ctx.scope, input.id, input.successor),
+    ),
 });
 
 // --- harness -----------------------------------------------------------------
@@ -660,6 +803,301 @@ describe("years — visibility is a permission, not scope inference (ADR-024)", 
 });
 
 // --- mutations -----------------------------------------------------------------
+
+// --- the teaching-assignment layer ----------------------------------------------
+
+describe("the teaching-assignment layer — the template and the staffing", () => {
+  const listMappingsAt = (userId: string) =>
+    okIds(
+      callerOf(mappingListRouter, userId).probe({
+        organizationId: world.orgAId,
+        academicYearId: world.currentYearAId,
+        classId: world.class6Id,
+      }),
+    );
+
+  it("every role holding the read lists exactly Class 6's two mappings", async () => {
+    const want = [world.mappingA1MathId, world.mappingA1PhysicsId].sort();
+    expect(await listMappingsAt(U().principalA1)).toEqual(want);
+    // The class teacher and the section teacher ask with a top-level classId;
+    // the widening to school level is the same entity-shape reasoning as the
+    // catalogue (a mapping has no section of its own), and the year+class
+    // input is what keeps the answer exact.
+    expect(await listMappingsAt(U().teacherC6)).toEqual(want);
+    expect(await listMappingsAt(U().subjectS6A)).toEqual(want);
+  });
+
+  it("the sibling branch's mapping for the same-named subject never appears", async () => {
+    const ids = await listMappingsAt(U().principalA1);
+    expect(ids).not.toContain(world.mappingA2MathId);
+    expect(ids).not.toContain(world.mappingB1MathId);
+  });
+
+  it("an outsider org is 403 on subject_mapping.list", async () => {
+    await expectTrpcError(
+      callerOf(mappingListRouter, U().adminB).probe({
+        organizationId: world.orgAId,
+        academicYearId: world.currentYearAId,
+        classId: world.class6Id,
+      }),
+      "FORBIDDEN",
+      "Missing permission: subject_mapping:read",
+    );
+  });
+
+  it("mapping.byId: her branch resolves; a foreign-branch id is NOT_FOUND in the gate", async () => {
+    const own = await callerOf(mappingByIdRouter, U().principalA1).probe({
+      organizationId: world.orgAId,
+      id: world.mappingA1MathId,
+    });
+    expect(own.id).toBe(world.mappingA1MathId);
+
+    // The resolver finds A2's school node, then the overlap gate refuses her
+    // A1 grant — the gate's generic wording, not the router's.
+    await expectTrpcError(
+      callerOf(mappingByIdRouter, U().principalA1).probe({
+        organizationId: world.orgAId,
+        id: world.mappingA2MathId,
+      }),
+      "NOT_FOUND",
+      "Resource not found.",
+    );
+  });
+
+  it("a cross-ORG mapping id is NOT_FOUND, indistinguishable from a nonexistent one", async () => {
+    // The resolver is org-filtered, so B1's mapping yields the resolver's own
+    // "not found" — nothing here confirms the id exists elsewhere.
+    await expectTrpcError(
+      callerOf(mappingByIdRouter, U().adminA).probe({
+        organizationId: world.orgAId,
+        id: world.mappingB1MathId,
+      }),
+      "NOT_FOUND",
+      "Subject mapping not found.",
+    );
+  });
+
+  it("creating a mapping is gated on the ADDRESSED CLASS — a sibling branch's class is FORBIDDEN", async () => {
+    // The create input names its parent class top-level, and the builder takes
+    // the most specific id present as the addressed node — so a foreign class
+    // is refused by the GATE, before the service's parent re-read ever runs.
+    // The caller matters: the branch principal does not COVER the sibling
+    // class, so the coverage test refuses her. (An org admin would pass the
+    // gate here — see the next test.)
+    await expectTrpcError(
+      callerOf(createMappingRouter, U().principalA1).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
+        academicYearId: world.currentYearAId,
+        classId: world.classA2Id,
+        subjectId: world.subjectA1MathId,
+        data: {},
+      }),
+      "FORBIDDEN",
+      "A role you hold has subject_mapping:create but not at this class.",
+    );
+  });
+
+  it("an ORG-SCOPED admin covers the sibling class, so the SERVICE's year re-read refuses him", async () => {
+    // The complement of the gate refusal: the org admin covers both branches,
+    // so no gate can catch a smuggled parent — but the year he named belongs
+    // to school A1, and the class he addressed is in school A2. The re-read
+    // runs INSIDE the transaction, and nothing is written.
+    await expectTrpcError(
+      callerOf(createMappingRouter, U().adminA).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
+        academicYearId: world.currentYearAId,
+        classId: world.classA2Id,
+        subjectId: world.subjectA1MathId,
+        data: {},
+      }),
+      "BAD_REQUEST",
+      "That session is not at this branch. Choose a session from the branch you are working in.",
+    );
+  });
+
+  it("a cross-ORG class is the generic 403 — a wrong-tenant node is unresolvable", async () => {
+    await expectTrpcError(
+      callerOf(createMappingRouter, U().adminA).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
+        academicYearId: world.currentYearAId,
+        classId: world.classB1Id,
+        subjectId: world.subjectA1MathId,
+        data: {},
+      }),
+      "FORBIDDEN",
+      "You do not have access to this resource.",
+    );
+  });
+
+  it("creating a mapping refuses a FOREIGN-ORG SUBJECT — the parent the gate cannot see", async () => {
+    // The class is covered, so the gate passes and the SERVICE re-read catches
+    // the smuggled subject. This assertion is why the re-read exists.
+    await expectTrpcError(
+      callerOf(createMappingRouter, U().principalA1).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
+        academicYearId: world.currentYearAId,
+        classId: world.class6Id,
+        subjectId: world.subjectB1MathId,
+        data: {},
+      }),
+      "BAD_REQUEST",
+      "That subject is not at this branch. Choose a subject from the branch you are working in.",
+    );
+  });
+
+  it("a section teacher cannot create a mapping (permission gate)", async () => {
+    await expectTrpcError(
+      callerOf(createMappingRouter, U().subjectS6A).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
+        academicYearId: world.currentYearAId,
+        classId: world.class6Id,
+        subjectId: world.subjectA1MathId,
+        data: {},
+      }),
+      "FORBIDDEN",
+      "Missing permission: subject_mapping:create",
+    );
+  });
+
+  it("open assignments per section: exactly the two staffed rows", async () => {
+    const want = [world.staMath6aId, world.staHomeroom6aId].sort();
+    const listAt = (userId: string) =>
+      okIds(
+        callerOf(staListRouter, userId).probe({
+          organizationId: world.orgAId,
+          sectionId: world.section6aId,
+        }),
+      );
+    expect(await listAt(U().principalA1)).toEqual(want);
+    // Her own subject fact plus the homeroom fact — teacher_assignment:read
+    // at section scope reaches her section's rows.
+    expect(await listAt(U().subjectS6A)).toEqual(want);
+  });
+
+  it("the class teacher holds NO teacher_assignment:read — the matrix boundary", async () => {
+    await expectTrpcError(
+      callerOf(staListRouter, U().teacherC6).probe({
+        organizationId: world.orgAId,
+        sectionId: world.section6aId,
+      }),
+      "FORBIDDEN",
+      "Missing permission: teacher_assignment:read",
+    );
+  });
+
+  it("sta.byId: her own row resolves (overlap reach); a cross-org row is NOT_FOUND", async () => {
+    const own = await callerOf(staByIdRouter, U().subjectS6A).probe({
+      organizationId: world.orgAId,
+      id: world.staMath6aId,
+    });
+    expect(own.id).toBe(world.staMath6aId);
+
+    await expectTrpcError(
+      callerOf(staByIdRouter, U().adminA).probe({
+        organizationId: world.orgAId,
+        id: world.staB1Id,
+      }),
+      "NOT_FOUND",
+      "Teacher assignment not found.",
+    );
+  });
+
+  it("assigning into a cross-ORG section is the generic 403", async () => {
+    await expectTrpcError(
+      callerOf(createStaRouter, U().adminA).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
+        sectionId: world.sectionB1Id,
+        academicYearId: world.yearB1Id,
+        userId: U().teacherC6,
+        role: "subject_teacher",
+        subjectId: world.subjectA1MathId,
+      }),
+      "FORBIDDEN",
+      "You do not have access to this resource.",
+    );
+  });
+
+  it("an assignment's year must equal its section's year (service guard)", async () => {
+    // The section is covered and the closed year is in the same school, so the
+    // gate passes; the service refuses the mismatch before anything is written.
+    await expectTrpcError(
+      callerOf(createStaRouter, U().principalA1).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
+        sectionId: world.section6aId,
+        academicYearId: world.closedYearAId,
+        userId: U().teacherC6,
+        role: "class_teacher",
+      }),
+      "BAD_REQUEST",
+      "That session does not match the section's session. Choose the session the section belongs to.",
+    );
+  });
+
+  it("a subject_teacher cannot be assigned a FOREIGN-ORG subject (service guard)", async () => {
+    await expectTrpcError(
+      callerOf(createStaRouter, U().principalA1).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
+        sectionId: world.section6aId,
+        academicYearId: world.currentYearAId,
+        userId: U().teacherC6,
+        role: "subject_teacher",
+        subjectId: world.subjectB1MathId,
+      }),
+      "BAD_REQUEST",
+      "That subject is not at this branch. Choose a subject from the branch you are working in.",
+    );
+  });
+
+  it("end closes the open row and the successor replaces it (runs late, mutates)", async () => {
+    // The scratch row belongs to this test: the fixture keeps exactly one OPEN
+    // row for (6-B, subject teacher, Physics) and this test ends it, so a
+    // re-run re-opens and re-ends it — history accumulates, nothing is deleted.
+    // The successor shares the scratch row's natural key, so the fixture finds
+    // IT on the next run and the churn stays at one row per run.
+    const ended = await callerOf(endStaRouter, U().principalA1).probe({
+      organizationId: world.orgAId,
+      id: world.staScratch6bId,
+      successor: {
+        sectionId: world.section6bId,
+        academicYearId: world.currentYearAId,
+        userId: U().subjectS6A,
+        role: "subject_teacher",
+        subjectId: world.subjectA1PhysicsId,
+      },
+    });
+    expect(ended.closed.effectiveTo).toBeTruthy();
+    expect(ended.successor?.id).toBeTruthy();
+    expect(ended.successor.id).not.toBe(ended.closed.id);
+
+    // The open-row list is served by the partial index: the closed row leaves
+    // it, the successor enters it, and the seat is never vacant.
+    const after = await okIds(
+      callerOf(staListRouter, U().principalA1).probe({
+        organizationId: world.orgAId,
+        sectionId: world.section6bId,
+      }),
+    );
+    expect(after).toEqual([ended.successor.id]);
+
+    // Ending it twice is a CONFLICT worded for the person who clicked twice.
+    await expectTrpcError(
+      callerOf(endStaRouter, U().principalA1).probe({
+        organizationId: world.orgAId,
+        id: ended.closed.id,
+      }),
+      "CONFLICT",
+      "This assignment has already been ended. Refresh to see the current assignments.",
+    );
+  });
+});
 
 describe("mutations — strict cover and parent verification", () => {
   it("a class teacher cannot create an academic year (gate)", async () => {
