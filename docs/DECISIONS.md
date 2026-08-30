@@ -1108,3 +1108,51 @@ adjacent subject — each indistinguishable from a nonexistent pair — while he
 resolves. The Phase-1 leftover "Subject-level access is not enforced" ticks when S4.4
 lands. No endpoint consumes the gate yet; the marks slice (Phase 5) MUST use the builder,
 and `check:builders` enforces that.
+
+## ADR-030 — Attendance records edit in place; the corrections table is dropped for a reason column
+
+**Status:** accepted (2026-08-31, owner decision during Phase 3 planning; implemented in C5).
+
+**Context.** The reference SQL (table 27) carries `attendance_corrections`: an append-only
+audit trail where every change inserts a new row and flips the record's `record_status` to
+`Corrected`. It is the attendance sibling of hard rule 3's financial ledger. But the two
+domains are not equally exposed: money disputes are inevitable and legally load-bearing;
+attendance disputes at this product stage are not. The reference itself hedges — five
+statuses (`late`, `on_leave`, …) already let a teacher *record* reality rather than a bare
+present/absent, which is most of what a corrections flow exists to capture. The five-status
+model was already locked for Phase 3; a second table whose only job was to re-describe a
+status change the statuses could hold directly was a structure looking for a dispute to
+justify it.
+
+**Decision.**
+
+1. **`attendance_corrections` does not exist.** Records edit in place; nothing is appended.
+2. **The "why" rides on the record when the editor says it:**
+   `attendance_records.correction_reason` varchar(500), nullable. This is a FRONTEND
+   convention the backend stores but never enforces — the UI asks for a reason when editing
+   a PAST date and does not ask on same-day marking; the backend validates neither rule.
+   A reason is data about the edit, not a precondition for it.
+3. **The don't-wipe micro-rule is backend-enforced:** an update sent WITHOUT a
+   `correctionReason` never clears a stored one (only an explicit reason overwrites). A
+   reason-less re-mark of an already-edited row keeps the old note.
+4. **The audit-lite trio is backend-owned:** `updatedAt` + `updatedBy` answer "was it
+   edited, when, by whom"; `correctionReason` answers "why (if said)". Together they cover
+   what a school actually asks of an attendance row; what they cannot answer is the full
+   before/after diff.
+5. **Hard rule 3 is untouched:** financial transactions remain append-only. This ADR
+   creates no exception — attendance records are not money.
+
+**Rejected alternatives.** Keeping the corrections table "for later" (a dead table with
+live FKs constrains every query that touches records and has no reader). `record_status`
+(`Marked`/`Corrected`/`Voided`) — a lifecycle flag nothing branches on in an edit-in-place
+model; Voided would also collide with the double-mark guard (a voided row still occupies
+the student/day/period key). Backend-enforced reason-on-past-edit (a "past date" rule
+belongs to the school's clock and the UI's question, not to a tenant-agnostic API).
+
+**Consequences.** The history a corrections table would have preserved — the SEQUENCE of
+statuses a row passed through — is genuinely lost. If a school ever needs it, the retrofit
+is additive: a new append-only table keyed on the record id, populated by the marking
+service alongside the in-place edit (the service is the single write path, so the seam is
+one place). No migration of existing rows would be required. The deferral is recorded in
+the Phase 3 plan's "recorded deferrals" list; the C7 integration suite pins the don't-wipe
+rule and the reason-preserving re-mark so the convention cannot silently erode.

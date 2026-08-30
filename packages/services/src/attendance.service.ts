@@ -2,7 +2,9 @@ import { atSchoolLevel, requireSchoolId, yearVisibilityWhere } from "./academic.
 import { scopeWhere, type DataScope } from "@repo/authz";
 import type {
   GenerateCalendarInput,
+  GetDailyStatusInput,
   ListCalendarInput,
+  MarkAttendanceInput,
   UpsertCalendarDayInput,
   UpsertPolicyInput,
   CreatePeriodInput,
@@ -13,19 +15,47 @@ import {
   academicCalendar,
   academicYears,
   attendancePolicies,
+  attendanceRecords,
+  attendanceSummary,
+  dailyAttendanceStatus,
   periods,
   sections,
+  studentEnrollments,
   subjects,
+  terms,
 } from "@repo/db/schema";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 /**
- * ATTENDANCE — Phase 3, configuration layer (C2): the calendar, the marking
- * policy, and the periods. The marking flow (C5) appends to this class.
+ * ATTENDANCE — Phase 3. Configuration layer (C2): calendar, policy, periods.
+ * Marking flow (C5): `markAttendance`, the daily-status derivation, and
+ * `recomputeSummary`.
  *
  * Knows nothing about HTTP. Every read takes a DataScope as a REQUIRED
  * argument and filters by it (hard rule 1); input types come from
  * `@repo/contracts`.
+ *
+ * **HARD RULE 5 lives here.** `attendance_records` is write-only ground
+ * truth; the ONLY table anything downstream may read is
+ * `daily_attendance_status`. The summary is a derived read-model of the
+ * status layer, recomputed at the end of every mark. No fee, exam, or report
+ * query may ever touch `attendance_records` — the schema comments on both
+ * tables say the same thing where the next author will meet them.
+ *
+ * **The marking gate.** `markAttendance` refuses any entry whose date the
+ * calendar does not describe: no row → refused (strict — "generate the
+ * calendar first"; the bulk generator makes this a non-event),
+ * holiday/weekend → refused, working/half_day/exam_day → accepted. It is a
+ * service rule because it is cross-table; no CHECK can hold it.
+ *
+ * **The snapshot rule.** Section + class are COPIED onto records and daily
+ * status at INSERT time and never updated afterwards — an edit re-marks the
+ * status but does not re-home the row, so a mid-year transfer cannot rewrite
+ * which section last month's attendance belonged to.
+ *
+ * **ADR-030 — records edit in place.** No corrections table. An update
+ * carries an optional `correctionReason`; an update WITHOUT one preserves
+ * the stored reason (the don't-wipe rule, implemented in `markAttendance`).
  *
  * Scope levels, per entity — each justified by the entity's shape, the
  * reasoning documented on `atSchoolLevel`:
@@ -36,21 +66,26 @@ import { and, asc, eq, sql } from "drizzle-orm";
  *     asking "is 15 August a holiday?" is asking exactly what the principal
  *     asks — widen with `atSchoolLevel`.
  *   - **Periods are section-attached configuration**, and follow the
- *     assignment layer's pattern exactly: the scope filters org+school and the
+ *     assignment layer's pattern: the scope filters org+school and the
  *     section is narrowed by the addressed `sectionId`, with the parent
  *     re-read through the section's OWN table proving the section belongs to
  *     this school.
+ *   - **Records and daily status carry all four scope columns** (org, school,
+ *     class, section — snapshot columns are real columns), so their reads
+ *     filter WITHOUT widening: a section teacher sees exactly her section's
+ *     day, never her school's.
  *
  * **Parent verification (the section-service pattern).** The
  * `academic_years` FK is precisely the one that does not mention `school_id`,
  * so every calendar write re-reads the parent year through the caller's scope
- * INSIDE the transaction before inserting. A calendar row pointing at another
- * school's year would be a cross-tenant lie every later read trusts.
+ * INSIDE the transaction before inserting, and marking re-reads the section
+ * the same way. A row pointing at another school's year would be a
+ * cross-tenant lie every later read trusts.
  *
  * Scope columns are per-TABLE (the S2.4 lesson): `scopeWhere` compiles the
  * columns it is handed into that query's SQL, so a column set borrowed from
  * another table is a runtime "missing FROM-clause entry" error `tsc` cannot
- * see. Each parent table gets its own column set, as in assignment.service.ts.
+ * see. Each table gets its own column set.
  */
 
 const CALENDAR_SCOPE_COLUMNS = {
@@ -66,6 +101,15 @@ const POLICY_SCOPE_COLUMNS = {
 const PERIOD_SCOPE_COLUMNS = {
   organizationId: periods.organizationId,
   schoolId: periods.schoolId,
+} as const;
+
+// The record/status tables carry all four scope columns (the snapshot makes
+// class/section real columns), so their reads filter WITHOUT widening.
+const STATUS_SCOPE_COLUMNS = {
+  organizationId: dailyAttendanceStatus.organizationId,
+  schoolId: dailyAttendanceStatus.schoolId,
+  classId: dailyAttendanceStatus.classId,
+  sectionId: dailyAttendanceStatus.sectionId,
 } as const;
 
 // Parent tables — each re-read filters the parent's own columns.
@@ -526,6 +570,606 @@ export class AttendanceService {
       .where(and(eq(periods.id, periodId), eq(periods.organizationId, organizationId)));
 
     return row?.schoolId ?? null;
+  }
+
+  // -------------------------------------------------------------------------
+  // Marking flow (C5)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Marks attendance for one section on one date — the whole flow in ONE
+   * transaction: section re-read, policy, period agreement, the calendar
+   * gate, the roster check, the record upsert (with the don't-wipe reason
+   * rule), the daily-status derivation, and the summary recompute. A failure
+   * anywhere rolls all of it back: there is no state where records moved but
+   * the authoritative layer did not.
+   *
+   * Re-marking is an upsert, per the temporal rule (none): any calendar-valid
+   * date, past or present. `markedBy` is set on insert; an edit sets
+   * `updatedBy` and, only when the entry carries one, the `correctionReason`
+   * — an update WITHOUT a reason never wipes a stored one (ADR-030's
+   * don't-wipe micro-rule). Snapshot columns are written on INSERT only, so
+   * re-marking a transferred student's old records re-marks the status
+   * without re-homing the row.
+   *
+   * Concurrency: two simultaneous marks of the same student/day/period both
+   * pass the SELECT and race the INSERT; the double-mark guard index refuses
+   * the loser, which surfaces as a generic CONFLICT (ADR-022's
+   * let-Postgres-refuse rule). The guard is an EXPRESSION index
+   * (`COALESCE(period_id, sentinel)`), so it cannot be an ON CONFLICT target
+   * — hence select-then-split rather than a single upsert statement.
+   */
+  async markAttendance(
+    scope: DataScope,
+    input: MarkAttendanceInput,
+    actorId: string,
+  ) {
+    const schoolId = requireSchoolId(scope);
+    const organizationId = scope.organizationId;
+
+    return db.transaction(async (tx) => {
+      // The section re-read through the caller's scope — its FKs never
+      // mention school_id, so Postgres would happily accept marks for another
+      // school's section.
+      const [section] = await tx
+        .select({
+          id: sections.id,
+          academicYearId: sections.academicYearId,
+          classId: sections.classId,
+        })
+        .from(sections)
+        .where(
+          and(
+            eq(sections.id, input.sectionId),
+            eq(sections.schoolId, schoolId),
+            scopeWhere(atSchoolLevel(scope), SECTION_SCOPE_COLUMNS),
+          ),
+        );
+      if (!section) {
+        throw new Error(
+          "Section not found in this school. Attendance cannot be marked for another school's section.",
+        );
+      }
+      const yearId = section.academicYearId;
+
+      // The school's policy. A missing row is the daily-mode DEFAULTS, not an
+      // error — a school can mark before ever opening the policy screen.
+      const [policy] = await tx
+        .select({
+          markingMode: attendancePolicies.markingMode,
+          dailyStatusRule: attendancePolicies.dailyStatusRule,
+          thresholdPercentage: attendancePolicies.thresholdPercentage,
+        })
+        .from(attendancePolicies)
+        .where(eq(attendancePolicies.schoolId, schoolId));
+      const markingMode = policy?.markingMode ?? "daily";
+
+      // Period agreement. Daily vs period-wise is a per-school policy, not a
+      // schema fork; the mode decides what periodId means before anything is
+      // written.
+      if (markingMode === "daily" && input.periodId) {
+        throw new Error(
+          "This school marks attendance for the whole day. A period cannot be named in daily-mode marking.",
+        );
+      }
+      if (markingMode === "period_wise" && !input.periodId) {
+        throw new Error(
+          "This school marks attendance period by period. Choose the period this marking is for.",
+        );
+      }
+      if (input.periodId) {
+        const [period] = await tx
+          .select({ id: periods.id })
+          .from(periods)
+          .where(
+            and(
+              eq(periods.id, input.periodId),
+              eq(periods.sectionId, section.id),
+              eq(periods.academicYearId, yearId),
+            ),
+          );
+        if (!period) {
+          throw new Error(
+            "The chosen period does not belong to the section being marked. Pick one of the section's own periods.",
+          );
+        }
+      }
+
+      // THE CALENDAR GATE. No row → refused (strict — the bulk generator
+      // makes filling the calendar a non-event); holiday and weekend →
+      // refused; working, half_day, exam_day → accepted. This is why the
+      // calendar exists.
+      const [calDay] = await tx
+        .select({ dayType: academicCalendar.dayType })
+        .from(academicCalendar)
+        .where(
+          and(
+            eq(academicCalendar.schoolId, schoolId),
+            eq(academicCalendar.academicYearId, yearId),
+            eq(academicCalendar.date, input.date),
+          ),
+        );
+      if (!calDay) {
+        throw new Error(
+          `No calendar entry exists for ${input.date}. Generate the year's calendar first — marking is refused on a date the calendar does not describe.`,
+        );
+      }
+      if (calDay.dayType === "holiday") {
+        throw new Error(
+          `The date ${input.date} is marked as a holiday in the calendar. Attendance cannot be marked on a holiday.`,
+        );
+      }
+      if (calDay.dayType === "weekend") {
+        throw new Error(
+          `The date ${input.date} is marked as a weekend in the calendar. Attendance cannot be marked on a weekend.`,
+        );
+      }
+
+      // The roster check: entries must name students enrolled in THIS
+      // section, still attending (section_assigned or active — not one who
+      // transferred out or withdrew).
+      const rosterRows = await tx
+        .select({ studentId: studentEnrollments.studentId })
+        .from(studentEnrollments)
+        .where(
+          and(
+            eq(studentEnrollments.sectionId, section.id),
+            eq(studentEnrollments.academicYearId, yearId),
+            inArray(studentEnrollments.enrollmentStatus, [
+              "section_assigned",
+              "active",
+            ]),
+          ),
+        );
+      const roster = new Set(rosterRows.map((r) => r.studentId));
+      const stranger = input.entries.find((e) => !roster.has(e.studentId));
+      if (stranger) {
+        throw new Error(
+          `Student ${stranger.studentId} is not enrolled in this section. Attendance can only be marked for the section's own roster.`,
+        );
+      }
+
+      // Upsert the records. Duplicate studentIds in one submission collapse
+      // (last entry wins) — two rows for one student/day/period are
+      // unrepresentable anyway (the double-mark guard), and a batch insert
+      // colliding with itself would be a self-inflicted CONFLICT.
+      const entryByStudent = new Map(
+        input.entries.map((e) => [e.studentId, e] as const),
+      );
+      const studentIds = [...entryByStudent.keys()];
+
+      const existingRows = await tx
+        .select({
+          id: attendanceRecords.id,
+          studentId: attendanceRecords.studentId,
+        })
+        .from(attendanceRecords)
+        .where(
+          and(
+            eq(attendanceRecords.academicYearId, yearId),
+            eq(attendanceRecords.date, input.date),
+            inArray(attendanceRecords.studentId, studentIds),
+            input.periodId
+              ? eq(attendanceRecords.periodId, input.periodId)
+              : isNull(attendanceRecords.periodId),
+          ),
+        );
+      const existingByStudent = new Map(
+        existingRows.map((r) => [r.studentId, r.id] as const),
+      );
+
+      const inserts: (typeof attendanceRecords.$inferInsert)[] = [];
+      const updates: {
+        id: string;
+        status: (typeof attendanceRecords.$inferInsert)["status"];
+        reason?: string;
+      }[] = [];
+
+      for (const [studentId, entry] of entryByStudent) {
+        const existingId = existingByStudent.get(studentId);
+        if (existingId) {
+          updates.push({ id: existingId, status: entry.status, reason: entry.correctionReason });
+        } else {
+          inserts.push({
+            organizationId,
+            schoolId,
+            studentId,
+            academicYearId: yearId,
+            date: input.date,
+            // The snapshot — copied once, on insert, never updated.
+            classId: section.classId,
+            sectionId: section.id,
+            periodId: input.periodId ?? null,
+            status: entry.status,
+            correctionReason: entry.correctionReason ?? null,
+            markedBy: actorId,
+          });
+        }
+      }
+
+      if (inserts.length > 0) {
+        await tx.insert(attendanceRecords).values(inserts);
+      }
+      for (const u of updates) {
+        await tx
+          .update(attendanceRecords)
+          .set({
+            status: u.status,
+            updatedBy: actorId,
+            // Don't-wipe: reason undefined = not sent = keep what is stored.
+            ...(u.reason !== undefined ? { correctionReason: u.reason } : {}),
+          })
+          .where(eq(attendanceRecords.id, u.id));
+      }
+
+      // ---- the daily-status derivation, same transaction ----
+
+      const derived = new Map<
+        string,
+        {
+          status: (typeof attendanceRecords.$inferInsert)["status"];
+          derivationMode: "direct" | "homeroom_authoritative" | "threshold_percentage";
+          periodsPresent: number | null;
+          periodsTotal: number | null;
+        }
+      >();
+
+      if (markingMode === "daily") {
+        // DIRECT: the single record IS the day.
+        for (const [studentId, entry] of entryByStudent) {
+          derived.set(studentId, {
+            status: entry.status,
+            derivationMode: "direct",
+            periodsPresent: null,
+            periodsTotal: null,
+          });
+        }
+      } else {
+        // A threshold weighs EVERY period of the day, not just the ones in
+        // this submission — so re-read all of the day's records for the
+        // touched students.
+        const dayRecords = await tx
+          .select({
+            studentId: attendanceRecords.studentId,
+            periodId: attendanceRecords.periodId,
+            status: attendanceRecords.status,
+          })
+          .from(attendanceRecords)
+          .where(
+            and(
+              eq(attendanceRecords.academicYearId, yearId),
+              eq(attendanceRecords.date, input.date),
+              inArray(attendanceRecords.studentId, studentIds),
+            ),
+          );
+
+        const sectionPeriods = await tx
+          .select({
+            id: periods.id,
+            isHomeroom: periods.isHomeroom,
+            sequenceNumber: periods.sequenceNumber,
+          })
+          .from(periods)
+          .where(
+            and(
+              eq(periods.sectionId, section.id),
+              eq(periods.academicYearId, yearId),
+            ),
+          );
+        const homeroom = sectionPeriods.find((p) => p.isHomeroom);
+        const firstPeriod = sectionPeriods.length
+          ? [...sectionPeriods].sort((a, b) => a.sequenceNumber - b.sequenceNumber)[0]
+          : undefined;
+        const threshold =
+          policy?.dailyStatusRule === "threshold_percentage"
+            ? policy?.thresholdPercentage
+            : null;
+
+        for (const studentId of studentIds) {
+          const recs = dayRecords.filter((r) => r.studentId === studentId);
+
+          if (threshold != null) {
+            // THRESHOLD: present-like = present, late, half_day — statuses
+            // meaning the child was there for some or all of it. At or above
+            // the school's percentage, the day resolves to present.
+            const total = recs.length;
+            const presentLike = recs.filter(
+              (r) => r.status === "present" || r.status === "late" || r.status === "half_day",
+            ).length;
+            const pct = total === 0 ? 0 : (presentLike / total) * 100;
+            derived.set(studentId, {
+              status: pct >= threshold ? "present" : "absent",
+              derivationMode: "threshold_percentage",
+              periodsPresent: presentLike,
+              periodsTotal: total,
+            });
+          } else {
+            // HOMEROOM-AUTHORITATIVE: the homeroom period's record decides;
+            // with no homeroom period defined (or nothing marked for it), the
+            // day's first period falls back to deciding.
+            const authoritative = homeroom ?? firstPeriod;
+            const deciding = authoritative
+              ? recs.find((r) => r.periodId === authoritative.id)
+              : undefined;
+            derived.set(studentId, {
+              status: deciding?.status ?? "absent",
+              derivationMode: "homeroom_authoritative",
+              periodsPresent: null,
+              periodsTotal: null,
+            });
+          }
+        }
+      }
+
+      // One answer per student per day. INSERT carries the snapshot; UPDATE
+      // re-marks the answer only — the update path never touches class or
+      // section, so history cannot be re-homed through a re-mark.
+      for (const [studentId, s] of derived) {
+        await tx
+          .insert(dailyAttendanceStatus)
+          .values({
+            organizationId,
+            schoolId,
+            studentId,
+            academicYearId: yearId,
+            date: input.date,
+            classId: section.classId,
+            sectionId: section.id,
+            status: s.status,
+            periodsPresent: s.periodsPresent,
+            periodsTotal: s.periodsTotal,
+            derivationMode: s.derivationMode,
+          })
+          .onConflictDoUpdate({
+            target: [
+              dailyAttendanceStatus.studentId,
+              dailyAttendanceStatus.academicYearId,
+              dailyAttendanceStatus.date,
+            ],
+            set: {
+              status: s.status,
+              derivationMode: s.derivationMode,
+              periodsPresent: s.periodsPresent,
+              periodsTotal: s.periodsTotal,
+              updatedAt: new Date(),
+            },
+          });
+      }
+
+      // Hard rule 5's read-model, kept in step inside the same transaction.
+      await recomputeSummaries(tx, organizationId, schoolId, yearId, studentIds);
+
+      return { marked: entryByStudent.size };
+    });
+  }
+
+  /**
+   * One section's day, from the authoritative layer — hard rule 5's only
+   * read surface. The status table carries all four scope columns (the
+   * snapshot made them real), so this filters WITHOUT widening: a
+   * section-scoped teacher gets exactly her section's rows — addressing
+   * another section yields an empty list, never the school's day.
+   */
+  async getDailyStatus(scope: DataScope, input: GetDailyStatusInput) {
+    return db
+      .select()
+      .from(dailyAttendanceStatus)
+      .where(
+        and(
+          eq(dailyAttendanceStatus.sectionId, input.sectionId),
+          eq(dailyAttendanceStatus.date, input.date),
+          scopeWhere(scope, STATUS_SCOPE_COLUMNS),
+        ),
+      );
+  }
+
+  /**
+   * The explicit summary recompute — the same internals the mark path runs,
+   * covering EVERY month that has rows, every term, and the annual row for
+   * the named students. The backfill op for corrections made outside
+   * marking; the deferral note in the plan records that no automatic
+   * scheduled backfill exists beyond this.
+   */
+  async recomputeSummary(
+    scope: DataScope,
+    academicYearId: string,
+    studentIds: string[],
+  ) {
+    const schoolId = requireSchoolId(scope);
+    const organizationId = scope.organizationId;
+
+    // The year must be this school's, proven the same way every calendar
+    // write proves it.
+    await this.yearForCalendar(scope, academicYearId);
+
+    return db.transaction((tx) =>
+      recomputeSummaries(tx, organizationId, schoolId, academicYearId, studentIds),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Summary recompute internals
+// ---------------------------------------------------------------------------
+
+/** The day types that count toward the working-days denominator. */
+const WORKING_DAY_TYPES = new Set(["working", "exam_day", "half_day"]);
+
+type SummaryTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Recomputes the monthly, term, and annual summary rows for the given
+ * students from daily status + the calendar. Called at the end of every
+ * mark, INSIDE the mark's transaction (hard rule 5's read-model must not
+ * drift from the status layer it summarizes), and by the explicit
+ * `recomputeSummary` op for backfills.
+ *
+ * The working-days denominator is CALENDAR TRUTH — every working, exam, and
+ * half day in the period, whether or not anyone was marked — never "days
+ * someone happened to mark". No mid-period cap: a month half over shows its
+ * full planned denominator, so a percentage can only rise as days fill in.
+ * Counts come from `daily_attendance_status` (never records — hard rule 5);
+ * a `half_day` status fills no count bucket, mirroring the reference's
+ * columns.
+ */
+async function recomputeSummaries(
+  tx: SummaryTx,
+  organizationId: string,
+  schoolId: string,
+  academicYearId: string,
+  studentIds: string[],
+) {
+  if (studentIds.length === 0) return;
+
+  const calendarDays = await tx
+    .select({ date: academicCalendar.date, dayType: academicCalendar.dayType })
+    .from(academicCalendar)
+    .where(
+      and(
+        eq(academicCalendar.schoolId, schoolId),
+        eq(academicCalendar.academicYearId, academicYearId),
+      ),
+    );
+
+  const statusRows = await tx
+    .select({
+      studentId: dailyAttendanceStatus.studentId,
+      date: dailyAttendanceStatus.date,
+      status: dailyAttendanceStatus.status,
+    })
+    .from(dailyAttendanceStatus)
+    .where(
+      and(
+        eq(dailyAttendanceStatus.academicYearId, academicYearId),
+        inArray(dailyAttendanceStatus.studentId, studentIds),
+      ),
+    );
+
+  const yearTerms = await tx
+    .select({ id: terms.id, startDate: terms.startDate, endDate: terms.endDate })
+    .from(terms)
+    .where(eq(terms.academicYearId, academicYearId));
+
+  const rowsByStudent = new Map<string, typeof statusRows>();
+  for (const row of statusRows) {
+    const list = rowsByStudent.get(row.studentId);
+    if (list) list.push(row);
+    else rowsByStudent.set(row.studentId, [row]);
+  }
+
+  const countSlice = (rows: typeof statusRows, inRange: (iso: string) => boolean) => {
+    const workingDays = calendarDays.filter(
+      (c) => inRange(c.date) && WORKING_DAY_TYPES.has(c.dayType),
+    ).length;
+    return {
+      workingDays,
+      daysPresent: rows.filter((r) => r.status === "present").length,
+      daysAbsent: rows.filter((r) => r.status === "absent").length,
+      daysLate: rows.filter((r) => r.status === "late").length,
+      daysOnLeave: rows.filter((r) => r.status === "on_leave").length,
+    };
+  };
+
+  const countsSet = (c: ReturnType<typeof countSlice>) => ({
+    workingDays: c.workingDays,
+    daysPresent: c.daysPresent,
+    daysAbsent: c.daysAbsent,
+    daysLate: c.daysLate,
+    daysOnLeave: c.daysOnLeave,
+    updatedAt: new Date(),
+  });
+
+  for (const [studentId, rows] of rowsByStudent) {
+    // MONTHLY — one row per calendar month the student has status rows in.
+    // ISO dates sort lexicographically, so the "YYYY-MM" prefix is the month
+    // test and no Date arithmetic is needed anywhere here.
+    const months = new Set(rows.map((r) => r.date.slice(0, 7)));
+    for (const ym of months) {
+      const monthRows = rows.filter((r) => r.date.startsWith(ym));
+      const counts = countSlice(monthRows, (iso) => iso.startsWith(ym));
+      await tx
+        .insert(attendanceSummary)
+        .values({
+          organizationId,
+          schoolId,
+          studentId,
+          academicYearId,
+          termId: null,
+          periodType: "monthly",
+          month: Number(ym.slice(5, 7)),
+          year: Number(ym.slice(0, 4)),
+          ...counts,
+        })
+        .onConflictDoUpdate({
+          target: [
+            attendanceSummary.studentId,
+            attendanceSummary.academicYearId,
+            attendanceSummary.month,
+            attendanceSummary.year,
+          ],
+          targetWhere: sql`period_type = 'monthly'`,
+          set: countsSet(counts),
+        });
+    }
+
+    // ANNUAL — the year's one row.
+    const annualCounts = countSlice(rows, () => true);
+    await tx
+      .insert(attendanceSummary)
+      .values({
+        organizationId,
+        schoolId,
+        studentId,
+        academicYearId,
+        termId: null,
+        periodType: "annual",
+        month: null,
+        year: null,
+        ...annualCounts,
+      })
+      .onConflictDoUpdate({
+        target: [attendanceSummary.studentId, attendanceSummary.academicYearId],
+        targetWhere: sql`period_type = 'annual'`,
+        set: countsSet(annualCounts),
+      });
+  }
+
+  // TERM — one row per term of the year, for every touched student. Recomputed
+  // from the same source rows even when a term was not the one marked: the
+  // summary is always a pure function of status + calendar, never an
+  // increment, so recomputing more than needed is free of drift.
+  for (const term of yearTerms) {
+    for (const [studentId, rows] of rowsByStudent) {
+      const termRows = rows.filter(
+        (r) => r.date >= term.startDate && r.date <= term.endDate,
+      );
+      const counts = countSlice(
+        termRows,
+        (iso) => iso >= term.startDate && iso <= term.endDate,
+      );
+      await tx
+        .insert(attendanceSummary)
+        .values({
+          organizationId,
+          schoolId,
+          studentId,
+          academicYearId,
+          termId: term.id,
+          periodType: "term",
+          month: null,
+          year: null,
+          ...counts,
+        })
+        .onConflictDoUpdate({
+          target: [
+            attendanceSummary.studentId,
+            attendanceSummary.academicYearId,
+            attendanceSummary.termId,
+          ],
+          targetWhere: sql`period_type = 'term'`,
+          set: countsSet(counts),
+        });
+    }
   }
 }
 

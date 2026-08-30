@@ -1,4 +1,10 @@
-import { academicCalendar, attendancePolicies, periods } from "@repo/db/schema";
+import {
+  academicCalendar,
+  attendancePolicies,
+  attendanceSummary,
+  dailyAttendanceStatus,
+  periods,
+} from "@repo/db/schema";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -193,3 +199,57 @@ export const updatePeriodSchema = createInsertSchema(periods, {
     },
   );
 export type UpdatePeriodInput = z.infer<typeof updatePeriodSchema>;
+
+// ---------------------------------------------------------------------------
+// Marking (C5) — the flow the calendar gates
+// ---------------------------------------------------------------------------
+
+export const dailyAttendanceStatusSelectSchema = createSelectSchema(
+  dailyAttendanceStatus,
+);
+export type DailyAttendanceStatus = z.infer<
+  typeof dailyAttendanceStatusSelectSchema
+>;
+
+/** The five markable statuses — shared by records and the daily layer. */
+export const attendanceStatusSchema =
+  dailyAttendanceStatusSelectSchema.shape.status;
+
+/**
+ * One student's mark. `correctionReason` is the owner's design (ADR-030): the
+ * FRONTEND asks for a reason when editing a PAST date and does not ask on
+ * same-day marking — the backend stores what it receives and never requires
+ * it. An update sent WITHOUT a reason preserves the stored one.
+ */
+export const attendanceEntrySchema = z.object({
+  studentId: z.uuid(),
+  status: attendanceStatusSchema,
+  correctionReason: z.string().min(1).max(500).optional(),
+});
+export type AttendanceEntry = z.infer<typeof attendanceEntrySchema>;
+
+/**
+ * One marking submission for a section on a date. `periodId` is present only
+ * for period-wise schools — a daily-mode school marking with a period named
+ * is a service refusal, not a silent reinterpretation. The date must be
+ * calendar-valid (working, half day, or exam day): that is the marking
+ * gate's job in the service, not a schema rule, because the answer lives in
+ * another table.
+ */
+export const markAttendanceSchema = z.object({
+  sectionId: z.uuid(),
+  date: isoDate,
+  periodId: z.uuid().optional(),
+  entries: z.array(attendanceEntrySchema).min(1),
+});
+export type MarkAttendanceInput = z.infer<typeof markAttendanceSchema>;
+
+/** Which section's day to read, and which day. */
+export const getDailyStatusSchema = z.object({
+  sectionId: z.uuid(),
+  date: isoDate,
+});
+export type GetDailyStatusInput = z.infer<typeof getDailyStatusSchema>;
+
+export const attendanceSummarySelectSchema = createSelectSchema(attendanceSummary);
+export type AttendanceSummary = z.infer<typeof attendanceSummarySelectSchema>;

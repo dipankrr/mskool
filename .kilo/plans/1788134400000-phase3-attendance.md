@@ -265,28 +265,52 @@ is a recorded deferral; both are additive later if a school asks).
 
 **Verify:** `check-types` 8/8 ✅; `db:verify` all green incl. the guard ✅.
 
-## Chunk C5 — `feat(contracts,services): the marking flow` (+ ADR-030)
+## Chunk C5 — `feat(contracts,services): the marking flow` (+ ADR-030) — ✅ DONE (2026-08-31)
 
-- [ ] `markAttendance(scope, { sectionId, date, periodId?, entries })` — ONE
-      transaction: calendar day-type validation (refusals worded); section
-      re-read through the scope; section+class snapshot; per-student upsert of
-      the roster's statuses. Entries carry an optional per-student
-      `correctionReason`; an update WITHOUT one preserves the existing value
-      (the don't-wipe micro-rule). `markedBy` set on insert, `updatedBy` on
-      every edit.
-- [ ] Daily-status derivation per the policy (direct copy / homeroom /
-      threshold), computed inside the same transaction for the touched
-      students; working days come from the calendar.
-- [ ] `getDailyStatus(scope, { sectionId, date })`; `recomputeSummary` —
-      per-student, per-period rows recomputed from daily status + calendar,
-      called at the end of every mark.
-- [ ] `attendance.contract.ts` completed for all of it; hard rule 5 documented
-      at the service head.
-- [ ] **ADR-030**: attendance records edit in place; the reference's
-      corrections table dropped in favour of the on-record `correctionReason`
-      convention; the additive retrofit path recorded.
+- [x] `markAttendance(scope, { sectionId, date, periodId?, entries })` — ONE
+      transaction: section re-read through the scope (parent verification);
+      policy read (missing row = daily-mode defaults); period agreement
+      (daily + periodId → refused; period-wise without → refused; period of
+      another section → refused); the calendar gate (no row → refused strict;
+      holiday/weekend → refused; working/half_day/exam_day accepted); roster
+      check (entries must be on the section's section_assigned/active
+      enrollments); record upsert (select-then-split — the guard is an
+      EXPRESSION index and cannot be an ON CONFLICT target; concurrent
+      duplicate marks race the guard and surface as generic CONFLICT).
+      Entries dedupe (last wins); `markedBy` on insert, `updatedBy` on edit;
+      **snapshot columns written on INSERT only** — a re-mark re-marks the
+      status without re-homing the row.
+- [x] Don't-wipe micro-rule: an update WITHOUT `correctionReason` preserves
+      the stored one; an explicit reason overwrites.
+- [x] Daily-status derivation, same transaction: direct copy (daily mode);
+      period-wise per policy — threshold_percentage (present-like =
+      present/late/half_day vs the school's threshold, counts stored) or
+      homeroom_authoritative (homeroom period's record decides; the day's
+      first period falls back). Upsert on (student, year, date); the UPDATE
+      path never touches snapshot columns.
+- [x] `recomputeSummaries` internals + explicit `recomputeSummary` op:
+      monthly/term/annual rows recomputed from daily status + calendar
+      (working days = calendar truth — working/exam_day/half_day, no
+      mid-period cap); pure function of source rows, never an increment;
+      upserts via `targetWhere` matching the partial indexes. Called at the
+      end of every mark inside the same transaction.
+- [x] `getDailyStatus(scope, { sectionId, date })` — the status table's own
+      four scope columns, NO widening: a section teacher sees exactly her
+      section's day.
+- [x] `attendance.contract.ts` completed for the marking flow:
+      `markAttendanceSchema`, `attendanceEntrySchema` (correctionReason
+      optional — stored, never required), `getDailyStatusSchema`, the daily
+      status + summary select schemas. Hard rule 5 documented at the service
+      head.
+- [x] `translateErrors`: 7 new wordings (missing calendar row, holiday,
+      weekend, roster stranger, daily/period mode mismatch, wrong-period).
+- [x] **ADR-030** recorded in `docs/DECISIONS.md`: records edit in place;
+      the corrections table dropped for the on-record `correctionReason`
+      convention; the additive retrofit path (a history table fed by the
+      marking service's single write seam) recorded.
 
-**Verify:** `check-types` 8/8; unit suite green.
+**Verify:** `check-types` 8/8 ✅; unit suite green ✅ (86 authz + 38 web +
+32 trpc).
 
 ## Chunk C6 — `feat(trpc): attendance.mark / status / summary`
 

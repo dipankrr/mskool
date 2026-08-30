@@ -482,6 +482,53 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
       "That date is outside the session's dates. Pick a date the session covers.",
   },
   {
+    // The marking flow's calendar gate (attendance.service.ts). Strict by
+    // design: a date the calendar does not describe is not a marking day,
+    // and the bulk generator makes filling the calendar a non-event. The
+    // dynamic date in the thrown message is dropped here — the UI already
+    // knows which date was being marked.
+    match: /^No calendar entry exists for /i,
+    code: "BAD_REQUEST",
+    message:
+      "There is no calendar entry for that date. Generate the year's calendar first, then mark attendance.",
+  },
+  {
+    match: /^The date .* is marked as a holiday/i,
+    code: "BAD_REQUEST",
+    message: "That date is a holiday — attendance cannot be marked on it.",
+  },
+  {
+    match: /^The date .* is marked as a weekend/i,
+    code: "BAD_REQUEST",
+    message: "That date is a weekend — attendance cannot be marked on it.",
+  },
+  {
+    // The roster check: a mark for a student not on this section's roster.
+    match: /^Student \S+ is not enrolled in this section/i,
+    code: "BAD_REQUEST",
+    message:
+      "One of the students marked is not on this section's roster. Attendance can only be marked for the section's own students.",
+  },
+  {
+    // Daily vs period-wise is a per-school policy; the mode decides what a
+    // periodId means before anything is written.
+    match: /^This school marks attendance for the whole day/i,
+    code: "BAD_REQUEST",
+    message:
+      "This branch marks daily attendance — attendance is marked for the whole day, not per period.",
+  },
+  {
+    match: /^This school marks attendance period by period/i,
+    code: "BAD_REQUEST",
+    message: "Choose the period this attendance is for.",
+  },
+  {
+    match: /^The chosen period does not belong to the section/i,
+    code: "BAD_REQUEST",
+    message:
+      "That period belongs to a different section. Pick one of this section's own periods.",
+  },
+  {
     // The status machine's refusal (dynamic detail is in the thrown message;
     // this is the user-facing wording) and the two optimistic-update races —
     // both "a moment ago" messages are the same answer: refresh.
