@@ -445,16 +445,25 @@ export class EnrollmentService {
   }
 
   /**
-   * The owning branch of an enrollment — the B6 adapter S5.3's byId gate
-   * resolves with. The row's own schoolId column, org-filtered like every
-   * owner lookup.
+   * The owning NODE of an enrollment — the B6 adapter S5.3's byId gate
+   * resolves with. Deliberately the DEEPEST node the row lives under, not its
+   * school: an enrollment's authorizing node is its SECTION (the row's own
+   * place in the scope tree), and before a section is assigned, its CLASS.
+   * Returning the school would make the overlap gate ask "does any
+   * enrollment:read grant reach this school" — which every staff grant does —
+   * and the row-level discrimination would be lost. The node id IS the
+   * entity's id (hard rule 12 gives every class and section a scope node
+   * keyed by its own id), so this is a column read, not a join.
    */
-  async getEnrollmentOwnerId(
+  async getEnrollmentOwnerNode(
     organizationId: string,
     enrollmentId: string,
-  ): Promise<string | null> {
+  ): Promise<{ type: "section" | "class"; id: string } | null> {
     const [row] = await db
-      .select({ schoolId: studentEnrollments.schoolId })
+      .select({
+        classId: studentEnrollments.classId,
+        sectionId: studentEnrollments.sectionId,
+      })
       .from(studentEnrollments)
       .where(
         and(
@@ -462,7 +471,11 @@ export class EnrollmentService {
           eq(studentEnrollments.organizationId, organizationId),
         ),
       );
-    return row?.schoolId ?? null;
+    if (!row) return null;
+
+    return row.sectionId
+      ? { type: "section", id: row.sectionId }
+      : { type: "class", id: row.classId };
   }
 
   /**
@@ -482,3 +495,5 @@ export class EnrollmentService {
       .orderBy(asc(studentEnrollments.academicYearId));
   }
 }
+
+export const enrollmentService = new EnrollmentService();

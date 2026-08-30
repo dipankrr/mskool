@@ -533,8 +533,25 @@ SQL: terms stand ALONE (no separate term-structure table). `terms.result_mode`
       has no way to re-point an assigned section, so the history-preserving path
       is unrepresentable to skip. Verify ✅ check-types 8/8; unit 86+38+32;
       check:builders green (behaviour exercised live in S5.4).
-- [ ] S5.3 `feat(trpc): enrollment router` — staff (`enrollment.*`) + portal
-      (`portal.*`) namespaces.
+- [x] S5.3 `feat(trpc): enrollment router` — **DONE (2026-08-30).** Staff
+      `enrollment.*`: `list` (permissive, `{academicYearId, classId?, sectionId?}` —
+      ONE list, the filters are convenience; the scopes are the authorization, no
+      widening), `byId` (B6 owner-resolved, overlap), `create` (B5), `update`
+      (labels), `assignSection` + `transition` (named POST-to-sub-resource
+      operations — PATCH semantics would suggest the section and status are
+      editable fields). Permissions existed already (`enrollment:create/read/
+      update`); no authz changes. **Amendment to the S5.2 adapter, caught while
+      wiring byId:** the owner is the row's SECTION (or its CLASS pre-assignment),
+      not its school — `getEnrollmentOwnerId` → `getEnrollmentOwnerNode`.
+      Resolving the school would have made the overlap gate ask "does any
+      enrollment:read grant reach this branch" (every staff grant does) and
+      byId would have leaked the whole branch's rows by id. Portal
+      `portal.enrollment.list` — the student track's FIRST live consumer:
+      `studentProcedure`, no input and never one on this path (the student ids
+      come from the session's owned list; a client-supplied filter would be the
+      leak `assertStudentOwnership` prevents). Verify ✅ check-types 8/8;
+      check:builders green; check:openapi 38 endpoints (7 new); integration 63/63;
+      unit 86+38+32 (enrollment behaviour exercised in S5.4).
 - [ ] S5.4 `test: enrollments in integration, smoke, and seed`
 - [ ] S5.5 `docs: TASKS.md — Phase 2 complete`
 
