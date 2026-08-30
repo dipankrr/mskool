@@ -422,6 +422,17 @@ const updateTermRouter = makeRouter({
     .mutation(({ ctx, input }) => termService.updateTerm(ctx.scope, input.id, input.data)),
 });
 
+// A marks-shaped probe: the FIRST composition of ADR-029's subjectGate. When
+// the marks slice lands, its real router must look exactly like this
+// (check:builders enforces it); until then this probe is the only
+// HTTP-reachable surface the fact gate has, and the smoke leg waits for that
+// real endpoint.
+const marksCreateRouter = makeRouter({
+  probe: staffProcedure("marks:create", { subjectGate: true }).mutation(
+    ({ ctx }) => ({ sectionId: ctx.scope.sectionId }),
+  ),
+});
+
 // --- harness -----------------------------------------------------------------
 
 let world: IntegrationWorld;
@@ -1003,6 +1014,70 @@ describe("terms — the year edge, history-pinned like their year", () => {
       }),
       "FORBIDDEN",
       "Missing permission: academic_year:update",
+    );
+  });
+});
+
+// --- the subjectGate: ADR-029's fact, live ---------------------------------------
+
+describe("the subjectGate — subject-level access is a second fact", () => {
+  // A subject id nothing references — the control for "an unassigned pair is
+  // indistinguishable from a nonexistent one".
+  const FABRICATED_SUBJECT = "9b2f8c1a-3d4e-4f5a-8b6c-7d8e9f0a1b2c";
+
+  const marksAt = (userId: string, sectionId: string, subjectId: string) =>
+    callerOf(marksCreateRouter, userId).probe({
+      organizationId: world.orgAId,
+      sectionId,
+      subjectId,
+    });
+
+  it("her own pair resolves — the non-vacuity control", async () => {
+    const result = await marksAt(
+      U().subjectS6A,
+      world.section6aId,
+      world.subjectA1MathId,
+    );
+    expect(result.sectionId).toBe(world.section6aId);
+  });
+
+  it("her OWN section, the ADJACENT subject: NOT_FOUND — the Phase-1 leftover closes", async () => {
+    // She is scoped to 6-A, and the scope tree has no subject axis, so can()
+    // alone would let her enter every subject in it. The assignment fact is
+    // what refuses — and it refuses with the GENERIC wording, identical for a
+    // fabricated subject id, so probing combinations reveals nothing.
+    await expectTrpcError(
+      marksAt(U().subjectS6A, world.section6aId, world.subjectA1PhysicsId),
+      "NOT_FOUND",
+      "Resource not found.",
+    );
+    await expectTrpcError(
+      marksAt(U().subjectS6A, world.section6aId, FABRICATED_SUBJECT),
+      "NOT_FOUND",
+      "Resource not found.",
+    );
+  });
+
+  it("the ADJACENT SECTION is refused by the section gate first — the layering", async () => {
+    // The permission gate answers the node question (her 6-A grant does not
+    // cover 6-B), so FORBIDDEN with the role wording — the fact check never
+    // runs. Both layers exist and the order is pinned.
+    await expectTrpcError(
+      marksAt(U().subjectS6A, world.section6bId, world.subjectA1MathId),
+      "FORBIDDEN",
+      "A role you hold has marks:create but not at this section.",
+    );
+  });
+
+  it("the HOMEROOM teacher holds marks:create but no subject fact — NOT_FOUND", async () => {
+    // teacherC6's STA row is the class_teacher homeroom fact; the fact query
+    // states its own terms (role = subject_teacher), so the timetable saying
+    // "homeroom" confers no subject authority. He covers 6-A, passes the
+    // permission gate, and still cannot enter marks.
+    await expectTrpcError(
+      marksAt(U().teacherC6, world.section6aId, world.subjectA1MathId),
+      "NOT_FOUND",
+      "Resource not found.",
     );
   });
 });
