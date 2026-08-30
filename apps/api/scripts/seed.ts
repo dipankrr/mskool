@@ -897,6 +897,42 @@ async function main() {
     adminUser.id,
   );
 
+  // --- The REST of the role matrix --------------------------------------------
+  //
+  // Four roles the default matrix defines but the smoke never exercised — a
+  // wrong default for one of them would have been invisible. Granted at each
+  // role's DEFAULT_SCOPE_LEVEL; their cells pin the matrix AS WRITTEN.
+  const VICE_PRINCIPAL_EMAIL = "vice-principal@demo-trust.test";
+  const ACCOUNTANT_EMAIL = "accountant@demo-trust.test";
+  const LIBRARIAN_EMAIL = "librarian@demo-trust.test";
+  const STAFF_COORDINATOR_EMAIL = "staff-coordinator@demo-trust.test";
+
+  const extendedPersonas: Array<{
+    email: string;
+    name: string;
+    roleType: RoleType;
+    scopeType: ScopeType;
+    scopeId: string;
+  }> = [
+    { email: VICE_PRINCIPAL_EMAIL, name: "Demo Vice Principal", roleType: "vice_principal", scopeType: "school", scopeId: schoolA.id },
+    { email: ACCOUNTANT_EMAIL, name: "Demo Accountant", roleType: "accountant", scopeType: "school", scopeId: schoolA.id },
+    { email: LIBRARIAN_EMAIL, name: "Demo Librarian", roleType: "librarian", scopeType: "school", scopeId: schoolA.id },
+    { email: STAFF_COORDINATOR_EMAIL, name: "Demo Staff Coordinator", roleType: "staff_coordinator", scopeType: "org", scopeId: organization.id },
+  ];
+
+  for (const persona of extendedPersonas) {
+    const personaUser = await findOrCreateUser(persona.email, persona.name);
+    await findOrCreateAssignment(
+      personaUser.id,
+      organization.id,
+      persona.roleType,
+      persona.scopeType,
+      persona.scopeId,
+      adminUser.id,
+    );
+    await invalidateUserAuthCache(personaUser.id);
+  }
+
   // --- The teaching-assignment layer -----------------------------------------
   //
   // Mappings say which subjects Class 6 takes this session; assignment rows
@@ -1082,6 +1118,10 @@ Done.
   ${PRINCIPAL_EMAIL}        principal @ school A    → school A only
   ${TEACHER_EMAIL}          class_teacher @ Class 6 → no read_history
   ${SUBJECT_TEACHER_EMAIL}  subject_teacher @ Class 6-A
+  ${VICE_PRINCIPAL_EMAIL}   vice_principal @ school A
+  ${ACCOUNTANT_EMAIL}       accountant @ school A
+  ${LIBRARIAN_EMAIL}        librarian @ school A
+  ${STAFF_COORDINATOR_EMAIL} staff_coordinator @ org
 
   password for all: ${SEED_PASSWORD}
 `);

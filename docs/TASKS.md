@@ -47,9 +47,24 @@ Phase 1's one open authorization hole; and the ownership-only portal track.
   `can()`, no `organizationId` in input — the owned-student list is the whole
   filter, and the smoke proves the inactive access row stays invisible over
   HTTP. Every future portal domain joins `portalRouter` under the same rules.
-- **Verification surface:** `pnpm test:integration` = **73** (was 27 pre-Phase 2);
-  `pnpm smoke:authz` = **116 checks, all-pass**; `pnpm test` = 86 authz + 38 web +
-  32 trpc unit tests; `pnpm db:verify` = 37.
+- **Verification surface:** `pnpm test:integration` = **74** (was 27 pre-Phase 2);
+  `pnpm smoke:authz` = **144 checks, all-pass, over the FULL role matrix** — all
+  eight roles now have seeded logins and pinned cells (vice_principal, accountant,
+  librarian, staff_coordinator joined the original four); `pnpm test` = 86 authz +
+  38 web + 32 trpc unit tests; `pnpm db:verify` = 37. **The integration probes
+  validate through the REAL contract schemas** (create/update inputs are imported
+  from `@repo/contracts`, not hand-rolled), so an input-shape drift between the
+  contracts and the routers surfaces in the suite. One happy-path create
+  (subject, create → deactivate, self-cleaning) runs through tRPC; the other
+  creates' happy paths are service-covered and their contract shapes are
+  validated by every denial test.
+- **Matrix decision (owner, 2026-08-30):** `subject_teacher` holds
+  `enrollment:read` — her roster is read through the year anchor, and the
+  subjectGate decides what she may WRITE, not what she may see. The
+  `enrollment` min-scope entry carries the same editor-trap annotation as
+  `academic_year`. Extended-matrix cells pin the other four roles AS WRITTEN
+  (staff_coordinator is org-scoped and legitimately sees both branches'
+  structure; it holds no academic-data reads).
 - **A lesson worth keeping:** S2's create paths shipped type-clean but BROKEN —
   the parent re-reads compiled `scopeWhere` columns from the wrong table (a
   runtime SQL error, invisible to `tsc`), and `endAssignment`'s successor insert

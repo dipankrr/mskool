@@ -211,6 +211,14 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
   // them to those sections.
   subject_teacher: [
     "student:read",
+    // Her roster. Marks entry reads the section's students through the year
+    // anchor (enrollment.list, scoped to her section by the scope columns' NO
+    // widening), and the subjectGate decides what she may WRITE — this grant
+    // is the read half of the same job. Without it she could open a child's
+    // profile yet not list the children she teaches. Owner decision
+    // (2026-08-30); the fixture-only grants in the seed and integration world
+    // predate it and are now redundant.
+    "enrollment:read",
     "attendance:create",
     "attendance:read",
     "marks:create",

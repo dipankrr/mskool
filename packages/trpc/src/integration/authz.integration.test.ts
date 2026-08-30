@@ -38,6 +38,15 @@ vi.mock("ioredis", () => {
 import { TRPCError } from "@trpc/server";
 import type { Permission } from "@repo/authz";
 import {
+  createAcademicYearSchema,
+  createClassSubjectMappingSchema,
+  createEnrollmentSchema,
+  createSectionSchema,
+  createSectionTeacherAssignmentSchema,
+  createSubjectSchema,
+  createTermSchema,
+} from "@repo/contracts";
+import {
   academicService,
   assignmentService,
   enrollmentService,
@@ -47,7 +56,7 @@ import {
 } from "@repo/services";
 import { getOwnedStudentIds } from "@repo/authz";
 import { db } from "@repo/db";
-import { classes, sections } from "@repo/db/schema";
+import { classes, sections, subjects } from "@repo/db/schema";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { router as makeRouter } from "../trpc";
@@ -156,7 +165,10 @@ const yearByIdRouter = makeRouter({
 
 const createYearRouter = makeRouter({
   probe: staffProcedure("academic_year:create")
-    .input(z.object({ data: z.object({ name: z.string(), startDate: z.string(), endDate: z.string() }) }))
+    // The REAL contract schema: every create denial below validates through
+    // what the client actually sends, so an input-shape drift between the
+    // contract and the routers surfaces here and not in production.
+    .input(z.object({ data: createAcademicYearSchema }))
     .mutation(({ ctx, input }) =>
       academicService.createAcademicYear(ctx.scope as never, input.data),
     ),
@@ -167,15 +179,7 @@ const createSectionRouter = makeRouter({
     // Parents arrive nested under `data`, exactly as the real contract ships
     // them — a top-level classId would be mistaken by the builder for SCOPE
     // addressing (addressedNodeId takes the most specific id present).
-    .input(
-      z.object({
-        data: z.object({
-          classId: z.uuid(),
-          academicYearId: z.uuid(),
-          name: z.string(),
-        }),
-      }),
-    )
+    .input(z.object({ data: createSectionSchema }))
     .mutation(({ ctx, input }) =>
       academicService.createSection(ctx.scope as never, input.data),
     ),
@@ -269,10 +273,7 @@ const createMappingRouter = makeRouter({
         academicYearId: z.uuid(),
         classId: z.uuid(),
         subjectId: z.uuid(),
-        data: z.object({
-          isElective: z.boolean().optional(),
-          sequenceNumber: z.number().int().optional(),
-        }),
+        data: createClassSubjectMappingSchema,
       }),
     )
     .mutation(({ ctx, input }) =>
@@ -329,15 +330,9 @@ const staRoles = z.enum([
 
 const createStaRouter = makeRouter({
   probe: staffProcedure("teacher_assignment:create")
-    .input(
-      z.object({
-        sectionId: z.uuid(),
-        academicYearId: z.uuid(),
-        userId: z.string(),
-        role: staRoles,
-        subjectId: z.uuid().nullable().optional(),
-      }),
-    )
+    // The real router's own input IS the contract schema (the builder extends
+    // it at runtime with the school addresser) — the probe mirrors that.
+    .input(createSectionTeacherAssignmentSchema)
     .mutation(({ ctx, input }) =>
       assignmentService.createSectionTeacherAssignment(ctx.scope as never, input),
     ),
@@ -397,18 +392,7 @@ const termByIdRouter = makeRouter({
 
 const createTermRouter = makeRouter({
   probe: staffProcedure("academic_year:create")
-    .input(
-      z.object({
-        schoolId: z.uuid(),
-        data: z.object({
-          academicYearId: z.uuid(),
-          name: z.string(),
-          sequenceNumber: z.number().int(),
-          startDate: z.string(),
-          endDate: z.string(),
-        }),
-      }),
-    )
+    .input(z.object({ schoolId: z.uuid(), data: createTermSchema }))
     .mutation(({ ctx, input }) => termService.createTerm(ctx.scope as never, input.data)),
 });
 
@@ -490,17 +474,7 @@ const enrollmentStatuses = z.enum([
 
 const createEnrollmentRouter = makeRouter({
   probe: staffProcedure("enrollment:create")
-    .input(
-      z.object({
-        schoolId: z.uuid(),
-        data: z.object({
-          studentId: z.uuid(),
-          academicYearId: z.uuid(),
-          classId: z.uuid(),
-          sectionId: z.uuid().optional(),
-        }),
-      }),
-    )
+    .input(z.object({ schoolId: z.uuid(), data: createEnrollmentSchema }))
     .mutation(({ ctx, input }) =>
       enrollmentService.createEnrollment(ctx.scope as never, input.data),
     ),
@@ -1507,7 +1481,11 @@ describe("the teaching-assignment layer — the template and the staffing", () =
         academicYearId: world.currentYearAId,
         classId: world.classA2Id,
         subjectId: world.subjectA1MathId,
-        data: {},
+        data: {
+          academicYearId: world.currentYearAId,
+          classId: world.classA2Id,
+          subjectId: world.subjectA1MathId,
+        },
       }),
       "FORBIDDEN",
       "A role you hold has subject_mapping:create but not at this class.",
@@ -1526,7 +1504,11 @@ describe("the teaching-assignment layer — the template and the staffing", () =
         academicYearId: world.currentYearAId,
         classId: world.classA2Id,
         subjectId: world.subjectA1MathId,
-        data: {},
+        data: {
+          academicYearId: world.currentYearAId,
+          classId: world.classA2Id,
+          subjectId: world.subjectA1MathId,
+        },
       }),
       "BAD_REQUEST",
       "That session is not at this branch. Choose a session from the branch you are working in.",
@@ -1541,7 +1523,11 @@ describe("the teaching-assignment layer — the template and the staffing", () =
         academicYearId: world.currentYearAId,
         classId: world.classB1Id,
         subjectId: world.subjectA1MathId,
-        data: {},
+        data: {
+          academicYearId: world.currentYearAId,
+          classId: world.classB1Id,
+          subjectId: world.subjectA1MathId,
+        },
       }),
       "FORBIDDEN",
       "You do not have access to this resource.",
@@ -1558,7 +1544,11 @@ describe("the teaching-assignment layer — the template and the staffing", () =
         academicYearId: world.currentYearAId,
         classId: world.class6Id,
         subjectId: world.subjectB1MathId,
-        data: {},
+        data: {
+          academicYearId: world.currentYearAId,
+          classId: world.class6Id,
+          subjectId: world.subjectB1MathId,
+        },
       }),
       "BAD_REQUEST",
       "That subject is not at this branch. Choose a subject from the branch you are working in.",
@@ -1573,7 +1563,11 @@ describe("the teaching-assignment layer — the template and the staffing", () =
         academicYearId: world.currentYearAId,
         classId: world.class6Id,
         subjectId: world.subjectA1MathId,
-        data: {},
+        data: {
+          academicYearId: world.currentYearAId,
+          classId: world.class6Id,
+          subjectId: world.subjectA1MathId,
+        },
       }),
       "FORBIDDEN",
       "Missing permission: subject_mapping:create",
@@ -1879,5 +1873,56 @@ describe("student portal — ownership without roles", () => {
       "FORBIDDEN",
       "You do not have access to this student.",
     );
+  });
+});
+
+// --- the happy path through the REAL contract schemas ----------------------------
+
+describe("the happy path through the real contract schemas", () => {
+  // The denial tests above exercise the gates through hand-rolled payloads;
+  // these exercises validate through the contract schemas the routers
+  // actually ship, so an input-shape drift surfaces here instead of in a
+  // school's admission week.
+
+  const subjectCreateRouter = makeRouter({
+    probe: staffProcedure("subject:create")
+      .input(z.object({ schoolId: z.uuid(), data: createSubjectSchema }))
+      .mutation(({ ctx, input }) =>
+        subjectService.createSubject(ctx.scope, input.data),
+      ),
+  });
+
+  it("subject create over tRPC writes the row the contract describes (self-cleaning)", async () => {
+    const name = "ITG Probe Subject";
+    // Find-or-create: the unique index is per school, so a previous run's
+    // row must be reused rather than collided with.
+    const [existing] = await db
+      .select()
+      .from(subjects)
+      .where(
+        and(eq(subjects.schoolId, world.schoolA1Id), eq(subjects.name, name)),
+      );
+    const created =
+      existing ??
+      (await callerOf(subjectCreateRouter, U().adminA).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
+        data: { name, code: "PRB" },
+      }));
+    expect(created.name).toBe(name);
+
+    // Self-cleaning: the subject catalogue's exact-count assertions must stay
+    // a two-subject world, so what this test writes it deactivates (soft
+    // delete, idempotent on re-runs).
+    const deactivated = await subjectService.deactivateSubject(
+      {
+        organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
+        classId: null,
+        sectionId: null,
+      },
+      created.id,
+    );
+    expect(deactivated?.isActive).toBe(false);
   });
 });

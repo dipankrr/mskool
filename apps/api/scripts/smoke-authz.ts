@@ -55,6 +55,10 @@ const ADMIN_EMAIL = "admin@demo-trust.test";
 const PRINCIPAL_EMAIL = "principal@demo-trust.test";
 const TEACHER_EMAIL = "teacher@demo-trust.test";
 const SUBJECT_TEACHER_EMAIL = "subject-teacher@demo-trust.test";
+const VICE_PRINCIPAL_EMAIL = "vice-principal@demo-trust.test";
+const ACCOUNTANT_EMAIL = "accountant@demo-trust.test";
+const LIBRARIAN_EMAIL = "librarian@demo-trust.test";
+const STAFF_COORDINATOR_EMAIL = "staff-coordinator@demo-trust.test";
 const PARENT_EMAIL = "parent@demo-trust.test";
 const SEED_PASSWORD = "Password123!";
 
@@ -323,6 +327,10 @@ async function main() {
   const principalCookie = await signIn(PRINCIPAL_EMAIL);
   const teacherCookie = await signIn(TEACHER_EMAIL);
   const subjectTeacherCookie = await signIn(SUBJECT_TEACHER_EMAIL);
+  const vicePrincipalCookie = await signIn(VICE_PRINCIPAL_EMAIL);
+  const accountantCookie = await signIn(ACCOUNTANT_EMAIL);
+  const librarianCookie = await signIn(LIBRARIAN_EMAIL);
+  const staffCoordinatorCookie = await signIn(STAFF_COORDINATOR_EMAIL);
   const parentCookie = await signIn(PARENT_EMAIL);
   const orgId = organization.id;
 
@@ -1320,6 +1328,80 @@ async function main() {
   addQueryRows("principal", principalCookie, { organizationId: orgId });
   addQueryRows("class_teacher", teacherCookie, { organizationId: orgId });
   addQueryRows("subject_teacher", subjectTeacherCookie, { organizationId: orgId });
+
+  // The REST of the role matrix — the four roles the web console's surfaces
+  // never exercised, for whom a wrong default would have been invisible.
+  // Each cell pins the matrix AS WRITTEN: an academic read a role holds
+  // passes (clipped to its grant, the same property the original four
+  // roles' cells assert); everything else is FORBIDDEN. When a default
+  // changes, these cells fail and the change must be acknowledged.
+  const EXTENDED_ROLES: Array<{
+    role: string;
+    cookie: string;
+    holds: {
+      school: boolean;
+      class: boolean;
+      section: boolean;
+      subject: boolean;
+      year: boolean;
+      enrollment: boolean;
+    };
+    /** Org-scoped grants see every branch; school-scoped ones are clipped to A. */
+    orgScoped?: boolean;
+  }> = [
+    {
+      role: "vice_principal",
+      cookie: vicePrincipalCookie,
+      holds: { school: true, class: true, section: true, subject: true, year: true, enrollment: true },
+    },
+    {
+      role: "accountant",
+      cookie: accountantCookie,
+      holds: { school: true, class: true, section: true, subject: false, year: true, enrollment: true },
+    },
+    {
+      role: "librarian",
+      cookie: librarianCookie,
+      holds: { school: false, class: true, section: true, subject: false, year: false, enrollment: false },
+    },
+    {
+      // Org-scoped HR — the structure reads (school/class/section) are part
+      // of the role: announcements and staff context need them. What it does
+      // NOT hold is any academic-data read (subject/year/terms/enrollments).
+      role: "staff_coordinator",
+      cookie: staffCoordinatorCookie,
+      orgScoped: true,
+      holds: { school: true, class: true, section: true, subject: false, year: false, enrollment: false },
+    },
+  ];
+
+  for (const { role, cookie, holds, orgScoped } of EXTENDED_ROLES) {
+    // The school list's shape follows the GRANT's scope, not the role's name:
+    // a school-scoped grant is clipped to its one branch; an org-scoped one
+    // legitimately sees both (the org_admin property).
+    const schoolCheck = orgScoped
+      ? (d: any) =>
+          Array.isArray(d) &&
+          d.some((s: any) => s.id === schoolA.id) &&
+          d.some((s: any) => s.id === schoolB.id)
+      : (d: any) => Array.isArray(d) && d.length === 1 && d[0]?.id === schoolA.id;
+    const academicCheck = (d: any) =>
+      Array.isArray(d) && d.some((r: any) => r.schoolId === schoolA.id);
+    const pairCount = (d: any) => Array.isArray(d) && d.length === 2;
+
+    const cells: Array<[string, unknown, boolean, ((d: any) => boolean)?]> = [
+      ["school.list", { organizationId: orgId }, holds.school, holds.school ? schoolCheck : undefined],
+      ["academic.year.list", { organizationId: orgId }, holds.year, holds.year ? pairCount : undefined],
+      ["academic.class.list", { organizationId: orgId }, holds.class, holds.class ? academicCheck : undefined],
+      ["academic.section.list", { organizationId: orgId, academicYearId: currentYearA.id }, holds.section, holds.section ? academicCheck : undefined],
+      ["subject.list", { organizationId: orgId }, holds.subject, holds.subject ? academicCheck : undefined],
+      ["academic.term.list", { organizationId: orgId, academicYearId: currentYearA.id }, holds.year, holds.year ? pairCount : undefined],
+      ["enrollment.list", { organizationId: orgId, academicYearId: currentYearA.id }, holds.enrollment, holds.enrollment ? pairCount : undefined],
+    ];
+    for (const [path, input, ok, dataCheck] of cells) {
+      rows.push({ role, cookie, path, input, method: "query", expect: ok ? OK : forbidden, dataCheck });
+    }
+  }
 
   // One mutation each, none of them leaving a row behind. Plus the B2 pin:
   // asking for "the current year" with no branch named is a validation error,

@@ -108,6 +108,11 @@ export const RESOURCE_MIN_SCOPE: Record<Resource, ScopeType> = {
   fee_refund: "school",
   fee_report: "school",
   exam: "school",
+  // "school" is the EDITOR default, not a cap: class- and section-scoped
+  // teachers legitimately hold enrollment:read — a roster is read through the
+  // year anchor, and their grants are narrower than a school. Same trap as
+  // academic_year below; see DEFAULT_ROLE_PERMISSIONS before "fixing" this
+  // entry.
   enrollment: "school",
   subject_mapping: "school",
   teacher_assignment: "section",
