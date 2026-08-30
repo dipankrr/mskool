@@ -6,41 +6,43 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
-**Phase 2 slice 1 — subjects — is COMPLETE (2026-08-29).** Four commits: `feat(db):
-subjects table` (incl. the no-self-commit agreement + this plan's start), `feat(contracts,
-services): subjects`, `feat(trpc): subject router`, `test: subjects in integration,
-smoke, and seed`.
+**Phase 2 slices 1–2 — subjects + the teaching-assignment layer — are COMPLETE
+(2026-08-30).** The authoritative slice-by-slice plan and commit ledger live in
+`.kilo/plans/1788048000000-phase2-subjects-terms-enrollments.md`; its slice order is
+S1 subjects → S2 the assignment layer (`class_subject_mappings` +
+`section_teacher_assignments`) → S3 terms → S4 `checkSubjectAccess` + the student
+owner-resolver (ADR-gated) → S5 enrollments. **S1 and S2 are done; S3 is next.**
 
-- `subjects` table in `packages/db/src/schema/academic.ts` (`0003_lowly_sentinel.sql`,
-  purely additive): org+school denormalised, `name` unique per school, `subject_category`
-  enum, `counts_toward_result`, `is_graded_only`. **NOT in the scope tree** — no
-  `scope_nodes` row; a teacher's subject authority is a `section_teacher_assignments`
-  fact (ADR-012), enforced by `checkSubjectAccess` in slice S4.
-- `subject.contract.ts` + `subject.service.ts` (school-level; `atSchoolLevel` and
-  `requireSchoolId` are now exported from `academic.service.ts`, one definition) →
-  `subject.router.ts`: 5 procedures, owner-resolved reads per B6/ADR-028, **no
-  `read_history`** (subjects are not year-scoped; recorded in the router docstring as a
-  decision, not an omission). The `subject:*` permissions already existed in
-  `RESOURCE_ACTIONS` / `DEFAULT_ROLE_PERMISSIONS`, so no authz changes were needed.
-- Verification: `pnpm test:integration` = **33** (was 27); smoke all-pass incl. the new
-  subject rows; `check-types` 8/8.
+- **Schema:** `subjects`, `class_subject_mappings`, `section_teacher_assignments`
+  (`0003`/`0004`, purely additive). Subjects, mappings and assignments are NOT scope
+  nodes; every table carries the denormalised `organizationId` + `schoolId` for
+  `scopeWhere`. Every constraint the migrations carry beyond drizzle-kit's sight
+  (CHECKs, EXCLUDEs) is proven by name in `pnpm db:verify`.
+- **The vertical slices** all follow `school.router.ts` / the academic routers:
+  contract → service (required `DataScope`, parent re-reads inside the transaction)
+  → thin router (B5 explicit-parent creates, B6 owner-resolved reads with overlap
+  gates, cover mutations) → OpenAPI meta/output → negative integration + smoke
+  assertions. REST surface: 5 `/subjects`, 4 `/subject-mappings`, 4
+  `/teacher-assignments` (incl. `POST /teacher-assignments/{id}/end`, the one
+  sanctioned append-on-change UPDATE).
+- **Verification surface:** `pnpm test:integration` = 50 (was 27 pre-S1);
+  `pnpm smoke:authz` all-pass incl. `assignment.*` matrix cells; `pnpm test` =
+  86 authz + 38 web + 24 trpc unit tests.
+- **A lesson worth keeping:** S2's create paths shipped type-clean but BROKEN —
+  the parent re-reads compiled `scopeWhere` columns from the wrong table (a runtime
+  SQL error, invisible to `tsc`), and `endAssignment`'s successor insert ran in an
+  independent transaction. Nothing caught either until the first integration run
+  exercised them against real Postgres. New write paths are not proven by
+  `check-types`; they are proven by the suite's first live run.
+- **Authz matrix additions** (S2.3, owner-reviewed): `subject_mapping.*` and
+  `teacher_assignment.*` resources (no `delete` — mappings are corrected
+  structurally, assignments are ended); principal manages both, class_teacher reads
+  mappings, subject_teacher reads both, org_admin via `ALL_PERMISSIONS`. A wider
+  role-matrix rewrite was rejected as an unrequested policy change — recorded in the
+  plan file; treat every `defaultPermissions.ts` diff as policy.
 
-**The full Phase 2 plan and the commit ledger live in
-`.kilo/plans/1788048000000-phase2-subjects-terms-enrollments.md`** — read it, tick its
-boxes. Next, in order:
-
-1. **S2 — the teaching-assignment layer (NEXT):** `class_subject_mappings` (which
-   subjects a class takes in a year) + `section_teacher_assignments` (who teaches what
-   where, dated, append-on-change). Added to the plan after review — the access slice
-   cannot ship without them.
-2. **S3 — terms** (keyed to `academicYearId`).
-3. **S4 — `checkSubjectAccess`** (ADR-gated, reads the S2 table) **+ the student
-   owner-resolver** on the B6 pattern (`resolveYearOwner` is the template). **Deadline:
-   before the enrollment slice.**
-4. **S5 — enrollments** (LAST; needs S4's owner-resolver).
-
-The security-review and authz-refactor status below is history — the current numbers are
-the ones above.
+The security-review and authz-refactor history below is superseded by the numbers
+above.
 
 ---
 
