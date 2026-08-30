@@ -13,6 +13,7 @@ import {
   type ResourceContext,
   type UserAuthCache,
 } from "@repo/authz";
+import { assignmentService, studentService } from "@repo/services";
 import { initTRPC, TRPCError } from "@trpc/server";
 import type { OpenApiMeta } from "trpc-to-openapi";
 import { z } from "zod";
@@ -192,6 +193,53 @@ export type OwnerResolver = (
   id: string,
 ) => Promise<{ type: string; id: string } | null>;
 
+/**
+ * The portal ownership gate, as a PURE function so the refusal's shape is
+ * unit-testable without a database (S4.2): the requested student must appear
+ * in this login's ACTIVE `student_portal_access` rows. One parent login may
+ * cover several children, so the list is the fact and membership is the
+ * whole question.
+ */
+export function assertStudentOwnership(
+  studentIds: string[],
+  studentId: string,
+): void {
+  if (!studentIds.includes(studentId)) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "You do not have access to this student.",
+    });
+  }
+}
+
+/**
+ * The B6 owner resolver for STUDENTS — the staff-track half of the student
+ * track. A student is not a scope node; her owning node is her school, read
+ * through the service adapter. Null — no such student in this org — and a
+ * cross-tenant id are deliberately indistinguishable: both throw the
+ * NOT_FOUND the endpoint itself uses, so nothing here confirms an id exists
+ * anywhere.
+ *
+ * Exported from here rather than defined per-router because the student and
+ * enrollment routers (S5) both resolve students — one definition, the same
+ * reasoning that keeps `assertStudentOwnership` beside the builders.
+ */
+export const resolveStudentOwner: OwnerResolver = async (
+  organizationId,
+  id,
+) => {
+  const schoolId = await studentService.getStudentOwnerId(organizationId, id);
+
+  if (!schoolId) {
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      message: "Student not found.",
+    });
+  }
+
+  return { type: "school", id: schoolId };
+};
+
 export function staffProcedure(
   permission: Permission,
   opts: {
@@ -206,16 +254,38 @@ export function staffProcedure(
      * her school, but every year she may read belongs to it.
      */
     gate?: "cover" | "overlap";
+    /**
+     * ADR-029: subject-content writes answer a SECOND question the scope tree
+     * cannot express. With this option the builder requires `sectionId` and
+     * `subjectId` in the input (a call omitting them fails validation, never
+     * silently skips), and after the normal gate runs
+     * `assignmentService.hasSubjectAssignment` — an OPEN subject_teacher
+     * assignment for this caller on this pair. A fact miss is NOT_FOUND with
+     * the generic wording, so an unassigned pair is indistinguishable from a
+     * nonexistent one and probing combinations reveals nothing. Which
+     * permissions REQUIRE this option is `SUBJECT_GATED_WRITES`, enforced by
+     * check:builders.
+     */
+    subjectGate?: boolean;
   } = {},
 ) {
   const addressedById = opts.addressedBy === "id" || Boolean(opts.resolveOwner);
+
+  // subjectGate extends the scope input with the pair the fact check needs —
+  // the same runtime-extension mechanism ADR-027 uses for id addressing.
+  const baseInput = opts.subjectGate
+    ? staffScopeInput.extend({
+        sectionId: z.uuid(),
+        subjectId: z.uuid(),
+      })
+    : staffScopeInput;
 
   return t.procedure
     // ADR-027: when addressedBy:"id", the builder itself attaches a validated
     // row id to the input, because this middleware only sees input parsed
     // before it was attached — a router-level `.input()` runs later and could
     // not hand the gate anything.
-    .input(addressedById ? staffScopeInput.extend({ id: z.uuid() }) : staffScopeInput)
+    .input(addressedById ? baseInput.extend({ id: z.uuid() }) : baseInput)
     .use(translateErrors)
     .use(async ({ ctx, input, next }) => {
       if (!ctx.session) {
@@ -307,6 +377,34 @@ export function staffProcedure(
           code: "FORBIDDEN",
           message: forbiddenMessage(authCache, organizationId, permission, node.type),
         });
+      }
+
+      // ADR-029, the second fact. The permission gate above answers the ROLE
+      // question; this answers the TIMETABLE question the scope tree cannot
+      // express. Deliberately ordered AFTER the permission gate: the shapes
+      // above decide 403-vs-404 for the permission axis, and this one only
+      // ever answers 404 with the generic wording — an unassigned (section,
+      // subject) pair is indistinguishable from a nonexistent one, so probing
+      // combinations reveals nothing about who teaches where.
+      if (opts.subjectGate) {
+        const { sectionId, subjectId } = input as {
+          sectionId: string;
+          subjectId: string;
+        };
+
+        const assigned = await assignmentService.hasSubjectAssignment(
+          organizationId,
+          userId,
+          sectionId,
+          subjectId,
+        );
+
+        if (!assigned) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Resource not found.",
+          });
+        }
       }
 
       return next({
@@ -453,15 +551,11 @@ export const studentProcedure = t.procedure
       /**
        * Confirms the requested student belongs to this login. Call it before
        * returning anything about a specific child — passing a studentId
-       * straight from input to a query is the leak this prevents.
+       * straight from input to a query is the leak this prevents. The pure
+       * gate lives above (`assertStudentOwnership`); this is its seam.
        */
       assertOwnsStudent(studentId: string) {
-        if (!studentIds.includes(studentId)) {
-          throw new TRPCError({
-            code: "FORBIDDEN",
-            message: "You do not have access to this student.",
-          });
-        }
+        assertStudentOwnership(studentIds, studentId);
       },
     },
   });

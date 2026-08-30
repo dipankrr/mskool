@@ -29,3 +29,7 @@ export * from "./assignment.service";
 // Terms: the subdivisions of an academic year — the school-level time slices
 // the exam chain and the term screens hang off.
 export * from "./term.service";
+
+// Students: the B6 adapter for the student's owning branch. The full
+// staff/portal surface lands with the enrollment slice (S5).
+export * from "./student.service";

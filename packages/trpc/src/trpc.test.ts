@@ -82,6 +82,24 @@ vi.mock("@repo/db", async () => {
         case "student_portal_access":
           if (params.length !== 2) throw new Error(`Unexpected student_portal_access query: ${params.length} params`);
           return rows.filter((r) => r.userId === params[0] && r.isActive === params[1]);
+        // The student B6 adapter: and(eq(id), eq(organizationId)).
+        case "students":
+          if (params.length !== 2) throw new Error(`Unexpected students query: ${params.length} params`);
+          return rows.filter((r) => r.id === params[0] && r.organizationId === params[1]);
+        // The ADR-029 fact: and(eq(org), eq(user), eq(section), eq(subject),
+        // eq(role)) + isNull(effectiveTo) — five params, the open-row check
+        // applied to the fixtures directly.
+        case "section_teacher_assignments":
+          if (params.length !== 5) throw new Error(`Unexpected section_teacher_assignments query: ${params.length} params`);
+          return rows.filter(
+            (r) =>
+              r.organizationId === params[0] &&
+              r.userId === params[1] &&
+              r.sectionId === params[2] &&
+              r.subjectId === params[3] &&
+              r.role === params[4] &&
+              r.effectiveTo === null,
+          );
         default:
           throw new Error(`No query contract for table ${name}`);
       }
@@ -107,10 +125,14 @@ import {
   orgRolePermissions,
   roleAssignments,
   scopeNodes,
+  sectionTeacherAssignments,
   studentPortalAccess,
+  students,
 } from "@repo/db/schema";
 import {
+  assertStudentOwnership,
   protectedProcedure,
+  resolveStudentOwner,
   router as makeRouter,
   staffListProcedure,
   staffProcedure,
@@ -123,6 +145,8 @@ const TABLE = {
   permissions: getTableName(orgRolePermissions),
   nodes: getTableName(scopeNodes),
   portal: getTableName(studentPortalAccess),
+  students: getTableName(students),
+  sta: getTableName(sectionTeacherAssignments),
 };
 
 // --- world ------------------------------------------------------------------
@@ -743,5 +767,175 @@ describe("studentProcedure — ownership without roles", () => {
     });
 
     expect(result.ids).toEqual([OWNED, FOREIGN_STUDENT]);
+  });
+
+  it("the extracted pure gate refuses with the exact wording (S4.2)", () => {
+    expect(() => assertStudentOwnership([OWNED], FOREIGN_STUDENT)).toThrow(
+      "You do not have access to this student.",
+    );
+    expect(() => assertStudentOwnership([OWNED], OWNED)).not.toThrow();
+  });
+});
+
+// --- resolveStudentOwner (S4.2) ----------------------------------------------
+
+describe("resolveStudentOwner — the student B6 adapter", () => {
+  const STUDENT_A = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
+  // A student of ANOTHER tenant: org-filtered, so it must be the same 404 a
+  // fabricated id is.
+  const FOREIGN_ORG_STUDENT = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+  const WELL_FORMED_ABSENT = "9b2f8c1a-3d4e-4f5a-8b6c-7d8e9f0a1b2c";
+
+  function studentByIdCaller(userId: string) {
+    return staffCaller("student:read", userId, {
+      resolveOwner: resolveStudentOwner,
+      gate: "overlap",
+    });
+  }
+
+  beforeEach(() => {
+    seedGrants([
+      {
+        userId: PRINCIPAL_A,
+        roleType: "principal",
+        scopeType: "school",
+        scopeId: SCHOOL_A,
+      },
+    ], [["principal", "student:read"]]);
+    dbState.rows.set(TABLE.students, [
+      { id: STUDENT_A, organizationId: ORG, schoolId: SCHOOL_A },
+      {
+        id: FOREIGN_ORG_STUDENT,
+        organizationId: "org-other",
+        schoolId: FOREIGN_SCHOOL,
+      },
+    ]);
+  });
+
+  it("her school node is the owning branch; overlap admits the branch principal", async () => {
+    const result = await studentByIdCaller(PRINCIPAL_A).probe({
+      organizationId: ORG,
+      id: STUDENT_A,
+    });
+
+    expect(result.scope?.schoolId).toBe(SCHOOL_A);
+  });
+
+  it("absent and cross-org ids are the SAME NOT_FOUND (S4.2's wording pin)", async () => {
+    for (const id of [WELL_FORMED_ABSENT, FOREIGN_ORG_STUDENT]) {
+      await expectTrpcError(
+        studentByIdCaller(PRINCIPAL_A).probe({ organizationId: ORG, id }),
+        "NOT_FOUND",
+        "Student not found.",
+      );
+    }
+  });
+});
+
+// --- subjectGate (S4.3 / ADR-029) --------------------------------------------
+
+describe("staffProcedure — the subjectGate: the second fact", () => {
+  const MATH = "11f0c9d5-1a2b-4c3d-8e4f-a05b6c7d8e9f";
+  const PHYSICS = "22e1d8c4-2b3c-4d5e-9f6a-b16c7d8e9f0a";
+
+  const TEACHER_S = "user-subject-teacher";
+
+  function subjectCaller(userId: string) {
+    return staffCaller("marks:create", userId, { subjectGate: true });
+  }
+
+  const staRow = (over: Record<string, any> = {}) => ({
+    id: "sta-1",
+    organizationId: ORG,
+    userId: TEACHER_S,
+    sectionId: SECTION_6A,
+    subjectId: MATH,
+    role: "subject_teacher",
+    effectiveTo: null,
+    ...over,
+  });
+
+  function seedAssigned(over?: Record<string, any>) {
+    seedGrants([
+      {
+        userId: TEACHER_S,
+        roleType: "subject_teacher",
+        scopeType: "section",
+        scopeId: SECTION_6A,
+      },
+    ], [["subject_teacher", "marks:create"]]);
+    dbState.rows.set(TABLE.sta, [staRow(over)]);
+  }
+
+  it("her own (section, subject) resolves — the non-vacuity control", async () => {
+    seedAssigned();
+
+    const result = await subjectCaller(TEACHER_S).probe({
+      organizationId: ORG,
+      sectionId: SECTION_6A,
+      subjectId: MATH,
+    });
+
+    expect(result.scope?.sectionId).toBe(SECTION_6A);
+  });
+
+  it("her OWN section, an ADJACENT subject: NOT_FOUND, generic wording", async () => {
+    // THE Phase-1 leftover, pinned at the unit level: the scope tree made her
+    // section-wide, and only the assignment fact narrows her to Physics. The
+    // denial is indistinguishable from a made-up subject id, so probing
+    // combinations reveals nothing about who teaches what where.
+    seedAssigned();
+
+    await expectTrpcError(
+      subjectCaller(TEACHER_S).probe({
+        organizationId: ORG,
+        sectionId: SECTION_6A,
+        subjectId: PHYSICS,
+      }),
+      "NOT_FOUND",
+      "Resource not found.",
+    );
+  });
+
+  it("an ENDED assignment is the same NOT_FOUND — the fact is open-rows-only", async () => {
+    // She used to teach it; the swap must bite immediately (ADR-029's
+    // no-cache reasoning), not on a five-minute TTL.
+    seedAssigned({ effectiveTo: "2025-01-01" });
+
+    await expectTrpcError(
+      subjectCaller(TEACHER_S).probe({
+        organizationId: ORG,
+        sectionId: SECTION_6A,
+        subjectId: MATH,
+      }),
+      "NOT_FOUND",
+      "Resource not found.",
+    );
+  });
+
+  it("permission first: without marks:create she is FORBIDDEN, not NOT_FOUND", async () => {
+    // The shapes are ordered — the permission gate decides 403, the fact
+    // decides 404. A caller who holds nothing gets the permission answer even
+    // when the fact would also have refused.
+    dbState.rows.set(TABLE.sta, [staRow()]);
+
+    await expectTrpcError(
+      subjectCaller(TEACHER_S).probe({
+        organizationId: ORG,
+        sectionId: SECTION_6A,
+        subjectId: MATH,
+      }),
+      "FORBIDDEN",
+      "Missing permission: marks:create",
+    );
+  });
+
+  it("omitting the pair is a VALIDATION failure, never a silent skip", async () => {
+    seedAssigned();
+
+    await expectTrpcError(
+      subjectCaller(TEACHER_S).probe({ organizationId: ORG }),
+      "BAD_REQUEST",
+    );
   });
 });

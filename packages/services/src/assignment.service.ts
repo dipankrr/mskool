@@ -439,6 +439,50 @@ export class AssignmentService {
       );
     return row?.schoolId ?? null;
   }
+
+  /**
+   * ADR-029's fact: does THIS user hold an OPEN subject_teacher assignment on
+   * THIS (section, subject)? Org-filtered, so a foreign-org id and a
+   * nonexistent one are the same false.
+   *
+   * Authorization-NEUTRAL by design (the B6 adapter shape): it answers "is
+   * the fact so", never "may you act". The builder composes it AFTER the
+   * permission gate and owns the refusal's wording — NOT_FOUND, generic, so
+   * an unassigned pair is indistinguishable from a nonexistent one and
+   * probing (section, subject) combinations reveals nothing. The role filter
+   * is not paranoia: `sta_subject_matches_role` binds subject_id to
+   * subject_teacher rows, but this query IS the authorization fact and states
+   * its own terms rather than borrowing the schema's.
+   *
+   * Deliberately uncached (ADR-029): the auth cache caches ROLE grants
+   * because they are slow-changing; assignment facts are timetable data that
+   * changes mid-term — a teacher swapped periods must lose access
+   * immediately, not in five minutes. One indexed query per write
+   * (`section_teacher_assignments_active_idx` helps only the section-first
+   * lookups; this one filters all sides) is the price of immediacy.
+   */
+  async hasSubjectAssignment(
+    organizationId: string,
+    userId: string,
+    sectionId: string,
+    subjectId: string,
+  ): Promise<boolean> {
+    const [row] = await db
+      .select({ id: sectionTeacherAssignments.id })
+      .from(sectionTeacherAssignments)
+      .where(
+        and(
+          eq(sectionTeacherAssignments.organizationId, organizationId),
+          eq(sectionTeacherAssignments.userId, userId),
+          eq(sectionTeacherAssignments.sectionId, sectionId),
+          eq(sectionTeacherAssignments.subjectId, subjectId),
+          eq(sectionTeacherAssignments.role, "subject_teacher"),
+          isNull(sectionTeacherAssignments.effectiveTo),
+        ),
+      );
+
+    return row !== undefined;
+  }
 }
 
 export const assignmentService = new AssignmentService();
