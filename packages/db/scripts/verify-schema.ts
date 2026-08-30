@@ -626,6 +626,184 @@ async function main() {
     await expectAccept(tx, "the same sequence in a DIFFERENT section is accepted", (q) =>
       period(q, enrSectionB.id, enrYear.id, 1),
     );
+
+    console.log("\n=== Phase 3: the record layer (0008) ===");
+
+    // The record-layer fixture: two periods of enrSection (created by the
+    // periods block above), the verify user as the marker, and a mid-August
+    // date inside 2030-31. No calendar row is needed — the calendar gate is
+    // a SERVICE rule; the database only holds the rows the service allows.
+    const [period1] = await tx<{ id: string }[]>`
+      SELECT id FROM periods
+      WHERE section_id = ${enrSection.id} AND sequence_number = 1
+    `;
+    const [period2] = await tx<{ id: string }[]>`
+      SELECT id FROM periods
+      WHERE section_id = ${enrSection.id} AND sequence_number = 2
+    `;
+
+    const record = (
+      q: Queryable,
+      date: string,
+      periodId: string | null,
+      status: string,
+    ) =>
+      q`INSERT INTO attendance_records
+          (organization_id, school_id, student_id, academic_year_id, date,
+           class_id, section_id, period_id, status, marked_by)
+        VALUES (${org.id}, ${school.id}, ${enrStudent.id}, ${enrYear.id}, ${date},
+                ${enrClass.id}, ${enrSection.id}, ${periodId}, ${status}, 'verify-user-1')`;
+
+    // --- the daily-mode double-mark guard (hand-written, 0008) ---
+
+    await expectAccept(tx, "a daily-mode record (NULL period) is accepted", (q) =>
+      record(q, "2030-08-20", null, "present"),
+    );
+
+    // The whole point of the COALESCE sentinel: two NULL period_ids are NOT
+    // distinct, so the second same-day mark is refused. A plain unique index
+    // would let it through.
+    await expectReject(
+      tx,
+      "a SECOND daily-mode record the same day is rejected",
+      "attendance_records_student_day_period_uq",
+      (q) => record(q, "2030-08-20", null, "absent"),
+    );
+
+    await expectAccept(tx, "another day's daily record is accepted", (q) =>
+      record(q, "2030-08-21", null, "present"),
+    );
+
+    // Period-wise mode: same student, same day, DIFFERENT periods — the pair
+    // the guard exists to permit.
+    await expectAccept(tx, "a period-wise record is accepted", (q) =>
+      record(q, "2030-08-22", period1.id, "present"),
+    );
+    await expectAccept(
+      tx,
+      "a second period the same day is accepted (period-wise pair)",
+      (q) => record(q, "2030-08-22", period2.id, "present"),
+    );
+
+    await expectReject(
+      tx,
+      "the SAME period twice in one day is rejected",
+      "attendance_records_student_day_period_uq",
+      (q) => record(q, "2030-08-22", period1.id, "absent"),
+    );
+
+    // --- daily_attendance_status: one answer per student per year per day ---
+
+    const status = (q: Queryable, date: string) =>
+      q`INSERT INTO daily_attendance_status
+          (organization_id, school_id, student_id, academic_year_id, date,
+           class_id, section_id, status, derivation_mode)
+        VALUES (${org.id}, ${school.id}, ${enrStudent.id}, ${enrYear.id}, ${date},
+                ${enrClass.id}, ${enrSection.id}, 'present', 'direct')`;
+
+    await expectAccept(tx, "a daily status row is accepted", (q) =>
+      status(q, "2030-08-20"),
+    );
+
+    await expectReject(
+      tx,
+      "a SECOND daily status for the same (student, year, date) is rejected",
+      "daily_attendance_status_student_year_date_uq",
+      (q) => status(q, "2030-08-20"),
+    );
+
+    // --- attendance_summary: partial keys, shape CHECKs, generated column ---
+
+    const summary = (
+      q: Queryable,
+      periodType: string,
+      opts: { month?: number | null; year?: number | null; termId?: string | null } = {},
+    ) =>
+      q`INSERT INTO attendance_summary
+          (organization_id, school_id, student_id, academic_year_id, term_id,
+           period_type, month, year, working_days, days_present, days_absent,
+           days_late, days_on_leave)
+        VALUES (${org.id}, ${school.id}, ${enrStudent.id}, ${enrYear.id},
+                ${opts.termId ?? null}, ${periodType}, ${opts.month ?? null},
+                ${opts.year ?? null}, 10, 8, 1, 1, 0)`;
+
+    // Two terms of the year exist from the terms block above; the term rows
+    // are what the old single-composite-key design could not distinguish.
+    const termRows = await tx<{ id: string; name: string }[]>`
+      SELECT id, name FROM terms WHERE academic_year_id = ${enrYear.id}
+      ORDER BY sequence_number LIMIT 2
+    `;
+
+    await expectAccept(tx, "a monthly summary is accepted", (q) =>
+      summary(q, "monthly", { month: 8, year: 2030 }),
+    );
+
+    await expectReject(
+      tx,
+      "a duplicate monthly summary is rejected",
+      "attendance_summary_monthly_uq",
+      (q) => summary(q, "monthly", { month: 8, year: 2030 }),
+    );
+
+    await expectAccept(tx, "a DIFFERENT month's summary is accepted", (q) =>
+      summary(q, "monthly", { month: 9, year: 2030 }),
+    );
+
+    await expectReject(
+      tx,
+      "a monthly row with NO month is rejected (shape)",
+      "attendance_summary_monthly_shape",
+      (q) => summary(q, "monthly"),
+    );
+
+    await expectAccept(tx, "a first term's summary is accepted", (q) =>
+      summary(q, "term", { termId: termRows[0].id }),
+    );
+
+    await expectAccept(tx, "a second term's summary is accepted", (q) =>
+      summary(q, "term", { termId: termRows[1].id }),
+    );
+
+    await expectReject(
+      tx,
+      "a duplicate of the first term's summary is rejected",
+      "attendance_summary_term_uq",
+      (q) => summary(q, "term", { termId: termRows[0].id }),
+    );
+
+    await expectReject(
+      tx,
+      "a term row carrying a month is rejected (shape)",
+      "attendance_summary_term_shape",
+      (q) => summary(q, "term", { termId: termRows[0].id, month: 8 }),
+    );
+
+    await expectAccept(tx, "the annual summary is accepted", (q) =>
+      summary(q, "annual"),
+    );
+
+    await expectReject(
+      tx,
+      "a SECOND annual summary is rejected",
+      "attendance_summary_annual_uq",
+      (q) => summary(q, "annual"),
+    );
+
+    // The generated column: 8 of 10 working days present = 80.00, computed
+    // by the DATABASE. If this ever reads null or a wrong value, someone has
+    // un-generated the column and code is expected to maintain it.
+    await expectAccept(tx, "the generated percentage computes 80.00", async (q) => {
+      const [row] = await q<{ attendance_percentage: string }[]>`
+        SELECT attendance_percentage FROM attendance_summary
+        WHERE student_id = ${enrStudent.id} AND period_type = 'monthly'
+          AND month = 8
+      `;
+      if (row.attendance_percentage !== "80.00") {
+        throw new Error(
+          `generated percentage is ${row.attendance_percentage}, expected 80.00`,
+        );
+      }
+    });
   });
 
   // Asserts the rollback, not an empty database: `pnpm db:seed` legitimately

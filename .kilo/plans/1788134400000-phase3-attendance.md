@@ -220,31 +220,50 @@ trpc).
 **Verify:** `check-types` 8/8 ✅; `check:builders` clean ✅; `check:openapi`
 lists all 9 attendance endpoints ✅; unit suite green ✅.
 
-## Chunk C4 — `feat(db): records + daily status + summary` (`0008`)
+## Chunk C4 — `feat(db): records + daily status + summary` (`0008`) — ✅ DONE (2026-08-31)
 
-- [ ] `attendance_records`: org+school; student/year FKs; `date`; **snapshotted
-      `sectionId` + `classId`** (NOT NULL); `periodId` NULL for daily mode;
-      `status` enum (`present/absent/late/half_day/on_leave`); **`correctionReason`
-      varchar(500) nullable** (the owner's design — see Locked decisions);
-      `markedBy` → user (the original marker); `updatedBy` → user (last
-      editor); timestamps. Indexes: (student, date), (section, date),
-      (school, date).
-- [ ] `daily_attendance_status`: student/year; snapshotted section+class; date;
-      `status` (the 5, no holiday); `periodsPresent`/`periodsTotal` nullable;
-      `derivationMode` enum (`direct/homeroom_authoritative/
-      threshold_percentage/manual_override`); nullable override who/why;
-      unique `(student, academicYearId, date)`.
-- [ ] `attendance_summary`: student/year; nullable term; `periodType` enum
-      (`monthly/term/annual`); month/year keys; working/present/absent/late/
-      leave counts; **generated** percentage column; unique per
-      (student, year, type, month, year).
-- [ ] **Hand-written SQL:** the daily-mode double-mark guard — a plain unique
-      index treats NULL periodIds as distinct, so
-      `UNIQUE (student_id, date, COALESCE(period_id, sentinel))` (expression
-      index) — plus `db:verify` assertions proving it rejects the second daily
-      row and accepts the period-wise pair.
+- [x] `attendance_records`: org+school; student/year FKs; `date`; snapshotted
+      `sectionId` + `classId` (NOT NULL — the snapshot rule documented on the
+      table); `periodId` NULL for daily mode; `status` enum
+      (`present/absent/late/half_day/on_leave`); `correctionReason`
+      varchar(500) nullable; `markedBy` (original marker, NOT NULL) +
+      `updatedBy` (last editor); timestamps. Indexes: (student, date),
+      (section, date), (school, date), org.
+- [x] `daily_attendance_status`: student/year; snapshotted section+class;
+      date; the 5 statuses; `periodsPresent`/`periodsTotal` nullable;
+      `derivationMode` enum (direct/homeroom_authoritative/
+      threshold_percentage/manual_override); nullable `overriddenBy` +
+      `overrideReason`; unique (student, academicYearId, date) + (school,
+      date), (section, date) indexes. Hard rule 5 documented ON the table.
+- [x] `attendance_summary`: student/year; nullable term; `periodType` enum
+      (monthly/term/annual); nullable month/year keys; working/present/
+      absent/late/leave counts; **generated** percentage column
+      (`generatedAlwaysAs`, drizzle-visible — CASE working_days = 0 → 0);
+      per-type shape CHECKs.
+- [x] **Hand-written SQL:** the daily-mode double-mark guard —
+      `UNIQUE (student_id, date, COALESCE(period_id, zero-uuid))` expression
+      index appended to `0008_shocking_banshee.sql` (marked like 0001's
+      EXCLUDEs) — plus `db:verify` assertions proving it rejects the second
+      daily row and the same period twice while accepting the period-wise
+      pair.
+- [x] `pnpm db:generate` → `0008` reviewed (3 enums, 3 tables, 21 FKs, 3
+      partial unique indexes, 4 CHECKs, 1 generated column, all additive),
+      migrated, `db:verify` extended — **72 assertions, all green** (was 53;
+      +19).
 
-**Verify:** `check-types` 8/8; `db:verify` all green incl. the new guard.
+**DEVIATION (recorded, owner-reviewable):** the planned single composite
+unique `(student, year, type, month, year)` for `attendance_summary` puts
+nullable columns (`month`, `term_id`) inside a unique key — and Postgres
+treats NULLs as DISTINCT, the exact trap the double-mark guard exists for.
+Two `term` rows (or two identical months) would both insert. Replaced with
+THREE partial unique indexes — monthly on (student, year, month, year) WHERE
+monthly; term on (student, year, term) WHERE term; annual on (student, year)
+WHERE annual — all drizzle-visible and verifiable by name, plus three shape
+CHECKs pinning which columns each type may fill. Also not carried from the
+reference: `remarks` and `leave_type` on records (the leave-approval workflow
+is a recorded deferral; both are additive later if a school asks).
+
+**Verify:** `check-types` 8/8 ✅; `db:verify` all green incl. the guard ✅.
 
 ## Chunk C5 — `feat(contracts,services): the marking flow` (+ ADR-030)
 
