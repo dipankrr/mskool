@@ -25,3 +25,7 @@ export * from "./subject.service";
 export * from "./assignment.service";
 
 
+
+// Terms: the subdivisions of an academic year — the school-level time slices
+// the exam chain and the term screens hang off.
+export * from "./term.service";

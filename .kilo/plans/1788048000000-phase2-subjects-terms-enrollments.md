@@ -367,7 +367,24 @@ SQL: terms stand ALONE (no separate term-structure table). `terms.result_mode`
       whole year) are accepted, the sequence key is proven per-year, and the
       weightage bounds are pinned on both sides. Verify ✅ check-types 8/8;
       db:verify all green.
-- [ ] S3.2 `feat(contracts,services): terms`
+- [x] S3.2 `feat(contracts,services): terms` — **DONE (2026-08-30)**.
+      `term.contract.ts` (drizzle-zod derived): create omits id/org/school/createdBy/
+      timestamps, validates ISO dates + the end-after-start refine (field-level
+      wording; the DB stays the authority, ADR-022); **update omits `academicYearId`**
+      — moving a term between years would orphan the exam/attendance/fee rows that
+      hang off it from Phase 3 onward (and the trigger would refuse once they exist);
+      everything else patchable, partial. `term.service.ts`: createTerm re-reads the
+      parent year through the caller's scope INSIDE the transaction (the
+      section-service pattern — the academic_years FK is the one that doesn't mention
+      school_id), listTerms(scopes, academicYearId) in sequence order, getTermById /
+      updateTerm, and `getTermOwnerId` (the B6 adapter). Scope columns are per-TABLE
+      with the S2.4 lesson written where the next author copies it. **No
+      remove-procedure** — terms are childless for exactly one phase; a wrong term is
+      corrected by update while empty (matches the mapping layer's decision).
+      `createdBy` is omitted-but-unpopulated, same gap as the assignment layer's —
+      one-line fix when the audit story lands (`authz_audit_log`, also unwritten).
+      Verify ✅ check-types 8/8; unit 86+38+24 (no new unit tests this chunk — the
+      service's behaviour is exercised by S3.4's integration run).
 - [ ] S3.3 `feat(trpc): term router` — creating a term does NOT touch `scope_nodes`.
 - [ ] S3.4 `test: terms in integration, smoke, and seed`
 - [ ] S3.5 `docs: TASKS.md — slice 3 done` (add `terms` to the resume-here schema line)
