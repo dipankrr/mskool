@@ -6,35 +6,41 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
-**Phase 2 slices 1–3 — subjects, the teaching-assignment layer, terms — are
-COMPLETE (2026-08-30).** The authoritative slice-by-slice plan and commit ledger
-live in `.kilo/plans/1788048000000-phase2-subjects-terms-enrollments.md`; its
-slice order is S1 subjects → S2 the assignment layer (`class_subject_mappings` +
-`section_teacher_assignments`) → S3 terms → S4 `checkSubjectAccess` + the student
-owner-resolver (ADR-gated) → S5 enrollments. **S1–S3 are done; S4 is next, and it
-opens with an ADR the owner must accept before implementation moves.**
+**Phase 2 slices 1–4 — subjects, the teaching-assignment layer, terms, and
+subject-level access — are COMPLETE (2026-08-30).** The authoritative slice-by-slice
+plan and commit ledger live in
+`.kilo/plans/1788048000000-phase2-subjects-terms-enrollments.md`; its slice order is
+S1 subjects → S2 the assignment layer → S3 terms → S4 `checkSubjectAccess` + the
+student owner-resolver → S5 enrollments. **S1–S4 are done; S5 (enrollments) is next
+and LAST.**
 
 - **Schema:** `subjects`, `class_subject_mappings`, `section_teacher_assignments`
   (`0003`/`0004`), `terms` (`0005`) — all purely additive. `terms` carries a
   hand-written `terms_dates_within_year_trg` trigger (a term's dates must sit
   inside its year's — a cross-table rule no CHECK can hold); `db:verify` is now
-  **34** assertions and proves the trigger bites on INSERT and UPDATE. Subjects,
-  mappings, assignments and terms are NOT scope nodes; every table carries the
-  denormalised `organizationId` + `schoolId` for `scopeWhere`.
+  **34** assertions and proves the trigger bites on INSERT and UPDATE. None of these
+  tables is a scope node; every one carries the denormalised `organizationId` +
+  `schoolId` for `scopeWhere`.
 - **The vertical slices** all follow `school.router.ts` / the academic routers:
   contract → service (required `DataScope`, parent re-reads inside the transaction)
   → thin router (B5 explicit-parent creates, B6 owner-resolved reads with overlap
   gates, cover mutations) → OpenAPI meta/output → negative integration + smoke
   assertions. REST surface: 5 `/subjects`, 4 `/subject-mappings`, 4
   `/teacher-assignments`, 4 `/terms` (31 total). **Terms reuse the
-  `academic_year:*` permission family** (same screens, same managers — two names
-  for one concept was refused, per the `portal_access` precedent), and their reads
-  compose `read_history` exactly as the year router's does: `yearVisibilityWhere`
-  is exported from academic.service as the one definition of the year-edge rule,
-  and every year-scoped read takes `includeHistory` as a REQUIRED argument.
-- **Verification surface:** `pnpm test:integration` = **59** (was 27 pre-S1);
-  `pnpm smoke:authz` all-pass incl. `assignment.*` and term matrix cells;
-  `pnpm test` = 86 authz + 38 web + 24 trpc unit tests.
+  `academic_year:*` permission family**, and their reads compose `read_history`
+  through the exported `yearVisibilityWhere` — every year-scoped read takes
+  `includeHistory` as a REQUIRED argument.
+- **Subject-level access (ADR-029, the Phase-1 leftover) is enforced.** A
+  subject-content write composes TWO facts at the builder:
+  `staffProcedure(permission, { subjectGate: true })` requires the section/subject
+  pair in input and runs `assignmentService.hasSubjectAssignment` after the
+  permission gate; a miss is NOT_FOUND, generic, indistinguishable from a
+  nonexistent pair. `SUBJECT_GATED_WRITES` is enforced statically by
+  `check:builders`. The HTTP smoke leg of this proof rides with the first consumer
+  endpoint (marks entry, Phase 5).
+- **Verification surface:** `pnpm test:integration` = **63**; `pnpm smoke:authz`
+  all-pass incl. `assignment.*` and term matrix cells; `pnpm test` = 86 authz + 38
+  web + 32 trpc unit tests.
 - **A lesson worth keeping:** S2's create paths shipped type-clean but BROKEN —
   the parent re-reads compiled `scopeWhere` columns from the wrong table (a runtime
   SQL error, invisible to `tsc`), and `endAssignment`'s successor insert ran in an
@@ -380,13 +386,20 @@ fails two tests in two files. Copy that habit — a scope test that cannot fail 
 than none, because it looks like coverage.
 
 Still open, in rough priority order:
-- [ ] **Subject-level access is not enforced.** A `subject_teacher` scoped to a section
-      can currently write marks for *every* subject in it — the Physics teacher can enter
-      Chemistry marks. The scope tree has no subject axis by design, so `can()` cannot
-      express this; it needs `checkSubjectAccess` against `section_teacher_assignments`
-      (ADR-012). **Blocks shipping marks entry.** Prerequisite now met: `sections` and
-      `subjects` both exist (slice S1). Landing in Phase 2 slice S4, which first creates
-      `section_teacher_assignments` (slice S2) and gates it behind an ADR.
+- [x] **Subject-level access is not enforced** — closed (2026-08-30, ADR-029 + Phase 2
+      slice S4). A subject-content write is authorized by TWO facts composed at the
+      builder: the role grant (`can()`, unchanged) and `assignmentService.
+      hasSubjectAssignment` — an OPEN `subject_teacher` assignment on the
+      (section, subject) pair, checked by `staffProcedure(permission,
+      { subjectGate: true })`. A fact miss is NOT_FOUND with the generic wording, so
+      an unassigned pair is indistinguishable from a nonexistent one.
+      `SUBJECT_GATED_WRITES` (marks + homework writes) is enforced statically by
+      `check:builders` — a router naming a gated permission without the option fails.
+      Pinned live in integration (63): her own pair resolves; own-section/
+      adjacent-subject and the homeroom teacher (role fact missing) are NOT_FOUND;
+      the adjacent section is FORBIDDEN at the node gate first. One deferred leg,
+      recorded in the plan: the HTTP smoke proof rides with the first consumer
+      endpoint (marks entry, Phase 5) — no endpoint composes the gate yet.
 - [x] **CHECK constraints on `role_assignments` and `scope_nodes`** — done (ADR-019).
       Org-scoped grants must have `scope_id = organization_id`, and a scope node must
       carry the ancestry its `type` implies, so a class node can no longer yield a

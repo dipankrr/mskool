@@ -469,11 +469,22 @@ SQL: terms stand ALONE (no separate term-structure table). `terms.result_mode`
       leftover at unit level), ended assignment = same NOT_FOUND (immediacy),
       permission-first ordering (FORBIDDEN beats the fact), omitted pair =
       validation failure.
-- [ ] S4.4 `test: subject-level denial in integration + smoke` — the phase-1 leftover
-      closes: a `subject_teacher` scoped to one section is denied the adjacent
-      section's subject, and a SubjectTeacher WITHOUT the matching assignment row is
-      denied the subject inside her own section.
-- [ ] S4.5 `docs: TASKS.md — slice 4 done` (tick the phase-1 leftover checkbox)
+- [x] S4.4 `test: subject-level denial in integration + smoke` — **DONE
+      (2026-08-30), integration 63 (was 59).** A marks-shaped probe composes the
+      real `subjectGate` against the live fixture: her own pair resolves
+      (non-vacuity); her OWN section with the ADJACENT subject is NOT_FOUND with
+      the generic wording, identical to a fabricated subject id (the
+      indistinguishability pin — the Phase-1 leftover's exact case); the ADJACENT
+      SECTION is FORBIDDEN at the node gate first (the layering pinned); the
+      HOMEROOM teacher — marks:create granted, STA row role class_teacher — is
+      NOT_FOUND, because the fact states its own terms. **Smoke leg deferred by
+      decision, recorded here:** no HTTP-reachable endpoint composes the gate
+      until marks entry (Phase 5), so the live-smoke half rides with that router —
+      its first `subjectGate` procedure must mirror the integration probe, and
+      `check:builders` enforces that it exists at all.
+- [x] S4.5 `docs: TASKS.md — slice 4 done` — **DONE (2026-08-30).** The Phase-1
+      leftover "Subject-level access is not enforced" is TICKED with the deferred
+      smoke leg recorded; resume-here now says S1–S4 complete, S5 next.
 
 ---
 
