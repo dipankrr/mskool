@@ -43,6 +43,7 @@ import {
   createEnrollmentSchema,
   createSectionSchema,
   createSectionTeacherAssignmentSchema,
+  createStudentSchema,
   createSubjectSchema,
   createTermSchema,
 } from "@repo/contracts";
@@ -51,17 +52,23 @@ import {
   assignmentService,
   enrollmentService,
   organizationService,
+  studentService,
   subjectService,
   termService,
 } from "@repo/services";
 import { getOwnedStudentIds } from "@repo/authz";
 import { db } from "@repo/db";
-import { classes, sections, subjects } from "@repo/db/schema";
+import { classes, sections, students, subjects } from "@repo/db/schema";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { router as makeRouter } from "../trpc";
 import type { OwnerResolver } from "../trpc";
-import { staffListProcedure, staffProcedure, studentProcedure } from "../trpc";
+import {
+  resolveStudentOwner,
+  staffListProcedure,
+  staffProcedure,
+  studentProcedure,
+} from "../trpc";
 import { buildWorld, type IntegrationWorld } from "./world";
 
 const HISTORY = "academic_year:read_history";
@@ -509,6 +516,42 @@ const portalEnrollmentRouter = makeRouter({
   probe: studentProcedure.query(({ ctx }) =>
     enrollmentService.listEnrollmentsForStudents(ctx.studentIds),
   ),
+});
+
+// --- probes: students ------------------------------------------------------------
+
+const studentListRouter = makeRouter({
+  probe: staffListProcedure("student:read")
+    .input(z.object({ q: z.string().min(1).max(100).optional() }))
+    .query(({ ctx, input }) => studentService.listStudents(ctx.scopes, input.q)),
+});
+
+const studentByIdRouter = makeRouter({
+  probe: staffProcedure("student:read", {
+    resolveOwner: resolveStudentOwner,
+    gate: "overlap",
+  }).query(async ({ ctx, input }) => {
+    const student = await studentService.getStudentById(ctx.scope, rowId(input));
+    if (!student) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Student not found." });
+    }
+    return student;
+  }),
+});
+
+const studentCreateRouter = makeRouter({
+  probe: staffProcedure("student:create")
+    .input(z.object({ schoolId: z.uuid(), data: createStudentSchema }))
+    .mutation(({ ctx, input }) =>
+      studentService.createStudent(ctx.scope, input.data),
+    ),
+});
+
+const studentDeactivateRouter = makeRouter({
+  probe: staffProcedure("student:delete", { resolveOwner: resolveStudentOwner })
+    .mutation(({ ctx, input }) =>
+      studentService.deactivateStudent(ctx.scope, rowId(input)),
+    ),
 });
 
 // --- harness -----------------------------------------------------------------
@@ -1163,17 +1206,21 @@ describe("the subjectGate — subject-level access is a second fact", () => {
 // --- enrollments: the year anchor, in both tracks ----------------------------
 
 describe("enrollments — the year anchor, in both tracks", () => {
+  // The roster returns { enrollment, student } pairs; these tests pin the
+  // ENROLLMENT ids (the identity the gates resolve).
   const listAt = (
     userId: string,
     filters: { classId?: string; sectionId?: string } = {},
   ) =>
-    okIds(
-      callerOf(enrollmentListRouter, userId).probe({
+    callerOf(enrollmentListRouter, userId)
+      .probe({
         organizationId: world.orgAId,
         academicYearId: world.currentYearAId,
         ...filters,
-      }),
-    );
+      })
+      .then((rows: { enrollment: { id: string } }[]) =>
+        rows.map((r) => r.enrollment.id).sort(),
+      );
 
   it("the section teacher sees EXACTLY her student — the admitted classmate is not hers", async () => {
     // NO widening: the scope columns carry all four levels, so her section
@@ -1924,5 +1971,127 @@ describe("the happy path through the real contract schemas", () => {
       created.id,
     );
     expect(deactivated?.isActive).toBe(false);
+  });
+});
+
+// --- students: the identity registry ---------------------------------------------
+
+describe("students — the registry, searched and admitted", () => {
+  // student:read is held by every staff role EXCEPT staff_coordinator — the
+  // coordinator's FORBIDDEN cell lives in the smoke matrix.
+  const listAt = (userId: string, q?: string) =>
+    callerOf(studentListRouter, userId)
+      .probe(q ? { organizationId: world.orgAId, q } : { organizationId: world.orgAId })
+      .then((rows: { id: string }[]) => rows.map((r) => r.id).sort());
+
+  it("wide and narrow roles search the SAME registry, clipped to their grants", async () => {
+    // The org admin is org-wide WITHIN his org: two active students. B1's
+    // student belongs to the OTHER organization and stays invisible — the
+    // registry's tenancy pin, same as every list before it.
+    expect(await listAt(U().adminA)).toEqual(
+      [world.ownedStudentId, world.ungrantedStudentId].sort(),
+    );
+    // School-scoped roles see their branch's two — the section teacher's
+    // widening to school level pinned on a THIRD entity shape.
+    expect(await listAt(U().principalA1)).toEqual(
+      [world.ownedStudentId, world.ungrantedStudentId].sort(),
+    );
+    expect(await listAt(U().subjectS6A)).toEqual(
+      [world.ownedStudentId, world.ungrantedStudentId].sort(),
+    );
+  });
+
+  it("the front-desk search finds by admission number", async () => {
+    const hits = await listAt(U().principalA1, "ITG-0002");
+    expect(hits).toEqual([world.ungrantedStudentId]);
+  });
+
+  it("byId: a cross-org student is NOT_FOUND, indistinguishable from a made-up id", async () => {
+    await expectTrpcError(
+      callerOf(studentByIdRouter, U().principalA1).probe({
+        organizationId: world.orgAId,
+        id: world.studentB1Id,
+      }),
+      "NOT_FOUND",
+      "Student not found.",
+    );
+  });
+
+  it("a duplicate admission number is refused BY THE INDEX, worded", async () => {
+    await expectTrpcError(
+      callerOf(studentCreateRouter, U().principalA1).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
+        data: {
+          admissionNumber: "ITG-0001",
+          firstName: "Duplicate",
+          lastName: "Admission",
+          dateOfBirth: "2013-01-15",
+          gender: "male",
+        },
+      }),
+      "CONFLICT",
+      "Admission number ITG-0001 is already used at this branch. Admission numbers are never reused — check the record, or issue the next number.",
+    );
+  });
+
+  it("a teacher cannot create a student (permission gate)", async () => {
+    await expectTrpcError(
+      callerOf(studentCreateRouter, U().teacherC6).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
+        data: {
+          admissionNumber: "ITG-DENIED",
+          firstName: "Denied",
+          lastName: "Admission",
+          dateOfBirth: "2013-01-15",
+          gender: "female",
+        },
+      }),
+      "FORBIDDEN",
+      "Missing permission: student:create",
+    );
+  });
+
+  it("the happy path admits, and deactivate self-cleans (runs late, mutates)", async () => {
+    // Through the REAL contract schema: the full admission payload a screen
+    // will send, validated end to end. The scratch row is deterministically
+    // named so a re-run finds it instead of colliding, and deactivate keeps
+    // it out of the lists' exact counts either way.
+    const admission = "ITG-PROBE-0001";
+    const [existing] = await db
+      .select()
+      .from(students)
+      .where(eq(students.admissionNumber, admission));
+    const admitted =
+      existing ??
+      (await callerOf(studentCreateRouter, U().adminA).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
+        data: {
+          admissionNumber: admission,
+          firstName: "Probe",
+          lastName: "Student",
+          dateOfBirth: "2012-09-01",
+          gender: "female",
+        },
+      }));
+    expect(admitted.admissionNumber).toBe(admission);
+
+    const deactivated = await callerOf(studentDeactivateRouter, U().adminA).probe({
+      organizationId: world.orgAId,
+      id: admitted.id,
+    });
+    expect(deactivated.status).toBe("inactive");
+
+    // Deactivated rows leave the lists (admission pickers) but stay readable
+    // by id for the enrollments and documents that point at them (hard rule 2).
+    const after = await listAt(U().adminA);
+    expect(after).not.toContain(admitted.id);
+    const direct = await callerOf(studentByIdRouter, U().adminA).probe({
+      organizationId: world.orgAId,
+      id: admitted.id,
+    });
+    expect(direct.id).toBe(admitted.id);
   });
 });

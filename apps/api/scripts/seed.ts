@@ -53,6 +53,7 @@ import {
   academicService,
   assignmentService,
   enrollmentService,
+  studentService,
   organizationService,
   subjectService,
   termService,
@@ -611,19 +612,19 @@ async function findOrCreateStudent(
     return existing;
   }
 
-  const [created] = await db
-    .insert(students)
-    .values({
-      organizationId,
-      schoolId,
+  // Through the service, like every other seeded write — hard rule 1's
+  // filter comes from the scope, and a duplicate admission number is the
+  // index's refusal, not the seed's.
+  const created = await studentService.createStudent(
+    { organizationId, schoolId, classId: null, sectionId: null },
+    {
       admissionNumber,
       firstName,
       lastName,
       dateOfBirth: "2012-06-15",
       gender: "female",
-    })
-    .returning();
-  if (!created) throw new Error(`Failed to create student ${admissionNumber}.`);
+    },
+  );
   console.log(`  + student ${admissionNumber} (${firstName} ${lastName})`);
   return created;
 }

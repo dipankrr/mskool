@@ -33,6 +33,7 @@ import {
   sections,
   sectionTeacherAssignments,
   studentEnrollments,
+  students,
   subjects,
   terms,
   user,
@@ -320,6 +321,21 @@ async function main() {
       "Enrollment seed incomplete — expected exactly two enrollments on Class 6 " +
         "(one sectioned, one admitted) and one in school B. " +
         "Run `pnpm db:seed` (re-seeding is idempotent).",
+    );
+  }
+
+  // The identity registry: two active students at school A, one at school B —
+  // the school-scoped/org-scoped list shapes the student.list cells pin.
+  const studentsA = await db
+    .select()
+    .from(students)
+    .where(eq(students.schoolId, schoolA.id));
+  const student1 = studentsA.find((s) => s.admissionNumber === "DEMO-0001");
+
+  if (!student1 || studentsA.length !== 2) {
+    throw new Error(
+      "Student seed incomplete — expected exactly two active students at " +
+        "school A. Run `pnpm db:seed` (re-seeding is idempotent).",
     );
   }
 
@@ -935,7 +951,7 @@ async function main() {
     enrollmentList.ok &&
       Array.isArray(enrollmentList.data) &&
       enrollmentList.data.length === 2 &&
-      enrollmentList.data.every((e: any) => e.schoolId === schoolA.id),
+      enrollmentList.data.every((e: any) => e.enrollment.schoolId === schoolA.id),
     enrollmentList.ok ? `got ${enrollmentList.data?.length}` : `code ${enrollmentList.code}`,
   );
 
@@ -962,7 +978,7 @@ async function main() {
     subjectTeacherEnrollmentList.ok &&
       Array.isArray(subjectTeacherEnrollmentList.data) &&
       subjectTeacherEnrollmentList.data.length === 1 &&
-      subjectTeacherEnrollmentList.data[0]?.id === enrollmentSectioned.id,
+      subjectTeacherEnrollmentList.data[0]?.enrollment.id === enrollmentSectioned.id,
     subjectTeacherEnrollmentList.ok
       ? `got ${subjectTeacherEnrollmentList.data?.length}`
       : `code ${subjectTeacherEnrollmentList.code}`,
@@ -1308,18 +1324,39 @@ async function main() {
         input: { organizationId: orgId, academicYearId: currentYearA.id },
         method: "query",
         // The no-widening crown: the section teacher's grant reaches exactly
-        // one student; class- and school-level callers see both.
+        // one student; class- and school-level callers see both. The rows are
+        // { enrollment, student } pairs — the roster carries the child's name.
         expect: OK,
         dataCheck:
           role === "subject_teacher"
             ? (d) =>
                 Array.isArray(d) &&
                 d.length === 1 &&
-                d[0]?.id === enrollmentSectioned.id
+                d[0]?.enrollment.id === enrollmentSectioned.id
             : (d) =>
                 Array.isArray(d) &&
                 d.length === 2 &&
-                d.every((e: any) => e.schoolId === schoolA.id),
+                d.every((e: any) => e.enrollment.schoolId === schoolA.id),
+      },
+      {
+        role,
+        cookie,
+        path: "student.list",
+        input: { organizationId: orgId },
+        method: "query",
+        // The registry: the org admin is org-wide (both branches' active
+        // students); the school-scoped roles are clipped to their two.
+        expect: OK,
+        dataCheck:
+          role === "org_admin"
+            ? (d) =>
+                Array.isArray(d) &&
+                d.length === 3 &&
+                d.every((s: any) => s.organizationId === orgId)
+            : (d) =>
+                Array.isArray(d) &&
+                d.length === 2 &&
+                d.every((s: any) => s.schoolId === schoolA.id),
       },
     );
   };
@@ -1345,6 +1382,7 @@ async function main() {
       subject: boolean;
       year: boolean;
       enrollment: boolean;
+      student: boolean;
     };
     /** Org-scoped grants see every branch; school-scoped ones are clipped to A. */
     orgScoped?: boolean;
@@ -1352,26 +1390,27 @@ async function main() {
     {
       role: "vice_principal",
       cookie: vicePrincipalCookie,
-      holds: { school: true, class: true, section: true, subject: true, year: true, enrollment: true },
+      holds: { school: true, class: true, section: true, subject: true, year: true, enrollment: true, student: true },
     },
     {
       role: "accountant",
       cookie: accountantCookie,
-      holds: { school: true, class: true, section: true, subject: false, year: true, enrollment: true },
+      holds: { school: true, class: true, section: true, subject: false, year: true, enrollment: true, student: true },
     },
     {
       role: "librarian",
       cookie: librarianCookie,
-      holds: { school: false, class: true, section: true, subject: false, year: false, enrollment: false },
+      holds: { school: false, class: true, section: true, subject: false, year: false, enrollment: false, student: true },
     },
     {
       // Org-scoped HR — the structure reads (school/class/section) are part
       // of the role: announcements and staff context need them. What it does
-      // NOT hold is any academic-data read (subject/year/terms/enrollments).
+      // NOT hold is any academic-data read (subject/year/terms/enrollments/
+      // students).
       role: "staff_coordinator",
       cookie: staffCoordinatorCookie,
       orgScoped: true,
-      holds: { school: true, class: true, section: true, subject: false, year: false, enrollment: false },
+      holds: { school: true, class: true, section: true, subject: false, year: false, enrollment: false, student: false },
     },
   ];
 
@@ -1388,6 +1427,8 @@ async function main() {
     const academicCheck = (d: any) =>
       Array.isArray(d) && d.some((r: any) => r.schoolId === schoolA.id);
     const pairCount = (d: any) => Array.isArray(d) && d.length === 2;
+    const schoolScopedPair = (d: any) =>
+      Array.isArray(d) && d.length === 2 && d.every((s: any) => s.schoolId === schoolA.id);
 
     const cells: Array<[string, unknown, boolean, ((d: any) => boolean)?]> = [
       ["school.list", { organizationId: orgId }, holds.school, holds.school ? schoolCheck : undefined],
@@ -1397,6 +1438,7 @@ async function main() {
       ["subject.list", { organizationId: orgId }, holds.subject, holds.subject ? academicCheck : undefined],
       ["academic.term.list", { organizationId: orgId, academicYearId: currentYearA.id }, holds.year, holds.year ? pairCount : undefined],
       ["enrollment.list", { organizationId: orgId, academicYearId: currentYearA.id }, holds.enrollment, holds.enrollment ? pairCount : undefined],
+      ["student.list", { organizationId: orgId }, holds.student, holds.student ? schoolScopedPair : undefined],
     ];
     for (const [path, input, ok, dataCheck] of cells) {
       rows.push({ role, cookie, path, input, method: "query", expect: ok ? OK : forbidden, dataCheck });

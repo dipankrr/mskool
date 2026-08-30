@@ -317,6 +317,17 @@ const CONSTRAINT_TRANSLATIONS: Record<string, ConstraintTranslation> = {
     },
   },
 
+  // students -------------------------------------------------------------
+  students_school_admission_number_uq: {
+    code: "CONFLICT",
+    message: (error) => {
+      const admission = keyValue(error, "admission_number");
+      return admission
+        ? `Admission number ${admission} is already used at this branch. Admission numbers are never reused — check the record, or issue the next number.`
+        : "That admission number is already used at this branch. Admission numbers are never reused.";
+    },
+  },
+
   // terms ----------------------------------------------------------------
   // A trigger, not a constraint — a CHECK cannot reference another table —
   // but it reports itself with this name via USING CONSTRAINT, so the same
