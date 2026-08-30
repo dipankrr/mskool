@@ -16,6 +16,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
 import { organizations, schools } from "./organization";
+import { students } from "./people";
 
 /**
  * ACADEMIC STRUCTURE — Phase 2 slice 1.
@@ -461,6 +462,37 @@ export const termResultModeEnum = pgEnum("term_result_mode", [
 ]);
 
 /**
+ * The enrollment's life cycle (reference table 21, lowercased to house style).
+ * ADMITTED — accepted, section not yet assigned (sectionId is nullable
+ * precisely for this state); SECTION_ASSIGNED — section set, not yet
+ * attending; ACTIVE — attending classes; TRANSFERRED_OUT — left mid-year with
+ * a TC; WITHDRAWN — left without one; PASSED_OUT — completed the year. The
+ * status machine itself is the service's concern (S5.2); the enum only makes
+ * the states unrepresentable-as-typo.
+ */
+export const enrollmentStatusEnum = pgEnum("enrollment_status", [
+  "admitted",
+  "section_assigned",
+  "active",
+  "transferred_out",
+  "withdrawn",
+  "passed_out",
+]);
+
+/**
+ * Set at year end after the final result (the exam chain's
+ * `student_final_results → promotion_status → next year's enrollment`). NULL
+ * until decided — a NOT NULL default would claim an answer nobody gave.
+ */
+export const promotionStatusEnum = pgEnum("promotion_status", [
+  "pending",
+  "promoted",
+  "detained",
+  "compartment",
+  "promoted_with_improvement",
+]);
+
+/**
  * A subdivision of an academic year — "Term 1", "Term 2", or a single "Full
  * Year" row when a school does not split. Every year gets at least one term;
  * that invariant lives at the application layer (the reference SQL's own
@@ -656,3 +688,126 @@ export const termRelations = relations(terms, ({ one }) => ({
     references: [academicYears.id],
   }),
 }));
+
+/**
+ * STUDENT ENROLLMENTS — the year anchor (reference table 21). ONE row per
+ * student per academic year; attendance, fees, and results all hang off it.
+ *
+ * **Hard rule 6 lives here.** Never mutated year-over-year: promotion inserts
+ * a NEW row for the new year and the old row's `promotionStatus` records what
+ * happened. The unique index below is the structural half of that rule — a
+ * second row for the same (student, year) is unrepresentable — and the
+ * service half (only inserts and status transitions, never rewrites of the
+ * year/class/section identity) lands in S5.2.
+ *
+ * `sectionId` is NULLABLE deliberately: the ADMITTED state exists because
+ * admissions open before sections are finalized. The unique index is on
+ * (student, year) without the school — a student row belongs to exactly one
+ * school by its own `school_id`, so the reference's third key is redundant
+ * here; the cross-tenant parent-smuggling hole this table inherits (the FKs
+ * on class/year/section do not mention school_id) is closed in the service by
+ * the parent re-read, per the section-service pattern.
+ *
+ * NOT in the scope tree — no `scope_nodes` row (hard rule 12 names
+ * school/class/section only). Carries the denormalised `organizationId` +
+ * `schoolId` for `scopeWhere` like every academic table.
+ */
+export const studentEnrollments = pgTable(
+  "student_enrollments",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    organizationId: uuid()
+      .notNull()
+      .references(() => organizations.id),
+    schoolId: uuid()
+      .notNull()
+      .references(() => schools.id),
+
+    studentId: uuid()
+      .notNull()
+      .references(() => students.id),
+    academicYearId: uuid()
+      .notNull()
+      .references(() => academicYears.id),
+    classId: uuid()
+      .notNull()
+      .references(() => classes.id),
+    // Nullable until the section is assigned (the admitted state).
+    sectionId: uuid().references(() => sections.id),
+
+    // Assigned within the section; nullable until then.
+    rollNumber: varchar({ length: 20 }),
+    // Labels on the enrollment, which can differ from the section's defaults.
+    stream: varchar({ length: 50 }),
+    house: varchar({ length: 50 }),
+
+    // Admissions open before the year does, so this is NOT CHECKed inside the
+    // year's range — a constraint there would make early admission
+    // unrepresentable.
+    enrollmentDate: date().notNull().default(sql`CURRENT_DATE`),
+    enrollmentStatus: enrollmentStatusEnum()
+      .notNull()
+      .default("admitted"),
+
+    promotionStatus: promotionStatusEnum(),
+    // TRUE while waiting for a supplementary result before the next year's
+    // enrollment (the promotion flow reads it).
+    promotionPending: boolean().notNull().default(false),
+
+    // TRUE when this row came from an org/school bulk action (the promotion
+    // rollover), not an individual admission.
+    createdFromTemplate: boolean().notNull().default(false),
+
+    createdBy: text().references(() => user.id),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    // The year anchor, made unrepresentable: one enrollment per student per
+    // year. A student row belongs to exactly one school (its own school_id),
+    // so the reference's school_id in this triple is redundant.
+    uniqueIndex("student_enrollments_student_year_uq").on(
+      t.studentId,
+      t.academicYearId,
+    ),
+    index("student_enrollments_school_year_idx").on(t.schoolId, t.academicYearId),
+    index("student_enrollments_student_idx").on(t.studentId),
+    index("student_enrollments_section_idx").on(t.sectionId),
+    index("student_enrollments_class_year_idx").on(t.classId, t.academicYearId),
+    index("student_enrollments_school_idx").on(t.schoolId),
+    index("student_enrollments_org_idx").on(t.organizationId),
+  ],
+);
+
+export const studentEnrollmentRelations = relations(
+  studentEnrollments,
+  ({ one }) => ({
+    organization: one(organizations, {
+      fields: [studentEnrollments.organizationId],
+      references: [organizations.id],
+    }),
+    school: one(schools, {
+      fields: [studentEnrollments.schoolId],
+      references: [schools.id],
+    }),
+    student: one(students, {
+      fields: [studentEnrollments.studentId],
+      references: [students.id],
+    }),
+    academicYear: one(academicYears, {
+      fields: [studentEnrollments.academicYearId],
+      references: [academicYears.id],
+    }),
+    class: one(classes, {
+      fields: [studentEnrollments.classId],
+      references: [classes.id],
+    }),
+    section: one(sections, {
+      fields: [studentEnrollments.sectionId],
+      references: [sections.id],
+    }),
+  }),
+);

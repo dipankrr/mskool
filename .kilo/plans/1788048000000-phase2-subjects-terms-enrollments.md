@@ -490,9 +490,25 @@ SQL: terms stand ALONE (no separate term-structure table). `terms.result_mode`
 
 ## Slice S5 — enrollments (LAST — needs S4.2)
 
-- [ ] S5.1 `feat(db): student_enrollments table` — per `docs/DOMAIN.md`; year-scoped
-      via the section FK; hard rule 6: the service only inserts and sets `status`, it
-      never rewrites history.
+- [ ] S5.1 `feat(db): student_enrollments table` — **DONE (2026-08-30).**
+      `0006_mysterious_dazzler.sql`, purely additive (2 enums + table + 7 FKs +
+      unique/6 indexes, zero drops — no hand-written block: nothing cross-table).
+      Per reference table 21 with house conventions: org+school denormalised; FKs
+      student/year/class + NULLABLE `sectionId` (the `admitted` state: admissions
+      open before sections are finalised) + `createdBy`; `enrollment_status` enum
+      (admitted/section_assigned/active/transferred_out/withdrawn/passed_out,
+      lowercase); NULLABLE `promotion_status` (set at year end — NULL until
+      decided) + `promotionPending`; `rollNumber`/`stream`/`house`;
+      `enrollmentDate` deliberately NOT constrained inside the year (early
+      admission is representable). **The year anchor made structural:** unique
+      `(studentId, academicYearId)` — the reference's third key (`school_id`) is
+      redundant because a student row belongs to exactly one school. Hard rule 6's
+      service half (inserts + status transitions only, never identity rewrites)
+      lands in S5.2. `db:verify` now **37**: a second (student, year) row is
+      rejected BY NAME; the promotion shape (next year, admitted, NULL section)
+      accepted. **Note:** `section_transfer_log` remains unpicked — its only
+      writer is a mid-year section move; scope it into S5.2 or defer explicitly
+      when the transfer flow exists.
 - [ ] S5.2 `feat(contracts,services): enrollments` — staff track takes `DataScope`;
       the student track reads via owned `studentId` only.
 - [ ] S5.3 `feat(trpc): enrollment router` — staff (`enrollment.*`) + portal

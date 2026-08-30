@@ -43,6 +43,13 @@
       "when": 1788065354388,
       "tag": "0005_bitter_hydra",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788073348931,
+      "tag": "0006_mysterious_dazzler",
+      "breakpoints": true
     }
   ]
 }

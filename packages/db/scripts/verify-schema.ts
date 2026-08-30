@@ -441,6 +441,69 @@ async function main() {
       "terms_weightage_range",
       (q) => term(q, "Overweight", 5, "2030-10-01", "2030-12-31", "100.01"),
     );
+
+    console.log("\n=== student_enrollments: the year anchor ===");
+
+    // Hard rule 6's structural half: ONE enrollment per student per year, so
+    // promotion can only ever INSERT a new row for the next year — the unique
+    // index makes a second row for the same (student, year) unrepresentable.
+    const [enrStudent] = await tx<{ id: string }[]>`
+      INSERT INTO students
+        (organization_id, school_id, admission_number, first_name, last_name,
+         date_of_birth, gender)
+      VALUES (${org.id}, ${school.id}, 'VERIFY-0001', 'Verify', 'Student',
+              '2012-06-15', 'female')
+      RETURNING id
+    `;
+    const [enrYear] = await tx<{ id: string }[]>`
+      SELECT id FROM academic_years WHERE name = '2030-31' AND school_id = ${school.id}
+    `;
+    const [nextEnrYear] = await tx<{ id: string }[]>`
+      SELECT id FROM academic_years WHERE name = '2031-32' AND school_id = ${school.id}
+    `;
+    const [enrClass] = await tx<{ id: string }[]>`
+      INSERT INTO classes (organization_id, school_id, name, numeric_order)
+      VALUES (${org.id}, ${school.id}, 'Verify 6', 6)
+      RETURNING id
+    `;
+    const [enrSection] = await tx<{ id: string }[]>`
+      INSERT INTO sections
+        (organization_id, school_id, class_id, academic_year_id, name)
+      VALUES (${org.id}, ${school.id}, ${enrClass.id}, ${enrYear.id}, 'A')
+      RETURNING id
+    `;
+
+    const enroll = (
+      q: Queryable,
+      yearId: string,
+      sectionId: string | null,
+      status: string,
+    ) =>
+      q`INSERT INTO student_enrollments
+          (organization_id, school_id, student_id, academic_year_id, class_id,
+           section_id, enrollment_status)
+        VALUES (${org.id}, ${school.id}, ${enrStudent.id}, ${yearId},
+                ${enrClass.id}, ${sectionId}, ${status})`;
+
+    await expectAccept(tx, "an active enrollment with a section is accepted", (q) =>
+      enroll(q, enrYear.id, enrSection.id, "active"),
+    );
+
+    await expectReject(
+      tx,
+      "a SECOND enrollment for the same (student, year) is rejected",
+      "student_enrollments_student_year_uq",
+      (q) => enroll(q, enrYear.id, null, "admitted"),
+    );
+
+    // The promotion shape: the NEXT year is a new row, admitted with no
+    // section yet — both the year-anchor rule and the nullable-section state
+    // in one acceptance.
+    await expectAccept(
+      tx,
+      "the same student in the NEXT year is accepted (promotion inserts)",
+      (q) => enroll(q, nextEnrYear.id, null, "admitted"),
+    );
   });
 
   // Asserts the rollback, not an empty database: `pnpm db:seed` legitimately
