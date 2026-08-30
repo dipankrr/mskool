@@ -1,0 +1,243 @@
+# mskool — UI milestone: admission + attendance screens
+
+Six chunks: **U1** students list + admit, **U2** student detail + enrollment
+actions, **U3** the attendance calendar, **U4** the marking policy, **U5**
+the marking screen, **U6** docs. Each chunk lands as its own commit, one
+concern per commit. Pure frontend — no migrations, no backend changes
+expected (a discovered API gap is a STOP-and-report, not a quiet backend
+edit inside a UI chunk).
+
+## Goal
+
+Make the shipped backend usable. The admission flow
+(`student.create` → `enrollment.create` → `enrollment.assignSection`) and
+attendance marking (calendar → policy → mark) exist only as APIs; this
+milestone gives them screens. It also gives TEACHERS their first landing
+surface — until now the console only served org admins and principals, and
+the class/subject teacher logins in the seed have nothing to open.
+
+Everything here clones the existing verticals (`features/<domain>/` with a
+`use-*.ts` hook + form dialogs) and the console-frontend plan
+(`.kilo/plans/1787116995782-school-admin-console-frontend.md`) is the
+standing record of web decisions — read it before changing `apps/web`.
+
+## Workflow protocol — read before starting
+
+**One chunk per turn. The owner commits (unless explicitly authorized per-instance).**
+
+1. Implement **exactly one** chunk. Do not begin the next one.
+2. Run that chunk's **Verify** steps.
+3. Tick that chunk's boxes in this file as part of the same diff.
+4. Run `git status` and `git diff --stat`, and summarise what changed and why.
+5. Propose the commit message (subject + body) from that chunk.
+6. **Stop and wait.**
+
+Every chunk leaves `pnpm check-types` green (8/8) and the web unit suite
+green. `pnpm lint` is NOT a gate — it has never been wired up (a recorded
+tooling debt, not this milestone's to pay).
+
+## Execution order
+
+```
+U0 plan ── U1 students list + admit ── U2 student detail + enrollment
+                                             │
+       U3 calendar ── U4 policy ── U5 marking ── U6 docs
+```
+
+U3/U4/U5 are independent of U1/U2; both chains feed U6. Within the
+attendance chain, U5 needs U3's calendar data and reads the policy from U4.
+
+## Preconditions (verified 2026-08-31)
+
+- [x] Phase 3 committed in full (9 commits, C0–C8); `check-types` 8/8;
+      integration 93; smoke 158; `db:verify` 72.
+- [x] Backend surface for this milestone is complete and smoke-proven:
+      `student.*`, `enrollment.*`, `attendance.calendar.*`, `attendance.policy.*`,
+      `attendance.mark/status`.
+- [x] Seed provides 9 logins (password `Password123!`) including class_teacher
+      and subject_teacher — the manual-test cast for every chunk. Dev: web
+      :3000, API :4000; restart the API between smoke runs (sign-in limiter).
+- [x] The demo org is DAILY-mode for attendance; the calendar for its 2025-26
+      year is generated (Mon–Fri) with holidays on 2025-08-15 and 2025-10-02.
+
+## Hard context an implementer must know
+
+**Which node each call addresses is the whole subtlety** — `use-branches.ts`
+documents the house rules and they apply unchanged:
+
+- permissive LISTS address `{ organizationId }` (or the widest node) — the
+  builder clips to the caller's grants;
+- CREATES name their parents explicitly in the input (B5), never the
+  "active branch" blindly;
+- row-addressed UPDATE/DEACTIVATE address the ROW's own node
+  (`{ organizationId, id }`), not the active context's;
+- `attendance.mark`'s `sectionId` IS the addressed node (B5) — the marking
+  screen submits the section it is marking.
+
+**Permission gating is `PermissionGate` (hidden, not disabled)** driven by
+`me.get`'s `permissions` — a render hint; the server is the authority. Per
+screen (verify against `defaultPermissions.ts` at build time, don't trust
+this table blindly):
+
+| Screen | gate to SHOW | gate for ACTIONS |
+|---|---|---|
+| Students list | `student:read` | Admit = `student:create` |
+| Student detail | `student:read` | edit `student:update`; deactivate `student:delete` (SENSITIVE → fresh gate read + confirm dialog) |
+| Enrollment actions | `enrollment:read` | `enrollment:create` / section assignment per matrix |
+| Calendar screen | `attendance:read` | generate/override = `attendance:update` |
+| Policy screen | `attendance:read` | save = `attendance:update` |
+| Marking screen | `attendance:read` | mark = `attendance:create`; day view is read-only without it |
+
+The NAV currently assumes an admin audience. With teachers arriving, nav
+items for the new screens need permission awareness (the same `has()` from
+`useActiveContext`), so a class_teacher sees Attendance but not Branches.
+
+**Marking UX for refusals: client-side states, server-side authority.** The
+marking screen knows the selected date's day type (the month's calendar is
+already fetched). A holiday/weekend/no-row date renders a non-editable
+explanation — the SAME words `translateErrors` produces — instead of letting
+submit fail. The server refuses anyway; the client state is UX, never a
+security decision. The `correctionReason` convention is implemented here:
+the UI asks for a reason when EDITING a PAST date, never on same-day
+marking, and sends it optionally (the backend never enforces).
+
+**Dates are strings, always.** ISO end to end; `lib/format.ts` converts to
+DD/MM/YYYY for display without constructing a `Date` for a calendar date.
+The calendar month-grid builder computes weekdays with UTC-only `Date`
+arithmetic (the same walk the generator uses) and gets unit tests — it is
+exactly the kind of pure helper `lib/` exists for.
+
+**Row types come from `inferRouterOutputs<AppRouter>`**, not
+`@repo/contracts` (CONVENTIONS.md). Input types come from `@repo/contracts`
+— the contracts are what the forms submit.
+
+**Known web traps** (all fixed, all easy to reintroduce): loading gates use
+`isLoading`, not `isPending`; queries retry once, never on permission/not-
+found errors; row-addressed mutations invalidate the list AND `me.get`
+where the switchers' data changed.
+
+## Locked decisions
+
+| Decision | Choice |
+|---|---|
+| Daily-mode UI only | The marking + policy screens model daily marking; period-wise configuration is API-only this milestone (recorded deferral). |
+| Refusal states | Client renders calendar-known refusals as inline states with the translateErrors wording; submit-failures surface through `lib/errors`. |
+| correctionReason | Asked on past-date edits only; optional in the payload; never required client-side either. |
+| Roster source | The marking screen's roster comes from `enrollment.list` for the section (carries student names). |
+| Section picker | Fed by the permissive `academic.section.list` (clipped to the caller's grants — a teacher sees exactly her sections). |
+| Student detail layout | One page: profile card + enrollment history + actions; admission adds the FIRST enrollment. |
+| Vocabulary | `lib/copy.ts` owns everything user-facing; attendance words: Present, Absent, Late, Half Day, On Leave; Indian formatting via `lib/format.ts`. |
+| Summary/reports | Deferred — the API exists; reports land with the report-card phase. |
+| Tests | Pure helpers (month grid, status maps, date logic) get unit tests; screens rely on `check-types` + manual walks with the seed cast. |
+| Commit cadence | One chunk = one commit; tests ride with the code they cover. |
+
+## Chunk U0 — plan file — ✅ DONE (2026-08-31, this commit)
+
+- [x] This file: protocol, chunks, hard context, locked decisions, ledger.
+
+## Chunk U1 — `feat(web): the students list and admission`
+
+- [ ] `features/students/` vertical: `use-students.ts` (list + search +
+      create + deactivate mutations per the use-branches addressing rules);
+      students list page under `(dashboard)/students` — searchable
+      `data-table` (admission number, name, class/section via enrollment,
+      status), `empty-state`, Admit button behind `student:create`.
+- [ ] Admit dialog: the full `createStudentSchema` form in `form-dialog`
+      (admission number, name, DOB, gender, …); conflict wording
+      (duplicate admission number) surfaces via `lib/errors`.
+- [ ] Nav entry "Students", permission-aware; `lib/copy.ts` vocabulary.
+- [ ] Deactivate action (confirm dialog) may live here or in U2 — its
+      natural home is the detail page; defer if so.
+
+**Verify:** `check-types` 8/8; web unit suite green; manual walk — org admin
+admits a student, searches, sees the exact conflict wording on a duplicate.
+
+## Chunk U2 — `feat(web): student detail, enrollment, section assignment`
+
+- [ ] Student detail page `(dashboard)/students/[studentId]`: profile card,
+      edit dialog (`updateStudentSchema`), deactivate (`student:delete`,
+      SENSITIVE — confirm dialog), enrollment history from
+      `enrollment.list`/byId.
+- [ ] Enroll into a session (`enrollment.create` — year + class pickers),
+      then assign section + roll number (`enrollment.assignSection`);
+      the year-anchor rule means enrollment is per-year and the UI shows it
+      that way (one row per session, never edited year-over-year).
+- [ ] The refused re-pointing of an assigned section (section_transfer_log
+      deferral) surfaces with its honest wording.
+
+**Verify:** `check-types` 8/8; web unit suite green; manual walk — admit →
+enroll → assign section end to end with the seeded logins.
+
+## Chunk U3 — `feat(web): the attendance calendar`
+
+- [ ] `features/attendance/` vertical opens: calendar screen under
+      `(dashboard)/attendance/calendar` — year + month view; month grid from
+      `attendance.calendar.list` (unit-tested `lib/` month-grid builder:
+      UTC weekday walk, weeks start Monday for India).
+- [ ] "Generate calendar" dialog (working-weekday picker) behind
+      `attendance:update`; day-type override dialog (type + reason — the
+      don't-wipe rule honored: reason field empty = leave stored reason).
+- [ ] Holiday/weekend/half-day/exam-day render distinctly; the seeded
+      holidays must appear.
+
+**Verify:** `check-types` 8/8; web unit suite green (month grid); manual
+walk — generate for a fresh year, override a holiday, see it persist.
+
+## Chunk U4 — `feat(web): the marking policy`
+
+- [ ] Policy card/screen (`attendance.policy.get/upsert`): marking mode,
+      daily-status rule, threshold (shown only for threshold_percentage,
+      required by the contract's refine), late-arrival minutes.
+- [ ] Null policy renders as "defaults in effect" with a Save that creates.
+
+**Verify:** `check-types` 8/8; web unit suite green; manual walk — flip the
+demo school to period_wise and back to daily.
+
+## Chunk U5 — `feat(web): the marking screen`
+
+- [ ] Marking screen `(dashboard)/attendance/mark`: section picker (clipped
+      `academic.section.list`) + date picker + roster from `enrollment.list`;
+      per-student status control (the five statuses); absent-by-default
+      bulk action; submit via `attendance.mark`.
+- [ ] Calendar-aware states: holiday/weekend/no-calendar dates are
+      non-editable with the worded explanation; same-day edit vs past-date
+      edit (reason field on past edits only).
+- [ ] Read-only day view for callers without `attendance:create` (the
+      subject-teacher read cell of the smoke, now a screen); loading and
+      empty states for the not-yet-marked day.
+- [ ] Nav entry "Attendance", permission-aware (teachers finally land
+      somewhere).
+
+**Verify:** `check-types` 8/8; web unit suite green; manual walk — teacher
+marks her section same-day, edits a past date with a reason, sees holiday
+and no-calendar states; principal sees the same screen read-only.
+
+## Chunk U6 — `docs: TASKS.md — the UI milestone done`
+
+- [ ] Resume-here: what shipped, what the deferrals are (period-wise UI,
+      summary reports, …), verification surface, next-up pointer
+      (Phase 4 fees — owner's call on timing).
+
+## Commit ledger (owner commits; agent prepares messages)
+
+| # | Commit | Chunk |
+|---|---|---|
+| 1 | `docs: the UI milestone plan` | U0 |
+| 2 | `feat(web): the students list and admission` | U1 |
+| 3 | `feat(web): student detail, enrollment, section assignment` | U2 |
+| 4 | `feat(web): the attendance calendar` | U3 |
+| 5 | `feat(web): the marking policy` | U4 |
+| 6 | `feat(web): the marking screen` | U5 |
+| 7 | `docs: TASKS.md — the UI milestone done` | U6 |
+
+## Recorded deferrals (do not silently absorb)
+
+- Period-wise marking UI (period management screens) — API exists; lands
+  when a period-wise school is a real user.
+- Attendance summary/report screens — the API exists; reports land with the
+  report-card phase.
+- The student portal UI, guardians, sibling links, previous-school records —
+  each lands with the flow that needs it (unchanged from the students slice).
+- `pnpm lint` wiring — pre-existing tooling debt, not this milestone's.
+- E2E coverage for the new screens — the 4 existing browser walks stand;
+  new E2E is worth a dedicated slice after the screens settle.
