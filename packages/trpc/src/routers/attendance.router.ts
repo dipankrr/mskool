@@ -1,8 +1,13 @@
 import {
   attendancePolicySelectSchema,
+  attendanceSummarySelectSchema,
   calendarDaySelectSchema,
+  dailyAttendanceStatusSelectSchema,
   generateCalendarSchema,
+  getDailyStatusSchema,
   listCalendarSchema,
+  listSummariesSchema,
+  markAttendanceSchema,
   periodSelectSchema,
   createPeriodSchema,
   updatePeriodSchema,
@@ -277,9 +282,84 @@ const periodRouter = router({
  * sub-routers are flat so the tRPC namespace reads attendance.calendar.*,
  * attendance.policy.*, attendance.period.*. Wired under `attendance`;
  * REST paths are `/attendance/*`.
+ *
+ * The marking surface (C6) sits as FLAT procedures beside the sub-routers —
+ * `attendance.mark`, `attendance.status`, `attendance.summary` are single
+ * actions with no sub-resource to group, so a second nesting level would
+ * only duplicate the name (the enrollment router's flat precedent).
+ *
+ * **`attendance.create` is spent here, as reserved in C3**: `mark` is the
+ * one endpoint that records attendance. It is a section-addressed write
+ * (B5 — the sectionId inside the mark payload IS the addressed node, so the
+ * scope resolves to the section being marked), cover-gated like every
+ * mutation. `status` is the permissive read of the authoritative layer —
+ * the no-widening crown: the service filters on the status table's own four
+ * scope columns, so a section teacher sees exactly her section's day even
+ * when she addresses the school node. `summary` reads through the
+ * ENROLLMENT join — the summary table has no class/section columns, so the
+ * scope rides the join instead of widening, and a section teacher gets her
+ * section's students' rows whether or not she names the section.
  */
 export const attendanceRouter = router({
   calendar: calendarRouter,
   policy: policyRouter,
   period: periodRouter,
+
+  // The one endpoint that records attendance — `attendance:create`'s only
+  // consumer. The whole service flow (calendar gate, roster check, records,
+  // daily status, summary recompute) runs in one transaction per call.
+  mark: staffProcedure("attendance:create")
+    .meta({
+      openapi: {
+        method: "POST",
+        path: "/attendance/mark",
+        tags: ["attendance"],
+        summary:
+          "Mark attendance for a section on a date (daily or one period; calendar-gated)",
+        protect: true,
+      },
+    })
+    .input(markAttendanceSchema)
+    .output(z.object({ marked: z.number().int() }))
+    .mutation(async ({ ctx, input }) =>
+      attendanceService.markAttendance(ctx.scope, input, ctx.userId),
+    ),
+
+  // One section's day from the authoritative layer (hard rule 5's only read
+  // surface). Permissive list: a section teacher does not COVER the school
+  // node she addresses, and the service's no-widening filter keeps her on
+  // her own section regardless of what she addresses.
+  status: staffListProcedure("attendance:read")
+    .meta({
+      openapi: {
+        method: "GET",
+        path: "/attendance/status",
+        tags: ["attendance"],
+        summary: "One section's daily attendance statuses for one date",
+        protect: true,
+      },
+    })
+    .input(getDailyStatusSchema)
+    .output(z.array(dailyAttendanceStatusSelectSchema))
+    .query(async ({ ctx, input }) =>
+      attendanceService.getDailyStatus(ctx.scopes, input),
+    ),
+
+  // Summary rows for a year — the read-model report cards and fee fines
+  // will consume. Scoped through the enrollment join (see the service).
+  summary: staffListProcedure("attendance:read")
+    .meta({
+      openapi: {
+        method: "GET",
+        path: "/attendance/summary",
+        tags: ["attendance"],
+        summary: "Attendance summaries for a year (optionally one section or student)",
+        protect: true,
+      },
+    })
+    .input(listSummariesSchema)
+    .output(z.array(attendanceSummarySelectSchema))
+    .query(async ({ ctx, input }) =>
+      attendanceService.listSummaries(ctx.scopes, input),
+    ),
 });

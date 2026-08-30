@@ -251,5 +251,18 @@ export const getDailyStatusSchema = z.object({
 });
 export type GetDailyStatusInput = z.infer<typeof getDailyStatusSchema>;
 
+/**
+ * Which summaries to read. `sectionId` and `studentId` narrow an otherwise
+ * school-wide read; the caller's scope narrows it further regardless — the
+ * service scopes through the enrollment JOIN, so a section teacher gets her
+ * section's students' rows even without naming the section.
+ */
+export const listSummariesSchema = z.object({
+  academicYearId: z.uuid(),
+  sectionId: z.uuid().optional(),
+  studentId: z.uuid().optional(),
+});
+export type ListSummariesInput = z.infer<typeof listSummariesSchema>;
+
 export const attendanceSummarySelectSchema = createSelectSchema(attendanceSummary);
 export type AttendanceSummary = z.infer<typeof attendanceSummarySelectSchema>;

@@ -312,16 +312,28 @@ is a recorded deferral; both are additive later if a school asks).
 **Verify:** `check-types` 8/8 ✅; unit suite green ✅ (86 authz + 38 web +
 32 trpc).
 
-## Chunk C6 — `feat(trpc): attendance.mark / status / summary`
+## Chunk C6 — `feat(trpc): attendance.mark / status / summary` — ✅ DONE (2026-08-31)
 
-- [ ] `mark` (section-scoped write — B5-style section addressing,
-      `attendance:create`, cover gate), `status` (`attendance:read`, permissive
-      list — the no-widening crown again: a section teacher sees exactly her
-      section's day), `summary` (`attendance:read`).
-- [ ] OpenAPI meta + output everywhere; `check:builders` clean (no overlap
-      mutations).
+- [x] `mark` (`attendance:create` — the permission's first and only
+      consumer, reserved since C3; B5: the sectionId inside the mark payload
+      IS the addressed node; cover gate), `status` (`attendance:read`,
+      permissive list — the no-widening crown: the service filters on the
+      status table's own four scope columns, so a section teacher sees
+      exactly her section's day even addressing the school node), `summary`
+      (`attendance:read`, permissive — scoped through the ENROLLMENT join:
+      the summary table has no class/section columns, so the scope rides
+      `student_enrollments` instead of widening; a section teacher gets her
+      section's students' rows whether or not she names the section).
+- [x] Flat procedures beside the sub-routers (`attendance.mark` /
+      `attendance.status` / `attendance.summary`) — single actions, no
+      sub-resource to group (the enrollment router's flat precedent).
+      OpenAPI meta + output everywhere; `listSummariesSchema` added to the
+      contract; `getDailyStatus` now takes the plural permissive scopes.
+- [x] `check:builders` clean — no overlap mutations, attendance not in
+      `SUBJECT_GATED_WRITES`.
 
-**Verify:** `check-types` 8/8; `check:openapi` lists the new endpoints.
+**Verify:** `check-types` 8/8 ✅; `check:openapi` lists all 12 attendance
+endpoints ✅; unit suite green ✅.
 
 ## Chunk C7 — `test: attendance in integration, smoke, and seed`
 

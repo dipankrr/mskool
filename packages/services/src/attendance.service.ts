@@ -4,6 +4,7 @@ import type {
   GenerateCalendarInput,
   GetDailyStatusInput,
   ListCalendarInput,
+  ListSummariesInput,
   MarkAttendanceInput,
   UpsertCalendarDayInput,
   UpsertPolicyInput,
@@ -110,6 +111,15 @@ const STATUS_SCOPE_COLUMNS = {
   schoolId: dailyAttendanceStatus.schoolId,
   classId: dailyAttendanceStatus.classId,
   sectionId: dailyAttendanceStatus.sectionId,
+} as const;
+
+// The enrollment table's own columns — the scope carrier for the summary
+// read, whose table has no class/section columns of its own.
+const ENROLLMENT_SCOPE_COLUMNS = {
+  organizationId: studentEnrollments.organizationId,
+  schoolId: studentEnrollments.schoolId,
+  classId: studentEnrollments.classId,
+  sectionId: studentEnrollments.sectionId,
 } as const;
 
 // Parent tables — each re-read filters the parent's own columns.
@@ -945,12 +955,14 @@ export class AttendanceService {
 
   /**
    * One section's day, from the authoritative layer — hard rule 5's only
-   * read surface. The status table carries all four scope columns (the
-   * snapshot made them real), so this filters WITHOUT widening: a
-   * section-scoped teacher gets exactly her section's rows — addressing
-   * another section yields an empty list, never the school's day.
+   * read surface. Takes the PLURAL permissive scopes (ADR-017): ctx.scopes
+   * is already clipped to the addressed subtree, and the status table
+   * carries all four scope columns (the snapshot made them real), so this
+   * filters WITHOUT widening — a section-scoped teacher gets exactly her
+   * section's rows; addressing another section yields an empty list, never
+   * the school's day.
    */
-  async getDailyStatus(scope: DataScope, input: GetDailyStatusInput) {
+  async getDailyStatus(scopes: DataScope[], input: GetDailyStatusInput) {
     return db
       .select()
       .from(dailyAttendanceStatus)
@@ -958,9 +970,46 @@ export class AttendanceService {
         and(
           eq(dailyAttendanceStatus.sectionId, input.sectionId),
           eq(dailyAttendanceStatus.date, input.date),
-          scopeWhere(scope, STATUS_SCOPE_COLUMNS),
+          scopeWhere(scopes, STATUS_SCOPE_COLUMNS),
         ),
       );
+  }
+
+  /**
+   * Summary rows for a year — optionally one section's students or one
+   * student. `attendance_summary` has NO class/section columns (it is
+   * student-level), so the scope CANNOT filter it directly and widening
+   * would hand a section teacher the whole school. The answer is the
+   * atSchoolLevel docstring's own prescription: a JOIN, not a wider filter.
+   * The scope applies to `student_enrollments` — which carries all four
+   * columns — and the join pins each summary to its student's enrollment in
+   * the SAME year, so a section teacher reads exactly her section's
+   * students' summaries, named section or not.
+   */
+  async listSummaries(scopes: DataScope[], input: ListSummariesInput) {
+    return db
+      .select({ summary: attendanceSummary })
+      .from(attendanceSummary)
+      .innerJoin(
+        studentEnrollments,
+        and(
+          eq(studentEnrollments.studentId, attendanceSummary.studentId),
+          eq(studentEnrollments.academicYearId, attendanceSummary.academicYearId),
+        ),
+      )
+      .where(
+        and(
+          eq(attendanceSummary.academicYearId, input.academicYearId),
+          input.studentId
+            ? eq(attendanceSummary.studentId, input.studentId)
+            : undefined,
+          input.sectionId
+            ? eq(studentEnrollments.sectionId, input.sectionId)
+            : undefined,
+          scopeWhere(scopes, ENROLLMENT_SCOPE_COLUMNS),
+        ),
+      )
+      .then((rows) => rows.map((r) => r.summary));
   }
 
   /**
