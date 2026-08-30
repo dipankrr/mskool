@@ -37,3 +37,7 @@ export * from "./student.service";
 // Enrollments: the year anchor — staff track by scope, portal track by owned
 // studentId. Hard rule 6's interface half lives here.
 export * from "./enrollment.service";
+
+// Attendance: calendar (the marking gate), marking policy, periods. The
+// marking flow and the record layer append to this file in C5.
+export * from "./attendance.service";

@@ -38,3 +38,7 @@ export * from "./contracts/enrollment.contract";
 // Students: the identity registry — written once at admission, read through
 // the year anchor everywhere else.
 export * from "./contracts/student.contract";
+
+// Attendance: the calendar (marking gate), the school's marking policy, and
+// the period structure. The record-layer schemas land with the marking flow.
+export * from "./contracts/attendance.contract";

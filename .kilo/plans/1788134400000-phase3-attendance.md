@@ -165,23 +165,35 @@ structure, but its only v1 consumer is marking — the routers live under
 
 **Verify:** `check-types` 8/8 ✅; `db:verify` all green ✅; migration purely additive ✅.
 
-## Chunk C2 — `feat(contracts,services): calendar, policy, periods`
+## Chunk C2 — `feat(contracts,services): calendar, policy, periods` — ✅ DONE (2026-08-31)
 
-- [ ] `attendance.contract.ts` (grows through C5): day-type upsert schema
+- [x] `attendance.contract.ts` (grows through C5): day-type upsert schema
       (date + dayType + reason), generate input (year + working weekdays
-      array), list filter (year, month?).
-- [ ] `attendance.service.ts`:
+      array), list filter (year, month?). Plus the policy upsert (with the
+      refine: a `threshold_percentage` rule requires a threshold) and period
+      create/update (the STA year-consistency `academicYearId` on create;
+      section/year NOT patchable on update; HH:MM(:SS) `timeOfDay` regex).
+- [x] `attendance.service.ts`:
       `generateYearCalendar(scope, { academicYearId, workingWeekdays })` —
-      idempotent bulk (fills MISSING dates only; existing rows' day types are
-      preserved unless explicitly overridden via `upsertDay`); `upsertDay`
-      (single date, any type + reason); `listCalendar(scopes, year, month?)`.
-      Calendar is SCHOOL-level (atSchoolLevel widening — no class dimension).
-- [ ] Policy: `getPolicy(scope)` and `upsertPolicy` (school-scoped write,
-      `updatedBy` from ctx; first upsert creates the row).
-- [ ] Periods: section-scoped CRUD; the section's year must match the
-      period's (the STA year-consistency pattern).
+      idempotent bulk (one row per date of the year, `onConflictDoNothing` on
+      the (school, year, date) index — fills MISSING only; existing rows'
+      day types preserved; overrides go through `upsertDay`); `upsertDay`
+      (single date, any type + reason; the date must fall INSIDE the year's
+      bounds — checked against the parent re-read); `listCalendar(scopes,
+      year, month?)` with the required `includeHistory` +
+      `yearVisibilityWhere` (the terms-list pattern). Calendar is SCHOOL-level
+      (atSchoolLevel widening — no class dimension).
+- [x] Policy: `getPolicy(scope)` (null before the first upsert — the marking
+      flow treats missing as defaults) and `upsertPolicy` (school-scoped
+      write, `updatedBy` from ctx via the actorId arg; first upsert creates
+      the row, keyed on `attendance_policies_school_uq`).
+- [x] Periods: section-scoped CRUD; the section re-read through its own
+      table inside the transaction and the input's year must EQUAL the
+      section's (the STA year-consistency pattern); optional subject
+      re-read; `getPeriodOwnerId` for the B6 adapter.
 
-**Verify:** `check-types` 8/8; unit suite green.
+**Verify:** `check-types` 8/8 ✅; unit suite green ✅ (86 authz + 38 web + 32
+trpc).
 
 ## Chunk C3 — `feat(trpc): attendance.calendar / policy / periods`
 
