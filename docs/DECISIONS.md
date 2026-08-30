@@ -1028,3 +1028,80 @@ deliberately. Mutations and lists are untouched, so A2's other cells hold.
 
 
 
+## ADR-029 — Subject-level access is a second fact, checked beside `can()`, never inside it
+
+**Status:** proposed — gates slice S4.3. The owner must accept or amend this before the
+implementation chunk moves.
+
+**Context.** ADR-012 fixed the boundary: `role_assignments` is the **authorization**
+authority; `section_teacher_assignments` records the **timetable fact** — "do not read the
+latter to answer a permission question." But the scope tree has no subject axis, so `can()`
+cannot express the question marks entry actually asks: *may this teacher enter CHEMISTRY
+marks in 6-A?* The Phase-1 authorization review left this open and marked it **blocking
+marks entry**: a `subject_teacher` scoped to a section can currently write every subject in
+it — the Physics teacher can enter Chemistry marks. With S2 landed, the fact table exists,
+is populated (seed + fixtures), and carries the `sta_subject_matches_role` CHECK binding
+`subject_id` to `subject_teacher` rows only. The check is now implementable; nothing
+consumes it yet, so this ADR fixes the mechanism, its failure shape, and its enforcement —
+not any endpoint.
+
+**Decision.**
+
+1. **The fact lives in `@repo/services`, on the service that owns the table.**
+   `assignmentService.hasSubjectAssignment(organizationId, userId, sectionId, subjectId):
+   Promise<boolean>` — org-filtered, open rows only (`effectiveTo IS NULL`), role
+   `subject_teacher`. An authz-side implementation is rejected: `@repo/authz` is imported
+   by everyone and must stay free of domain tables; a DB query there inverts the dependency
+   arrow (the ADR-020 argument, one level down) and would make `can()` impure.
+
+2. **Procedures compose it through the builder, not a hand-rolled second check per
+   endpoint.** `staffProcedure(permission, { subjectGate: true })`: the builder requires
+   `sectionId` and `subjectId` in the procedure input (runtime-extended per ADR-027's
+   mechanism, so omitting them is a validation failure, not a silent skip), and after the
+   normal gate runs the assignment fact check. The phase-1 lesson is the rationale — a
+   permission bug was found by clicking a link, and subject-content endpoints are exactly
+   where a forgotten inline check is invisible. `check:builders` gains the matching static
+   rule: a procedure whose permission writes subject-scoped content MUST set `subjectGate`
+   (the list starts with `marks:*` writes and lives in `trpc.ts`; `homework:*` joins when
+   its slice lands). Derived-section inputs (section resolved from a student's enrollment
+   rather than named) are a recorded future amendment, not v1: marks entry is
+   section-scoped in the UI, and the client names the section it is working in.
+
+3. **Failure mode: NOT_FOUND, generic wording — an unassigned pair is indistinguishable
+   from a nonexistent one.** `FORBIDDEN` would confirm the section+subject exist and the
+   caller is merely unassigned; probing (section, subject) combinations must reveal
+   nothing. The two refusal shapes are therefore: permission missing entirely →
+   `FORBIDDEN` by the main gate (unchanged, ADR-017); permission held but no assignment
+   fact → `NOT_FOUND` "Resource not found." (the gate's generic wording, not the
+   endpoint's own). The teacher's own (section, subject) resolves — the non-vacuity
+   control S4.4 pins.
+
+4. **One indexed query per request, no cache.** `section_teacher_assignments_active_idx`
+   (partial, `effectiveTo IS NULL`) serves the check. The Redis auth cache caches ROLE
+   grants precisely because they are slow-changing; assignment facts are timetable data
+   that changes mid-term (a teacher swapped periods must lose access immediately, not in
+   five minutes). A short-TTL fact cache is recorded as rejected-for-now — revisit only if
+   profiling ever says otherwise.
+
+**The boundary stands, re-affirmed.** `can()` never consults assignments;
+`hasSubjectAssignment` never consults roles. The builder composes both in order:
+permission first (the FORBIDDEN shapes), fact second (the NOT_FOUND shape). A role grant
+without an assignment row is a subject_teacher who teaches nothing here; an assignment row
+without the grant is a timetable fact authorization refuses — the existing matrix already
+covers that side.
+
+**Rejected alternatives.** Subjects as scope nodes (hard rule 12 names school/class/
+section; a subject axis would multiply per-year nodes and re-litigate ADR-011). The check
+inside `can()` (inverts `@repo/authz`'s dependency direction; `can()` is deliberately pure
+and synchronous). A second fact table (ADR-012 already resolved: one table, the SQL's).
+`FORBIDDEN` failure (leaks which assignments exist). Inline per-endpoint checks (a
+forgotten one is invisible — the exact failure the builders exist to make unrepresentable).
+
+**Consequences.** S4.2 (the student owner-resolver) lands independently. S4.3 implements
+`hasSubjectAssignment` + the `subjectGate` option + unit tests for its pure parts, and
+extends `check:builders`. S4.4 pins the denials in integration + smoke: a subject_teacher
+scoped to one section is denied the adjacent section's subject AND her own section's
+adjacent subject — each indistinguishable from a nonexistent pair — while her own pair
+resolves. The Phase-1 leftover "Subject-level access is not enforced" ticks when S4.4
+lands. No endpoint consumes the gate yet; the marks slice (Phase 5) MUST use the builder,
+and `check:builders` enforces that.
