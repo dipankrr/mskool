@@ -31,6 +31,11 @@ export type AcademicYear = RouterOutputs["academic"]["year"]["list"][number];
 export type Class = RouterOutputs["academic"]["class"]["list"][number];
 export type Section = RouterOutputs["academic"]["section"]["list"][number];
 
+/** A registry row. Active students only — the service documents why. */
+export type Student = RouterOutputs["student"]["list"][number];
+/** The enrollment list's `{ enrollment, student }` pair — the year anchor's read shape. */
+export type EnrollmentPair = RouterOutputs["enrollment"]["list"][number];
+
 /** The scope every staff call carries. Lists send the org; mutations add a branch. */
 export type StaffScopeArgs = { organizationId: string };
 export type WriteScopeArgs = StaffScopeArgs & { schoolId: string };

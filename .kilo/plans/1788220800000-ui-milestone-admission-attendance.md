@@ -135,22 +135,33 @@ where the switchers' data changed.
 
 - [x] This file: protocol, chunks, hard context, locked decisions, ledger.
 
-## Chunk U1 — `feat(web): the students list and admission`
+## Chunk U1 — `feat(web): the students list and admission` — ✅ DONE (2026-08-31)
 
-- [ ] `features/students/` vertical: `use-students.ts` (list + search +
-      create + deactivate mutations per the use-branches addressing rules);
-      students list page under `(dashboard)/students` — searchable
-      `data-table` (admission number, name, class/section via enrollment,
-      status), `empty-state`, Admit button behind `student:create`.
-- [ ] Admit dialog: the full `createStudentSchema` form in `form-dialog`
-      (admission number, name, DOB, gender, …); conflict wording
-      (duplicate admission number) surfaces via `lib/errors`.
-- [ ] Nav entry "Students", permission-aware; `lib/copy.ts` vocabulary.
-- [ ] Deactivate action (confirm dialog) may live here or in U2 — its
-      natural home is the detail page; defer if so.
+- [x] `features/students/` vertical: `use-students.ts` (list + server-side
+      search via `q`, create mutation per the use-branches addressing rules:
+      list addresses `{ organizationId }`, create names the branch via
+      `writeScopeArgs()`); students page under `(dashboard)/students` —
+      debounced search input, `data-table` (admission number, name, Class,
+      gender, DOB), distinct empty states for "no students" vs "no matches".
+- [x] The Class column degrades PER PERMISSION: the enrollment join
+      (`enrollment.list`) and the class/section name lookups are separate
+      queries, so a librarian (`student:read` without `enrollment:read`)
+      gets a working register with "—" in the Class column, never a failed
+      screen.
+- [x] Admit dialog: identity + core demographics from `createStudentSchema`
+      (admission number, name, DOB, gender, optional admission date /
+      phone / email); native `type="date"` inputs (already ISO); empty
+      optional fields become `undefined` (the branch-dialog rule); the
+      duplicate admission number surfaces via `lib/errors` from the
+      translateErrors wording.
+- [x] Nav entry "Students" with `permission: "student:read"`; `lib/copy.ts`
+      vocabulary (`students:` section, `nav.students`); `Student` +
+      `EnrollmentPair` row types derived in `lib/trpc/types.ts`.
+- [x] Deactivate + edit intentionally deferred to U2's detail page.
 
-**Verify:** `check-types` 8/8; web unit suite green; manual walk — org admin
-admits a student, searches, sees the exact conflict wording on a duplicate.
+**Verify:** `check-types` 8/8 ✅; unit suite green ✅; manual walk — org
+admin admits a student, searches, duplicate admission number wording
+(OWNER: pending on-screen walk with the seed logins).
 
 ## Chunk U2 — `feat(web): student detail, enrollment, section assignment`
 

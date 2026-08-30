@@ -7,6 +7,7 @@ import {
   HomeIcon,
   MenuIcon,
   UserIcon,
+  UsersIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -110,6 +111,12 @@ const NAV_ITEMS: NavItem[] = [
     label: copy.nav.classes,
     icon: GraduationCapIcon,
     permission: "class:read",
+  },
+  {
+    href: "/students",
+    label: copy.nav.students,
+    icon: UsersIcon,
+    permission: "student:read",
   },
   { href: "/profile", label: copy.nav.profile, icon: UserIcon },
 ];

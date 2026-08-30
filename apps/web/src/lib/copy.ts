@@ -58,6 +58,7 @@ export const copy = {
     branches: "Branches",
     sessions: "Sessions",
     classes: "Classes",
+    students: "Students",
     profile: "Profile",
     menu: "Menu",
     openMenu: "Open menu",
@@ -132,6 +133,44 @@ export const copy = {
      */
     noSelfSignUp:
       "Accounts are issued by your school. Contact your administrator if you cannot sign in.",
+  },
+
+  /** U1. `student.*` — the admission register. */
+  students: {
+    subtitle:
+      "The admission register — every active student, searchable by name or admission number.",
+    add: "Admit student",
+    addTitle: "Admit a student",
+    addHelp:
+      "The admission number is permanent: it is printed on every document the school ever issues and is never reused.",
+    created: "Student admitted.",
+    searchLabel: "Search students",
+    searchPlaceholder: "Search by name or admission number…",
+    emptyTitle: "No students yet",
+    emptyBody: "Admit the first student and the register starts here.",
+    noResultsTitle: "No matches",
+    noResultsBody:
+      "No active student matches that search. Check the spelling, or try the admission number.",
+    enrolledIn: "Class",
+    notEnrolled: "Not enrolled this session",
+    fields: {
+      admissionNumber: "Admission number",
+      admissionNumberHelp: "School-issued, permanent, never reused.",
+      firstName: "First name",
+      middleName: "Middle name",
+      lastName: "Last name",
+      dateOfBirth: "Date of birth",
+      gender: "Gender",
+      admissionDate: "Admission date",
+      admissionDateHelp: "Defaults to today when left blank.",
+      phone: "Phone",
+      email: "Email",
+    },
+    genders: {
+      male: "Male",
+      female: "Female",
+      other: "Other",
+    },
   },
 
   /** Chunk 8. `school.*` — the trust's branches. */
