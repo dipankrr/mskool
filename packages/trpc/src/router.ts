@@ -6,6 +6,7 @@ import { assignmentRouter } from "./routers/assignment.router";
 import { enrollmentRouter, portalRouter } from "./routers/enrollment.router";
 import { meRouter } from "./routers/me.router";
 import { schoolRouter } from "./routers/school.router";
+import { studentRouter } from "./routers/student.router";
 import { subjectRouter } from "./routers/subject.router";
 
 // Domain routers land here as each phase ships — see docs/TASKS.md.
@@ -20,6 +21,9 @@ export const appRouter = router({
   academic: academicRouter,
   // The school's subject catalogue: subject.list, subject.byId, …
   subject: subjectRouter,
+  // The identity registry: student.list/byId/create/update/deactivate. The
+  // year anchor (rosters) lives on the enrollment router beside it.
+  student: studentRouter,
   // The teaching-assignment layer: assignment.subjectMapping.* (which subjects
   // a class takes in a year) and assignment.teacherAssignment.* (who teaches
   // what where, append-on-change).

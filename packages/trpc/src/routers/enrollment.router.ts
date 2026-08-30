@@ -1,6 +1,7 @@
 import {
   createEnrollmentSchema,
   enrollmentSelectSchema,
+  studentSelectSchema,
   updateEnrollmentSchema,
 } from "@repo/contracts";
 import { enrollmentService } from "@repo/services";
@@ -93,7 +94,14 @@ export const enrollmentRouter = router({
         sectionId: z.uuid().optional(),
       }),
     )
-    .output(z.array(enrollmentSelectSchema))
+    .output(
+      z.array(
+        z.object({
+          enrollment: enrollmentSelectSchema,
+          student: studentSelectSchema,
+        }),
+      ),
+    )
     .query(async ({ ctx, input }) => {
       return enrollmentService.listEnrollments(
         ctx.scopes,

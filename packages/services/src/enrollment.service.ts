@@ -224,6 +224,12 @@ export class EnrollmentService {
    * widening: the table carries all four scope levels, so each caller sees
    * exactly the students their grant reaches — a section teacher her section,
    * a class teacher her class, a principal the whole year.
+   *
+   * Returns the enrollment JOINED to its student: a roster is the year anchor
+   * read through the identity registry (DOMAIN.md — attendance, fees, and
+   * results all hang off the anchor), and every screen that lists
+   * enrollments needs the child's name beside the row. The portal's own list
+   * does not join — the caller there already knows whose rows they are.
    */
   async listEnrollments(
     scopes: DataScope[],
@@ -231,9 +237,10 @@ export class EnrollmentService {
     classId?: string,
     sectionId?: string,
   ) {
-    return db
-      .select()
+    const rows = await db
+      .select({ enrollment: studentEnrollments, student: students })
       .from(studentEnrollments)
+      .innerJoin(students, eq(studentEnrollments.studentId, students.id))
       .where(
         and(
           eq(studentEnrollments.academicYearId, academicYearId),
@@ -243,6 +250,8 @@ export class EnrollmentService {
         ),
       )
       .orderBy(asc(studentEnrollments.rollNumber), asc(studentEnrollments.id));
+
+    return rows.map((r) => ({ enrollment: r.enrollment, student: r.student }));
   }
 
   /**
