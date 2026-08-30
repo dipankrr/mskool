@@ -335,25 +335,53 @@ is a recorded deferral; both are additive later if a school asks).
 **Verify:** `check-types` 8/8 ✅; `check:openapi` lists all 12 attendance
 endpoints ✅; unit suite green ✅.
 
-## Chunk C7 — `test: attendance in integration, smoke, and seed`
+## Chunk C7 — `test: attendance in integration, smoke, and seed` — ✅ DONE (2026-08-31)
 
-- [ ] Integration: holiday marking refused (worded); missing-calendar date
-      refused; the SNAPSHOT pin (transfer the student's enrollment, mark again,
-      the old record keeps the old section); the double-mark guard (second
-      daily row rejected, period-wise pair accepted); the reason convention
-      (same-day re-mark without a reason → reason null; past-date edit WITH a
-      reason → stored; past-date edit WITHOUT → old reason preserved);
-      derivation per policy (direct vs threshold); summary counts vs the
-      calendar (working days = calendar truth); roster/permission exactness
-      (who may mark, who may read).
-- [ ] Smoke: mark + status cells for the marking roles; the calendar refusals
-      over HTTP; prior cells unaffected.
-- [ ] Seed: the demo school's policy (daily mode), the generated 2025-26
-      calendar with two holidays (the refusals' non-vacuity control), printed
-      in the summary.
+- [x] Integration (+13 → **93**): holiday marking refused (worded); missing-
+      calendar date refused (a CLOSED year's date, so the refusal is the
+      gate and not the year edge); daily happy path (record + snapshot +
+      direct derivation); roster stranger refused (worded); the reason
+      convention (stored when sent, PRESERVED on a reason-less re-mark);
+      the SNAPSHOT pin (fixture-performed transfer — the product's transfer
+      flow does not exist — new marks re-home, old rows keep their section);
+      the double-mark guard via raw inserts (second daily row and same-
+      period repeat rejected by name; the period-wise pair accepted);
+      homeroom derivation with the first-period fallback; threshold
+      derivation (exactly-at-threshold = present; counts stored; the whole
+      day weighed); mode mismatch refused both ways; who-may-mark
+      (expired/revoked FORBIDDEN, cross-org refused at the node); the
+      no-widening crown (neighbour-section day = builder-clip FORBIDDEN,
+      class teacher legitimately spans both sections); summary counts vs
+      the calendar (working days = weekdays − holiday, computed by the same
+      UTC walk the generator uses) + the generated percentage + the
+      enrollment-join scoping of the summary read.
+      **Re-run safety was designed in, not hoped for**: the threshold test
+      normalizes its day first, the guard's setup inserts use bare ON
+      CONFLICT DO NOTHING (the guard is an expression index — no inference
+      target), and every scratch date is single-writer.
+- [x] Smoke (+6 → all-pass over the full matrix): class teacher marks over
+      HTTP; subject teacher reads her section's day; accountant (holds
+      attendance:update, NOT create) FORBIDDEN on mark — the split the
+      matrix encodes; librarian FORBIDDEN; the seeded holiday refused over
+      HTTP (a LIVE refusal — the row exists); school B (no calendar at all)
+      refused by the strict no-row gate below every permission check.
+      NOTE: the sign-in rate limiter (20/15min; 9 sign-ins per run) bites
+      after ~2 consecutive runs — restart the dev API between iterations.
+- [x] Seed: school A's policy (daily defaults), the 2025-26 calendar
+      generated Mon–Fri (idempotent: +0 days on re-run), TWO holidays
+      (2025-08-15, 2025-10-02 — Independence Day, Gandhi Jayanti) as the
+      refusals' non-vacuity control, printed in the summary.
+- [x] World fixture: generated calendar + one fixture holiday, two periods
+      on 6-A (find-or-create), a third student sectioned into 6-B (the
+      crown's discriminator — an empty 6-B proves nothing), and a policy
+      repair to daily defaults at build time so a crashed run cannot poison
+      the next one. Two pre-existing exact-count tests (students list,
+      enrollments class-teacher view) updated for the third student — still
+      exact counts, now three.
 
-**Verify:** integration suite green; seed idempotent; live smoke all-pass
-(restart the API first if the rate limiter bites).
+**Verify:** integration suite green (93) ✅; seed idempotent ✅; live smoke
+all-pass (first post-change run; re-captured clean after the limiter
+window) ✅.
 
 ## Chunk C8 — `docs: TASKS.md — Phase 3 done`
 

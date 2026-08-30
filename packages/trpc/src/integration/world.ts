@@ -13,6 +13,7 @@ import {
   classes,
   organizations,
   orgRolePermissions,
+  periods as periodsTable,
   roleAssignments,
   schools,
   sections,
@@ -27,6 +28,7 @@ import {
 import {
   academicService,
   assignmentService,
+  attendanceService,
   enrollmentService,
   organizationService,
   subjectService,
@@ -432,12 +434,22 @@ export interface IntegrationWorld {
   /** Same name as the closed year's, foreign org — the byId control. */
   termB1Id: string;
 
+  /** The two periods of 6-A — the threshold derivation's raw material. */
+  periodA1P1Id: string;
+  periodA1P2Id: string;
+  /** The fixture holiday — the calendar gate's non-vacuity control. */
+  attendanceHolidayDate: string;
+
   enrollmentOwnedId: string;
   /** ADMITTED with no section — the admitted state, and the class-fallback owner. */
   enrollmentUngrantedId: string;
   /** Foreign org — the byId control. */
   enrollmentB1Id: string;
   studentB1Id: string;
+
+  /** 6-B's own student — the no-widening crown's discriminator. */
+  section6bStudentId: string;
+  enrollmentSection6bId: string;
 
   users: {
     adminA: string;
@@ -734,6 +746,17 @@ export async function buildWorld(): Promise<IntegrationWorld> {
     .update(studentEnrollments)
     .set({ sectionId: null, enrollmentStatus: "admitted", rollNumber: null })
     .where(eq(studentEnrollments.id, enrollmentUngranted.id));
+
+  // 6-B's own student, sectioned. The no-widening crown needs rows that
+  // EXIST in the neighbouring section: an empty 6-B proves nothing, a marked
+  // day the section teacher must not see proves everything.
+  const section6bStudent = await findOrCreateStudent(orgA.id, schoolA1.id, "ITG-0003");
+  const enrollmentSection6b = await findOrCreateEnrollment(scopeA1, {
+    studentId: section6bStudent.id,
+    academicYearId: currentYearA.id,
+    classId: class6.id,
+    sectionId: section6b.id,
+  });
   const enrollmentB1 = await findOrCreateEnrollment(
     { organizationId: orgB.id, schoolId: schoolB1.id, classId: null, sectionId: null },
     {
@@ -773,6 +796,75 @@ export async function buildWorld(): Promise<IntegrationWorld> {
       ),
     );
 
+  // --- Attendance: the calendar is the marking gate ---------------------------
+  //
+  // The year's calendar is generated Mon-Fri, ONE holiday is carved out, and
+  // two periods are defined on 6-A. Everything here is idempotent: the
+  // generator fills missing dates only (onConflictDoNothing), the holiday
+  // upsert writes the same values every run, and the periods are
+  // find-or-create on the (section, year, sequence) key the unique index
+  // enforces.
+  //
+  // A marking gate whose refusals are only ever tested against an EMPTY
+  // calendar proves nothing — the holiday row is what makes "holiday marking
+  // refused" a live refusal rather than an accidental one.
+  await attendanceService.generateYearCalendar(
+    scopeA1,
+    { academicYearId: currentYearA.id, workingWeekdays: [1, 2, 3, 4, 5] },
+    adminA.id,
+  );
+  const attendanceHolidayDate = "2025-07-03";
+  await attendanceService.upsertCalendarDay(
+    scopeA1,
+    {
+      academicYearId: currentYearA.id,
+      date: attendanceHolidayDate,
+      dayType: "holiday",
+      reason: "ITG Fixture Holiday",
+    },
+    adminA.id,
+  );
+
+  const findOrCreatePeriod = async (
+    sequenceNumber: number,
+    name: string,
+  ) => {
+    const [existing] = await db
+      .select()
+      .from(periodsTable)
+      .where(
+        and(
+          eq(periodsTable.sectionId, section6a.id),
+          eq(periodsTable.academicYearId, currentYearA.id),
+          eq(periodsTable.sequenceNumber, sequenceNumber),
+        ),
+      );
+    if (existing) return existing;
+    return attendanceService.createPeriod(
+      scopeA1,
+      section6a.id,
+      { name, sequenceNumber, academicYearId: currentYearA.id },
+      adminA.id,
+    );
+  };
+  const periodA1P1 = await findOrCreatePeriod(1, "ITG Period 1");
+  const periodA1P2 = await findOrCreatePeriod(2, "ITG Period 2");
+
+  // The policy the daily-mode tests presuppose. Tests that exercise
+  // period-wise derivation switch it and MUST restore this — but the world
+  // repairs it here too, so a crashed mid-run cannot poison the next run:
+  // missing row and daily-defaults row behave identically to marking.
+  await attendanceService.upsertPolicy(
+    scopeA1,
+    {
+      markingMode: "daily",
+      dailyStatusRule: "homeroom_authoritative",
+      thresholdPercentage: null,
+      lateArrivalMinutes: 15,
+    },
+    adminA.id,
+  );
+
   cached = {
     orgAId: orgA.id,
     orgBId: orgB.id,
@@ -806,10 +898,15 @@ export async function buildWorld(): Promise<IntegrationWorld> {
     termA1T2Id: termA1T2.id,
     termClosedAId: termClosedA.id,
     termB1Id: termB1.id,
+    periodA1P1Id: periodA1P1.id,
+    periodA1P2Id: periodA1P2.id,
+    attendanceHolidayDate,
     enrollmentOwnedId: enrollmentOwned.id,
     enrollmentUngrantedId: enrollmentUngranted.id,
     enrollmentB1Id: enrollmentB1.id,
     studentB1Id: studentB1.id,
+    section6bStudentId: section6bStudent.id,
+    enrollmentSection6bId: enrollmentSection6b.id,
     users: {
       adminA: adminA.id,
       principalA1: principalA1.id,

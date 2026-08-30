@@ -46,10 +46,15 @@ import {
   createStudentSchema,
   createSubjectSchema,
   createTermSchema,
+  getDailyStatusSchema,
+  listSummariesSchema,
+  markAttendanceSchema,
+  upsertPolicySchema,
 } from "@repo/contracts";
 import {
   academicService,
   assignmentService,
+  attendanceService,
   enrollmentService,
   organizationService,
   studentService,
@@ -58,7 +63,15 @@ import {
 } from "@repo/services";
 import { getOwnedStudentIds } from "@repo/authz";
 import { db } from "@repo/db";
-import { classes, sections, students, subjects } from "@repo/db/schema";
+import {
+  attendanceRecords,
+  dailyAttendanceStatus,
+  classes,
+  sections,
+  studentEnrollments,
+  students,
+  subjects,
+} from "@repo/db/schema";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { router as makeRouter } from "../trpc";
@@ -551,6 +564,36 @@ const studentDeactivateRouter = makeRouter({
   probe: staffProcedure("student:delete", { resolveOwner: resolveStudentOwner })
     .mutation(({ ctx, input }) =>
       studentService.deactivateStudent(ctx.scope, rowId(input)),
+    ),
+});
+
+const attendanceMarkRouter = makeRouter({
+  probe: staffProcedure("attendance:create")
+    // sectionId is INSIDE the mark payload (B5): naming it here is what makes
+    // the addressed node the section being marked.
+    .input(markAttendanceSchema)
+    .mutation(({ ctx, input }) =>
+      attendanceService.markAttendance(ctx.scope, input, ctx.userId),
+    ),
+});
+
+const attendanceStatusRouter = makeRouter({
+  probe: staffListProcedure("attendance:read")
+    .input(getDailyStatusSchema)
+    .query(({ ctx, input }) => attendanceService.getDailyStatus(ctx.scopes, input)),
+});
+
+const attendanceSummaryRouter = makeRouter({
+  probe: staffListProcedure("attendance:read")
+    .input(listSummariesSchema)
+    .query(({ ctx, input }) => attendanceService.listSummaries(ctx.scopes, input)),
+});
+
+const attendancePolicyRouter = makeRouter({
+  probe: staffProcedure("attendance:update")
+    .input(z.object({ schoolId: z.uuid(), data: upsertPolicySchema }))
+    .mutation(({ ctx, input }) =>
+      attendanceService.upsertPolicy(ctx.scope, input.data, ctx.userId),
     ),
 });
 
@@ -1229,18 +1272,28 @@ describe("enrollments — the year anchor, in both tracks", () => {
     expect(await listAt(U().subjectS6A)).toEqual([world.enrollmentOwnedId]);
   });
 
-  it("the class teacher sees BOTH — her class grant reaches the admitted row too", async () => {
+  it("the class teacher sees ALL THREE — her class grant reaches every Class 6 row", async () => {
     // The admitted row's owning node is its CLASS (no section yet), and the
-    // class teacher's class-level scope matches it.
+    // class teacher's class-level scope matches it. The sectioned 6-B row is
+    // hers too — same class — while the exact count still pins the filter
+    // (the C7 attendance fixture added the third student of 6-B).
     expect(await listAt(U().teacherC6)).toEqual(
-      [world.enrollmentOwnedId, world.enrollmentUngrantedId].sort(),
+      [
+        world.enrollmentOwnedId,
+        world.enrollmentUngrantedId,
+        world.enrollmentSection6bId,
+      ].sort(),
     );
     // The narrowing is convenience on an already-clipped answer.
     expect(await listAt(U().teacherC6, { sectionId: world.section6aId })).toEqual([
       world.enrollmentOwnedId,
     ]);
     expect(await listAt(U().teacherC6, { classId: world.class6Id })).toEqual(
-      [world.enrollmentOwnedId, world.enrollmentUngrantedId].sort(),
+      [
+        world.enrollmentOwnedId,
+        world.enrollmentUngrantedId,
+        world.enrollmentSection6bId,
+      ].sort(),
     );
   });
 
@@ -1985,19 +2038,32 @@ describe("students — the registry, searched and admitted", () => {
       .then((rows: { id: string }[]) => rows.map((r) => r.id).sort());
 
   it("wide and narrow roles search the SAME registry, clipped to their grants", async () => {
-    // The org admin is org-wide WITHIN his org: two active students. B1's
-    // student belongs to the OTHER organization and stays invisible — the
-    // registry's tenancy pin, same as every list before it.
+    // The org admin is org-wide WITHIN his org: three active students (the
+    // third is the C7 attendance fixture's 6-B student). B1's student belongs
+    // to the OTHER organization and stays invisible — the registry's tenancy
+    // pin, same as every list before it.
     expect(await listAt(U().adminA)).toEqual(
-      [world.ownedStudentId, world.ungrantedStudentId].sort(),
+      [
+        world.ownedStudentId,
+        world.ungrantedStudentId,
+        world.section6bStudentId,
+      ].sort(),
     );
-    // School-scoped roles see their branch's two — the section teacher's
+    // School-scoped roles see their branch's three — the section teacher's
     // widening to school level pinned on a THIRD entity shape.
     expect(await listAt(U().principalA1)).toEqual(
-      [world.ownedStudentId, world.ungrantedStudentId].sort(),
+      [
+        world.ownedStudentId,
+        world.ungrantedStudentId,
+        world.section6bStudentId,
+      ].sort(),
     );
     expect(await listAt(U().subjectS6A)).toEqual(
-      [world.ownedStudentId, world.ungrantedStudentId].sort(),
+      [
+        world.ownedStudentId,
+        world.ungrantedStudentId,
+        world.section6bStudentId,
+      ].sort(),
     );
   });
 
@@ -2093,5 +2159,494 @@ describe("students — the registry, searched and admitted", () => {
       id: admitted.id,
     });
     expect(direct.id).toBe(admitted.id);
+  });
+});
+
+
+// --- attendance: the marking flow (Phase 3, C7) -------------------------------
+
+/**
+ * Weekdays (Mon-Fri) in an inclusive ISO range, computed in UTC — the same
+ * walk the calendar generator uses, so the summary's expected working days
+ * come from the same arithmetic rather than a hardcoded constant.
+ */
+function weekdaysIn(startIso: string, endIso: string): number {
+  let count = 0;
+  const cursor = new Date(`${startIso}T00:00:00Z`);
+  const end = new Date(`${endIso}T00:00:00Z`);
+  while (cursor <= end) {
+    const weekday = cursor.getUTCDay();
+    if (weekday >= 1 && weekday <= 5) count++;
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return count;
+}
+
+describe("attendance — the marking flow", () => {
+  // July 2025: the 1st is a Tuesday. All dates below are weekdays unless
+  // named otherwise, and none collides with the fixture holiday (07-03).
+  const D = {
+    // Only the daily happy-path test writes this date, and it never sends a
+    // reason — so the null-reason assertion holds on every run.
+    working: "2025-07-14",
+    holiday: "2025-07-03",
+    unmarked: "2024-08-15", // a date of the CLOSED year — no calendar row for the current year
+    reasonDay: "2025-07-04",
+    snapshotOld: "2025-07-07",
+    snapshotNew: "2025-07-08",
+    periodDayA: "2025-07-09",
+    periodDayB: "2025-07-10",
+    guardDay: "2025-07-11",
+  };
+
+  const mark = (userId: string, input: Record<string, unknown>) =>
+    callerOf(attendanceMarkRouter, userId).probe({
+      organizationId: world.orgAId,
+      ...input,
+    });
+
+  const readDay = (userId: string, sectionId: string, date: string) =>
+    callerOf(attendanceStatusRouter, userId).probe({
+      organizationId: world.orgAId,
+      sectionId,
+      date,
+    });
+
+  it("the calendar gate refuses a holiday, worded", async () => {
+    await expectTrpcError(
+      mark(U().teacherC6, {
+        sectionId: world.section6aId,
+        date: D.holiday,
+        entries: [{ studentId: world.ownedStudentId, status: "present" }],
+      }),
+      "BAD_REQUEST",
+      "That date is a holiday — attendance cannot be marked on it.",
+    );
+  });
+
+  it("the calendar gate refuses a date the calendar does not describe", async () => {
+    // Strict by design: 2024-08-15 belongs to the CLOSED year, so the lookup
+    // for (school, current year, date) finds nothing and marking is refused
+    // rather than guessed.
+    await expectTrpcError(
+      mark(U().teacherC6, {
+        sectionId: world.section6aId,
+        date: D.unmarked,
+        entries: [{ studentId: world.ownedStudentId, status: "present" }],
+      }),
+      "BAD_REQUEST",
+      "There is no calendar entry for that date. Generate the year's calendar first, then mark attendance.",
+    );
+  });
+
+  it("daily marking writes the record, snapshots the section, derives directly", async () => {
+    const res = await mark(U().teacherC6, {
+      sectionId: world.section6aId,
+      date: D.working,
+      entries: [{ studentId: world.ownedStudentId, status: "present" }],
+    });
+    expect(res).toEqual({ marked: 1 });
+
+    const [record] = await db
+      .select()
+      .from(attendanceRecords)
+      .where(
+        and(
+          eq(attendanceRecords.studentId, world.ownedStudentId),
+          eq(attendanceRecords.date, D.working),
+        ),
+      );
+    expect(record!.sectionId).toBe(world.section6aId);
+    expect(record!.classId).toBe(world.class6Id);
+    expect(record!.status).toBe("present");
+    expect(record!.markedBy).toBe(U().teacherC6);
+    expect(record!.correctionReason).toBeNull();
+
+    const day = await readDay(U().subjectS6A, world.section6aId, D.working);
+    expect(day).toHaveLength(1);
+    expect(day[0].status).toBe("present");
+    expect(day[0].derivationMode).toBe("direct");
+    expect(day[0].periodsPresent).toBeNull();
+  });
+
+  it("marking a student who is not on the roster is refused, worded", async () => {
+    // ITG-0002 is ADMITTED with no section — not on 6-A's roster.
+    await expectTrpcError(
+      mark(U().teacherC6, {
+        sectionId: world.section6aId,
+        date: D.working,
+        entries: [{ studentId: world.ungrantedStudentId, status: "present" }],
+      }),
+      "BAD_REQUEST",
+      "One of the students marked is not on this section's roster. Attendance can only be marked for the section's own students.",
+    );
+  });
+
+  it("the reason convention: stored when sent, preserved when not (ADR-030)", async () => {
+    await mark(U().teacherC6, {
+      sectionId: world.section6aId,
+      date: D.reasonDay,
+      entries: [
+        { studentId: world.ownedStudentId, status: "absent", correctionReason: "Left school early" },
+      ],
+    });
+    const [withReason] = await db
+      .select()
+      .from(attendanceRecords)
+      .where(
+        and(
+          eq(attendanceRecords.studentId, world.ownedStudentId),
+          eq(attendanceRecords.date, D.reasonDay),
+        ),
+      );
+    expect(withReason!.correctionReason).toBe("Left school early");
+    expect(withReason!.updatedBy).toBe(U().teacherC6);
+
+    // A reason-less re-mark must NOT wipe the stored note — the don't-wipe
+    // micro-rule the marking service owns.
+    await mark(U().teacherC6, {
+      sectionId: world.section6aId,
+      date: D.reasonDay,
+      entries: [{ studentId: world.ownedStudentId, status: "present" }],
+    });
+    const [preserved] = await db
+      .select()
+      .from(attendanceRecords)
+      .where(
+        and(
+          eq(attendanceRecords.studentId, world.ownedStudentId),
+          eq(attendanceRecords.date, D.reasonDay),
+        ),
+      );
+    expect(preserved!.status).toBe("present");
+    expect(preserved!.correctionReason).toBe("Left school early");
+  });
+
+  it("the snapshot pin: a transfer re-homes NEW marks, never the old rows", async () => {
+    await mark(U().teacherC6, {
+      sectionId: world.section6aId,
+      date: D.snapshotOld,
+      entries: [{ studentId: world.ownedStudentId, status: "present" }],
+    });
+
+    // The product's mid-year transfer does not exist yet (section_transfer_log
+    // is a recorded deferral) — the FIXTURE performs the move the service
+    // refuses, which is exactly the situation the snapshot rule exists for.
+    await db
+      .update(studentEnrollments)
+      .set({ sectionId: world.section6bId })
+      .where(eq(studentEnrollments.id, world.enrollmentOwnedId));
+
+    try {
+      await mark(U().teacherC6, {
+        sectionId: world.section6bId,
+        date: D.snapshotNew,
+        entries: [{ studentId: world.ownedStudentId, status: "present" }],
+      });
+
+      const rows = await db
+        .select()
+        .from(attendanceRecords)
+        .where(eq(attendanceRecords.studentId, world.ownedStudentId));
+      const oldDay = rows.find((r) => r.date === D.snapshotOld);
+      const newDay = rows.find((r) => r.date === D.snapshotNew);
+      expect(oldDay?.sectionId).toBe(world.section6aId);
+      expect(newDay?.sectionId).toBe(world.section6bId);
+    } finally {
+      // Repair the fixture: the world's other assertions presuppose 6-A.
+      await db
+        .update(studentEnrollments)
+        .set({ sectionId: world.section6aId })
+        .where(eq(studentEnrollments.id, world.enrollmentOwnedId));
+    }
+  });
+
+  it("the double-mark guard: a second daily row is unrepresentable; a period-wise pair is not", async () => {
+    // Raw inserts, deliberately NOT through the service: the service upserts,
+    // so only the database guard stands between two same-day rows. This is
+    // the suite-level mirror of db:verify's expression-index proof.
+    const base = {
+      organizationId: world.orgAId,
+      schoolId: world.schoolA1Id,
+      studentId: world.ownedStudentId,
+      academicYearId: world.currentYearAId,
+      date: D.guardDay,
+      classId: world.class6Id,
+      sectionId: world.section6aId,
+      status: "present" as const,
+      markedBy: U().adminA,
+    };
+
+    // Drizzle wraps the driver's error, so the guard's constraint name is
+    // read by walking the cause chain — the same walk translateErrors does.
+    const expectGuardRejection = async (p: Promise<unknown>) => {
+      let current: unknown;
+      try {
+        await p;
+      } catch (error) {
+        current = error;
+      }
+      let found = false;
+      let message = "insert was ACCEPTED but should have been rejected";
+      while (current) {
+        const err = current as { message?: string; constraint_name?: string; cause?: unknown };
+        if (err.constraint_name === "attendance_records_student_day_period_uq") {
+          found = true;
+          message = err.message ?? "";
+          break;
+        }
+        if (err.message?.includes("attendance_records_student_day_period_uq")) {
+          found = true;
+          message = err.message;
+          break;
+        }
+        current = err.cause;
+      }
+      expect(found, message).toBe(true);
+    };
+
+    await db
+      .insert(attendanceRecords)
+      .values({ ...base, periodId: null })
+      .onConflictDoNothing();
+    await expectGuardRejection(
+      db.insert(attendanceRecords).values({ ...base, periodId: null, status: "absent" }),
+    );
+
+    // Bare ON CONFLICT DO NOTHING (no inference target): the guard is an
+    // expression index, and a re-run's rows already exist — the setup
+    // tolerates them while the rejection assertions below still bite.
+    await db
+      .insert(attendanceRecords)
+      .values({ ...base, periodId: world.periodA1P1Id })
+      .onConflictDoNothing();
+    await db
+      .insert(attendanceRecords)
+      .values({ ...base, periodId: world.periodA1P2Id })
+      .onConflictDoNothing();
+    await expectGuardRejection(
+      db
+        .insert(attendanceRecords)
+        .values({ ...base, periodId: world.periodA1P1Id, status: "absent" }),
+    );
+  });
+
+  it("period-wise derivation: homeroom_authoritative, with the first-period fallback", async () => {
+    await callerOf(attendancePolicyRouter, U().adminA).probe({
+      organizationId: world.orgAId,
+      schoolId: world.schoolA1Id,
+      data: {
+        markingMode: "period_wise",
+        dailyStatusRule: "homeroom_authoritative",
+        thresholdPercentage: null,
+        lateArrivalMinutes: 15,
+      },
+    });
+
+    // No homeroom period is defined on 6-A — the day's FIRST period decides.
+    await mark(U().subjectS6A, {
+      sectionId: world.section6aId,
+      date: D.periodDayA,
+      periodId: world.periodA1P1Id,
+      entries: [{ studentId: world.ownedStudentId, status: "late" }],
+    });
+
+    const day = await readDay(U().subjectS6A, world.section6aId, D.periodDayA);
+    expect(day).toHaveLength(1);
+    expect(day[0].status).toBe("late");
+    expect(day[0].derivationMode).toBe("homeroom_authoritative");
+    expect(day[0].periodsPresent).toBeNull();
+  });
+
+  it("period-wise derivation: threshold_percentage weighs the whole day", async () => {
+    await callerOf(attendancePolicyRouter, U().adminA).probe({
+      organizationId: world.orgAId,
+      schoolId: world.schoolA1Id,
+      data: {
+        markingMode: "period_wise",
+        dailyStatusRule: "threshold_percentage",
+        thresholdPercentage: 50,
+        lateArrivalMinutes: 15,
+      },
+    });
+
+    const markPeriod = (periodId: string, status: "present" | "absent") =>
+      mark(U().subjectS6A, {
+        sectionId: world.section6aId,
+        date: D.periodDayB,
+        periodId,
+        entries: [{ studentId: world.ownedStudentId, status }],
+      });
+
+    // Normalize the day first — both periods explicitly absent — so the
+    // assertions below hold on a re-run regardless of prior state.
+    await markPeriod(world.periodA1P1Id, "absent");
+    await markPeriod(world.periodA1P2Id, "absent");
+    let day = await readDay(U().subjectS6A, world.section6aId, D.periodDayB);
+    expect(day[0].status).toBe("absent");
+    expect(day[0].periodsPresent).toBe(0);
+    expect(day[0].periodsTotal).toBe(2);
+
+    // 1 of 2 = 50% — exactly at the threshold counts as present.
+    await markPeriod(world.periodA1P1Id, "present");
+    day = await readDay(U().subjectS6A, world.section6aId, D.periodDayB);
+    expect(day[0].status).toBe("present");
+    expect(day[0].periodsPresent).toBe(1);
+    expect(day[0].periodsTotal).toBe(2);
+
+    // 2 of 2 → present with the counts filled.
+    await markPeriod(world.periodA1P2Id, "present");
+    day = await readDay(U().subjectS6A, world.section6aId, D.periodDayB);
+    expect(day[0].status).toBe("present");
+    expect(day[0].periodsPresent).toBe(2);
+    expect(day[0].periodsTotal).toBe(2);
+  });
+
+  it("mode mismatch is refused both ways, and the fixture policy is restored", async () => {
+    // Still period-wise from the previous test: a mark without a period is
+    // refused.
+    await expectTrpcError(
+      mark(U().subjectS6A, {
+        sectionId: world.section6aId,
+        date: D.periodDayA,
+        entries: [{ studentId: world.ownedStudentId, status: "present" }],
+      }),
+      "BAD_REQUEST",
+      "Choose the period this attendance is for.",
+    );
+
+    // Restore daily mode — the world does this too, but the sooner the
+    // shared policy is back, the smaller the blast radius of a failure.
+    await callerOf(attendancePolicyRouter, U().adminA).probe({
+      organizationId: world.orgAId,
+      schoolId: world.schoolA1Id,
+      data: {
+        markingMode: "daily",
+        dailyStatusRule: "homeroom_authoritative",
+        thresholdPercentage: null,
+        lateArrivalMinutes: 15,
+      },
+    });
+
+    // Daily mode: naming a period is refused.
+    await expectTrpcError(
+      mark(U().teacherC6, {
+        sectionId: world.section6aId,
+        date: D.working,
+        periodId: world.periodA1P1Id,
+        entries: [{ studentId: world.ownedStudentId, status: "present" }],
+      }),
+      "BAD_REQUEST",
+      "This branch marks daily attendance — attendance is marked for the whole day, not per period.",
+    );
+  });
+
+  it("who may mark: expired and revoked are FORBIDDEN; a foreign org is refused at the node", async () => {
+    for (const userId of [U().expiredT, U().revokedT]) {
+      await expectTrpcError(
+        mark(userId, {
+          sectionId: world.section6aId,
+          date: D.working,
+          entries: [{ studentId: world.ownedStudentId, status: "present" }],
+        }),
+        "FORBIDDEN",
+        "Missing permission: attendance:create",
+      );
+    }
+
+    // Org B's admin holds attendance:create in HIS org; addressing org A's
+    // section fails at the node gate — the wrong-tenant 403.
+    await expectTrpcError(
+      callerOf(attendanceMarkRouter, U().adminB).probe({
+        organizationId: world.orgBId,
+        sectionId: world.section6aId,
+        date: D.working,
+        entries: [{ studentId: world.ownedStudentId, status: "present" }],
+      }),
+      "FORBIDDEN",
+    );
+  });
+
+  it("the no-widening crown: a section teacher sees her section's day, never the neighbour's", async () => {
+    // Setup: the neighbour section's day gets ROWS — an empty 6-B would make
+    // every denial below vacuous. The org admin marks 6-B's own student.
+    await mark(U().adminA, {
+      sectionId: world.section6bId,
+      date: D.working,
+      entries: [{ studentId: world.section6bStudentId, status: "absent" }],
+    });
+
+    // The 6-A section teacher, addressing 6-B's day: the BUILDER clips her
+    // grants to the addressed subtree, finds nothing reaching 6-B, and
+    // refuses — the permissive list's zero-scopes answer (ADR-017). The
+    // service's own four-column filter is the second layer behind it.
+    await expectTrpcError(
+      readDay(U().subjectS6A, world.section6bId, D.working),
+      "FORBIDDEN",
+      "A role you hold has attendance:read but not at this section.",
+    );
+
+    // Her own section's day is exactly hers.
+    const hers = await readDay(U().subjectS6A, world.section6aId, D.working);
+    expect(hers).toHaveLength(1);
+    expect(hers[0].studentId).toBe(world.ownedStudentId);
+
+    // The CLASS teacher spans both sections of her class — that is her
+    // scope, not a leak.
+    const classWide = await readDay(U().teacherC6, world.section6bId, D.working);
+    expect(classWide).toHaveLength(1);
+    expect(classWide[0].studentId).toBe(world.section6bStudentId);
+  });
+
+  it("the summary counts the calendar, not the marks", async () => {
+    // Working days are CALENDAR TRUTH: every weekday of July 2025 minus the
+    // fixture holiday — regardless of how few days anyone was marked on.
+    const expectedJulyWorking = weekdaysIn("2025-07-01", "2025-07-31") - 1;
+    const expectedYearWorking = weekdaysIn("2025-04-01", "2026-03-31") - 1;
+
+    // The section teacher's summary read is scoped through the ENROLLMENT
+    // join: her section's students only, even though the summary table has
+    // no section column of its own. 6-B's student has rows by now — the
+    // discriminator is live.
+    const summaries = await callerOf(attendanceSummaryRouter, U().subjectS6A).probe({
+      organizationId: world.orgAId,
+      academicYearId: world.currentYearAId,
+    });
+    expect(summaries.length).toBeGreaterThan(0);
+    expect(
+      summaries.every((s: { studentId: string }) => s.studentId === world.ownedStudentId),
+    ).toBe(true);
+
+    const monthly = summaries.find(
+      (s: { periodType: string; month: number | null }) =>
+        s.periodType === "monthly" && s.month === 7,
+    );
+    expect(monthly).toBeDefined();
+    expect(monthly!.workingDays).toBe(expectedJulyWorking);
+
+    // The status counts are computed from the authoritative layer, not
+    // assumed — the pin is that the summary MATCHES the status rows.
+    const statusRows = await db
+      .select()
+      .from(dailyAttendanceStatus)
+      .where(
+        and(
+          eq(dailyAttendanceStatus.studentId, world.ownedStudentId),
+          eq(dailyAttendanceStatus.academicYearId, world.currentYearAId),
+        ),
+      );
+    const july = statusRows.filter((r) => r.date.startsWith("2025-07"));
+    expect(monthly!.daysPresent).toBe(july.filter((r) => r.status === "present").length);
+    expect(monthly!.daysAbsent).toBe(july.filter((r) => r.status === "absent").length);
+    expect(monthly!.daysLate).toBe(july.filter((r) => r.status === "late").length);
+
+    // The annual row exists, and the percentage is the DATABASE's generated
+    // column — present/working, rounded to two decimals.
+    const annual = summaries.find((s: { periodType: string }) => s.periodType === "annual");
+    expect(annual).toBeDefined();
+    expect(annual!.workingDays).toBe(expectedYearWorking);
+    const expectedPct =
+      Math.round((annual.daysPresent / annual.workingDays) * 100 * 100) / 100;
+    expect(Number(annual.attendancePercentage)).toBeCloseTo(expectedPct, 2);
   });
 });

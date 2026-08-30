@@ -52,6 +52,7 @@ import {
 import {
   academicService,
   assignmentService,
+  attendanceService,
   enrollmentService,
   studentService,
   organizationService,
@@ -1079,6 +1080,52 @@ async function main() {
       permission: "enrollment:read",
     })
     .onConflictDoNothing();
+
+  // --- Attendance: the marking policy and the year's calendar ------------------
+  //
+  // The demo school marks DAILY (the default matrix's shape), and its current
+  // year's calendar is generated Mon-Fri with TWO holidays — 15 August and
+  // 2 October — which is what makes the smoke's holiday-refusal cell a live
+  // refusal rather than an accidental one (an ungenerated calendar would
+  // refuse EVERYTHING, proving nothing about the day-type gate).
+  //
+  // Idempotent by construction: the policy upsert writes the same values
+  // every run; the generator fills missing dates only (onConflictDoNothing);
+  // the holiday upserts write the same day types every run.
+  const policyA = await attendanceService.upsertPolicy(
+    scopeA,
+    {
+      markingMode: "daily",
+      dailyStatusRule: "homeroom_authoritative",
+      thresholdPercentage: null,
+      lateArrivalMinutes: 15,
+    },
+    adminUser.id,
+  );
+  const generated = await attendanceService.generateYearCalendar(
+    scopeA,
+    { academicYearId: currentYearA.id, workingWeekdays: [1, 2, 3, 4, 5] },
+    adminUser.id,
+  );
+  const holidays: { date: string; reason: string }[] = [
+    { date: "2025-08-15", reason: "Independence Day" },
+    { date: "2025-10-02", reason: "Gandhi Jayanti" },
+  ];
+  for (const holiday of holidays) {
+    await attendanceService.upsertCalendarDay(
+      scopeA,
+      {
+        academicYearId: currentYearA.id,
+        date: holiday.date,
+        dayType: "holiday",
+        reason: holiday.reason,
+      },
+      adminUser.id,
+    );
+  }
+  console.log(
+    `  attendance     policy ${policyA.markingMode} (school A); calendar +${generated.generated} days, holidays: ${holidays.map((h) => h.date).join(", ")}`,
+  );
 
   // A previous run may have left a cached snapshot that predates these grants.
   await invalidateUserAuthCache(adminUser.id);

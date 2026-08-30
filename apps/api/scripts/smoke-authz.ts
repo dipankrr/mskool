@@ -1055,6 +1055,100 @@ async function main() {
     portalList.ok ? `got ${portalList.data?.length}` : `code ${portalList.code}`,
   );
 
+  console.log("\nattendance — the marking flow over HTTP (Phase 3)");
+
+  // 2025-07-01 is a Tuesday inside the demo year, and neither of the seed's
+  // two holidays — a live marking date. The mark is an UPSERT, so re-running
+  // the smoke re-marks the same row and the cells stay stable.
+  const MARK_DATE = "2025-07-01";
+  const HOLIDAY = "2025-08-15"; // the seed's Independence Day
+
+  const teacherMark = await mutate(teacherCookie, "attendance.mark", {
+    organizationId: orgId,
+    sectionId: sectionA.id,
+    date: MARK_DATE,
+    entries: [{ studentId: student1.id, status: "present" }],
+  });
+  report(
+    "class teacher marks her section (attendance:create, cover)",
+    teacherMark.ok && teacherMark.data?.marked === 1,
+    teacherMark.ok ? `marked ${teacherMark.data?.marked}` : `code ${teacherMark.code}`,
+  );
+
+  const subjectStatus = await query(subjectTeacherCookie, "attendance.status", {
+    organizationId: orgId,
+    sectionId: sectionA.id,
+    date: MARK_DATE,
+  });
+  report(
+    "subject teacher reads her section's day (no widening: exactly her roster)",
+    subjectStatus.ok &&
+      Array.isArray(subjectStatus.data) &&
+      subjectStatus.data.length === 1 &&
+      subjectStatus.data[0]?.status === "present" &&
+      subjectStatus.data[0]?.derivationMode === "direct",
+    subjectStatus.ok
+      ? `${subjectStatus.data?.length} row(s)`
+      : `code ${subjectStatus.code}`,
+  );
+
+  // The matrix splits mark from edit: accountant holds attendance:update but
+  // NOT attendance:create — she can configure, she cannot mark. The
+  // librarian holds neither.
+  const accountantMark = await mutate(accountantCookie, "attendance.mark", {
+    organizationId: orgId,
+    sectionId: sectionA.id,
+    date: MARK_DATE,
+    entries: [{ studentId: student1.id, status: "present" }],
+  });
+  report(
+    "accountant × attendance.mark (holds attendance:update, not create)",
+    !accountantMark.ok && accountantMark.code === "FORBIDDEN",
+    `expected FORBIDDEN, got ${accountantMark.ok ? "ok" : accountantMark.code}`,
+  );
+
+  const librarianMark = await mutate(librarianCookie, "attendance.mark", {
+    organizationId: orgId,
+    sectionId: sectionA.id,
+    date: MARK_DATE,
+    entries: [{ studentId: student1.id, status: "present" }],
+  });
+  report(
+    "librarian × attendance.mark (no attendance permissions)",
+    !librarianMark.ok && librarianMark.code === "FORBIDDEN",
+    `expected FORBIDDEN, got ${librarianMark.ok ? "ok" : librarianMark.code}`,
+  );
+
+  // The calendar gate, over HTTP. The seeded holiday is a LIVE refusal: the
+  // row exists with day_type holiday, so this proves the day-type check and
+  // not an empty calendar.
+  const holidayMark = await mutate(teacherCookie, "attendance.mark", {
+    organizationId: orgId,
+    sectionId: sectionA.id,
+    date: HOLIDAY,
+    entries: [{ studentId: student1.id, status: "present" }],
+  });
+  report(
+    "marking the seeded holiday is refused (calendar gate, worded)",
+    !holidayMark.ok && holidayMark.code === "BAD_REQUEST",
+    `expected BAD_REQUEST, got ${holidayMark.ok ? "ok" : holidayMark.code}`,
+  );
+
+  // School B has NO calendar at all — the strict no-row refusal. The org
+  // admin clears every permission gate, so a BAD_REQUEST here is the gate
+  // biting below the authorization layer.
+  const noCalendarMark = await mutate(adminCookie, "attendance.mark", {
+    organizationId: orgId,
+    sectionId: sectionB.id,
+    date: MARK_DATE,
+    entries: [{ studentId: enrollmentB.studentId, status: "present" }],
+  });
+  report(
+    "marking in school B (no calendar) is refused (strict no-row gate)",
+    !noCalendarMark.ok && noCalendarMark.code === "BAD_REQUEST",
+    `expected BAD_REQUEST, got ${noCalendarMark.ok ? "ok" : noCalendarMark.code}`,
+  );
+
   console.log("\nroles × procedures — baseline matrix");
 
   /**
