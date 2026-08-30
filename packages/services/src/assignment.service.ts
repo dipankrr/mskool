@@ -63,6 +63,31 @@ const ASSIGNMENT_SCOPE_COLUMNS = {
   schoolId: sectionTeacherAssignments.schoolId,
 } as const;
 
+// The parent re-reads filter the PARENT's own table, so each needs its own
+// column set — scopeWhere compiles the columns it is handed into that query's
+// SQL, and a column from the wrong table is a "missing FROM-clause entry"
+// error at runtime, invisible to the type checker. (Caught live by the first
+// integration run of the create path.)
+const YEAR_SCOPE_COLUMNS = {
+  organizationId: academicYears.organizationId,
+  schoolId: academicYears.schoolId,
+} as const;
+
+const CLASS_SCOPE_COLUMNS = {
+  organizationId: classes.organizationId,
+  schoolId: classes.schoolId,
+} as const;
+
+const SUBJECT_SCOPE_COLUMNS = {
+  organizationId: subjects.organizationId,
+  schoolId: subjects.schoolId,
+} as const;
+
+const SECTION_SCOPE_COLUMNS = {
+  organizationId: sections.organizationId,
+  schoolId: sections.schoolId,
+} as const;
+
 const M = classSubjectMappings;
 const STA = sectionTeacherAssignments;
 
@@ -93,7 +118,7 @@ export class AssignmentService {
           and(
             eq(academicYears.id, input.academicYearId),
             eq(academicYears.schoolId, schoolId),
-            scopeWhere(atSchoolLevel(scope), MAPPING_SCOPE_COLUMNS),
+            scopeWhere(atSchoolLevel(scope), YEAR_SCOPE_COLUMNS),
           ),
         );
       if (!year) {
@@ -109,7 +134,7 @@ export class AssignmentService {
           and(
             eq(classes.id, input.classId),
             eq(classes.schoolId, schoolId),
-            scopeWhere(atSchoolLevel(scope), MAPPING_SCOPE_COLUMNS),
+            scopeWhere(atSchoolLevel(scope), CLASS_SCOPE_COLUMNS),
           ),
         );
       if (!cls) {
@@ -125,7 +150,7 @@ export class AssignmentService {
           and(
             eq(subjects.id, input.subjectId),
             eq(subjects.schoolId, schoolId),
-            scopeWhere(atSchoolLevel(scope), MAPPING_SCOPE_COLUMNS),
+            scopeWhere(atSchoolLevel(scope), SUBJECT_SCOPE_COLUMNS),
           ),
         );
       if (!subject) {
@@ -232,6 +257,21 @@ export class AssignmentService {
     scope: DataScope,
     input: CreateSectionTeacherAssignmentInput,
   ) {
+    return db.transaction((tx) => this.insertAssignment(tx, scope, input));
+  }
+
+  /**
+   * The transactional core both callers share. Takes the OPEN transaction
+   * rather than opening its own: a nested `db.transaction` on postgres.js is
+   * an INDEPENDENT transaction on another connection, so if `endAssignment`
+   * inserted its successor that way, the successor could commit while the
+   * close rolls back — two open rows for one seat, and "atomically" a lie.
+   */
+  private async insertAssignment(
+    tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+    scope: DataScope,
+    input: CreateSectionTeacherAssignmentInput,
+  ) {
     const schoolId = atSchoolLevel(scope).schoolId;
     if (!schoolId) {
       throw new Error(
@@ -240,58 +280,56 @@ export class AssignmentService {
     }
     const organizationId = scope.organizationId;
 
-    return db.transaction(async (tx) => {
-      const [section] = await tx
-        .select({ id: sections.id, academicYearId: sections.academicYearId })
-        .from(sections)
+    const [section] = await tx
+      .select({ id: sections.id, academicYearId: sections.academicYearId })
+      .from(sections)
+      .where(
+        and(
+          eq(sections.id, input.sectionId),
+          eq(sections.schoolId, schoolId),
+          scopeWhere(atSchoolLevel(scope), SECTION_SCOPE_COLUMNS),
+        ),
+      );
+    if (!section) {
+      throw new Error(
+        "Section not found in this school. A teacher cannot be assigned to another school's section.",
+      );
+    }
+
+    // The year denormalised alongside the section's own — verify the input
+    // does not disagree with the section it points at.
+    if (input.academicYearId && input.academicYearId !== section.academicYearId) {
+      throw new Error(
+        "Academic year does not match the section's year. An assignment's year must equal its section's.",
+      );
+    }
+
+    if (input.subjectId) {
+      const [subject] = await tx
+        .select({ id: subjects.id })
+        .from(subjects)
         .where(
           and(
-            eq(sections.id, input.sectionId),
-            eq(sections.schoolId, schoolId),
-            scopeWhere(atSchoolLevel(scope), ASSIGNMENT_SCOPE_COLUMNS),
+            eq(subjects.id, input.subjectId),
+            eq(subjects.schoolId, schoolId),
+            scopeWhere(atSchoolLevel(scope), SUBJECT_SCOPE_COLUMNS),
           ),
         );
-      if (!section) {
+      if (!subject) {
         throw new Error(
-          "Section not found in this school. A teacher cannot be assigned to another school's section.",
+          "Subject not found in this school. A subject_teacher cannot be assigned another school's subject.",
         );
       }
+    }
 
-      // The year denormalised alongside the section's own — verify the input
-      // does not disagree with the section it points at.
-      if (input.academicYearId && input.academicYearId !== section.academicYearId) {
-        throw new Error(
-          "Academic year does not match the section's year. An assignment's year must equal its section's.",
-        );
-      }
-
-      if (input.subjectId) {
-        const [subject] = await tx
-          .select({ id: subjects.id })
-          .from(subjects)
-          .where(
-            and(
-              eq(subjects.id, input.subjectId),
-              eq(subjects.schoolId, schoolId),
-              scopeWhere(atSchoolLevel(scope), ASSIGNMENT_SCOPE_COLUMNS),
-            ),
-          );
-        if (!subject) {
-          throw new Error(
-            "Subject not found in this school. A subject_teacher cannot be assigned another school's subject.",
-          );
-        }
-      }
-
-      const [assignment] = await tx
-        .insert(sectionTeacherAssignments)
-        .values({ ...input, organizationId, schoolId })
-        .returning();
-      if (!assignment) {
-        throw new Error("Failed to create section-teacher assignment.");
-      }
-      return assignment;
-    });
+    const [assignment] = await tx
+      .insert(sectionTeacherAssignments)
+      .values({ ...input, organizationId, schoolId })
+      .returning();
+    if (!assignment) {
+      throw new Error("Failed to create section-teacher assignment.");
+    }
+    return assignment;
   }
 
   /** The open assignments for a section — "who teaches here now". */
@@ -359,6 +397,8 @@ export class AssignmentService {
         throw new Error("Assignment not found in this school.");
       }
 
+      // UTC date — the same clock as effective_from's CURRENT_DATE default,
+      // so a row's open and close agree on what "today" is.
       const closed = await tx
         .update(sectionTeacherAssignments)
         .set({ effectiveTo: new Date().toISOString().slice(0, 10) })
@@ -375,7 +415,8 @@ export class AssignmentService {
 
       let created: (typeof sectionTeacherAssignments.$inferSelect) | undefined;
       if (successor) {
-        created = await this.createSectionTeacherAssignment(scope, successor);
+        // Same transaction, same connection — see insertAssignment's comment.
+        created = await this.insertAssignment(tx, scope, successor);
       }
 
       return { closed: closed[0], successor: created ?? null };

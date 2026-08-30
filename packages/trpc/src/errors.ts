@@ -338,9 +338,9 @@ type ServiceTranslation = {
  * through to the generic 500, which is less helpful and still not a leak.
  *
  * A shared error type thrown by services and read here would remove the
- * matching altogether. It is the right change the moment a third condition
- * needs mapping; three entries do not yet pay for a new cross-package
- * vocabulary.
+ * matching altogether. The assignment layer took this list from three entries
+ * to eight in one slice; the next domain that needs mapping should introduce
+ * that type rather than appending again.
  */
 const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
   {
@@ -366,6 +366,45 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
     code: "BAD_REQUEST",
     message:
       "That session is not at this branch. Choose a session from the branch you are working in.",
+  },
+  {
+    // The assignment layer's parent guards (assignment.service.ts). Same shape
+    // as createSection's: a foreign key proves the row exists, not that it
+    // belongs to this branch, so the service re-reads every parent inside the
+    // transaction and refuses a cross-branch link. One regex covers both the
+    // mapping guard and the subject_teacher guard — same prefix, same answer.
+    match: /^Subject not found in this school/i,
+    code: "BAD_REQUEST",
+    message:
+      "That subject is not at this branch. Choose a subject from the branch you are working in.",
+  },
+  {
+    match: /^Section not found in this school/i,
+    code: "BAD_REQUEST",
+    message:
+      "That section is not at this branch. Choose a section from the branch you are working in.",
+  },
+  {
+    // createSectionTeacherAssignment: an assignment claiming a year its section
+    // did not run in would hang attendance and marks off the wrong session.
+    match: /^Academic year does not match the section's year/i,
+    code: "BAD_REQUEST",
+    message:
+      "That session does not match the section's session. Choose the session the section belongs to.",
+  },
+  {
+    // endAssignment against a row someone else ended first — the double-click.
+    match: /^Assignment is not currently open/i,
+    code: "CONFLICT",
+    message:
+      "This assignment has already been ended. Refresh to see the current assignments.",
+  },
+  {
+    // endAssignment addressing a row outside the caller's school. NOT_FOUND,
+    // matching how every id-addressed read answers a row it cannot see.
+    match: /^Assignment not found in this school/i,
+    code: "NOT_FOUND",
+    message: "That assignment could not be found.",
   },
 ];
 
