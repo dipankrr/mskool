@@ -1030,8 +1030,8 @@ deliberately. Mutations and lists are untouched, so A2's other cells hold.
 
 ## ADR-029 — Subject-level access is a second fact, checked beside `can()`, never inside it
 
-**Status:** proposed — gates slice S4.3. The owner must accept or amend this before the
-implementation chunk moves.
+**Status:** accepted (2026-08-30, owner review — no amendments). Gates slice S4.3: the
+implementation chunk moves on this basis.
 
 **Context.** ADR-012 fixed the boundary: `role_assignments` is the **authorization**
 authority; `section_teacher_assignments` records the **timetable fact** — "do not read the

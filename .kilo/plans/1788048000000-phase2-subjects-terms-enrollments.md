@@ -430,12 +430,17 @@ SQL: terms stand ALONE (no separate term-structure table). `terms.result_mode`
 
 ## Slice S4 — subject-level access + the student owner-resolver
 
-- [ ] **S4.1 ADR — GATE.** `checkSubjectAccess`: where it lives (services vs authz), its
-      signature, how mark-entry procedures compose it with `staffProcedure` (a second
-      gate on the same context, or a new builder?), and its failure mode (FORBIDDEN vs
-      NOT_FOUND — an unassigned section should ideally be indistinguishable from a
-      nonexistent one). Reads `section_teacher_assignments`, which exists as of S2.
-      **Owner accepts before S4.3 moves.**
+- [x] **S4.1 ADR — GATE.** **ADR-029 written, committed, and ACCEPTED by the owner
+      (2026-08-30, no amendments) — the gate is open; S4.3 moves.** The four decisions
+      it lands: (1) the fact lives in `@repo/services` on
+      `assignmentService.hasSubjectAssignment(...)` — authz stays free of domain
+      tables; (2) procedures compose it via a `subjectGate: true` builder option on
+      `staffProcedure` (runtime-requires `sectionId`+`subjectId` per ADR-027;
+      `check:builders` gains the matching static rule) — not inline per-endpoint
+      checks; (3) failure mode NOT_FOUND, generic wording — an unassigned pair is
+      indistinguishable from a nonexistent one; (4) one indexed query per request,
+      deliberately uncached (assignment facts change mid-term). Boundary
+      re-affirmed: `can()` never consults assignments; the fact never consults roles.
 - [ ] S4.2 `feat(trpc): student owner resolver` — in `trpc.ts` on the B6 pattern
       (`resolveYearOwner` is the template): owned `studentId`s from
       `student_portal_access`. Unit tests in `trpc.test.ts` — pure gate logic, no DB.
