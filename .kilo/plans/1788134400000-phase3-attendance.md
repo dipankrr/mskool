@@ -138,28 +138,32 @@ structure, but its only v1 consumer is marking — the routers live under
 - [x] This file: workflow protocol, chunks, hard context, locked decisions,
       ledger. Committed before any code chunk.
 
-## Chunk C1 — `feat(db): calendar + policies + periods` (`0007`)
+## Chunk C1 — `feat(db): calendar + policies + periods` (`0007`) — ✅ DONE (2026-08-31)
 
-- [ ] `academic_calendar` (new `packages/db/src/schema/attendance.ts` — one
+- [x] `academic_calendar` (new `packages/db/src/schema/attendance.ts` — one
       file per domain; the calendar lives here too because its consumer is
       marking): org+school denormalised; year FK; `date`; `day_type` enum
       (`working/holiday/half_day/weekend/exam_day`); `reason` varchar(255);
       `createdFromTemplate`; `createdBy`; unique `(schoolId, academicYearId,
       date)`; index (schoolId, date). Relations + barrel.
-- [ ] `attendance_policies` (same file): ONE per school — unique `schoolId`;
+- [x] `attendance_policies` (same file): ONE per school — unique `schoolId`;
       `marking_mode` enum (`daily`/`period_wise`) default `daily`;
       `daily_status_rule` enum (`homeroom_authoritative`/
       `threshold_percentage`); `thresholdPercentage` smallint nullable with
       CHECK 1–100; `lateArrivalMinutes` smallint default 15; `updatedBy` →
-      user.
-- [ ] `periods` (same file): section+year-scoped; name varchar(50); sequence;
+      user. (Also carries the denormalised `organizationId` for `scopeWhere`
+      — per-table scope columns, the S2.4 lesson.)
+- [x] `periods` (same file): section+year-scoped; name varchar(50); sequence;
       `isHomeroom` boolean; nullable subject FK + teacher FK; start/end TIME;
       unique `(sectionId, academicYearId, sequenceNumber)`.
-- [ ] `pnpm db:generate` → review `0007_*.sql` (purely additive), migrate,
-      extend `db:verify` (policy one-per-school; period sequence uniqueness;
-      calendar date uniqueness — all drizzle-visible, so verify by NAME).
+- [x] `pnpm db:generate` → `0007_open_nick_fury.sql` reviewed (purely
+      additive: 3 enums, 3 tables, 12 FKs, 8 indexes, 1 CHECK), migrated,
+      `db:verify` extended (calendar date uniqueness incl. next-year and
+      other-school acceptances; policy one-per-school + threshold 0/101/100;
+      period sequence uniqueness incl. same-seq-other-section) — **53
+      assertions, all green** (was 37; +14).
 
-**Verify:** `check-types` 8/8; `db:verify` all green; migration purely additive.
+**Verify:** `check-types` 8/8 ✅; `db:verify` all green ✅; migration purely additive ✅.
 
 ## Chunk C2 — `feat(contracts,services): calendar, policy, periods`
 

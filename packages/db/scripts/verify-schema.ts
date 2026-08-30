@@ -107,12 +107,13 @@ async function main() {
         'scope_nodes_shape_matches_type',
         'academic_years_end_after_start',
         'terms_end_after_start',
-        'terms_weightage_range'
+        'terms_weightage_range',
+        'attendance_policies_threshold_range'
       )
     ORDER BY con.conname
   `;
   for (const c of constraints) console.log(`  ${c.table_name}.${c.constraint_name}`);
-  report("all CHECK constraints exist", constraints.length === 5, `found ${constraints.length}/5`);
+  report("all CHECK constraints exist", constraints.length === 6, `found ${constraints.length}/6`);
 
   // contype 'x' is an EXCLUDE constraint. drizzle-kit cannot see these at all,
   // so their absence would be silent — hence checking the catalog directly.
@@ -503,6 +504,127 @@ async function main() {
       tx,
       "the same student in the NEXT year is accepted (promotion inserts)",
       (q) => enroll(q, nextEnrYear.id, null, "admitted"),
+    );
+
+    console.log("\n=== Phase 3: attendance config tables (0007) ===");
+
+    // --- academic_calendar: one day-type per school per year per date. ---
+
+    const calDay = (
+      q: Queryable,
+      schoolId: string,
+      yearId: string,
+      date: string,
+      dayType: string,
+    ) =>
+      q`INSERT INTO academic_calendar
+          (organization_id, school_id, academic_year_id, date, day_type)
+        VALUES (${org.id}, ${schoolId}, ${yearId}, ${date}, ${dayType})`;
+
+    await expectAccept(tx, "a calendar day is accepted", (q) =>
+      calDay(q, school.id, enrYear.id, "2030-08-15", "holiday"),
+    );
+
+    await expectReject(
+      tx,
+      "a SECOND day-type for the same (school, year, date) is rejected",
+      "academic_calendar_school_year_date_uq",
+      (q) => calDay(q, school.id, enrYear.id, "2030-08-15", "working"),
+    );
+
+    // The key includes the YEAR: the same calendar date recurs every session,
+    // and 15 August of next year needs its own row.
+    await expectAccept(tx, "the same DATE in the NEXT year is accepted", (q) =>
+      calDay(q, school.id, nextEnrYear.id, "2030-08-15", "holiday"),
+    );
+
+    // And per-SCHOOL: the second school marks its own 15 August without
+    // touching the first school's row. (Uses school2's own year, not a
+    // cross-tenant year reference.)
+    const [school2Year] = await tx<{ id: string }[]>`
+      SELECT id FROM academic_years WHERE name = '2026-27' AND school_id = ${school2.id}
+    `;
+    await expectAccept(tx, "the same DATE in a DIFFERENT school is accepted", (q) =>
+      calDay(q, school2.id, school2Year.id, "2030-08-15", "working"),
+    );
+
+    // --- attendance_policies: ONE per school. ---
+
+    const policy = (q: Queryable, schoolId: string, threshold: number | null) =>
+      q`INSERT INTO attendance_policies
+          (organization_id, school_id, marking_mode, daily_status_rule, threshold_percentage)
+        VALUES (${org.id}, ${schoolId}, 'period_wise', 'threshold_percentage', ${threshold})`;
+
+    await expectAccept(tx, "a school's first policy is accepted", (q) =>
+      q`INSERT INTO attendance_policies (organization_id, school_id)
+        VALUES (${org.id}, ${school.id})`,
+    );
+
+    await expectReject(
+      tx,
+      "a SECOND policy for the same school is rejected",
+      "attendance_policies_school_uq",
+      (q) => policy(q, school.id, 75),
+    );
+
+    await expectAccept(tx, "a policy for a DIFFERENT school is accepted", (q) =>
+      policy(q, school2.id, 75),
+    );
+
+    // The threshold CHECK fires on UPDATE too — school2's policy is the row
+    // under test because school already has its (unique) row.
+    await expectReject(
+      tx,
+      "threshold_percentage 0 is rejected",
+      "attendance_policies_threshold_range",
+      (q) =>
+        q`UPDATE attendance_policies SET threshold_percentage = 0
+          WHERE school_id = ${school2.id}`,
+    );
+    await expectReject(
+      tx,
+      "threshold_percentage 101 is rejected",
+      "attendance_policies_threshold_range",
+      (q) =>
+        q`UPDATE attendance_policies SET threshold_percentage = 101
+          WHERE school_id = ${school2.id}`,
+    );
+    await expectAccept(tx, "threshold_percentage 100 is accepted", (q) =>
+      q`UPDATE attendance_policies SET threshold_percentage = 100
+        WHERE school_id = ${school2.id}`,
+    );
+
+    // --- periods: unique (section, year, sequence). ---
+
+    const period = (q: Queryable, sectionId: string, yearId: string, seq: number) =>
+      q`INSERT INTO periods
+          (organization_id, school_id, section_id, academic_year_id, name, sequence_number)
+        VALUES (${org.id}, ${school.id}, ${sectionId}, ${yearId}, 'Period 1', ${seq})`;
+
+    await expectAccept(tx, "a section's first period is accepted", (q) =>
+      period(q, enrSection.id, enrYear.id, 1),
+    );
+
+    await expectReject(
+      tx,
+      "a duplicate sequence number in one section is rejected",
+      "periods_section_year_sequence_uq",
+      (q) => period(q, enrSection.id, enrYear.id, 1),
+    );
+
+    await expectAccept(tx, "the next sequence in the same section is accepted", (q) =>
+      period(q, enrSection.id, enrYear.id, 2),
+    );
+
+    // The key is per SECTION: section B restarts at Period 1.
+    const [enrSectionB] = await tx<{ id: string }[]>`
+      INSERT INTO sections
+        (organization_id, school_id, class_id, academic_year_id, name)
+      VALUES (${org.id}, ${school.id}, ${enrClass.id}, ${enrYear.id}, 'B')
+      RETURNING id
+    `;
+    await expectAccept(tx, "the same sequence in a DIFFERENT section is accepted", (q) =>
+      period(q, enrSectionB.id, enrYear.id, 1),
     );
   });
 

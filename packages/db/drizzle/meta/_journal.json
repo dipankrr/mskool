@@ -50,6 +50,13 @@
       "when": 1788073348931,
       "tag": "0006_mysterious_dazzler",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788118301189,
+      "tag": "0007_open_nick_fury",
+      "breakpoints": true
     }
   ]
 }

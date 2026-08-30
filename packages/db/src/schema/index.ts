@@ -16,3 +16,7 @@ export * from "./people";
 
 // Academic structure: academic years → classes → sections. Phase 2.
 export * from "./academic";
+
+// Attendance: the calendar (marking gate), policy, periods — and in 0008 the
+// record layer. Phase 3.
+export * from "./attendance";
