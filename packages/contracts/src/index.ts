@@ -31,3 +31,6 @@ export * from "./contracts/assignment.contract";
 
 // Terms: the subdivisions of an academic year the exam chain reads.
 export * from "./contracts/term.contract";
+
+// Enrollments: the year anchor — one row per student per academic year.
+export * from "./contracts/enrollment.contract";

@@ -509,8 +509,30 @@ SQL: terms stand ALONE (no separate term-structure table). `terms.result_mode`
       accepted. **Note:** `section_transfer_log` remains unpicked — its only
       writer is a mid-year section move; scope it into S5.2 or defer explicitly
       when the transfer flow exists.
-- [ ] S5.2 `feat(contracts,services): enrollments` — staff track takes `DataScope`;
-      the student track reads via owned `studentId` only.
+- [x] S5.2 `feat(contracts,services): enrollments` — **DONE (2026-08-30).**
+      `enrollment.contract.ts`: create omits status/promotion/createdFromTemplate/
+      createdBy — the service DERIVES the initial status (`admitted` with no
+      section, `section_assigned` with one); the update surface is labels ONLY
+      (rollNumber/stream/house) — studentId/year/class/sectionId/enrollmentDate/
+      status are all deliberately unpatchable, each with the reason in the
+      contract's docstring. `enrollment.service.ts`: **NO scope widening — the
+      scope columns carry all four levels** (the widening warning's named
+      exception: enrollments have a real class dimension), so a section teacher
+      sees exactly her students. `createEnrollment` re-reads all FOUR parents
+      through the caller's scope inside the transaction AND verifies the section's
+      year AND class match the enrollment's (both would pass the FKs). Status
+      machine = exported `ENROLLMENT_TRANSITIONS` map (derived from the schema
+      enum) + `transitionEnrollment`; `assignSection` is the FIRST assignment
+      only — a row that already has a section is refused in words ("moving a
+      student mid-year is a transfer, and transfers are logged — that flow is
+      not built yet"), the sanctioned `section_transfer_log` shape waiting for
+      its table; the UPDATE re-checks the NULL so a concurrent assignment race
+      loses cleanly. Portal track: `listEnrollmentsForStudents(studentIds)` —
+      ownership IS the filter (ADR-005), no DataScope. **`section_transfer_log`
+      decision: deferred** — its only writer is the transfer flow; this service
+      has no way to re-point an assigned section, so the history-preserving path
+      is unrepresentable to skip. Verify ✅ check-types 8/8; unit 86+38+32;
+      check:builders green (behaviour exercised live in S5.4).
 - [ ] S5.3 `feat(trpc): enrollment router` — staff (`enrollment.*`) + portal
       (`portal.*`) namespaces.
 - [ ] S5.4 `test: enrollments in integration, smoke, and seed`

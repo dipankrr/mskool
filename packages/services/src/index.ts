@@ -33,3 +33,7 @@ export * from "./term.service";
 // Students: the B6 adapter for the student's owning branch. The full
 // staff/portal surface lands with the enrollment slice (S5).
 export * from "./student.service";
+
+// Enrollments: the year anchor — staff track by scope, portal track by owned
+// studentId. Hard rule 6's interface half lives here.
+export * from "./enrollment.service";
