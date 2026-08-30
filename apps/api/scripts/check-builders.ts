@@ -88,11 +88,65 @@ function scanOverlapOnMutations(file: string) {
   }
 }
 
+/**
+ * Third guard: subject-content writes compose the subjectGate (ADR-029).
+ *
+ * `can()` cannot see the subject axis — the scope tree has no subject node —
+ * so a marks or homework write is authorized by TWO facts: the role grant
+ * (the builders' permission gate) and an OPEN subject_teacher assignment. A
+ * write procedure that names a gated permission without `{ subjectGate: true }`
+ * ships the Phase-1 hole: the Physics teacher entering Chemistry marks. Same
+ * grep philosophy as the guard above — from each gated permission literal to
+ * the next builder call, the chain must carry the option. Comment lines are
+ * stripped first so docstrings that MENTION the permission (the way the
+ * subject router's explains the mechanism) do not trip it. The gated list is
+ * imported from @repo/authz's PURE permissions module via its subpath export —
+ * importing the trpc surface would drag the runtime graph (env validation,
+ * Redis) into a guard that must stay hermetic for CI.
+ */
+import { SUBJECT_GATED_WRITES } from "@repo/authz/permissions";
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function scanMissingSubjectGate(file: string) {
+  const content = fs
+    .readFileSync(file, "utf8")
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*(\/\/|\/\*|\*|\*\/)/.test(line))
+    .join("\n");
+
+  for (const permission of SUBJECT_GATED_WRITES) {
+    const literal = new RegExp(escapeRegExp(`"${permission}"`), "g");
+    for (const match of content.matchAll(literal)) {
+      const rest = content.slice(match.index!);
+      const nextCall = ["staffProcedure(", "staffListProcedure("]
+        .map((needle) => {
+          const idx = rest.indexOf(needle, 10);
+          return idx === -1 ? Number.POSITIVE_INFINITY : idx;
+        })
+        .reduce((a, b) => Math.min(a, b));
+
+      if (!/subjectGate:\s*true/.test(rest.slice(0, nextCall))) {
+        failures++;
+        const lineNo = content.slice(0, match.index!).split(/\r?\n/).length;
+        console.error(
+          `FAIL ${path.relative(process.cwd(), file)}:${lineNo}\n` +
+            `      ${match[0]}\n` +
+            `      → subject-content write without subjectGate: true — the scope tree cannot see subjects (ADR-029)`,
+        );
+      }
+    }
+  }
+}
+
 for (const entry of fs.readdirSync(routersDir, { recursive: true })) {
   const full = path.join(routersDir, entry.toString());
   if (full.endsWith(".ts")) {
     scan(full);
     scanOverlapOnMutations(full);
+    scanMissingSubjectGate(full);
   }
 }
 
@@ -102,5 +156,5 @@ if (failures > 0) {
 }
 
 console.log(
-  "check:builders — no ungated builders, no overlap-gated mutations under routers/.",
+  "check:builders — no ungated builders, no overlap-gated mutations, no subject-content writes without subjectGate under routers/.",
 );

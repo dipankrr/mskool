@@ -441,12 +441,34 @@ SQL: terms stand ALONE (no separate term-structure table). `terms.result_mode`
       indistinguishable from a nonexistent one; (4) one indexed query per request,
       deliberately uncached (assignment facts change mid-term). Boundary
       re-affirmed: `can()` never consults assignments; the fact never consults roles.
-- [ ] S4.2 `feat(trpc): student owner resolver` — in `trpc.ts` on the B6 pattern
-      (`resolveYearOwner` is the template): owned `studentId`s from
-      `student_portal_access`. Unit tests in `trpc.test.ts` — pure gate logic, no DB.
-- [ ] S4.3 `feat(authz,services): checkSubjectAccess` — per the accepted ADR + unit
-      tests for the pure part. ADR-012's boundary applies: `role_assignments` is the
-      authorization authority; `section_teacher_assignments` records the timetable fact.
+- [x] S4.2 `feat(trpc): student owner resolver` — **DONE (2026-08-30), amended
+      during implementation.** The plan's text conflated the two "student owner"
+      mechanisms; this chunk delivers the staff-track adapter that S5 actually
+      resolves rows with, plus the pure portal gate: (1) `student.service.ts` with
+      `getStudentOwnerId(organizationId, studentId)` — the B6 adapter, schoolId
+      column, org-filtered; `resolveStudentOwner` is exported from `trpc.ts` wrapping
+      it (S5's student and enrollment routers both use it — one definition);
+      (2) `assertStudentOwnership(studentIds, studentId)` extracted from
+      `studentProcedure` as a PURE function (the "unit tests, pure gate logic, no
+      DB" the plan asked for) with the refusal wording pinned. Unit tests: the
+      resolver's null/cross-org indistinguishability, the pure gate's exact
+      refusal, on the mocked-db harness (+2 table query contracts).
+- [x] S4.3 `feat(authz,services): checkSubjectAccess` — **DONE (2026-08-30), per
+      the accepted ADR-029.** `assignmentService.hasSubjectAssignment(organizationId,
+      userId, sectionId, subjectId)` — org-filtered, open rows, role
+      `subject_teacher`, deliberately uncached. The builder composes it:
+      `staffProcedure(permission, { subjectGate: true })` runtime-extends the input
+      with required `sectionId`+`subjectId` (ADR-027's mechanism) and runs the fact
+      check AFTER the permission gate; a fact miss is NOT_FOUND with the generic
+      wording. `SUBJECT_GATED_WRITES` (marks + homework writes) lives in
+      `@repo/authz`'s PURE permissions module behind a `./permissions` subpath
+      export — the hermetic guard imports it without executing any runtime graph;
+      amended in ADR-029's text. `check:builders` third guard: a router naming a
+      gated permission without `subjectGate: true` fails. Unit tests: own pair
+      resolves (non-vacuity), own-section/adjacent-subject NOT_FOUND (the Phase-1
+      leftover at unit level), ended assignment = same NOT_FOUND (immediacy),
+      permission-first ordering (FORBIDDEN beats the fact), omitted pair =
+      validation failure.
 - [ ] S4.4 `test: subject-level denial in integration + smoke` — the phase-1 leftover
       closes: a `subject_teacher` scoped to one section is denied the adjacent
       section's subject, and a SubjectTeacher WITHOUT the matching assignment row is

@@ -27,6 +27,7 @@ export {
   RESOURCE_ACTIONS,
   RESOURCE_CATEGORIES,
   SENSITIVE_PERMISSIONS,
+  SUBJECT_GATED_WRITES,
   type Permission,
   type Resource,
 } from "./permissions";

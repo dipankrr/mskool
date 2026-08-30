@@ -1062,10 +1062,13 @@ not any endpoint.
    permission bug was found by clicking a link, and subject-content endpoints are exactly
    where a forgotten inline check is invisible. `check:builders` gains the matching static
    rule: a procedure whose permission writes subject-scoped content MUST set `subjectGate`
-   (the list starts with `marks:*` writes and lives in `trpc.ts`; `homework:*` joins when
-   its slice lands). Derived-section inputs (section resolved from a student's enrollment
-   rather than named) are a recorded future amendment, not v1: marks entry is
-   section-scoped in the UI, and the client names the section it is working in.
+   (the list starts with `marks:*` writes and lives in `@repo/authz`'s `permissions.ts` —
+   the vocabulary home, and the only env-free module the hermetic static guard can import
+   without executing the runtime graph; re-exported from `@repo/authz`'s index;
+   `homework:*` joins when its slice lands). Derived-section inputs (section resolved
+   from a student's enrollment rather than named) are a recorded future amendment, not
+   v1: marks entry is section-scoped in the UI, and the client names the section it is
+   working in.
 
 3. **Failure mode: NOT_FOUND, generic wording — an unassigned pair is indistinguishable
    from a nonexistent one.** `FORBIDDEN` would confirm the section+subject exist and the

@@ -152,3 +152,30 @@ export const SENSITIVE_PERMISSIONS = new Set<Permission>([
   "portal_access:grant",
   "portal_access:revoke",
 ]);
+
+/**
+ * SUBJECT_GATED_WRITES (ADR-029) — the write permissions that authorize by TWO
+ * facts: the role grant (the builders' permission gate) AND an open
+ * `subject_teacher` assignment (`assignmentService.hasSubjectAssignment`).
+ * The scope tree has no subject axis, so `can()` alone would hand every
+ * subject-content write in a section to every teacher in it — the Physics
+ * teacher entering Chemistry marks.
+ *
+ * Lives HERE, beside the permission vocabulary it is written in, rather than
+ * in the trpc builders: check:builders must import it WITHOUT executing any
+ * runtime graph (env validation, Redis client), and this module is pure.
+ * The builder's `subjectGate` option and this list are the two halves of the
+ * same decision; the static guard fails a router that names one of these
+ * permissions without the option.
+ *
+ * A READ of the same content is not gated — the fact decides who may WRITE,
+ * not who may look. `homework:*` joins when its slice lands.
+ */
+export const SUBJECT_GATED_WRITES: ReadonlySet<Permission> = new Set([
+  "marks:create",
+  "marks:update",
+  "marks:delete",
+  "homework:create",
+  "homework:update",
+  "homework:delete",
+] satisfies Permission[]);
