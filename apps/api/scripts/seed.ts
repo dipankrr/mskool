@@ -43,6 +43,7 @@ import {
   sectionTeacherAssignments,
   staff,
   subjects,
+  terms,
   user,
 } from "@repo/db/schema";
 import {
@@ -50,6 +51,7 @@ import {
   assignmentService,
   organizationService,
   subjectService,
+  termService,
 } from "@repo/services";
 import { and, eq, isNull } from "drizzle-orm";
 
@@ -115,6 +117,14 @@ const YEAR_CLOSED = {
  */
 const CLASS_B_NAME = "Class 6";
 const CLASS_B_ORDER = 6;
+
+// Terms: the current year is split (Term 1 + Term 2), the closed year and
+// school B run one "Full Year" row. The closed year's term is the smoke's
+// non-vacuity control — the principal's history-gated list must return a real
+// row, so a teacher's empty answer is the gate biting, not an empty table.
+const TERM_1_NAME = "Term 1";
+const TERM_2_NAME = "Term 2";
+const TERM_FULL_NAME = "Full Year";
 
 async function findOrCreateOrganization() {
   const [existing] = await db
@@ -530,6 +540,41 @@ async function findOrCreateSectionTeacherAssignment(
   return assignment;
 }
 
+/**
+ * Find-or-create a term keyed on (year, sequenceNumber) — the unique index's
+ * own pair. Through the service, which re-reads the parent year inside the
+ * transaction; every date below sits inside its year by construction, because
+ * a fixture that tripped `terms_dates_within_year_trg` aborts the run.
+ */
+async function findOrCreateTerm(
+  scope: DataScope & { schoolId: string },
+  input: {
+    academicYearId: string;
+    name: string;
+    sequenceNumber: number;
+    startDate: string;
+    endDate: string;
+  },
+) {
+  const [existing] = await db
+    .select()
+    .from(terms)
+    .where(
+      and(
+        eq(terms.academicYearId, input.academicYearId),
+        eq(terms.sequenceNumber, input.sequenceNumber),
+      ),
+    );
+  if (existing) {
+    console.log(`  = term ${input.name} (exists)`);
+    return existing;
+  }
+
+  const term = await termService.createTerm(scope, input);
+  console.log(`  + term ${input.name}`);
+  return term;
+}
+
 async function main() {
   // The seed writes known-password logins. That must never touch production.
   if (process.env.NODE_ENV === "production") {
@@ -788,6 +833,39 @@ async function main() {
     1,
   );
 
+  // --- Terms -------------------------------------------------------------------
+  // The smoke's term assertions need a split year, a closed year with a term
+  // (the non-vacuity control for the read_history gate), and a foreign-org
+  // same-named row for the byId denial.
+  const term1A = await findOrCreateTerm(scopeA, {
+    academicYearId: currentYearA.id,
+    name: TERM_1_NAME,
+    sequenceNumber: 1,
+    startDate: "2025-04-01",
+    endDate: "2025-09-30",
+  });
+  const term2A = await findOrCreateTerm(scopeA, {
+    academicYearId: currentYearA.id,
+    name: TERM_2_NAME,
+    sequenceNumber: 2,
+    startDate: "2025-10-01",
+    endDate: "2026-03-31",
+  });
+  const termFullClosedA = await findOrCreateTerm(scopeA, {
+    academicYearId: closedYearA.id,
+    name: TERM_FULL_NAME,
+    sequenceNumber: 1,
+    startDate: "2024-04-01",
+    endDate: "2025-03-31",
+  });
+  const termFullB = await findOrCreateTerm(scopeB, {
+    academicYearId: yearB.id,
+    name: TERM_FULL_NAME,
+    sequenceNumber: 1,
+    startDate: "2025-04-01",
+    endDate: "2026-03-31",
+  });
+
   // A previous run may have left a cached snapshot that predates these grants.
   await invalidateUserAuthCache(adminUser.id);
   await invalidateUserAuthCache(principalUser.id);
@@ -813,6 +891,9 @@ Done.
   mappings (A)   ${mappingMathA.sequenceNumber}. ${subjectMathA.name}, ${mappingPhysicsA.sequenceNumber}. ${subjectPhysicsA.name} → ${classA.name}
   mappings (B)   ${mappingMathB.sequenceNumber}. ${subjectMathB.name} → ${classB.name}  — same name as A's, by design
   assignments    6-A: subject_teacher (${staSubjectTeacher.userId.slice(0, 8)}…), class_teacher homeroom (${staHomeroom.userId.slice(0, 8)}…)
+
+  terms (A)      ${term1A.name}, ${term2A.name} → ${currentYearA.name}; ${termFullClosedA.name} → ${closedYearA.name} (closed)
+  terms (B)      ${termFullB.name} → ${yearB.name}  — same name as A's closed year, by design
 
   ${ADMIN_EMAIL}            org_admin @ org         → both schools
   ${PRINCIPAL_EMAIL}        principal @ school A    → school A only

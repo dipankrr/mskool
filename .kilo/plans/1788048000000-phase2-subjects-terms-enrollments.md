@@ -405,7 +405,23 @@ SQL: terms stand ALONE (no separate term-structure table). `terms.result_mode`
       overlap mutations); check:openapi lists the 4 `/terms` endpoints (31 total);
       unit 86+38+24; integration 50/50 (term procedures not yet exercised — that is
       S3.4).
-- [ ] S3.4 `test: terms in integration, smoke, and seed`
+- [x] S3.4 `test: terms in integration, smoke, and seed` — **DONE (2026-08-30)**.
+      Integration **59** (was 50): exact current-year lists for all three reader
+      roles; the read_history gate on the closed year's terms **with a non-vacuity
+      control** (the closed year HAS a "Full Year" term — the principal's list
+      returns it, so a teacher's empty answer is the pin biting, not an empty
+      table); byId on the closed year (teacher NOT_FOUND, principal resolves,
+      resolver wording pinned); overlap reach for the section teacher; cross-org
+      byId; create denials at the permission gate, the service's foreign-year
+      re-read, AND the within-year trigger with `translateErrors`' wording pinned
+      end-to-end (CONFLICT); update denial. Smoke all-pass live: 8 direct
+      assertions + `academic.term.list` matrix cell for all four roles + the
+      closed-year byId discriminator pair (teacher 404 / principal 200). Seed: the
+      current year gets Term 1 + Term 2, the closed year and school B one
+      "Full Year" each (same name, by design), keyed find-or-create on
+      (year, sequenceNumber). Verify ✅ check-types 8/8; check:builders green;
+      check:openapi 31 endpoints; integration 59/59; smoke all-pass against a live
+      API (started, then stopped).
 - [ ] S3.5 `docs: TASKS.md — slice 3 done` (add `terms` to the resume-here schema line)
 
 

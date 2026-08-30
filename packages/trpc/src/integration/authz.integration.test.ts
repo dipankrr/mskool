@@ -37,7 +37,13 @@ vi.mock("ioredis", () => {
 
 import { TRPCError } from "@trpc/server";
 import type { Permission } from "@repo/authz";
-import { academicService, assignmentService, organizationService, subjectService } from "@repo/services";
+import {
+  academicService,
+  assignmentService,
+  organizationService,
+  subjectService,
+  termService,
+} from "@repo/services";
 import { getOwnedStudentIds } from "@repo/authz";
 import { db } from "@repo/db";
 import { classes } from "@repo/db/schema";
@@ -355,6 +361,65 @@ const endStaRouter = makeRouter({
     .mutation(({ ctx, input }) =>
       assignmentService.endAssignment(ctx.scope, input.id, input.successor),
     ),
+});
+
+// --- probes: terms -------------------------------------------------------------
+
+const termOwner: OwnerResolver = async (organizationId, id) => {
+  const schoolId = await termService.getTermOwnerId(organizationId, id);
+  if (!schoolId) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Term not found." });
+  }
+  return { type: "school", id: schoolId };
+};
+
+const termListRouter = makeRouter({
+  probe: staffListProcedure("academic_year:read")
+    .input(z.object({ academicYearId: z.uuid() }))
+    .query(({ ctx, input }) =>
+      termService.listTerms(ctx.scopes, input.academicYearId, ctx.canWithin(HISTORY)),
+    ),
+});
+
+const termByIdRouter = makeRouter({
+  probe: staffProcedure("academic_year:read", {
+    resolveOwner: termOwner,
+    gate: "overlap",
+  }).query(async ({ ctx, input }) => {
+    const term = await termService.getTermById(ctx.scope, rowId(input), ctx.can(HISTORY));
+    if (!term) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Term not found." });
+    }
+    return term;
+  }),
+});
+
+const createTermRouter = makeRouter({
+  probe: staffProcedure("academic_year:create")
+    .input(
+      z.object({
+        schoolId: z.uuid(),
+        data: z.object({
+          academicYearId: z.uuid(),
+          name: z.string(),
+          sequenceNumber: z.number().int(),
+          startDate: z.string(),
+          endDate: z.string(),
+        }),
+      }),
+    )
+    .mutation(({ ctx, input }) => termService.createTerm(ctx.scope as never, input.data)),
+});
+
+const updateTermRouter = makeRouter({
+  probe: staffProcedure("academic_year:update", { resolveOwner: termOwner })
+    .input(
+      z.object({
+        id: z.uuid(),
+        data: z.object({ weightage: z.string().optional() }),
+      }),
+    )
+    .mutation(({ ctx, input }) => termService.updateTerm(ctx.scope, input.id, input.data)),
 });
 
 // --- harness -----------------------------------------------------------------
@@ -803,6 +868,144 @@ describe("years — visibility is a permission, not scope inference (ADR-024)", 
 });
 
 // --- mutations -----------------------------------------------------------------
+
+// --- terms: the year's subdivisions ---------------------------------------------
+
+describe("terms — the year edge, history-pinned like their year", () => {
+  const listAt = (userId: string, academicYearId: string) =>
+    okIds(
+      callerOf(termListRouter, userId).probe({
+        organizationId: world.orgAId,
+        academicYearId,
+      }),
+    );
+
+  it("readers of the CURRENT year see exactly its two terms", async () => {
+    const want = [world.termA1T1Id, world.termA1T2Id].sort();
+    expect(await listAt(U().principalA1, world.currentYearAId)).toEqual(want);
+    // class_teacher and subject_teacher hold academic_year:read without
+    // read_history — the current year is theirs to read, terms included.
+    expect(await listAt(U().teacherC6, world.currentYearAId)).toEqual(want);
+    expect(await listAt(U().subjectS6A, world.currentYearAId)).toEqual(want);
+  });
+
+  it("read_history gates the CLOSED year's terms — with a non-vacuity control", async () => {
+    // The closed year HAS a term, so the teacher's empty answer is the pin
+    // biting, not an empty table.
+    expect(await listAt(U().teacherC6, world.closedYearAId)).toEqual([]);
+    expect(await listAt(U().principalA1, world.closedYearAId)).toEqual([
+      world.termClosedAId,
+    ]);
+  });
+
+  it("term.byId on the closed year: teachers NOT_FOUND, principal resolves", async () => {
+    const own = await callerOf(termByIdRouter, U().principalA1).probe({
+      organizationId: world.orgAId,
+      id: world.termClosedAId,
+    });
+    expect(own.id).toBe(world.termClosedAId);
+
+    await expectTrpcError(
+      callerOf(termByIdRouter, U().teacherC6).probe({
+        organizationId: world.orgAId,
+        id: world.termClosedAId,
+      }),
+      "NOT_FOUND",
+      "Term not found.",
+    );
+  });
+
+  it("a section teacher reads her school's term by id (overlap reach)", async () => {
+    const term = await callerOf(termByIdRouter, U().subjectS6A).probe({
+      organizationId: world.orgAId,
+      id: world.termA1T1Id,
+    });
+    expect(term.id).toBe(world.termA1T1Id);
+  });
+
+  it("a cross-ORG term id is NOT_FOUND, indistinguishable from a nonexistent one", async () => {
+    await expectTrpcError(
+      callerOf(termByIdRouter, U().adminA).probe({
+        organizationId: world.orgAId,
+        id: world.termB1Id,
+      }),
+      "NOT_FOUND",
+      "Term not found.",
+    );
+  });
+
+  it("a class teacher cannot create a term (permission gate)", async () => {
+    await expectTrpcError(
+      callerOf(createTermRouter, U().teacherC6).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
+        data: {
+          academicYearId: world.currentYearAId,
+          name: "ITG Denied Term",
+          sequenceNumber: 9,
+          startDate: "2025-11-01",
+          endDate: "2026-01-31",
+        },
+      }),
+      "FORBIDDEN",
+      "Missing permission: academic_year:create",
+    );
+  });
+
+  it("creating a term refuses a FOREIGN-BRANCH year (service guard)", async () => {
+    // The principal covers school A1, so the gate passes; the service's
+    // in-transaction year re-read catches the smuggled parent before anything
+    // is written.
+    await expectTrpcError(
+      callerOf(createTermRouter, U().principalA1).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
+        data: {
+          academicYearId: world.currentYearBId,
+          name: "ITG Smuggled Term",
+          sequenceNumber: 9,
+          startDate: "2025-11-01",
+          endDate: "2026-01-31",
+        },
+      }),
+      "BAD_REQUEST",
+      "That session is not at this branch. Choose a session from the branch you are working in.",
+    );
+  });
+
+  it("term dates outside their year are refused BY THE TRIGGER, worded", async () => {
+    // The within-year rule is cross-table: a trigger, not a CHECK. This pins
+    // both that it bites through the full stack and that translateErrors
+    // words it — a regression to a generic 500 fails here.
+    await expectTrpcError(
+      callerOf(createTermRouter, U().principalA1).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
+        data: {
+          academicYearId: world.currentYearAId,
+          name: "ITG Outside Term",
+          sequenceNumber: 9,
+          startDate: "2026-04-01",
+          endDate: "2026-09-30",
+        },
+      }),
+      "CONFLICT",
+      "A term's dates must sit inside its session's dates. Check the term's start and end date against the session.",
+    );
+  });
+
+  it("a teacher cannot update a term (permission gate)", async () => {
+    await expectTrpcError(
+      callerOf(updateTermRouter, U().teacherC6).probe({
+        organizationId: world.orgAId,
+        id: world.termA1T1Id,
+        data: { weightage: "90.00" },
+      }),
+      "FORBIDDEN",
+      "Missing permission: academic_year:update",
+    );
+  });
+});
 
 // --- the teaching-assignment layer ----------------------------------------------
 

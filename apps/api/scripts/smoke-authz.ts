@@ -33,6 +33,7 @@ import {
   sections,
   sectionTeacherAssignments,
   subjects,
+  terms,
   user,
 } from "@repo/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
@@ -269,6 +270,30 @@ async function main() {
       "Assignment seed incomplete — expected Mathematics + Physics mapped onto " +
         "Class 6, two open assignments on 6-A, and a class + section + mapping in " +
         "school B. Run `pnpm db:seed` (re-seeding is idempotent).",
+    );
+  }
+
+  // Terms: the current year is split, the closed year and school B run one
+  // "Full Year" each. The closed year's term is the read_history gate's
+  // non-vacuity control; school B's same-named row is the byId control.
+  const termsCurrentA = await db
+    .select()
+    .from(terms)
+    .where(eq(terms.academicYearId, currentYearA.id));
+  const [termClosedA] = await db
+    .select()
+    .from(terms)
+    .where(eq(terms.academicYearId, closedYearA.id));
+  const [termB] = await db
+    .select()
+    .from(terms)
+    .where(eq(terms.academicYearId, yearB.id));
+
+  if (termsCurrentA.length < 2 || !termClosedA || !termB) {
+    throw new Error(
+      "Term seed incomplete — expected Term 1 + Term 2 on the current year, " +
+        "a Full Year on the closed year, and a Full Year in school B. " +
+        "Run `pnpm db:seed` (re-seeding is idempotent).",
     );
   }
 
@@ -748,6 +773,126 @@ async function main() {
     `code ${teacherCreatesMapping.code}`,
   );
 
+  console.log("\nterms — the year edge, history-pinned");
+
+  const termListA = await query(principalCookie, "academic.term.list", {
+    organizationId: orgId,
+    academicYearId: currentYearA.id,
+  });
+  report(
+    "principal lists the current year's terms",
+    termListA.ok &&
+      Array.isArray(termListA.data) &&
+      termListA.data.length === 2 &&
+      termListA.data.every((t: any) => t.schoolId === schoolA.id),
+    termListA.ok ? `got ${termListA.data?.length}` : `code ${termListA.code}`,
+  );
+
+  const teacherTermsCurrent = await query(teacherCookie, "academic.term.list", {
+    organizationId: orgId,
+    academicYearId: currentYearA.id,
+  });
+  report(
+    "class_teacher lists the same two terms (current year needs no read_history)",
+    teacherTermsCurrent.ok &&
+      Array.isArray(teacherTermsCurrent.data) &&
+      teacherTermsCurrent.data.length === 2,
+  );
+
+  const teacherTermsClosed = await query(teacherCookie, "academic.term.list", {
+    organizationId: orgId,
+    academicYearId: closedYearA.id,
+  });
+  report(
+    "class_teacher sees NO terms of the closed year",
+    teacherTermsClosed.ok &&
+      Array.isArray(teacherTermsClosed.data) &&
+      teacherTermsClosed.data.length === 0,
+    `got ${teacherTermsClosed.data?.length}`,
+  );
+
+  const principalTermsClosed = await query(
+    principalCookie,
+    "academic.term.list",
+    { organizationId: orgId, academicYearId: closedYearA.id },
+  );
+  report(
+    "principal reads the closed year's term (read_history) — non-vacuity",
+    principalTermsClosed.ok &&
+      principalTermsClosed.data?.length === 1 &&
+      principalTermsClosed.data[0]?.id === termClosedA.id,
+  );
+
+  const teacherReadsClosedTerm = await query(
+    teacherCookie,
+    "academic.term.byId",
+    { organizationId: orgId, id: termClosedA.id },
+  );
+  report(
+    "class_teacher CANNOT read the closed year's term by id",
+    teacherReadsClosedTerm.code === "NOT_FOUND",
+    `code ${teacherReadsClosedTerm.code}`,
+  );
+
+  const adminReadsTermB = await query(adminCookie, "academic.term.byId", {
+    organizationId: orgId,
+    id: termB.id,
+  });
+  report(
+    "org_admin reads school B's term (non-vacuity)",
+    adminReadsTermB.ok && adminReadsTermB.data?.id === termB.id,
+  );
+  const principalReadsTermB = await query(
+    principalCookie,
+    "academic.term.byId",
+    { organizationId: orgId, id: termB.id },
+  );
+  report(
+    "principal CANNOT read school B's term",
+    principalReadsTermB.code === "NOT_FOUND",
+    `code ${principalReadsTermB.code}`,
+  );
+
+  const teacherCreatesTerm = await mutate(teacherCookie, "academic.term.create", {
+    organizationId: orgId,
+    schoolId: schoolA.id,
+    data: {
+      academicYearId: currentYearA.id,
+      name: "Smoke Denied Term",
+      sequenceNumber: 9,
+      startDate: "2026-01-01",
+      endDate: "2026-02-28",
+    },
+  });
+  report(
+    "class_teacher holds NO academic_year:create",
+    teacherCreatesTerm.code === "FORBIDDEN",
+    `code ${teacherCreatesTerm.code}`,
+  );
+
+  // The within-year rule is cross-table: a trigger, not a CHECK. This proves
+  // it bites through the full HTTP stack and that translateErrors words it.
+  const outsideDatesTerm = await mutate(
+    principalCookie,
+    "academic.term.create",
+    {
+      organizationId: orgId,
+      schoolId: schoolA.id,
+      data: {
+        academicYearId: currentYearA.id,
+        name: "Smoke Outside Term",
+        sequenceNumber: 9,
+        startDate: "2026-04-01",
+        endDate: "2026-09-30",
+      },
+    },
+  );
+  report(
+    "term dates outside their year are refused BY THE TRIGGER, worded",
+    outsideDatesTerm.code === "CONFLICT",
+    `code ${outsideDatesTerm.code}`,
+  );
+
   console.log("\nroles × procedures — baseline matrix");
 
   /**
@@ -995,6 +1140,21 @@ async function main() {
                 d.length === 2 &&
                 d.every((r: any) => r.sectionId === sectionA.id),
       },
+      {
+        role,
+        cookie,
+        path: "academic.term.list",
+        input: { organizationId: orgId, academicYearId: currentYearA.id },
+        method: "query",
+        // Every seeded role reads the current year's terms — the split year
+        // is the term list's exactness anchor (manual UI testing cannot
+        // create terms; no term UI exists yet).
+        expect: OK,
+        dataCheck: (d) =>
+          Array.isArray(d) &&
+          d.length === 2 &&
+          d.every((t: any) => t.schoolId === schoolA.id),
+      },
     );
   };
 
@@ -1068,6 +1228,27 @@ async function main() {
       },
       method: "mutation",
       expect: forbidden,
+    },
+    // The read_history gate on the NEW edge: the same closed year the year
+    // tests pin, reached through its term. The principal's positive cell is
+    // the non-vacuity control — the term exists, so the teacher's 404 is the
+    // gate biting.
+    {
+      role: "class_teacher",
+      cookie: teacherCookie,
+      path: "academic.term.byId",
+      input: { organizationId: orgId, id: termClosedA.id },
+      method: "query",
+      expect: { kind: "code", code: "NOT_FOUND" },
+    },
+    {
+      role: "principal",
+      cookie: principalCookie,
+      path: "academic.term.byId",
+      input: { organizationId: orgId, id: termClosedA.id },
+      method: "query",
+      expect: OK,
+      dataCheck: (d) => d?.id === termClosedA.id,
     },
   );
 

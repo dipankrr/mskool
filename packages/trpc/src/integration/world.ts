@@ -20,6 +20,7 @@ import {
   studentPortalAccess,
   students,
   subjects,
+  terms,
   user,
 } from "@repo/db/schema";
 import {
@@ -27,6 +28,7 @@ import {
   assignmentService,
   organizationService,
   subjectService,
+  termService,
 } from "@repo/services";
 import { and, eq, isNull } from "drizzle-orm";
 
@@ -272,6 +274,37 @@ async function findOrCreateSectionTeacherAssignment(
   return assignmentService.createSectionTeacherAssignment(scope, input);
 }
 
+/**
+ * Keyed on (year, sequenceNumber) — the same triple the year-sequence unique
+ * index enforces. Through the service, which re-reads the parent year inside
+ * the transaction; the dates here are inside their year's range by
+ * construction, because a fixture that tripped `terms_dates_within_year_trg`
+ * would abort the run rather than warn.
+ */
+async function findOrCreateTerm(
+  scope: SchoolScope,
+  input: {
+    academicYearId: string;
+    name: string;
+    sequenceNumber: number;
+    startDate: string;
+    endDate: string;
+  },
+) {
+  const [existing] = await db
+    .select()
+    .from(terms)
+    .where(
+      and(
+        eq(terms.academicYearId, input.academicYearId),
+        eq(terms.sequenceNumber, input.sequenceNumber),
+      ),
+    );
+  if (existing) return existing;
+
+  return termService.createTerm(scope, input);
+}
+
 async function findOrCreateStudent(
   organizationId: string,
   schoolId: string,
@@ -361,6 +394,13 @@ export interface IntegrationWorld {
   /** Closed by the end test; the fixture re-opens it on the next run. */
   staScratch6bId: string;
   staB1Id: string;
+
+  termA1T1Id: string;
+  termA1T2Id: string;
+  /** Lives on the CLOSED year — the read_history control. */
+  termClosedAId: string;
+  /** Same name as the closed year's, foreign org — the byId control. */
+  termB1Id: string;
 
   users: {
     adminA: string;
@@ -588,6 +628,41 @@ export async function buildWorld(): Promise<IntegrationWorld> {
     subjectId: subjectMathB1.id,
   });
 
+  // --- Terms: the year's subdivisions -----------------------------------------
+  // The current year is split (two terms), the closed year and B1 are not —
+  // a "Full Year" row each. That gives the read_history gate a NON-VACUOUS
+  // control on the closed year: the principal's list must return a real row,
+  // so an empty teacher answer is the pin biting and not an empty table. B1's
+  // same-named row is the cross-tenant byId control.
+  const termA1T1 = await findOrCreateTerm(scopeA1, {
+    academicYearId: currentYearA.id,
+    name: "ITG Term 1",
+    sequenceNumber: 1,
+    startDate: "2025-04-01",
+    endDate: "2025-09-30",
+  });
+  const termA1T2 = await findOrCreateTerm(scopeA1, {
+    academicYearId: currentYearA.id,
+    name: "ITG Term 2",
+    sequenceNumber: 2,
+    startDate: "2025-10-01",
+    endDate: "2026-03-31",
+  });
+  const termClosedA = await findOrCreateTerm(scopeA1, {
+    academicYearId: closedYearA.id,
+    name: "ITG Full Year",
+    sequenceNumber: 1,
+    startDate: "2024-04-01",
+    endDate: "2025-03-31",
+  });
+  const termB1 = await findOrCreateTerm(scopeB1, {
+    academicYearId: yearB1.id,
+    name: "ITG Full Year",
+    sequenceNumber: 1,
+    startDate: "2025-04-01",
+    endDate: "2026-03-31",
+  });
+
   // --- Student track -----------------------------------------------------------
   const parent = await findOrCreateUser("parent");
   const ownedStudent = await findOrCreateStudent(orgA.id, schoolA1.id, "ITG-0001");
@@ -624,6 +699,10 @@ export async function buildWorld(): Promise<IntegrationWorld> {
     staHomeroom6aId: staHomeroom6a.id,
     staScratch6bId: staScratch6b.id,
     staB1Id: staB1.id,
+    termA1T1Id: termA1T1.id,
+    termA1T2Id: termA1T2.id,
+    termClosedAId: termClosedA.id,
+    termB1Id: termB1.id,
     users: {
       adminA: adminA.id,
       principalA1: principalA1.id,
