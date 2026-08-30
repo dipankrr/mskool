@@ -34,3 +34,7 @@ export * from "./contracts/term.contract";
 
 // Enrollments: the year anchor — one row per student per academic year.
 export * from "./contracts/enrollment.contract";
+
+// Students: the identity registry — written once at admission, read through
+// the year anchor everywhere else.
+export * from "./contracts/student.contract";
