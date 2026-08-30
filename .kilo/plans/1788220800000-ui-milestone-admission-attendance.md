@@ -163,21 +163,38 @@ where the switchers' data changed.
 admin admits a student, searches, duplicate admission number wording
 (OWNER: pending on-screen walk with the seed logins).
 
-## Chunk U2 — `feat(web): student detail, enrollment, section assignment`
+## Chunk U2 — `feat(web): student detail, enrollment, section assignment` — ✅ DONE (2026-08-31)
 
-- [ ] Student detail page `(dashboard)/students/[studentId]`: profile card,
-      edit dialog (`updateStudentSchema`), deactivate (`student:delete`,
-      SENSITIVE — confirm dialog), enrollment history from
-      `enrollment.list`/byId.
-- [ ] Enroll into a session (`enrollment.create` — year + class pickers),
-      then assign section + roll number (`enrollment.assignSection`);
-      the year-anchor rule means enrollment is per-year and the UI shows it
-      that way (one row per session, never edited year-over-year).
-- [ ] The refused re-pointing of an assigned section (section_transfer_log
-      deferral) surfaces with its honest wording.
+- [x] Student detail page `(dashboard)/students/[studentId]`: breadcrumb,
+      profile card (identity + contact), edit dialog
+      (`updateStudentSchema`, prefilled; identity/status absent from the
+      form because the contract omits them), deactivate behind
+      `student:delete` (SENSITIVE) with the records-kept confirm; the
+      register rows link here.
+- [x] Enrollment card shows the ACTIVE session in three states matching the
+      status machine's admission track: not enrolled (→ Enroll), enrolled
+      without a section (→ Assign section), sectioned (settled — NO
+      re-pointing, per the transfer deferral). Enroll dialog: class picker +
+      optional section (status derives admitted vs section_assigned);
+      session comes from the switcher, not a picker. Assign-section dialog:
+      section + optional roll number.
+- [x] Dialogs close on SUCCESS only — the hooks return `mutateAsync`
+      promises so a refused submission keeps the form up beside the error
+      toast (bug found and fixed during the browser walk).
+- [x] **Browser walk (agent-browser), org admin over HTTP:** signed in →
+      register rendered the seeded students with the Class column (Aditi
+      "Class 6 · A", Rohan "Class 6", Zoya not-enrolled — correct per
+      branch); admitted DEMO-1000 Kiran Rao (date inputs needed JS-set
+      values — see the drift note); searched and found her; duplicate
+      admission number refused, dialog stayed open; detail page → enrolled
+      into Class 6 without a section (status "Admitted" shown) → assigned
+      Section A roll 12 (status "Section assigned") → the assign action
+      correctly disappeared; edit dialog added a phone and the card
+      reflected it. Deactivate not clicked (destructive; same confirm
+      pattern as branches, machine-verified).
 
-**Verify:** `check-types` 8/8; web unit suite green; manual walk — admit →
-enroll → assign section end to end with the seeded logins.
+**Verify:** `check-types` 8/8 ✅; unit suite green ✅; browser walk end to
+end ✅.
 
 ## Chunk U3 — `feat(web): the attendance calendar`
 

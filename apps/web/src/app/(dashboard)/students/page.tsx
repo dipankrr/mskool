@@ -1,6 +1,7 @@
 "use client";
 
 import { PlusIcon, SearchIcon, UsersIcon } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { DataTable } from "@/components/data-table";
@@ -117,7 +118,14 @@ export default function StudentsPage() {
         column.display({
           id: "name",
           header: copy.students.fields.firstName,
-          cell: ({ row }) => <span className="font-medium">{fullName(row.original)}</span>,
+          cell: ({ row }) => (
+            <Link
+              href={`/students/${row.original.id}`}
+              className="font-medium hover:underline"
+            >
+              {fullName(row.original)}
+            </Link>
+          ),
         }),
         column.display({
           id: "enrolled",
@@ -180,7 +188,12 @@ export default function StudentsPage() {
         renderCard={(row) => (
           <div className="flex items-start justify-between gap-3 rounded-lg border p-4">
             <div className="flex min-w-0 flex-col gap-1">
-              <span className="truncate font-medium">{fullName(row)}</span>
+              <Link
+                href={`/students/${row.id}`}
+                className="truncate font-medium hover:underline"
+              >
+                {fullName(row)}
+              </Link>
               <span className="text-muted-foreground truncate text-xs">
                 {enrolledLabel(row.id)}
               </span>
@@ -214,9 +227,15 @@ export default function StudentsPage() {
         open={formOpen}
         onOpenChange={setFormOpen}
         pending={create.isPending}
-        onSubmit={(data) => {
-          create.submit(data);
-          setFormOpen(false);
+        onSubmit={async (data) => {
+          // Close on success only: a refused admission keeps the form up
+          // with the toast's wording beside it.
+          try {
+            await create.submit(data);
+            setFormOpen(false);
+          } catch {
+            // The error toast is shown by the hook; the form stays.
+          }
         }}
       />
     </>

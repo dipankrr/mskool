@@ -171,6 +171,51 @@ export const copy = {
       female: "Female",
       other: "Other",
     },
+
+    // U2 — the detail page and the enrollment actions.
+    detailSubtitle: "The student's record: identity, session enrollment, and actions.",
+    edit: "Edit details",
+    editTitle: "Edit student details",
+    updated: "Student updated.",
+    deactivate: "Deactivate",
+    deactivateTitle: "Deactivate this student's record?",
+    deactivateBody:
+      "The record leaves the active register but is not deleted — enrollments, fees and results keep pointing at it. A leaving student who needs a certificate needs a transfer instead.",
+    deactivateConfirm: "Deactivate",
+    deactivated: "Student deactivated.",
+    enrollmentTitle: "This session",
+    enrollment: {
+      title: "Enrollment",
+      none:
+        "Not enrolled in the active session yet. Enrolling anchors this student to a class for the year.",
+      enroll: "Enroll in session",
+      enrollTitle: "Enroll into the active session",
+      enrollHelp:
+        "Enrolling anchors the student to a class for the session shown in the switcher. To enroll into a different session, switch sessions first.",
+      class: "Class",
+      section: "Section",
+      sectionOptionalHelp:
+        "Optional now — leave blank to admit without a section and assign one later.",
+      enrolled: "Student enrolled.",
+      rollNumber: "Roll number",
+      rollNumberHelp: "Optional. The seat number within the section.",
+      assignSection: "Assign section",
+      assignSectionTitle: "Assign the first section",
+      assignSectionHelp:
+        "A student's first section assignment. Moving a student who already has one needs a transfer — that flow is not built yet, so this cannot be undone here.",
+      assigned: "Section assigned.",
+      statusLabel: "Status",
+      noSection: "No section yet",
+    },
+    /** The enrollment life cycle (lowercase enum → words). */
+    enrollmentStatuses: {
+      admitted: "Admitted",
+      section_assigned: "Section assigned",
+      active: "Active",
+      transferred_out: "Transferred out",
+      withdrawn: "Withdrawn",
+      passed_out: "Passed out",
+    },
   },
 
   /** Chunk 8. `school.*` — the trust's branches. */
