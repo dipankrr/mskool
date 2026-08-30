@@ -3,7 +3,7 @@
 import { healthRouter, router } from "./trpc";
 import { academicRouter } from "./routers/academic.router";
 import { assignmentRouter } from "./routers/assignment.router";
-import { enrollmentRouter, portalEnrollmentRouter } from "./routers/enrollment.router";
+import { enrollmentRouter, portalRouter } from "./routers/enrollment.router";
 import { meRouter } from "./routers/me.router";
 import { schoolRouter } from "./routers/school.router";
 import { subjectRouter } from "./routers/subject.router";
@@ -28,7 +28,7 @@ export const appRouter = router({
   enrollment: enrollmentRouter,
   // The student portal: portal.enrollment.* — ownership only, no can(). More
   // portal domains join this sub-router as they land.
-  portal: portalEnrollmentRouter,
+  portal: portalRouter,
 });
 
 

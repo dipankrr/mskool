@@ -6,55 +6,73 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
-**Phase 2 slices 1–4 — subjects, the teaching-assignment layer, terms, and
-subject-level access — are COMPLETE (2026-08-30).** The authoritative slice-by-slice
-plan and commit ledger live in
-`.kilo/plans/1788048000000-phase2-subjects-terms-enrollments.md`; its slice order is
-S1 subjects → S2 the assignment layer → S3 terms → S4 `checkSubjectAccess` + the
-student owner-resolver → S5 enrollments. **S1–S4 are done; S5 (enrollments) is next
-and LAST.**
+**PHASE 2 IS COMPLETE (2026-08-30).** All five slices — subjects, the teaching-
+assignment layer, terms, subject-level access + the student owner-resolver, and
+enrollments — are done, integrated, smoke-proven, and seeded. The slice-by-slice
+plan and commit ledger live in `.kilo/plans/1788048000000-phase2-subjects-terms-
+enrollments.md`. **What ships:** 38 REST endpoints over the academic structure,
+subjects, the teaching-assignment layer, terms, enrollments, and the student
+portal's first read; the subject-level access enforcement (ADR-029) that was
+Phase 1's one open authorization hole; and the ownership-only portal track.
 
+- **Deliberately deferred, recorded so nobody assumes they shipped:**
+  `section_transfer_log` (mid-year section moves — the enrollment service
+  refuses to re-point an assigned section in words, so the history-preserving
+  path cannot be skipped), `student_subject_enrollments` (electives; the exam
+  chain's authority), `subject_groups` + `system_subject_catalog` (CBSE
+  grouping and board codes), `subject_name_history` (marksheet reprints), and
+  `academic_calendar`. Each lands with the flow that needs it.
 - **Schema:** `subjects`, `class_subject_mappings`, `section_teacher_assignments`
-  (`0003`/`0004`), `terms` (`0005`) — all purely additive. `terms` carries a
-  hand-written `terms_dates_within_year_trg` trigger (a term's dates must sit
-  inside its year's — a cross-table rule no CHECK can hold); `db:verify` is now
-  **34** assertions and proves the trigger bites on INSERT and UPDATE. None of these
-  tables is a scope node; every one carries the denormalised `organizationId` +
-  `schoolId` for `scopeWhere`.
+  (`0003`/`0004`), `terms` (`0005`), `student_enrollments` (`0006`) — all purely
+  additive. `terms` carries a hand-written `terms_dates_within_year_trg`
+  trigger; `db:verify` is **37** assertions and proves every constraint beyond
+  drizzle-kit's sight by name. None of these tables is a scope node; every one
+  carries the denormalised `organizationId` + `schoolId` for `scopeWhere`.
 - **The vertical slices** all follow `school.router.ts` / the academic routers:
-  contract → service (required `DataScope`, parent re-reads inside the transaction)
-  → thin router (B5 explicit-parent creates, B6 owner-resolved reads with overlap
-  gates, cover mutations) → OpenAPI meta/output → negative integration + smoke
-  assertions. REST surface: 5 `/subjects`, 4 `/subject-mappings`, 4
-  `/teacher-assignments`, 4 `/terms` (31 total). **Terms reuse the
-  `academic_year:*` permission family**, and their reads compose `read_history`
-  through the exported `yearVisibilityWhere` — every year-scoped read takes
-  `includeHistory` as a REQUIRED argument.
-- **Subject-level access (ADR-029, the Phase-1 leftover) is enforced.** A
-  subject-content write composes TWO facts at the builder:
-  `staffProcedure(permission, { subjectGate: true })` requires the section/subject
-  pair in input and runs `assignmentService.hasSubjectAssignment` after the
-  permission gate; a miss is NOT_FOUND, generic, indistinguishable from a
-  nonexistent pair. `SUBJECT_GATED_WRITES` is enforced statically by
-  `check:builders`. The HTTP smoke leg of this proof rides with the first consumer
-  endpoint (marks entry, Phase 5).
-- **Verification surface:** `pnpm test:integration` = **63**; `pnpm smoke:authz`
-  all-pass incl. `assignment.*` and term matrix cells; `pnpm test` = 86 authz + 38
-  web + 32 trpc unit tests.
+  contract → service (required `DataScope`, parent re-reads inside the
+  transaction, per-table scope columns) → thin router (B5 explicit-parent
+  creates, B6 owner-resolved reads with overlap gates, cover mutations) →
+  OpenAPI meta/output → negative integration + smoke assertions. Terms reuse
+  the `academic_year:*` permission family; `yearVisibilityWhere` is the one
+  definition of the year-edge rule and `includeHistory` is a REQUIRED argument
+  on every year-scoped read.
+- **Subject-level access (ADR-029) is enforced.** A subject-content write
+  composes TWO facts at the builder: the role grant and
+  `assignmentService.hasSubjectAssignment` via `staffProcedure(permission,
+  { subjectGate: true })`; a miss is NOT_FOUND, generic, indistinguishable from
+  a nonexistent pair. `SUBJECT_GATED_WRITES` is enforced statically by
+  `check:builders`. The HTTP smoke leg of this proof rides with the first
+  consumer endpoint (marks entry, Phase 5).
+- **The portal track is live** (`portal.enrollment.list`): ownership only, no
+  `can()`, no `organizationId` in input — the owned-student list is the whole
+  filter, and the smoke proves the inactive access row stays invisible over
+  HTTP. Every future portal domain joins `portalRouter` under the same rules.
+- **Verification surface:** `pnpm test:integration` = **73** (was 27 pre-Phase 2);
+  `pnpm smoke:authz` = **116 checks, all-pass**; `pnpm test` = 86 authz + 38 web +
+  32 trpc unit tests; `pnpm db:verify` = 37.
 - **A lesson worth keeping:** S2's create paths shipped type-clean but BROKEN —
-  the parent re-reads compiled `scopeWhere` columns from the wrong table (a runtime
-  SQL error, invisible to `tsc`), and `endAssignment`'s successor insert ran in an
-  independent transaction. Nothing caught either until the first integration run
-  exercised them against real Postgres. New write paths are not proven by
-  `check-types`; they are proven by the suite's first live run. Corollary now
-  written into the services: **scope columns are per-table** — hand a `scopeWhere`
-  a column set from another table and you get the missing-FROM-clause error above.
-- **Authz matrix additions** (S2.3, owner-reviewed): `subject_mapping.*` and
-  `teacher_assignment.*` resources (no `delete` — mappings are corrected
-  structurally, assignments are ended); principal manages both, class_teacher reads
-  mappings, subject_teacher reads both, org_admin via `ALL_PERMISSIONS`. A wider
-  role-matrix rewrite was rejected as an unrequested policy change — recorded in the
-  plan file; treat every `defaultPermissions.ts` diff as policy.
+  the parent re-reads compiled `scopeWhere` columns from the wrong table (a
+  runtime SQL error, invisible to `tsc`), and `endAssignment`'s successor insert
+  ran in an independent transaction. Nothing caught either until the first
+  integration run exercised them against real Postgres. New write paths are not
+  proven by `check-types`; they are proven by the suite's first live run.
+  Corollary: **scope columns are per-table**, and **B6 owner resolvers resolve
+  the DEEPEST owning node** (the enrollment byId bug: resolving the school made
+  every branch row readable by id).
+- **Authz matrix additions** (owner-reviewed): `subject_mapping.*` and
+  `teacher_assignment.*` (S2.3); one fixture-only grant (subject_teacher ×
+  `enrollment:read` in the demo + integration orgs) marks an OPEN policy
+  question — should the default matrix carry it? A wider role-matrix rewrite
+  was rejected as unrequested policy change; treat every
+  `defaultPermissions.ts` diff as policy.
+
+**Next phase: Phase 3 — attendance** (`attendance_policies`, `periods`,
+`attendance_records`, `attendance_corrections`, `daily_attendance_status`,
+`attendance_summary`). Read `docs/DOMAIN.md` §4 first: the section snapshot at
+marking time, the daily/periodwise normalisation, and the
+read-`daily_attendance_status`-only rule (hard rule 5) are the load-bearing
+decisions. Marks entry (Phase 5) is the first `subjectGate` consumer —
+`check:builders` will enforce its shape.
 
 The security-review and authz-refactor history below is superseded by the numbers
 above.

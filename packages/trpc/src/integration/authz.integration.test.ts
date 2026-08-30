@@ -40,13 +40,14 @@ import type { Permission } from "@repo/authz";
 import {
   academicService,
   assignmentService,
+  enrollmentService,
   organizationService,
   subjectService,
   termService,
 } from "@repo/services";
 import { getOwnedStudentIds } from "@repo/authz";
 import { db } from "@repo/db";
-import { classes } from "@repo/db/schema";
+import { classes, sections } from "@repo/db/schema";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { router as makeRouter } from "../trpc";
@@ -430,6 +431,109 @@ const updateTermRouter = makeRouter({
 const marksCreateRouter = makeRouter({
   probe: staffProcedure("marks:create", { subjectGate: true }).mutation(
     ({ ctx }) => ({ sectionId: ctx.scope.sectionId }),
+  ),
+});
+
+// --- probes: enrollments ---------------------------------------------------------
+
+const enrollmentOwner: OwnerResolver = async (organizationId, id) => {
+  const owner = await enrollmentService.getEnrollmentOwnerNode(organizationId, id);
+  if (!owner) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Enrollment not found." });
+  }
+  return owner;
+};
+
+const enrollmentListRouter = makeRouter({
+  probe: staffListProcedure("enrollment:read")
+    .input(
+      z.object({
+        academicYearId: z.uuid(),
+        classId: z.uuid().optional(),
+        sectionId: z.uuid().optional(),
+      }),
+    )
+    .query(({ ctx, input }) =>
+      enrollmentService.listEnrollments(
+        ctx.scopes,
+        input.academicYearId,
+        input.classId,
+        input.sectionId,
+      ),
+    ),
+});
+
+const enrollmentByIdRouter = makeRouter({
+  probe: staffProcedure("enrollment:read", {
+    resolveOwner: enrollmentOwner,
+    gate: "overlap",
+  }).query(async ({ ctx, input }) => {
+    const enrollment = await enrollmentService.getEnrollmentById(
+      ctx.scope,
+      rowId(input),
+    );
+    if (!enrollment) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Enrollment not found." });
+    }
+    return enrollment;
+  }),
+});
+
+const enrollmentStatuses = z.enum([
+  "admitted",
+  "section_assigned",
+  "active",
+  "transferred_out",
+  "withdrawn",
+  "passed_out",
+]);
+
+const createEnrollmentRouter = makeRouter({
+  probe: staffProcedure("enrollment:create")
+    .input(
+      z.object({
+        schoolId: z.uuid(),
+        data: z.object({
+          studentId: z.uuid(),
+          academicYearId: z.uuid(),
+          classId: z.uuid(),
+          sectionId: z.uuid().optional(),
+        }),
+      }),
+    )
+    .mutation(({ ctx, input }) =>
+      enrollmentService.createEnrollment(ctx.scope as never, input.data),
+    ),
+});
+
+const assignSectionRouter = makeRouter({
+  probe: staffProcedure("enrollment:update", { resolveOwner: enrollmentOwner })
+    .input(
+      z.object({
+        id: z.uuid(),
+        sectionId: z.uuid(),
+        rollNumber: z.string().optional(),
+      }),
+    )
+    .mutation(({ ctx, input }) =>
+      enrollmentService.assignSection(ctx.scope, input.id, {
+        sectionId: input.sectionId,
+        rollNumber: input.rollNumber,
+      }),
+    ),
+});
+
+const transitionEnrollmentRouter = makeRouter({
+  probe: staffProcedure("enrollment:update", { resolveOwner: enrollmentOwner })
+    .input(z.object({ id: z.uuid(), to: enrollmentStatuses }))
+    .mutation(({ ctx, input }) =>
+      enrollmentService.transitionEnrollment(ctx.scope, input.id, input.to),
+    ),
+});
+
+const portalEnrollmentRouter = makeRouter({
+  probe: studentProcedure.query(({ ctx }) =>
+    enrollmentService.listEnrollmentsForStudents(ctx.studentIds),
   ),
 });
 
@@ -1079,6 +1183,240 @@ describe("the subjectGate — subject-level access is a second fact", () => {
       "NOT_FOUND",
       "Resource not found.",
     );
+  });
+});
+
+// --- enrollments: the year anchor, in both tracks ----------------------------
+
+describe("enrollments — the year anchor, in both tracks", () => {
+  const listAt = (
+    userId: string,
+    filters: { classId?: string; sectionId?: string } = {},
+  ) =>
+    okIds(
+      callerOf(enrollmentListRouter, userId).probe({
+        organizationId: world.orgAId,
+        academicYearId: world.currentYearAId,
+        ...filters,
+      }),
+    );
+
+  it("the section teacher sees EXACTLY her student — the admitted classmate is not hers", async () => {
+    // NO widening: the scope columns carry all four levels, so her section
+    // grant matches only rows whose section is hers. The admitted classmate
+    // has NO section yet, and a NULL never equals her section id.
+    expect(await listAt(U().subjectS6A)).toEqual([world.enrollmentOwnedId]);
+  });
+
+  it("the class teacher sees BOTH — her class grant reaches the admitted row too", async () => {
+    // The admitted row's owning node is its CLASS (no section yet), and the
+    // class teacher's class-level scope matches it.
+    expect(await listAt(U().teacherC6)).toEqual(
+      [world.enrollmentOwnedId, world.enrollmentUngrantedId].sort(),
+    );
+    // The narrowing is convenience on an already-clipped answer.
+    expect(await listAt(U().teacherC6, { sectionId: world.section6aId })).toEqual([
+      world.enrollmentOwnedId,
+    ]);
+    expect(await listAt(U().teacherC6, { classId: world.class6Id })).toEqual(
+      [world.enrollmentOwnedId, world.enrollmentUngrantedId].sort(),
+    );
+  });
+
+  it("byId: her own student resolves; the admitted classmate resolves via the CLASS owner", async () => {
+    const own = await callerOf(enrollmentByIdRouter, U().subjectS6A).probe({
+      organizationId: world.orgAId,
+      id: world.enrollmentOwnedId,
+    });
+    expect(own.id).toBe(world.enrollmentOwnedId);
+
+    // The admitted row has no section, so its owner is the CLASS node — her
+    // 6-A grant reaches into Class 6, and the overlap gate admits her. The
+    // class-fallback semantics, pinned.
+    const admitted = await callerOf(enrollmentByIdRouter, U().subjectS6A).probe({
+      organizationId: world.orgAId,
+      id: world.enrollmentUngrantedId,
+    });
+    expect(admitted.id).toBe(world.enrollmentUngrantedId);
+  });
+
+  it("a cross-ORG enrollment is NOT_FOUND, indistinguishable from a made-up id", async () => {
+    await expectTrpcError(
+      callerOf(enrollmentByIdRouter, U().adminA).probe({
+        organizationId: world.orgAId,
+        id: world.enrollmentB1Id,
+      }),
+      "NOT_FOUND",
+      "Enrollment not found.",
+    );
+  });
+
+  it("a class teacher cannot create an enrollment (permission gate)", async () => {
+    await expectTrpcError(
+      callerOf(createEnrollmentRouter, U().teacherC6).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
+        data: {
+          studentId: world.enrollmentOwnedId,
+          academicYearId: world.currentYearAId,
+          classId: world.class6Id,
+        },
+      }),
+      "FORBIDDEN",
+      "Missing permission: enrollment:create",
+    );
+  });
+
+  it("creating refuses a FOREIGN-ORG student (service guard)", async () => {
+    await expectTrpcError(
+      callerOf(createEnrollmentRouter, U().principalA1).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
+        data: {
+          studentId: world.studentB1Id,
+          academicYearId: world.currentYearAId,
+          classId: world.class6Id,
+        },
+      }),
+      "BAD_REQUEST",
+      "That student is not at this branch. Choose a student from the branch you are working in.",
+    );
+  });
+
+  it("creating refuses a section of ANOTHER YEAR, then of ANOTHER CLASS (service guards)", async () => {
+    // Both would pass every FK: the section's own year and class columns are
+    // what the enrollment must agree with, and only the re-reads know them.
+    // A section of ANOTHER YEAR at the same branch — find-or-created here (a
+    // closed-year section of Class 6), because a cross-BRANCH section would
+    // trip the section re-read before the year agreement is ever reached.
+    const [staleYearSection] = await db
+      .select()
+      .from(sections)
+      .where(
+        and(
+          eq(sections.classId, world.class6Id),
+          eq(sections.academicYearId, world.closedYearAId),
+        ),
+      );
+    const scratchClosed =
+      staleYearSection ??
+      (await academicService.createSection(
+        {
+          organizationId: world.orgAId,
+          schoolId: world.schoolA1Id,
+          classId: null,
+          sectionId: null,
+        },
+        { name: "A", academicYearId: world.closedYearAId, classId: world.class6Id },
+      ));
+
+    await expectTrpcError(
+      callerOf(createEnrollmentRouter, U().principalA1).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
+        data: {
+          studentId: world.ownedStudentId,
+          academicYearId: world.currentYearAId,
+          classId: world.class6Id,
+          sectionId: scratchClosed.id,
+        },
+      }),
+      "BAD_REQUEST",
+      "That section belongs to a different session. Enroll into the session the section belongs to.",
+    );
+
+    // A section of the SIBLING class, same year — find-or-created here so the
+    // sections block's exact counts stay a two-section world.
+    const [existing] = await db
+      .select()
+      .from(sections)
+      .where(
+        and(
+          eq(sections.classId, world.class7Id),
+          eq(sections.academicYearId, world.currentYearAId),
+        ),
+      );
+    const scratch7a =
+      existing ??
+      (await academicService.createSection(
+        {
+          organizationId: world.orgAId,
+          schoolId: world.schoolA1Id,
+          classId: null,
+          sectionId: null,
+        },
+        { name: "A", academicYearId: world.currentYearAId, classId: world.class7Id },
+      ));
+
+    await expectTrpcError(
+      callerOf(createEnrollmentRouter, U().principalA1).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
+        data: {
+          studentId: world.ownedStudentId,
+          academicYearId: world.currentYearAId,
+          classId: world.class6Id,
+          sectionId: scratch7a.id,
+        },
+      }),
+      "BAD_REQUEST",
+      "That section belongs to a different class. Enroll under the class the section teaches.",
+    );
+  });
+
+  it("the status machine refuses an illegal move, worded", async () => {
+    await expectTrpcError(
+      callerOf(transitionEnrollmentRouter, U().adminA).probe({
+        organizationId: world.orgAId,
+        id: world.enrollmentOwnedId,
+        to: "admitted",
+      }),
+      "BAD_REQUEST",
+      "That status change is not allowed right now. Refresh to see the enrollment's current state.",
+    );
+  });
+
+  it("assignSection, the machine, and the transfer boundary (runs late, mutates)", async () => {
+    // FIRST assignment on the admitted row: NULL section, becomes 6-B with a
+    // roll number, status derived to section_assigned.
+    const assigned = await callerOf(assignSectionRouter, U().adminA).probe({
+      organizationId: world.orgAId,
+      id: world.enrollmentUngrantedId,
+      sectionId: world.section6bId,
+      rollNumber: "02",
+    });
+    expect(assigned.sectionId).toBe(world.section6bId);
+    expect(assigned.enrollmentStatus).toBe("section_assigned");
+
+    // A SECOND assignment is the transfer boundary, refused in words — the
+    // history-preserving path is unrepresentable to skip.
+    await expectTrpcError(
+      callerOf(assignSectionRouter, U().adminA).probe({
+        organizationId: world.orgAId,
+        id: world.enrollmentUngrantedId,
+        sectionId: world.section6aId,
+      }),
+      "BAD_REQUEST",
+      "This enrollment already has a section. Moving a student mid-year needs a transfer — that flow is not built yet.",
+    );
+
+    // The machine: section_assigned → active is legal; the UPDATE re-checks
+    // the current state so a concurrent transition loses cleanly.
+    const active = await callerOf(transitionEnrollmentRouter, U().adminA).probe({
+      organizationId: world.orgAId,
+      id: world.enrollmentUngrantedId,
+      to: "active",
+    });
+    expect(active.enrollmentStatus).toBe("active");
+  });
+
+  it("the PORTAL list returns only the OWNED student's enrollment", async () => {
+    // The parent owns one child and is the portal track's whole idea: no
+    // roles, no can(), no organizationId — the owned studentId list IS the
+    // filter. The inactive access row (ungrantedStudent) stays invisible.
+    const rows = await callerOf(portalEnrollmentRouter, U().parent).probe();
+
+    expect(rows.map((r: { id: string }) => r.id)).toEqual([world.enrollmentOwnedId]);
   });
 });
 

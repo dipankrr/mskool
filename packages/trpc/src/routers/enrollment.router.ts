@@ -278,7 +278,7 @@ export const enrollmentRouter = router({
 // Portal track — the student's own view. Ownership only, never can().
 // ---------------------------------------------------------------------------
 
-export const portalEnrollmentRouter = router({
+const portalEnrollmentSubRouter = router({
   // The signed-in login's OWNED students' enrollments. There is no input and
   // there must never be one on this path: the student ids come from the
   // session's portal-access rows, and a client-supplied filter would be the
@@ -301,4 +301,13 @@ export const portalEnrollmentRouter = router({
       // student ids are already the tenancy boundary (ADR-005).
       return enrollmentService.listEnrollmentsForStudents(ctx.studentIds);
     }),
+});
+
+/**
+ * The portal namespace lives one level deep (`portal.enrollment.*`) so every
+ * future portal domain — fees, results, homework — lands beside it under the
+ * same ownership-only track.
+ */
+export const portalRouter = router({
+  enrollment: portalEnrollmentSubRouter,
 });

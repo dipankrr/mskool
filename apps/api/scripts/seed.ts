@@ -42,6 +42,9 @@ import {
   sections,
   sectionTeacherAssignments,
   staff,
+  studentEnrollments,
+  studentPortalAccess,
+  students,
   subjects,
   terms,
   user,
@@ -49,6 +52,7 @@ import {
 import {
   academicService,
   assignmentService,
+  enrollmentService,
   organizationService,
   subjectService,
   termService,
@@ -125,6 +129,16 @@ const CLASS_B_ORDER = 6;
 const TERM_1_NAME = "Term 1";
 const TERM_2_NAME = "Term 2";
 const TERM_FULL_NAME = "Full Year";
+
+// Students + the parent portal. Two Class 6 students — one sectioned (the
+// subject teacher's roster), one admitted with no section yet (the admitted
+// state, live) — and school B's own student for the cross-branch byId denial.
+// The parent login owns BOTH portal-access rows but one is inactive: the
+// portal list must return exactly one child's enrollments.
+const STUDENT_1_ADMISSION = "DEMO-0001";
+const STUDENT_2_ADMISSION = "DEMO-0002";
+const STUDENT_B_ADMISSION = "DEMO-B-0001";
+const PARENT_EMAIL = "parent@demo-trust.test";
 
 async function findOrCreateOrganization() {
   const [existing] = await db
@@ -575,6 +589,106 @@ async function findOrCreateTerm(
   return term;
 }
 
+/**
+ * Students have no service yet (the enrollment slice seeds the anchor; the
+ * student CRUD surface arrives with the admission flow) — the seed inserts
+ * directly, keyed on the admission number. better-auth is NOT involved:
+ * students are not logins (ADR-008).
+ */
+async function findOrCreateStudent(
+  organizationId: string,
+  schoolId: string,
+  admissionNumber: string,
+  firstName: string,
+  lastName: string,
+) {
+  const [existing] = await db
+    .select()
+    .from(students)
+    .where(eq(students.admissionNumber, admissionNumber));
+  if (existing) {
+    console.log(`  = student ${admissionNumber} (exists)`);
+    return existing;
+  }
+
+  const [created] = await db
+    .insert(students)
+    .values({
+      organizationId,
+      schoolId,
+      admissionNumber,
+      firstName,
+      lastName,
+      dateOfBirth: "2012-06-15",
+      gender: "female",
+    })
+    .returning();
+  if (!created) throw new Error(`Failed to create student ${admissionNumber}.`);
+  console.log(`  + student ${admissionNumber} (${firstName} ${lastName})`);
+  return created;
+}
+
+async function findOrCreateEnrollment(
+  scope: DataScope & { schoolId: string },
+  input: {
+    studentId: string;
+    academicYearId: string;
+    classId: string;
+    sectionId?: string;
+  },
+) {
+  const [existing] = await db
+    .select()
+    .from(studentEnrollments)
+    .where(
+      and(
+        eq(studentEnrollments.studentId, input.studentId),
+        eq(studentEnrollments.academicYearId, input.academicYearId),
+      ),
+    );
+  if (existing) {
+    console.log("  = enrollment (exists)");
+    return existing;
+  }
+
+  const enrollment = await enrollmentService.createEnrollment(scope, input);
+  console.log(`  + enrollment (${input.sectionId ? "sectioned" : "admitted"})`);
+  return enrollment;
+}
+
+/**
+ * The parent portal's ownership rows (ADR-008). One active, one inactive —
+ * the portal list must return exactly the ACTIVE child's enrollments, which
+ * is the smoke's ownership pin.
+ */
+async function findOrCreatePortalAccess(
+  userId: string,
+  studentId: string,
+  isActive: boolean,
+) {
+  const [existing] = await db
+    .select()
+    .from(studentPortalAccess)
+    .where(
+      and(
+        eq(studentPortalAccess.userId, userId),
+        eq(studentPortalAccess.studentId, studentId),
+      ),
+    );
+  if (existing) {
+    console.log(`  = portal access (${isActive ? "active" : "inactive"}) (exists)`);
+    return existing;
+  }
+
+  const [created] = await db
+    .insert(studentPortalAccess)
+    .values({ userId, studentId, isActive })
+    .returning();
+  if (!created) throw new Error("Failed to create portal access.");
+  console.log(`  + portal access (${isActive ? "active" : "inactive"})`);
+  return created;
+}
+
 async function main() {
   // The seed writes known-password logins. That must never touch production.
   if (process.env.NODE_ENV === "production") {
@@ -866,11 +980,75 @@ async function main() {
     endDate: "2026-03-31",
   });
 
+  // --- Students + enrollments + the parent portal ------------------------------
+  //
+  // The smoke's enrollment assertions and the FIRST live portal test. Two
+  // Class 6 students (one sectioned, one admitted), school B's own student,
+  // and a parent whose ownership list covers both children with one row
+  // deliberately inactive.
+  const student1 = await findOrCreateStudent(
+    organization.id,
+    schoolA.id,
+    STUDENT_1_ADMISSION,
+    "Aditi",
+    "Sharma",
+  );
+  const student2 = await findOrCreateStudent(
+    organization.id,
+    schoolA.id,
+    STUDENT_2_ADMISSION,
+    "Rohan",
+    "Verma",
+  );
+  const studentB = await findOrCreateStudent(
+    organization.id,
+    schoolB.id,
+    STUDENT_B_ADMISSION,
+    "Zoya",
+    "Khan",
+  );
+
+  const enrollment1 = await findOrCreateEnrollment(scopeA, {
+    studentId: student1.id,
+    academicYearId: currentYearA.id,
+    classId: classA.id,
+    sectionId: sectionA.id,
+  });
+  const enrollment2 = await findOrCreateEnrollment(scopeA, {
+    studentId: student2.id,
+    academicYearId: currentYearA.id,
+    classId: classA.id,
+  });
+  await findOrCreateEnrollment(scopeB, {
+    studentId: studentB.id,
+    academicYearId: yearB.id,
+    classId: classB.id,
+    sectionId: sectionB.id,
+  });
+
+  const parentUser = await findOrCreateUser(PARENT_EMAIL, "Demo Parent");
+  await findOrCreatePortalAccess(parentUser.id, student1.id, true);
+  await findOrCreatePortalAccess(parentUser.id, student2.id, false);
+
+  // Fixture-ONLY grant, mirroring the integration world: the demo org's
+  // subject teacher exercises the enrollment read in the smoke's roster
+  // cell. Owner policy decides separately whether the default matrix should
+  // carry it.
+  await db
+    .insert(orgRolePermissions)
+    .values({
+      organizationId: organization.id,
+      roleType: "subject_teacher",
+      permission: "enrollment:read",
+    })
+    .onConflictDoNothing();
+
   // A previous run may have left a cached snapshot that predates these grants.
   await invalidateUserAuthCache(adminUser.id);
   await invalidateUserAuthCache(principalUser.id);
   await invalidateUserAuthCache(teacherUser.id);
   await invalidateUserAuthCache(subjectTeacherUser.id);
+  await invalidateUserAuthCache(parentUser.id);
 
   console.log(`
 Done.
@@ -894,6 +1072,11 @@ Done.
 
   terms (A)      ${term1A.name}, ${term2A.name} → ${currentYearA.name}; ${termFullClosedA.name} → ${closedYearA.name} (closed)
   terms (B)      ${termFullB.name} → ${yearB.name}  — same name as A's closed year, by design
+
+  students (A)   ${STUDENT_1_ADMISSION} (6-A, sectioned), ${STUDENT_2_ADMISSION} (admitted, no section)
+  students (B)   ${STUDENT_B_ADMISSION} (${classB.name})
+  enrollments    one per student per year — the year anchor
+  parent         ${PARENT_EMAIL} → owns both A students (one access row inactive)
 
   ${ADMIN_EMAIL}            org_admin @ org         → both schools
   ${PRINCIPAL_EMAIL}        principal @ school A    → school A only

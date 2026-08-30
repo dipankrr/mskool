@@ -552,8 +552,36 @@ SQL: terms stand ALONE (no separate term-structure table). `terms.result_mode`
       leak `assertStudentOwnership` prevents). Verify ✅ check-types 8/8;
       check:builders green; check:openapi 38 endpoints (7 new); integration 63/63;
       unit 86+38+32 (enrollment behaviour exercised in S5.4).
-- [ ] S5.4 `test: enrollments in integration, smoke, and seed`
-- [ ] S5.5 `docs: TASKS.md — Phase 2 complete`
+- [x] S5.4 `test: enrollments in integration, smoke, and seed` — **DONE
+      (2026-08-30), integration 73 (was 63), smoke 116/116.** Integration: the
+      no-widening crown (section teacher sees EXACTLY her student; the class
+      teacher sees both — the admitted row's class-fallback owner included);
+      byId via the class owner for the admitted row; cross-org NOT_FOUND;
+      create denials at the permission gate and the service's foreign-student /
+      section-year / section-class guards (worded by translateErrors); the
+      status machine (illegal move refused in words; the UPDATE re-check);
+      assignSection + the transfer boundary; the PORTAL list (ownership only,
+      the inactive access row invisible). Smoke: roster cells for all four
+      roles, the byId pair, no-trace denials, and the parent portal's FIRST
+      live HTTP proof (exactly the active child's enrollment). Seed: two Class
+      6 students (one sectioned, one admitted), school B's student, a parent
+      with one active + one inactive access row, and a fixture-only grant
+      (subject_teacher × enrollment:read) flagged as an open policy question.
+      **One namespace bug caught by the smoke:** the portal router was
+      registered flat (`portal.list`) instead of nested
+      (`portal.enrollment.list`) — the smoke's first live portal call failed
+      NOT_FOUND and the structure was fixed before anything depended on it.
+      **One fixture lesson:** tests that mutate shared fixture rows must be
+      paired with a fixture repair (the world resets the admitted row's
+      section each build), or run order silently changes what a later run
+      asserts.
+- [x] S5.5 `docs: TASKS.md — Phase 2 complete` — **DONE (2026-08-30).** The
+      resume-here records the phase as closed WITH its deliberate deferrals
+      (`section_transfer_log`, `student_subject_enrollments`,
+      `subject_groups`, `system_subject_catalog`, `subject_name_history`,
+      `academic_calendar` — each lands with the flow that needs it), the
+      verification surface, the two structural lessons, and the pointer at
+      Phase 3 (attendance).
 
 ---
 
@@ -591,6 +619,9 @@ Drift notes:
   two latent S2.2 bugs (wrong-table scope columns in every parent re-read; the
   `endAssignment` successor insert in a nested independent transaction) and the five
   error translations the new tests pin. Rows 9 onward shift by one.
+- 2026-08-30: rows 20–24 (S5.4 + S5.5) land as ONE commit at the owner's request
+  (the squash exception in Locked decisions). Phase 2 is closed; the plan is
+  complete.
 
 
 

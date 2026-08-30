@@ -32,6 +32,7 @@ import {
   schools,
   sections,
   sectionTeacherAssignments,
+  studentEnrollments,
   subjects,
   terms,
   user,
@@ -54,6 +55,7 @@ const ADMIN_EMAIL = "admin@demo-trust.test";
 const PRINCIPAL_EMAIL = "principal@demo-trust.test";
 const TEACHER_EMAIL = "teacher@demo-trust.test";
 const SUBJECT_TEACHER_EMAIL = "subject-teacher@demo-trust.test";
+const PARENT_EMAIL = "parent@demo-trust.test";
 const SEED_PASSWORD = "Password123!";
 
 let failures = 0;
@@ -297,10 +299,31 @@ async function main() {
     );
   }
 
+  // Enrollments: Class 6's two students (one sectioned into 6-A, one admitted
+  // with no section) and school B's own — the cross-branch byId control.
+  const enrollmentsA = await db
+    .select()
+    .from(studentEnrollments)
+    .where(eq(studentEnrollments.classId, classA.id));
+  const enrollmentSectioned = enrollmentsA.find((e) => e.sectionId === sectionA.id);
+  const [enrollmentB] = await db
+    .select()
+    .from(studentEnrollments)
+    .where(eq(studentEnrollments.schoolId, schoolB.id));
+
+  if (enrollmentsA.length !== 2 || !enrollmentSectioned || !enrollmentB) {
+    throw new Error(
+      "Enrollment seed incomplete — expected exactly two enrollments on Class 6 " +
+        "(one sectioned, one admitted) and one in school B. " +
+        "Run `pnpm db:seed` (re-seeding is idempotent).",
+    );
+  }
+
   const adminCookie = await signIn(ADMIN_EMAIL);
   const principalCookie = await signIn(PRINCIPAL_EMAIL);
   const teacherCookie = await signIn(TEACHER_EMAIL);
   const subjectTeacherCookie = await signIn(SUBJECT_TEACHER_EMAIL);
+  const parentCookie = await signIn(PARENT_EMAIL);
   const orgId = organization.id;
 
   console.log("self-registration is closed (ADR-021)");
@@ -893,6 +916,121 @@ async function main() {
     `code ${outsideDatesTerm.code}`,
   );
 
+  console.log("\nenrollments — the year anchor, and the portal's first live proof");
+
+  const enrollmentList = await query(principalCookie, "enrollment.list", {
+    organizationId: orgId,
+    academicYearId: currentYearA.id,
+  });
+  report(
+    "principal lists the year's enrollments",
+    enrollmentList.ok &&
+      Array.isArray(enrollmentList.data) &&
+      enrollmentList.data.length === 2 &&
+      enrollmentList.data.every((e: any) => e.schoolId === schoolA.id),
+    enrollmentList.ok ? `got ${enrollmentList.data?.length}` : `code ${enrollmentList.code}`,
+  );
+
+  // NO widening: the section teacher's own grant is the whole answer — the
+  // admitted classmate has no section and a NULL never equals her section id.
+  const teacherEnrollmentList = await query(teacherCookie, "enrollment.list", {
+    organizationId: orgId,
+    academicYearId: currentYearA.id,
+  });
+  report(
+    "class_teacher lists both students (her class grant reaches the admitted row)",
+    teacherEnrollmentList.ok &&
+      Array.isArray(teacherEnrollmentList.data) &&
+      teacherEnrollmentList.data.length === 2,
+  );
+
+  const subjectTeacherEnrollmentList = await query(
+    subjectTeacherCookie,
+    "enrollment.list",
+    { organizationId: orgId, academicYearId: currentYearA.id },
+  );
+  report(
+    "subject_teacher sees EXACTLY her section's student",
+    subjectTeacherEnrollmentList.ok &&
+      Array.isArray(subjectTeacherEnrollmentList.data) &&
+      subjectTeacherEnrollmentList.data.length === 1 &&
+      subjectTeacherEnrollmentList.data[0]?.id === enrollmentSectioned.id,
+    subjectTeacherEnrollmentList.ok
+      ? `got ${subjectTeacherEnrollmentList.data?.length}`
+      : `code ${subjectTeacherEnrollmentList.code}`,
+  );
+
+  // The admitted row's owner is its CLASS — the byId read resolves for anyone
+  // whose grant reaches the class; the branch-B row stays NOT_FOUND for the
+  // principal, with the org admin's positive read as the non-vacuity control.
+  const principalReadsBEnrollment = await query(
+    principalCookie,
+    "enrollment.byId",
+    { organizationId: orgId, id: enrollmentB.id },
+  );
+  report(
+    "principal CANNOT read school B's enrollment",
+    principalReadsBEnrollment.code === "NOT_FOUND",
+    `code ${principalReadsBEnrollment.code}`,
+  );
+  const adminReadsBEnrollment = await query(adminCookie, "enrollment.byId", {
+    organizationId: orgId,
+    id: enrollmentB.id,
+  });
+  report(
+    "org_admin reads school B's enrollment (non-vacuity)",
+    adminReadsBEnrollment.ok && adminReadsBEnrollment.data?.id === enrollmentB.id,
+  );
+
+  const teacherCreatesEnrollment = await mutate(
+    teacherCookie,
+    "enrollment.create",
+    {
+      organizationId: orgId,
+      schoolId: schoolA.id,
+      data: {
+        studentId: enrollmentSectioned.studentId,
+        academicYearId: currentYearA.id,
+        classId: classA.id,
+      },
+    },
+  );
+  report(
+    "class_teacher holds NO enrollment:create",
+    teacherCreatesEnrollment.code === "FORBIDDEN",
+    `code ${teacherCreatesEnrollment.code}`,
+  );
+
+  // No-trace mutation: an illegal transition is refused before anything is
+  // written, and translateErrors words it.
+  const illegalTransition = await mutate(
+    principalCookie,
+    "enrollment.transition",
+    {
+      organizationId: orgId,
+      id: enrollmentSectioned.id,
+      to: "admitted",
+    },
+  );
+  report(
+    "the status machine refuses an illegal move, worded",
+    illegalTransition.code === "BAD_REQUEST",
+    `code ${illegalTransition.code}`,
+  );
+
+  // THE PORTAL. A parent login with no roles, reading through ownership
+  // alone: the owned-student list is the whole filter, the inactive access
+  // row is invisible, and no client-supplied studentId exists on this path.
+  const portalList = await query(parentCookie, "portal.enrollment.list", undefined);
+  report(
+    "the parent portal lists EXACTLY the active child's enrollment",
+    portalList.ok &&
+      Array.isArray(portalList.data) &&
+      portalList.data.length === 1 &&
+      portalList.data[0]?.id === enrollmentSectioned.id,
+    portalList.ok ? `got ${portalList.data?.length}` : `code ${portalList.code}`,
+  );
+
   console.log("\nroles × procedures — baseline matrix");
 
   /**
@@ -1154,6 +1292,26 @@ async function main() {
           Array.isArray(d) &&
           d.length === 2 &&
           d.every((t: any) => t.schoolId === schoolA.id),
+      },
+      {
+        role,
+        cookie,
+        path: "enrollment.list",
+        input: { organizationId: orgId, academicYearId: currentYearA.id },
+        method: "query",
+        // The no-widening crown: the section teacher's grant reaches exactly
+        // one student; class- and school-level callers see both.
+        expect: OK,
+        dataCheck:
+          role === "subject_teacher"
+            ? (d) =>
+                Array.isArray(d) &&
+                d.length === 1 &&
+                d[0]?.id === enrollmentSectioned.id
+            : (d) =>
+                Array.isArray(d) &&
+                d.length === 2 &&
+                d.every((e: any) => e.schoolId === schoolA.id),
       },
     );
   };

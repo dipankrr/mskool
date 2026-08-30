@@ -17,6 +17,7 @@ import {
   schools,
   sections,
   sectionTeacherAssignments,
+  studentEnrollments,
   studentPortalAccess,
   students,
   subjects,
@@ -26,6 +27,7 @@ import {
 import {
   academicService,
   assignmentService,
+  enrollmentService,
   organizationService,
   subjectService,
   termService,
@@ -305,6 +307,34 @@ async function findOrCreateTerm(
   return termService.createTerm(scope, input);
 }
 
+/**
+ * Keyed on (student, year) — the year anchor's own unique index. Through the
+ * service, which re-reads all four parents inside the transaction; the status
+ * is derived (admitted without a section, section_assigned with one).
+ */
+async function findOrCreateEnrollment(
+  scope: SchoolScope,
+  input: {
+    studentId: string;
+    academicYearId: string;
+    classId: string;
+    sectionId?: string;
+  },
+) {
+  const [existing] = await db
+    .select()
+    .from(studentEnrollments)
+    .where(
+      and(
+        eq(studentEnrollments.studentId, input.studentId),
+        eq(studentEnrollments.academicYearId, input.academicYearId),
+      ),
+    );
+  if (existing) return existing;
+
+  return enrollmentService.createEnrollment(scope, input);
+}
+
 async function findOrCreateStudent(
   organizationId: string,
   schoolId: string,
@@ -401,6 +431,13 @@ export interface IntegrationWorld {
   termClosedAId: string;
   /** Same name as the closed year's, foreign org — the byId control. */
   termB1Id: string;
+
+  enrollmentOwnedId: string;
+  /** ADMITTED with no section — the admitted state, and the class-fallback owner. */
+  enrollmentUngrantedId: string;
+  /** Foreign org — the byId control. */
+  enrollmentB1Id: string;
+  studentB1Id: string;
 
   users: {
     adminA: string;
@@ -670,6 +707,72 @@ export async function buildWorld(): Promise<IntegrationWorld> {
   await findOrCreatePortalAccess(parent.id, ownedStudent.id, true);
   await findOrCreatePortalAccess(parent.id, ungrantedStudent.id, false);
 
+  // --- Enrollments: the year anchor, in both tracks ----------------------------
+  // Two students of Class 6 — one sectioned into 6-A (the section teacher's
+  // own), one ADMITTED with NO section yet (the admitted state, live: her
+  // roster must exclude it and the class teacher's must include it). B1's
+  // student is the cross-tenant byId control.
+  const studentB1 = await findOrCreateStudent(orgB.id, schoolB1.id, "ITG-9001");
+  const enrollmentOwned = await findOrCreateEnrollment(scopeA1, {
+    studentId: ownedStudent.id,
+    academicYearId: currentYearA.id,
+    classId: class6.id,
+    sectionId: section6a.id,
+  });
+  const enrollmentUngranted = await findOrCreateEnrollment(scopeA1, {
+    studentId: ungrantedStudent.id,
+    academicYearId: currentYearA.id,
+    classId: class6.id,
+  });
+  // The exact-roster and class-fallback tests need this row ADMITTED and
+  // section-less, but the assignSection test assigns it — so the fixture
+  // repairs its OWN scratch row back to the admitted shape on every build.
+  // Product rows are never touched this way (hard rule 6 governs the
+  // service); this is the fixture guaranteeing the state its assertions need,
+  // the same philosophy as the scratch section deactivation below.
+  await db
+    .update(studentEnrollments)
+    .set({ sectionId: null, enrollmentStatus: "admitted", rollNumber: null })
+    .where(eq(studentEnrollments.id, enrollmentUngranted.id));
+  const enrollmentB1 = await findOrCreateEnrollment(
+    { organizationId: orgB.id, schoolId: schoolB1.id, classId: null, sectionId: null },
+    {
+      studentId: studentB1.id,
+      academicYearId: yearB1.id,
+      classId: classB1.id,
+      sectionId: sectionB1.id,
+    },
+  );
+
+  // Fixture-ONLY grant: the subject teacher must exercise the enrollment read
+  // in the exact-roster tests, and the default matrix does not hand
+  // enrollment:read to her role. Whether it SHOULD is owner policy — if it
+  // lands in defaultPermissions.ts, this row becomes redundant (the sync is
+  // insert-only and will simply find it already there).
+  await db
+    .insert(orgRolePermissions)
+    .values({
+      organizationId: orgA.id,
+      roleType: "subject_teacher",
+      permission: "enrollment:read",
+    })
+    .onConflictDoNothing();
+
+  // A previous run's class-mismatch test may have left the scratch Class 7
+  // section active (the test creates it lazily, after the sections block's
+  // exact counts have already been asserted). The fixture deactivates its own
+  // scratch rows — soft delete is the sanctioned shape; nothing is deleted
+  // (hard rule 2).
+  await db
+    .update(sections)
+    .set({ status: "inactive" })
+    .where(
+      and(
+        eq(sections.classId, class7.id),
+        eq(sections.academicYearId, currentYearA.id),
+      ),
+    );
+
   cached = {
     orgAId: orgA.id,
     orgBId: orgB.id,
@@ -703,6 +806,10 @@ export async function buildWorld(): Promise<IntegrationWorld> {
     termA1T2Id: termA1T2.id,
     termClosedAId: termClosedA.id,
     termB1Id: termB1.id,
+    enrollmentOwnedId: enrollmentOwned.id,
+    enrollmentUngrantedId: enrollmentUngranted.id,
+    enrollmentB1Id: enrollmentB1.id,
+    studentB1Id: studentB1.id,
     users: {
       adminA: adminA.id,
       principalA1: principalA1.id,

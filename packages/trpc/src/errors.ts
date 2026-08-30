@@ -395,6 +395,21 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
       "That section is not at this branch. Choose a section from the branch you are working in.",
   },
   {
+    // The enrollment layer's section-agreement guards: an enrollment claiming
+    // a year its section did not run in, or a class its section does not
+    // belong to, would pass every FK.
+    match: /^The section's year does not match the enrollment's year/i,
+    code: "BAD_REQUEST",
+    message:
+      "That section belongs to a different session. Enroll into the session the section belongs to.",
+  },
+  {
+    match: /^The section belongs to a different class than the enrollment/i,
+    code: "BAD_REQUEST",
+    message:
+      "That section belongs to a different class. Enroll under the class the section teaches.",
+  },
+  {
     // createSectionTeacherAssignment: an assignment claiming a year its section
     // did not run in would hang attendance and marks off the wrong session.
     match: /^Academic year does not match the section's year/i,
@@ -415,6 +430,46 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
     match: /^Assignment not found in this school/i,
     code: "NOT_FOUND",
     message: "That assignment could not be found.",
+  },
+  {
+    // The enrollment layer's guards (enrollment.service.ts). Same shape as the
+    // assignment layer's: the student/year/class/section FKs do not mention
+    // school_id, so the service re-reads every parent through the caller's
+    // scope and refuses a cross-branch link in words.
+    match: /^Student not found in this school/i,
+    code: "BAD_REQUEST",
+    message:
+      "That student is not at this branch. Choose a student from the branch you are working in.",
+  },
+  {
+    match: /^Enrollment not found in this school/i,
+    code: "NOT_FOUND",
+    message: "That enrollment could not be found.",
+  },
+  {
+    // The section-assignment boundary: the row already has a section, and
+    // moving a student mid-year is a TRANSFER — section_transfer_log's job,
+    // which does not exist yet. The service simply has no way to re-point an
+    // assigned section, so this wording is the honest answer.
+    match: /^This enrollment already has a section/i,
+    code: "BAD_REQUEST",
+    message:
+      "This enrollment already has a section. Moving a student mid-year needs a transfer — that flow is not built yet.",
+  },
+  {
+    match: /^Only an admitted enrollment can be assigned a section/i,
+    code: "BAD_REQUEST",
+    message:
+      "Only an enrollment still in the admission flow can be assigned a section. This one has already moved on.",
+  },
+  {
+    // The status machine's refusal (dynamic detail is in the thrown message;
+    // this is the user-facing wording) and the two optimistic-update races —
+    // both "a moment ago" messages are the same answer: refresh.
+    match: /^An enrollment cannot move from|a moment ago/i,
+    code: "BAD_REQUEST",
+    message:
+      "That status change is not allowed right now. Refresh to see the enrollment's current state.",
   },
 ];
 
