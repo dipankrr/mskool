@@ -2,6 +2,7 @@
 
 import {
   Building2Icon,
+  CalendarCheckIcon,
   CalendarDaysIcon,
   GraduationCapIcon,
   HomeIcon,
@@ -117,6 +118,12 @@ const NAV_ITEMS: NavItem[] = [
     label: copy.nav.students,
     icon: UsersIcon,
     permission: "student:read",
+  },
+  {
+    href: "/attendance/calendar",
+    label: copy.nav.attendance,
+    icon: CalendarCheckIcon,
+    permission: "attendance:read",
   },
   { href: "/profile", label: copy.nav.profile, icon: UserIcon },
 ];

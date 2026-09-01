@@ -1,89 +1,20 @@
-apps/
-└── web/
-    └── src/
-        │
-        ├── app/                         # Next.js App Router only
-        │   ├── (auth)/
-        │   │   ├── login/
-        │   │   │   └── page.tsx
-        │   │   └── register/
-        │   │       └── page.tsx
-        │   │
-        │   ├── (dashboard)/
-        │   │   ├── layout.tsx
-        │   │   ├── page.tsx
-        │   │   └── todos/
-        │   │       └── page.tsx
-        │   │
-        │   ├── api/
-        │   │   └── auth/
-        │   │       └── [...all]/
-        │   │           └── route.ts
-        │   │
-        │   ├── layout.tsx
-        │   ├── loading.tsx
-        │   └── error.tsx
-        │
-        ├── features/
-        │   │
-        │   ├── auth/
-        │   │   ├── components/
-        │   │   │   ├── LoginForm.tsx
-        │   │   │   └── RegisterForm.tsx
-        │   │   │
-        │   │   ├── hooks/
-        │   │   │   └── useSession.ts
-        │   │   │
-        │   │   └── actions/
-        │   │       └── logout.ts
-        │   │
-        │   └── todos/
-        │       ├── components/
-        │       │   ├── TodoCard.tsx
-        │       │   ├── TodoList.tsx
-        │       │   └── CreateTodo.tsx
-        │       │
-        │       ├── hooks/
-        │       │   └── useTodos.ts
-        │       │
-        │       ├── queries/
-        │       │   └── todo.query.ts
-        │       │
-        │       └── mutations/
-        │           └── todo.mutation.ts
-        │
-        ├── components/
-        │   ├── ui/                      # shadcn
-        │   │   ├── button.tsx
-        │   │   ├── dialog.tsx
-        │   │   └── input.tsx
-        │   │
-        │   └── shared/
-        │       ├── EmptyState.tsx
-        │       └── Loading.tsx
-        │
-        ├── lib/
-        │   ├── auth-client.ts
-        │   ├── trpc/
-        │   │   ├── client.ts
-        │   │   ├── server.ts
-        │   │   └── provider.tsx
-        │   │
-        │   ├── utils.ts
-        │   └── constants.ts
-        │
-        ├── providers/
-        │   ├── QueryProvider.tsx
-        │   └── ThemeProvider.tsx
-        │
-        ├── hooks/
-        │   └── useDebounce.ts
-        │
-        ├── stores/
-        │   └── ui.store.ts
-        │
-        ├── styles/
-        │   └── globals.css
-        │
-        ├── env.ts
-        └── middleware.ts
+**hey agent dont get read or get context from here unless the user has explecitely told to read from this file**
+
+Problems:
+
+Calendar:
+
+really disappointed with the calendar implementation
+- the colors are so bad of each day types
+- does not open the current month and date at first instead shows starting month
+- if the session is Apr 2025 - Mar 2026 then why is user able to next previous beyond the current session month like Apr 2026, altho the data of those month is not showing but still a UI problem
+- there should be a full academic year view all the months option
+- the Generate Calendar button. after generating the calendar whats use of it? i thought i would edit the Calendar it does not then why it is still there?
+- if you can do: there is only days select for either working/weekend but there are many schools which has half day in every week, so now they have to manually edit that same days as halfday
+- naming: this is not attendance but academic calender
+- no edit bulk option 
+- no template (CBSE/WBSE)
+- 'weekend' to 'off'
+- calender:action instead using attendence
+- calender:read should be public
+- breaking in mobile 

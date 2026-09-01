@@ -72,7 +72,17 @@ export function FormDialog({
     return (
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent side="bottom" className="flex max-h-[90svh] flex-col">
-          <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col gap-4">
+          <form
+          onSubmit={(event) => {
+            // The component owns preventDefault so a plain-handler consumer
+            // cannot trigger a native form submission (a full page reload).
+            // react-hook-form's handleSubmit also prevents default; double is
+            // harmless.
+            event.preventDefault();
+            onSubmit(event);
+          }}
+          className="flex min-h-0 flex-1 flex-col gap-4"
+        >
             <SheetHeader className="p-0">
               <SheetTitle>{title}</SheetTitle>
               {description ? <SheetDescription>{description}</SheetDescription> : null}
@@ -101,7 +111,17 @@ export function FormDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[85svh] flex-col">
-        <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col gap-4">
+        <form
+          onSubmit={(event) => {
+            // The component owns preventDefault so a plain-handler consumer
+            // cannot trigger a native form submission (a full page reload).
+            // react-hook-form's handleSubmit also prevents default; double is
+            // harmless.
+            event.preventDefault();
+            onSubmit(event);
+          }}
+          className="flex min-h-0 flex-1 flex-col gap-4"
+        >
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
             {description ? <DialogDescription>{description}</DialogDescription> : null}

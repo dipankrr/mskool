@@ -36,6 +36,9 @@ export type Student = RouterOutputs["student"]["list"][number];
 /** The enrollment list's `{ enrollment, student }` pair — the year anchor's read shape. */
 export type EnrollmentPair = RouterOutputs["enrollment"]["list"][number];
 
+/** One calendar day — the marking gate's row. */
+export type CalendarDay = RouterOutputs["attendance"]["calendar"]["list"][number];
+
 /** The scope every staff call carries. Lists send the org; mutations add a branch. */
 export type StaffScopeArgs = { organizationId: string };
 export type WriteScopeArgs = StaffScopeArgs & { schoolId: string };

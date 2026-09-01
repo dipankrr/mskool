@@ -196,20 +196,34 @@ admin admits a student, searches, duplicate admission number wording
 **Verify:** `check-types` 8/8 ✅; unit suite green ✅; browser walk end to
 end ✅.
 
-## Chunk U3 — `feat(web): the attendance calendar`
+## Chunk U3 — `feat(web): the attendance calendar` — ✅ DONE (2026-08-31)
 
-- [ ] `features/attendance/` vertical opens: calendar screen under
-      `(dashboard)/attendance/calendar` — year + month view; month grid from
-      `attendance.calendar.list` (unit-tested `lib/` month-grid builder:
-      UTC weekday walk, weeks start Monday for India).
-- [ ] "Generate calendar" dialog (working-weekday picker) behind
-      `attendance:update`; day-type override dialog (type + reason — the
-      don't-wipe rule honored: reason field empty = leave stored reason).
-- [ ] Holiday/weekend/half-day/exam-day render distinctly; the seeded
-      holidays must appear.
+- [x] `lib/calendar-grid.ts` + 6 unit tests: the pure UTC Monday-first month
+      grid (leap February, Sunday-ending sixth week, ISO/shape invariants —
+      the same walk as the backend generator).
+- [x] Calendar screen `(dashboard)/attendance/calendar`: month navigation
+      (opens the session's current-or-start month), day cells colored per
+      day type with reason in the tooltip, legend, distinct empty state
+      ("generate first") and no-session state; nav entry "Attendance"
+      behind `attendance:read`.
+- [x] Generate dialog (working-weekday checkboxes, Mon–Fri pre-ticked,
+      empty selection refused) — the idempotent 0-case toast verified live
+      ("every day already had a row").
+- [x] Day override dialog (type + reason; stored reason prefills, blank
+      field is OMITTED so the don't-wipe rule holds — verified live: a
+      reason-less re-mark kept "Unit Tests").
+- [x] **`FormDialog` bug found by the walk and fixed at the component:** a
+      plain-handler consumer's `<form onSubmit>` never called
+      preventDefault, so EVERY non-react-hook-form dialog (generate,
+      override, enroll, assign-section — i.e. all of U2's non-RHF dialogs
+      too) performed a NATIVE form submission and reloaded the page on
+      submit — silently, because a reload re-fetches everything and only
+      client state (the selected month) betrayed it. FormDialog now owns
+      preventDefault for both transports; mutation flows update in place.
 
-**Verify:** `check-types` 8/8; web unit suite green (month grid); manual
-walk — generate for a fresh year, override a holiday, see it persist.
+**Verify:** `check-types` 8/8 ✅; unit suite green (44 web, +6) ✅; browser
+walk ✅ — generate (0-case toast), override to exam_day/holiday with reasons,
+don't-wipe prefill, in-place cell updates with toasts, month navigation.
 
 ## Chunk U4 — `feat(web): the marking policy`
 

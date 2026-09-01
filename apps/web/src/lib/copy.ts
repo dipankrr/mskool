@@ -59,6 +59,7 @@ export const copy = {
     sessions: "Sessions",
     classes: "Classes",
     students: "Students",
+    attendance: "Attendance",
     profile: "Profile",
     menu: "Menu",
     openMenu: "Open menu",
@@ -216,6 +217,48 @@ export const copy = {
       withdrawn: "Withdrawn",
       passed_out: "Passed out",
     },
+  },
+
+  /** U3. `attendance.calendar.*` — the marking gate, made visible. */
+  attendance: {
+    title: "Attendance calendar",
+    subtitle:
+      "Which days are teaching days, holidays, and exams. Attendance cannot be marked on a day this calendar refuses.",
+    generate: "Generate calendar",
+    generateTitle: "Generate the session's calendar",
+    generateHelp:
+      "Creates one row per date of the session: teaching days where you tick, weekends elsewhere. Days already set are left untouched — a re-run fills gaps only.",
+    workingWeekdays: "Teaching days",
+    weekdays: {
+      monday: "Mon",
+      tuesday: "Tue",
+      wednesday: "Wed",
+      thursday: "Thu",
+      friday: "Fri",
+      saturday: "Sat",
+      sunday: "Sun",
+    },
+    generated: (count: number) =>
+      count === 1
+        ? "Calendar generated — 1 day filled in."
+        : `Calendar generated — ${count} days filled in.`,
+    nothingToGenerate: "Calendar generated — every day already had a row.",
+    overrideTitle: "Set the day type",
+    reason: "Reason",
+    reasonPlaceholder: "e.g. Diwali — leave blank to keep an existing reason",
+    saved: "Calendar day saved.",
+    override: "Override",
+    dayTypes: {
+      working: "Working",
+      holiday: "Holiday",
+      half_day: "Half day",
+      weekend: "Weekend",
+      exam_day: "Exam day",
+    },
+    noCalendarTitle: "No calendar for this month",
+    noCalendarBody:
+      "Generate the session's calendar once and every month fills in — marking is refused on a date the calendar does not describe.",
+    noSession: "Choose a branch and a session to see its calendar.",
   },
 
   /** Chunk 8. `school.*` — the trust's branches. */
