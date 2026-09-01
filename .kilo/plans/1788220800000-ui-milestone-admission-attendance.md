@@ -245,24 +245,33 @@ don't-wipe prefill, in-place cell updates with toasts, month navigation.
 (demo MAIN policy now period_wise @ 50% — flip back via the screen if the
 marking walk should be daily).
 
-## Chunk U5 — `feat(web): the marking screen`
+## Chunk U5 — `feat(web): the marking screen` — ✅ DONE (2026-08-31)
 
-- [ ] Marking screen `(dashboard)/attendance/mark`: section picker (clipped
-      `academic.section.list`) + date picker + roster from `enrollment.list`;
-      per-student status control (the five statuses); absent-by-default
-      bulk action; submit via `attendance.mark`.
-- [ ] Calendar-aware states: holiday/weekend/no-calendar dates are
-      non-editable with the worded explanation; same-day edit vs past-date
-      edit (reason field on past edits only).
-- [ ] Read-only day view for callers without `attendance:create` (the
-      subject-teacher read cell of the smoke, now a screen); loading and
-      empty states for the not-yet-marked day.
-- [ ] Nav entry "Attendance", permission-aware (teachers finally land
-      somewhere).
+- [x] Marking screen `(dashboard)/attendance/mark`: section picker (labels
+      read "Class 6 · A"), date picker, roster from the year anchor,
+      per-student status select (the five statuses), mark-all
+      present/absent bulk actions, submit via `attendance.mark`.
+- [x] **The calendar gate is rendered**: the three refusals (holiday,
+      weekend, no calendar row) appear as non-editable states with the
+      translateErrors wording — verified live with the out-of-session date.
+- [x] **Pre-fill from the authoritative layer**: `attendance.status`
+      seeds the day's controls and an "Already marked" note appears;
+      past-date edits show the optional correction-reason field (ADR-030's
+      frontend convention), attached only to entries whose status CHANGED.
+- [x] Period-wise schools get a period picker (mode from the policy;
+      daily schools never see it — both states exercised live via the U4
+      flip-flop).
+- [x] Read-only day view for callers without `attendance:create` (same
+      screen, controls absent).
+- [x] Attendance tabs (Calendar / Mark / Policy) shared by the three
+      attendance pages under the one nav entry.
 
-**Verify:** `check-types` 8/8; web unit suite green; manual walk — teacher
-marks her section same-day, edits a past date with a reason, sees holiday
-and no-calendar states; principal sees the same screen read-only.
+**Verify:** `check-types` 8/8 ✅; unit suite green ✅; browser walk ✅ —
+marked 2025-09-01 (Kiran + Aditi present, `derivation_mode: direct` in the
+DB), then edited Kiran to absent with a reason: the record carries
+`correction_reason` + `updated_by` — ADR-030 end to end over HTTP. The
+read-only view is untested in-browser (needs the subject-teacher login);
+the smoke matrix pins its server side.
 
 ## Chunk U6 — `docs: TASKS.md — the UI milestone done`
 

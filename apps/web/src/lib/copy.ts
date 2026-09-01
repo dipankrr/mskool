@@ -285,6 +285,40 @@ export const copy = {
         threshold_percentage: "Percentage of periods",
       },
     },
+    marking: {
+      tabLabel: "Mark",
+      title: "Mark attendance",
+      subtitle:
+        "One section, one date. The calendar decides whether the date can be marked at all.",
+      section: "Section",
+      date: "Date",
+      period: "Period",
+      periodHelp: "This branch marks attendance period by period — choose the period first.",
+      roster: "Roster",
+      status: "Status",
+      notEnrolledInRoster: "No students are enrolled in this section yet.",
+      markAllPresent: "Mark all present",
+      markAllAbsent: "Mark all absent",
+      holidayNote: "is a holiday — attendance cannot be marked on a holiday.",
+      weekendNote: "is a weekend — attendance cannot be marked on a weekend.",
+      noCalendarNote:
+        "has no calendar entry. Generate the year's calendar first, then mark attendance.",
+      correctionReason: "Reason for this correction",
+      correctionReasonHelp:
+        "Optional. Editing a past date — say why. Leaving it blank keeps any earlier note.",
+      alreadyMarked: "Already marked today — submitting again updates the marks.",
+      markedOne: "Attendance marked.",
+      marked: (count: number) => `Attendance marked for ${count} students.`,
+      readOnlyNote:
+        "You can see this section's day but not mark it — marking needs the attendance:create permission.",
+      statuses: {
+        present: "Present",
+        absent: "Absent",
+        late: "Late",
+        half_day: "Half day",
+        on_leave: "On leave",
+      },
+    },
   },
 
   /** Chunk 8. `school.*` — the trust's branches. */

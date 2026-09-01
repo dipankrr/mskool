@@ -20,6 +20,7 @@ import {
   useCalendar,
   useCalendarMutations,
 } from "@/features/attendance/use-attendance";
+import { AttendanceTabs } from "@/features/attendance/tabs";
 import { useActiveContext } from "@/features/session/active-context";
 import { buildMonthGrid, GRID_WEEKDAYS } from "@/lib/calendar-grid";
 import { copy } from "@/lib/copy";
@@ -156,6 +157,8 @@ export default function AttendanceCalendarPage() {
           </div>
         }
       />
+
+      <AttendanceTabs />
 
       <Card>
         <CardContent className="flex flex-col gap-4 pt-6">

@@ -1,6 +1,10 @@
 "use client";
 
-import type { UpsertCalendarDayInput, UpsertPolicyInput } from "@repo/contracts";
+import type {
+  MarkAttendanceInput,
+  UpsertCalendarDayInput,
+  UpsertPolicyInput,
+} from "@repo/contracts";
 import { toast } from "sonner";
 
 import { copy } from "@/lib/copy";
@@ -125,6 +129,66 @@ export function usePolicyMutations() {
         }
         return upsert.mutateAsync({ ...scope, schoolId, data });
       },
+    },
+  };
+}
+
+/**
+ * The authoritative layer's view of one section's day — the marking screen's
+ * prefill and its read-only mode. Empty = the day has not been marked.
+ */
+export function useDayStatuses(sectionId: string, date: string) {
+  const { scopeArgs } = useActiveContext();
+
+  return trpc.attendance.status.useQuery(
+    { ...scopeArgs(), sectionId, date },
+    {
+      enabled: Boolean(sectionId) && Boolean(date),
+      staleTime: THIRTY_SECONDS,
+      retry: false,
+    },
+  );
+}
+
+/** A section's periods — the period-wise marking screen's picker. */
+export function usePeriods(sectionId: string) {
+  const { scopeArgs } = useActiveContext();
+
+  return trpc.attendance.period.list.useQuery(
+    { ...scopeArgs(), sectionId },
+    {
+      enabled: Boolean(sectionId),
+      staleTime: THIRTY_SECONDS,
+    },
+  );
+}
+
+export function useMarkAttendance() {
+  const { scopeArgs } = useActiveContext();
+  const utils = trpc.useUtils();
+
+  const mark = trpc.attendance.mark.useMutation({
+    onSuccess: async (result) => {
+      toast.success(
+        result.marked === 1
+          ? copy.attendance.marking.markedOne
+          : copy.attendance.marking.marked(result.marked),
+      );
+      await Promise.all([
+        utils.attendance.status.invalidate(),
+        utils.attendance.summary.invalidate(),
+      ]);
+    },
+    // The gate refusals (holiday, no calendar, roster stranger, mode
+    // mismatch) all arrive worded from translateErrors.
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  return {
+    mark: {
+      ...mark,
+      submit: (input: Omit<MarkAttendanceInput, "organizationId">) =>
+        mark.mutateAsync({ ...scopeArgs(), ...input }),
     },
   };
 }

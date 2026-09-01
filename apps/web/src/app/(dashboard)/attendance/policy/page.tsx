@@ -30,6 +30,7 @@ import {
   usePolicy,
   usePolicyMutations,
 } from "@/features/attendance/use-attendance";
+import { AttendanceTabs } from "@/features/attendance/tabs";
 import { useActiveContext } from "@/features/session/active-context";
 import { copy } from "@/lib/copy";
 
@@ -88,6 +89,8 @@ export default function AttendancePolicyPage() {
           {copy.attendance.title}
         </Link>
       </div>
+
+      <AttendanceTabs />
 
       {policy.data === null ? (
         <p className="text-muted-foreground mt-4 text-sm">{copy.attendance.policy.defaultsInEffect}</p>
