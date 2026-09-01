@@ -259,6 +259,32 @@ export const copy = {
     noCalendarBody:
       "Generate the session's calendar once and every month fills in — marking is refused on a date the calendar does not describe.",
     noSession: "Choose a branch and a session to see its calendar.",
+    policyLink: "Marking policy",
+    policy: {
+      title: "Marking policy",
+      subtitle:
+        "How this branch marks attendance. One policy per branch; it applies to every class and teacher.",
+      defaultsInEffect:
+        "No policy has been saved yet — the defaults below are already in effect. Saving creates the policy row.",
+      markingMode: "Marking mode",
+      markingModeHelp:
+        "Daily marks the whole day once. Period-wise marks each period and derives the day from them.",
+      dailyStatusRule: "How the day is derived",
+      dailyStatusRuleHelp:
+        "Period-wise only: the homeroom period decides the day, or a percentage of periods present does.",
+      thresholdPercentage: "Present threshold (%)",
+      thresholdPercentageHelp:
+        "At or above this share of periods (present, late, or half day), the day counts as present.",
+      lateArrivalMinutes: "Late-arrival window (minutes)",
+      lateArrivalMinutesHelp:
+        "How many minutes after the period starts a mark is Late rather than Present. A hint for markers.",
+      saved: "Marking policy saved.",
+      modes: { daily: "Daily", period_wise: "Period-wise" },
+      rules: {
+        homeroom_authoritative: "Homeroom period decides",
+        threshold_percentage: "Percentage of periods",
+      },
+    },
   },
 
   /** Chunk 8. `school.*` — the trust's branches. */

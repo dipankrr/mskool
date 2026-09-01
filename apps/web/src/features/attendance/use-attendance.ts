@@ -1,6 +1,6 @@
 "use client";
 
-import type { UpsertCalendarDayInput } from "@repo/contracts";
+import type { UpsertCalendarDayInput, UpsertPolicyInput } from "@repo/contracts";
 import { toast } from "sonner";
 
 import { copy } from "@/lib/copy";
@@ -82,6 +82,48 @@ export function useCalendarMutations() {
         const scope = writeScopeArgs();
         if (!scope) throw new Error("A branch must be chosen to edit the calendar.");
         return upsertDay.mutateAsync({ ...scope, data: input });
+      },
+    },
+  };
+}
+
+/**
+ * The school's ONE marking policy — null before the first upsert, which the
+ * screen renders as "the defaults are already in effect" rather than an
+ * error (the marking flow treats a missing row the same way).
+ */
+export function usePolicy(schoolId: string) {
+  const { scopeArgs } = useActiveContext();
+
+  return trpc.attendance.policy.get.useQuery(
+    { ...scopeArgs(), schoolId },
+    { enabled: Boolean(schoolId), staleTime: THIRTY_SECONDS },
+  );
+}
+
+export function usePolicyMutations() {
+  const { writeScopeArgs, schoolId } = useActiveContext();
+  const utils = trpc.useUtils();
+
+  const upsert = trpc.attendance.policy.upsert.useMutation({
+    onSuccess: async () => {
+      toast.success(copy.attendance.policy.saved);
+      await utils.attendance.policy.get.invalidate();
+    },
+    // The threshold refine (rule needs a threshold) is caught client-side;
+    // anything else arrives worded.
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  return {
+    upsert: {
+      ...upsert,
+      submit: (data: UpsertPolicyInput) => {
+        const scope = writeScopeArgs();
+        if (!scope || !schoolId) {
+          throw new Error("A branch must be chosen to set the policy.");
+        }
+        return upsert.mutateAsync({ ...scope, schoolId, data });
       },
     },
   };

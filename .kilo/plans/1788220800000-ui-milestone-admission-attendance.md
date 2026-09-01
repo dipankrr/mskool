@@ -225,15 +225,25 @@ end ✅.
 walk ✅ — generate (0-case toast), override to exam_day/holiday with reasons,
 don't-wipe prefill, in-place cell updates with toasts, month navigation.
 
-## Chunk U4 — `feat(web): the marking policy`
+## Chunk U4 — `feat(web): the marking policy` — ✅ DONE (2026-08-31)
 
-- [ ] Policy card/screen (`attendance.policy.get/upsert`): marking mode,
-      daily-status rule, threshold (shown only for threshold_percentage,
-      required by the contract's refine), late-arrival minutes.
-- [ ] Null policy renders as "defaults in effect" with a Save that creates.
+- [x] Policy page `(dashboard)/attendance/policy`: one form for the school's
+      one row — marking mode, derivation rule, threshold (nullable; the
+      contract's refine enforced client-side), late-arrival minutes.
+      Null policy renders the "defaults already in effect" note; saving
+      CREATES the row. The period-wise-only fields stay visible with help
+      text rather than vanishing on mode switch.
+- [x] The calendar page links here ("Marking policy" in the header).
+- [x] Browser check (spartan): form renders defaults, Period-wise +
+      threshold_percentage + 50 saved — DB row confirms
+      `period_wise/threshold_percentage/50`, toast captured, no reload.
+      Walk-time detours (toast expiry, a below-fold Save button, a Base UI
+      scroll-lock overlay eating clicks) were all automation artifacts,
+      not product bugs — noted so the next walker doesn't chase them.
 
-**Verify:** `check-types` 8/8; web unit suite green; manual walk — flip the
-demo school to period_wise and back to daily.
+**Verify:** `check-types` 8/8 ✅; unit suite green ✅; browser check ✅
+(demo MAIN policy now period_wise @ 50% — flip back via the screen if the
+marking walk should be daily).
 
 ## Chunk U5 — `feat(web): the marking screen`
 

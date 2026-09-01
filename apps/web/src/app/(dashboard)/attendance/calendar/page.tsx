@@ -1,10 +1,12 @@
 "use client";
 
-import { CalendarPlusIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import { CalendarPlusIcon, ChevronLeftIcon, ChevronRightIcon, Link2Icon } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { PermissionGate } from "@/components/permission-gate";
@@ -137,12 +139,21 @@ export default function AttendanceCalendarPage() {
         title={copy.attendance.title}
         description={copy.attendance.subtitle}
         actions={
+          <div className="flex items-center gap-2">
+          <Link
+            href="/attendance/policy"
+            className={buttonVariants({ variant: "outline" })}
+          >
+            <Link2Icon data-icon="inline-start" />
+            {copy.attendance.policyLink}
+          </Link>
           <PermissionGate permission="attendance:update">
             <Button onClick={() => setGenerateOpen(true)}>
               <CalendarPlusIcon data-icon="inline-start" />
               {copy.attendance.generate}
             </Button>
           </PermissionGate>
+          </div>
         }
       />
 
