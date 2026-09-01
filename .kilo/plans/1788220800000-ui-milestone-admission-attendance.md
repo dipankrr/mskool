@@ -273,11 +273,16 @@ DB), then edited Kiran to absent with a reason: the record carries
 read-only view is untested in-browser (needs the subject-teacher login);
 the smoke matrix pins its server side.
 
-## Chunk U6 — `docs: TASKS.md — the UI milestone done`
+## Chunk U6 — `docs: TASKS.md — the UI milestone done` — ✅ DONE (2026-09-02)
 
-- [ ] Resume-here: what shipped, what the deferrals are (period-wise UI,
-      summary reports, …), verification surface, next-up pointer
-      (Phase 4 fees — owner's call on timing).
+- [x] Resume-here rewritten: what shipped (the two verticals, the tabs, the
+      permission-aware nav), the frontend conventions proven, the two
+      component-level bugs the walks caught (dialog-close-on-error,
+      FormDialog preventDefault), the verification surface, the walk-tooling
+      notes for the next agent, and the deferral list. Next-up pointer:
+      Phase 4 fees (alternatives: the E2E slice, or the housekeeping debt).
+- [x] Phase 3's completion record compresses into its own section below;
+      the deferral lists stand unchanged.
 
 ## Commit ledger (owner commits; agent prepares messages)
 

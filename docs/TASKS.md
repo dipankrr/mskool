@@ -6,73 +6,52 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
-**PHASE 3 IS COMPLETE (2026-08-31).** Attendance ships end to end: the
-academic calendar (the marking gate), the per-school marking policy, periods,
-the record layer with section snapshots, the authoritative daily-status layer
-(hard rule 5 is now enforced by design — the summary is its read-model), and
-the marking flow behind 12 REST endpoints. The slice-by-slice plan and commit
-ledger live in `.kilo/plans/1788134400000-phase3-attendance.md`.
+**THE UI MILESTONE IS COMPLETE (2026-09-02).** The admission flow and
+attendance marking are now SCREENS, not just APIs. The slice-by-slice plan
+and commit ledger live in
+`.kilo/plans/1788220800000-ui-milestone-admission-attendance.md`.
 
-- **What ships:** `attendance.calendar.generate/upsert/list` (idempotent bulk
-  generator fills missing dates only; overrides go through upsert),
-  `attendance.policy.get/upsert` (one row per school, created lazily),
-  `attendance.period.*` (section-attached config, STA year-consistency),
-  `attendance.mark` (the one `attendance:create` consumer: calendar gate →
-  roster check → record upsert → daily-status derivation → summary
-  recompute, one transaction), `attendance.status` (permissive, no
-  widening), and `attendance.summary` (scoped through the enrollment join).
-- **The calendar gate:** marking is refused — worded in `translateErrors` —
-  on a holiday, a weekend, or a date with NO calendar row (strict; the bulk
-  generator makes filling it a non-event). Working/half_day/exam_day accept.
-- **Hard rule 5 lands:** `attendance_records` is write-only ground truth;
-  `daily_attendance_status` is the only table downstream may read, one row
-  per student per year per date; `attendance_summary` (monthly/term/annual,
-  database-GENERATED percentage) is recomputed inside the marking
-  transaction. Working days are calendar truth, never "days someone marked".
-- **The snapshot rule:** section+class are copied onto records and daily
-  status at INSERT time and never updated — a mid-year transfer cannot
-  rewrite history (integration-proven; the test performs the transfer the
-  product cannot yet, see the deferral below).
-- **ADR-030 (owner-settled):** `attendance_corrections` is DROPPED. Records
-  edit in place; a nullable `correctionReason` on the record carries the why
-  for past-date edits (frontend convention — asked for past edits, not
-  same-day; backend stores, never enforces), and an update WITHOUT a reason
-  never wipes a stored one (the don't-wipe rule, integration-proven). The
-  additive retrofit path is recorded in the ADR.
-- **Schema:** `academic_calendar`, `attendance_policies`, `periods` (0007);
-  `attendance_records`, `daily_attendance_status`, `attendance_summary`
-  (0008) — all purely additive. The daily-mode double-mark guard is
-  hand-written SQL in 0008 (marked like 0001's EXCLUDEs):
-  `UNIQUE (student_id, date, COALESCE(period_id, sentinel))` — a plain
-  unique index treats NULL period_ids as DISTINCT, so a daily-mode school
-  could double-mark. `pnpm db:verify` re-proves the guard by name.
-- **A C4 deviation, owner-reviewable in the plan:** the summary's planned
-  composite unique key put nullable columns (`month`, `term_id`) inside a
-  unique key — NULLs are DISTINCT, the very trap the double-mark guard
-  fixes — so uniqueness is THREE partial unique indexes (monthly/term/
-  annual) plus per-type shape CHECKs instead.
-- **A C7 discovery worth keeping:** a section teacher reading a NEIGHBOURING
-  section's attendance day is FORBIDDEN at the BUILDER — the permissive
-  list clips grants to the addressed subtree and finds nothing (ADR-017's
-  zero-scopes answer) — before the service's four-column filter ever runs.
-  Two layers, both pinned.
-- **Verification surface:** `pnpm check-types` 8/8; `pnpm test:integration`
-  = 93 (was 80; the attendance block adds 13); `pnpm smoke:authz` = 158
-  checks, all-pass over the full 8-role matrix (NOTE: the sign-in limiter
-  is 20 per 15 min and a smoke run signs in 9 roles — restart the dev API
-  between consecutive runs); `pnpm test` = 86 authz + 38 web + 32 trpc unit
-  tests; `pnpm db:verify` = 72.
+- **What ships (7 commits, U0–U6):** the students register (searchable,
+  permission-gated), the admit dialog from the real contract schema, the
+  student detail page with edit / SENSITIVE-gated deactivate / enrollment /
+  first-section assignment; the attendance area under one nav entry with
+  three tabs — Calendar (month grid, generate, day-type overrides), Mark
+  (roster marking, pre-filled from the authoritative layer, the calendar
+  gate rendered as states, the ADR-030 correction reason on past-date
+  edits), Policy (the one-per-school form). Teachers finally have a landing
+  surface: nav items are permission-aware, and a caller without
+  `attendance:create` sees the read-only day view.
+- **The frontend conventions that made it fast, now proven:** row types from
+  `inferRouterOutputs`, forms from `@repo/contracts`, addressing per the
+  use-branches rules (lists clip, creates name parents, row mutations
+  address the row), per-permission degradation (a librarian's register
+  renders with the Class column empty, not a failed screen).
+- **Two bugs the browser walks caught, both fixed at the component level:**
+  dialogs closed over refused submissions (hooks now return `mutateAsync`
+  promises; pages close on success only), and `FormDialog` never called
+  `preventDefault` — every non-RHF dialog silently reloaded the page on
+  submit. Anything that mounts a plain-handler form must go through
+  FormDialog's guard.
+- **Verification surface:** `pnpm check-types` 8/8; `pnpm test` = 86 authz +
+  44 web (the month-grid helper) + 32 trpc unit tests; `pnpm
+  test:integration` = 93; `pnpm smoke:authz` = 158; `pnpm db:verify` = 72.
+  Every screen was walked in a real browser (agent-browser) over HTTP with
+  the seed logins; the read-only marking view is pinned server-side by the
+  smoke matrix but not browser-walked.
+- **Walk-tooling notes for the next agent:** native date inputs need
+  JS-set values through CDP; agent-browser does not auto-scroll (a
+  below-fold submit button silently eats clicks); toasts expire in ~4s —
+  verify mutations in the DATABASE, not the toast.
 - **Deliberately deferred, recorded so nobody assumes they shipped:**
-  timetabling (periods' times are informational), the leave-approval
-  workflow (On_Leave is marker-entered in v1), a real corrections/history
-  table (the ADR-030 retrofit), and summary backfill automation beyond the
-  explicit `recomputeSummary` op. The Phase 2 deferral list SHRINKS by
-  `academic_calendar` (landed here); the rest stands: `section_transfer_log`
-  (now doubly relevant — the snapshot tests perform the move the product
-  cannot yet), `student_subject_enrollments`, `subject_groups` +
-  `system_subject_catalog`, `subject_name_history`. The students slice's
-  deferrals (guardians, portal login activation per ADR-007, sibling links,
-  previous-school records) also stand.
+  period MANAGEMENT screens (creating/editing periods — the marking screen
+  already supports period-wise mode), attendance summary/report screens
+  (the API and the generated percentage exist; reports land with the
+  report-card phase), the student portal UI, guardians, E2E coverage for
+  the new screens (the 4 existing browser walks stand), and `pnpm lint`
+  wiring (still never run).
+
+**Phase 3 remains complete** — see its section below; the Phase 2
+deferrals and the students slice's deferrals stand unchanged.
 
 **Next: Phase 4 — fees** (14 tables: `fee_heads` → `fee_structures` →
 `fee_structure_lines` → `student_fee_assignments` → `fee_concessions`,
@@ -80,11 +59,12 @@ optional-fee subscriptions, late-fee rules, installments, opening balances,
 payments, allocations, refunds, `financial_transactions`, receipt-number
 sequences). Hard rule 3 (append-only ledger, corrections are offsetting
 rows), `SELECT … FOR UPDATE` on the receipt sequence, and the webhook
-`system` context (ADR-009) are the load-bearing decisions. The alternative
-is the UI milestone — the admission flow
-(`student.create` → `enrollment.create` → `enrollment.assignSection`) and
-the attendance marking screens exist only as APIs — owner's call.
+`system` context (ADR-009) are the load-bearing decisions. Alternatives if
+the owner prefers: the E2E slice for the new screens, or the housekeeping
+debt (`pnpm lint`, `/me`'s organization exposure).
 
+The security-review and authz-refactor history below is superseded by the
+numbers above.
 The security-review and authz-refactor history below is superseded by the
 numbers above.
 above.
