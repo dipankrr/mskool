@@ -52,3 +52,7 @@ export * from "./fees.service";
 // The pure maths lives in fees-maths (no db imports, hermetically tested).
 export * from "./fees-maths";
 export * from "./fees-billing.service";
+
+// Fees: collection and the ledger — recordPayment (row-locked, idempotent),
+// the named status transitions, refunds, waivers, the gateway system path.
+export * from "./fees-collection.service";

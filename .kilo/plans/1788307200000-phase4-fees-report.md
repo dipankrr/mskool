@@ -9,12 +9,11 @@ plan's Reviewer's guide for the commit-by-commit code review.
 
 ---
 
-## STATUS: F4 DONE, F5 NEXT
+## STATUS: F5 DONE, F6 NEXT
 
 - Branch: `feature/phase4-fees`
-- Last commit: F4 `feat(contracts,services): the billing engine`
-- Next up: F5 — collection and the ledger (recordPayment, status
-  transitions, refunds, the system-context webhook seam)
+- Last commit: F5 `feat(contracts,services): collection and the ledger`
+- Next up: F6 — fees routers (tRPC + OpenAPI + permission mapping)
 
 ---
 
@@ -77,6 +76,19 @@ plan's Reviewer's guide for the commit-by-commit code review.
   installments are excluded from all-heads concessions by design (they
   price outside the structure); a concession NAMES a subscription head to
   discount it.
+
+### F5 — collection and the ledger
+- Status: done
+- Commit: `feat(contracts,services): collection and the ledger`
+- Verify: check-types 8/8; services unit suite 33/33 (allocator tests
+  added), 199 total; whole-monorepo check-types re-run after the api
+  route landed.
+- Deviations / notes: `clearPayment` writes NO ledger row (the movement
+  was already recorded at record time; documented in the reviewer entry).
+  Cancel writes no ledger row either — no money moved. Webhook mounted
+  BEFORE express.json with its own express.raw parser so the HMAC covers
+  the provider's exact bytes. FEE_WEBHOOK_SECRET has a dev default;
+  production must set it (noted in env.ts).
 
 <!-- template per chunk
 ### Fx — <name>

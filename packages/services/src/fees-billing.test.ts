@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  allocateOldestFirst,
   apportionHeadTotal,
   computeLateFee,
   daysInMonth,
@@ -329,5 +330,45 @@ describe("money helpers", () => {
     expect(() => toCents("12.999")).toThrow();
     expect(() => toCents("-5.00")).toThrow();
     expect(() => toCents("")).toThrow();
+  });
+});
+
+describe("allocateOldestFirst — the gateway's server-side allocation", () => {
+  const outstanding = [
+    { installmentId: "apr", dueDate: "2030-04-10", balanceCents: 100_000n },
+    { installmentId: "jul", dueDate: "2030-07-10", balanceCents: 100_000n },
+    { installmentId: "oct", dueDate: "2030-10-10", balanceCents: 100_000n },
+  ];
+
+  it("fills the OLDEST due first", () => {
+    const result = allocateOldestFirst(150_000n, outstanding);
+    expect(result).toEqual([
+      { installmentId: "apr", amountCents: 100_000n },
+      { installmentId: "jul", amountCents: 50_000n },
+    ]);
+  });
+
+  it("consumes a total exactly equal to the dues", () => {
+    const result = allocateOldestFirst(300_000n, outstanding);
+    expect(result).toHaveLength(3);
+    expect(
+      result?.reduce((acc, a) => acc + a.amountCents, 0n),
+    ).toBe(300_000n);
+  });
+
+  it("REFUSES a total exceeding the outstanding balances (no surplus wallet)", () => {
+    expect(allocateOldestFirst(300_001n, outstanding)).toBeNull();
+  });
+
+  it("refuses zero and negative totals", () => {
+    expect(allocateOldestFirst(0n, outstanding)).toBeNull();
+  });
+
+  it("skips installments already fully paid", () => {
+    const result = allocateOldestFirst(100_000n, [
+      { installmentId: "apr", dueDate: "2030-04-10", balanceCents: 0n },
+      ...outstanding.slice(1),
+    ]);
+    expect(result).toEqual([{ installmentId: "jul", amountCents: 100_000n }]);
   });
 });

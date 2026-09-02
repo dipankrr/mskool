@@ -424,3 +424,45 @@ export function computeLateFee(
   }
   return fee;
 }
+
+// ---------------------------------------------------------------------------
+// Pure gateway allocation (F5)
+// ---------------------------------------------------------------------------
+
+/**
+ * Applies a gateway total to the student's outstanding balances,
+ * OLDEST-DUE FIRST — the server decides where online money lands, because
+ * the gateway knows only an amount. Returns the per-installment allocation
+ * list; REFUSES (returns null) when the total exceeds the sum of
+ * outstanding balances, because true surplus advance is a recorded deferral,
+ * not a silent wallet.
+ */
+export function allocateOldestFirst(
+  totalCents: bigint,
+  outstanding: { installmentId: string; dueDate: string; balanceCents: bigint }[],
+): { installmentId: string; amountCents: bigint }[] | null {
+  const available = outstanding.reduce((acc, o) => acc + o.balanceCents, 0n);
+  if (totalCents <= 0n || totalCents > available) return null;
+
+  const ordered = [...outstanding]
+    .filter((o) => o.balanceCents > 0n)
+    .sort((a, b) =>
+      a.dueDate === b.dueDate
+        ? a.installmentId < b.installmentId
+          ? -1
+          : 1
+        : a.dueDate < b.dueDate
+          ? -1
+          : 1,
+    );
+
+  const allocations: { installmentId: string; amountCents: bigint }[] = [];
+  let remaining = totalCents;
+  for (const o of ordered) {
+    if (remaining <= 0n) break;
+    const applied = o.balanceCents < remaining ? o.balanceCents : remaining;
+    allocations.push({ installmentId: o.installmentId, amountCents: applied });
+    remaining -= applied;
+  }
+  return allocations;
+}

@@ -42,6 +42,20 @@ const money = z
   .string()
   .regex(/^\d+(\.\d{1,2})?$/, "Use a decimal amount like 1250.00.");
 
+/** The payment modes, shared with the select-schema shape below. */
+const feePaymentModeSchema = z.enum([
+  "cash",
+  "upi",
+  "cheque",
+  "neft_rtgs",
+  "card",
+  "dd",
+  "online_portal",
+]);
+
+/** The refund modes — no online_portal (the gateway refunds through itself). */
+const feeRefundModeSchema = z.enum(["cash", "upi", "cheque", "neft_rtgs", "dd"]);
+
 // ---------------------------------------------------------------------------
 // Fee heads
 // ---------------------------------------------------------------------------
@@ -362,3 +376,91 @@ export const createOpeningBalanceSchema = z.object({
   description: z.string().min(1).max(255).nullish(),
 });
 export type CreateOpeningBalanceInput = z.infer<typeof createOpeningBalanceSchema>;
+
+// ---------------------------------------------------------------------------
+// Collection and the ledger (F5)
+// ---------------------------------------------------------------------------
+
+/** One installment this payment touches, and how much of it this covers. */
+export const paymentAllocationInputSchema = z.object({
+  installmentId: z.uuid(),
+  amount: money,
+});
+export type PaymentAllocationInput = z.infer<typeof paymentAllocationInputSchema>;
+
+/**
+ * A counter collection. The payment's `amount` is DERIVED as the sum of its
+ * allocations — the cashier cannot type a total that disagrees with what the
+ * money is FOR. Allocations may target ANY generated installment with a
+ * balance — future-due or not (paying November's fees in October is the
+ * normal Indian-school case; the Locked decision is that the ONLY refusal is
+ * exceeding a balance). `clientReference` is the idempotency key: a retry
+ * with the same key returns the original receipt instead of writing a second.
+ */
+export const recordPaymentSchema = z.object({
+  studentId: z.uuid(),
+  academicYearId: z.uuid(),
+  paymentDate: isoDate,
+  paymentMode: feePaymentModeSchema,
+  allocations: z.array(paymentAllocationInputSchema).min(1),
+  lateFeeAmount: money.nullish(),
+  transactionReference: z.string().min(1).max(150).nullish(),
+  bankName: z.string().min(1).max(100).nullish(),
+  chequeDate: isoDate.nullish(),
+  remarks: z.string().min(1).max(500).nullish(),
+  clientReference: z.string().min(1).max(150).nullish(),
+});
+export type RecordPaymentInput = z.infer<typeof recordPaymentSchema>;
+
+export const paymentTransitionSchema = z.object({
+  paymentId: z.uuid(),
+  reason: z.string().min(1).max(255),
+});
+export type PaymentTransitionInput = z.infer<typeof paymentTransitionSchema>;
+
+/**
+ * Money going back out against an ORIGINAL payment. The service validates the
+ * refund against what that payment actually contributed minus what has
+ * already been refunded, and re-opens the installment balances it reduced.
+ */
+export const recordRefundSchema = z.object({
+  originalPaymentId: z.uuid(),
+  refundAmount: money,
+  refundDate: isoDate,
+  refundMode: feeRefundModeSchema,
+  transactionReference: z.string().min(1).max(150).nullish(),
+  reason: z.string().min(1).max(500),
+});
+export type RecordRefundInput = z.infer<typeof recordRefundSchema>;
+
+/** Which payment's full shape to read (payment + allocations + ledger rows). */
+export const paymentDetailSchema = z.object({ paymentId: z.uuid() });
+export type PaymentDetailInput = z.infer<typeof paymentDetailSchema>;
+
+/** The accountant's due list — the collection screen's primary query. */
+export const duesListSchema = z.object({
+  academicYearId: z.uuid(),
+  studentId: z.uuid().optional(),
+  sectionId: z.uuid().optional(),
+  dueOnOrBefore: isoDate.optional(),
+});
+export type DuesListInput = z.infer<typeof duesListSchema>;
+
+/**
+ * THE GATEWAY WEBHOOK PAYLOAD (ADR-009) — what the (future) provider posts,
+ * and what the stub posts in tests. The signature is verified over the RAW
+ * body BEFORE this is parsed; the gateway's order id becomes the
+ * idempotency key, so a replayed webhook returns the original receipt.
+ * Allocation is SERVER-side: the gateway knows only a total; the service
+ * applies it to the student's outstanding balances oldest-due first, and
+ * REFUSES a total exceeding them (no surplus credit in v1 — the recorded
+ * deferral).
+ */
+export const gatewayPaymentSchema = z.object({
+  organizationId: z.uuid(),
+  studentId: z.uuid(),
+  gatewayOrderId: z.string().min(1).max(150),
+  amount: money,
+  paymentDate: isoDate,
+});
+export type GatewayPaymentInput = z.infer<typeof gatewayPaymentSchema>;
