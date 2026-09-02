@@ -306,18 +306,44 @@ export const copy = {
       roster: "Roster",
       status: "Status",
       notEnrolledInRoster: "No students are enrolled in this section yet.",
-      markAllPresent: "Mark all present",
-      markAllAbsent: "Mark all absent",
+      markAllPresent: "All present",
+      markAllAbsent: "All absent",
+      tapHint: "Tap to change",
+      statusShort: {
+        present: "P",
+        absent: "A",
+        late: "L",
+        half_day: "H",
+        on_leave: "V",
+      },
+      statusCycle: {
+        present: "Present",
+        absent: "Absent",
+        late: "Late",
+        half_day: "Half day",
+        on_leave: "On leave",
+      },
+      liveCount: (present: number, absent: number, other: number) => {
+        const parts = [`${present} present`];
+        if (absent > 0) parts.push(`${absent} absent`);
+        if (other > 0) parts.push(`${other} other`);
+        return parts.join(" · ");
+      },
+      doneTitle: "Attendance done",
+      doneHelp: "Tap any student's status to correct it, then save again.",
+      today: "Today",
+      markedOne: "Attendance marked.",
+      marked: (count: number) => `Attendance marked for ${count} students.`,
       holidayNote: "is a holiday — attendance cannot be marked on a holiday.",
       weekendNote: "is a weekend — attendance cannot be marked on a weekend.",
       noCalendarNote:
         "has no calendar entry. Generate the year's calendar first, then mark attendance.",
       correctionReason: "Reason for this correction",
       correctionReasonHelp:
-        "Optional. Editing a past date — say why. Leaving it blank keeps any earlier note.",
+        "Optional — only the students whose status CHANGES need a reason. Leaving it blank keeps any earlier note.",
+      changedCount: (count: number) =>
+        count === 1 ? "1 student changing — say why:" : `${count} students changing — say why:`,
       alreadyMarked: "Already marked today — submitting again updates the marks.",
-      markedOne: "Attendance marked.",
-      marked: (count: number) => `Attendance marked for ${count} students.`,
       readOnlyNote:
         "You can see this section's day but not mark it — marking needs the attendance:create permission.",
       statuses: {

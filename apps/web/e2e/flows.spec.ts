@@ -24,15 +24,19 @@ import { expect, test, type Page } from "@playwright/test";
  */
 
 /** Verbatim from lib/copy.ts — the suite pins the user-visible contract. */
-const ALREADY_MARKED = "Already marked today — submitting again updates the marks.";
+const DONE_TITLE = "Attendance done";
 const READ_ONLY_NOTE =
   "You can see this section's day but not mark it — marking needs the attendance:create permission.";
 const DETAIL_SUBTITLE = "The student's record: identity, session enrollment, and actions.";
 
-/** A teaching day in the seeded 2025-26 calendar (Mon-Fri; not a holiday). */
-const MARK_DATE = "2025-12-01";
-/** The seeded roster of 6-A: one student, sectioned. */
-const ROSTER_ADMISSION_NUMBER = "DEMO-0001";
+/**
+ * A teaching day in the seeded 2025-26 calendar (Mon-Fri; not a holiday),
+ * reserved for THE marking test so it starts unmarked on every run —
+ * the mark itself is an upsert, so a re-run re-marks the same values.
+ * 2025-12-01 was the original; it is already marked by earlier runs, and
+ * the derived DONE state (correctly) refuses a second "Mark attendance".
+ */
+const MARK_DATE = "2025-12-08";
 const SECTION_LABEL = "Class 6 · A";
 
 /**
@@ -160,16 +164,63 @@ test.describe("marking flow (class teacher)", () => {
 
     // The calendar gate admits the date: the roster renders with marking
     // controls (the class teacher holds attendance:create).
-    const markAll = page.getByRole("button", { name: "Mark all present" });
+    const markAll = page.getByRole("button", { name: "All present" });
     await expect(markAll).toBeVisible();
-    await markAll.click();
 
-    // The submit button shares its label with the page heading; the role
-    // disambiguates. The click starts an async mutation — wait until the
+    // Read the first student's STORED status from the pre-filled chip's own
+    // label, BEFORE any edit — the prefill renders exactly what the
+    // authoritative layer holds. The taps below must land the first student
+    // on the SUCCESSOR of that stored status (one step round the page's
+    // cycle: present → absent → late → on leave → half day → present), so
+    // the submitted day ALWAYS differs from the stored one — including the
+    // steady state a previous run of this test leaves behind, because the
+    // successor of any status is never that status. The wheel never
+    // collides with itself: each run advances the first student one step.
+    const chip = page.getByRole("button", { name: /^Change status — currently / }).first();
+    const beforeLabel = await chip.getAttribute("aria-label");
+    const before = (beforeLabel ?? "").split("currently ")[1] ?? "Present";
+    // The PAGE's cycle order (mark/page.tsx CYCLE), not alphabetical.
+    const CYCLE = ["Present", "Absent", "Late", "On leave", "Half day"];
+    expect(CYCLE, `prefill chip reads a known status (got "${before}")`).toContain(before);
+    const successor = CYCLE[(CYCLE.indexOf(before) + 1) % CYCLE.length]!;
+
+    // Bulk actions work: All absent flips every chip, the tally follows, and
+    // the save button enables (the roster's size is environment-dependent —
+    // the admission spec adds students — so assert the flip, not a count).
+    await page.getByRole("button", { name: "All absent" }).click();
+    await expect(page.getByRole("button", { name: "Mark attendance" })).toBeEnabled();
+    // "All present" resets every chip to the cycle's start.
+    await markAll.click();
+    await expect(page.getByText("present", { exact: false }).first()).toBeVisible();
+
+    // The chip taps — the cycle control itself, not just the bulk buttons.
+    // "All present" reset the chip to Present, so the tap count is simply
+    // the successor's index in the cycle; if that is Present (stored was
+    // Half day), use two taps (Absent) instead — Present would equal a
+    // possible all-present stored day, Absent never equals Half day.
+    let taps = CYCLE.indexOf(successor);
+    if (taps === 0) taps = 2;
+    for (let i = 0; i < taps; i++) {
+      await chip.click();
+    }
+    await expect(
+      page.getByRole("button", { name: `Change status — currently ${successor}` }).first(),
+    ).toBeVisible();
+
+    // Submit: the click starts an async mutation — wait until the
     // authoritative layer answers before reloading, or the reload aborts the
-    // request and the mark never lands (exactly the flake this guard closed).
+    // request and the mark never lands (the flake this guard closed).
     await page.getByRole("button", { name: "Mark attendance" }).click();
-    await expect(page.getByText(ALREADY_MARKED)).toBeVisible();
+    // The DONE state is DERIVED from the stored marks, so it appears the
+    // same for anyone opening the day, and (below) survives a reload.
+    await expect(page.getByRole("button", { name: DONE_TITLE })).toBeVisible();
+    await expect(page.locator("[data-slot='badge']", { hasText: DONE_TITLE })).toBeVisible();
+
+    // The colour key: every cycle status shows its short letter with its
+    // colour and full word.
+    for (const word of CYCLE) {
+      await expect(page.locator("span", { hasText: word }).first()).toBeVisible();
+    }
 
     // Persistence, across a fresh load: the day pre-fills from
     // attendance.status. Section and date are client state and reset on
@@ -178,11 +229,28 @@ test.describe("marking flow (class teacher)", () => {
     await pickSelect(page, "mark-section", SECTION_LABEL);
     await page.locator("#mark-date").fill(MARK_DATE);
 
-    await expect(page.getByText(ALREADY_MARKED)).toBeVisible();
+    // DONE SURVIVES THE RELOAD — the whole point of deriving it: a teacher
+    // returning to a marked day sees the same answer as the one who marked
+    // it. The button relabels AND disables; the badge is up top.
+    await expect(page.locator("[data-slot='badge']", { hasText: DONE_TITLE })).toBeVisible();
+    await expect(page.getByRole("button", { name: DONE_TITLE })).toBeDisabled();
+
+    // The pre-fill comes from the stored marks: the first roster row reads
+    // the successor status this run wrote, and the rest read Present.
     await expect(
-      page.getByLabel(ROSTER_ADMISSION_NUMBER),
-      "the pre-filled status must come from the stored marks",
-    ).toContainText("present");
+      page.getByRole("button", { name: `Change status — currently ${successor}` }).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Change status — currently Present" }).first(),
+    ).toBeVisible();
+
+    // Editing flips the day out of done: one more chip tap makes the status
+    // differ from the stored marks, so the button re-enables.
+    await page
+      .getByRole("button", { name: `Change status — currently ${successor}` })
+      .first()
+      .click();
+    await expect(page.getByRole("button", { name: "Mark attendance" })).toBeEnabled();
   });
 });
 
@@ -196,9 +264,13 @@ test.describe("read-only day view (principal)", () => {
     await page.locator("#mark-date").fill(MARK_DATE);
 
     // Same screen, controls absent — the read-only degradation, not a
-    // different page and not an error state.
+    // different page and not an error state. The roster shows word badges
+    // (no tap-to-cycle chips), roll numbers lead each row, the live tally
+    // renders from the stored marks, and no bulk actions or save button.
     await expect(page.getByText(READ_ONLY_NOTE)).toBeVisible();
-    await expect(page.getByRole("button", { name: "Mark all present" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "All present" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Mark attendance" })).toHaveCount(0);
+    await expect(page.getByText("present", { exact: false }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Change status" })).toHaveCount(0);
   });
 });
