@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/features/auth/hooks/use-auth";
+import { useSessionBoundary } from "@/lib/session-boundary";
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -42,6 +43,11 @@ export function LoginForm({
   // No "already signed in?" check here. That belongs to the route, not the form:
   // `(auth)/login/page.tsx` redirects on the server before this renders.
   const { login } = useAuth();
+  // The boundary BOTH flows cross. Sign-out clears its own caches, but an
+  // expired-session redirect lands here without ever touching the button —
+  // and on a shared computer the previous user's tab state is still in
+  // memory. Clearing again on the way IN is what makes the pair airtight.
+  const clearSessionState = useSessionBoundary();
 
   const form = useForm<LoginUserInputT>({
     resolver: zodResolver(LoginUserInput),
@@ -58,6 +64,7 @@ export function LoginForm({
       toast.error(result.error.message || copy.errors.unknown);
       return;
     }
+    await clearSessionState();
     toast.success(copy.auth.signedIn);
     router.replace("/");
   });
