@@ -5,6 +5,7 @@ import { academicRouter } from "./routers/academic.router";
 import { assignmentRouter } from "./routers/assignment.router";
 import { attendanceRouter } from "./routers/attendance.router";
 import { enrollmentRouter, portalRouter } from "./routers/enrollment.router";
+import { feesRouter } from "./routers/fees.router";
 import { meRouter } from "./routers/me.router";
 import { schoolRouter } from "./routers/school.router";
 import { studentRouter } from "./routers/student.router";
@@ -34,6 +35,11 @@ export const appRouter = router({
   // Attendance: attendance.calendar.* (the marking gate), attendance.policy.*,
   // attendance.period.* — marking/status/summary join in C6.
   attendance: attendanceRouter,
+  // Fees: fee.head.*, fee.structure.* (lines + late-fee rules),
+  // fee.subscription.*, fee.assignment.* (assign + generate + concessions),
+  // fee.installment.* (dues + waive), fee.payment.* (record + transitions +
+  // refunds), fee.ledger.* (the ledger + opening balances).
+  fees: feesRouter,
   // The student portal: portal.enrollment.* — ownership only, no can(). More
   // portal domains join this sub-router as they land.
   portal: portalRouter,

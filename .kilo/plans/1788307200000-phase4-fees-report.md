@@ -9,11 +9,11 @@ plan's Reviewer's guide for the commit-by-commit code review.
 
 ---
 
-## STATUS: F5 DONE, F6 NEXT
+## STATUS: F6 DONE, F7 NEXT
 
 - Branch: `feature/phase4-fees`
-- Last commit: F5 `feat(contracts,services): collection and the ledger`
-- Next up: F6 — fees routers (tRPC + OpenAPI + permission mapping)
+- Last commit: F6 `feat(trpc): fees routers`
+- Next up: F7 — integration, smoke, seed tests
 
 ---
 
@@ -89,6 +89,17 @@ plan's Reviewer's guide for the commit-by-commit code review.
   BEFORE express.json with its own express.raw parser so the HMAC covers
   the provider's exact bytes. FEE_WEBHOOK_SECRET has a dev default;
   production must set it (noted in env.ts).
+
+### F6 — fees routers
+- Status: done
+- Commit: `feat(trpc): fees routers`
+- Verify: check-types 8/8; check:builders green; check:openapi 100
+  endpoints (36 fee); unit suite 199 green.
+- Deviations / notes: no per-row owner resolvers (fee rows own their
+  schoolId; argued in the router head — owner may want B6 anyway). One
+  real bug caught by check:openapi only: transition path params must be
+  literally named `id`. The webhook route is deliberately NOT in the
+  OpenAPI doc (provider-facing, signature-gated).
 
 <!-- template per chunk
 ### Fx — <name>

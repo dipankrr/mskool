@@ -1,9 +1,16 @@
 import {
   feeConcessions,
   feeHeads,
+  feeInstallments,
+  feePayments,
+  feeRefunds,
   feeStructureLines,
   feeStructures,
+  financialTransactions,
   lateFeeRules,
+  openingBalances,
+  paymentAllocations,
+  studentFeeAssignments,
   studentOptionalFeeSubscriptions,
 } from "@repo/db/schema";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
@@ -436,6 +443,35 @@ export type RecordRefundInput = z.infer<typeof recordRefundSchema>;
 /** Which payment's full shape to read (payment + allocations + ledger rows). */
 export const paymentDetailSchema = z.object({ paymentId: z.uuid() });
 export type PaymentDetailInput = z.infer<typeof paymentDetailSchema>;
+
+// ---------------------------------------------------------------------------
+// Row shapes the routers return (drizzle-zod derived like everything here)
+// ---------------------------------------------------------------------------
+
+export const feeInstallmentSelectSchema = createSelectSchema(feeInstallments);
+export type FeeInstallment = z.infer<typeof feeInstallmentSelectSchema>;
+
+export const feePaymentSelectSchema = createSelectSchema(feePayments);
+export type FeePayment = z.infer<typeof feePaymentSelectSchema>;
+
+export const paymentAllocationSelectSchema = createSelectSchema(paymentAllocations);
+export type PaymentAllocation = z.infer<typeof paymentAllocationSelectSchema>;
+
+export const feeRefundSelectSchema = createSelectSchema(feeRefunds);
+export type FeeRefund = z.infer<typeof feeRefundSelectSchema>;
+
+export const financialTransactionSelectSchema = createSelectSchema(
+  financialTransactions,
+);
+export type FinancialTransaction = z.infer<typeof financialTransactionSelectSchema>;
+
+export const studentFeeAssignmentSelectSchema = createSelectSchema(
+  studentFeeAssignments,
+);
+export type StudentFeeAssignment = z.infer<typeof studentFeeAssignmentSelectSchema>;
+
+export const openingBalanceSelectSchema = createSelectSchema(openingBalances);
+export type OpeningBalance = z.infer<typeof openingBalanceSelectSchema>;
 
 /** The accountant's due list — the collection screen's primary query. */
 export const duesListSchema = z.object({
