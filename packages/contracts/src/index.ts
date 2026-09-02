@@ -42,3 +42,8 @@ export * from "./contracts/student.contract";
 // Attendance: the calendar (marking gate), the school's marking policy, and
 // the period structure. The record-layer schemas land with the marking flow.
 export * from "./contracts/attendance.contract";
+
+// Fees: the configuration vocabulary (heads, structures, lines, late-fee
+// rules, subscriptions, concessions). The billing and collection schemas
+// land with F4/F5. Phase 4.
+export * from "./contracts/fees.contract";

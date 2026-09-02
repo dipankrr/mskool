@@ -9,11 +9,12 @@ plan's Reviewer's guide for the commit-by-commit code review.
 
 ---
 
-## STATUS: F2 DONE, F3 NEXT
+## STATUS: F3 DONE, F4 NEXT
 
 - Branch: `feature/phase4-fees`
-- Last commit: F2 `feat(db): billing, collection, and the ledger` (0011)
-- Next up: F3 — fee configuration contracts + services
+- Last commit: F3 `feat(contracts,services): the fee configuration layer`
+- Next up: F4 — the billing engine (assignment resolution, installment
+  generation, concession apportionment, late-fee maths)
 
 ---
 
@@ -72,3 +73,13 @@ is acceptable to leave blank if it happened)
 ## Handoff
 
 (the exact next chunk, and any message the next session needs)
+
+### F3 — fee configuration contracts + services
+- Status: done
+- Commit: `feat(contracts,services): the fee configuration layer`
+- Verify: check-types 8/8; unit suite green (86 authz + 48 web + 32 trpc);
+  lint clean on the new files.
+- Deviations / notes: concession amounts computed in BigInt paise with floor
+  division (never a float, never over-discount). Aggregate cap (sum of a
+  student's concessions vs base) deferred to F4's apportionment engine where
+  it belongs. Structure lines have no deactivate — corrected by update.

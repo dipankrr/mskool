@@ -41,3 +41,8 @@ export * from "./enrollment.service";
 // Attendance: calendar (the marking gate), marking policy, periods. The
 // marking flow and the record layer append to this file in C5.
 export * from "./attendance.service";
+
+// Fees: the configuration layer — heads, structures, lines, late-fee rules,
+// subscriptions, concessions. The billing engine (F4) and collection (F5)
+// are their own files. Phase 4.
+export * from "./fees.service";
