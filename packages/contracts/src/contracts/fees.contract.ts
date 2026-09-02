@@ -323,3 +323,42 @@ export const createConcessionSchema = createInsertSchema(feeConcessions, {
     path: ["validTo"],
   });
 export type CreateConcessionInput = z.infer<typeof createConcessionSchema>;
+
+// ---------------------------------------------------------------------------
+// The billing engine (F4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolves a class's structure onto ONE enrollment — the fee shadow of the
+ * year anchor. The service finds the (unique) active structure for the
+ * enrollment's class+year, snapshots the base/net totals, and stamps
+ * `fee_effective_from`: the given date, or the enrollment's own start. A
+ * student already assigned for that year is refused by the unique index.
+ */
+export const assignFeeStructureSchema = z.object({
+  enrollmentId: z.uuid(),
+  // Defaults to the enrollment's effective date in the service.
+  feeEffectiveFrom: isoDate.optional(),
+  joiningMonthFullCharge: z.boolean().optional(),
+});
+export type AssignFeeStructureInput = z.infer<typeof assignFeeStructureSchema>;
+
+/** Which assignment to (re-)run the idempotent generator for. */
+export const generateInstallmentsSchema = z.object({
+  studentFeeAssignmentId: z.uuid(),
+});
+export type GenerateInstallmentsInput = z.infer<typeof generateInstallmentsSchema>;
+
+/**
+ * Carries last year's dues into a year, tagged with the year they came from.
+ * The service writes the matching `opening_balance` ledger row in the same
+ * transaction — every money movement hits the ledger.
+ */
+export const createOpeningBalanceSchema = z.object({
+  studentId: z.uuid(),
+  academicYearId: z.uuid(),
+  originAcademicYearId: z.uuid(),
+  amount: money,
+  description: z.string().min(1).max(255).nullish(),
+});
+export type CreateOpeningBalanceInput = z.infer<typeof createOpeningBalanceSchema>;

@@ -3,6 +3,7 @@ import {
   requireSchoolId,
   yearVisibilityWhere,
 } from "./academic.service";
+import { fromCents, toCents } from "./fees-maths";
 import { scopeWhere, type DataScope, type ScopeColumns } from "@repo/authz";
 import type {
   CreateConcessionInput,
@@ -81,26 +82,6 @@ const CONCESSION_SCOPE: ScopeColumns = {
   organizationId: feeConcessions.organizationId,
   schoolId: feeConcessions.schoolId,
 };
-
-// ---------------------------------------------------------------------------
-// Money helpers — integer paise, never float (hard rule 4)
-// ---------------------------------------------------------------------------
-
-/** "1250.50" → 125050n. Refuses anything the contracts' `money` would not. */
-function toCents(amount: string): bigint {
-  if (!/^\d+(\.\d{1,2})?$/.test(amount)) {
-    throw new Error(`Invalid money amount: "${amount}".`);
-  }
-      const [whole, frac = ""] = amount.split(".");
-      return BigInt(whole ?? "0") * 100n + BigInt((frac + "00").slice(0, 2));
-}
-
-/** 125050n → "1250.50". */
-function fromCents(cents: bigint): string {
-  const whole = cents / 100n;
-  const frac = cents % 100n;
-  return `${whole}.${frac.toString().padStart(2, "0")}`;
-}
 
 // ---------------------------------------------------------------------------
 

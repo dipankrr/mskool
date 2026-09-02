@@ -46,3 +46,9 @@ export * from "./attendance.service";
 // subscriptions, concessions. The billing engine (F4) and collection (F5)
 // are their own files. Phase 4.
 export * from "./fees.service";
+
+// Fees: the billing engine — assignment resolution, the idempotent
+// installment generator, concession re-apportionment, opening balances.
+// The pure maths lives in fees-maths (no db imports, hermetically tested).
+export * from "./fees-maths";
+export * from "./fees-billing.service";
