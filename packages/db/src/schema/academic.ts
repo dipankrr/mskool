@@ -246,10 +246,11 @@ export const subjectCategoryEnum = pgEnum("subject_category", [
  * and category. School-scoped, NOT year-scoped — Maths is the same subject
  * every year; what changes yearly lives on sections and enrollments.
  *
- * Columns follow reference SQL table 13: `category` separates the co-scholastic
- * pipeline (ADR on exams; DOMAIN.md "separate pipeline, grades only"),
- * `countsTowardResult = false` excludes a subject from totals, and
- * `isGradedOnly` marks subjects with no numeric marks at all.
+ * `category` (reference SQL table 13) separates the co-scholastic pipeline
+ * (ADR on exams; DOMAIN.md "separate pipeline, grades only"). It is a
+ * CREATION-TIME seed only: the result flags it used to carry live on
+ * `class_subject_mappings` (ADR-031), so `category` must never be derived
+ * from at read time — Class 1 Maths is scholastic yet excluded from totals.
  *
  * NOT in the scope tree — no `scope_nodes` row (hard rule 12 names
  * school/class/section only). A teacher's subject authority is a
@@ -279,12 +280,6 @@ export const subjects = pgTable(
     code: varchar({ length: 20 }),
 
     category: subjectCategoryEnum().notNull().default("scholastic"),
-
-    // false = excluded from totals and pass calculation (co-scholastic areas,
-    // activity subjects). DOMAIN.md's report-card maths branches on this.
-    countsTowardResult: boolean().notNull().default(true),
-    // true = no numeric marks; a grade is entered directly (Art, PE).
-    isGradedOnly: boolean().notNull().default(false),
 
     // Never hard-deleted (hard rule 2): results, fee structures and teacher
     // assignments all point here.
@@ -328,6 +323,14 @@ export const teacherAssignmentRoleEnum = pgEnum("teacher_assignment_role", [
  * absent — `subject_groups` does not exist yet and grouping is an
  * exams-phase need (see this plan's S2 header). The FK would be a second
  * ALTER like the reference itself performs.
+ *
+ * The RESULT FLAGS live here, not on `subjects` (ADR-031): they answer
+ * "does THIS class's Maths count THIS year?", which differs per class and per
+ * year, so they live on the per-(year, class, subject) row. The reference
+ * SQL's `exam_subject_schedules` override ("inherited from subject but can be
+ * overridden per schedule") is deliberately superseded — an exam that
+ * disagrees with its term's sibling would leave the annual rollup without a
+ * defined answer. The exam chain reads THIS row, and only this row.
  */
 export const classSubjectMappings = pgTable(
   "class_subject_mappings",
@@ -348,6 +351,17 @@ export const classSubjectMappings = pgTable(
     subjectId: uuid()
       .notNull()
       .references(() => subjects.id),
+
+    // false = excluded from totals and pass calculation for every student
+    // taking this subject in this class this year. NOT the best-5/elective
+    // counting rule (per-student, an exams-phase aggregation policy) and NOT
+    // per-student exemption (`student_subject_results.is_exempted`).
+    countsTowardResult: boolean().notNull().default(true),
+    // true = no numeric marks; a grade is entered directly (Art, PE).
+    // Two INDEPENDENT booleans — all four combinations are legitimate
+    // (Class 1 Maths: numeric but excluded; Art: counted but graded-only) —
+    // so never collapse them into a mode enum.
+    isGradedOnly: boolean().notNull().default(false),
 
     // true = NOT auto-assigned to every student; the class-count list that
     // matters for the template is "core subjects every child takes".
