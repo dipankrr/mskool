@@ -47,8 +47,7 @@ and commit ledger live in
   already supports period-wise mode), attendance summary/report screens
   (the API and the generated percentage exist; reports land with the
   report-card phase), the student portal UI, guardians, E2E coverage for
-  the new screens (the 4 existing browser walks stand), and `pnpm lint`
-  wiring (still never run).
+  the new screens (the 4 existing browser walks stand).
 
 **Phase 3 remains complete** — see its section below; the Phase 2
 deferrals and the students slice's deferrals stand unchanged.
@@ -287,8 +286,8 @@ Do this next:
    assertion that proves the tenancy filter actually bites. Each one then needs a screen; the
    four verticals in `apps/web/src/features/` are the template, and they are deliberately
    similar to each other.
-3. **`pnpm lint` still has never run** — see Tooling below. Now that `apps/web` has real
-   surface area, it is worth more than it was.
+3. **`pnpm lint` runs and passes** — see Tooling below. With real UI surface it has
+   already caught two stale-memo bugs; keep it green alongside `check-types`.
 
 
 **ADR-007's better-auth extensions are deliberately deferred** — they were the obvious
@@ -373,13 +372,13 @@ once the console was built on top:
       `window`, `document`, `HTMLElement` and `RequestInit.cache` did not exist for `tsc`.
       Nothing noticed until a generated component used `window`. `nextjs.json` now sets
       `["DOM", "DOM.Iterable", "ES2022"]`, the same three Next's own generated tsconfig uses.
-- [ ] **`pnpm lint` has never run.** `eslint` is not a dependency of any package, so the
-      only two packages with a `lint` script — `@repo/api` and `@repo/web` — both die with
-      *"'eslint' is not recognized"*. `@repo/eslint-config` exists and exports configs
-      that nothing consumes. Either add `eslint` to those two and wire the config in, or
-      delete the scripts; a command in `AGENTS.md` that has never worked is worse than a
-      missing one, because it gets run once and then ignored. Not urgent — `check-types`
-      is the actual gate and is green — but it should not stay in this state silently.
+- [x] **`pnpm lint` wired and green (2026-09-03).** `eslint` is now a devDependency of
+      `@repo/web` and `@repo/api`; the shared config gained `eslint-plugin-react-hooks`
+      (`rules-of-hooks` + `exhaustive-deps` as errors on `**/*.tsx`) and ignores its own
+      `eslint.config.js` files. First run found 2 real stale-`useMemo` bugs in web (both
+      fixed); remaining findings are warnings only — 49 `no-explicit-any` in the api and
+      ~14 unused vars/imports across web — which do not fail the gate. Burning those down
+      is optional housekeeping, one rule at a time.
 
 
 

@@ -211,7 +211,6 @@ export default function MarkAttendancePage() {
     }
     setEntries(next);
     setReason("");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sectionId, date, dayStatuses.data, enrollments.data]);
 
   const dayType = calendarDay?.dayType;

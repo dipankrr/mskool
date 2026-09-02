@@ -518,6 +518,9 @@ export function ActiveContextProvider({ children }: { children: ReactNode }) {
    * is in flight. `ActiveContextGate`, mounted inside the shell, is what holds page
    * content back.
    */
+  // Bound outside the memo so the retry closure captures a stable function
+  // instead of the per-render `me` object.
+  const refetchMe = me.refetch;
   const state = useMemo<ActiveContextState>(() => {
     // Storage not yet read, the bootstrap call still in flight, or a redirect to
     // /login already scheduled. All three are "not yet", not "broken".
@@ -529,7 +532,7 @@ export function ActiveContextProvider({ children }: { children: ReactNode }) {
       return {
         status: "error",
         message: errorMessage(me.error),
-        retry: () => void me.refetch(),
+        retry: () => void refetchMe(),
       };
     }
 
@@ -540,7 +543,7 @@ export function ActiveContextProvider({ children }: { children: ReactNode }) {
     if (!value) return { status: "no-access" };
 
     return { status: "ready", value };
-  }, [stored, me.isPending, me.error, me.refetch, meRequiresSignIn, value]);
+  }, [stored, me.isPending, me.error, refetchMe, meRequiresSignIn, value]);
 
   return <ActiveContext.Provider value={state}>{children}</ActiveContext.Provider>;
 }

@@ -2,7 +2,7 @@
 
 import { PlusIcon, SearchIcon, UsersIcon } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { DataTable } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
@@ -95,7 +95,9 @@ export default function StudentsPage() {
     return map;
   }, [enrollments.data]);
 
-  const enrolledLabel = (studentId: string): string => {
+  // useCallback so the columns memo can depend on it without re-running
+  // every render — it closes over the memoised maps, which change together.
+  const enrolledLabel = useCallback((studentId: string): string => {
     const enrollment = enrollmentByStudent.get(studentId);
     if (!enrollment) return copy.students.notEnrolled;
     const className = classNameById.get(enrollment.classId);
@@ -104,7 +106,7 @@ export default function StudentsPage() {
       ? sectionNameById.get(enrollment.sectionId)
       : undefined;
     return sectionName ? `${className} · ${sectionName}` : className;
-  };
+  }, [classNameById, sectionNameById, enrollmentByStudent]);
 
   const columns = useMemo(
     () =>
@@ -142,7 +144,7 @@ export default function StudentsPage() {
         }),
       ]),
     // The label helper closes over the memoised maps; they change together.
-    [classNameById, sectionNameById, enrollmentByStudent],
+    [enrolledLabel],
   );
 
   const openAdmit = () => setFormOpen(true);
