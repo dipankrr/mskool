@@ -9,12 +9,11 @@ plan's Reviewer's guide for the commit-by-commit code review.
 
 ---
 
-## STATUS: F1 DONE, F2 NEXT
+## STATUS: F2 DONE, F3 NEXT
 
 - Branch: `feature/phase4-fees`
-- Last commit: F1 `feat(db): the fee configuration layer` (0010)
-- Next up: F2 — billing/collection/ledger schema, migration `0011`,
-  the hand-written ledger-immutability trigger
+- Last commit: F2 `feat(db): billing, collection, and the ledger` (0011)
+- Next up: F3 — fee configuration contracts + services
 
 ---
 
@@ -32,12 +31,25 @@ plan's Reviewer's guide for the commit-by-commit code review.
 
 ### F1 — fee configuration schema (`0010`)
 - Status: done
-- Commit: `feat(db): the fee configuration layer`
+- Commit: `feat(db): the fee configuration layer` (91f19bc)
 - Verify: check-types 8/8 green; db:verify 90/90 (20 new fee assertions);
   migration reviewed purely additive before apply.
 - Deviations / notes: one verify test bug found and fixed mid-chunk (the
   zero-amount assertion initially reused an existing head and hit the
   unique-pair index, not the CHECK — test fixed, schema unchanged).
+
+### F2 — billing/collection/ledger schema (`0011`)
+- Status: done
+- Commit: `feat(db): billing, collection, and the ledger`
+- Verify: check-types 8/8; db:verify 114/114 (24 new); the append-only
+  trigger proven to reject UPDATE and DELETE and accept INSERT; generated
+  balance/total columns exact-checked (700.00 / 320.00).
+- Deviations / notes: two verify test bugs found and fixed mid-chunk (a
+  fixture missing late_fee_amount; an always-true placeholder assertion
+  removed on principle). `last_number` narrowed bigint → integer (reasoned
+  in the plan's reviewer entry). `db:migrate` prints a benign identifier-
+  truncation NOTICE for the long `student_optional_fee_subscriptions_*_fk`
+  constraint names — cosmetic, Postgres truncates >63-char identifiers.
 
 <!-- template per chunk
 ### Fx — <name>

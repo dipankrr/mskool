@@ -113,12 +113,25 @@ async function main() {
         'fee_structure_lines_month_range',
         'fee_structure_lines_month_order',
         'late_fee_rules_value_positive',
-        'late_fee_rules_date_order'
+        'late_fee_rules_date_order',
+        'fee_concessions_value_positive',
+        'fee_concessions_amount_non_negative',
+        'fee_concessions_percentage_range',
+        'fee_concessions_validity_order',
+        'fee_installments_amount_non_negative',
+        'fee_installments_net_matches_parts',
+        'fee_installments_month_shape',
+        'opening_balances_amount_positive',
+        'fee_payments_amount_positive',
+        'fee_payments_late_fee_non_negative',
+        'payment_allocations_amount_positive',
+        'fee_refunds_amount_positive',
+        'financial_transactions_amount_positive'
       )
     ORDER BY con.conname
   `;
   for (const c of constraints) console.log(`  ${c.table_name}.${c.constraint_name}`);
-  report("all CHECK constraints exist", constraints.length === 11, `found ${constraints.length}/11`);
+  report("all CHECK constraints exist", constraints.length === 24, `found ${constraints.length}/24`);
 
   // contype 'x' is an EXCLUDE constraint. drizzle-kit cannot see these at all,
   // so their absence would be silent — hence checking the catalog directly.
@@ -148,6 +161,17 @@ async function main() {
       AND NOT tg.tgisinternal
   `;
   report("the terms date trigger exists", triggers.length === 1, `found ${triggers.length}/1`);
+
+  // The ledger's append-only guard (hard rule 3) is the same class of
+  // hand-written SQL: invisible to drizzle-kit, proven here instead.
+  const ledgerTriggers = await sql<{ tgname: string }[]>`
+    SELECT tg.tgname FROM pg_trigger tg
+    JOIN pg_class rel ON rel.oid = tg.tgrelid
+    WHERE rel.relname = 'financial_transactions'
+      AND tg.tgname = 'financial_transactions_append_only_trg'
+      AND NOT tg.tgisinternal
+  `;
+  report("the ledger append-only trigger exists", ledgerTriggers.length === 1, `found ${ledgerTriggers.length}/1`);
 
   console.log("\n=== hard rule 11: every timestamp is timestamptz ===");
   const naive = await sql<{ table_name: string; column_name: string }[]>`
@@ -956,6 +980,275 @@ async function main() {
     // a constraint that over-reaches is its own bug (the terms precedent).
     await expectAccept(tx, "a single-day late-fee window is accepted", (q) =>
       lateFeeRule(q, "50.00", "flat", "2030-10-01", "2030-10-01"),
+    );
+
+    console.log("\n=== fees: resolution, billing, collection, ledger (0011) ===");
+
+    // A bespoke rejection helper: the ledger trigger RAISEs a plain exception
+    // (SQLSTATE P0001) with NO constraint_name, so expectReject's name check
+    // cannot apply. The MESSAGE is the identity here instead.
+    async function expectTriggerReject(
+      tx: Queryable,
+      label: string,
+      run: (q: Queryable) => Promise<unknown>,
+    ) {
+      try {
+        await tx.savepoint(async (sp) => {
+          await run(sp as Queryable);
+          throw new Error(ACCEPTED);
+        });
+        report(label, false, "statement was ACCEPTED but should have been rejected");
+      } catch (error) {
+        if (error instanceof Error && error.message === ACCEPTED) {
+          report(label, false, "statement was ACCEPTED but should have been rejected");
+          return;
+        }
+        report(label, String(error).includes("append-only"), String(error).slice(0, 120));
+      }
+    }
+
+    // The chain a full fee reality needs: year/class/structure/head already
+    // exist from the 0010 block; the assignment adds the enrollment (the
+    // year anchor) and the student.
+    const [feeEnrollment] = await tx<{ id: string }[]>`
+      SELECT id FROM student_enrollments
+      WHERE student_id = ${enrStudent.id} AND academic_year_id = ${enrYear.id}
+      LIMIT 1
+    `;
+
+    const assignment = (
+      q: Queryable,
+      studentId: string,
+      enrollmentId: string,
+    ) =>
+      q`INSERT INTO student_fee_assignments
+          (organization_id, school_id, student_id, enrollment_id, academic_year_id,
+           fee_structure_id, base_annual_amount, net_annual_amount, fee_effective_from)
+        VALUES (${org.id}, ${school.id}, ${studentId}, ${enrollmentId}, ${enrYear.id},
+                ${structure.id}, '12000.00', '11000.00', '2030-04-01')`;
+
+    await expectAccept(tx, "a fee assignment is accepted", (q) =>
+      assignment(q, enrStudent.id, feeEnrollment.id),
+    );
+    await expectReject(
+      tx,
+      "a SECOND assignment for the same student+year is rejected",
+      "student_fee_assignments_student_year_uq",
+      (q) => assignment(q, enrStudent.id, feeEnrollment.id),
+    );
+
+    const [feeAssignment] = await tx<{ id: string }[]>`
+      SELECT id FROM student_fee_assignments WHERE student_id = ${enrStudent.id}
+    `;
+
+    const installment = (
+      q: Queryable,
+      headId: string,
+      number: number,
+      amount: string,
+      concession: string,
+      net: string,
+      paid: string,
+    ) =>
+      q`INSERT INTO fee_installments
+          (organization_id, school_id, student_fee_assignment_id, student_id,
+           academic_year_id, fee_head_id, installment_number, amount,
+           concession_amount, net_amount, due_date, paid_amount)
+        VALUES (${org.id}, ${school.id}, ${feeAssignment.id}, ${enrStudent.id},
+                ${enrYear.id}, ${headId}, ${number}, ${amount},
+                ${concession}, ${net}, '2030-04-10', ${paid})`;
+
+    await expectAccept(tx, "an installment is accepted", (q) =>
+      installment(q, head.id, 1, "1000.00", "100.00", "900.00", "200.00"),
+    );
+    await expectReject(
+      tx,
+      "a duplicate installment (assignment, head, number) is rejected",
+      "fee_installments_assignment_head_number_uq",
+      (q) => installment(q, head.id, 1, "1000.00", "0.00", "1000.00", "0"),
+    );
+    await expectReject(
+      tx,
+      "net_amount <> amount - concession is rejected",
+      "fee_installments_net_matches_parts",
+      (q) => installment(q, labHead.id, 1, "1000.00", "100.00", "999.00", "0"),
+    );
+
+    // The generated column: the DATABASE computes balance, no code path may
+    // store it. 900.00 net − 200.00 paid = 700.00, exactly.
+    await expectAccept(tx, "the generated balance computes 700.00", async (q) => {
+      const [row] = await q<{ balance_amount: string }[]>`
+        SELECT balance_amount FROM fee_installments
+        WHERE student_fee_assignment_id = ${feeAssignment.id} AND installment_number = 1
+      `;
+      if (row.balance_amount !== "700.00") {
+        throw new Error(`generated balance is ${row.balance_amount}, expected 700.00`);
+      }
+    });
+
+    // The receipt counter and its backstop.
+    const payment = (q: Queryable, receipt: string, studentId: string, amount = "500.00") =>
+      q`INSERT INTO fee_payments
+          (organization_id, school_id, student_id, academic_year_id, receipt_number,
+           amount, payment_date, payment_mode)
+        VALUES (${org.id}, ${school.id}, ${studentId}, ${enrYear.id}, ${receipt},
+                ${amount}, '2030-04-15', 'cash')`;
+
+    await expectAccept(tx, "a payment is accepted", (q) => payment(q, "RCP-2030-00001", enrStudent.id));
+    await expectReject(
+      tx,
+      "the same receipt number in the SAME school is rejected",
+      "fee_payments_school_receipt_uq",
+      (q) => payment(q, "RCP-2030-00001", enrStudent.id),
+    );
+    // The backstop is per school: the OTHER branch's receipt #1 is free.
+    const [school2Student] = await tx<{ id: string }[]>`
+      INSERT INTO students
+        (organization_id, school_id, admission_number, first_name, last_name,
+         date_of_birth, gender)
+      VALUES (${org.id}, ${school2.id}, 'VERIFY-0002', 'Verify', 'Second',
+              '2012-06-15', 'male')
+      RETURNING id
+    `;
+    await expectAccept(tx, "the same receipt number in a DIFFERENT school is accepted", (q) =>
+      q`INSERT INTO fee_payments
+          (organization_id, school_id, student_id, academic_year_id, receipt_number,
+           amount, payment_date, payment_mode)
+        VALUES (${org.id}, ${school2.id}, ${school2Student.id}, ${enrYear.id},
+                'RCP-2030-00001', '500.00', '2030-04-15', 'cash')`,
+    );
+
+    // The idempotency key: unique per school where present; absent is fine.
+    await expectAccept(tx, "a payment WITHOUT client_reference is accepted", (q) =>
+      q`INSERT INTO fee_payments
+          (organization_id, school_id, student_id, academic_year_id, receipt_number,
+           amount, payment_date, payment_mode)
+        VALUES (${org.id}, ${school.id}, ${enrStudent.id}, ${enrYear.id},
+                'RCP-2030-00002', '300.00', '2030-04-16', 'upi')`,
+    );
+    await expectAccept(tx, "a payment WITH a client_reference is accepted", (q) =>
+      q`INSERT INTO fee_payments
+          (organization_id, school_id, student_id, academic_year_id, receipt_number,
+           amount, late_fee_amount, payment_date, payment_mode, client_reference)
+        VALUES (${org.id}, ${school.id}, ${enrStudent.id}, ${enrYear.id},
+                'RCP-2030-00003', '300.00', '20.00', '2030-04-16', 'upi', 'pos-abc-123')`,
+    );
+    await expectReject(
+      tx,
+      "the SAME client_reference in the same school is rejected (idempotency backstop)",
+      "fee_payments_school_client_reference_uq",
+      (q) =>
+        q`INSERT INTO fee_payments
+            (organization_id, school_id, student_id, academic_year_id, receipt_number,
+             amount, payment_date, payment_mode, client_reference)
+          VALUES (${org.id}, ${school.id}, ${enrStudent.id}, ${enrYear.id},
+                  'RCP-2030-00004', '300.00', '2030-04-16', 'upi', 'pos-abc-123')`,
+    );
+
+    // The generated total: 300.00 principal + 20.00 frozen late fee = 320.00.
+    await expectAccept(tx, "the generated total computes 320.00", async (q) => {
+      const [row] = await q<{ total_amount: string }[]>`
+        SELECT total_amount FROM fee_payments WHERE receipt_number = 'RCP-2030-00003'
+      `;
+      if (row.total_amount !== "320.00") {
+        throw new Error(`generated total is ${row.total_amount}, expected 320.00`);
+      }
+    });
+
+    // Allocations: the pair unique, the amount positive.
+    const [firstPayment] = await tx<{ id: string }[]>`
+      SELECT id FROM fee_payments WHERE receipt_number = 'RCP-2030-00001'
+    `;
+    const [firstInstallment] = await tx<{ id: string }[]>`
+      SELECT id FROM fee_installments WHERE student_fee_assignment_id = ${feeAssignment.id}
+        AND installment_number = 1
+    `;
+    const allocation = (q: Queryable, amount: string) =>
+      q`INSERT INTO payment_allocations
+          (organization_id, school_id, payment_id, installment_id, amount_allocated)
+        VALUES (${org.id}, ${school.id}, ${firstPayment.id}, ${firstInstallment.id}, ${amount})`;
+
+    await expectAccept(tx, "an allocation is accepted", (q) => allocation(q, "200.00"));
+    await expectReject(
+      tx,
+      "a duplicate allocation pair is rejected",
+      "payment_allocations_payment_installment_uq",
+      (q) => allocation(q, "100.00"),
+    );
+
+    // The ledger: INSERT open, UPDATE/DELETE forbidden by the trigger.
+    await expectAccept(tx, "a ledger INSERT is accepted (append-only keeps INSERT open)", (q) =>
+      q`INSERT INTO financial_transactions
+          (organization_id, school_id, student_id, academic_year_id, transaction_type,
+           direction, amount, reference_id, reference_table, receipt_number, transaction_date)
+        VALUES (${org.id}, ${school.id}, ${enrStudent.id}, ${enrYear.id}, 'fee_payment',
+                'credit', '500.00', ${firstPayment.id}, 'fee_payments', 'RCP-2030-00001',
+                '2030-04-15')`,
+    );
+    await expectTriggerReject(
+      tx,
+      "a ledger UPDATE is rejected by the trigger",
+      (q) =>
+        q`UPDATE financial_transactions SET amount = '999.00'
+          WHERE receipt_number = 'RCP-2030-00001'`,
+    );
+    await expectTriggerReject(
+      tx,
+      "a ledger DELETE is rejected by the trigger",
+      (q) =>
+        q`DELETE FROM financial_transactions WHERE receipt_number = 'RCP-2030-00001'`,
+    );
+
+    // Opening balances: the origin-year tag, the unique triple, the floor.
+    const [originYear] = await tx<{ id: string }[]>`
+      SELECT id FROM academic_years WHERE name = '2031-32' AND school_id = ${school.id}
+    `;
+    const openingBalance = (q: Queryable, amount: string) =>
+      q`INSERT INTO opening_balances
+          (organization_id, school_id, student_id, academic_year_id,
+           origin_academic_year_id, amount, description)
+        VALUES (${org.id}, ${school.id}, ${enrStudent.id}, ${originYear.id},
+                ${enrYear.id}, ${amount}, 'Carried forward from 2030-31')`;
+
+    await expectAccept(tx, "an opening balance is accepted", (q) => openingBalance(q, "150.00"));
+    await expectReject(
+      tx,
+      "a duplicate (student, year, origin) opening balance is rejected",
+      "opening_balances_student_year_origin_uq",
+      (q) => openingBalance(q, "150.00"),
+    );
+    await expectReject(
+      tx,
+      "a ZERO opening balance is rejected (nothing to carry is not a row)",
+      "opening_balances_amount_positive",
+      (q) => openingBalance(q, "0.00"),
+    );
+
+    // Concessions: percentage capped at 100, computed amount non-negative.
+    await expectReject(
+      tx,
+      "a percentage concession over 100 is rejected",
+      "fee_concessions_percentage_range",
+      (q) =>
+        q`INSERT INTO fee_concessions
+            (organization_id, school_id, student_fee_assignment_id, concession_type,
+             calculation_type, value, concession_amount, valid_from)
+          VALUES (${org.id}, ${school.id}, ${feeAssignment.id}, 'merit_scholarship',
+                  'percentage', '101.00', '101.00', '2030-04-01')`,
+    );
+
+    // Refunds: the amount floor; the FK to the original payment is the
+    // reference-the-original rule's structural half.
+    await expectReject(
+      tx,
+      "a zero refund is rejected",
+      "fee_refunds_amount_positive",
+      (q) =>
+        q`INSERT INTO fee_refunds
+            (organization_id, school_id, student_id, academic_year_id,
+             original_payment_id, refund_amount, refund_date, refund_mode, reason)
+          VALUES (${org.id}, ${school.id}, ${enrStudent.id}, ${enrYear.id},
+                  ${firstPayment.id}, '0.00', '2030-04-20', 'cash', 'duplicate entry')`,
     );
   });
 
