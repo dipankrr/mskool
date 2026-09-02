@@ -9,17 +9,37 @@ plan's Reviewer's guide for the commit-by-commit code review.
 
 ---
 
-## STATUS: F7 DONE, F8 NEXT
+## STATUS: RUN COMPLETE — Phase 4 backend done, awaiting owner review
 
-- Branch: `feature/phase4-fees`
-- Last commit: F7 `test: fees in integration, smoke, and seed`
-- Next up: F8 — docs (TASKS.md Phase 4 done)
+- Branch: `feature/phase4-fees` (9 commits ahead of main, unmerged)
+- Last commit: F8 `docs: TASKS.md — Phase 4 done`
+- Next: owner reviews the branch via the plan's Reviewer's guide, then merges
 
 ---
 
 ## Run summary
 
-(appended at the end of the run)
+All eight chunks landed. Phase 4 fees is backend-complete on
+`feature/phase4-fees`: 14 tables across migrations 0010/0011, the
+contract → service → router chain (36 REST endpoints over three service
+files), the billing engine, collection with the row-locked receipt
+sequence and the idempotency key, the ADR-009 webhook seam, a 34-test
+hermetic maths suite, a 14-test integration suite against real Postgres,
+seed fee fixtures, and three live smoke checks.
+
+## Verification surface at end of run
+
+- `pnpm check-types` — 8/8 packages green
+- `pnpm test` — 200 unit tests (86 authz + 34 services + 48 web + 32 trpc)
+- `pnpm test:integration` — 107 (93 authz + 14 fees), real Postgres
+- `pnpm db:verify` — 114 assertions (38 fee-specific)
+- `pnpm check:builders` / `pnpm check:openapi` — green; 100 endpoints (36 fee)
+- `pnpm lint` — clean (pre-existing warnings only)
+- `pnpm db:seed` — idempotent, fee reality seeded, payment recorded
+- `pnpm smoke:authz` — 140/161; ALL 21 failures are pre-existing demo-org
+  drift (a third academic year, extra students/enrollments from earlier UI
+  testing); the three fee checks PASS. Recommend resetting the demo org or
+  drift-tolerant assertion rewrites — owner's call.
 
 ## Per-chunk log
 
@@ -64,10 +84,10 @@ plan's Reviewer's guide for the commit-by-commit code review.
 
 ### F4 — the billing engine
 - Status: done
-- Commit: `feat(contracts,services): the billing engine`
+- Commit: `feat(contracts,services): the billing engine` (f300a28)
 - Verify: check-types 8/8; NEW services unit suite 28/28 (pure maths:
   buckets, apportionment, late fee, money round-trips); full unit suite
-  194 green (86 authz + 28 services + 48 web + 32 trpc).
+  194 green.
 - Deviations / notes: pure maths extracted to `fees-maths.ts` (no db
   imports) so the tests stay hermetic — turbo `test` must not need
   Postgres or env. Three test-expectation bugs fixed during the run (the
@@ -79,7 +99,7 @@ plan's Reviewer's guide for the commit-by-commit code review.
 
 ### F5 — collection and the ledger
 - Status: done
-- Commit: `feat(contracts,services): collection and the ledger`
+- Commit: `feat(contracts,services): collection and the ledger` (f93bb65)
 - Verify: check-types 8/8; services unit suite 33/33 (allocator tests
   added), 199 total; whole-monorepo check-types re-run after the api
   route landed.
@@ -90,9 +110,20 @@ plan's Reviewer's guide for the commit-by-commit code review.
   the provider's exact bytes. FEE_WEBHOOK_SECRET has a dev default;
   production must set it (noted in env.ts).
 
+### F6 — fees routers
+- Status: done
+- Commit: `feat(trpc): fees routers` (04ec20c)
+- Verify: check-types 8/8; check:builders green; check:openapi 100
+  endpoints (36 fee); unit suite 199 green.
+- Deviations / notes: no per-row owner resolvers (fee rows own their
+  schoolId; argued in the router head — owner may want B6 anyway). One
+  real bug caught by check:openapi only: transition path params must be
+  literally named `id`. The webhook route is deliberately NOT in the
+  OpenAPI doc (provider-facing, signature-gated).
+
 ### F7 — integration, smoke, and seed
 - Status: done (with an environmental caveat on the smoke)
-- Commit: `test: fees in integration, smoke, and seed`
+- Commit: `test: fees in integration, smoke, and seed` (8384765)
 - Verify: integration 107/107 (14 new fee tests incl. the receipt
   concurrency race); unit 200; seed idempotent with a payable demo
   reality; live smoke — the three fee checks PASS (140/161 overall).
@@ -111,35 +142,43 @@ plan's Reviewer's guide for the commit-by-commit code review.
   bucket — correct behaviour, wrong demo data), and the smoke's
   first-row lookups broke on drift (now name-based).
 
-### F6 — fees routers
+### F8 — docs
 - Status: done
-- Commit: `feat(trpc): fees routers`
-- Verify: check-types 8/8; check:builders green; check:openapi 100
-  endpoints (36 fee); unit suite 199 green.
-- Deviations / notes: no per-row owner resolvers (fee rows own their
-  schoolId; argued in the router head — owner may want B6 anyway). One
-  real bug caught by check:openapi only: transition path params must be
-  literally named `id`. The webhook route is deliberately NOT in the
-  OpenAPI doc (provider-facing, signature-gated).
-
-<!-- template per chunk
-### Fx — <name>
-- Status: done / partial / blocked
-- Commit: <sha or "uncommitted">
-- Verify: <which gates ran, pass counts>
-- Deviations / notes: <anything the owner should know; "none" must be true>
--->
-
-## Verification surface at end of run
-
-(check-types / test / integration / smoke / db:verify counts, filled at
-the end — or at the last green state if the run died mid-chunk)
+- Commit: `docs: TASKS.md — Phase 4 done`
+- Verify: docs-only; check-types green at commit time.
+- Deviations / notes: resume-here rewritten; the UI-milestone section
+  demoted under its own heading; the stale "Next: Phase 4" paragraph
+  replaced with the shipped-state pointer.
 
 ## Shortcuts and honest confessions
 
-(anything expedient, any gate that failed, any corner cut — nothing here
-is acceptable to leave blank if it happened)
+- `receipt_number_sequences.last_number` narrowed bigint → integer
+  (2.1B receipts/year is margin enough; reasoned in the reviewer entry).
+- `clearPayment` and `cancelPayment` write no ledger rows — the movement
+  was recorded at record time, or no money moved. Documented in code.
+- Cheque/UPI payments allocate immediately at `pending` (the reference's
+  model); a stricter allocate-on-clear variant is a behavior change for
+  the owner to decide.
+- `FEE_WEBHOOK_SECRET` defaults to a dev value; production must set it.
+- The smoke fixture SANITY checks were made drift-tolerant; the smoke's
+  exact-count ASSERTIONS were left untouched (they fail on the drifted
+  demo org, pre-existing). `check:openapi` must be re-run after any
+  router input rename — it caught a real `{id}` mismatch the type
+  checker could not see.
+- The fee integration fixture creates one org pair PER RUN
+  (`fees-itg-<ts>`); rows accumulate in the dev database by design
+  (hard rule 2). Clean when next resetting.
+- The fee assignment for student1 was created before the effective-date
+  fix and briefly held a single 12000.00 installment; the seed re-run
+  filled the remaining monthly rows (the generator's fill-missing
+  behaviour working as designed). Receipt RCP-2025-00001 is that
+  full-year 12000.00 payment — legitimate history, cosmetically odd.
 
 ## Handoff
 
-(the exact next chunk, and any message the next session needs)
+1. Owner reviews the branch commit-by-commit via the plan's Reviewer's
+   guide (9 commits, F0–F8), then merges to main.
+2. Next work, owner's call: the fees UI slice (setup → collection
+   counter → dues/ledger screens), or Phase 5 exams.
+3. Before the next full smoke run: reset the demo org or make the
+   remaining exact-count assertions drift-tolerant.

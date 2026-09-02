@@ -6,10 +6,55 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
-**THE UI MILESTONE IS COMPLETE (2026-09-02).** The admission flow and
-attendance marking are now SCREENS, not just APIs. The slice-by-slice plan
-and commit ledger live in
-`.kilo/plans/1788220800000-ui-milestone-admission-attendance.md`.
+**PHASE 4 — FEES — BACKEND COMPLETE (2026-09-03 overnight run, branch
+`feature/phase4-fees`, unmerged).** All 14 tables live (migrations 0010
++ 0011), the full contract → service → router chain, and the
+money-safety proofs. The plan and per-commit reviewer entries live in
+`.kilo/plans/1788220800000-ui-milestone-admission-attendance.md`'s
+sibling: `.kilo/plans/1788307200000-phase4-fees.md` (the contract, with
+a Reviewer's guide per commit) and
+`.kilo/plans/1788307200000-phase4-fees-report.md` (what actually
+happened). **The owner should review the branch commit-by-commit using
+the plan's Reviewer's guide, then merge.**
+
+- **What ships (8 commits, F1–F8):** the configuration layer (heads,
+  structures, lines, late-fee rules), the resolution/billing/collection/
+  ledger layers (assignments, concessions, subscriptions, installments,
+  opening balances, payments, allocations, refunds,
+  financial_transactions, receipt_number_sequences), the billing engine
+  (assign → idempotent installment generation → concession
+  re-apportionment), collection (row-locked receipt claim, idempotent
+  `recordPayment`, named status transitions, refunds, waivers), the
+  ADR-009 webhook seam (`POST /api/webhooks/fees`, HMAC over the raw
+  body, order-id idempotency, surplus refused), 36 REST endpoints, a
+  34-test hermetic maths suite, a 14-test integration suite against real
+  Postgres, seed fee fixtures, and three live smoke checks.
+- **The load-bearing decisions, now enforced:** hard rule 3 is a
+  HAND-WRITTEN trigger (append-only ledger; UPDATE/DELETE raise; proven
+  by `db:verify`); the receipt sequence is claimed `FOR UPDATE` inside
+  the payment transaction with the unique index as backstop; money is
+  decimal-strings on the wire and BigInt paise in every computation;
+  balances/totals are GENERATED columns; payment status moves only
+  through named operations.
+- **Deliberately deferred (recorded, do not assume they shipped):** the
+  real payment gateway (the seam is built; provider integration is
+  additive when keys exist), fee screens (backend first — the UI slice
+  is the natural next step), the concession approval workflow, security
+  deposits, GST reporting, Tally export, surplus advance (wallet),
+  sibling-discount auto-detection.
+- **Environmental note:** the smoke's exact-count assertions fail (21)
+  on the drifted demo org — UI-test rows (a third academic year, extra
+  students/enrollments) that predate this branch. Fee checks pass.
+  Resetting the demo org (or drift-tolerant rewrites) is the owner's
+  call; details in the run report.
+
+**Next:** the fees UI slice (setup → collection counter → dues/ledger),
+or Phase 5 exams per the original roadmap — owner's call. The
+`system`-context webhook is built and testable without a gateway; a real
+provider integration needs only live keys and a signed caller.
+
+**Phase 3 remains complete** — see its section below; the Phase 2
+deferrals and the students slice's deferrals stand unchanged.
 
 - **What ships (7 commits, U0–U6):** the students register (searchable,
   permission-gated), the admit dialog from the real contract schema, the
@@ -60,21 +105,10 @@ schedule-level override — and its phase obligations (snapshot at compute,
 are recorded in the ADR. When building Phase 5, `exam_subject_schedules` is
 created WITHOUT the two override columns the reference SQL shows there.
 
-**Next: Phase 4 — fees** (14 tables: `fee_heads` → `fee_structures` →
-`fee_structure_lines` → `student_fee_assignments` → `fee_concessions`,
-optional-fee subscriptions, late-fee rules, installments, opening balances,
-payments, allocations, refunds, `financial_transactions`, receipt-number
-sequences). Hard rule 3 (append-only ledger, corrections are offsetting
-rows), `SELECT … FOR UPDATE` on the receipt sequence, and the webhook
-`system` context (ADR-009) are the load-bearing decisions. Alternatives if
-the owner prefers: the E2E slice for the new screens, or the housekeeping
-debt (`pnpm lint`, `/me`'s organization exposure).
-
-The security-review and authz-refactor history below is superseded by the
-numbers above.
-The security-review and authz-refactor history below is superseded by the
-numbers above.
-above.
+**Phase 4 fees shipped on `feature/phase4-fees`** — see the resume-here
+at the top for what shipped and what is deferred. Alternatives if the
+owner prefers next: the E2E slice for the new screens, or the
+housekeeping debt (`pnpm lint`, `/me`'s organization exposure).
 
 ---
 
