@@ -54,11 +54,22 @@ import {
   assignmentService,
   attendanceService,
   enrollmentService,
+  feesBillingService,
+  feesCollectionService,
+  feesService,
   studentService,
   organizationService,
   subjectService,
   termService,
 } from "@repo/services";
+import {
+  feeHeads,
+  feeInstallments,
+  feePayments,
+  feeStructureLines,
+  feeStructures,
+  studentFeeAssignments,
+} from "@repo/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 
 // Stable identifiers. The seed finds rows by these, which is what makes
@@ -1133,6 +1144,138 @@ async function main() {
   console.log(
     `  attendance     policy ${policyA.markingMode} (school A); calendar +${generated.generated} days, holidays: ${holidays.map((h) => h.date).join(", ")}`,
   );
+
+  // --- Fees: a payable reality for the console ---------------------------------
+  //
+  // One structure (monthly tuition + term-wise lab), one assignment with its
+  // installments, one cleared cash payment. Everything is find-or-create and
+  // the payment rides the idempotency key, so re-running the seed changes
+  // nothing. The accountant's console gets real numbers, and the smoke can
+  // record a SECOND payment without colliding.
+  const [feeTuitionHead] = await db
+    .select()
+    .from(feeHeads)
+    .where(and(eq(feeHeads.schoolId, schoolA.id), eq(feeHeads.name, "Tuition Fee")));
+  const tuitionHead =
+    feeTuitionHead ??
+    (await feesService.createFeeHead(
+      scopeA,
+      { name: "Tuition Fee", category: "regular" },
+      adminUser.id,
+    ));
+
+  const [feeStructure] = await db
+    .select()
+    .from(feeStructures)
+    .where(
+      and(
+        eq(feeStructures.schoolId, schoolA.id),
+        eq(feeStructures.academicYearId, currentYearA.id),
+        eq(feeStructures.classId, classA.id),
+      ),
+    );
+  const feeStructureRow =
+    feeStructure ??
+    (await feesService.createFeeStructure(
+      scopeA,
+      {
+        academicYearId: currentYearA.id,
+        classId: classA.id,
+        name: `Class 6 Fees ${currentYearA.name}`,
+        installmentMode: "monthly",
+      },
+      adminUser.id,
+    ));
+
+  const [existingLine] = await db
+    .select()
+    .from(feeStructureLines)
+    .where(
+      and(
+        eq(feeStructureLines.feeStructureId, feeStructureRow.id),
+        eq(feeStructureLines.feeHeadId, tuitionHead.id),
+      ),
+    );
+  if (!existingLine) {
+    await feesService.createFeeStructureLine(
+      scopeA,
+      feeStructureRow.id,
+      {
+        feeHeadId: tuitionHead.id,
+        annualAmount: "12000.00",
+        applicableFromMonth: 1,
+        applicableToMonth: 12,
+        installmentFrequency: "monthly",
+      },
+      adminUser.id,
+    );
+  }
+
+  const [feeAssignment] = await db
+    .select()
+    .from(studentFeeAssignments)
+    .where(
+      and(
+        eq(studentFeeAssignments.schoolId, schoolA.id),
+        eq(studentFeeAssignments.studentId, student1.id),
+        eq(studentFeeAssignments.academicYearId, currentYearA.id),
+      ),
+    );
+  let feeAssignmentRow = feeAssignment;
+  if (!feeAssignmentRow) {
+    feeAssignmentRow = await feesBillingService.assignFeeStructure(
+      scopeA,
+      {
+        enrollmentId: enrollment1.id,
+        // The enrollment defaults to TODAY, which may sit outside the seeded
+        // year (it does in 2026-09); the demo must be a FULL-session reality,
+        // so pin the effective date to the year's start.
+        feeEffectiveFrom: currentYearA.startDate,
+      },
+      adminUser.id,
+    );
+  }
+  await feesBillingService.generateInstallments(scopeA, feeAssignmentRow.id);
+
+  const [seedPayment] = await db
+    .select()
+    .from(feePayments)
+    .where(
+      and(
+        eq(feePayments.schoolId, schoolA.id),
+        eq(feePayments.clientReference, "seed-receipt-001"),
+      ),
+    );
+  if (!seedPayment) {
+    const open = await db
+      .select()
+      .from(feeInstallments)
+      .where(
+        and(
+          eq(feeInstallments.studentFeeAssignmentId, feeAssignmentRow.id),
+          eq(feeInstallments.paymentStatus, "unpaid"),
+        ),
+      )
+      .orderBy(feeInstallments.installmentNumber)
+      .limit(1);
+    const firstOpen = open[0];
+    if (firstOpen) {
+      const payment = await feesCollectionService.recordPayment(
+        scopeA,
+        {
+          studentId: student1.id,
+          academicYearId: currentYearA.id,
+          paymentDate: new Date().toISOString().slice(0, 10),
+          paymentMode: "cash",
+          allocations: [{ installmentId: firstOpen.id, amount: firstOpen.netAmount }],
+          clientReference: "seed-receipt-001",
+          remarks: "Seed counter collection",
+        },
+        adminUser.id,
+      );
+      console.log(`  + payment ${payment.receiptNumber} (cleared, seed)`);
+    }
+  }
 
   // A previous run may have left a cached snapshot that predates these grants.
   await invalidateUserAuthCache(adminUser.id);

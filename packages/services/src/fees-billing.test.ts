@@ -328,8 +328,14 @@ describe("money helpers", () => {
   it("refuses floats-in-disguise", () => {
     expect(() => toCents("1e3")).toThrow();
     expect(() => toCents("12.999")).toThrow();
-    expect(() => toCents("-5.00")).toThrow();
     expect(() => toCents("")).toThrow();
+  });
+
+  it("accepts a LEADING MINUS (the re-open path's negative deltas)", () => {
+    // The collection flow subtracts allocations with "-800.00"-style
+    // strings; the sign is parsed here so callers never hand-roll it.
+    // Database columns remain CHECKed non-negative themselves.
+    expect(toCents("-5.00")).toBe(-500n);
   });
 });
 

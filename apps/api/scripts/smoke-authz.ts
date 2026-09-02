@@ -37,8 +37,14 @@ import {
   subjects,
   terms,
   user,
+  feeHeads,
+  feeInstallments,
+  feePayments,
+  feeStructureLines,
+  feeStructures,
+  studentFeeAssignments,
 } from "@repo/db/schema";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 
 const API = process.env.SMOKE_API_URL ?? "http://localhost:4000";
 
@@ -190,10 +196,14 @@ async function main() {
     );
   }
 
+  // The dev database drifts: a UI test created a SECOND section named "A" on
+  // Class 6. The seeded one is the oldest — order by creation and take it,
+  // because the staffing facts (the two STAs) hang off it.
   const [sectionA] = await db
     .select()
     .from(sections)
-    .where(eq(sections.classId, classA.id));
+    .where(eq(sections.classId, classA.id))
+    .orderBy(asc(sections.createdAt));
 
   if (!sectionA) {
     throw new Error(
@@ -242,10 +252,13 @@ async function main() {
     .from(classSubjectMappings)
     .where(eq(classSubjectMappings.classId, classA.id));
   const mappingMathA = mappingsA.find((m) => m.subjectId === subjectMathA.id);
+  // NOTE: the dev database drifts (manual UI testing adds rows to the demo
+  // trust). School B gained a "Nursery" class that way, so the first-row
+  // assumption broke; look the class up by its seeded NAME instead.
   const [classB] = await db
     .select()
     .from(classes)
-    .where(eq(classes.schoolId, schoolB.id));
+    .where(and(eq(classes.schoolId, schoolB.id), eq(classes.name, "Class 6")));
   const [sectionB] = await db
     .select()
     .from(sections)
@@ -316,11 +329,15 @@ async function main() {
     .from(studentEnrollments)
     .where(eq(studentEnrollments.schoolId, schoolB.id));
 
-  if (enrollmentsA.length !== 2 || !enrollmentSectioned || !enrollmentB) {
+  // DRIFT NOTE: the dev database accumulates UI-test rows (extra classes,
+  // sections, students, enrollments on the demo trust). The checks below pin
+  // the SEEDED rows by their stable admission numbers / section membership
+  // instead of exact totals — an exact-count assertion here would fail on
+  // drift that has nothing to do with the code under test.
+  if (!enrollmentSectioned || !enrollmentB) {
     throw new Error(
-      "Enrollment seed incomplete — expected exactly two enrollments on Class 6 " +
-        "(one sectioned, one admitted) and one in school B. " +
-        "Run `pnpm db:seed` (re-seeding is idempotent).",
+      "Enrollment seed incomplete — expected a sectioned enrollment on 6-A and " +
+        "one in school B. Run `pnpm db:seed` (re-seeding is idempotent).",
     );
   }
 
@@ -332,10 +349,10 @@ async function main() {
     .where(eq(students.schoolId, schoolA.id));
   const student1 = studentsA.find((s) => s.admissionNumber === "DEMO-0001");
 
-  if (!student1 || studentsA.length !== 2) {
+  if (!student1) {
     throw new Error(
-      "Student seed incomplete — expected exactly two active students at " +
-        "school A. Run `pnpm db:seed` (re-seeding is idempotent).",
+      "Student seed incomplete — expected DEMO-0001 active at school A. " +
+        "Run `pnpm db:seed` (re-seeding is idempotent).",
     );
   }
 
@@ -1678,6 +1695,106 @@ async function main() {
     !afterRevoke.ok && afterRevoke.code === "FORBIDDEN",
     afterRevoke.ok ? "STILL AUTHORIZED after revoke" : `code ${afterRevoke.code}`,
   );
+
+
+  // --- Fees: the accountant collects; the class teacher cannot ---------------
+  //
+  // The seed built a payable reality (heads, structure, assignment, generated
+  // installments). The accountant records a SECOND payment over HTTP with a
+  // unique idempotency key; the due list must shrink; the class teacher's
+  // attempt is FORBIDDEN at the gate — money is not a teacher's desk.
+  const [feeAssignment] = await db
+    .select()
+    .from(studentFeeAssignments)
+    .where(
+      and(
+        eq(studentFeeAssignments.schoolId, schoolA.id),
+        eq(studentFeeAssignments.studentId, student1.id),
+      ),
+    );
+  if (!feeAssignment) throw new Error("Seed fee assignment missing — re-run the seed.");
+
+  const seedPayments = await db
+    .select({ id: feePayments.id })
+    .from(feePayments)
+    .where(eq(feePayments.studentId, student1.id));
+  const dueBefore = await query(accountantCookie, "fees.installment.dues", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    academicYearId: currentYearA.id,
+    studentId: student1.id,
+  });
+
+  const open = await db
+    .select()
+    .from(feeInstallments)
+    .where(
+      and(
+        eq(feeInstallments.studentFeeAssignmentId, feeAssignment.id),
+        eq(feeInstallments.paymentStatus, "unpaid"),
+      ),
+    )
+    .orderBy(feeInstallments.installmentNumber)
+    .limit(1);
+  const target = open[0];
+  if (!target) throw new Error("No open installment to collect — re-run the seed.");
+
+  const receipt = await mutate(accountantCookie, "fees.payment.record", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    data: {
+      studentId: student1.id,
+      academicYearId: currentYearA.id,
+      paymentDate: new Date().toISOString().slice(0, 10),
+      paymentMode: "cash",
+      allocations: [{ installmentId: target.id, amount: target.netAmount }],
+      clientReference: `smoke-${Date.now()}`,
+    },
+  });
+  report(
+    "accountant records a counter payment over HTTP",
+    receipt.ok && typeof receipt.data?.receiptNumber === "string",
+    receipt.ok ? `receipt ${receipt.data?.receiptNumber}` : `code ${receipt.code}`,
+  );
+
+  const dueAfter = await query(accountantCookie, "fees.installment.dues", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    academicYearId: currentYearA.id,
+    studentId: student1.id,
+  });
+  const beforeCount = Array.isArray(dueBefore.data) ? dueBefore.data.length : -1;
+  const afterCount = Array.isArray(dueAfter.data) ? dueAfter.data.length : -1;
+  report(
+    "the due list reflects the payment (exactly one fewer open row)",
+    afterCount === beforeCount - 1,
+    `open ${beforeCount} → ${afterCount}`,
+  );
+
+  const teacherPay = await mutate(teacherCookie, "fees.payment.record", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    data: {
+      studentId: student1.id,
+      academicYearId: currentYearA.id,
+      paymentDate: new Date().toISOString().slice(0, 10),
+      paymentMode: "cash",
+      allocations: [{ installmentId: target.id, amount: "1.00" }],
+      clientReference: `smoke-teacher-${Date.now()}`,
+    },
+  });
+  report(
+    "the class teacher is FORBIDDEN on payment create",
+    !teacherPay.ok && teacherPay.code === "FORBIDDEN",
+    teacherPay.ok ? "AUTHORIZED — a leak" : `code ${teacherPay.code}`,
+  );
+
+  // Payments actually written by this run, for the record (the seed's own
+  // payment predates it and stays).
+  void seedPayments;
+  void feeHeads;
+  void feeStructures;
+  void feeStructureLines;
 
   // Put the seed back the way we found it, so the script stays re-runnable.
   await db

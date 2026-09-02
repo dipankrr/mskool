@@ -79,7 +79,11 @@ export class FeesCollectionService {
    * refusal is exceeding one (paying ahead within generated installments is
    * v1 core — the Locked decision).
    */
-  async recordPayment(scope: DataScope, input: RecordPaymentInput, actorId: string) {
+  async recordPayment(
+    scope: DataScope,
+    input: RecordPaymentInput,
+    actorId: string | null,
+  ) {
     const schoolId = requireSchoolId(scope);
     const allocationCents = input.allocations.reduce(
       (acc, a) => acc + toCents(a.amount),
@@ -222,10 +226,10 @@ export class FeesCollectionService {
           chequeDate: input.chequeDate ?? null,
           paymentStatus,
           statusUpdatedAt: new Date(),
-          statusUpdatedBy: actorId,
+          statusUpdatedBy: actorId ?? null,
           statusReason: paymentStatus === "pending" ? "Awaiting confirmation" : null,
           remarks: input.remarks ?? null,
-          collectedBy: actorId,
+          collectedBy: actorId ?? null,
           clientReference: input.clientReference ?? null,
         })
         .returning();
@@ -261,7 +265,7 @@ export class FeesCollectionService {
         receiptNumber,
         description: `Fee payment ${receiptNumber}`,
         transactionDate: input.paymentDate,
-        createdBy: actorId,
+        createdBy: actorId ?? null,
       });
       if (lateFeeCents > 0n) {
         await tx.insert(financialTransactions).values({
@@ -277,7 +281,7 @@ export class FeesCollectionService {
           receiptNumber,
           description: `Late fee charged on ${receiptNumber}`,
           transactionDate: input.paymentDate,
-          createdBy: actorId,
+          createdBy: actorId ?? null,
         });
       }
 
@@ -725,7 +729,7 @@ export class FeesCollectionService {
         clientReference: input.gatewayOrderId,
         remarks: "Portal payment (gateway webhook)",
       },
-      "system",
+      null, // the system context is not a user row (ADR-009)
     );
   }
 

@@ -16,13 +16,21 @@
 // Money helpers — integer paise, never float (hard rule 4)
 // ---------------------------------------------------------------------------
 
-/** "1250.50" → 125050n. Refuses anything the contracts' `money` would not. */
+/**
+ * "1250.50" → 125050n. Refuses anything the contracts' `money` would not.
+ * A LEADING MINUS is accepted: the collection flow's re-open path sends
+ * negative deltas (money coming back off an installment), and refusing them
+ * here would push sign handling into every caller. Database columns stay
+ * CHECKed non-negative themselves.
+ */
 export function toCents(amount: string): bigint {
-  if (!/^\d+(\.\d{1,2})?$/.test(amount)) {
+  if (!/^-?\d+(\.\d{1,2})?$/.test(amount)) {
     throw new Error(`Invalid money amount: "${amount}".`);
   }
-  const [whole, frac = ""] = amount.split(".");
-  return BigInt(whole ?? "0") * 100n + BigInt((frac + "00").slice(0, 2));
+  const sign = amount.startsWith("-") ? -1n : 1n;
+  const digits = amount.replace("-", "");
+  const [whole, frac = ""] = digits.split(".");
+  return sign * (BigInt(whole ?? "0") * 100n + BigInt((frac + "00").slice(0, 2)));
 }
 
 /** 125050n → "1250.50". */

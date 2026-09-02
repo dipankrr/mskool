@@ -9,11 +9,11 @@ plan's Reviewer's guide for the commit-by-commit code review.
 
 ---
 
-## STATUS: F6 DONE, F7 NEXT
+## STATUS: F7 DONE, F8 NEXT
 
 - Branch: `feature/phase4-fees`
-- Last commit: F6 `feat(trpc): fees routers`
-- Next up: F7 — integration, smoke, seed tests
+- Last commit: F7 `test: fees in integration, smoke, and seed`
+- Next up: F8 — docs (TASKS.md Phase 4 done)
 
 ---
 
@@ -89,6 +89,27 @@ plan's Reviewer's guide for the commit-by-commit code review.
   BEFORE express.json with its own express.raw parser so the HMAC covers
   the provider's exact bytes. FEE_WEBHOOK_SECRET has a dev default;
   production must set it (noted in env.ts).
+
+### F7 — integration, smoke, and seed
+- Status: done (with an environmental caveat on the smoke)
+- Commit: `test: fees in integration, smoke, and seed`
+- Verify: integration 107/107 (14 new fee tests incl. the receipt
+  concurrency race); unit 200; seed idempotent with a payable demo
+  reality; live smoke — the three fee checks PASS (140/161 overall).
+- Deviations / notes: the 21 smoke FAILs are PRE-EXISTING dev-database
+  drift — the demo trust accumulated a third academic year, extra
+  students/enrollments/sections from UI testing, and the smoke's
+  exact-count assertions break on that. I made the fixture SANITY checks
+  drift-tolerant (seeded rows looked up by name/number) but left the
+  assertion suite untouched — resetting the demo org (or drift-tolerant
+  rewrites) is an owner decision, recommended before the next full smoke
+  run. The fee integration fixture builds its own org per run
+  (`fees-itg-<ts>`); rows accumulate there by design.
+- Two real fixes that came out of the run: the seed's fee assignment
+  needed an explicit feeEffectiveFrom (the enrollment's default of
+  "today" fell outside the seeded year, collapsing the generator to one
+  bucket — correct behaviour, wrong demo data), and the smoke's
+  first-row lookups broke on drift (now name-based).
 
 ### F6 — fees routers
 - Status: done
