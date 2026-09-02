@@ -1156,3 +1156,78 @@ service alongside the in-place edit (the service is the single write path, so th
 one place). No migration of existing rows would be required. The deferral is recorded in
 the Phase 3 plan's "recorded deferrals" list; the C7 integration suite pins the don't-wipe
 rule and the reason-preserving re-mark so the convention cannot silently erode.
+
+## ADR-031 — Result flags (`counts_toward_result`, `is_graded_only`) live on `class_subject_mappings`, not on `subjects`
+
+**Status:** accepted (2026-09-03, owner decision; implemented same day, migration 0009).
+
+**Context.** The reference SQL (table 13) puts both flags on `subjects` with an
+inheritance note on `exam_subject_schedules` (table 48): "inherited from subject but can
+be overridden per schedule". That answers neither of two real questions. First, the flag
+factually answers "does THIS class's Maths count toward the result THIS year?" — Class 1
+Maths is commonly activity-based and excluded while Class 4 Maths is a numeric scholastic
+subject, and a school can change its mind year to year. A subject-level flag is too
+coarse; expressing the difference required duplicating the subject row ("Mathematics
+Activity"), the very hack the school-level catalogue exists to prevent. Second, the
+schedule-level override is too fine: Term 1's schedule saying `true` and Term 2's saying
+`false` leaves the annual rollup (`student_final_results`) without a defined answer —
+every reconciliation rule (all terms agree? any? majority?) surprises a school at
+report-card time. The reference resolves none of this.
+
+**Decision.**
+
+1. **Both flags move to `class_subject_mappings`** — the per-(year, class, subject)
+   template row. Their granularity (differs per class, per year) and lifetime (a change
+   for next year is a new year's rows, never a mutation of shared state, per hard rule
+   6's philosophy) match the layer exactly.
+2. **`exam_subject_schedules` gets NO override columns** — the exam chain reads the
+   mapping, and only the mapping. One row per (year, class, subject) means the annual
+   computation always reads one unambiguous value. This explicitly supersedes the
+   reference SQL's schedule-level override; if section-level variation (6-A activity
+   Maths, 6-B numeric) ever proves real, it returns as its own ADR with a defined
+   rollup rule.
+3. **`category` stays on `subjects` as a CREATION-TIME seed only** — the mapping
+   create flow prefills from it (`coscholastic` → excluded/graded-only;
+   `scholastic` → counted/numeric), the school edits per class. It is never a read-time
+   source: Class 1 Maths is scholastic yet excluded from totals.
+4. **The flags are two INDEPENDENT booleans** — all four combinations are legitimate
+   (Class 1 Maths: numeric but excluded; Art: counted but graded-only). Never collapse
+   them into a mode enum.
+5. **Narrow meaning, enforced:** `countsTowardResult = false` means "excluded from
+   totals and pass calculation for every student taking this offering". It is NOT the
+   CBSE best-5/elective counting rule (per-student selection — an exams-phase
+   aggregation policy) and NOT per-student exemption
+   (`student_subject_results.is_exempted`). Those mechanisms stay separate.
+
+**Exams-phase obligations** (binding on whoever builds the exam chain; recorded here
+because the phase does not exist yet):
+
+- **Snapshot at computation.** Result computation copies both flags into
+  `student_subject_results` alongside the existing `pass_marks` / `grading_scale_id`
+  snapshots. A mid-year template edit then affects only future computations; Term 1's
+  rows keep the values they were computed with.
+- **Flip guard.** Once any `student_component_results` exist for a (year, class,
+  subject), the mapping's `isGradedOnly` may not change — a mixed numeric/graded year
+  would give the final rollup marks *and* a grade for one subject. Service-level, not a
+  CHECK (cross-table). Until that table exists the guard is vacuous; write it when the
+  exam chain lands.
+- **Pass computation skips graded-only subjects** — they have no `pass_marks` to fail
+  against; the pass/fail and compartment logic must read the mapping flag before
+  comparing.
+- **Year rollover copies the flags** — rollover recreates next year's mappings from
+  this year's; it copies whole rows, and a test pins that the flags ride along.
+
+**Rejected alternatives.** Keeping the flags on `subjects` (cannot express Class 1 vs
+Class 4 without duplicating subject rows, fragmenting marks history). Moving them to the
+exam schedule wholesale (hundreds of re-declared facts whose single mis-set value
+silently changes a report card's total; and no answer exists before an exam is
+scheduled, which report-card layout and the co-scholastic pipeline need). Subject-level
+default + nullable per-class override (two sources of truth; every consumer learns a
+COALESCE rule — more machinery than a two-flag problem earns).
+
+**Consequences.** Migration 0009 copies each existing mapping's flags from its subject,
+so no school's result behaviour changes as a side effect. Nothing consumed the flags
+before the move (verified: zero references outside the schema), so no downstream code
+changed. DOMAIN.md's report-card note now points at the mapping. When the exams phase
+builds `exam_subject_schedules`, it builds WITHOUT the two override columns the
+reference SQL shows there.

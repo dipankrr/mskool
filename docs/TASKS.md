@@ -53,6 +53,14 @@ and commit ledger live in
 **Phase 3 remains complete** — see its section below; the Phase 2
 deferrals and the students slice's deferrals stand unchanged.
 
+**2026-09-03, small schema decision (ADR-031):** `countsTowardResult` /
+`isGradedOnly` moved from `subjects` to `class_subject_mappings` (migration 0009
+copies existing values). The exam chain must read the mapping — it gets no
+schedule-level override — and its phase obligations (snapshot at compute,
+`isGradedOnly` flip guard once component results exist, pass-skip for graded-only)
+are recorded in the ADR. When building Phase 5, `exam_subject_schedules` is
+created WITHOUT the two override columns the reference SQL shows there.
+
 **Next: Phase 4 — fees** (14 tables: `fee_heads` → `fee_structures` →
 `fee_structure_lines` → `student_fee_assignments` → `fee_concessions`,
 optional-fee subscriptions, late-fee rules, installments, opening balances,

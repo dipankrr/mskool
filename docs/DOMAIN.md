@@ -148,8 +148,9 @@ student_final_results       → promotion_status → next year's enrollment
   expressed.
 - `grading_scales.is_locked` flips true on first use and the scale then never changes;
   otherwise a policy change would silently restate old results.
-- `subjects.counts_towards_result = false` excludes a subject from totals — co-scholastic
-  and activity subjects.
+- `class_subject_mappings.counts_toward_result = false` excludes a class's subject
+  offering from totals — co-scholastic and activity subjects. The flags live on the
+  mapping, per class per year (ADR-031), not on `subjects`.
 - `coscholastic_assessments` is a **separate pipeline** with grades only, and never enters
   result maths.
 - `published_report_cards` stores a full JSONB snapshot, versioned. A duplicate marksheet
