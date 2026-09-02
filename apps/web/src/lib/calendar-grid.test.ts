@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildMonthGrid } from "./calendar-grid";
+import { buildMonthGrid, sessionMonths } from "./calendar-grid";
 
 /**
  * The grid is pure, so these tests are exhaustive where it matters: the
@@ -69,5 +69,44 @@ describe("buildMonthGrid", () => {
         }
       }
     }
+  });
+});
+
+/**
+ * The full-year view's reading order. The interesting cases are the
+ * boundaries: a year-long session crossing the calendar-year boundary, and
+ * the single-month session where start and end coincide — both ends of the
+ * walk, so an off-by-one at either cannot hide.
+ */
+describe("sessionMonths", () => {
+  it("walks an Indian academic year April to March across the boundary", () => {
+    const months = sessionMonths({ startDate: "2025-04-01", endDate: "2026-03-31" });
+    expect(months).toHaveLength(12);
+    expect(months[0]).toEqual({ year: 2025, month: 4 });
+    expect(months[11]).toEqual({ year: 2026, month: 3 });
+    // The boundary itself: December 2025 is followed by January 2026.
+    expect(months[8]).toEqual({ year: 2025, month: 12 });
+    expect(months[9]).toEqual({ year: 2026, month: 1 });
+  });
+
+  it("walks a calendar-year session January to December without wrapping", () => {
+    const months = sessionMonths({ startDate: "2026-01-01", endDate: "2026-12-31" });
+    expect(months).toHaveLength(12);
+    expect(months[0]).toEqual({ year: 2026, month: 1 });
+    expect(months[11]).toEqual({ year: 2026, month: 12 });
+  });
+
+  it("returns exactly one month when start and end coincide", () => {
+    expect(sessionMonths({ startDate: "2025-07-01", endDate: "2025-07-31" })).toEqual([
+      { year: 2025, month: 7 },
+    ]);
+  });
+
+  it("counts the end month inclusive even when it is the only one after the boundary", () => {
+    const months = sessionMonths({ startDate: "2025-12-01", endDate: "2026-01-31" });
+    expect(months).toEqual([
+      { year: 2025, month: 12 },
+      { year: 2026, month: 1 },
+    ]);
   });
 });

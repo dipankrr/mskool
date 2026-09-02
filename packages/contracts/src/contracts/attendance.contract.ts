@@ -73,14 +73,29 @@ export const weekdaySchema = z.number().int().min(0).max(6);
 
 /**
  * The bulk generator's input: one year plus the days a week is actually in
- * session. Everything NOT listed is generated as `weekend`; holidays are then
- * set per-date with `upsertCalendarDay`. At least one working weekday — a
+ * session. `workingWeekdays` is the full set of in-session days; the optional
+ * `halfDayWeekdays` SUBSET marks which of those are half days — many Indian
+ * schools run Saturday as a half day every week, and generating those as
+ * working days would leave ~40 manual edits. Everything NOT in
+ * `workingWeekdays` is generated as `weekend`; holidays are then set
+ * per-date with `upsertCalendarDay`. At least one working weekday — a
  * school with none is not a school.
  */
-export const generateCalendarSchema = z.object({
-  academicYearId: z.uuid(),
-  workingWeekdays: z.array(weekdaySchema).min(1).max(7),
-});
+export const generateCalendarSchema = z
+  .object({
+    academicYearId: z.uuid(),
+    workingWeekdays: z.array(weekdaySchema).min(1).max(7),
+    halfDayWeekdays: z.array(weekdaySchema).max(7).optional(),
+  })
+  .refine(
+    (v) =>
+      !v.halfDayWeekdays ||
+      v.halfDayWeekdays.every((day) => v.workingWeekdays.includes(day)),
+    {
+      message: "Half-day weekdays must be among the working weekdays.",
+      path: ["halfDayWeekdays"],
+    },
+  );
 export type GenerateCalendarInput = z.infer<typeof generateCalendarSchema>;
 
 export const listCalendarSchema = z.object({

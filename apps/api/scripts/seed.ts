@@ -1104,7 +1104,14 @@ async function main() {
   );
   const generated = await attendanceService.generateYearCalendar(
     scopeA,
-    { academicYearId: currentYearA.id, workingWeekdays: [1, 2, 3, 4, 5] },
+    // Mon–Fri working, Saturday a half day — exercises the generator's
+    // half-day weekday path in the seeded demo data (many Indian schools
+    // run this shape), so the calendar screen shows a mixed month.
+    {
+      academicYearId: currentYearA.id,
+      workingWeekdays: [1, 2, 3, 4, 5, 6],
+      halfDayWeekdays: [6],
+    },
     adminUser.id,
   );
   const holidays: { date: string; reason: string }[] = [

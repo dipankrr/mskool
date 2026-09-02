@@ -178,7 +178,9 @@ export class AttendanceService {
 
   /**
    * Fills a year's calendar in bulk — one row per date from the year's start
-   * to its end: `working` on the named weekdays, `weekend` on the rest.
+   * to its end: `working` on the named weekdays (`half_day` on the subset
+   * the school names — the every-Saturday-half-day shape), `weekend` on the
+   * rest.
    *
    * **Idempotent by construction**: `onConflictDoNothing` against the
    * `(school, year, date)` unique index fills MISSING dates only and never
@@ -202,6 +204,9 @@ export class AttendanceService {
     const schoolId = requireSchoolId(scope);
     const organizationId = scope.organizationId;
     const working = new Set(input.workingWeekdays);
+    // A half-day weekday must be a working weekday too (the contract's
+    // refine); a set makes the per-date check one lookup.
+    const halfDay = new Set(input.halfDayWeekdays ?? []);
 
     // Walk the year in UTC. A calendar date has no zone; parsing with an
     // explicit T00:00:00Z and reading only UTC getters keeps the host's
@@ -211,7 +216,7 @@ export class AttendanceService {
       schoolId: string;
       academicYearId: string;
       date: string;
-      dayType: "working" | "weekend";
+      dayType: "working" | "weekend" | "half_day";
       createdFromTemplate: boolean;
       createdBy: string | null;
     }[] = [];
@@ -219,12 +224,18 @@ export class AttendanceService {
     const end = new Date(`${year.endDate}T00:00:00Z`);
     while (cursor <= end) {
       const iso = cursor.toISOString().slice(0, 10);
+      const weekday = cursor.getUTCDay();
+      const dayType = working.has(weekday)
+        ? halfDay.has(weekday)
+          ? "half_day"
+          : "working"
+        : "weekend";
       rows.push({
         organizationId,
         schoolId,
         academicYearId: year.id,
         date: iso,
-        dayType: working.has(cursor.getUTCDay()) ? "working" : "weekend",
+        dayType,
         createdFromTemplate: true,
         createdBy: actorId,
       });

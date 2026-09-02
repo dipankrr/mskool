@@ -35,3 +35,31 @@ export function buildMonthGrid(year: number, month: number): MonthGrid {
 
 /** The Monday-first weekday order the grid and the generator both speak. */
 export const GRID_WEEKDAYS = [1, 2, 3, 4, 5, 6, 0] as const;
+
+/**
+ * Every calendar month a session spans, start to end inclusive — the
+ * full-year view's reading order. An Indian academic year crosses the
+ * calendar-year boundary (April to March), so this cannot be a fixed twelve
+ * of one calendar year. Pure and unit-tested for the same reason
+ * `buildMonthGrid` is: the boundary walk is exactly where an off-by-one
+ * hides, and the page should only render what this returns.
+ */
+export function sessionMonths(
+  session: { startDate: string; endDate: string },
+): Array<{ year: number; month: number }> {
+  const months: Array<{ year: number; month: number }> = [];
+  let year = Number(session.startDate.slice(0, 4));
+  let month = Number(session.startDate.slice(5, 7));
+  const endYear = Number(session.endDate.slice(0, 4));
+  const endMonth = Number(session.endDate.slice(5, 7));
+
+  while (year < endYear || (year === endYear && month <= endMonth)) {
+    months.push({ year, month });
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+  return months;
+}

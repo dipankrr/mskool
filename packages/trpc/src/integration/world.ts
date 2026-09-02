@@ -805,6 +805,11 @@ export async function buildWorld(): Promise<IntegrationWorld> {
   // find-or-create on the (section, year, sequence) key the unique index
   // enforces.
   //
+  // Deliberately NOT exercising the generator's half-day weekday path here:
+  // WORKING_DAY_TYPES counts half_day as a working day, and the summary
+  // test below asserts an EXACT July count computed Mon-Fri. The half-day
+  // path is exercised by the seed's demo calendar instead.
+  //
   // A marking gate whose refusals are only ever tested against an EMPTY
   // calendar proves nothing — the holiday row is what makes "holiday marking
   // refused" a live refusal rather than an accidental one.

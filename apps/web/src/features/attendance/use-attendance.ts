@@ -15,9 +15,10 @@ import { useActiveContext } from "@/features/session/active-context";
 /**
  * ATTENDANCE — the calendar is the marking gate, and this hook is its client.
  *
- * The list is permissive and takes `{ organizationId, academicYearId, month }`:
+ * The list is permissive and takes `{ organizationId, academicYearId, month? }`:
  * the month filter runs in SQL, so a month view costs one month of rows, not a
- * year. Generate and upsert name the branch explicitly (B5). The generate
+ * year. Omitting `month` lists the WHOLE year — the full-year view's query.
+ * Generate and upsert name the branch explicitly (B5). The generate
  * response carries the row COUNT (`{ generated }`) — the toast reports the
  * effect, and "0" is a real answer (every day already had a row), not a
  * failure.
@@ -29,11 +30,16 @@ import { useActiveContext } from "@/features/session/active-context";
 
 const THIRTY_SECONDS = 30 * 1000;
 
-export function useCalendar(yearId: string, month: number) {
+export function useCalendar(yearId: string, month: number | undefined) {
   const { scopeArgs } = useActiveContext();
 
   return trpc.attendance.calendar.list.useQuery(
-    { ...scopeArgs(), academicYearId: yearId, month },
+    {
+      ...scopeArgs(),
+      academicYearId: yearId,
+      // Omitted, not null: the contract's optional month means "whole year".
+      ...(month === undefined ? {} : { month }),
+    },
     {
       enabled: Boolean(yearId),
       staleTime: THIRTY_SECONDS,
@@ -74,10 +80,23 @@ export function useCalendarMutations() {
   return {
     generate: {
       ...generate,
-      submit: (academicYearId: string, workingWeekdays: number[]) => {
+      submit: (
+        academicYearId: string,
+        workingWeekdays: number[],
+        halfDayWeekdays?: number[],
+      ) => {
         const scope = writeScopeArgs();
         if (!scope) throw new Error("A branch must be chosen to generate the calendar.");
-        return generate.mutateAsync({ ...scope, data: { academicYearId, workingWeekdays } });
+        return generate.mutateAsync({
+          ...scope,
+          data: {
+            academicYearId,
+            workingWeekdays,
+            ...(halfDayWeekdays && halfDayWeekdays.length > 0
+              ? { halfDayWeekdays }
+              : {}),
+          },
+        });
       },
     },
     upsertDay: {

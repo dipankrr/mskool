@@ -59,7 +59,7 @@ export const copy = {
     sessions: "Sessions",
     classes: "Classes",
     students: "Students",
-    attendance: "Attendance",
+    attendance: "Calendar",
     profile: "Profile",
     menu: "Menu",
     openMenu: "Open menu",
@@ -221,14 +221,23 @@ export const copy = {
 
   /** U3. `attendance.calendar.*` — the marking gate, made visible. */
   attendance: {
-    title: "Attendance calendar",
+    title: "Academic calendar",
     subtitle:
-      "Which days are teaching days, holidays, and exams. Attendance cannot be marked on a day this calendar refuses.",
+      "The session's teaching days, holidays, and exams, month by month or the whole year at once. Attendance cannot be marked on a day this calendar refuses.",
+    viewMonth: "Month",
+    viewYear: "Full year",
     generate: "Generate calendar",
+    fillGaps: "Fill missing days",
     generateTitle: "Generate the session's calendar",
     generateHelp:
-      "Creates one row per date of the session: teaching days where you tick, weekends elsewhere. Days already set are left untouched — a re-run fills gaps only.",
-    workingWeekdays: "Teaching days",
+      "Creates one row per date of the session from the weekly template below. Days already set are left untouched — a re-run fills gaps only.",
+    workingWeekdays: "The week's shape",
+    generateStates: {
+      working: "Working",
+      half_day: "Half day",
+      off: "Off",
+      help: "Tap a day to cycle: Working → Half day → Off. Every date of the session is created from this template — holidays are then set per date.",
+    },
     weekdays: {
       monday: "Mon",
       tuesday: "Tue",
@@ -251,9 +260,9 @@ export const copy = {
     dayTypes: {
       working: "Working",
       holiday: "Holiday",
-      half_day: "Half day",
-      weekend: "Weekend",
-      exam_day: "Exam day",
+      half_day: "Half",
+      weekend: "Off",
+      exam_day: "Exam",
     },
     noCalendarTitle: "No calendar for this month",
     noCalendarBody:

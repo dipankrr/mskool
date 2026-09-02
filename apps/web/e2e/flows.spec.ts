@@ -121,6 +121,35 @@ test.describe("marking flow (class teacher)", () => {
     await expect(
       page.getByText("How this branch marks attendance. One policy per branch"),
     ).toBeVisible();
+
+    // The full-year view lays out every session month at once — the seeded
+    // 2025-26 session spans April to March, so the December→January
+    // boundary must both be there (the sessionMonths walk). The seeded
+    // calendar runs Saturday as a half day, so a December Saturday carries
+    // the half-day colour, and the contextual header button reads as
+    // fill-missing rather than generate (the calendar exists).
+    await page.goto("/attendance/calendar");
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: "Full year" }).click();
+    await expect(page.getByText("Dec 2025", { exact: true })).toBeVisible();
+    await expect(page.getByText("Jan 2026", { exact: true })).toBeVisible();
+    await expect(page.getByText("Apr 2025", { exact: true })).toBeVisible();
+    await expect(page.getByText("Mar 2026", { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Fill missing days" }),
+    ).toBeVisible();
+
+    // Month navigation stops at the session's ends. The calendar opens on
+    // the session's first month when today is outside it (September 2026
+    // is), so Previous starts disabled; walk to the LAST month and Next
+    // must be disabled there instead.
+    await page.getByRole("button", { name: "Month" }).click();
+    await expect(page.getByRole("button", { name: "Previous month" })).toBeDisabled();
+    while (!(await page.getByRole("button", { name: "Next month" }).isDisabled())) {
+      await page.getByRole("button", { name: "Next month" }).click();
+    }
+    await expect(page.getByText("March 2026", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Previous month" })).toBeEnabled();
   });
 
   test("marks a school day and the mark survives a reload", async ({ page }) => {
