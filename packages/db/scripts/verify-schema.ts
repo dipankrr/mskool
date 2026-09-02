@@ -108,12 +108,17 @@ async function main() {
         'academic_years_end_after_start',
         'terms_end_after_start',
         'terms_weightage_range',
-        'attendance_policies_threshold_range'
+        'attendance_policies_threshold_range',
+        'fee_structure_lines_amount_non_negative',
+        'fee_structure_lines_month_range',
+        'fee_structure_lines_month_order',
+        'late_fee_rules_value_positive',
+        'late_fee_rules_date_order'
       )
     ORDER BY con.conname
   `;
   for (const c of constraints) console.log(`  ${c.table_name}.${c.constraint_name}`);
-  report("all CHECK constraints exist", constraints.length === 6, `found ${constraints.length}/6`);
+  report("all CHECK constraints exist", constraints.length === 11, `found ${constraints.length}/11`);
 
   // contype 'x' is an EXCLUDE constraint. drizzle-kit cannot see these at all,
   // so their absence would be silent — hence checking the catalog directly.
@@ -804,6 +809,154 @@ async function main() {
         );
       }
     });
+
+    console.log("\n=== fees: the configuration layer (0010) ===");
+
+    // Fixtures hang off the enrollment block's class and year — a structure
+    // needs a class+year, a line needs a head. All of it rolls back.
+    const feeHead = (
+      q: Queryable,
+      name: string,
+      category = "regular",
+    ) =>
+      q`INSERT INTO fee_heads
+          (organization_id, school_id, name, category)
+        VALUES (${org.id}, ${school.id}, ${name}, ${category})`;
+
+    const feeStructure = (
+      q: Queryable,
+      name: string,
+      classId = enrClass.id,
+      mode = "term_wise",
+    ) =>
+      q`INSERT INTO fee_structures
+          (organization_id, school_id, academic_year_id, class_id, name, installment_mode)
+        VALUES (${org.id}, ${school.id}, ${enrYear.id}, ${classId}, ${name}, ${mode})`;
+
+    const feeLine = (
+      q: Queryable,
+      structureId: string,
+      headId: string,
+      amount: string,
+      fromMonth = 1,
+      toMonth = 12,
+    ) =>
+      q`INSERT INTO fee_structure_lines
+          (organization_id, school_id, fee_structure_id, fee_head_id,
+           annual_amount, applicable_from_month, applicable_to_month)
+        VALUES (${org.id}, ${school.id}, ${structureId}, ${headId},
+                ${amount}, ${fromMonth}, ${toMonth})`;
+
+    const lateFeeRule = (
+      q: Queryable,
+      value: string,
+      calculation = "flat",
+      effectiveFrom = "2030-04-01",
+      effectiveTo: string | null = null,
+    ) =>
+      q`INSERT INTO late_fee_rules
+          (organization_id, school_id, calculation_type, value, effective_from, effective_to)
+        VALUES (${org.id}, ${school.id}, ${calculation}, ${value}, ${effectiveFrom}, ${effectiveTo})`;
+
+    await expectAccept(tx, "a fee head is accepted", (q) => feeHead(q, "Tuition Fee"));
+    await expectReject(
+      tx,
+      "a duplicate head name in one school is rejected",
+      "fee_heads_school_name_uq",
+      (q) => feeHead(q, "Tuition Fee"),
+    );
+    // The uniqueness is per SCHOOL, not per org — the second branch of the
+    // trust may name its heads identically.
+    await expectAccept(tx, "the same head name in a DIFFERENT school is accepted", (q) =>
+      q`INSERT INTO fee_heads (organization_id, school_id, name, category)
+        VALUES (${org.id}, ${school2.id}, 'Tuition Fee', 'regular')`,
+    );
+
+    await expectAccept(tx, "a structure is accepted", (q) => feeStructure(q, "Class 6 2030-31"));
+    await expectReject(
+      tx,
+      "a SECOND structure for the same class+year is rejected",
+      "fee_structures_class_year_uq",
+      (q) => feeStructure(q, "Class 6 2030-31 duplicate"),
+    );
+    // The resolver reads "the structure for class C in year Y" — a second
+    // school's class is a different addressable node, so its structure is free.
+    await expectAccept(tx, "a structure for the same class NAME in a DIFFERENT year is accepted", (q) =>
+      q`INSERT INTO fee_structures
+          (organization_id, school_id, academic_year_id, class_id, name, installment_mode)
+        VALUES (${org.id}, ${school.id}, ${nextEnrYear.id}, ${enrClass.id}, 'Class 6 2031-32', 'monthly')`,
+    );
+
+    const [head] = await tx<{ id: string }[]>`
+      SELECT id FROM fee_heads WHERE name = 'Tuition Fee' AND school_id = ${school.id}
+    `;
+    const [structure] = await tx<{ id: string }[]>`
+      SELECT id FROM fee_structures WHERE name = 'Class 6 2030-31' AND school_id = ${school.id}
+    `;
+
+    await expectAccept(tx, "a structure line is accepted", (q) =>
+      feeLine(q, structure.id, head.id, "12000.00"),
+    );
+    await expectReject(
+      tx,
+      "a SECOND line for the same head+structure is rejected",
+      "fee_structure_lines_structure_head_uq",
+      (q) => feeLine(q, structure.id, head.id, "999.00"),
+    );
+    // Hard rule 4's boundary: zero is a legitimate annual amount (a head kept
+    // in the structure at no charge); below zero never is. A fresh head, so
+    // the unique pair is out of the way and the CHECK is what answers.
+    await expectAccept(tx, "the zero-amount line head is accepted", (q) => feeHead(q, "Activity Fee"));
+    const [activityHead] = await tx<{ id: string }[]>`
+      SELECT id FROM fee_heads WHERE name = 'Activity Fee' AND school_id = ${school.id}
+    `;
+    await expectAccept(tx, "a ZERO annual amount is accepted", (q) =>
+      feeLine(q, structure.id, activityHead.id, "0.00"),
+    );
+
+    // Lines use a fresh head each so the unique pair never muddies which
+    // constraint fired.
+    await expectAccept(tx, "the second line head is accepted", (q) => feeHead(q, "Lab Fee"));
+    const [labHead] = await tx<{ id: string }[]>`
+      SELECT id FROM fee_heads WHERE name = 'Lab Fee' AND school_id = ${school.id}
+    `;
+    await expectReject(
+      tx,
+      "a NEGATIVE annual amount is rejected",
+      "fee_structure_lines_amount_non_negative",
+      (q) => feeLine(q, structure.id, labHead.id, "-1.00"),
+    );
+    await expectReject(
+      tx,
+      "an out-of-range applicable month is rejected",
+      "fee_structure_lines_month_range",
+      (q) => feeLine(q, structure.id, labHead.id, "100.00", 1, 13),
+    );
+    await expectReject(
+      tx,
+      "an inverted applicable-month range is rejected",
+      "fee_structure_lines_month_order",
+      (q) => feeLine(q, structure.id, labHead.id, "100.00", 9, 4),
+    );
+
+    await expectAccept(tx, "a late-fee rule is accepted", (q) => lateFeeRule(q, "50.00"));
+    await expectReject(
+      tx,
+      "a late-fee rule with value 0 is rejected",
+      "late_fee_rules_value_positive",
+      (q) => lateFeeRule(q, "0.00"),
+    );
+    await expectReject(
+      tx,
+      "a late-fee rule ending before it starts is rejected",
+      "late_fee_rules_date_order",
+      (q) => lateFeeRule(q, "50.00", "flat", "2030-10-01", "2030-09-01"),
+    );
+    // A single-day rule window is absurd but legitimate — the bound is >=, and
+    // a constraint that over-reaches is its own bug (the terms precedent).
+    await expectAccept(tx, "a single-day late-fee window is accepted", (q) =>
+      lateFeeRule(q, "50.00", "flat", "2030-10-01", "2030-10-01"),
+    );
   });
 
   // Asserts the rollback, not an empty database: `pnpm db:seed` legitimately

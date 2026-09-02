@@ -9,27 +9,35 @@ plan's Reviewer's guide for the commit-by-commit code review.
 
 ---
 
-## STATUS: NOT STARTED
+## STATUS: F1 DONE, F2 NEXT
 
-- Branch: (not created)
-- Last commit: (none on branch)
-- Next up: F1 — fee configuration schema, migration `0010`
+- Branch: `feature/phase4-fees`
+- Last commit: F1 `feat(db): the fee configuration layer` (0010)
+- Next up: F2 — billing/collection/ledger schema, migration `0011`,
+  the hand-written ledger-immutability trigger
 
 ---
 
 ## Run summary
 
-(appended at the end of the run — one paragraph: chunks done, chunks
-skipped, verification numbers, overall state of the branch)
+(appended at the end of the run)
 
 ## Per-chunk log
 
-(one entry per chunk, appended at chunk commit time)
-
 ### F0 — plan amendment
-- Status:
-- Commit:
-- Deviations / notes:
+- Status: done
+- Commit: `docs: amend the Phase 4 fees plan for the overnight run` (df8ebe0)
+- Deviations / notes: protocol rewritten (owner's 2026-09-03 authorization);
+  migrations renumbered 0010/0011 (ADR-031 consumed 0009).
+
+### F1 — fee configuration schema (`0010`)
+- Status: done
+- Commit: `feat(db): the fee configuration layer`
+- Verify: check-types 8/8 green; db:verify 90/90 (20 new fee assertions);
+  migration reviewed purely additive before apply.
+- Deviations / notes: one verify test bug found and fixed mid-chunk (the
+  zero-amount assertion initially reused an existing head and hit the
+  unique-pair index, not the CHECK — test fixed, schema unchanged).
 
 <!-- template per chunk
 ### Fx — <name>

@@ -20,3 +20,7 @@ export * from "./academic";
 // Attendance: the calendar (marking gate), policy, periods — and in 0008 the
 // record layer. Phase 3.
 export * from "./attendance";
+
+// Fees: heads → structures → lines, late-fee rules — and in 0011 the
+// assignment/billing/collection/ledger layers. Phase 4.
+export * from "./fees";
