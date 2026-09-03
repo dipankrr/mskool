@@ -45,6 +45,7 @@ import {
   studentFeeAssignments,
 } from "@repo/db/schema";
 import { and, asc, eq, isNull } from "drizzle-orm";
+import { createHmac } from "node:crypto";
 
 const API = process.env.SMOKE_API_URL ?? "http://localhost:4000";
 
@@ -1795,6 +1796,104 @@ async function main() {
   void feeHeads;
   void feeStructures;
   void feeStructureLines;
+
+  // --- Fees: the SIGNED webhook (ADR-009) --------------------------------------
+  //
+  // The route has no session and no permission gate BY DESIGN — the HMAC
+  // signature over the raw body is the authorization. Three checks, the way
+  // a provider and an attacker would actually hit it: a correctly signed
+  // payload records a payment; a tampered body under a valid signature is
+  // refused 401; a replayed order id returns the ORIGINAL receipt (the
+  // idempotency key), not a second one.
+  const sign = (body: string) =>
+    createHmac("sha256", process.env.FEE_WEBHOOK_SECRET ?? "")
+      .update(body)
+      .digest("hex");
+
+  // A student with open dues: the seeded reality has one (student1).
+  const webhookStudent = student1;
+  const openForWebhook = await db
+    .select()
+    .from(feeInstallments)
+    .where(
+      and(
+        eq(feeInstallments.studentId, webhookStudent.id),
+        eq(feeInstallments.paymentStatus, "unpaid"),
+      ),
+    )
+    .orderBy(feeInstallments.dueDate)
+    .limit(1);
+  const webhookTarget = openForWebhook[0];
+  if (!webhookTarget) throw new Error("No open installment for the webhook test.");
+
+  const orderId = `smoke-gw-${Date.now()}`;
+  const payload = JSON.stringify({
+    organizationId: organization.id,
+    studentId: webhookStudent.id,
+    gatewayOrderId: orderId,
+    amount: "1.00",
+    paymentDate: new Date().toISOString().slice(0, 10),
+  });
+
+  const signedRes = await fetch(`${API}/api/webhooks/fees`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-fee-webhook-signature": sign(payload),
+      origin: WEB_ORIGIN,
+    },
+    body: payload,
+  });
+  const signed = (await signedRes.json().catch(() => ({}))) as {
+    receiptNumber?: string;
+  };
+  report(
+    "the signed webhook records a payment (200 + receipt)",
+    signedRes.status === 200 && typeof signed.receiptNumber === "string",
+    `status ${signedRes.status}${signed.receiptNumber ? " receipt " + signed.receiptNumber : ""}`,
+  );
+
+  // Tamper: same signature, different body — the gateway never signed THIS.
+  const tamperedBody = JSON.stringify({
+    organizationId: organization.id,
+    studentId: webhookStudent.id,
+    gatewayOrderId: `smoke-gw-tamper-${Date.now()}`,
+    amount: "500.00",
+    paymentDate: new Date().toISOString().slice(0, 10),
+  });
+  const tamperedRes = await fetch(`${API}/api/webhooks/fees`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-fee-webhook-signature": sign(payload), // signature of the OTHER body
+      origin: WEB_ORIGIN,
+    },
+    body: tamperedBody,
+  });
+  report(
+    "a tampered body under a valid signature is refused 401",
+    tamperedRes.status === 401,
+    `status ${tamperedRes.status}`,
+  );
+
+  // Replay: the same order id, freshly signed — one receipt, returned as-is.
+  const replayRes = await fetch(`${API}/api/webhooks/fees`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-fee-webhook-signature": sign(payload),
+      origin: WEB_ORIGIN,
+    },
+    body: payload,
+  });
+  const replay = (await replayRes.json().catch(() => ({}))) as {
+    receiptNumber?: string;
+  };
+  report(
+    "a replayed webhook returns the ORIGINAL receipt (idempotency)",
+    replayRes.status === 200 && replay.receiptNumber === signed.receiptNumber,
+    `status ${replayRes.status}`,
+  );
 
   // Put the seed back the way we found it, so the script stays re-runnable.
   await db

@@ -30,6 +30,9 @@ import { db } from "@repo/db";
 import {
   academicYears,
   feeHeads,
+  feePayments,
+  feeRefunds,
+  paymentAllocations as paymentAllocationsTable,
   students as studentsTable,
   feeInstallments,
   feeStructureLines,
@@ -758,3 +761,347 @@ describe("fees: the ledger and the gateway path", () => {
   });
 });
 
+
+describe("fees: the stacked-concession clamp, end to end (H1)", () => {
+  it("concessions past 100% of the fee clamp at the fee, never invert dues", async () => {
+    const studentS = await freshStudent("S");
+    const assignmentS = await assignAndGenerate(studentS.id);
+
+    // Two individually-valid tuition concessions: 60% + 60% = 120%.
+    await feesService.createConcession(
+      w.scopeA,
+      assignmentS.id,
+      {
+        concessionType: "merit_scholarship",
+        calculationType: "percentage",
+        value: "60",
+        feeHeadId: w.tuitionHeadId,
+        validFrom: "2025-04-01",
+      },
+      w.adminId,
+    );
+    await feesService.createConcession(
+      w.scopeA,
+      assignmentS.id,
+      {
+        concessionType: "staff_ward",
+        calculationType: "percentage",
+        value: "60",
+        feeHeadId: w.tuitionHeadId,
+        validFrom: "2025-04-01",
+      },
+      w.adminId,
+    );
+    await feesBillingService.recomputeAssignmentConcessions(w.scopeA, assignmentS.id);
+
+    const rows = await installmentsOf(assignmentS.id);
+    const tuitionRows = rows.filter((r) => r.feeHeadId === w.tuitionHeadId);
+    expect(tuitionRows.length).toBeGreaterThan(0);
+
+    // The head's total concession equals its annual amount exactly — capped,
+    // not exceeded — and every installment's net is zero or positive.
+    const tuitionConcessionSum = tuitionRows.reduce(
+      (acc, r) => acc + paise(r.concessionAmount),
+      0n,
+    );
+    expect(tuitionConcessionSum).toBe(1_200_000n); // 12000.00 = the annual cap
+    for (const r of tuitionRows) {
+      expect(paise(r.netAmount) >= 0n).toBe(true);
+      expect(paise(r.concessionAmount) <= paise(r.amount)).toBe(true);
+    }
+
+    // The lab head is untouched by tuition-only concessions.
+    const labRows = rows.filter((r) => r.feeHeadId === w.labHeadId);
+    for (const r of labRows) {
+      expect(r.concessionAmount).toBe("0.00");
+    }
+  });
+});
+
+describe("fees: the invariant sweep (H3)", () => {
+  /**
+   * The systematic cross-check individual tests cannot make: walk ONE
+   * student's entire money history — payments, bounces, refunds, waivers,
+   * the ledger — and assert the accounts actually balance:
+   *
+   *   credits − debits = collected_in − refunded_out − waived_off
+   *
+   * plus every installment's paid ≤ net, and every payment's allocations
+   * sum to its principal. Any drift anywhere in the collection flow makes
+   * this test fail loudly instead of surfacing in an audit years later.
+   */
+  it("a student's full money history balances to the paisa", async () => {
+    const studentV = await freshStudent("V");
+    const assignmentV = await assignAndGenerate(studentV.id);
+    const rows = await installmentsOf(assignmentV.id);
+    const targets = rows
+      .filter((r) => r.feeHeadId === w.tuitionHeadId)
+      .slice(0, 3);
+    if (targets.length < 3) throw new Error("Fixture rows missing.");
+
+    // A bounced cheque against target 0 (money came, then un-came).
+    const bouncedPayment = await feesCollectionService.recordPayment(
+      w.scopeA,
+      {
+        studentId: studentV.id,
+        academicYearId: w.yearAId,
+        paymentDate: "2025-04-05",
+        paymentMode: "cheque",
+        transactionReference: "CHQ-V1",
+        allocations: [
+          { installmentId: targets[0]!.id, amount: targets[0]!.netAmount },
+        ],
+      },
+      w.adminId,
+    );
+    await feesCollectionService.bouncePayment(
+      w.scopeA,
+      { paymentId: bouncedPayment.id, reason: "Bounced for the sweep" },
+      w.adminId,
+    );
+
+    // A cleared cash payment against target 1, partially refunded.
+    const clearedPayment = await feesCollectionService.recordPayment(
+      w.scopeA,
+      {
+        studentId: studentV.id,
+        academicYearId: w.yearAId,
+        paymentDate: "2025-04-06",
+        paymentMode: "cash",
+        allocations: [
+          { installmentId: targets[1]!.id, amount: targets[1]!.netAmount },
+        ],
+      },
+      w.adminId,
+    );
+    await feesCollectionService.recordRefund(
+      w.scopeA,
+      {
+        originalPaymentId: clearedPayment.id,
+        refundAmount: "250.00",
+        refundDate: "2025-04-07",
+        refundMode: "cash",
+        reason: "Sweep partial refund",
+      },
+      w.adminId,
+    );
+
+    // A waiver on target 2.
+    await feesCollectionService.waiveInstallment(
+      w.scopeA,
+      targets[2]!.id,
+      w.adminId,
+    );
+
+    // ---- THE SWEEP ---------------------------------------------------------
+    const ledger = await db
+      .select()
+      .from(financialTransactions)
+      .where(eq(financialTransactions.studentId, studentV.id));
+
+    const credit = ledger
+      .filter((r) => r.direction === "credit")
+      .reduce((acc, r) => acc + paise(r.amount), 0n);
+    const debit = ledger
+      .filter((r) => r.direction === "debit")
+      .reduce((acc, r) => acc + paise(r.amount), 0n);
+
+    // What the subsystems SAY happened.
+    const paymentsRows = await db
+      .select()
+      .from(feePayments)
+      .where(and(eq(feePayments.studentId, studentV.id), eq(feePayments.paymentStatus, "cleared")));
+    const refundsRows = await db
+      .select()
+      .from(feeRefunds)
+      .where(eq(feeRefunds.studentId, studentV.id));
+    const waivedRows = (await installmentsOf(assignmentV.id)).filter(
+      (r) => r.paymentStatus === "waived",
+    );
+
+    const collected = paymentsRows.reduce((acc, r) => acc + paise(r.amount), 0n);
+    const refunded = refundsRows.reduce((acc, r) => acc + paise(r.refundAmount), 0n);
+    const waived = waivedRows.reduce((acc, r) => acc + paise(r.netAmount), 0n);
+
+    // The books balance when both sides count the SAME events. The ledger
+    // writes: a fee_payment CREDIT per recording (cleared or not), a
+    // cheque_bounce_charge DEBIT per bounce, a fee_refund DEBIT per refund,
+    // a waiver_applied DEBIT per waiver. So:
+    //
+    //   ledger net = recorded - bounced - refunded - waived
+    //              = collected - refunded - waived   (cleared-only view)
+    //
+    // A bounced recording's credit and its bounce-charge debit cancel —
+    // the accountant's answer to "the cheque never became money".
+    const allPayments = await db
+      .select()
+      .from(feePayments)
+      .where(eq(feePayments.studentId, studentV.id));
+    const recordedAll = allPayments.reduce((acc, r) => acc + paise(r.amount), 0n);
+    const bouncedAll = allPayments
+      .filter((r) => r.paymentStatus === "bounced")
+      .reduce((acc, r) => acc + paise(r.amount), 0n);
+    expect(credit - debit).toBe(recordedAll - bouncedAll - refunded - waived);
+    // The cleared-only view of the same net.
+    expect(credit - debit).toBe(collected - refunded - waived);
+
+    // Every installment: paid ≤ net (the DB CHECK's live-path proof), and
+    // every cleared payment's allocations sum to its principal.
+    for (const r of await installmentsOf(assignmentV.id)) {
+      expect(paise(r.paidAmount) <= paise(r.netAmount)).toBe(true);
+    }
+    for (const p of paymentsRows) {
+      const allocs = await db
+        .select()
+        .from(paymentAllocationsTable)
+        .where(eq(paymentAllocationsTable.paymentId, p.id));
+      const sum = allocs.reduce((acc, a) => acc + paise(a.amountAllocated), 0n);
+      expect(sum).toBe(paise(p.amount));
+    }
+  });
+});
+
+describe("fees: the same-installment race (H4)", () => {
+  /**
+   * The sharpest race in the counter flow: two cashiers, the SAME student,
+   * the SAME installment, each trying to allocate the FULL balance
+   * simultaneously. The row locks serialize them — the second transaction
+   * re-checks the balance INSIDE its lock and must be refused with the
+   * worded over-allocation error. Exactly one payment survives, the
+   * installment is paid exactly once, the ledger holds one fee_payment row
+   * for the winner, and the receipt sequence is untouched by the loser.
+   */
+  it("two concurrent FULL allocations of one installment: exactly one wins", async () => {
+    const studentR = await freshStudent("R");
+    const assignmentR = await assignAndGenerate(studentR.id);
+    const rows = await installmentsOf(assignmentR.id);
+    const target = rows.find((r) => r.feeHeadId === w.tuitionHeadId);
+    if (!target) throw new Error("Race fixture installment missing.");
+
+    const input = {
+      studentId: studentR.id,
+      academicYearId: w.yearAId,
+      paymentDate: "2025-04-08",
+      paymentMode: "cash" as const,
+      allocations: [{ installmentId: target.id, amount: target.netAmount }],
+    };
+
+    const settled = await Promise.allSettled([
+      feesCollectionService.recordPayment(w.scopeA, { ...input, clientReference: `race-a-${target.id}` }, w.adminId),
+      feesCollectionService.recordPayment(w.scopeA, { ...input, clientReference: `race-b-${target.id}` }, w.adminId,
+      ),
+    ]);
+
+    const fulfilled = settled.filter((r) => r.status === "fulfilled");
+    const rejected = settled.filter((r) => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1); // exactly one winner
+    expect(rejected).toHaveLength(1); // the other refused
+    const rejection = rejected[0];
+    if (!rejection || rejection.status !== "rejected") throw new Error("unreachable");
+    expect(String(rejection.reason)).toContain("outstanding balance");
+
+    // The installment: paid exactly its net, ONCE.
+    const [after] = await db
+      .select()
+      .from(feeInstallments)
+      .where(eq(feeInstallments.id, target.id));
+    expect(after?.paymentStatus).toBe("paid");
+    expect(after?.paidAmount).toBe(target.netAmount);
+
+    // The ledger: ONE fee_payment credit for the winner, nothing for the loser.
+    const ledgerRows = await db
+      .select()
+      .from(financialTransactions)
+      .where(
+        and(
+          eq(financialTransactions.referenceTable, "fee_payments"),
+          eq(financialTransactions.studentId, studentR.id),
+        ),
+      );
+    expect(ledgerRows).toHaveLength(1);
+
+    // One payment row for this student, status cleared.
+    const paymentsForStudent = await db
+      .select()
+      .from(feePayments)
+      .where(eq(feePayments.studentId, studentR.id));
+    expect(paymentsForStudent).toHaveLength(1);
+    expect(paymentsForStudent[0]?.paymentStatus).toBe("cleared");
+  });
+
+  it("partial-then-full race: the second caller gets the REMAINING balance check", async () => {
+    // A subtler variant: one cashier pays half, the other the full amount,
+    // concurrently. Whoever lands first, the second must never push
+    // paid_amount past net — either by refusing the full ask or by
+    // re-reading the shrunken balance.
+    const studentR2 = await freshStudent("R2");
+    const assignmentR2 = await assignAndGenerate(studentR2.id);
+    const rows = await installmentsOf(assignmentR2.id);
+    const target = rows.find((r) => r.feeHeadId === w.tuitionHeadId);
+    if (!target) throw new Error("Race fixture installment missing.");
+    const net = paise(target.netAmount);
+    const half = net / 2n;
+
+    const settled = await Promise.allSettled([
+      feesCollectionService.recordPayment(
+        w.scopeA,
+        {
+          studentId: studentR2.id,
+          academicYearId: w.yearAId,
+          paymentDate: "2025-04-08",
+          paymentMode: "cash",
+          allocations: [
+            { installmentId: target.id, amount: `${half / 100n}.${(half % 100n).toString().padStart(2, "0")}` },
+          ],
+          clientReference: `race-half-a-${target.id}`,
+        },
+        w.adminId,
+      ),
+      feesCollectionService.recordPayment(
+        w.scopeA,
+        {
+          studentId: studentR2.id,
+          academicYearId: w.yearAId,
+          paymentDate: "2025-04-08",
+          paymentMode: "cash",
+          allocations: [{ installmentId: target.id, amount: target.netAmount }],
+          clientReference: `race-full-b-${target.id}`,
+        },
+        w.adminId,
+      ),
+    ]);
+
+    // The DB CHECK is the backstop; the row lock makes it unreachable in
+    // practice. Either way, the row ends legal.
+    const [after] = await db
+      .select()
+      .from(feeInstallments)
+      .where(eq(feeInstallments.id, target.id));
+    expect(paise(after?.paidAmount ?? "0") <= net).toBe(true);
+    expect(after?.paymentStatus === "paid" || after?.paymentStatus === "partial").toBe(true);
+
+    // Every successful payment's allocations sum to its principal — no
+    // phantom money from the interleaving.
+    const paymentsRows2 = await db
+      .select()
+      .from(feePayments)
+      .where(eq(feePayments.studentId, studentR2.id));
+    for (const p of paymentsRows2) {
+      const allocs = await db
+        .select()
+        .from(paymentAllocationsTable)
+        .where(eq(paymentAllocationsTable.paymentId, p.id));
+      expect(allocs.reduce((acc, a) => acc + paise(a.amountAllocated), 0n)).toBe(
+        paise(p.amount),
+      );
+    }
+    // And the installment's paid_amount equals the SUM of its allocations.
+    const targetAllocs = await db
+      .select()
+      .from(paymentAllocationsTable)
+      .where(eq(paymentAllocationsTable.installmentId, target.id));
+    expect(
+      targetAllocs.reduce((acc, a) => acc + paise(a.amountAllocated), 0n),
+    ).toBe(paise(after?.paidAmount ?? "0"));
+  });
+});

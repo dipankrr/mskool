@@ -6,9 +6,8 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
-**PHASE 4 — FEES — BACKEND COMPLETE (2026-09-03 overnight run, branch
-`feature/phase4-fees`, unmerged).** All 14 tables live (migrations 0010
-+ 0011), the full contract → service → router chain, and the
+**PHASE 4 — FEES — BACKEND COMPLETE (2026-09-03 overnight run + hardening
+slice, branch `feature/phase4-fees`, unmerged).** All 14 tables live (migrations 0010–0012), the full contract → service → router chain, and the
 money-safety proofs. The plan and per-commit reviewer entries live in
 `.kilo/plans/1788220800000-ui-milestone-admission-attendance.md`'s
 sibling: `.kilo/plans/1788307200000-phase4-fees.md` (the contract, with
@@ -17,7 +16,7 @@ a Reviewer's guide per commit) and
 happened). **The owner should review the branch commit-by-commit using
 the plan's Reviewer's guide, then merge.**
 
-- **What ships (8 commits, F1–F8):** the configuration layer (heads,
+- **What ships (12 commits, F1–F8 + the hardening slice):** the configuration layer (heads,
   structures, lines, late-fee rules), the resolution/billing/collection/
   ledger layers (assignments, concessions, subscriptions, installments,
   opening balances, payments, allocations, refunds,

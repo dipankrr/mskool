@@ -9,10 +9,10 @@ plan's Reviewer's guide for the commit-by-commit code review.
 
 ---
 
-## STATUS: RUN COMPLETE — Phase 4 backend done, awaiting owner review
+## STATUS: RUN + HARDENING COMPLETE — awaiting owner review
 
-- Branch: `feature/phase4-fees` (9 commits ahead of main, unmerged)
-- Last commit: F8 `docs: TASKS.md — Phase 4 done`
+- Branch: `feature/phase4-fees` (12 commits ahead of main, unmerged)
+- Last commit: `test: webhook, invariant sweep, same-installment race`
 - Next: owner reviews the branch via the plan's Reviewer's guide, then merges
 
 ---
@@ -27,19 +27,21 @@ sequence and the idempotency key, the ADR-009 webhook seam, a 34-test
 hermetic maths suite, a 14-test integration suite against real Postgres,
 seed fee fixtures, and three live smoke checks.
 
-## Verification surface at end of run
+## Verification surface at end of run (post-hardening)
 
 - `pnpm check-types` — 8/8 packages green
-- `pnpm test` — 200 unit tests (86 authz + 34 services + 48 web + 32 trpc)
-- `pnpm test:integration` — 107 (93 authz + 14 fees), real Postgres
-- `pnpm db:verify` — 114 assertions (38 fee-specific)
+- `pnpm test` — 204 unit tests (86 authz + 38 services + 48 web + 32 trpc)
+- `pnpm test:integration` — 111 (93 authz + 18 fees), real Postgres
+- `pnpm db:verify` — 119 assertions (43 fee-specific)
 - `pnpm check:builders` / `pnpm check:openapi` — green; 100 endpoints (36 fee)
 - `pnpm lint` — clean (pre-existing warnings only)
 - `pnpm db:seed` — idempotent, fee reality seeded, payment recorded
-- `pnpm smoke:authz` — 140/161; ALL 21 failures are pre-existing demo-org
+- `pnpm smoke:authz` — 143/164; ALL 21 failures are pre-existing demo-org
   drift (a third academic year, extra students/enrollments from earlier UI
-  testing); the three fee checks PASS. Recommend resetting the demo org or
-  drift-tolerant assertion rewrites — owner's call.
+  testing); the SIX fee checks PASS (3 counter + 3 signed-webhook:
+  signed-accept 200+receipt, tampered-body 401, replay returns the original
+  receipt). Recommend resetting the demo org or drift-tolerant rewrites —
+  owner's call.
 
 ## Per-chunk log
 
@@ -141,6 +143,27 @@ seed fee fixtures, and three live smoke checks.
   "today" fell outside the seeded year, collapsing the generator to one
   bucket — correct behaviour, wrong demo data), and the smoke's
   first-row lookups broke on drift (now name-based).
+
+### H — hardening slice (2026-09-03, post-run)
+- Status: done
+- Commits: `fix(services,db): the concession clamp` +
+  `test: webhook, invariant sweep, same-installment race`
+- Verify: db:verify 119; services 38; integration 111; smoke webhook 3/3.
+- What it closed, in the order the owner asked:
+  1. The stacked-concession hole (found on self-review): per-head totals
+     now clamp at the head's annual amount, with three DB CHECK backstops
+     (migration 0012). End-to-end test: 120% stacked → capped at 100%.
+  2. The webhook route finally RAN: signed accept, tamper 401, replay
+     idempotency — over live HTTP, HMAC computed exactly as a provider would.
+  3. The invariant sweep: a bounced+refunded+waived history balances on both
+     views of the identity; paid ≤ net everywhere; allocations sum to
+     principals. NOTE: the sweep's first formula was wrong (it ignored that
+     bounced recordings cancel out of the net) — the LEDGER was correct, the
+     test's math was not; corrected and documented in the test.
+  4. The same-installment race: two concurrent FULL allocations → exactly
+     one payment, the loser refused with the worded error; a
+     partial-then-full interleaving ends with paid ≤ net and allocations
+     equal to paid. The row locks work under contention.
 
 ### F8 — docs
 - Status: done
