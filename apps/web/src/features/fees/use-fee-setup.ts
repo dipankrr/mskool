@@ -7,6 +7,7 @@ import type {
   CreateFeeStructureInput,
   CreateFeeStructureLineInput,
   CreateLateFeeRuleInput,
+  CreateSubscriptionInput,
   UpdateFeeHeadInput,
   UpdateFeeStructureInput,
   UpdateFeeStructureLineInput,
@@ -239,6 +240,75 @@ export function useFeeStructureMutations() {
         return addLateFeeRule.mutateAsync({ ...scope, data });
       },
       canSubmit: Boolean(writeScopeArgs()),
+    },
+  };
+}
+
+/**
+ * A year's optional-fee subscriptions (transport, hostel), optionally one
+ * student's — the fee profile card passes the studentId.
+ */
+export function useFeeSubscriptions(
+  academicYearId: string | undefined,
+  studentId?: string,
+) {
+  const { scopeArgs } = useActiveContext();
+
+  return trpc.fees.subscription.list.useQuery(
+    {
+      ...scopeArgs(),
+      academicYearId: academicYearId ?? "",
+      includeHistory: false,
+      ...(studentId ? { studentId } : {}),
+    },
+    {
+      enabled: Boolean(academicYearId),
+      staleTime: THIRTY_SECONDS,
+    },
+  );
+}
+
+export function useSubscriptionMutations() {
+  const { scopeArgs, writeScopeArgs } = useActiveContext();
+  const utils = trpc.useUtils();
+
+  const refresh = async () => {
+    await Promise.all([
+      utils.fees.subscription.list.invalidate(),
+      utils.fees.installment.dues.invalidate(),
+    ]);
+  };
+
+  const create = trpc.fees.subscription.create.useMutation({
+    onSuccess: async () => {
+      toast.success(copy.fees.subscriptions.created);
+      await refresh();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const cancel = trpc.fees.subscription.cancel.useMutation({
+    onSuccess: async () => {
+      toast.success(copy.fees.subscriptions.cancelled);
+      await refresh();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  return {
+    create: {
+      ...create,
+      submit: (data: CreateSubscriptionInput) => {
+        const scope = writeScopeArgs();
+        if (!scope) throw new Error(copy.errors.needsBranch);
+        return create.mutateAsync({ ...scope, data });
+      },
+      canSubmit: Boolean(writeScopeArgs()),
+    },
+    cancel: {
+      ...cancel,
+      submit: (schoolId: string, id: string) =>
+        cancel.mutateAsync({ ...scopeArgs(), schoolId, id }),
     },
   };
 }

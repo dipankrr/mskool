@@ -16,6 +16,7 @@ import { useStudentEnrollments } from "@/features/students/use-students";
 import { useActiveContext } from "@/features/session/active-context";
 import { AssignStructureDialog } from "./assign-structure-dialog";
 import { ConcessionDialog } from "./concession-dialog";
+import { SubscriptionsSection } from "./subscriptions-section";
 import { installmentStatusClass, moneyCellClass } from "./fee-styles";
 import { useFeeHeads } from "./use-fee-setup";
 import { useFeeDues } from "./use-fee-dues";
@@ -215,6 +216,8 @@ export function FeeProfileCard({ studentId }: { studentId: string }) {
                   </div>
                 )}
               </div>
+
+              <SubscriptionsSection studentId={studentId} activeSession={activeSession} />
             </>
           )}
         </CardContent>
