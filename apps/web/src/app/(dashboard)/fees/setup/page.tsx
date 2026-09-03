@@ -2,6 +2,7 @@
 
 import { FeesTabs } from "@/features/fees/tabs";
 import { FeeHeadsSection } from "@/features/fees/fee-heads-section";
+import { FeeStructuresSection } from "@/features/fees/fee-structures-section";
 import { useActiveContext } from "@/features/session/active-context";
 import { PageHeader } from "@/components/page-header";
 import { copy } from "@/lib/copy";
@@ -20,6 +21,7 @@ export default function FeesSetupPage() {
       <PageHeader title={copy.fees.tabs.setup} description={copy.fees.subtitle} />
       <FeesTabs has={has} />
       <FeeHeadsSection />
+      <FeeStructuresSection />
     </>
   );
 }

@@ -2,11 +2,20 @@
 
 import { toast } from "sonner";
 
+import type {
+  CreateFeeHeadInput,
+  CreateFeeStructureInput,
+  CreateFeeStructureLineInput,
+  CreateLateFeeRuleInput,
+  UpdateFeeHeadInput,
+  UpdateFeeStructureInput,
+  UpdateFeeStructureLineInput,
+} from "@repo/contracts";
+
 import { useActiveContext } from "@/features/session/active-context";
 import { copy } from "@/lib/copy";
 import { errorMessage } from "@/lib/errors";
 import { trpc } from "@/lib/trpc/client";
-import type { CreateFeeHeadInput, UpdateFeeHeadInput } from "@repo/contracts";
 
 /**
  * FEE SETUP — the configuration tab's hooks (heads here; structures,
@@ -87,6 +96,149 @@ export function useFeeHeadMutations() {
       ...deactivate,
       submit: (schoolId: string, id: string) =>
         deactivate.mutateAsync({ ...scopeArgs(), schoolId, id }),
+    },
+  };
+}
+
+/**
+ * A year's fee structures. `includeHistory` is REQUIRED by the contract
+ * (ADR-024's year edge) — false pins to the session in the switcher; the
+ * year select decides which year the caller is asking about, and history
+ * holders reach closed years with true.
+ */
+export function useFeeStructures(academicYearId: string | undefined, includeHistory: boolean) {
+  const { scopeArgs } = useActiveContext();
+
+  return trpc.fees.structure.list.useQuery(
+    { ...scopeArgs(), academicYearId: academicYearId ?? "", includeHistory },
+    {
+      enabled: Boolean(academicYearId),
+      staleTime: THIRTY_SECONDS,
+    },
+  );
+}
+
+/** One structure's lines (the per-head pricing). */
+export function useFeeStructureLines(schoolId: string | undefined, structureId: string | undefined) {
+  const { scopeArgs } = useActiveContext();
+
+  return trpc.fees.structure.listLines.useQuery(
+    { ...scopeArgs(), schoolId: schoolId ?? "", id: structureId ?? "" },
+    {
+      enabled: Boolean(schoolId && structureId),
+      staleTime: THIRTY_SECONDS,
+      retry: false,
+    },
+  );
+}
+
+/** The school's active late-fee rules (school-wide list, structure link shown per row). */
+export function useLateFeeRules() {
+  const { scopeArgs } = useActiveContext();
+
+  return trpc.fees.structure.listLateFeeRules.useQuery(scopeArgs(), {
+    staleTime: THIRTY_SECONDS,
+  });
+}
+
+export function useFeeStructureMutations() {
+  const { scopeArgs, writeScopeArgs } = useActiveContext();
+  const utils = trpc.useUtils();
+
+  const refreshStructures = async () => {
+    await Promise.all([
+      utils.fees.structure.list.invalidate(),
+      utils.fees.structure.listLines.invalidate(),
+      utils.fees.structure.listLateFeeRules.invalidate(),
+    ]);
+  };
+
+  const create = trpc.fees.structure.create.useMutation({
+    onSuccess: async () => {
+      toast.success(copy.fees.structures.created);
+      await refreshStructures();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const update = trpc.fees.structure.update.useMutation({
+    onSuccess: async () => {
+      toast.success(copy.fees.structures.updated);
+      await refreshStructures();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const deactivate = trpc.fees.structure.deactivate.useMutation({
+    onSuccess: async () => {
+      toast.success(copy.fees.structures.closed);
+      await refreshStructures();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const addLine = trpc.fees.structure.addLine.useMutation({
+    onSuccess: async () => {
+      toast.success(copy.fees.structures.lineCreated);
+      await refreshStructures();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const updateLine = trpc.fees.structure.updateLine.useMutation({
+    onSuccess: async () => {
+      toast.success(copy.fees.structures.lineUpdated);
+      await refreshStructures();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const addLateFeeRule = trpc.fees.structure.addLateFeeRule.useMutation({
+    onSuccess: async () => {
+      toast.success(copy.fees.structures.lateFeeCreated);
+      await refreshStructures();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  return {
+    create: {
+      ...create,
+      submit: (data: CreateFeeStructureInput) => {
+        const scope = writeScopeArgs();
+        if (!scope) throw new Error(copy.errors.needsBranch);
+        return create.mutateAsync({ ...scope, data });
+      },
+      canSubmit: Boolean(writeScopeArgs()),
+    },
+    update: {
+      ...update,
+      submit: (schoolId: string, id: string, data: UpdateFeeStructureInput) =>
+        update.mutateAsync({ ...scopeArgs(), schoolId, id, data }),
+    },
+    deactivate: {
+      ...deactivate,
+      submit: (schoolId: string, id: string) =>
+        deactivate.mutateAsync({ ...scopeArgs(), schoolId, id }),
+    },
+    addLine: {
+      ...addLine,
+      submit: (schoolId: string, structureId: string, data: CreateFeeStructureLineInput) =>
+        addLine.mutateAsync({ ...scopeArgs(), schoolId, id: structureId, data }),
+    },
+    updateLine: {
+      ...updateLine,
+      submit: (schoolId: string, lineId: string, data: UpdateFeeStructureLineInput) =>
+        updateLine.mutateAsync({ ...scopeArgs(), schoolId, id: lineId, data }),
+    },
+    addLateFeeRule: {
+      ...addLateFeeRule,
+      submit: (data: CreateLateFeeRuleInput) => {
+        const scope = writeScopeArgs();
+        if (!scope) throw new Error(copy.errors.needsBranch);
+        return addLateFeeRule.mutateAsync({ ...scope, data });
+      },
+      canSubmit: Boolean(writeScopeArgs()),
     },
   };
 }

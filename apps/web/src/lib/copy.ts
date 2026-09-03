@@ -596,7 +596,6 @@ export const copy = {
       half_yearly: "Half-yearly",
       annual: "Annual",
       term_wise: "Term-wise",
-      upfront: "Upfront",
     },
     lateFeeTypes: {
       flat: "Flat",
