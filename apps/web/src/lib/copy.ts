@@ -60,6 +60,7 @@ export const copy = {
     classes: "Classes",
     students: "Students",
     attendance: "Calendar",
+    fees: "Fees",
     profile: "Profile",
     menu: "Menu",
     openMenu: "Open menu",
@@ -546,6 +547,458 @@ export const copy = {
     done: "Done",
     /** Only the sections step is genuinely blocked; classes are not year-scoped. */
     needsSession: "Create a session first.",
+  },
+
+  /** The fees area: five tabs, one vocabulary. Money is never "amount" alone — say which money. */
+  fees: {
+    subtitle:
+      "Fee setup, dues, the collection counter, payments, and the ledger for the session you are working in.",
+
+    /** Tab labels — nouns, not verbs, per the attendance tabs rule. */
+    tabs: {
+      setup: "Setup",
+      dues: "Dues",
+      counter: "Counter",
+      payments: "Payments",
+      ledger: "Ledger",
+    },
+
+    /** Generic money-column headers. */
+    amounts: {
+      annual: "Annual",
+      monthly: "Monthly",
+      net: "Net",
+      paid: "Paid",
+      balance: "Balance",
+      total: "Total",
+      lateFee: "Late fee",
+      concession: "Concession",
+      refundable: "Refundable",
+    },
+
+    /** Enum → words, the lower-case wire value keyed. */
+    headCategories: {
+      regular: "Regular",
+      one_time: "One-time",
+      optional: "Optional service",
+      fine: "Fine",
+      refundable: "Refundable deposit",
+    },
+    installmentModes: {
+      upfront: "Upfront",
+      term_wise: "Term-wise",
+      monthly: "Monthly",
+    },
+    frequencies: {
+      inherit: "Same as structure",
+      monthly: "Monthly",
+      quarterly: "Quarterly",
+      half_yearly: "Half-yearly",
+      annual: "Annual",
+      term_wise: "Term-wise",
+      upfront: "Upfront",
+    },
+    lateFeeTypes: {
+      flat: "Flat",
+      percentage: "Percentage",
+      per_day: "Per day",
+    },
+    concessionTypes: {
+      sibling_discount: "Sibling discount",
+      staff_ward: "Staff ward",
+      merit_scholarship: "Merit scholarship",
+      need_based: "Need-based",
+      rte_waiver: "RTE waiver",
+      management_discount: "Management discount",
+      other: "Other",
+    },
+    concessionCalculations: { flat: "Flat ₹", percentage: "Percentage" },
+    paymentModes: {
+      cash: "Cash",
+      upi: "UPI",
+      cheque: "Cheque",
+      neft_rtgs: "NEFT / RTGS",
+      card: "Card",
+      dd: "Demand draft",
+    },
+    paymentStatuses: {
+      pending: "Pending confirmation",
+      cleared: "Cleared",
+      bounced: "Bounced",
+      reversed: "Reversed",
+      cancelled: "Cancelled",
+    },
+    installmentStatuses: {
+      unpaid: "Unpaid",
+      partial: "Partly paid",
+      paid: "Paid",
+      waived: "Waived",
+      cancelled: "Cancelled",
+    },
+    subscriptionStatuses: {
+      active: "Active",
+      cancelled: "Cancelled",
+      suspended: "Suspended",
+    },
+    assignmentStatuses: {
+      active: "Active",
+      suspended: "Suspended",
+      cancelled: "Cancelled",
+    },
+    openingBalanceStatuses: {
+      unpaid: "Unpaid",
+      partial: "Partly paid",
+      paid: "Paid",
+      waived: "Waived",
+    },
+    ledgerTypes: {
+      fee_payment: "Fee payment",
+      fee_refund: "Refund",
+      late_fee_charged: "Late fee",
+      concession_applied: "Concession",
+      waiver_applied: "Waiver",
+      opening_balance: "Opening balance",
+      opening_balance_payment: "Opening balance payment",
+      advance_payment: "Advance payment",
+      cheque_bounce_charge: "Cheque bounce charge",
+      security_deposit_received: "Security deposit received",
+      security_deposit_refunded: "Security deposit refunded",
+    },
+    ledgerDirections: { credit: "In", debit: "Out" },
+
+    // ---- Setup: fee heads ----
+    heads: {
+      title: "Fee heads",
+      subtitle:
+        "What this school charges: tuition, transport, exam fees. Structures and every student's bill are built from these.",
+      add: "Add fee head",
+      addTitle: "Add a fee head",
+      editTitle: "Edit fee head",
+      emptyTitle: "No fee heads yet",
+      emptyBody:
+        "Add the first fee head — e.g. Tuition Fee — and the school's fee structures can be built from it.",
+      created: "Fee head added.",
+      updated: "Fee head updated.",
+      fields: {
+        name: "Name",
+        nameHelp: "What it is called on bills and receipts.",
+        shortCode: "Short code",
+        shortCodeHelp: "Optional. A short label for reports, like TUIF.",
+        description: "Note",
+        category: "Category",
+        categoryHelp:
+          "Optional services (transport, hostel) can be subscribed to per student; one-time fees appear once a year.",
+        isTaxable: "Taxable",
+        isTaxableHelp: "Tick if GST applies to this head.",
+        taxPercentage: "Tax %",
+        taxPercentageHelp: "The GST rate for this head, like 18.",
+      },
+      retireAction: "Retire head",
+      retireTitle: "Retire this fee head?",
+      retireBody:
+        "It stops appearing when you build fee structures. Existing structures, bills and receipts keep it exactly as they are. Records are kept.",
+      retireConfirm: "Retire head",
+      retired: "Fee head retired. Records are kept.",
+    },
+
+    // ---- Setup: structures ----
+    structures: {
+      title: "Fee structures",
+      subtitle:
+        "One structure per class per session: the heads it includes and how they split into instalments.",
+      add: "Add structure",
+      addTitle: "Add a fee structure",
+      editTitle: "Edit structure",
+      emptyTitle: "No structure for this class yet",
+      emptyBody:
+        "A structure is what a class is billed. Add one and students in the class can be assigned to it.",
+      created: "Fee structure added.",
+      updated: "Fee structure updated.",
+      fields: {
+        academicYear: "Session",
+        academicYearHelp: "The session this structure bills for.",
+        class: "Class",
+        classHelp: "One structure per class per session.",
+        name: "Name",
+        nameHelp: "Usually the class and session, like Class 6 — 2025-26.",
+        installmentMode: "Default instalment plan",
+        installmentModeHelp:
+          "The default way heads split across the session. A head can override this in its line.",
+      },
+      closeAction: "Close structure",
+      closeTitle: "Close this structure?",
+      closeBody:
+        "New students cannot be assigned to it. Students already assigned keep their bills — their assignment froze the amounts at assignment time. Records are kept.",
+      closeConfirm: "Close structure",
+      closed: "Structure closed. Records are kept.",
+      linesTitle: "Fee lines",
+      linesSubtitle: "The heads this structure bills, and how each splits.",
+      addLine: "Add line",
+      emptyLinesTitle: "No lines yet",
+      emptyLinesBody: "Add a fee head and an annual amount — this is what the class gets billed.",
+      lineFields: {
+        head: "Fee head",
+        headHelp: "The charge this line bills.",
+        annualAmount: "Annual amount",
+        annualAmountHelp: "The full-session charge for this head.",
+        frequency: "Instalment frequency",
+        frequencyHelp: "How this head splits across the session.",
+        fromMonth: "From month",
+        toMonth: "To month",
+        monthsHelp: "The part of the session this head applies to — usually the whole session.",
+      },
+      lineCreated: "Fee line added.",
+      lineUpdated: "Fee line updated.",
+      lateFeeTitle: "Late fee rules",
+      lateFeeSubtitle:
+        "What gets charged when a payment is late. Rules are added as they take effect; there is no edit — set an end date on the old rule and add a new one.",
+      addLateFeeRule: "Add late fee rule",
+      lateFeeFields: {
+        graceDays: "Grace days",
+        graceDaysHelp: "Days after the due date before late fee starts.",
+        type: "Charges",
+        value: "Value",
+        valueHelp: "Flat rupees, a percentage of the instalment, or rupees per day.",
+        max: "Cap",
+        maxHelp: "Optional. The most this rule can charge on one instalment.",
+        from: "Effective from",
+        to: "Effective until",
+        windowHelp: "The dates this rule applies between. Leave the end open to run until changed.",
+      },
+      lateFeeCreated: "Late fee rule added.",
+    },
+
+    // ---- Student fee profile ----
+    profile: {
+      title: "Fees",
+      subtitle: "This student's fee bill for the session: structure, concessions, and instalments.",
+      notAssignedTitle: "No fee structure assigned",
+      notAssignedBody:
+        "Assign the class's structure and this student's instalments can be generated.",
+      assignAction: "Assign structure",
+      assignTitle: "Assign the fee structure",
+      assignHelp:
+        "The class's active structure is found for you; its amounts are frozen onto the assignment so later structure edits do not rewrite this student's bill.",
+      assigned: "Fee structure assigned.",
+      fields: {
+        enrollment: "Enrollment",
+        enrollmentHelp: "The class and session the fee bill is for.",
+        effectiveFrom: "Fees start on",
+        effectiveFromHelp: "Usually the session start. Later dates cut earlier months off the bill.",
+        fullJoiningMonth: "Charge the joining month in full",
+        fullJoiningMonthHelp:
+          "Off when a student joins mid-month and should pay only the remaining days.",
+      },
+      baseAnnual: "Annual before concessions",
+      netAnnual: "Annual after concessions",
+      generate: "Generate instalments",
+      generateHelp:
+        "Creates the session's instalment rows from the structure. Safe to run again — it fills gaps only, never rewrites existing rows.",
+      generated: (count: number) =>
+        count === 1
+          ? "1 instalment generated."
+          : `${count} instalments generated.`,
+      nothingToGenerate: "Instalments are up to date — nothing new to generate.",
+      concession: "Add concession",
+      concessionTitle: "Add a concession",
+      concessionHelp:
+        "The amount is worked out and applied by the school's server — you record the type and the value, never the resulting rupees.",
+      concessionCreated: (amount: string) => `Concession applied — ${amount} off the annual bill.`,
+      concessionFields: {
+        type: "Type",
+        calculation: "Applies as",
+        value: "Value",
+        valueHelp: "Rupees when flat, percent when percentage. Percentages round in the school's favour.",
+        head: "Applies to head",
+        headHelp: "Leave on All heads to apply across the bill.",
+        allHeads: "All heads",
+        reason: "Reason",
+        reasonHelp: "Optional note for the record.",
+        from: "Valid from",
+        to: "Valid until",
+        windowHelp: "The part of the session this concession applies to.",
+      },
+      recompute: "Recompute concessions",
+      recomputeHelp:
+        "Re-applies concessions onto instalments that have never been paid. Anything partly or fully paid keeps its history — money already received is not renegotiated.",
+      recomputed: "Concessions re-applied.",
+      installmentsTitle: "Instalments",
+      installmentsSubtitle: "What this student owes, head by head.",
+      noInstallmentsTitle: "No instalments yet",
+      noInstallmentsBody: "Generate them — they are built from the structure frozen at assignment.",
+    },
+
+    // ---- Optional subscriptions ----
+    subscriptions: {
+      title: "Optional services",
+      subtitle: "Per-student services priced outside the structure — transport, hostel, and similar.",
+      add: "Subscribe",
+      addTitle: "Subscribe to an optional service",
+      emptyTitle: "No optional services",
+      emptyBody: "Subscribe a student to transport or another optional head and it joins their bill.",
+      created: "Subscription added. Generate instalments to bill it.",
+      fields: {
+        head: "Service",
+        headHelp: "Only optional-category heads can be subscribed to.",
+        detail: "Service detail",
+        detailHelp: "Optional. e.g. Route 3 — Dum Dum.",
+        monthly: "Monthly amount",
+        annual: "Annual amount",
+        from: "Subscribed from",
+        to: "Subscribed until",
+        windowHelp: "The months this service is billed for.",
+      },
+      cancelAction: "Cancel subscription",
+      cancelTitle: "Cancel this subscription?",
+      cancelBody:
+        "No new instalments are generated for it. Ones already billed stay on the student's record. Records are kept.",
+      cancelConfirm: "Cancel subscription",
+      cancelled: "Subscription cancelled. Records are kept.",
+    },
+
+    // ---- Dues ----
+    dues: {
+      title: "Dues",
+      subtitle:
+        "What is still owed this session, student by student. Cashiers collect from the Counter; this is the arrears view.",
+      emptyTitle: "No open dues",
+      emptyBody:
+        "Nothing is outstanding for this session and these filters. Either everything is collected, or no instalments have been generated yet.",
+      filterStudent: "Student",
+      filterAllStudents: "All students",
+      dueBy: "Due by",
+      dueByHelp: "Show only instalments due on or before this date.",
+      grandTotal: "Total outstanding",
+      owedBy: (name: string, total: string) => `${name} owes ${total}`,
+      waiveAction: "Waive",
+      waiveTitle: "Waive this instalment?",
+      waiveBody:
+        "The instalment is marked waived and the amount stops being owed. Only an instalment that has never been paid can be waived — money already received must be refunded instead. Records are kept.",
+      waiveConfirm: "Waive instalment",
+      waived: "Instalment waived. Records are kept.",
+      historyNote: "You are viewing a past session.",
+    },
+
+    // ---- Counter ----
+    counter: {
+      title: "Counter",
+      subtitle:
+        "Record a payment taken at the desk. What you type here becomes the school's receipt.",
+      searchLabel: "Find the student",
+      searchPlaceholder: "Name or admission number…",
+      selected: "Collecting for",
+      noOpenTitle: "Nothing to collect",
+      noOpenBody:
+        "This student has no instalments with a balance for this session. If you expected dues, check the session switcher.",
+      openBalances: "Opening balances",
+      openBalancesNote:
+        "Last session's carry-forward. Shown for the record — the counter collects instalments only.",
+      allocationsTitle: "Allocate the payment",
+      allocationsHelp:
+        "Tick the instalments this payment is for and type the amount against each. A payment can cover several instalments, or part of one.",
+      amount: "Amount",
+      payFull: "Pay in full",
+      clear: "Clear",
+      total: "Payment total",
+      lateFeeNote:
+        "If a late fee applies, the school's server works it out and it appears on the receipt — it is never typed here.",
+      mode: "Paid by",
+      modeHelp: "Cash is confirmed immediately. Everything else waits for the bank — it shows as pending until confirmed.",
+      paymentDate: "Paid on",
+      transactionRef: "Reference",
+      transactionRefHelp: "UPI reference, cheque number, or UTR.",
+      bankName: "Bank",
+      chequeDate: "Cheque date",
+      chequeDateHelp: "The date on the cheque, if it is post-dated.",
+      remarks: "Remarks",
+      remarksHelp: "Optional note for the receipt.",
+      submit: "Record payment",
+      submitting: "Recording…",
+      recorded: (receipt: string) => `Payment recorded — receipt ${receipt}.`,
+      pendingNote:
+        "Recorded and awaiting confirmation — it shows as pending until a confirmer clears it.",
+      receiptTitle: "Receipt",
+      print: "Print receipt",
+    },
+
+    // ---- Payments ----
+    payments: {
+      title: "Payments",
+      subtitle: "Every payment recorded this session, its status, and the actions it still allows.",
+      emptyTitle: "No payments yet",
+      emptyBody: "The counter is where payments are recorded — the first one will appear here.",
+      receipt: "Receipt",
+      detailTitle: "Payment",
+      allocationsTitle: "Applied to",
+      statusTimelineTitle: "History",
+      statusBy: "by",
+      statusReason: "Reason",
+      collectedBy: "Collected by",
+      clearAction: "Clear",
+      clearTitle: "Mark this payment cleared?",
+      clearBody:
+        "Confirms the money arrived. The instalments it paid stay paid. This is the confirmation a pending payment waits for.",
+      bounceAction: "Bounce",
+      bounceTitle: "Mark this payment bounced?",
+      bounceBody:
+        "For a cheque that was returned or a transfer that failed. The instalments it covered go back to being owed, and a bounce charge is recorded in the ledger. Records are kept.",
+      reverseAction: "Reverse",
+      reverseTitle: "Reverse this payment?",
+      reverseBody:
+        "Takes the payment back off the student's bill — the instalments it covered become owed again, and a reversal is recorded in the ledger. Records are kept.",
+      cancelAction: "Cancel",
+      cancelTitle: "Cancel this payment?",
+      cancelBody:
+        "For a payment recorded by mistake that never moved money. The instalments it covered go back to being owed. Nothing is deleted — the cancellation stays on the record.",
+      refundAction: "Refund",
+      refundTitle: "Record a refund",
+      refundBody:
+        "Money going back for a payment that cleared. The refund re-opens what it covered, oldest instalment first.",
+      reasonLabel: "Reason",
+      reasonHelp: "Said on the record — required.",
+      transitioned: (action: string) => `Payment ${action}. Records are kept.`,
+      refundFields: {
+        amount: "Refund amount",
+        date: "Refunded on",
+        mode: "Refund by",
+        reference: "Reference",
+        referenceHelp: "Optional. UTR, cheque number, or UPI reference.",
+      },
+      refunded: "Refund recorded. Records are kept.",
+      terminalNote: "This payment has reached the end of its lifecycle — no further actions.",
+    },
+
+    // ---- Ledger ----
+    ledger: {
+      title: "Ledger",
+      subtitle:
+        "Every money movement, appended as it happened. Nothing here is ever edited — corrections are new rows.",
+      emptyTitle: "No entries yet",
+      emptyBody: "The ledger fills as payments, concessions, waivers and refunds happen.",
+      filterType: "Type",
+      filterAllTypes: "All types",
+      taxNote: "Taxable",
+    },
+
+    // ---- Opening balances (student profile section) ----
+    openingBalances: {
+      title: "Opening balances",
+      subtitle: "Previous-session dues carried into this one.",
+      add: "Record opening balance",
+      addTitle: "Record an opening balance",
+      addHelp:
+        "Carries a past session's dues into the current one so they can be collected here. The origin session must differ from the one it lands in.",
+      emptyTitle: "No opening balance",
+      emptyBody: "Nothing was carried into this session for this student.",
+      created: "Opening balance recorded.",
+      fields: {
+        session: "Lands in session",
+        origin: "Dues from session",
+        originHelp: "The session the dues belong to.",
+        amount: "Amount",
+        description: "Note",
+      },
+    },
   },
 
   /** States the shell itself can be in, before any screen renders. */
