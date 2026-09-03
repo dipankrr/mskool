@@ -1,0 +1,3 @@
+ALTER TABLE "fee_installments" ADD CONSTRAINT "fee_installments_net_non_negative" CHECK ("net_amount" >= 0);--> statement-breakpoint
+ALTER TABLE "fee_installments" ADD CONSTRAINT "fee_installments_concession_capped" CHECK ("concession_amount" <= "amount");--> statement-breakpoint
+ALTER TABLE "fee_installments" ADD CONSTRAINT "fee_installments_paid_capped" CHECK ("paid_amount" <= "net_amount" OR "payment_status" IN ('waived', 'cancelled'));

@@ -120,6 +120,9 @@ async function main() {
         'fee_concessions_validity_order',
         'fee_installments_amount_non_negative',
         'fee_installments_net_matches_parts',
+        'fee_installments_net_non_negative',
+        'fee_installments_concession_capped',
+        'fee_installments_paid_capped',
         'fee_installments_month_shape',
         'opening_balances_amount_positive',
         'fee_payments_amount_positive',
@@ -131,7 +134,7 @@ async function main() {
     ORDER BY con.conname
   `;
   for (const c of constraints) console.log(`  ${c.table_name}.${c.constraint_name}`);
-  report("all CHECK constraints exist", constraints.length === 24, `found ${constraints.length}/24`);
+  report("all CHECK constraints exist", constraints.length === 27, `found ${constraints.length}/27`);
 
   // contype 'x' is an EXCLUDE constraint. drizzle-kit cannot see these at all,
   // so their absence would be silent — hence checking the catalog directly.
@@ -1072,6 +1075,46 @@ async function main() {
       "net_amount <> amount - concession is rejected",
       "fee_installments_net_matches_parts",
       (q) => installment(q, labHead.id, 1, "1000.00", "100.00", "999.00", "0"),
+    );
+
+    // The H1 backstops: stacked concessions can never invert dues. Each
+    // bad shape uses a FRESH head so the unique pair is out of the way.
+    await expectAccept(tx, "the clamp test head is accepted", (q) => feeHead(q, "Clamp Fee"));
+    const [clampHead] = await tx<{ id: string }[]>`
+      SELECT id FROM fee_heads WHERE name = 'Clamp Fee' AND school_id = ${school.id}
+    `;
+    // A stacked-concession overflow (concession > amount) is refused by the
+    // CAP first; that refusal is what keeps net non-negative downstream —
+    // the two CHECKs are a chain, and the chain's first link biting is the
+    // assertion. (net < 0 is unreachable without also breaking the cap, so
+    // the cap's rejection IS the net floor's proof.)
+    await expectReject(
+      tx,
+      "a stacked-concession overflow is rejected (cap bites first)",
+      "fee_installments_concession_capped",
+      (q) => installment(q, clampHead.id, 1, "1000.00", "1100.00", "-100.00", "0"),
+    );
+    await expectReject(
+      tx,
+      "a concession EXCEEDING the amount is rejected",
+      "fee_installments_concession_capped",
+      (q) => installment(q, clampHead.id, 2, "1000.00", "1100.00", "0", "0"),
+    );
+    await expectReject(
+      tx,
+      "paid_amount beyond net (on a live status) is rejected",
+      "fee_installments_paid_capped",
+      (q) => installment(q, clampHead.id, 3, "1000.00", "0.00", "1000.00", "1000.01"),
+    );
+    // A waived row may carry its zero paid_amount under the cap's OR leg.
+    await expectAccept(tx, "a waived installment with paid_amount 0 is accepted", (q) =>
+      q`INSERT INTO fee_installments
+          (organization_id, school_id, student_fee_assignment_id, student_id,
+           academic_year_id, fee_head_id, installment_number, amount,
+           concession_amount, net_amount, due_date, paid_amount, payment_status)
+        VALUES (${org.id}, ${school.id}, ${feeAssignment.id}, ${enrStudent.id},
+                ${enrYear.id}, ${clampHead.id}, 4, '500.00', '500.00', '0.00',
+                '2030-05-10', '0', 'waived')`,
     );
 
     // The generated column: the DATABASE computes balance, no code path may

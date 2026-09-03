@@ -728,6 +728,21 @@ export const feeInstallments = pgTable(
       "fee_installments_net_matches_parts",
       sql`"net_amount" = "amount" - "concession_amount"`,
     ),
+    // Backstop under the apportionment clamp: the maths caps each head's
+    // concession TOTAL at its annual amount, but the database holds the line
+    // even if a future code path forgets — dues can zero, never invert.
+    check(
+      "fee_installments_net_non_negative",
+      sql`"net_amount" >= 0`,
+    ),
+    check(
+      "fee_installments_concession_capped",
+      sql`"concession_amount" <= "amount"`,
+    ),
+    check(
+      "fee_installments_paid_capped",
+      sql`"paid_amount" <= "net_amount" OR "payment_status" IN ('waived', 'cancelled')`,
+    ),
     check(
       "fee_installments_month_shape",
       sql`"period_month" IS NULL OR "period_month" BETWEEN 1 AND 12`,

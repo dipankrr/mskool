@@ -310,6 +310,14 @@ export interface ConcessionRow {
  * proportionally to the heads' annual amounts (FLOORED — the school never
  * over-discounts), remainder to the largest head.
  *
+ * **The stacked-concession clamp:** each head's TOTAL is capped at that
+ * head's annual amount. `createConcession` validates each concession against
+ * its base individually, but two individually-valid concessions can sum past
+ * the fee (a 60% merit scholarship plus a 50% staff-ward discount past 100%),
+ * and without this cap the apportionment would hand installments concession
+ * shares exceeding their amounts — negative net dues. The cap is applied HERE
+ * so every caller (generation, recompute, the gateway path) inherits it.
+ *
  * Returns the per-head concession totals. A head absent from the map
  * conceded nothing.
  */
@@ -318,11 +326,17 @@ export function headConcessionTotals(
   headAnnuals: { feeHeadId: string; annualCents: bigint }[],
 ): Map<string, bigint> {
   const totals = new Map<string, bigint>();
+  const annualOf = new Map(headAnnuals.map((h) => [h.feeHeadId, h.annualCents]));
   const totalAnnual = headAnnuals.reduce((acc, h) => acc + h.annualCents, 0n);
   if (totalAnnual === 0n) return totals;
 
-  const add = (headId: string, cents: bigint) =>
-    totals.set(headId, (totals.get(headId) ?? 0n) + cents);
+  const add = (headId: string, cents: bigint) => {
+    const current = totals.get(headId) ?? 0n;
+    const cap = annualOf.get(headId);
+    // Clamp at the head's annual: discounts can zero a fee, never invert it.
+    const next = cap !== undefined && current + cents > cap ? cap : current + cents;
+    totals.set(headId, next);
+  };
 
   for (const c of concessionRows) {
     if (c.feeHeadId) {

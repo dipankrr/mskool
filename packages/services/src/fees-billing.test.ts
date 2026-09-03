@@ -378,3 +378,57 @@ describe("allocateOldestFirst — the gateway's server-side allocation", () => {
     expect(result).toEqual([{ installmentId: "jul", amountCents: 100_000n }]);
   });
 });
+
+describe("headConcessionTotals — the stacked-concession clamp (H1)", () => {
+  const heads = [
+    { feeHeadId: "tuition", annualCents: 1_000_000n },
+    { feeHeadId: "lab", annualCents: 200_000n },
+  ];
+
+  it("two individually-valid named concessions cannot pass the head's annual", () => {
+    // 60% + 50% = 110% of the tuition — both valid alone; stacked, capped.
+    const totals = headConcessionTotals(
+      [
+        { feeHeadId: "tuition", amountCents: 600_000n },
+        { feeHeadId: "tuition", amountCents: 500_000n },
+      ],
+      heads,
+    );
+    expect(totals.get("tuition")).toBe(1_000_000n); // capped at annual
+  });
+
+  it("an all-heads concession plus a named one clamps per head", () => {
+    // 50% of everything (600k/100k floored) + 60% tuition → capped at 1M.
+    const totals = headConcessionTotals(
+      [
+        { feeHeadId: null, amountCents: 600_000n },
+        { feeHeadId: "tuition", amountCents: 600_000n },
+      ],
+      heads,
+    );
+    expect(totals.get("tuition")).toBe(1_000_000n); // 500k + 600k → 1M cap
+    expect(totals.get("lab")).toBe(100_000n); // its share, under its cap
+  });
+
+  it("the clamp composes with apportionment: no bucket gets a negative net", () => {
+    // 100% concession on a head with uneven buckets.
+    const totals = headConcessionTotals(
+      [{ feeHeadId: "tuition", amountCents: 1_500_000n }],
+      heads,
+    );
+    expect(totals.get("tuition")).toBe(1_000_000n); // capped
+    const shares = apportionHeadTotal(1_000_000n, [333_333n, 333_333n, 333_334n]);
+    for (const s of shares) expect(s >= 0n).toBe(true);
+    // Every bucket's share <= its amount: net never negative.
+    const amounts = [333_333n, 333_333n, 333_334n];
+    shares.forEach((s, i) => expect(s <= (amounts[i] ?? 0n)).toBe(true));
+  });
+
+  it("a head with zero annual concedes nothing even if a concession names it", () => {
+    const totals = headConcessionTotals(
+      [{ feeHeadId: "free", amountCents: 50_000n }],
+      [...heads, { feeHeadId: "free", annualCents: 0n }],
+    );
+    expect(totals.get("free")).toBe(0n); // cap 0 — a free head cannot discount
+  });
+});
