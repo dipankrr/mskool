@@ -70,10 +70,21 @@ export function fromPaise(paise: bigint): string {
 
 /**
  * Sum any number of wire strings, exactly. Returns wire format.
- * `addMoney("12.50", "0.25")` → `"12.75"`. Zero arguments → `"0.00"`.
+ * `addMoney()` → `"0.00"`; `addMoney("12.50")` → `"12.50"`;
+ * `addMoney("0.01", "0.10")` → `"0.11"`.
+ *
+ * Nulls pass through as absent — drizzle-zod infers the GENERATED money
+ * columns (balances, totals) as `string | null` even though Postgres
+ * guarantees a value, so a sum over rows must tolerate the type without
+ * pretending null is ₹0.00.
  */
-export function addMoney(...values: string[]): string {
-  return fromPaise(values.reduce((total, value) => total + toPaise(value), 0n));
+export function addMoney(...values: ReadonlyArray<string | null | undefined>): string {
+  return fromPaise(
+    values.reduce<bigint>(
+      (total, value) => (isMoneyString(value) ? total + toPaise(value) : total),
+      0n,
+    ),
+  );
 }
 
 /** `a - b`, exactly, in wire format. A negative result is returned signed — callers decide what that means. */

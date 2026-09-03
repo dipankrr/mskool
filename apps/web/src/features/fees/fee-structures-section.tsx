@@ -8,7 +8,6 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DataTable } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { PermissionGate } from "@/components/permission-gate";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,

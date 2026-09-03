@@ -1,6 +1,10 @@
 "use client";
 
+import { toast } from "sonner";
+
 import { useActiveContext } from "@/features/session/active-context";
+import { copy } from "@/lib/copy";
+import { errorMessage } from "@/lib/errors";
 import { trpc } from "@/lib/trpc/client";
 
 /**
@@ -35,4 +39,27 @@ export function useFeeDues(options: {
       staleTime: THIRTY_SECONDS,
     },
   );
+}
+
+export function useWaiveMutation() {
+  const { scopeArgs } = useActiveContext();
+  const utils = trpc.useUtils();
+
+  const waive = trpc.fees.installment.waive.useMutation({
+    onSuccess: async () => {
+      toast.success(copy.fees.dues.waived);
+      await Promise.all([
+        utils.fees.installment.dues.invalidate(),
+        utils.fees.assignment.byStudent.invalidate(),
+      ]);
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  return {
+    ...waive,
+    /** The approve-tier act (fee_waiver:approve) — hidden from callers without it. */
+    submit: (schoolId: string, installmentId: string) =>
+      waive.mutateAsync({ ...scopeArgs(), schoolId, id: installmentId }),
+  };
 }

@@ -2,7 +2,6 @@
 
 import { CircleOffIcon, PlusIcon } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { CreateSubscriptionInput } from "@repo/contracts";
 
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/confirm-dialog";
