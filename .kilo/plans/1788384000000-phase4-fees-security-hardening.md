@@ -150,7 +150,7 @@ Four independent fixes to `recordPayment` and the contracts. Each has its
 own test. Read `recordPayment` end-to-end first — the fixes slot into its
 existing transaction in specific places.
 
-- [ ] **F1 — idempotency payload match.** The pre-check (immediately after
+- [x] **F1 — idempotency payload match.** The pre-check (immediately after
       the `if (input.clientReference)` guard, the `SELECT ... WHERE
       school_id AND client_reference` lookup) currently returns `existing`
       unconditionally. Change it to verify the hit MATCHES the request:
@@ -160,13 +160,13 @@ existing transaction in specific places.
       `"This payment reference was already used for a different payment."`
       (worded; `translateErrors` maps service Errors to BAD_REQUEST).
       Rationale: an idempotency key is a promise about a SPECIFIC payload.
-- [ ] **F2 — year consistency.** In the lock loop (the `for (const
+- [x] **F2 — year consistency.** In the lock loop (the `for (const
       allocation of input.allocations)` block over the `FOR UPDATE` rows),
       the select currently fetches `id, studentId, netAmount, paidAmount,
       paymentStatus`. Add `academicYearId` to the select and add the check:
       `inst.academicYearId === input.academicYearId`, else throw
       `"Every allocated installment must belong to the payment's academic year."`
-- [ ] **F3 — server-side late fee (the big one).**
+- [x] **F3 — server-side late fee (the big one).**
       1. DELETE `lateFeeAmount` from `recordPaymentSchema` in the contracts.
          Grep for `lateFeeAmount` usages across tests/smoke/seed and update
          (believed: none pass it today — verify by grep).
@@ -203,7 +203,7 @@ existing transaction in specific places.
          allocation amounts, which are bounded by the live-balance re-check
          under row locks (cash-at-a-desk has no oracle; the balance check
          IS the bound). Late fee, totals, statuses: all server-authoritative.
-- [ ] **F4 — strip `online_portal` from the staff wire.**
+- [x] **F4 — strip `online_portal` from the staff wire.**
       1. In the contracts: add `feeCounterPaymentModeSchema =
          z.enum(["cash","upi","cheque","neft_rtgs","card","dd"])` and use it
          in `recordPaymentSchema.paymentMode`. KEEP the full
@@ -219,7 +219,7 @@ existing transaction in specific places.
          Only `recordGatewayPayment` passes `opts`; the tRPC router cannot
          (it is not in the wire contract). This keeps the union at the type
          level and the gate at the wire level.
-- [ ] **Tests (add to the fees integration suite, its fixture pattern):**
+- [x] **Tests (add to the fees integration suite, its fixture pattern):**
       - Idempotency: same `clientReference`, DIFFERENT amount → refuses
         with the new wording; same key + same payload twice → still one
         receipt (existing test keeps passing).
@@ -238,7 +238,7 @@ existing transaction in specific places.
         failure. Plus: the gateway path still writes `online_portal` and
         enters `pending` (existing gateway test asserts pending — keep
         green).
-- [ ] `check:openapi` re-run (contract changed).
+- [x] `check:openapi` re-run (contract changed).
 
 **Verify:** `check-types` 8/8; services unit suite green; integration green
 (+~4 tests); `check:builders`; `check:openapi`; lint clean.
@@ -511,6 +511,20 @@ invariant, the proof. Read `git log main..HEAD` for the house voice.)
 - **Verify yourself** — exact commands + expected numbers.
 - **Known shortcuts** — anything expedient, stated bluntly; "none" must be true.
 ```
+
+## Reviewer's guide entries
+
+- **Commit S1: `fix(services,contracts): collection trust hardening`** — the counter no longer trusts the client for late fees or portal modes, and a reused idempotency key must match its original payload.
+- **Files** — `fees.contract.ts` (counter mode enum, lateFeeAmount deleted); `fees-collection.service.ts` (payload-match, year check, server late fee, mode opts); `fees.integration.test.ts` (+5 S1 tests).
+- **Read in this order** —
+  1. `fees-collection.service.ts` `recordPayment` idempotency guard — QUESTION: does a hit compare BOTH studentId and paise-amount before returning, refusing otherwise with the worded error?
+  2. Same function, the lock-loop — QUESTION: is `academicYearId` selected under the row lock and refused on mismatch, and is a mixed-assignment allocation refused before any money moves?
+  3. Same function, the late-fee block — QUESTION: is it computed AFTER the installment locks from locked balances + active rules + the assignment's structure, with `recordGatewayPayment` inheriting it (no second code path)?
+  4. `fees.contract.ts` `feeCounterPaymentModeSchema` — QUESTION: can a staff caller still send `online_portal` (safeParse must fail), and is the full enum still exported for the DB/select shapes?
+  5. `recordGatewayPayment` — QUESTION: does the wire input carry a dummy pending mode while the persisted mode comes only from `opts`, so the router (which cannot pass `opts`) can never write `online_portal`?
+- **Invariants exercised** — F1 (idempotency-key specificity), F2 (ledger year integrity), F3 (server-authoritative money; hard rule 4 BigInt paise), F4 (wire/type gate on portal mode).
+- **Verify yourself** — `pnpm check-types` 8/8; `pnpm test` 204 (86+38+48+32); `pnpm test:integration` 122 (93+29, five are `S1 collection trust hardening`); `check:builders` + `check:openapi` green (100 endpoints); `pnpm lint` 0 errors.
+- **Known shortcuts** — the gateway's dummy wire mode is `"upi"` (pending, fail-safe; never persisted — `opts` overwrites it). Rules are read via `feesService.listActiveLateFeeRules` (a separate pool connection, not the tx) — config-grade read, acceptable inside the payment tx. S1 tests create school-wide rules and deactivate them within the block; the block runs last so no earlier test sees a rule.
 
 ## 8. What NOT to do
 

@@ -1,5 +1,6 @@
 import { atSchoolLevel, requireSchoolId } from "./academic.service";
-import { allocateOldestFirst, fromCents, toCents } from "./fees-maths";
+import { allocateOldestFirst, computeLateFee, fromCents, toCents } from "./fees-maths";
+import { feesService } from "./fees.service";
 import { scopeWhere, type DataScope, type ScopeColumns } from "@repo/authz";
 import type {
   GatewayPaymentInput,
@@ -83,6 +84,7 @@ export class FeesCollectionService {
     scope: DataScope,
     input: RecordPaymentInput,
     actorId: string | null,
+    opts?: { mode?: "online_portal" },
   ) {
     const schoolId = requireSchoolId(scope);
     const allocationCents = input.allocations.reduce(
@@ -92,11 +94,12 @@ export class FeesCollectionService {
     if (allocationCents <= 0n) {
       throw new Error("A payment must allocate a positive amount.");
     }
-    const lateFeeCents = input.lateFeeAmount ? toCents(input.lateFeeAmount) : 0n;
 
     return db.transaction(async (tx) => {
       // Idempotency first — before the receipt sequence is touched, so a
-      // replayed retry cannot even burn a number.
+      // replayed retry cannot even burn a number. S1 (F1): a hit is a
+      // promise about a SPECIFIC payload — a reused key on a different
+      // student or amount is a refusal, not a healthy 200.
       if (input.clientReference) {
         const [existing] = await tx
           .select()
@@ -107,7 +110,16 @@ export class FeesCollectionService {
               eq(feePayments.clientReference, input.clientReference),
             ),
           );
-        if (existing) return existing;
+        if (existing) {
+          const sameStudent = existing.studentId === input.studentId;
+          const sameAmount = toCents(existing.amount) === allocationCents;
+          if (!sameStudent || !sameAmount) {
+            throw new Error(
+              "This payment reference was already used for a different payment.",
+            );
+          }
+          return existing;
+        }
       }
 
       const [student] = await tx
@@ -169,6 +181,9 @@ export class FeesCollectionService {
         .select({
           id: feeInstallments.id,
           studentId: feeInstallments.studentId,
+          academicYearId: feeInstallments.academicYearId,
+          studentFeeAssignmentId: feeInstallments.studentFeeAssignmentId,
+          dueDate: feeInstallments.dueDate,
           netAmount: feeInstallments.netAmount,
           paidAmount: feeInstallments.paidAmount,
           paymentStatus: feeInstallments.paymentStatus,
@@ -192,6 +207,13 @@ export class FeesCollectionService {
         if (inst.studentId !== input.studentId) {
           throw new Error("Every allocated installment must belong to the paying student.");
         }
+        // S1 (F2): a year-X payment cannot allocate year-Y installments —
+        // ledger year-scoped reads would otherwise misreport.
+        if (inst.academicYearId !== input.academicYearId) {
+          throw new Error(
+            "Every allocated installment must belong to the payment's academic year.",
+          );
+        }
         if (inst.paymentStatus === "waived" || inst.paymentStatus === "cancelled") {
           throw new Error("A waived or cancelled installment cannot be paid.");
         }
@@ -205,9 +227,50 @@ export class FeesCollectionService {
         }
       }
 
-      const paymentStatus = IMMEDIATE_MODES.has(input.paymentMode)
-        ? "cleared"
-        : "pending";
+      // S1 (F3): late fee is computed live on the locked balances and
+      // frozen when charged — never trusted from the client. One
+      // installment list, one assignment; a mixed allocation is a refusal.
+      const assignmentIds = new Set(locked.map((i) => i.studentFeeAssignmentId));
+      if (assignmentIds.size !== 1) {
+        throw new Error("Every allocated installment must belong to one fee assignment.");
+      }
+      const [assignmentId] = [...assignmentIds];
+      const [assignment] = await tx
+        .select({ feeStructureId: studentFeeAssignments.feeStructureId })
+        .from(studentFeeAssignments)
+        .where(eq(studentFeeAssignments.id, assignmentId as string));
+      if (!assignment) {
+        throw new Error("Fee assignment not found in this school.");
+      }
+      const rules = await feesService.listActiveLateFeeRules([atSchoolLevel(scope)]);
+      let lateFeeCents = 0n;
+      for (const allocation of input.allocations) {
+        const inst = byId.get(allocation.installmentId);
+        if (!inst) continue;
+        lateFeeCents += computeLateFee(
+          {
+            dueDate: inst.dueDate,
+            balanceCents: toCents(inst.netAmount) - toCents(inst.paidAmount),
+          },
+          rules.map((r) => ({
+            feeStructureId: r.feeStructureId,
+            gracePeriodDays: r.gracePeriodDays ?? 0,
+            calculationType: r.calculationType,
+            valueCents: toCents(r.value),
+            maxLateFeeCents: r.maxLateFee ? toCents(r.maxLateFee) : null,
+            effectiveFrom: r.effectiveFrom,
+            effectiveTo: r.effectiveTo,
+          })),
+          assignment.feeStructureId,
+          input.paymentDate,
+        );
+      }
+
+      // S1 (F4): the persisted mode is the wire mode unless the webhook's
+      // system path overrides it internally. recordGatewayPayment inherits
+      // the same late-fee policy — online payments pay it too, by design.
+      const persistedMode = opts?.mode ?? input.paymentMode;
+      const paymentStatus = IMMEDIATE_MODES.has(persistedMode) ? "cleared" : "pending";
 
       const [payment] = await tx
         .insert(feePayments)
@@ -220,7 +283,7 @@ export class FeesCollectionService {
           amount: fromCents(allocationCents),
           lateFeeAmount: fromCents(lateFeeCents),
           paymentDate: input.paymentDate,
-          paymentMode: input.paymentMode,
+          paymentMode: persistedMode,
           transactionReference: input.transactionReference ?? null,
           bankName: input.bankName ?? null,
           chequeDate: input.chequeDate ?? null,
@@ -721,7 +784,9 @@ export class FeesCollectionService {
         studentId: input.studentId,
         academicYearId: yearRow.academicYearId,
         paymentDate: input.paymentDate,
-        paymentMode: "online_portal",
+        // Dummy wire mode (pending like the portal); the persisted mode
+        // comes from opts below and is what the ledger sees.
+        paymentMode: "upi",
         allocations: allocations.map((a) => ({
           installmentId: a.installmentId,
           amount: fromCents(a.amountCents),
@@ -730,6 +795,7 @@ export class FeesCollectionService {
         remarks: "Portal payment (gateway webhook)",
       },
       null, // the system context is not a user row (ADR-009)
+      { mode: "online_portal" },
     );
   }
 

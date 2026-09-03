@@ -50,7 +50,7 @@ const money = z
   .regex(/^\d+(\.\d{1,2})?$/, "Use a decimal amount like 1250.00.");
 
 /** The payment modes, shared with the select-schema shape below. */
-const feePaymentModeSchema = z.enum([
+export const feePaymentModeSchema = z.enum([
   "cash",
   "upi",
   "cheque",
@@ -58,6 +58,20 @@ const feePaymentModeSchema = z.enum([
   "card",
   "dd",
   "online_portal",
+]);
+
+/**
+ * S1 (F4): the counter wire. Staff can record desk collections only —
+ * `online_portal` is written exclusively by the webhook's system path via an
+ * internal opts parameter, never from the wire contract.
+ */
+export const feeCounterPaymentModeSchema = z.enum([
+  "cash",
+  "upi",
+  "cheque",
+  "neft_rtgs",
+  "card",
+  "dd",
 ]);
 
 /** The refund modes — no online_portal (the gateway refunds through itself). */
@@ -408,9 +422,8 @@ export const recordPaymentSchema = z.object({
   studentId: z.uuid(),
   academicYearId: z.uuid(),
   paymentDate: isoDate,
-  paymentMode: feePaymentModeSchema,
+  paymentMode: feeCounterPaymentModeSchema,
   allocations: z.array(paymentAllocationInputSchema).min(1),
-  lateFeeAmount: money.nullish(),
   transactionReference: z.string().min(1).max(150).nullish(),
   bankName: z.string().min(1).max(100).nullish(),
   chequeDate: isoDate.nullish(),

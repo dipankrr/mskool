@@ -9,13 +9,13 @@ plan's Reviewer's guide for the commit-by-commit code review.
 
 ---
 
-## STATUS: SECURITY-HARDENING PLAN COMMITTED — awaiting execution
+## STATUS: HARDENING S1 DONE (uncommitted) — S2 next
 
-- Branch: `feature/phase4-fees` (13 commits ahead of main, unmerged)
+- Branch: `feature/phase4-fees` (14 commits ahead of main + S1 working tree, unmerged)
 - Last commit: `docs: the fees security-hardening plan`
-- Next: execute `.kilo/plans/1788384000000-phase4-fees-security-hardening.md`
-  (7 commits, S0–S6: 4 trust fixes, validity windows + race fix, IDOR
-  matrix, webhook edges + role cells, demo reset, property-based maths)
+- S1 `fix(services,contracts): collection trust hardening` implemented and
+  green, NOT committed — owner reviews then commits per chunk.
+- Next: S2 (concession windows + recompute race + DOMAIN note), same pattern.
 
 ---
 
@@ -181,6 +181,16 @@ seed fee fixtures, and three live smoke checks.
   the self-origin refusal). Late-fee WIRING remains deferred by design:
   computeLateFee is unit-tested, but no endpoint exposes the live display
   amount — that lands with the UI slice.
+
+### S1 — collection trust hardening (F1–F4)
+- Status: implemented, green, UNCOMMITTED (owner commits per chunk)
+- Files: `fees.contract.ts`, `fees-collection.service.ts`, `fees.integration.test.ts` (+5)
+- Verify: check-types 8/8; test 204; integration 122 (93+29); builders/openapi
+  green (100 endpoints); lint 0 errors. No migration. Full reviewer entry in
+  the hardening plan's Reviewer's guide entries.
+- Notes: gateway dummy wire mode `"upi"` (never persisted); rules read via
+  `feesService` (pool connection, config-grade); S1 rule rows deactivated
+  in-test; suite runs last so no earlier test sees a rule.
 
 ### F8 — docs
 - Status: done

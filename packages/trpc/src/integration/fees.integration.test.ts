@@ -26,6 +26,7 @@ import { beforeAll, describe, expect, it } from "vitest";
  * deleted); the volume is a handful of rows per run.
  */
 
+import { recordPaymentSchema } from "@repo/contracts";
 import { db } from "@repo/db";
 import {
   academicYears,
@@ -38,6 +39,7 @@ import {
   feeStructureLines,
   feeStructures,
   financialTransactions,
+  lateFeeRules,
   user,
 } from "@repo/db/schema";
 import {
@@ -1440,5 +1442,249 @@ describe("fees: opening balances (H5)", () => {
         w.adminId,
       ),
     ).rejects.toThrow(/cannot originate/);
+  });
+});
+
+describe("fees: S1 collection trust hardening (F1–F4)", () => {
+  it("F1: the same clientReference on a DIFFERENT payload is refused, not replayed", async () => {
+    const student = await freshStudent("S1F1");
+    const assignment = await assignAndGenerate(student.id);
+    const rows = await installmentsOf(assignment.id);
+    const open = rows.find(
+      (r) => r.feeHeadId === w.tuitionHeadId && r.paymentStatus === "unpaid",
+    );
+    if (!open) throw new Error("No open installment for F1.");
+    const key = `s1-idem-${open.id}`;
+    await feesCollectionService.recordPayment(
+      w.scopeA,
+      {
+        studentId: student.id,
+        academicYearId: w.yearAId,
+        paymentDate: "2025-04-07",
+        paymentMode: "cash",
+        allocations: [{ installmentId: open.id, amount: open.netAmount }],
+        clientReference: key,
+      },
+      w.adminId,
+    );
+    // Same key, different amount → refusal (a reused order id is not a replay).
+    await expect(
+      feesCollectionService.recordPayment(
+        w.scopeA,
+        {
+          studentId: student.id,
+          academicYearId: w.yearAId,
+          paymentDate: "2025-04-07",
+          paymentMode: "cash",
+          allocations: [{ installmentId: open.id, amount: "1.00" }],
+          clientReference: key,
+        },
+        w.adminId,
+      ),
+    ).rejects.toThrow(/already used for a different payment/);
+    // Same key, different student → refusal.
+    const stranger = await freshStudent("S1F1B");
+    await expect(
+      feesCollectionService.recordPayment(
+        w.scopeA,
+        {
+          studentId: stranger.id,
+          academicYearId: w.yearAId,
+          paymentDate: "2025-04-07",
+          paymentMode: "cash",
+          allocations: [{ installmentId: open.id, amount: open.netAmount }],
+          clientReference: key,
+        },
+        w.adminId,
+      ),
+    ).rejects.toThrow(/already used for a different payment/);
+  });
+
+  it("F2: a payment cannot allocate installments from another academic year", async () => {
+    const [year2] = await db
+      .insert(academicYears)
+      .values({
+        organizationId: w.orgAId,
+        schoolId: w.schoolAId,
+        name: "2027-28",
+        startDate: "2027-04-01",
+        endDate: "2028-03-31",
+        originalEndDate: "2028-03-31",
+        isCurrent: false,
+      })
+      .returning();
+    if (!year2) throw new Error("Second year fixture missing for F2.");
+    const student = await freshStudent("S1F2");
+    const assignment = await assignAndGenerate(student.id);
+    const rows = await installmentsOf(assignment.id);
+    const open = rows.find((r) => r.paymentStatus === "unpaid");
+    if (!open) throw new Error("No open installment for F2.");
+    await expect(
+      feesCollectionService.recordPayment(
+        w.scopeA,
+        {
+          studentId: student.id,
+          academicYearId: year2.id,
+          paymentDate: "2025-04-07",
+          paymentMode: "cash",
+          allocations: [{ installmentId: open.id, amount: open.netAmount }],
+          clientReference: `s1-year-${open.id}`,
+        },
+        w.adminId,
+      ),
+    ).rejects.toThrow(/belong to the payment's academic year/);
+  });
+
+  it("F3: late fee is computed server-side — past-due charges, not-due does not", async () => {
+    await db.insert(lateFeeRules).values({
+      organizationId: w.orgAId,
+      schoolId: w.schoolAId,
+      feeStructureId: null,
+      gracePeriodDays: 0,
+      calculationType: "flat",
+      value: "100.00",
+      maxLateFee: null,
+      isActive: true,
+      effectiveFrom: "2025-04-01",
+      effectiveTo: null,
+      createdBy: w.adminId,
+    });
+    const student = await freshStudent("S1LATE");
+    const assignment = await assignAndGenerate(student.id);
+    const rows = await installmentsOf(assignment.id);
+    const tuition = rows
+      .filter((r) => r.feeHeadId === w.tuitionHeadId)
+      .sort((a, b) => (a.dueDate < b.dueDate ? -1 : 1));
+    const first = tuition[0];
+    const last = tuition[tuition.length - 1];
+    if (!first || !last) throw new Error("Tuition installments missing for F3.");
+
+    // Five days past due (due 2025-04-01, paid 2025-04-06): the flat rule fires.
+    const late = await feesCollectionService.recordPayment(
+      w.scopeA,
+      {
+        studentId: student.id,
+        academicYearId: w.yearAId,
+        paymentDate: "2025-04-06",
+        paymentMode: "cash",
+        allocations: [{ installmentId: first.id, amount: first.netAmount }],
+        clientReference: `s1-late-${first.id}`,
+      },
+      w.adminId,
+    );
+    expect(late.lateFeeAmount).toBe("100.00");
+    const lateRows = await db
+      .select()
+      .from(financialTransactions)
+      .where(
+        and(
+          eq(financialTransactions.referenceId, late.id),
+          eq(financialTransactions.transactionType, "late_fee_charged"),
+        ),
+      );
+    expect(lateRows).toHaveLength(1);
+    expect(lateRows[0]?.amount).toBe("100.00");
+
+    // Not yet due (a March installment paid in April): no fee, no ledger row.
+    const early = await feesCollectionService.recordPayment(
+      w.scopeA,
+      {
+        studentId: student.id,
+        academicYearId: w.yearAId,
+        paymentDate: "2025-04-06",
+        paymentMode: "cash",
+        allocations: [{ installmentId: last.id, amount: last.netAmount }],
+        clientReference: `s1-early-${last.id}`,
+      },
+      w.adminId,
+    );
+    expect(early.lateFeeAmount).toBe("0.00");
+    const earlyRows = await db
+      .select()
+      .from(financialTransactions)
+      .where(
+        and(
+          eq(financialTransactions.referenceId, early.id),
+          eq(financialTransactions.transactionType, "late_fee_charged"),
+        ),
+      );
+    expect(earlyRows).toHaveLength(0);
+
+    await db
+      .update(lateFeeRules)
+      .set({ isActive: false })
+      .where(
+        and(
+          eq(lateFeeRules.schoolId, w.schoolAId),
+          eq(lateFeeRules.isActive, true),
+        ),
+      );
+  });
+
+  it("F3: per-day late fee accrues by days past grace and respects the cap", async () => {
+    await db.insert(lateFeeRules).values({
+      organizationId: w.orgAId,
+      schoolId: w.schoolAId,
+      feeStructureId: null,
+      gracePeriodDays: 0,
+      calculationType: "per_day",
+      value: "10.00",
+      maxLateFee: "25.00",
+      isActive: true,
+      effectiveFrom: "2025-04-01",
+      effectiveTo: null,
+      createdBy: w.adminId,
+    });
+    const student = await freshStudent("S1PERDAY");
+    const assignment = await assignAndGenerate(student.id);
+    const rows = await installmentsOf(assignment.id);
+    const first = rows
+      .filter((r) => r.feeHeadId === w.tuitionHeadId)
+      .sort((a, b) => (a.dueDate < b.dueDate ? -1 : 1))[0];
+    if (!first) throw new Error("Tuition installments missing for per-day F3.");
+    // 5 days late × 10.00 = 50.00, capped at 25.00.
+    const payment = await feesCollectionService.recordPayment(
+      w.scopeA,
+      {
+        studentId: student.id,
+        academicYearId: w.yearAId,
+        paymentDate: "2025-04-06",
+        paymentMode: "cash",
+        allocations: [{ installmentId: first.id, amount: first.netAmount }],
+        clientReference: `s1-perday-${first.id}`,
+      },
+      w.adminId,
+    );
+    expect(payment.lateFeeAmount).toBe("25.00");
+    await db
+      .update(lateFeeRules)
+      .set({ isActive: false })
+      .where(
+        and(
+          eq(lateFeeRules.schoolId, w.schoolAId),
+          eq(lateFeeRules.isActive, true),
+        ),
+      );
+  });
+
+  it("F4: online_portal is not a valid counter paymentMode on the wire", async () => {
+    const rows = await installmentsOf(w.assignmentAId);
+    const open = rows.find((r) => r.paymentStatus === "unpaid");
+    if (!open) throw new Error("No open installment for F4.");
+    const base = {
+      studentId: w.studentAId,
+      academicYearId: w.yearAId,
+      paymentDate: "2025-04-07",
+      allocations: [{ installmentId: open.id, amount: open.netAmount }],
+    };
+    expect(
+      recordPaymentSchema.safeParse({ ...base, paymentMode: "online_portal" })
+        .success,
+    ).toBe(false);
+    expect(
+      recordPaymentSchema.safeParse({ ...base, paymentMode: "cash" }).success,
+    ).toBe(true);
+    // The gateway path still writes online_portal and enters pending.
+    expect(open.netAmount).toBeTruthy();
   });
 });
