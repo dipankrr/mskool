@@ -26,6 +26,7 @@
     "db:push": "dotenv -e .env -- pnpm --filter @repo/db db:push",
     "db:studio": "dotenv -e .env -- pnpm --filter @repo/db db:studio",
     "db:seed": "dotenv -e .env -- pnpm --filter @repo/api db:seed",
+    "reset:demo": "dotenv -e .env -- pnpm --filter @repo/api reset:demo",
     "smoke:authz": "dotenv -e .env -- pnpm --filter @repo/api smoke:authz",
     "check:openapi": "dotenv -e .env -- pnpm --filter @repo/api check:openapi",
     "check:builders": "pnpm --filter @repo/api check:builders",

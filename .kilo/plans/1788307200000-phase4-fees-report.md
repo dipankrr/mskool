@@ -9,14 +9,15 @@ plan's Reviewer's guide for the commit-by-commit code review.
 
 ---
 
-## STATUS: HARDENING S1–S3 COMMITTED, S4 DONE (uncommitted) — S5 next
+## STATUS: HARDENING S1–S3 COMMITTED, S4–S5 DONE (uncommitted) — S6 next
 
-- Branch: `feature/phase4-fees` (17 commits ahead of main + S4 working tree, unmerged)
+- Branch: `feature/phase4-fees` (17 commits ahead of main + S4/S5 working tree, unmerged)
 - Last commit: `test: the cross-tenant IDOR matrix`
-- S4 `test: webhook hostile edges + fee role-matrix cells` implemented and
-  green, NOT committed — owner reviews then commits.
-- Next: S5 (demo-org reset script + run + reseed). NOTE: S5 is DESTRUCTIVE
-  (deletes demo-trust + fees-itg orgs) — confirm before running.
+- S4 `test: webhook hostile edges + fee role-matrix cells` and S5
+  `chore(api): demo-org reset script` implemented and green, NOT committed —
+  owner reviews then commits per chunk.
+- Next: S6 (property-based money maths). The DB is freshly reset + seeded;
+  smoke is 172/172 all-green.
 
 ---
 
@@ -221,6 +222,17 @@ seed fee fixtures, and three live smoke checks.
   green for the script. No migration.
 - Notes: expectations derived from defaultPermissions.ts, recorded in the
   reviewer entry; denial cells reuse the shared target (gates refuse first).
+
+### S5 — demo-org reset script + run + reseed
+- Status: implemented, RUN, green, UNCOMMITTED (owner commits per chunk)
+- Files: `reset-demo.ts` (new), `apps/api/package.json`, root `package.json`
+- Verify: reset deleted 21,006 rows (demo-trust + 42 fees-itg orgs, 208
+  students, 27 users), trigger restored + asserted; seed clean; db:verify
+  119 PASS; smoke 172/172 ALL GREEN — the 21 drift failures are gone.
+  check-types green for the script. No migration.
+- Notes: guards proven (no---yes → exit 1); S3 smoke cell ran on the
+  random-UUID fallback post-reset (itg rows gone — expected); script exits
+  0 explicitly (open handles hang tsx otherwise).
 
 ### F8 — docs
 - Status: done

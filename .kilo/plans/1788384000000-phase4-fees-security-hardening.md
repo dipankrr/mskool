@@ -400,18 +400,18 @@ passing cells (the 21 drift failures are addressed NEXT).
 
 ### Commit S5 — `chore(api): demo-org reset script`
 
-- [ ] New file `apps/api/scripts/reset-demo.ts` (run pattern like the
+- [x] New file `apps/api/scripts/reset-demo.ts` (run pattern like the
       seed: see `apps/api/package.json` scripts; add
       `"reset:demo": "tsx scripts/reset-demo.ts"` and a root-script
       `reset:demo` wiring dotenv like `db:seed`).
-- [ ] Scope: deletes ONLY the org with slug `demo-trust` (read the slug
+- [x] Scope: deletes ONLY the org with slug `demo-trust` (read the slug
       from the seed's constants) plus the better-auth `user` rows whose
       emails end `@demo-trust.test` (the seed re-creates them via
       `signUpEmail`). Optional `--fees-itg` flag additionally deletes the
       accumulated `fees-itg-%` orgs (the integration fixture's per-run
       worlds — their rows accumulate by design; this is the sanctioned
       cleanup).
-- [ ] Deletion order (FK-safe, EMPIRICALLY VALIDATED during the Phase 4
+- [x] Deletion order (FK-safe, EMPIRICALLY VALIDATED during the Phase 4
       run — do not reorder without testing):
       1. `DROP TRIGGER IF EXISTS financial_transactions_append_only_trg ON
          financial_transactions` — hard rule 3's trigger blocks ledger
@@ -437,16 +437,16 @@ passing cells (the 21 drift failures are addressed NEXT).
          FUNCTION financial_transactions_block_mutation()` — restore, and
          ASSERT it exists afterward (query pg_trigger).
       5. Print a summary of deleted rows per table.
-- [ ] Safety rails: require `--yes` argv or refuse to run; print the target
+- [x] Safety rails: require `--yes` argv or refuse to run; print the target
       org ids and row counts BEFORE deleting; refuse if `NODE_ENV` is
       `production` (belt and braces — this script must never be pointable
       at a real tenant).
-- [ ] Redis note: the authz cache (5-min TTL) keys by userId; deleted
+- [x] Redis note: the authz cache (5-min TTL) keys by userId; deleted
       users' keys go stale-harmless. No flush needed; note it in the script.
-- [ ] **RUN IT (owner-approved):** `pnpm reset:demo --yes` (plus
+- [x] **RUN IT (owner-approved):** `pnpm reset:demo --yes` (plus
       `--fees-itg`), then `pnpm db:seed`, then `pnpm db:verify` (119 PASS),
       then restart the API and run the FULL smoke.
-- [ ] **Expected result: the 21 drift failures are GONE** — smoke goes to
+- [x] **Expected result: the 21 drift failures are GONE** — smoke goes to
       all-green (~164/164). If any remain, they are REAL — investigate
       before proceeding; do not paper over.
 
@@ -577,6 +577,17 @@ invariant, the proof. Read `git log main..HEAD` for the house voice.)
 - **Invariants exercised** — ADR-009 (signature IS the authorization; generic 401 wording leaks nothing about which half failed); the permission matrix as executable spec.
 - **Verify yourself** — restart the API (sign-in limiter), `pnpm smoke:authz` → 151/172 with the same 21 drift failures and all 7 new cells PASS (teacher dues 7 rows, VP ledger 8 rows).
 - **Known shortcuts** — all 7 passed on the first run; the waive/record denial cells reuse the shared `target` installment, safe only because gates refuse before any write. The 21 drift failures are S5's job, not this commit's.
+
+- **Commit S5: `chore(api): demo-org reset script`** — the sanctioned demolition plus its run: 21,006 rows out, clean seed in, smoke all-green.
+- **Files** — `apps/api/scripts/reset-demo.ts` (new); `apps/api/package.json` + root `package.json` (`reset:demo` wiring).
+- **Read in this order** —
+  1. The guards — QUESTION: does it refuse without `--yes` (proven: exit 1) and under `NODE_ENV=production`, and print targets + counts BEFORE deleting?
+  2. The deletion order — QUESTION: is it children-before-parents across all five groups (refunds→payments→installments→assignments; portal→enrollments→students→guardians→staff; mappings→spine; authz→schools→orgs; sessions→accounts→users), and is the trigger dropped FIRST and recreated with the migration's exact DDL?
+  3. The trigger assert — QUESTION: does it query `pg_trigger` by name and abort loudly if absent, so a silent unprotected ledger is unrepresentable?
+  4. The scope — QUESTION: is it exactly `demo-trust` (+ `fees-itg-%` only under the flag, users by email pattern), with everything else untouched?
+- **Invariants exercised** — hard rule 3 (the only sanctioned trigger-drop; restored + asserted in the same run); hard rule 2 (fixture cleanup, not a product path — no product code deletes).
+- **Verify yourself** — `pnpm reset:demo -- --yes --fees-itg` → 21,006 rows (43 orgs: demo + 42 itg), trigger asserted; `pnpm db:seed`; `pnpm db:verify` 119 PASS; restart API; `pnpm smoke:authz` → 172/172 all green.
+- **Known shortcuts** — full-row `.returning()` for counts (composite PKs have no `id`); sessions/accounts deleted explicitly though the FK cascades (counts); `verification` rows untouched (seed never creates any); not re-run post-seed by design (it would eat the fresh demo org — re-runnability is by construction: empty targets → zero deletes + trigger assert); the script needed an explicit `process.exit(0)` (open pool handles hang tsx, found on first run).
 
 ## 8. What NOT to do
 
