@@ -9,15 +9,15 @@ plan's Reviewer's guide for the commit-by-commit code review.
 
 ---
 
-## STATUS: HARDENING S1–S3 COMMITTED, S4–S5 DONE (uncommitted) — S6 next
+## STATUS: HARDENING COMPLETE — 20 commits, awaiting owner review
 
-- Branch: `feature/phase4-fees` (17 commits ahead of main + S4/S5 working tree, unmerged)
-- Last commit: `test: the cross-tenant IDOR matrix`
-- S4 `test: webhook hostile edges + fee role-matrix cells` and S5
-  `chore(api): demo-org reset script` implemented and green, NOT committed —
-  owner reviews then commits per chunk.
-- Next: S6 (property-based money maths). The DB is freshly reset + seeded;
-  smoke is 172/172 all-green.
+- Branch: `feature/phase4-fees` (17 commits + S4/S5/S6 working tree, unmerged)
+- S1–S3 committed; S4–S6 implemented, green, NOT committed — owner reviews
+  via the hardening plan's Reviewer's guide entries, then merges.
+- Next: the fees UI slice or Phase 5 exams — owner's call.
+- Verification surface: check-types 8/8; test 215 (86+49+48+32);
+  integration 135 (93+42, real Postgres); db:verify 119; builders/openapi
+  green (100 endpoints); lint 0 errors; smoke 172/172 all-green post-reset.
 
 ---
 
@@ -230,9 +230,20 @@ seed fee fixtures, and three live smoke checks.
   students, 27 users), trigger restored + asserted; seed clean; db:verify
   119 PASS; smoke 172/172 ALL GREEN — the 21 drift failures are gone.
   check-types green for the script. No migration.
-- Notes: guards proven (no---yes → exit 1); S3 smoke cell ran on the
+- Notes: guards proven (no --yes → exit 1); S3 smoke cell ran on the
   random-UUID fallback post-reset (itg rows gone — expected); script exits
   0 explicitly (open handles hang tsx otherwise).
+
+### S6 — property-based money maths
+- Status: implemented, green, UNCOMMITTED (owner commits)
+- Files: `fees-property.test.ts` (new, 6 properties), services
+  `package.json` + `pnpm-lock.yaml` (fast-check 4.9.0 dev)
+- Verify: services suite 49 (43 + 6, ~1s); full unit 215; check-types 8/8.
+  Integration/db:verify/smoke numbers carry over from S5 (no product code
+  touched). No migration.
+- Notes: all six passed first run — implementation held, nothing to fix.
+  Paise-only generation (no floats anywhere); the file header states the
+  invariant-per-property for the next reader.
 
 ### F8 — docs
 - Status: done

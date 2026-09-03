@@ -6,46 +6,53 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
-**PHASE 4 — FEES — BACKEND COMPLETE (2026-09-03 overnight run + hardening
-slice, branch `feature/phase4-fees`, unmerged).** All 14 tables live (migrations 0010–0012), the full contract → service → router chain, and the
-money-safety proofs. The plan and per-commit reviewer entries live in
-`.kilo/plans/1788220800000-ui-milestone-admission-attendance.md`'s
-sibling: `.kilo/plans/1788307200000-phase4-fees.md` (the contract, with
-a Reviewer's guide per commit) and
-`.kilo/plans/1788307200000-phase4-fees-report.md` (what actually
-happened). **The owner should review the branch commit-by-commit using
-the plan's Reviewer's guide, then merge.**
+**PHASE 4 — FEES — BACKEND COMPLETE + SECURITY-HARDENED (branch
+`feature/phase4-fees`, 20 commits, unmerged).** All 14 tables live (migrations 0010–0012), the full contract → service → router chain, the
+money-safety proofs, and the 7-commit hardening slice (S0–S6). The plans and
+per-commit reviewer entries live in
+`.kilo/plans/1788307200000-phase4-fees.md` (the build contract),
+`.kilo/plans/1788307200000-phase4-fees-report.md` (what actually happened),
+and `.kilo/plans/1788384000000-phase4-fees-security-hardening.md` (the
+hardening contract). **The owner reviews commit-by-commit via the Reviewer's
+guide entries, then merges.** S4–S6 were still uncommitted at the time of
+writing — confirm `git log main..HEAD` shows 20 before merging.
 
-- **What ships (13 commits, F1–F8 + the hardening slice):** the configuration layer (heads,
+- **What ships (20 commits: F0–F8 + hardening slice + S0–S6):** the configuration layer (heads,
   structures, lines, late-fee rules), the resolution/billing/collection/
   ledger layers (assignments, concessions, subscriptions, installments,
   opening balances, payments, allocations, refunds,
   financial_transactions, receipt_number_sequences), the billing engine
-  (assign → idempotent installment generation → concession
-  re-apportionment), collection (row-locked receipt claim, idempotent
-  `recordPayment`, named status transitions, refunds, waivers), the
-  ADR-009 webhook seam (`POST /api/webhooks/fees`, HMAC over the raw
-  body, order-id idempotency, surplus refused), 36 REST endpoints, a
-  34-test hermetic maths suite, a 14-test integration suite against real
-  Postgres, seed fee fixtures, and three live smoke checks.
+  (assign → idempotent installment generation → windowed concession
+  re-apportionment), collection (row-locked receipt claim, payload-matched
+  idempotency, server-computed late fees, named status transitions, refunds,
+  waivers), the ADR-009 webhook seam (`POST /api/webhooks/fees`, HMAC over the raw
+  body, order-id idempotency, surplus refused, hostile edges pinned), 36 REST endpoints, a
+  49-test maths suite (43 examples + 6 fast-check properties), a 42-test integration suite against real
+  Postgres (incl. the IDOR matrix), seed fee fixtures, `reset:demo` for fixture hygiene,
+  and 172 live smoke checks — all green.
 - **The load-bearing decisions, now enforced:** hard rule 3 is a
   HAND-WRITTEN trigger (append-only ledger; UPDATE/DELETE raise; proven
   by `db:verify`); the receipt sequence is claimed `FOR UPDATE` inside
   the payment transaction with the unique index as backstop; money is
   decimal-strings on the wire and BigInt paise in every computation;
   balances/totals are GENERATED columns; payment status moves only
-  through named operations.
+  through named operations; late fees are server-computed (never trusted
+  from the client); `online_portal` is webhook-only; concessions honor
+  validity windows; recompute re-derives frozen-ness under row locks.
 - **Deliberately deferred (recorded, do not assume they shipped):** the
   real payment gateway (the seam is built; provider integration is
   additive when keys exist), fee screens (backend first — the UI slice
   is the natural next step), the concession approval workflow, security
   deposits, GST reporting, Tally export, surplus advance (wallet),
-  sibling-discount auto-detection.
-- **Environmental note:** the smoke's exact-count assertions fail (21)
-  on the drifted demo org — UI-test rows (a third academic year, extra
-  students/enrollments) that predate this branch. Fee checks pass.
-  Resetting the demo org (or drift-tolerant rewrites) is the owner's
-  call; details in the run report.
+  sibling-discount auto-detection — plus the hardening deferrals: separation
+  of duties (detect-only), `authz_audit_log` writer, Postgres RLS.
+- **Verification surface:** `check-types` 8/8; `test` 215 unit
+  (86 authz + 49 services + 48 web + 32 trpc); `test:integration` 135
+  (93 authz + 42 fees); `db:verify` 119; `check:builders` + `check:openapi`
+  green (100 endpoints, 36 fee); `lint` 0 errors; `smoke:authz` 172/172
+  all-green after the S5 demo-org reset (21,006 fixture rows out, clean
+  re-seed). Demo org is freshly seeded — UI testing will drift it again;
+  re-run `reset:demo → seed → smoke` when a clean gate is needed.
 
 **Next:** the fees UI slice (setup → collection counter → dues/ledger),
 or Phase 5 exams per the original roadmap — owner's call. The

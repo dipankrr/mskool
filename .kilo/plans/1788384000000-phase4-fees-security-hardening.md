@@ -455,8 +455,8 @@ all-green; trigger restored (db:verify proves it).
 
 ### Commit S6 — `test: property-based money maths`
 
-- [ ] `pnpm --filter @repo/services add -D fast-check`; lockfile committed.
-- [ ] New file `packages/services/src/fees-property.test.ts`. Properties
+- [x] `pnpm --filter @repo/services add -D fast-check`; lockfile committed.
+- [x] New file `packages/services/src/fees-property.test.ts`. Properties
       (each: `fc.assert(fc.property(...))`, default numRuns is fine; keep
       the whole suite under ~10s):
       1. **Exact split:** for random annual paise (1..10^8), frequency in
@@ -483,7 +483,7 @@ all-green; trigger restored (db:verify proves it).
          ordered; total > available → null.
       Money generation: build paise as `fc.integer({min: 1, max: 10_000_000})`
       then `fromCents` — never generate floats.
-- [ ] If a property FAILS: it found a real bug — fix the implementation
+- [x] If a property FAILS: it found a real bug — fix the implementation
       (not the property), record it in the reviewer entry, and re-run.
 
 **Verify:** services suite green (38 + windows + properties); full
@@ -588,6 +588,18 @@ invariant, the proof. Read `git log main..HEAD` for the house voice.)
 - **Invariants exercised** — hard rule 3 (the only sanctioned trigger-drop; restored + asserted in the same run); hard rule 2 (fixture cleanup, not a product path — no product code deletes).
 - **Verify yourself** — `pnpm reset:demo -- --yes --fees-itg` → 21,006 rows (43 orgs: demo + 42 itg), trigger asserted; `pnpm db:seed`; `pnpm db:verify` 119 PASS; restart API; `pnpm smoke:authz` → 172/172 all green.
 - **Known shortcuts** — full-row `.returning()` for counts (composite PKs have no `id`); sessions/accounts deleted explicitly though the FK cascades (counts); `verification` rows untouched (seed never creates any); not re-run post-seed by design (it would eat the fresh demo org — re-runnability is by construction: empty targets → zero deletes + trigger assert); the script needed an explicit `process.exit(0)` (open pool handles hang tsx, found on first run).
+
+- **Commit S6: `test: property-based money maths`** — six fast-check properties over the pure maths; no product code, no migration.
+- **Files** — `packages/services/src/fees-property.test.ts` (new); `packages/services/package.json` + `pnpm-lock.yaml` (fast-check 4.9.0 dev).
+- **Read in this order** —
+  1. The paise generation — QUESTION: is every amount born as `fc.integer` BigInt paise (never a float), and does each property assert the load-bearing direction (exact equality where exactness is promised, one-sided bounds where rounding lives)?
+  2. The prorated property — QUESTION: is the joining bucket identified by period month/year (not index) and asserted to the floored formula, with the sum only bounded above?
+  3. The clamp/window properties — QUESTION: do they call the S2 `windowedConcessionShares` (not a reimplementation), with full-year windows for the clamp and random windows for the coverage direction?
+  4. The late-fee property — QUESTION: are grace, monotonicity, cap, and percentage-share each pinned on the branch that owns them, with dates built by UTC arithmetic in the test (never the implementation's helpers for the assertion input)?
+  5. The allocator property — QUESTION: does the total derive from the generated balances (both accept and refuse paths hit across runs), and is oldest-first checked with the id tiebreak?
+- **Invariants exercised** — money-safety layer 4 (rounding stated and tested) extended from examples to universals; hard rule 4 (paise end to end, including the tests).
+- **Verify yourself** — `pnpm --filter @repo/services test` → 49 (43 + 6, ~1s); `pnpm test` 215; `pnpm check-types` 8/8. Integration (135), db:verify (119), smoke (172/172) carry over from S5 — S6 touches no product code, migration, or fixture.
+- **Known shortcuts** — none found anything: all six passed on the first run (the implementation held). If a property ever fails, it found a real bug — fix the implementation, not the property. fast-check default 100 runs each; whole services suite stays ~1s, well under the 10s budget.
 
 ## 8. What NOT to do
 
