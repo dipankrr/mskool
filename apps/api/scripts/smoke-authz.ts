@@ -44,7 +44,7 @@ import {
   feeStructures,
   studentFeeAssignments,
 } from "@repo/db/schema";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, ne } from "drizzle-orm";
 import { createHmac } from "node:crypto";
 
 const API = process.env.SMOKE_API_URL ?? "http://localhost:4000";
@@ -1788,6 +1788,32 @@ async function main() {
     "the class teacher is FORBIDDEN on payment create",
     !teacherPay.ok && teacherPay.code === "FORBIDDEN",
     teacherPay.ok ? "AUTHORIZED — a leak" : `code ${teacherPay.code}`,
+  );
+
+  // --- Fees S3: the wire composes the node gate with the row filter ---------
+  //
+  // The accountant names their OWN org/school but a payment id from ANOTHER
+  // school (an accumulated fees-itg fixture row — a real foreign id, not a
+  // random UUID). The row filter must make it indistinguishable from
+  // nonexistent: generic NOT_FOUND, never a wording that confirms the row.
+  const [foreignPayment] = await db
+    .select({ id: feePayments.id })
+    .from(feePayments)
+    .where(ne(feePayments.schoolId, schoolA.id))
+    .limit(1);
+  const foreignPaymentId =
+    foreignPayment?.id ?? "00000000-0000-4000-8000-000000000000";
+  const foreignDetail = await query(accountantCookie, "fees.payment.detail", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    id: foreignPaymentId,
+  });
+  report(
+    "a foreign-school payment id over HTTP is generic NOT_FOUND",
+    !foreignDetail.ok && foreignDetail.code === "NOT_FOUND",
+    foreignDetail.ok
+      ? "RETURNED — a cross-tenant leak"
+      : `code ${foreignDetail.code} (${foreignPayment ? "real foreign id" : "random-UUID fallback"})`,
   );
 
   // Payments actually written by this run, for the record (the seed's own

@@ -9,13 +9,14 @@ plan's Reviewer's guide for the commit-by-commit code review.
 
 ---
 
-## STATUS: HARDENING S1 COMMITTED, S2 DONE (uncommitted) — S3 next
+## STATUS: HARDENING S1 COMMITTED, S2–S3 DONE (uncommitted) — S4 next
 
-- Branch: `feature/phase4-fees` (15 commits ahead of main + S2 working tree, unmerged)
+- Branch: `feature/phase4-fees` (15 commits ahead of main + S2/S3 working tree, unmerged)
 - Last commit: `fix(services,contracts): collection trust hardening`
-- S2 `fix(services): concession validity windows + the recompute race`
-  implemented and green, NOT committed — owner reviews then commits per chunk.
-- Next: S3 (cross-tenant IDOR matrix), same pattern.
+- S2 `fix(services): concession validity windows + the recompute race` and
+  S3 `test: the cross-tenant IDOR matrix` implemented and green, NOT
+  committed — owner reviews then commits per chunk.
+- Next: S4 (webhook hostile edges + role-matrix cells), same pattern.
 
 ---
 
@@ -203,6 +204,13 @@ seed fee fixtures, and three live smoke checks.
   F8/F9/F10 recorded as deferrals in the hardening plan. One tsc catch
   during the work (tuple-destructured string keys) — fixed, no test impact.
 
+### S3 — the cross-tenant IDOR matrix
+- Status: implemented, green, UNCOMMITTED (owner commits per chunk)
+- Files: `fees.integration.test.ts` (+12), `smoke-authz.ts` (+1 cell)
+- Verify: integration 135 (93+42); smoke 144/165 with the 21 known drift
+  failures and the new cell passing on a real foreign id. No migration.
+- Notes: no B-side fixture needed (real org-A ids from scopeB is the
+  stronger probe); per-school receipt-uq referenced, not duplicated.
 
 ### F8 — docs
 - Status: done

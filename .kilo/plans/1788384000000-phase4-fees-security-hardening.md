@@ -43,20 +43,31 @@ decision in §3).
 
 ---
 
-## 1. Protocol (amended overnight-run protocol, owner-authorized — same as the Phase 4 run)
+## 1. Protocol (amended 2026-09-04 — owner commits, agent stops)
+
+Supersedes the S0-era "move to the next commit immediately" rule, which
+assumed the agent commits each chunk. The owner now commits every chunk
+after review.
 
 1. Implement ONE commit's scope (S0–S6 below), no more.
-2. Run that commit's **Verify** steps. `pnpm check-types` must be green
-   before every commit; the other gates as listed.
+2. Run that commit's **Verify** steps. `pnpm check-types` must be green;
+   the other gates as listed.
 3. Tick that commit's boxes in THIS file, in the same diff.
 4. Append a **Reviewer's guide entry** to THIS file (format in §8) and a
    status + entry to `.kilo/plans/1788307200000-phase4-fees-report.md`
    (STATUS line at top, per-chunk entry under the per-chunk log).
-5. Commit on `feature/phase4-fees` with the message from the ledger (§7).
+5. **STOP. Do not commit.** Leave the working tree dirty for the owner,
+   who reviews and commits with the message from the ledger (§7).
    **Never commit to main. Never push. Never merge.**
-6. Move to the next commit immediately. If a gate fails and 30 minutes of
-   bounded effort does not fix it: record the failure honestly in the run
-   report, commit whatever IS green, move on. A failed gate is never hidden.
+6. Wait for the owner's go before touching the next chunk. The owner may
+   grant a ONE-TIME commit allowance for a finished chunk ("commit this
+   one and start the next") — that allowance covers exactly that chunk
+   and expires immediately after; the default is back to STOP.
+7. If a gate fails and 30 minutes of bounded effort does not fix it:
+   record the failure honestly in the run report, leave whatever IS green
+   uncommitted, stop. A failed gate is never hidden.
+
+---
 
 ## 2. Context the fixes need (read once; locate code by SYMBOL, not line)
 
@@ -322,30 +333,30 @@ org B needs its own student + assignment + installments (reuse the fixture
 helpers with `w.scopeB`; `findOrCreateStudent` is org-parameterized by
 admission number — parameterize the helper call with B's ids).
 
-- [ ] `getPaymentDetail(scopeB, foreignPaymentId)` → null/NOT_FOUND.
-- [ ] `bouncePayment` / `reversePayment` / `cancelPayment` addressed from
+- [x] `getPaymentDetail(scopeB, foreignPaymentId)` → null/NOT_FOUND.
+- [x] `bouncePayment` / `reversePayment` / `cancelPayment` addressed from
       scopeB against an org-A payment id → "Payment not found in this
       school."
-- [ ] `recordRefund` from scopeB on a foreign payment → same.
-- [ ] `waiveInstallment` from scopeB on a foreign installment → same.
-- [ ] `generateInstallments` / `recomputeAssignmentConcessions` /
+- [x] `recordRefund` from scopeB on a foreign payment → same.
+- [x] `waiveInstallment` from scopeB on a foreign installment → same.
+- [x] `generateInstallments` / `recomputeAssignmentConcessions` /
       `createConcession` from scopeB on a foreign assignment id →
       "Fee assignment not found in this school."
-- [ ] `listDues` with scopeB + a foreign studentId → the foreign student's
+- [x] `listDues` with scopeB + a foreign studentId → the foreign student's
       rows are invisible (list scoped by scopeB's school returns nothing
       for that student).
-- [ ] `recordGatewayPayment` with orgB's organizationId + org-A student →
+- [x] `recordGatewayPayment` with orgB's organizationId + org-A student →
       "Student not found." (schoolOfStudent is org-filtered).
-- [ ] `getFeeHeadById` / `getFeeStructureById` / `listFeeStructureLines` /
+- [x] `getFeeHeadById` / `getFeeStructureById` / `listFeeStructureLines` /
       `updateFeeStructureLine` with foreign ids → null / NOT_FOUND /
       empty list.
-- [ ] **Receipt-number guessing:** an org-B caller reading
+- [x] **Receipt-number guessing:** an org-B caller reading
       `getPaymentDetail` for the org-A payment's id (not the receipt
       string — the id) is the IDOR case above; ADDITIONALLY assert that
       `fee_payments.school_receipt_uq` uniqueness is PER SCHOOL: school B
       can have its own `RCP-2025-00001` (a `db:verify` assertion already
       covers this — reference it in a comment, do not duplicate).
-- [ ] **Router-level (over live HTTP, in the smoke):** the accountant's
+- [x] **Router-level (over live HTTP, in the smoke):** the accountant's
       cookie requesting `fees.payment.detail` with a FOREIGN-ORG payment
       id + their own org/school ids → expect NOT_FOUND (the generic
       wording), proving the wire path composes the node gate with the row
@@ -545,6 +556,16 @@ invariant, the proof. Read `git log main..HEAD` for the house voice.)
 - **Verify yourself** — `pnpm check-types` 8/8; `pnpm test` 209 (86+43+48+32); `pnpm test:integration` 123 (93+30); `pnpm lint` 0 errors. No migration.
 - **Known shortcuts** — signature is `(concessions, headId, buckets, headAnnuals)`, not the plan's 3-arg sketch: the all-heads proportional split needs the head universe, so it lives inside the function rather than in the caller. The race fix is structural (no deterministic trigger — stated in code). Recompute groups by head over ALL installments so orphan-head rows (F7 drift) still count toward the restated net. Net restatement moved from window-ignorant head totals to applied shares — the header now tracks operative truth; a window covering no bucket leaves its concession as audit-only.
 
+- **Commit S3: `test: the cross-tenant IDOR matrix`** — every fee read and every money mutation addressed cross-tenant returns the generic refusal; the wire proves it too.
+- **Files** — `fees.integration.test.ts` (+12 S3 probes, one memoized org-A fixture); `smoke-authz.ts` (+1 router-level cell, `ne` import).
+- **Read in this order** —
+  1. The S3 `s3world` helper — QUESTION: is the fixture a REAL org-A payment (cleared cash, untouched because every probe fails at the row filter), so the refusals are vacuous-no-more?
+  2. The transition/refund probes — QUESTION: do bounce, reverse, cancel, and refund all fail with "Payment not found in this school." (generic, no existence leak) rather than a state-machine error that would confirm the row?
+  3. The assignment trio + gateway probes — QUESTION: do generate, recompute, and createConcession fail with the assignment wording, and does the gateway fail at `schoolOfStudent` before any allocation?
+  4. `smoke-authz.ts` S3 cell — QUESTION: is the foreign id a REAL other-school payment row (with random-UUID fallback), and does the accountant's own-scope request return generic NOT_FOUND?
+- **Invariants exercised** — hard rule 1 (every fee query filters by the required scope; the matrix is the proof it bites); no new behavior, no migration.
+- **Verify yourself** — `pnpm test:integration` 135 (93+42, twelve are `S3 the cross-tenant IDOR matrix`); live smoke 144/165 — the 21 failures are the known demo-org drift, the new cell passes as "real foreign id".
+- **Known shortcuts** — no B-side org-B student/assignment fixture was needed: addressing REAL org-A ids from scopeB is the stronger probe (a synthetic B world would test the same filter with less realism). Per-school receipt uniqueness is referenced, not duplicated (db:verify owns it). The smoke ran against the drifted demo DB; the 21 failures are byte-identical to the pre-S3 baseline.
 
 ## 8. What NOT to do
 

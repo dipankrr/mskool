@@ -1724,3 +1724,186 @@ describe("fees: S2 concession validity windows (F5)", () => {
   });
 });
 
+describe("fees: S3 the cross-tenant IDOR matrix", () => {
+  // One org-A reality (student + assignment + a cleared cash payment) that
+  // every probe addresses from org B's scope. All probes fail at the row
+  // filter, so the fixture is never mutated and stays reusable.
+  let s3: {
+    studentId: string;
+    assignmentId: string;
+    installmentId: string;
+    paymentId: string;
+    structureId: string;
+    lineId: string;
+  } | null = null;
+  async function s3world() {
+    if (s3) return s3;
+    const student = await freshStudent("S3X");
+    const assignment = await assignAndGenerate(student.id);
+    const rows = await installmentsOf(assignment.id);
+    const open = rows.find((r) => r.paymentStatus === "unpaid");
+    if (!open) throw new Error("No open installment for S3.");
+    const payment = await feesCollectionService.recordPayment(
+      w.scopeA,
+      {
+        studentId: student.id,
+        academicYearId: w.yearAId,
+        paymentDate: "2025-04-07",
+        paymentMode: "cash",
+        allocations: [{ installmentId: open.id, amount: open.netAmount }],
+        clientReference: `s3-seed-${open.id}`,
+      },
+      w.adminId,
+    );
+    const [structure] = await db
+      .select({ id: feeStructures.id })
+      .from(feeStructures)
+      .where(eq(feeStructures.schoolId, w.schoolAId))
+      .limit(1);
+    const [line] = await db
+      .select({ id: feeStructureLines.id })
+      .from(feeStructureLines)
+      .where(eq(feeStructureLines.schoolId, w.schoolAId))
+      .limit(1);
+    if (!structure || !line) throw new Error("Structure fixture missing for S3.");
+    s3 = {
+      studentId: student.id,
+      assignmentId: assignment.id,
+      installmentId: open.id,
+      paymentId: payment.id,
+      structureId: structure.id,
+      lineId: line.id,
+    };
+    return s3;
+  }
+
+  it("getPaymentDetail from the foreign scope is null (receipt ids are not guessable across tenants)", async () => {
+    const f = await s3world();
+    // Receipt-number guessing is a db:verify concern (school_receipt_uq is
+    // PER SCHOOL); the IDOR case here is the row id addressed cross-tenant.
+    expect(await feesCollectionService.getPaymentDetail(w.scopeB, f.paymentId)).toBeNull();
+  });
+
+  it("bouncePayment from the foreign scope is the generic refusal", async () => {
+    const f = await s3world();
+    await expect(
+      feesCollectionService.bouncePayment(
+        w.scopeB,
+        { paymentId: f.paymentId, reason: "S3 probe" },
+        w.adminId,
+      ),
+    ).rejects.toThrow(/Payment not found in this school\./);
+  });
+
+  it("reversePayment from the foreign scope is the generic refusal", async () => {
+    const f = await s3world();
+    await expect(
+      feesCollectionService.reversePayment(
+        w.scopeB,
+        { paymentId: f.paymentId, reason: "S3 probe" },
+        w.adminId,
+      ),
+    ).rejects.toThrow(/Payment not found in this school\./);
+  });
+
+  it("cancelPayment from the foreign scope is the generic refusal", async () => {
+    const f = await s3world();
+    await expect(
+      feesCollectionService.cancelPayment(
+        w.scopeB,
+        { paymentId: f.paymentId, reason: "S3 probe" },
+        w.adminId,
+      ),
+    ).rejects.toThrow(/Payment not found in this school\./);
+  });
+
+  it("recordRefund from the foreign scope is the generic refusal", async () => {
+    const f = await s3world();
+    await expect(
+      feesCollectionService.recordRefund(
+        w.scopeB,
+        {
+          originalPaymentId: f.paymentId,
+          refundAmount: "10.00",
+          refundDate: "2025-04-08",
+          refundMode: "cash",
+          reason: "S3 probe",
+        },
+        w.adminId,
+      ),
+    ).rejects.toThrow(/Payment not found in this school\./);
+  });
+
+  it("waiveInstallment from the foreign scope is the generic refusal", async () => {
+    const f = await s3world();
+    await expect(
+      feesCollectionService.waiveInstallment(w.scopeB, f.installmentId, w.adminId),
+    ).rejects.toThrow(/Installment not found in this school\./);
+  });
+
+  it("generateInstallments from the foreign scope is the generic refusal", async () => {
+    const f = await s3world();
+    await expect(
+      feesBillingService.generateInstallments(w.scopeB, f.assignmentId),
+    ).rejects.toThrow(/Fee assignment not found in this school\./);
+  });
+
+  it("recomputeAssignmentConcessions from the foreign scope is the generic refusal", async () => {
+    const f = await s3world();
+    await expect(
+      feesBillingService.recomputeAssignmentConcessions(w.scopeB, f.assignmentId),
+    ).rejects.toThrow(/Fee assignment not found in this school\./);
+  });
+
+  it("createConcession from the foreign scope is the generic refusal", async () => {
+    const f = await s3world();
+    await expect(
+      feesService.createConcession(
+        w.scopeB,
+        f.assignmentId,
+        {
+          concessionType: "other",
+          calculationType: "flat",
+          value: "10",
+          validFrom: "2025-04-01",
+        },
+        w.adminId,
+      ),
+    ).rejects.toThrow(/Fee assignment not found in this school\./);
+  });
+
+  it("listDues from the foreign scope never sees the foreign student's rows", async () => {
+    const f = await s3world();
+    const rows = await feesCollectionService.listDues([w.scopeB], w.yearAId, {
+      studentId: f.studentId,
+    });
+    expect(rows).toHaveLength(0);
+  });
+
+  it("recordGatewayPayment with a foreign student is refused before allocation", async () => {
+    const f = await s3world();
+    await expect(
+      feesCollectionService.recordGatewayPayment({
+        organizationId: w.scopeB.organizationId,
+        studentId: f.studentId,
+        gatewayOrderId: `s3-gw-${f.studentId}`,
+        amount: "10.00",
+        paymentDate: "2025-04-07",
+      }),
+    ).rejects.toThrow(/Student not found\./);
+  });
+
+  it("configuration reads from the foreign scope are null/empty, never foreign rows", async () => {
+    const f = await s3world();
+    expect(await feesService.getFeeHeadById(w.scopeB, w.tuitionHeadId)).toBeNull();
+    expect(
+      await feesService.getFeeStructureById(w.scopeB, f.structureId, true),
+    ).toBeNull();
+    expect(await feesService.listFeeStructureLines(w.scopeB, f.structureId)).toHaveLength(0);
+    expect(
+      await feesService.updateFeeStructureLine(w.scopeB, f.lineId, {
+        annualAmount: "12000.00",
+      }),
+    ).toBeNull();
+  });
+});
