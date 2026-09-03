@@ -1921,6 +1921,114 @@ async function main() {
     `status ${replayRes.status}`,
   );
 
+  // --- Fees S4: webhook hostile edges -----------------------------------------
+  //
+  // The three ways a non-provider hits the seam: no signature at all, a
+  // correctly signed but unparseable body, and a signature under the wrong
+  // secret. Computed exactly as the existing block does.
+  const noSigRes = await fetch(`${API}/api/webhooks/fees`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: WEB_ORIGIN },
+    body: payload,
+  });
+  report(
+    "a webhook without a signature is refused 401",
+    noSigRes.status === 401,
+    `status ${noSigRes.status}`,
+  );
+
+  const malformedRaw = "{not json";
+  const malformedRes = await fetch(`${API}/api/webhooks/fees`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-fee-webhook-signature": sign(malformedRaw),
+      origin: WEB_ORIGIN,
+    },
+    body: malformedRaw,
+  });
+  report(
+    "a correctly signed but malformed body is refused 400",
+    malformedRes.status === 400,
+    `status ${malformedRes.status}`,
+  );
+
+  const wrongSecretSig = createHmac("sha256", "wrong-secret")
+    .update(payload)
+    .digest("hex");
+  const wrongSecretRes = await fetch(`${API}/api/webhooks/fees`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-fee-webhook-signature": wrongSecretSig,
+      origin: WEB_ORIGIN,
+    },
+    body: payload,
+  });
+  report(
+    "a signature under the wrong secret is refused 401",
+    wrongSecretRes.status === 401,
+    `status ${wrongSecretRes.status}`,
+  );
+
+  // --- Fees S4: role-matrix fee cells (derived from defaultPermissions.ts) ---
+  //
+  // class_teacher holds student_fee_assignment:read + fee_payment:read (sees
+  // fee status to chase defaulters) but not fee_payment:create; librarian
+  // holds no fee permission at all; staff_coordinator (org-scoped) holds
+  // none either, so no fee_waiver:approve; vice_principal holds only
+  // fee_report:read among the fee family.
+  const teacherDues = await query(teacherCookie, "fees.installment.dues", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    academicYearId: currentYearA.id,
+  });
+  report(
+    "class_teacher reads the dues list (positive cell — the gate is not blanket-deny)",
+    teacherDues.ok && Array.isArray(teacherDues.data),
+    teacherDues.ok ? `${teacherDues.data.length} open rows` : `code ${teacherDues.code}`,
+  );
+
+  const librarianPay = await mutate(librarianCookie, "fees.payment.record", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    data: {
+      studentId: student1.id,
+      academicYearId: currentYearA.id,
+      paymentDate: new Date().toISOString().slice(0, 10),
+      paymentMode: "cash",
+      allocations: [{ installmentId: target.id, amount: "1.00" }],
+      clientReference: `smoke-librarian-${Date.now()}`,
+    },
+  });
+  report(
+    "librarian is FORBIDDEN on payment create (no fee permissions)",
+    !librarianPay.ok && librarianPay.code === "FORBIDDEN",
+    librarianPay.ok ? "AUTHORIZED — a leak" : `code ${librarianPay.code}`,
+  );
+
+  const coordinatorWaive = await mutate(staffCoordinatorCookie, "fees.installment.waive", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    id: target.id,
+  });
+  report(
+    "staff_coordinator is FORBIDDEN on waive (no fee_waiver:approve)",
+    !coordinatorWaive.ok && coordinatorWaive.code === "FORBIDDEN",
+    coordinatorWaive.ok ? "AUTHORIZED — a leak" : `code ${coordinatorWaive.code}`,
+  );
+
+  const vpLedger = await query(vicePrincipalCookie, "fees.ledger.list", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    academicYearId: currentYearA.id,
+  });
+  report(
+    "vice_principal reads the ledger (fee_report:read positive cell)",
+    vpLedger.ok && Array.isArray(vpLedger.data),
+    vpLedger.ok ? `${vpLedger.data.length} ledger rows` : `code ${vpLedger.code}`,
+  );
+
   // Put the seed back the way we found it, so the script stays re-runnable.
   await db
     .update(roleAssignments)

@@ -9,14 +9,14 @@ plan's Reviewer's guide for the commit-by-commit code review.
 
 ---
 
-## STATUS: HARDENING S1 COMMITTED, S2–S3 DONE (uncommitted) — S4 next
+## STATUS: HARDENING S1–S3 COMMITTED, S4 DONE (uncommitted) — S5 next
 
-- Branch: `feature/phase4-fees` (15 commits ahead of main + S2/S3 working tree, unmerged)
-- Last commit: `fix(services,contracts): collection trust hardening`
-- S2 `fix(services): concession validity windows + the recompute race` and
-  S3 `test: the cross-tenant IDOR matrix` implemented and green, NOT
-  committed — owner reviews then commits per chunk.
-- Next: S4 (webhook hostile edges + role-matrix cells), same pattern.
+- Branch: `feature/phase4-fees` (17 commits ahead of main + S4 working tree, unmerged)
+- Last commit: `test: the cross-tenant IDOR matrix`
+- S4 `test: webhook hostile edges + fee role-matrix cells` implemented and
+  green, NOT committed — owner reviews then commits.
+- Next: S5 (demo-org reset script + run + reseed). NOTE: S5 is DESTRUCTIVE
+  (deletes demo-trust + fees-itg orgs) — confirm before running.
 
 ---
 
@@ -211,6 +211,16 @@ seed fee fixtures, and three live smoke checks.
   failures and the new cell passing on a real foreign id. No migration.
 - Notes: no B-side fixture needed (real org-A ids from scopeB is the
   stronger probe); per-school receipt-uq referenced, not duplicated.
+
+### S4 — webhook hostile edges + role-matrix cells
+- Status: implemented, green, UNCOMMITTED (owner commits)
+- Files: `smoke-authz.ts` only (+7 cells)
+- Verify: smoke 151/172 — same 21 drift failures, all 7 new cells PASS on
+  the first run (no-sig 401, malformed 400, wrong-secret 401; teacher dues
+  7 rows; librarian/coordinator FORBIDDEN; VP ledger 8 rows). check-types
+  green for the script. No migration.
+- Notes: expectations derived from defaultPermissions.ts, recorded in the
+  reviewer entry; denial cells reuse the shared target (gates refuse first).
 
 ### F8 — docs
 - Status: done

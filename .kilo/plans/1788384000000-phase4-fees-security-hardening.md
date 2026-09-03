@@ -368,7 +368,7 @@ API first — limiter).
 
 ### Commit S4 — `test: webhook hostile edges + fee role-matrix cells`
 
-- [ ] **Webhook edges (smoke, live HTTP):**
+- [x] **Webhook edges (smoke, live HTTP):**
       - NO `x-fee-webhook-signature` header → 401.
       - Valid signature over MALFORMED JSON bytes (`"{not json"` signed
         correctly) → 400.
@@ -376,7 +376,7 @@ API first — limiter).
       - (Existing signed-accept / tamper / replay cells keep passing.)
       Compute HMACs exactly as the existing smoke block does
       (`createHmac("sha256", process.env.FEE_WEBHOOK_SECRET).update(raw)`).
-- [ ] **Role-matrix fee cells (smoke).** FIRST read
+- [x] **Role-matrix fee cells (smoke).** FIRST read
       `packages/authz/src/defaultPermissions.ts` and DERIVE each cell from
       the matrix — do not trust this plan's paraphrase; record what you
       find in the reviewer entry. The cells to pin (expected outcomes per
@@ -393,7 +393,7 @@ API first — limiter).
       - staff_coordinator (org-scoped): `fees.installment.waive` → derive
         from matrix (believed no `fee_waiver:approve` → FORBIDDEN).
       - vice_principal: derive from matrix; pin one fee cell.
-- [ ] Restart API before the smoke run; all new cells PASS.
+- [x] Restart API before the smoke run; all new cells PASS.
 
 **Verify:** smoke +N cells all PASS; no regression in the 143 existing
 passing cells (the 21 drift failures are addressed NEXT).
@@ -566,6 +566,17 @@ invariant, the proof. Read `git log main..HEAD` for the house voice.)
 - **Invariants exercised** — hard rule 1 (every fee query filters by the required scope; the matrix is the proof it bites); no new behavior, no migration.
 - **Verify yourself** — `pnpm test:integration` 135 (93+42, twelve are `S3 the cross-tenant IDOR matrix`); live smoke 144/165 — the 21 failures are the known demo-org drift, the new cell passes as "real foreign id".
 - **Known shortcuts** — no B-side org-B student/assignment fixture was needed: addressing REAL org-A ids from scopeB is the stronger probe (a synthetic B world would test the same filter with less realism). Per-school receipt uniqueness is referenced, not duplicated (db:verify owns it). The smoke ran against the drifted demo DB; the 21 failures are byte-identical to the pre-S3 baseline.
+
+- **Commit S4: `test: webhook hostile edges + fee role-matrix cells`** — the seam's three remaining hostile shapes plus four role cells derived from the matrix, all over live HTTP.
+- **Files** — `smoke-authz.ts` only (7 cells after the replay check; no product code).
+- **Read in this order** —
+  1. The three edge cells — QUESTION: is the no-signature case sent with the header ABSENT (not empty), is the malformed body signed as its own bytes, and is the wrong-secret HMAC computed the same way as `sign()`?
+  2. `fees-webhook.ts` — QUESTION: do missing/bogus signatures 401 with generic wording, malformed/unparseable bodies 400, and business refusals 422 (no gateway retry loop)?
+  3. The four role cells — QUESTION: was each expectation DERIVED from `defaultPermissions.ts` (teacher dues ALLOWED via student_fee_assignment:read, librarian record FORBIDDEN with zero fee perms, coordinator waive FORBIDDEN without fee_waiver:approve, VP ledger ALLOWED via fee_report:read) rather than copied from this entry?
+  4. The waive cell — QUESTION: does the gate refuse BEFORE the service (no mutation), so the shared `target` installment stays payable for later cells?
+- **Invariants exercised** — ADR-009 (signature IS the authorization; generic 401 wording leaks nothing about which half failed); the permission matrix as executable spec.
+- **Verify yourself** — restart the API (sign-in limiter), `pnpm smoke:authz` → 151/172 with the same 21 drift failures and all 7 new cells PASS (teacher dues 7 rows, VP ledger 8 rows).
+- **Known shortcuts** — all 7 passed on the first run; the waive/record denial cells reuse the shared `target` installment, safe only because gates refuse before any write. The 21 drift failures are S5's job, not this commit's.
 
 ## 8. What NOT to do
 
