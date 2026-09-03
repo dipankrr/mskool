@@ -1105,3 +1105,340 @@ describe("fees: the same-installment race (H4)", () => {
     ).toBe(paise(after?.paidAmount ?? "0"));
   });
 });
+describe("fees: the remaining named transitions (H5)", () => {
+  /** A pending cheque payment, fully allocated to its target installment. */
+  async function pendingChequePayment(
+    studentId: string,
+    targetInstallmentId: string,
+    net: string,
+  ) {
+    return feesCollectionService.recordPayment(
+      w.scopeA,
+      {
+        studentId,
+        academicYearId: w.yearAId,
+        paymentDate: "2025-04-09",
+        paymentMode: "cheque",
+        transactionReference: `CHQ-${studentId.slice(0, 8)}`,
+        allocations: [{ installmentId: targetInstallmentId, amount: net }],
+      },
+      w.adminId,
+    );
+  }
+
+  it("clearPayment: pending → cleared; a second clear is refused; no new ledger row", async () => {
+    const student = await freshStudent("TR1");
+    const assignment = await assignAndGenerate(student.id);
+    const rows = await installmentsOf(assignment.id);
+    const target = rows.find((r) => r.feeHeadId === w.tuitionHeadId);
+    if (!target) throw new Error("Fixture installment missing.");
+    const payment = await pendingChequePayment(student.id, target.id, target.netAmount);
+    expect(payment.paymentStatus).toBe("pending");
+
+    const cleared = await feesCollectionService.clearPayment(
+      w.scopeA,
+      { paymentId: payment.id, reason: "Bank confirmed the cheque" },
+      w.adminId,
+    );
+    expect(cleared.paymentStatus).toBe("cleared");
+
+    // The clear writes NO new ledger row — the movement was recorded at
+    // record time; clearing only flips the confirmation.
+    const ledgerRows = await db
+      .select()
+      .from(financialTransactions)
+      .where(eq(financialTransactions.referenceId, payment.id));
+    expect(ledgerRows).toHaveLength(1);
+    expect(ledgerRows[0]?.transactionType).toBe("fee_payment");
+
+    // Clearing again is refused with the state-machine wording.
+    await expect(
+      feesCollectionService.clearPayment(
+        w.scopeA,
+        { paymentId: payment.id, reason: "Twice" },
+        w.adminId,
+      ),
+    ).rejects.toThrow(/cleared payment cannot be cleared/);
+
+    // The installment stays paid.
+    const [after] = await db
+      .select()
+      .from(feeInstallments)
+      .where(eq(feeInstallments.id, target.id));
+    expect(after?.paymentStatus).toBe("paid");
+  });
+
+  it("cancelPayment: pending → cancelled, balances RE-OPEN, NO ledger row", async () => {
+    const student = await freshStudent("TR2");
+    const assignment = await assignAndGenerate(student.id);
+    const rows = await installmentsOf(assignment.id);
+    const target = rows.find((r) => r.feeHeadId === w.tuitionHeadId);
+    if (!target) throw new Error("Fixture installment missing.");
+    const payment = await pendingChequePayment(student.id, target.id, target.netAmount);
+
+    const ledgerBefore = await db
+      .select()
+      .from(financialTransactions)
+      .where(eq(financialTransactions.referenceId, payment.id));
+
+    const cancelled = await feesCollectionService.cancelPayment(
+      w.scopeA,
+      { paymentId: payment.id, reason: "Parent withdrew the cheque" },
+      w.adminId,
+    );
+    expect(cancelled.paymentStatus).toBe("cancelled");
+
+    // The installment is re-opened: pending cheque payments allocate
+    // immediately, so cancel must take the money back off.
+    const [after] = await db
+      .select()
+      .from(feeInstallments)
+      .where(eq(feeInstallments.id, target.id));
+    expect(after?.paidAmount).toBe("0.00");
+    expect(after?.paymentStatus).toBe("unpaid");
+
+    // No ledger row: no money moved. The audit trail is the payment's own
+    // status triple.
+    const ledgerAfter = await db
+      .select()
+      .from(financialTransactions)
+      .where(eq(financialTransactions.referenceId, payment.id));
+    expect(ledgerAfter).toHaveLength(ledgerBefore.length);
+
+    // Cancelling a CLEARED payment is refused — that money moved.
+    const clearedPayment = await feesCollectionService.recordPayment(
+      w.scopeA,
+      {
+        studentId: student.id,
+        academicYearId: w.yearAId,
+        paymentDate: "2025-04-10",
+        paymentMode: "cash",
+        allocations: [{ installmentId: target.id, amount: target.netAmount }],
+        clientReference: `tr2-clear-${target.id}`,
+      },
+      w.adminId,
+    );
+    await expect(
+      feesCollectionService.cancelPayment(
+        w.scopeA,
+        { paymentId: clearedPayment.id, reason: "Too late" },
+        w.adminId,
+      ),
+    ).rejects.toThrow(/cleared payment cannot move to cancelled/);
+  });
+
+  it("reversePayment: cleared → reversed, balances re-open, a fee_refund debit lands", async () => {
+    const student = await freshStudent("TR3");
+    const assignment = await assignAndGenerate(student.id);
+    const rows = await installmentsOf(assignment.id);
+    const target = rows.find((r) => r.feeHeadId === w.tuitionHeadId);
+    const labTarget = rows.find((r) => r.feeHeadId === w.labHeadId);
+    if (!target || !labTarget) throw new Error("Fixture installments missing.");
+    const payment = await feesCollectionService.recordPayment(
+      w.scopeA,
+      {
+        studentId: student.id,
+        academicYearId: w.yearAId,
+        paymentDate: "2025-04-10",
+        paymentMode: "cash",
+        allocations: [{ installmentId: target.id, amount: target.netAmount }],
+        clientReference: `tr3-cash-${target.id}`,
+      },
+      w.adminId,
+    );
+    expect(payment.paymentStatus).toBe("cleared");
+
+    const reversed = await feesCollectionService.reversePayment(
+      w.scopeA,
+      { paymentId: payment.id, reason: "Duplicate entry at the desk" },
+      w.adminId,
+    );
+    expect(reversed.paymentStatus).toBe("reversed");
+
+    const [after] = await db
+      .select()
+      .from(feeInstallments)
+      .where(eq(feeInstallments.id, target.id));
+    expect(after?.paidAmount).toBe("0.00");
+    expect(after?.paymentStatus).toBe("unpaid");
+
+    const ledgerRows = await db
+      .select()
+      .from(financialTransactions)
+      .where(eq(financialTransactions.referenceId, payment.id))
+      .orderBy(financialTransactions.createdAt);
+    expect(ledgerRows).toHaveLength(2);
+    expect(ledgerRows[0]?.transactionType).toBe("fee_payment");
+    expect(ledgerRows[1]?.transactionType).toBe("fee_refund");
+    expect(ledgerRows[1]?.direction).toBe("debit");
+    expect(ledgerRows[1]?.amount).toBe(payment.amount);
+
+    // Reversing a PENDING payment is refused — it has not confirmed.
+    const pendingPayment = await pendingChequePayment(
+      student.id,
+      labTarget.id,
+      labTarget.netAmount,
+    );
+    await expect(
+      feesCollectionService.reversePayment(
+        w.scopeA,
+        { paymentId: pendingPayment.id, reason: "Not yet" },
+        w.adminId,
+      ),
+    ).rejects.toThrow(/pending payment cannot move to reversed/);
+  });
+});
+
+describe("fees: optional subscriptions generate their own installments (H5)", () => {
+  async function optionalHead(name: string) {
+    const [head] = await db
+      .insert(feeHeads)
+      .values({
+        organizationId: w.orgAId,
+        schoolId: w.schoolAId,
+        name,
+        category: "optional",
+      })
+      .returning();
+    if (!head) throw new Error("Optional head fixture missing.");
+    return head;
+  }
+
+  it("a full-window transport subscription adds its 12 monthly rows on re-generation", async () => {
+    const transport = await optionalHead(`Transport ${RUN}`);
+    const student = await freshStudent("SB1");
+    const assignment = await assignAndGenerate(student.id);
+
+    await feesService.createSubscription(
+      w.scopeA,
+      {
+        studentId: student.id,
+        academicYearId: w.yearAId,
+        feeHeadId: transport.id,
+        serviceDetail: "Route 3",
+        monthlyAmount: "800.00",
+        annualAmount: "9600.00",
+        subscribedFrom: "2025-04-01",
+      },
+      w.adminId,
+    );
+
+    // The generator is idempotent FILL: the earlier run pre-dates the
+    // subscription, so this re-run adds exactly its 12 months.
+    const result = await feesBillingService.generateInstallments(w.scopeA, assignment.id);
+    expect(result.inserted).toBe(12);
+
+    const rows = await installmentsOf(assignment.id);
+    const transportRows = rows.filter((r) => r.feeHeadId === transport.id);
+    expect(transportRows).toHaveLength(12);
+    expect(transportRows.every((r) => r.amount === "800.00")).toBe(true);
+    expect(transportRows[0]?.periodMonth).toBe(4);
+    expect(transportRows[11]?.periodMonth).toBe(3);
+    // The structure's own heads are untouched by the subscription rows.
+    expect(rows.filter((r) => r.feeHeadId === w.tuitionHeadId)).toHaveLength(12);
+  });
+
+  it("a mid-window subscription bills only from its own start", async () => {
+    const hostel = await optionalHead(`Hostel ${RUN}`);
+    const student = await freshStudent("SB2");
+    const assignment = await assignAndGenerate(student.id);
+
+    await feesService.createSubscription(
+      w.scopeA,
+      {
+        studentId: student.id,
+        academicYearId: w.yearAId,
+        feeHeadId: hostel.id,
+        serviceDetail: "Block A",
+        monthlyAmount: "2000.00",
+        annualAmount: "24000.00",
+        subscribedFrom: "2025-10-01", // joined the hostel in October
+      },
+      w.adminId,
+    );
+    await feesBillingService.generateInstallments(w.scopeA, assignment.id);
+
+    const rows = await installmentsOf(assignment.id);
+    const hostelRows = rows
+      .filter((r) => r.feeHeadId === hostel.id)
+      .sort(
+        (a, b) =>
+          (a.periodYear ?? 0) * 12 +
+          (a.periodMonth ?? 0) -
+          ((b.periodYear ?? 0) * 12 + (b.periodMonth ?? 0)),
+      );
+    expect(hostelRows).toHaveLength(6); // Oct–Mar only
+    expect(hostelRows[0]?.periodMonth).toBe(10);
+    expect(hostelRows.every((r) => r.amount === "2000.00")).toBe(true);
+  });
+});
+
+describe("fees: opening balances (H5)", () => {
+  it("records the balance AND its ledger row; refuses a self-origin balance", async () => {
+    // A second year in the fixture org: dues carried FROM 2025-26 INTO 2026-27.
+    const [year2] = await db
+      .insert(academicYears)
+      .values({
+        organizationId: w.orgAId,
+        schoolId: w.schoolAId,
+        name: "2026-27",
+        startDate: "2026-04-01",
+        endDate: "2027-03-31",
+        originalEndDate: "2027-03-31",
+        isCurrent: false,
+      })
+      .returning();
+    if (!year2) throw new Error("Second year fixture missing.");
+
+    const student = await freshStudent("OB1");
+    const balance = await feesBillingService.createOpeningBalance(
+      w.scopeA,
+      {
+        studentId: student.id,
+        academicYearId: year2.id,
+        originAcademicYearId: w.yearAId,
+        amount: "150.00",
+        description: "Carried forward from 2025-26",
+      },
+      w.adminId,
+    );
+    expect(balance.amount).toBe("150.00");
+
+    // The ledger row landed in the SAME transaction — type, direction, reference.
+    const [ledgerRow] = await db
+      .select()
+      .from(financialTransactions)
+      .where(
+        and(
+          eq(financialTransactions.referenceId, balance.id),
+          eq(financialTransactions.transactionType, "opening_balance"),
+        ),
+      );
+    expect(ledgerRow).toBeTruthy();
+    expect(ledgerRow?.direction).toBe("credit");
+    expect(ledgerRow?.referenceTable).toBe("opening_balances");
+
+    // The carry-forward read finds it, clipped to the student and year.
+    const listed = await feesBillingService.listOpeningBalances(
+      [w.scopeA],
+      year2.id,
+      student.id,
+    );
+    expect(listed).toHaveLength(1);
+    expect(listed[0]?.balanceAmount).toBe("150.00");
+
+    // A balance originating from the year it lands in is a category error.
+    await expect(
+      feesBillingService.createOpeningBalance(
+        w.scopeA,
+        {
+          studentId: student.id,
+          academicYearId: year2.id,
+          originAcademicYearId: year2.id,
+          amount: "10.00",
+        },
+        w.adminId,
+      ),
+    ).rejects.toThrow(/cannot originate/);
+  });
+});

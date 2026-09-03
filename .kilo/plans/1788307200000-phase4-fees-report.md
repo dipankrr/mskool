@@ -11,8 +11,8 @@ plan's Reviewer's guide for the commit-by-commit code review.
 
 ## STATUS: RUN + HARDENING COMPLETE — awaiting owner review
 
-- Branch: `feature/phase4-fees` (12 commits ahead of main, unmerged)
-- Last commit: `test: webhook, invariant sweep, same-installment race`
+- Branch: `feature/phase4-fees` (13 commits ahead of main, unmerged)
+- Last commit: `test: the remaining transitions, subscriptions, opening balances`
 - Next: owner reviews the branch via the plan's Reviewer's guide, then merges
 
 ---
@@ -31,7 +31,7 @@ seed fee fixtures, and three live smoke checks.
 
 - `pnpm check-types` — 8/8 packages green
 - `pnpm test` — 204 unit tests (86 authz + 38 services + 48 web + 32 trpc)
-- `pnpm test:integration` — 111 (93 authz + 18 fees), real Postgres
+- `pnpm test:integration` — 117 (93 authz + 24 fees), real Postgres
 - `pnpm db:verify` — 119 assertions (43 fee-specific)
 - `pnpm check:builders` / `pnpm check:openapi` — green; 100 endpoints (36 fee)
 - `pnpm lint` — clean (pre-existing warnings only)
@@ -164,6 +164,21 @@ seed fee fixtures, and three live smoke checks.
      one payment, the loser refused with the worded error; a
      partial-then-full interleaving ends with paid ≤ net and allocations
      equal to paid. The row locks work under contention.
+
+### H5 — the last coverage gaps
+- Status: done
+- Commit: `test: the remaining transitions, subscriptions, opening balances`
+- Verify: integration 117/117 — ALL SIX new tests passed on their FIRST
+  run, zero code changes needed (the implementation held).
+- What closed: clear/cancel/reverse transitions (state validation, ledger
+  presence/absence, re-open behaviour, illegal-move refusals); optional
+  subscriptions generating their own installments (full-window 12 months,
+  mid-window 6 from October, structure heads untouched — the generator's
+  idempotent FILL proven again by a late subscription); opening balances
+  (the transactional balance + ledger row pair, the carry-forward read,
+  the self-origin refusal). Late-fee WIRING remains deferred by design:
+  computeLateFee is unit-tested, but no endpoint exposes the live display
+  amount — that lands with the UI slice.
 
 ### F8 — docs
 - Status: done

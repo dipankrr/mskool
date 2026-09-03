@@ -16,7 +16,7 @@ a Reviewer's guide per commit) and
 happened). **The owner should review the branch commit-by-commit using
 the plan's Reviewer's guide, then merge.**
 
-- **What ships (12 commits, F1–F8 + the hardening slice):** the configuration layer (heads,
+- **What ships (13 commits, F1–F8 + the hardening slice):** the configuration layer (heads,
   structures, lines, late-fee rules), the resolution/billing/collection/
   ledger layers (assignments, concessions, subscriptions, installments,
   opening balances, payments, allocations, refunds,
