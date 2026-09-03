@@ -363,6 +363,131 @@ export function headConcessionTotals(
 }
 
 /**
+ * S2 (F5) — per-bucket concession shares honoring validity windows. A
+ * concession contributes to a bucket iff `validFrom <= bucket.dueDate` AND
+ * (`validTo == null` OR `bucket.dueDate <= validTo`): a Jun–Aug sibling
+ * discount silently discounting the whole year was the finding.
+ *
+ * Two stages, both exact:
+ * 1. Resolve each concession to THIS head's amount — a named-head
+ *    concession counts whole for its head only; an all-heads concession is
+ *    split proportionally to head annuals (floored, remainder to the largest
+ *    head), the same split `headConcessionTotals` performs, kept
+ *    per-concession so windows stay attached.
+ * 2. Spread each resolved amount over its COVERED buckets proportionally to
+ *    bucket amounts (floored, remainder to the last covered bucket), capped
+ *    per bucket at the bucket's amount, against a head-annual budget shared
+ *    across concessions (the H1 clamp, composed with windows): stacked
+ *    concessions zero a fee, never invert it.
+ *
+ * A concession whose window covers NO bucket contributes nothing — it stays
+ * a recorded audit row, not a discount. With full-year windows the spread is
+ * the old `headConcessionTotals` + `apportionHeadTotal` pairing (modulo the
+ * per-bucket cap, which only ever bites where the old code would have
+ * written a negative net for the 0012 CHECK to refuse).
+ */
+export interface WindowedConcession {
+  feeHeadId: string | null;
+  amountCents: bigint;
+  validFrom: string;
+  validTo: string | null;
+}
+
+export interface WindowedBucket {
+  dueDate: string;
+  amountCents: bigint;
+}
+
+export function windowedConcessionShares(
+  concessions: WindowedConcession[],
+  headId: string,
+  buckets: WindowedBucket[],
+  headAnnuals: { feeHeadId: string; annualCents: bigint }[],
+): bigint[] {
+  const zero = buckets.map(() => 0n);
+  if (buckets.length === 0) return zero;
+  const totalAnnual = headAnnuals.reduce((acc, h) => acc + h.annualCents, 0n);
+  if (totalAnnual <= 0n) return zero;
+  const headAnnual =
+    headAnnuals.find((h) => h.feeHeadId === headId)?.annualCents ?? 0n;
+  const largest = headAnnuals.reduce((a, b) =>
+    b.annualCents > a.annualCents ? b : a,
+  );
+
+  // Stage 1 — this head's per-concession amounts.
+  type Resolved = { amountCents: bigint; validFrom: string; validTo: string | null };
+  const resolved: Resolved[] = [];
+  for (const c of concessions) {
+    if (c.amountCents <= 0n) continue;
+    if (c.feeHeadId) {
+      if (c.feeHeadId === headId) {
+        resolved.push({
+          amountCents: c.amountCents,
+          validFrom: c.validFrom,
+          validTo: c.validTo,
+        });
+      }
+      continue;
+    }
+    const parts = headAnnuals.map((h) => ({
+      headId: h.feeHeadId,
+      share: (h.annualCents * c.amountCents) / totalAnnual,
+    }));
+    const distributed = parts.reduce((acc, p) => acc + p.share, 0n);
+    const remainder = c.amountCents - distributed;
+    for (const p of parts) {
+      if (p.headId !== headId) continue;
+      const share = p.share + (remainder > 0n && p.headId === largest.feeHeadId ? remainder : 0n);
+      if (share > 0n) {
+        resolved.push({
+          amountCents: share,
+          validFrom: c.validFrom,
+          validTo: c.validTo,
+        });
+      }
+    }
+  }
+
+  // Stage 2 — sequential spread against the head-annual budget.
+  const out = buckets.map(() => 0n);
+  let budget = headAnnual;
+  for (const s of resolved) {
+    if (budget <= 0n) break;
+    const covered: { idx: number; amountCents: bigint }[] = [];
+    buckets.forEach((b, idx) => {
+      if (s.validFrom <= b.dueDate && (s.validTo === null || b.dueDate <= s.validTo)) {
+        covered.push({ idx, amountCents: b.amountCents });
+      }
+    });
+    if (covered.length === 0) continue;
+    const effective = s.amountCents < budget ? s.amountCents : budget;
+    const weightTotal = covered.reduce((acc, b) => acc + b.amountCents, 0n);
+    let parts: bigint[];
+    if (weightTotal <= 0n) {
+      parts = covered.map(() => 0n);
+    } else {
+      parts = covered.map((b) => (effective * b.amountCents) / weightTotal);
+      const distributed = parts.reduce((acc, p) => acc + p, 0n);
+      const last = parts.length - 1;
+      parts[last] = (parts[last] ?? 0n) + (effective - distributed);
+    }
+    let spent = 0n;
+    covered.forEach((b, k) => {
+      const part = parts[k] ?? 0n;
+      const room = b.amountCents - (out[b.idx] ?? 0n);
+      let capped = 0n;
+      if (part > 0n && room > 0n) {
+        capped = part < room ? part : room;
+      }
+      out[b.idx] = (out[b.idx] ?? 0n) + capped;
+      spent += capped;
+    });
+    budget -= spent;
+  }
+  return out;
+}
+
+/**
  * Splits ONE head's concession total across that head's buckets: floored
  * proportional shares, the LAST bucket absorbing the remainder, so the
  * installments' concession sum equals the head total exactly.

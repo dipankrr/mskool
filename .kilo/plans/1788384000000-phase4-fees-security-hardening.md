@@ -58,8 +58,6 @@ decision in §3).
    bounded effort does not fix it: record the failure honestly in the run
    report, commit whatever IS green, move on. A failed gate is never hidden.
 
----
-
 ## 2. Context the fixes need (read once; locate code by SYMBOL, not line)
 
 ### 2.1 The fee code map
@@ -245,7 +243,7 @@ existing transaction in specific places.
 
 ### Commit S2 — `fix(services): concession validity windows + the recompute race`
 
-- [ ] **F5 — honor windows.** Chosen semantics (stated to the owner): a
+- [x] **F5 — honor windows.** Chosen semantics (stated to the owner): a
       concession contributes to an installment iff
       `validFrom <= installment.dueDate` AND
       (`validTo == null` OR `installment.dueDate <= validTo`).
@@ -272,7 +270,7 @@ existing transaction in specific places.
         composes with windows);
       - every share ≥ 0 and ≤ bucket amount.
       And one integration test mirroring the Jun–Aug case end to end.
-- [ ] **F6 — close the TOCTOU.** In `recomputeAssignmentConcessions`, the
+- [x] **F6 — close the TOCTOU.** In `recomputeAssignmentConcessions`, the
       installment reads (and the frozen/not-frozen decision) currently
       happen BEFORE `db.transaction`. Move the frozen re-check INSIDE the
       transaction: after opening the tx, re-SELECT the head's installment
@@ -285,7 +283,7 @@ existing transaction in specific places.
       deterministically triggered from a test (it is a
       read-decide-write interleaving); the fix is structural and the
       assertion is that the locked re-read is on the write path.
-- [ ] **F7 — DOMAIN.md note.** In `docs/DOMAIN.md` §5 (fees), add a short
+- [x] **F7 — DOMAIN.md note.** In `docs/DOMAIN.md` §5 (fees), add a short
       paragraph: mid-year structure line ADDITIONS generate new
       installments for existing assignments while the assignment's
       snapshotted `base_annual_amount`/`net_annual_amount` headers are
@@ -295,11 +293,20 @@ existing transaction in specific places.
       consequence: all-heads concession percentages ride the header, so a
       stale header skews concession maths for students whose structure grew
       post-assignment; revisit if a real school does mid-year edits.
-- [ ] Record F8/F9/F10 as deferrals in the plan file's "Recorded
+- [x] Record F8/F9/F10 as deferrals in the plan file's "Recorded
       deferrals" section (owner-verbatim, §3 table above) — no code.
 
 **Verify:** `check-types`; services unit suite (+~5 window tests);
 integration green (+1); H1/H5 suites still green unchanged.
+
+### Recorded deferrals — F8/F9/F10 (owner decisions, no code)
+
+- **F8** Separation of duties: the accountant holds both `fee_payment:create`
+  and `fee_payment:approve` — **detect-only for now; "we need to add different
+  permission for it later."**
+- **F9** `authz_audit_log` has no writer — **not needed for fees now.**
+- **F10** No Postgres RLS; tenancy is application-level — **"we will have to
+  implement RLS later."**
 
 ---
 
@@ -525,6 +532,19 @@ invariant, the proof. Read `git log main..HEAD` for the house voice.)
 - **Invariants exercised** — F1 (idempotency-key specificity), F2 (ledger year integrity), F3 (server-authoritative money; hard rule 4 BigInt paise), F4 (wire/type gate on portal mode).
 - **Verify yourself** — `pnpm check-types` 8/8; `pnpm test` 204 (86+38+48+32); `pnpm test:integration` 122 (93+29, five are `S1 collection trust hardening`); `check:builders` + `check:openapi` green (100 endpoints); `pnpm lint` 0 errors.
 - **Known shortcuts** — the gateway's dummy wire mode is `"upi"` (pending, fail-safe; never persisted — `opts` overwrites it). Rules are read via `feesService.listActiveLateFeeRules` (a separate pool connection, not the tx) — config-grade read, acceptable inside the payment tx. S1 tests create school-wide rules and deactivate them within the block; the block runs last so no earlier test sees a rule.
+
+- **Commit S2: `fix(services): concession validity windows + the recompute race`** — concessions finally read their own calendars; the recompute write decision comes from locked rows.
+- **Files** — `fees-maths.ts` (new `windowedConcessionShares`); `fees-billing.service.ts` (wired into generate + recompute, locked re-read, net from applied); `fees-billing.test.ts` (+5 window tests); `fees.integration.test.ts` (+1 Jun–Aug); `DOMAIN.md` (F7 header-drift note).
+- **Read in this order** —
+  1. `fees-maths.ts` `windowedConcessionShares` — QUESTION: does a bucket get a share ONLY inside some concession's window, is the all-heads split the same proportional math as `headConcessionTotals`, and does the head-annual budget cap the stacked total (H1 composes)?
+  2. `fees-billing.service.ts` `recomputeAssignmentConcessions` tx — QUESTION: is frozen re-derived from the `FOR UPDATE` rows (not the pre-tx read), and is the net restated from actually-applied shares rather than window-ignorant head totals?
+  3. Same file `generateInstallments` — QUESTION: do the concession selects carry `validFrom`/`validTo` with a deterministic `createdAt` order, and do subscription heads (absent from the lines) plan to zero?
+  4. The per-bucket cap — QUESTION: where the old code would have written a negative net for the 0012 CHECK to refuse (prorated-shrink edge), does the cap absorb it first?
+  5. `DOMAIN.md` §5 tail — QUESTION: does the header-vs-installments paragraph state the operative truth correctly?
+- **Invariants exercised** — F5 (window semantics), F6 (locked write path; hard rule 3 untouched — no ledger shape change), F7 (snapshot doctrine), H1 preserved (existing clamp tests + integration pass unchanged).
+- **Verify yourself** — `pnpm check-types` 8/8; `pnpm test` 209 (86+43+48+32); `pnpm test:integration` 123 (93+30); `pnpm lint` 0 errors. No migration.
+- **Known shortcuts** — signature is `(concessions, headId, buckets, headAnnuals)`, not the plan's 3-arg sketch: the all-heads proportional split needs the head universe, so it lives inside the function rather than in the caller. The race fix is structural (no deterministic trigger — stated in code). Recompute groups by head over ALL installments so orphan-head rows (F7 drift) still count toward the restated net. Net restatement moved from window-ignorant head totals to applied shares — the header now tracks operative truth; a window covering no bucket leaves its concession as audit-only.
+
 
 ## 8. What NOT to do
 

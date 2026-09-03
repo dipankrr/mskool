@@ -1688,3 +1688,39 @@ describe("fees: S1 collection trust hardening (F1–F4)", () => {
     expect(open.netAmount).toBeTruthy();
   });
 });
+
+describe("fees: S2 concession validity windows (F5)", () => {
+  it("a Jun–Aug concession discounts only the June, July and August installments", async () => {
+    const student = await freshStudent("S2WIN");
+    const assignment = await assignAndGenerate(student.id);
+    await feesService.createConcession(
+      w.scopeA,
+      assignment.id,
+      {
+        concessionType: "sibling_discount",
+        calculationType: "flat",
+        value: "3000.00",
+        feeHeadId: w.tuitionHeadId,
+        validFrom: "2025-06-01",
+        validTo: "2025-08-31",
+      },
+      w.adminId,
+    );
+    await feesBillingService.recomputeAssignmentConcessions(w.scopeA, assignment.id);
+
+    const rows = await installmentsOf(assignment.id);
+    const tuition = rows.filter((r) => r.feeHeadId === w.tuitionHeadId);
+    expect(tuition).toHaveLength(12);
+    for (const r of tuition) {
+      if (r.periodMonth === 6 || r.periodMonth === 7 || r.periodMonth === 8) {
+        expect(r.concessionAmount).toBe("1000.00");
+      } else {
+        expect(r.concessionAmount).toBe("0.00");
+      }
+    }
+    // The lab head is untouched by a tuition-named concession.
+    const lab = rows.filter((r) => r.feeHeadId === w.labHeadId);
+    for (const r of lab) expect(r.concessionAmount).toBe("0.00");
+  });
+});
+

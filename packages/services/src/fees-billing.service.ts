@@ -1,12 +1,11 @@
 import { atSchoolLevel, requireSchoolId } from "./academic.service";
 import {
-  apportionHeadTotal,
   fromCents,
-  headConcessionTotals,
   isoOf,
   monthsBetween,
   splitIntoBuckets,
   toCents,
+  windowedConcessionShares,
 } from "./fees-maths";
 import { scopeWhere, type DataScope, type ScopeColumns } from "@repo/authz";
 import type {
@@ -228,9 +227,12 @@ export class FeesBillingService {
       .select({
         feeHeadId: feeConcessions.feeHeadId,
         concessionAmount: feeConcessions.concessionAmount,
+        validFrom: feeConcessions.validFrom,
+        validTo: feeConcessions.validTo,
       })
       .from(feeConcessions)
-      .where(eq(feeConcessions.studentFeeAssignmentId, assignment.id));
+      .where(eq(feeConcessions.studentFeeAssignmentId, assignment.id))
+      .orderBy(asc(feeConcessions.createdAt));
 
     const subscriptions = await db
       .select()
@@ -243,18 +245,17 @@ export class FeesBillingService {
         ),
       );
 
-    // Per-head concession totals across the lines' annuals.
+    // Per-head annuals for the windowed apportionment (S2/F5).
     const headAnnuals = lines.map((l) => ({
       feeHeadId: l.feeHeadId,
       annualCents: toCents(l.annualAmount),
     }));
-    const concessionTotals = headConcessionTotals(
-      concessions.map((c) => ({
-        feeHeadId: c.feeHeadId,
-        amountCents: toCents(c.concessionAmount),
-      })),
-      headAnnuals,
-    );
+    const concessionInputs = concessions.map((c) => ({
+      feeHeadId: c.feeHeadId,
+      amountCents: toCents(c.concessionAmount),
+      validFrom: c.validFrom,
+      validTo: c.validTo,
+    }));
 
     type Desired = {
       feeHeadId: string;
@@ -286,10 +287,11 @@ export class FeesBillingService {
         headName: line.headName,
         terms: yearTerms,
       });
-      const headTotal = concessionTotals.get(line.feeHeadId) ?? 0n;
-      const shares = apportionHeadTotal(
-        headTotal,
-        buckets.map((b) => b.amountCents),
+      const shares = windowedConcessionShares(
+        concessionInputs,
+        line.feeHeadId,
+        buckets.map((b) => ({ dueDate: b.dueDate, amountCents: b.amountCents })),
+        headAnnuals,
       );
       buckets.forEach((b, i) => {
         const concessionCents = shares[i] ?? 0n;
@@ -408,21 +410,23 @@ export class FeesBillingService {
       .select({
         feeHeadId: feeConcessions.feeHeadId,
         concessionAmount: feeConcessions.concessionAmount,
+        validFrom: feeConcessions.validFrom,
+        validTo: feeConcessions.validTo,
       })
       .from(feeConcessions)
-      .where(eq(feeConcessions.studentFeeAssignmentId, assignment.id));
+      .where(eq(feeConcessions.studentFeeAssignmentId, assignment.id))
+      .orderBy(asc(feeConcessions.createdAt));
 
     const headAnnuals = lines.map((l) => ({
       feeHeadId: l.feeHeadId,
       annualCents: toCents(l.annualAmount),
     }));
-    const concessionTotals = headConcessionTotals(
-      concessions.map((c) => ({
-        feeHeadId: c.feeHeadId,
-        amountCents: toCents(c.concessionAmount),
-      })),
-      headAnnuals,
-    );
+    const concessionInputs = concessions.map((c) => ({
+      feeHeadId: c.feeHeadId,
+      amountCents: toCents(c.concessionAmount),
+      validFrom: c.validFrom,
+      validTo: c.validTo,
+    }));
 
     const installments = await db
       .select({
@@ -430,6 +434,7 @@ export class FeesBillingService {
         feeHeadId: feeInstallments.feeHeadId,
         installmentNumber: feeInstallments.installmentNumber,
         amount: feeInstallments.amount,
+        dueDate: feeInstallments.dueDate,
         paidAmount: feeInstallments.paidAmount,
         paymentStatus: feeInstallments.paymentStatus,
       })
@@ -437,34 +442,86 @@ export class FeesBillingService {
       .where(eq(feeInstallments.studentFeeAssignmentId, assignment.id))
       .orderBy(asc(feeInstallments.installmentNumber));
 
+    // Share PLANNING is pure math from the pre-tx reads; the WRITE decision
+    // comes from locked rows inside the transaction (S2/F6). Grouped by head
+    // over ALL installments (not just current lines) so a mid-year deleted
+    // line's rows still count toward the restated net (F7's drift, audited
+    // rather than dropped); heads outside the lines plan to zero shares.
+    const headGroups = new Map<
+      string,
+      { id: string; dueDate: string; amountCents: bigint }[]
+    >();
+    for (const i of installments) {
+      const group = headGroups.get(i.feeHeadId) ?? [];
+      group.push({
+        id: i.id,
+        dueDate: i.dueDate,
+        amountCents: toCents(i.amount),
+      });
+      headGroups.set(i.feeHeadId, group);
+    }
+    const planned = new Map<string, bigint>();
+    for (const [headId, headBuckets] of [...headGroups.entries()].sort(([a], [b]) =>
+      a < b ? -1 : 1,
+    )) {
+      const shares = windowedConcessionShares(
+        concessionInputs,
+        headId,
+        headBuckets,
+        headAnnuals,
+      );
+      headBuckets.forEach((b, k) => planned.set(b.id, shares[k] ?? 0n));
+    }
+
     await db.transaction(async (tx) => {
-      for (const line of lines) {
-        const headInstallments = installments.filter((i) => i.feeHeadId === line.feeHeadId);
-        const headTotal = concessionTotals.get(line.feeHeadId) ?? 0n;
-        const shares = apportionHeadTotal(
-          headTotal,
-          headInstallments.map((i) => toCents(i.amount)),
-        );
-        for (let idx = 0; idx < headInstallments.length; idx++) {
-          const inst = headInstallments[idx];
-          const share = shares[idx] ?? 0n;
-          if (!inst) continue;
-          const frozen = inst.paymentStatus !== "unpaid" || inst.paidAmount !== "0.00";
-          if (frozen) continue;
-          const amountCents = toCents(inst.amount);
+      // S2 (F6): re-derive frozen-ness from LOCKED rows. A payment committing
+      // between the pre-tx read and this write can no longer be restated
+      // under — the 0012 paid_capped CHECK stays as the loud backstop.
+      let totalApplied = 0n;
+      for (const headId of [...headGroups.keys()].sort()) {
+        const locked = await tx
+          .select({
+            id: feeInstallments.id,
+            amount: feeInstallments.amount,
+            concessionAmount: feeInstallments.concessionAmount,
+            paidAmount: feeInstallments.paidAmount,
+            paymentStatus: feeInstallments.paymentStatus,
+          })
+          .from(feeInstallments)
+          .where(
+            and(
+              eq(feeInstallments.studentFeeAssignmentId, assignment.id),
+              eq(feeInstallments.feeHeadId, headId),
+            ),
+          )
+          .orderBy(asc(feeInstallments.installmentNumber))
+          .for("update");
+        for (const row of locked) {
+          const frozen =
+            row.paymentStatus !== "unpaid" || row.paidAmount !== "0.00";
+          if (frozen) {
+            totalApplied += toCents(row.concessionAmount);
+            continue;
+          }
+          const amountCents = toCents(row.amount);
+          const raw = planned.get(row.id) ?? 0n;
+          const share = raw > amountCents ? amountCents : raw;
+          totalApplied += share;
           await tx
             .update(feeInstallments)
             .set({
               concessionAmount: fromCents(share),
               netAmount: fromCents(amountCents - share),
             })
-            .where(eq(feeInstallments.id, inst.id));
+            .where(eq(feeInstallments.id, row.id));
         }
       }
 
-      const totalConcessions = [...concessionTotals.values()].reduce((a, b) => a + b, 0n);
+      // The header tracks what the installments actually carry (windowed and
+      // frozen-aware), not the window-ignorant head totals — with windows, a
+      // concession can cover fewer buckets than its full amount.
       const baseCents = toCents(assignment.baseAnnualAmount);
-      const net = totalConcessions > baseCents ? 0n : baseCents - totalConcessions;
+      const net = totalApplied > baseCents ? 0n : baseCents - totalApplied;
       await tx
         .update(studentFeeAssignments)
         .set({ netAnnualAmount: fromCents(net) })

@@ -9,6 +9,7 @@ import {
   splitIntoBuckets,
   fromCents,
   toCents,
+  windowedConcessionShares,
   type LateFeeRuleLike,
   type SplitLineInput,
 } from "./fees-maths";
@@ -430,5 +431,116 @@ describe("headConcessionTotals — the stacked-concession clamp (H1)", () => {
       [...heads, { feeHeadId: "free", annualCents: 0n }],
     );
     expect(totals.get("free")).toBe(0n); // cap 0 — a free head cannot discount
+  });
+});
+
+describe("windowedConcessionShares — validity windows (S2/F5)", () => {
+  const heads = [
+    { feeHeadId: "tuition", annualCents: 1_200_000n },
+    { feeHeadId: "lab", annualCents: 240_000n },
+  ];
+  // 12 monthly tuition buckets, 1000.00 each, due the first of Apr–Mar.
+  const buckets12 = Array.from({ length: 12 }, (_, i) => {
+    const month = ((3 + i) % 12) + 1;
+    const year = month >= 4 ? 2030 : 2031;
+    return {
+      dueDate: `${year}-${String(month).padStart(2, "0")}-01`,
+      amountCents: 100_000n,
+    };
+  });
+
+  it("a Jun–Aug named concession discounts ONLY June, July and August", () => {
+    const shares = windowedConcessionShares(
+      [
+        {
+          feeHeadId: "tuition",
+          amountCents: 300_000n,
+          validFrom: "2030-06-01",
+          validTo: "2030-08-31",
+        },
+      ],
+      "tuition",
+      buckets12,
+      heads,
+    );
+    expect(shares).toHaveLength(12);
+    // Apr idx0, May idx1, Jun idx2, Jul idx3, Aug idx4.
+    expect(shares.slice(0, 2).every((s) => s === 0n)).toBe(true);
+    expect(shares.slice(2, 5).every((s) => s === 100_000n)).toBe(true);
+    expect(shares.slice(5).every((s) => s === 0n)).toBe(true);
+    expect(shares.reduce((a, b) => a + b, 0n)).toBe(300_000n);
+  });
+
+  it("an all-heads concession with a window covers only its months, proportionally", () => {
+    // 1440.00 across everything, Jun–Aug: tuition's share is
+    // 144000 × 1200000/1440000 = 120000, over 3 covered buckets.
+    const shares = windowedConcessionShares(
+      [
+        {
+          feeHeadId: null,
+          amountCents: 144_000n,
+          validFrom: "2030-06-01",
+          validTo: "2030-08-31",
+        },
+      ],
+      "tuition",
+      buckets12,
+      heads,
+    );
+    expect(shares.slice(0, 2).every((s) => s === 0n)).toBe(true);
+    expect(shares.slice(2, 5).every((s) => s === 40_000n)).toBe(true);
+    expect(shares.slice(5).every((s) => s === 0n)).toBe(true);
+    expect(shares.reduce((a, b) => a + b, 0n)).toBe(120_000n);
+  });
+
+  it("a named concession for ANOTHER head never leaks across", () => {
+    const shares = windowedConcessionShares(
+      [
+        {
+          feeHeadId: "lab",
+          amountCents: 240_000n,
+          validFrom: "2030-04-01",
+          validTo: null,
+        },
+      ],
+      "tuition",
+      buckets12,
+      heads,
+    );
+    expect(shares.every((s) => s === 0n)).toBe(true);
+  });
+
+  it("stacked full-year concessions still clamp at the head annual (H1 composes)", () => {
+    const shares = windowedConcessionShares(
+      [
+        { feeHeadId: "tuition", amountCents: 720_000n, validFrom: "2030-04-01", validTo: null },
+        { feeHeadId: "tuition", amountCents: 720_000n, validFrom: "2030-04-01", validTo: null },
+      ],
+      "tuition",
+      buckets12,
+      heads,
+    );
+    expect(shares.reduce((a, b) => a + b, 0n)).toBe(1_200_000n);
+    for (const [i, s] of shares.entries()) {
+      expect(s >= 0n).toBe(true);
+      expect(s <= (buckets12[i]?.amountCents ?? 0n)).toBe(true);
+    }
+  });
+
+  it("a window covering no bucket contributes nothing (recorded, not discounted)", () => {
+    const shares = windowedConcessionShares(
+      [
+        {
+          feeHeadId: "tuition",
+          amountCents: 300_000n,
+          validFrom: "2031-06-01",
+          validTo: "2031-08-31",
+        },
+      ],
+      "tuition",
+      buckets12,
+      heads,
+    );
+    expect(shares.every((s) => s === 0n)).toBe(true);
   });
 });

@@ -9,13 +9,13 @@ plan's Reviewer's guide for the commit-by-commit code review.
 
 ---
 
-## STATUS: HARDENING S1 DONE (uncommitted) — S2 next
+## STATUS: HARDENING S1 COMMITTED, S2 DONE (uncommitted) — S3 next
 
-- Branch: `feature/phase4-fees` (14 commits ahead of main + S1 working tree, unmerged)
-- Last commit: `docs: the fees security-hardening plan`
-- S1 `fix(services,contracts): collection trust hardening` implemented and
-  green, NOT committed — owner reviews then commits per chunk.
-- Next: S2 (concession windows + recompute race + DOMAIN note), same pattern.
+- Branch: `feature/phase4-fees` (15 commits ahead of main + S2 working tree, unmerged)
+- Last commit: `fix(services,contracts): collection trust hardening`
+- S2 `fix(services): concession validity windows + the recompute race`
+  implemented and green, NOT committed — owner reviews then commits per chunk.
+- Next: S3 (cross-tenant IDOR matrix), same pattern.
 
 ---
 
@@ -191,6 +191,18 @@ seed fee fixtures, and three live smoke checks.
 - Notes: gateway dummy wire mode `"upi"` (never persisted); rules read via
   `feesService` (pool connection, config-grade); S1 rule rows deactivated
   in-test; suite runs last so no earlier test sees a rule.
+
+### S2 — concession windows + the recompute race (F5–F7)
+- Status: implemented, green, UNCOMMITTED (owner commits per chunk)
+- Files: `fees-maths.ts` (+`windowedConcessionShares`), `fees-billing.service.ts`,
+  `fees-billing.test.ts` (+5), `fees.integration.test.ts` (+1 Jun–Aug), `DOMAIN.md`
+- Verify: check-types 8/8; test 209; integration 123 (93+30); lint 0 errors.
+  H1/H5/concessions suites pass unchanged. No migration.
+- Notes: 4-arg signature (deviation from the 3-arg sketch, reasoned in the
+  reviewer entry); race fix structural; net restated from applied shares;
+  F8/F9/F10 recorded as deferrals in the hardening plan. One tsc catch
+  during the work (tuple-destructured string keys) — fixed, no test impact.
+
 
 ### F8 — docs
 - Status: done
