@@ -9,11 +9,13 @@ plan's Reviewer's guide for the commit-by-commit code review.
 
 ---
 
-## STATUS: RUN + HARDENING COMPLETE — awaiting owner review
+## STATUS: SECURITY-HARDENING PLAN COMMITTED — awaiting execution
 
 - Branch: `feature/phase4-fees` (13 commits ahead of main, unmerged)
-- Last commit: `test: the remaining transitions, subscriptions, opening balances`
-- Next: owner reviews the branch via the plan's Reviewer's guide, then merges
+- Last commit: `docs: the fees security-hardening plan`
+- Next: execute `.kilo/plans/1788384000000-phase4-fees-security-hardening.md`
+  (7 commits, S0–S6: 4 trust fixes, validity windows + race fix, IDOR
+  matrix, webhook edges + role cells, demo reset, property-based maths)
 
 ---
 
