@@ -3,7 +3,6 @@
 import { SearchIcon } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { useEffect } from "react";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { EmptyState } from "@/components/empty-state";
@@ -46,8 +45,6 @@ import { cn } from "@/lib/utils";
  * of server-computed balances, not new math (addMoney, paise-exact).
  */
 
-const SEARCH_DEBOUNCE_MS = 300;
-
 type StudentRef = { id: string; name: string; admissionNumber: string };
 
 export default function FeesDuesPage() {
@@ -56,14 +53,8 @@ export default function FeesDuesPage() {
   const [yearId, setYearId] = useState<string | undefined>(undefined);
   const [studentFilter, setStudentFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dueBy, setDueBy] = useState("");
   const [waiving, setWaiving] = useState<FeeInstallment | undefined>();
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search.trim()), SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-  }, [search]);
 
   const selectedYear = yearId ?? activeSession?.id;
   const dues = useFeeDues({
@@ -71,7 +62,11 @@ export default function FeesDuesPage() {
     studentId: studentFilter !== "all" ? studentFilter : undefined,
     dueOnOrBefore: dueBy || undefined,
   });
-  const students = useStudents(debouncedSearch || undefined);
+  // ONE unfiltered register read for names + filter options. The search box
+  // below filters the grouped sections client-side — it previously drove
+  // this query, so typing a name reshaped the lookup pool without filtering
+  // the dues, and clearing it was the only way names appeared.
+  const students = useStudents();
   const waive = useWaiveMutation();
 
   // Name/admission lookup — the register read is permissive; a caller
@@ -113,6 +108,19 @@ export default function FeesDuesPage() {
     () => grouped.reduce((sum, g) => addMoney(sum, g.total), "0.00"),
     [grouped],
   );
+
+  // Client-side search over the grouped sections (name + admission number).
+  // The dues query itself is filtered by the Student select above; this box
+  // only narrows what's rendered, never what was fetched.
+  const query = search.trim().toLowerCase();
+  const visibleGrouped = useMemo(() => {
+    if (!query) return grouped;
+    return grouped.filter(({ student, studentId }) =>
+      (student?.name ?? "").toLowerCase().includes(query) ||
+      (student?.admissionNumber ?? "").toLowerCase().includes(query) ||
+      studentId.toLowerCase().includes(query),
+    );
+  }, [grouped, query]);
 
   const yearOptions = canSeeHistory ? sessions : sessions.filter((s) => s.isCurrent);
 
@@ -181,13 +189,18 @@ export default function FeesDuesPage() {
         <p className="text-muted-foreground py-8 text-center text-sm">{copy.common.loading}</p>
       ) : grouped.length === 0 ? (
         <EmptyState title={copy.fees.dues.emptyTitle} description={copy.fees.dues.emptyBody} />
+      ) : visibleGrouped.length === 0 ? (
+        <EmptyState
+          title={copy.students.noResultsTitle}
+          description={copy.students.noResultsBody}
+        />
       ) : (
         <div className="flex flex-col gap-6">
           {selectedYear && !yearOptions.find((y) => y.id === selectedYear)?.isCurrent ? (
             <p className="text-muted-foreground text-xs">{copy.fees.dues.historyNote}</p>
           ) : null}
 
-          {grouped.map(({ studentId, student, rows, total }) => (
+          {visibleGrouped.map(({ studentId, student, rows, total }) => (
             <section
               key={studentId}
               aria-labelledby={`dues-${studentId}`}
@@ -200,7 +213,10 @@ export default function FeesDuesPage() {
                       {student.name}
                     </Link>
                   ) : (
-                    copy.common.none
+                    // Name outside the register page the lookup read holds
+                    // (server joins no names here) — id as title so the row
+                    // stays debuggable instead of a bare dash.
+                    <span title={studentId}>{copy.common.none}</span>
                   )}
                   <span className="text-muted-foreground ml-2 font-normal">
                     {student?.admissionNumber}
@@ -245,7 +261,16 @@ export default function FeesDuesPage() {
                               variant="ghost"
                               size="sm"
                               onClick={() => setWaiving(row)}
-                              disabled={row.paidAmount !== "0.00"}
+                              // Never-paid-only (the server refuses the rest):
+                              // gate on status, not paidAmount — the wire
+                              // types paidAmount as nullable, so a null
+                              // unpaid balance wrongly disabled this button.
+                              disabled={row.paymentStatus !== "unpaid"}
+                              title={
+                                row.paymentStatus !== "unpaid"
+                                  ? copy.fees.dues.waiveBody
+                                  : undefined
+                              }
                             >
                               {copy.fees.dues.waiveAction}
                             </Button>

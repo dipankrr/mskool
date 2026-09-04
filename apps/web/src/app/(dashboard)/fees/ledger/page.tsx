@@ -50,6 +50,14 @@ export default function FeesLedgerPage() {
   );
   const students = useStudents();
 
+  // O(1) name lookup (see payments list) — names outside the register
+  // page read render as a dash; the server joins no names here.
+  const studentById = useMemo(() => {
+    const map = new Map<string, { firstName: string; lastName: string }>();
+    for (const s of students.data ?? []) map.set(s.id, s);
+    return map;
+  }, [students.data]);
+
   const rows = useMemo(() => {
     const all = ledger.data ?? [];
     return typeFilter === ALL_TYPES
@@ -58,14 +66,17 @@ export default function FeesLedgerPage() {
   }, [ledger.data, typeFilter]);
 
   const net = useMemo(() => {
+    // Totals describe the FILTERED rows — the same set the table shows.
+    // Summing the unfiltered query here made the header disagree with
+    // the table the moment a type filter was picked.
     let credit = "0.00";
     let debit = "0.00";
-    for (const row of ledger.data ?? []) {
+    for (const row of rows) {
       if (row.direction === "credit") credit = addMoney(credit, row.amount);
       else debit = addMoney(debit, row.amount);
     }
     return { credit, debit, net: subtractMoney(credit, debit) };
-  }, [ledger.data]);
+  }, [rows]);
 
   const columns = useMemo<DataTableColumns<LedgerTransaction>>(
     () =>
@@ -83,7 +94,8 @@ export default function FeesLedgerPage() {
           id: "student",
           header: "Student",
           cell: ({ row }) => {
-            const s = students.data?.find((x) => x.id === row.original.studentId);
+            const id = row.original.studentId;
+            const s = id ? studentById.get(id) : undefined;
             return s ? `${s.firstName} ${s.lastName}` : copy.common.none;
           },
         }),
@@ -109,7 +121,7 @@ export default function FeesLedgerPage() {
           cell: ({ row }) => formatMoney(row.original.amount),
         }),
       ]),
-    [students.data],
+    [studentById],
   );
 
   const yearOptions = canSeeHistory ? sessions : sessions.filter((s) => s.isCurrent);
@@ -164,6 +176,14 @@ export default function FeesLedgerPage() {
 
       {rows.length > 0 ? (
         <div className="text-muted-foreground flex flex-wrap items-center gap-x-6 gap-y-1 text-xs">
+          {typeFilter !== ALL_TYPES ? (
+            <span>
+              {copy.fees.ledger.filterType}:{" "}
+              <span className="font-medium">
+                {(copy.fees.ledgerTypes as Record<string, string>)[typeFilter] ?? typeFilter}
+              </span>
+            </span>
+          ) : null}
           <span>
             In: <span className="font-medium">{formatMoney(net.credit)}</span>
           </span>

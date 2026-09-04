@@ -4,6 +4,7 @@ import { ArrowLeftIcon, PencilIcon, PlusIcon } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import type {
   CreateFeeStructureLineInput,
   UpdateFeeStructureLineInput,
@@ -191,7 +192,10 @@ export default function FeeStructureDetailPage() {
           <p className="text-muted-foreground text-sm">{copy.fees.structures.linesSubtitle}</p>
           <div className="flex items-center justify-end">
             <PermissionGate permission="fee_structure:create">
-              <Button onClick={() => setLineFormOpen(true)} disabled={!addLine && false}>
+              <Button
+                onClick={() => setLineFormOpen(true)}
+                disabled={!schoolId || addLine.isPending}
+              >
                 <PlusIcon data-icon="inline-start" />
                 {copy.fees.structures.addLine}
               </Button>
@@ -226,7 +230,10 @@ export default function FeeStructureDetailPage() {
                 description={copy.fees.structures.emptyLinesBody}
                 action={
                   <PermissionGate permission="fee_structure:create">
-                    <Button onClick={() => setLineFormOpen(true)}>
+                    <Button
+                      onClick={() => setLineFormOpen(true)}
+                      disabled={!schoolId}
+                    >
                       {copy.fees.structures.addLine}
                     </Button>
                   </PermissionGate>
@@ -306,13 +313,17 @@ export default function FeeStructureDetailPage() {
         pending={addLine.isPending || updateLine.isPending}
         onSubmit={async (data) => {
           try {
-            if (editingLine && schoolId) {
+            if (!schoolId) {
+              toast.error(copy.errors.needsBranch);
+              return;
+            }
+            if (editingLine) {
               await updateLine.submit(
                 schoolId,
                 editingLine.id,
                 data as UpdateFeeStructureLineInput,
               );
-            } else if (schoolId) {
+            } else {
               await addLine.submit(schoolId, structureId, data as CreateFeeStructureLineInput);
             }
             setLineFormOpen(false);

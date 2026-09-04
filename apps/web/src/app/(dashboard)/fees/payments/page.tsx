@@ -34,8 +34,8 @@ import { cn } from "@/lib/utils";
 
 const column = createAppColumnHelper<FeePayment>();
 
-function studentName(students: Student[] | undefined, studentId: string): string {
-  const s = students?.find((row) => row.id === studentId);
+function studentName(lookup: Map<string, Student>, studentId: string): string {
+  const s = lookup.get(studentId);
   return s ? `${s.firstName} ${s.lastName}` : copy.common.none;
 }
 
@@ -51,6 +51,14 @@ export default function FeesPaymentsPage() {
     studentFilter !== "all" ? studentFilter : undefined,
   );
   const students = useStudents();
+
+  // O(1) name lookup — the per-cell .find() re-ran on every render and
+  // re-memoized columns on the whole array identity.
+  const studentById = useMemo(() => {
+    const map = new Map<string, Student>();
+    for (const s of students.data ?? []) map.set(s.id, s);
+    return map;
+  }, [students.data]);
 
   const columns = useMemo<DataTableColumns<FeePayment>>(
     () =>
@@ -69,7 +77,7 @@ export default function FeesPaymentsPage() {
         column.display({
           id: "student",
           header: "Student",
-          cell: ({ row }) => studentName(students.data, row.original.studentId),
+          cell: ({ row }) => studentName(studentById, row.original.studentId),
         }),
         column.accessor("paymentDate", {
           header: copy.fees.counter.paymentDate,
@@ -102,7 +110,7 @@ export default function FeesPaymentsPage() {
           ),
         }),
       ]),
-    [students.data],
+    [studentById],
   );
 
   const yearOptions = canSeeHistory ? sessions : sessions.filter((s) => s.isCurrent);
@@ -159,7 +167,7 @@ export default function FeesPaymentsPage() {
                 {row.receiptNumber}
               </Link>
               <p className="text-muted-foreground text-xs">
-                {studentName(students.data, row.studentId)} ·{" "}
+                {studentName(studentById, row.studentId)} ·{" "}
                 {formatIsoDate(row.paymentDate)} ·{" "}
                 {copy.fees.paymentModes[row.paymentMode as keyof typeof copy.fees.paymentModes] ??
                   copy.common.none}

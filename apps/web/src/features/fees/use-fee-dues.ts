@@ -24,6 +24,8 @@ export function useFeeDues(options: {
   academicYearId: string | undefined;
   studentId?: string;
   dueOnOrBefore?: string;
+  /** Extra gate (e.g. counter: don't fetch the whole session before a student is picked). */
+  enabled?: boolean;
 }) {
   const { scopeArgs } = useActiveContext();
 
@@ -35,7 +37,7 @@ export function useFeeDues(options: {
       ...(options.dueOnOrBefore ? { dueOnOrBefore: options.dueOnOrBefore } : {}),
     },
     {
-      enabled: Boolean(options.academicYearId),
+      enabled: Boolean(options.academicYearId) && (options.enabled ?? true),
       staleTime: THIRTY_SECONDS,
     },
   );

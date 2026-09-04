@@ -24,7 +24,7 @@ import { useStudents } from "@/features/students/use-students";
 import { useActiveContext } from "@/features/session/active-context";
 import { copy } from "@/lib/copy";
 import { todayIso } from "@/lib/format";
-import { addMoney, clampMoney, compareMoney, formatMoney } from "@/lib/money";
+import { addMoney, clampMoney, compareMoney, formatMoney, isMoneyString } from "@/lib/money";
 import type { FeeInstallment, FeePayment, Student } from "@/lib/trpc/types";
 import { cn } from "@/lib/utils";
 
@@ -83,7 +83,13 @@ export default function FeesCounterPage() {
   }, [clientReference]);
 
   const students = useStudents(debouncedSearch || undefined);
-  const dues = useFeeDues({ academicYearId: activeSession?.id, studentId: paying?.id });
+  // No student picked yet → no dues query at all. Without this gate the
+  // mount requests EVERY open installment in the session.
+  const dues = useFeeDues({
+    academicYearId: activeSession?.id,
+    studentId: paying?.id,
+    enabled: Boolean(paying?.id),
+  });
 
   const openInstallments = dues.data ?? [];
 
@@ -97,6 +103,11 @@ export default function FeesCounterPage() {
     setAllocations((rows) => {
       const without = rows.filter((r) => r.installment.id !== installment.id);
       if (!raw) return without;
+      // Keystrokes pass through here ("12.", "12.5") — clampMoney/toPaise
+      // THROW on non-wire input, so only clamp validated strings. A draft
+      // that isn't wire yet is stored as-is: the derived total skips it
+      // (addMoney) and submit stays disabled until every row validates.
+      if (!isMoneyString(raw)) return [...without, { installment, amount: raw }];
       // balanceAmount's wire type is nullable (generated column); the
       // server guarantees a value for an open row — ?? "0.00" only
       // satisfies the type. The clamp caps at the balance.
@@ -120,6 +131,10 @@ export default function FeesCounterPage() {
 
   const submit = async () => {
     if (!paying || allocations.length === 0 || !activeSession) return;
+    // A draft row ("12.") can't go on the wire — the contract's money
+    // regex would refuse it. Button is disabled for this case; this is
+    // the second gate for keyboard/assistive submits.
+    if (allocations.some((row) => !isMoneyString(row.amount))) return;
     const input: RecordPaymentInput = {
       studentId: paying.id,
       academicYearId: activeSession.id,
@@ -173,7 +188,12 @@ export default function FeesCounterPage() {
       </div>
 
       {!paying ? (
-        <StudentPicker students={students.data ?? []} onChoose={chooseStudent} />
+        <StudentPicker
+          students={students.data ?? []}
+          isLoading={students.isLoading}
+          isSuccess={students.isSuccess}
+          onChoose={chooseStudent}
+        />
       ) : (
         <div className="flex flex-col gap-4">
           <Card>
@@ -243,7 +263,9 @@ export default function FeesCounterPage() {
                           const allocated = allocationOf(row.id);
                           const balance = row.balanceAmount ?? "0.00";
                           const capped =
-                            allocated !== "" && compareMoney(allocated, balance) >= 0;
+                            allocated !== "" &&
+                            isMoneyString(allocated) &&
+                            compareMoney(allocated, balance) >= 0;
                           return (
                             <tr key={row.id} className="border-b last:border-b-0">
                               <td className="px-3 py-2">{formatIsoDateOf(row.dueDate)}</td>
@@ -403,7 +425,12 @@ export default function FeesCounterPage() {
                   </p>
                   <Button
                     onClick={submit}
-                    disabled={record.isPending || allocations.length === 0 || !record.canSubmit}
+                    disabled={
+                      record.isPending ||
+                      allocations.length === 0 ||
+                      !record.canSubmit ||
+                      allocations.some((row) => !isMoneyString(row.amount))
+                    }
                   >
                     <CheckIcon data-icon="inline-start" />
                     {record.isPending ? copy.fees.counter.submitting : copy.fees.counter.submit}
@@ -435,12 +462,21 @@ function PageHeaderArea() {
 
 function StudentPicker({
   students,
+  isLoading,
+  isSuccess,
   onChoose,
 }: {
   students: Student[];
+  isLoading: boolean;
+  isSuccess: boolean;
   onChoose: (student: Student) => void;
 }) {
-  if (students.length === 0) {
+  if (isLoading) {
+    return (
+      <p className="text-muted-foreground py-8 text-center text-sm">{copy.common.loading}</p>
+    );
+  }
+  if (students.length === 0 && isSuccess) {
     return (
       <EmptyState
         icon={SearchIcon}
@@ -463,9 +499,6 @@ function StudentPicker({
               {student.firstName} {student.middleName} {student.lastName}
             </span>
             <span className="text-muted-foreground text-xs">{student.admissionNumber}</span>
-          </span>
-          <span className="text-muted-foreground text-xs">
-            {copy.students.enrolledIn}: {copy.common.none}
           </span>
         </button>
       ))}
