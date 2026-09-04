@@ -23,6 +23,8 @@ const ROLES = [
   { file: "auth-principal.json", email: "principal@demo-trust.test" },
   { file: "auth-classteacher.json", email: "teacher@demo-trust.test" },
   { file: "auth-subjectteacher.json", email: "subject-teacher@demo-trust.test" },
+  // The fees counter's own role (UI10): the desk that records, never approves.
+  { file: "auth-accountant.json", email: "accountant@demo-trust.test" },
 ] as const;
 
 type StorageStateCookie = {

@@ -33,10 +33,11 @@ const DETAIL_SUBTITLE = "The student's record: identity, session enrollment, and
  * A teaching day in the seeded 2025-26 calendar (Mon-Fri; not a holiday),
  * reserved for THE marking test so it starts unmarked on every run —
  * the mark itself is an upsert, so a re-run re-marks the same values.
- * 2025-12-01 was the original; it is already marked by earlier runs, and
- * the derived DONE state (correctly) refuses a second "Mark attendance".
+ * History: 2025-12-01, then 2025-12-08 — both consumed by earlier runs
+ * (a marked date makes the derived DONE state refuse the second mark,
+ * correctly). Bumped again 2026-09-04 for the same reason.
  */
-const MARK_DATE = "2025-12-08";
+const MARK_DATE = "2025-12-15";
 const SECTION_LABEL = "Class 6 · A";
 
 /**
@@ -236,13 +237,20 @@ test.describe("marking flow (class teacher)", () => {
     await expect(page.getByRole("button", { name: DONE_TITLE })).toBeDisabled();
 
     // The pre-fill comes from the stored marks: the first roster row reads
-    // the successor status this run wrote, and the rest read Present.
+    // the successor status this run wrote. The "rest read Present" half of
+    // the original assertion assumed a multi-student roster (the admission
+    // spec used to add one); the reset demo org ships section A with ONE
+    // student, so that half is conditional — assert it only when a second
+    // row exists.
     await expect(
       page.getByRole("button", { name: `Change status — currently ${successor}` }).first(),
     ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Change status — currently Present" }).first(),
-    ).toBeVisible();
+    const rosterRows = page.getByRole("button", { name: /^Change status — currently / });
+    if ((await rosterRows.count()) > 1) {
+      await expect(
+        page.getByRole("button", { name: "Change status — currently Present" }).first(),
+      ).toBeVisible();
+    }
 
     // Editing flips the day out of done: one more chip tap makes the status
     // differ from the stored marks, so the button re-enables.

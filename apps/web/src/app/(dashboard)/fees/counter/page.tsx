@@ -202,11 +202,19 @@ export default function FeesCounterPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-4 pt-6">
-              {openInstallments.length === 0 ? (
+              {openInstallments.length === 0 && !dues.isLoading && dues.isSuccess ? (
                 <EmptyState
                   title={copy.fees.counter.noOpenTitle}
                   description={copy.fees.counter.noOpenBody}
                 />
+              ) : openInstallments.length === 0 ? (
+                // The dues query is still resolving (the session may have
+                // landed after the cashier's pick) — an honest loading line,
+                // never a premature "nothing to collect" that would flicker
+                // for a second before the rows arrive.
+                <p className="text-muted-foreground py-4 text-center text-sm">
+                  {copy.common.loading}
+                </p>
               ) : (
                 <>
                   <div>

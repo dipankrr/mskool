@@ -44,11 +44,18 @@ import { cn } from "@/lib/utils";
 
 type TransitionKind = "clear" | "cancel" | "bounce" | "reverse" | "refund";
 
-/** The state table the UI encodes — single source, next to the render. */
+/**
+ * The state table the UI encodes — single source, next to the render.
+ *
+ * Mirrors the SERVICE's `transitionPayment` preconditions exactly:
+ * clear/cancel from pending; bounce from pending OR cleared (a cheque
+ * that bounced on first presentation never cleared — the classic
+ * real-world case); reverse/refund from cleared; terminal → nothing.
+ */
 function availableTransitions(status: FeePaymentStatus): TransitionKind[] {
   switch (status) {
     case "pending":
-      return ["clear", "cancel"];
+      return ["clear", "cancel", "bounce"];
     case "cleared":
       return ["bounce", "reverse", "refund"];
     default:
