@@ -33,3 +33,7 @@ export type FeeStructureInstallmentMode = NonNullable<
 export type ConcessionType = import("@repo/contracts").CreateConcessionInput["concessionType"];
 export type ConcessionCalculation = import("@repo/contracts").CreateConcessionInput["calculationType"];
 export type LineFrequency = FeeStructureLine["installmentFrequency"];
+export type LedgerTransactionType = FinancialTransaction["transactionType"];
+/** Alias kept short for the ledger page's column typing. */
+export type LedgerType = LedgerTransactionType;
+export type LedgerDirection2 = FinancialTransaction["direction"];

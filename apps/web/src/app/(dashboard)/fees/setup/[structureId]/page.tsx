@@ -13,7 +13,6 @@ import { DataTable } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { PermissionGate } from "@/components/permission-gate";
-import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -33,7 +32,7 @@ import {
 } from "@/features/fees/use-fee-setup";
 import { LateFeeRuleDialog } from "@/features/fees/late-fee-rule-dialog";
 import { StructureLineDialog } from "@/features/fees/structure-line-dialog";
-import { moneyCellClass, moneyHeaderClass } from "@/features/fees/fee-styles";
+import { moneyCellClass } from "@/features/fees/fee-styles";
 import { copy } from "@/lib/copy";
 import { formatIsoDate } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
@@ -67,7 +66,7 @@ function monthRangeLabel(from: number, to: number): string {
 export default function FeeStructureDetailPage() {
   const params = useParams<{ structureId: string }>();
   const structureId = params.structureId;
-  const { has, schoolId, activeSession } = useActiveContext();
+  const { has, schoolId } = useActiveContext();
 
   const heads = useFeeHeads();
   const lines = useFeeStructureLines(schoolId ?? undefined, structureId);

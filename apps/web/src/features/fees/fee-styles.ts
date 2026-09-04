@@ -11,6 +11,7 @@ import type {
   FeePaymentStatus,
   FeeSubscriptionStatus,
   LedgerDirection,
+  OpeningBalanceStatus,
 } from "./fee-enums";
 
 /** Tint classes per payment status. */
@@ -77,4 +78,20 @@ const DIRECTION_STYLES: Record<LedgerDirection, string> = {
 
 export function directionClass(direction: LedgerDirection): string {
   return cn("tabular-nums", DIRECTION_STYLES[direction]);
+}
+
+/** Tint classes per opening-balance status. */
+const OPENING_BALANCE_STYLES: Record<OpeningBalanceStatus, string> = {
+  unpaid:
+    "border-rose-200 bg-rose-50 text-rose-950 dark:border-rose-900 dark:bg-rose-950/60 dark:text-rose-100",
+  partial:
+    "border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900 dark:bg-amber-950/60 dark:text-amber-100",
+  paid:
+    "border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-100",
+  waived:
+    "border-violet-200 bg-violet-50 text-violet-950 dark:border-violet-900 dark:bg-violet-950/60 dark:text-violet-100",
+};
+
+export function openingBalanceStatusTint(status: OpeningBalanceStatus): string {
+  return cn(BADGE_BASE, OPENING_BALANCE_STYLES[status]);
 }
