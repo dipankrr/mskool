@@ -112,7 +112,12 @@ export function StructureDialog({
                 }
               >
                 <SelectTrigger id="structure-year" aria-invalid={errors.academicYearId ? true : undefined}>
-                  <SelectValue placeholder={activeSession?.name ?? copy.common.none} />
+                  <SelectValue>
+                    {(value: string | null) =>
+                      sessions.find((s) => s.id === value)?.name ??
+                      activeSession?.name ??
+                      copy.common.none}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {sessions.map((session) => (
@@ -133,7 +138,11 @@ export function StructureDialog({
                 onValueChange={(v) => form.setValue("classId", v ?? "", { shouldValidate: true })}
               >
                 <SelectTrigger id="structure-class" aria-invalid={errors.classId ? true : undefined}>
-                  <SelectValue placeholder="—" />
+                  <SelectValue>
+                    {(value: string | null) =>
+                      (classes.data ?? []).find((cls) => cls.id === value)?.name ??
+                      copy.common.none}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {(classes.data ?? []).map((cls) => (
@@ -169,9 +178,14 @@ export function StructureDialog({
               form.setValue("installmentMode", (v ?? "term_wise") as FeeStructureInstallmentMode)
             }
           >
-            <SelectTrigger id="structure-mode" aria-invalid={errors.installmentMode ? true : undefined}>
-              <SelectValue />
-            </SelectTrigger>
+              <SelectTrigger id="structure-mode" aria-invalid={errors.installmentMode ? true : undefined}>
+                <SelectValue>
+                  {(value: string | null) =>
+                    (value
+                      ? copy.fees.installmentModes[value as FeeStructureInstallmentMode]
+                      : undefined) ?? copy.fees.installmentModes.term_wise}
+                </SelectValue>
+              </SelectTrigger>
             <SelectContent>
               {MODES.map((mode) => (
                 <SelectItem key={mode} value={mode}>

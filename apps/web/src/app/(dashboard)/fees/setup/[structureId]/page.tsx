@@ -23,7 +23,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontalIcon } from "lucide-react";
-import { FeesTabs } from "@/features/fees/tabs";
 import { useActiveContext } from "@/features/session/active-context";
 import {
   useFeeHeads,
@@ -61,13 +60,31 @@ const ruleColumn = createAppColumnHelper<LateFeeRuleRow>();
 function monthRangeLabel(from: number, to: number): string {
   const months = new Intl.DateTimeFormat("en-IN", { month: "short" });
   const name = (m: number) => months.format(new Date(2026, m - 1, 1));
-  return from === 1 && to === 12 ? copy.common.current : `${name(from)} – ${name(to)}`;
+  return from === 1 && to === 12
+    ? copy.fees.structures.lineFields.wholeSession
+    : `${name(from)} – ${name(to)}`;
+}
+
+/**
+ * A late-fee value in its own units: flat rupees read as money, a
+ * percentage as %, per-day as rupees per day.
+ */
+function formatLateFeeValue(calculationType: string, value: string): string {
+  if (calculationType === "percentage") {
+    const [whole = "", fraction = ""] = value.split(".");
+    const frac = fraction.replace(/0+$/, "");
+    return frac ? `${whole}.${frac}%` : `${whole}%`;
+  }
+  if (calculationType === "per_day") {
+    return `${formatMoney(value)} ${copy.fees.structures.lateFeeFields.perDaySuffix}`;
+  }
+  return formatMoney(value);
 }
 
 export default function FeeStructureDetailPage() {
   const params = useParams<{ structureId: string }>();
   const structureId = params.structureId;
-  const { has, schoolId } = useActiveContext();
+  const { schoolId } = useActiveContext();
 
   const heads = useFeeHeads();
   const lines = useFeeStructureLines(schoolId ?? undefined, structureId);
@@ -102,7 +119,7 @@ export default function FeeStructureDetailPage() {
         }),
         lineColumn.display({
           id: "months",
-          header: copy.fees.structures.lineFields.fromMonth,
+          header: copy.fees.structures.lineFields.windowHeader,
           cell: ({ row }) =>
             monthRangeLabel(
               row.original.applicableFromMonth,
@@ -146,7 +163,8 @@ export default function FeeStructureDetailPage() {
         }),
         ruleColumn.accessor("value", {
           header: copy.fees.structures.lateFeeFields.value,
-          cell: ({ row }) => formatMoney(row.original.value),
+          cell: ({ row }) =>
+            formatLateFeeValue(row.original.calculationType, row.original.value),
         }),
         ruleColumn.accessor("gracePeriodDays", {
           header: copy.fees.structures.lateFeeFields.graceDays,
@@ -182,7 +200,6 @@ export default function FeeStructureDetailPage() {
           </Link>
         }
       />
-      <FeesTabs has={has} />
 
       <Card>
         <CardHeader>
@@ -279,7 +296,7 @@ export default function FeeStructureDetailPage() {
                   </p>
                 </div>
                 <p className={cn("text-sm font-medium", moneyCellClass)}>
-                  {formatMoney(row.value)}
+                  {formatLateFeeValue(row.calculationType, row.value)}
                 </p>
               </div>
             )}

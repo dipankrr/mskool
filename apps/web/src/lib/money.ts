@@ -124,9 +124,9 @@ export function clampMoney(value: string, lower: string, upper: string): string 
 }
 
 /**
- * Format for SCREEN: `₹ 12,50,000.00` — the rupee sign, en-IN lakh-crore
- * grouping, always two decimals so a money column never mixes `"₹ 12"`
- * and `"₹ 12.00"` widths in the same column. Unparseable or null input
+ * Format for SCREEN: `₹12,50,000.00` — the rupee sign, en-IN lakh-crore
+ * grouping, always two decimals so a money column never mixes `"₹12"`
+ * and `"₹12.00"` widths in the same column. Unparseable or null input
  * renders as an em dash, never as ₹0.00.
  *
  * Negative amounts (offsetting ledger rows) render with a leading minus.
@@ -170,7 +170,7 @@ export function formatMoney(value: string | null | undefined): string {
   const wholeDigits = (paise / 100n).toString();
   const fraction = (paise % 100n).toString().padStart(2, "0");
 
-  return `${negative ? "−" : ""}₹ ${groupIndian(wholeDigits)}.${fraction}`;
+  return `${negative ? "−" : ""}₹${groupIndian(wholeDigits)}.${fraction}`;
 }
 
 /**
@@ -181,5 +181,5 @@ export function formatMoney(value: string | null | undefined): string {
 export function formatMoneyPlain(value: string | null | undefined): string {
   const formatted = formatMoney(value);
 
-  return formatted === EMPTY_MONEY ? EMPTY_MONEY : formatted.replace("₹ ", "");
+  return formatted === EMPTY_MONEY ? EMPTY_MONEY : formatted.replace("₹", "");
 }

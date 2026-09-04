@@ -133,17 +133,18 @@ const NAV_ITEMS: NavItem[] = [
     permission: "attendance:read",
   },
   {
-    href: "/fees/dues",
+    href: "/fees",
     label: copy.nav.fees,
     icon: LandmarkIcon,
     /*
-     * Any-of: the area's five tabs gate on five reads (structure, assignment,
+     * Any-of: the area's tabs gate on five reads (structure, assignment,
      * payment:create, payment:read, report). Anyone who can see ONE tab needs
-     * the entry; the /fees redirect + tabs filter the rest server-independently.
+     * the entry; the tabs filter the rest server-independently.
      */
     permission: [
       "fee_structure:read",
       "student_fee_assignment:read",
+      "fee_payment:create",
       "fee_payment:read",
       "fee_report:read",
     ] as const satisfies readonly Permission[],

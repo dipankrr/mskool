@@ -58,30 +58,50 @@ export function SubscriptionsSection({
   );
 
   const rows = subscriptions.data ?? [];
+  const isEmpty = !subscriptions.isLoading && rows.length === 0;
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold">{copy.fees.subscriptions.title}</h3>
-        <PermissionGate permission="fee_structure:create">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setSubscribeOpen(true)}
-            disabled={!create.canSubmit}
-          >
-            <PlusIcon data-icon="inline-start" />
-            {copy.fees.subscriptions.add}
-          </Button>
-        </PermissionGate>
-      </div>
-      <p className="text-muted-foreground text-xs">{copy.fees.subscriptions.subtitle}</p>
-
-      {rows.length === 0 ? (
-        <p className="text-muted-foreground rounded-lg border border-dashed p-3 text-sm">
-          {copy.fees.subscriptions.emptyBody}
-        </p>
+      {isEmpty ? (
+        // Nothing subscribed: one quiet line, not a titled section with
+        // an empty dashed box shouting about nothing.
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-muted-foreground text-sm">{copy.fees.subscriptions.emptyTitle}</p>
+          <PermissionGate permission="fee_structure:create">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSubscribeOpen(true)}
+              disabled={!create.canSubmit}
+            >
+              <PlusIcon data-icon="inline-start" />
+              {copy.fees.subscriptions.add}
+            </Button>
+          </PermissionGate>
+        </div>
       ) : (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">{copy.fees.subscriptions.title}</h3>
+            <PermissionGate permission="fee_structure:create">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSubscribeOpen(true)}
+                disabled={!create.canSubmit}
+              >
+                <PlusIcon data-icon="inline-start" />
+                {copy.fees.subscriptions.add}
+              </Button>
+            </PermissionGate>
+          </div>
+          <p className="text-muted-foreground text-xs">{copy.fees.subscriptions.subtitle}</p>
+        </>
+      )}
+
+      {subscriptions.isLoading ? (
+        <p className="text-muted-foreground py-2 text-sm">{copy.common.loading}</p>
+      ) : rows.length === 0 ? null : (
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full text-sm">
             <thead>

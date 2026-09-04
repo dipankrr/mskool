@@ -107,7 +107,11 @@ export function ConcessionDialog({
               onValueChange={(v) => form.setValue("concessionType", v as ConcessionType)}
             >
               <SelectTrigger id="concession-type" aria-invalid={errors.concessionType ? true : undefined}>
-                <SelectValue />
+                <SelectValue>
+                  {(value: string | null) =>
+                    (value ? copy.fees.concessionTypes[value as ConcessionType] : undefined) ??
+                    copy.common.none}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {TYPES.map((t) => (
@@ -128,7 +132,11 @@ export function ConcessionDialog({
               onValueChange={(v) => form.setValue("calculationType", v as ConcessionCalculation)}
             >
               <SelectTrigger id="concession-calc" aria-invalid={errors.calculationType ? true : undefined}>
-                <SelectValue />
+                <SelectValue>
+                  {(value: string | null) =>
+                    (value ? copy.fees.concessionCalculations[value as ConcessionCalculation] : undefined) ??
+                    copy.common.none}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {CALCULATIONS.map((c) => (
@@ -166,7 +174,12 @@ export function ConcessionDialog({
               }
             >
               <SelectTrigger id="concession-head" aria-invalid={errors.feeHeadId ? true : undefined}>
-                <SelectValue />
+                <SelectValue>
+                  {(value: string | null) =>
+                    !value || value === ALL_HEADS
+                      ? copy.fees.profile.concessionFields.allHeads
+                      : (headNames.get(value) ?? value)}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL_HEADS}>{copy.fees.profile.concessionFields.allHeads}</SelectItem>

@@ -78,7 +78,10 @@ export function AssignStructureDialog({
             onValueChange={(v) => form.setValue("enrollmentId", v ?? "", { shouldValidate: true })}
           >
             <SelectTrigger id="assign-enrollment" aria-invalid={errors.enrollmentId ? true : undefined}>
-              <SelectValue placeholder="—" />
+              <SelectValue>
+                {(value: string | null) =>
+                  enrollments.find((e) => e.id === value)?.label ?? copy.common.none}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {enrollments.map((e) => (

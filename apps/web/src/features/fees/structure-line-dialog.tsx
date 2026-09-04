@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { copy } from "@/lib/copy";
+import { formatMoney, fromPaise, isMoneyString, toPaise } from "@/lib/money";
 import type { FeeHead, FeeStructureLine } from "@/lib/trpc/types";
 import type { FeeInstallmentFrequency } from "./fee-enums";
 
@@ -94,6 +95,30 @@ export function StructureLineDialog({
 
   const errors = form.formState.errors;
 
+  // Live preview (spec §27): fixed frequencies divide the annual amount
+  // into equal instalments — paise arithmetic only, shown only when the
+  // split is exact. inherit/term_wise depend on the structure, not the line.
+  const previewAnnual = form.watch("annualAmount") ?? "";
+  const previewFrequency = form.watch("installmentFrequency");
+  const previewPeriods =
+    previewFrequency === "monthly"
+      ? 12
+      : previewFrequency === "quarterly"
+        ? 4
+        : previewFrequency === "half_yearly"
+          ? 2
+          : previewFrequency === "annual"
+            ? 1
+            : 0;
+  const previewPer =
+    previewPeriods > 0 && isMoneyString(previewAnnual)
+      ? (() => {
+          const paise = toPaise(previewAnnual);
+          const per = paise / BigInt(previewPeriods);
+          return paise % BigInt(previewPeriods) === 0n ? fromPaise(per) : null;
+        })()
+      : null;
+
   return (
     <FormDialog
       open={open}
@@ -112,7 +137,10 @@ export function StructureLineDialog({
               onValueChange={(v) => form.setValue("feeHeadId", v ?? "", { shouldValidate: true })}
             >
               <SelectTrigger id="line-head" aria-invalid={errors.feeHeadId ? true : undefined}>
-                <SelectValue placeholder="—" />
+                <SelectValue>
+                  {(value: string | null) =>
+                    heads.find((head) => head.id === value)?.name ?? copy.common.none}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {heads.map((head) => (
@@ -152,7 +180,11 @@ export function StructureLineDialog({
               }
             >
               <SelectTrigger id="line-frequency" aria-invalid={errors.installmentFrequency ? true : undefined}>
-                <SelectValue />
+                <SelectValue>
+                  {(value: string | null) =>
+                    (value ? copy.fees.frequencies[value as FeeInstallmentFrequency] : undefined) ??
+                    copy.fees.frequencies.inherit}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {FREQUENCIES.map((freq) => (
@@ -164,6 +196,14 @@ export function StructureLineDialog({
             </Select>
             <FieldDescription>{copy.fees.structures.lineFields.frequencyHelp}</FieldDescription>
             <FieldError>{errors.installmentFrequency?.message}</FieldError>
+            {previewPer ? (
+              <p className="text-muted-foreground text-sm tabular-nums" aria-live="polite">
+                {copy.fees.structures.lineFields.linePreview(
+                  formatMoney(previewPer),
+                  previewPeriods,
+                )}
+              </p>
+            ) : null}
           </Field>
         </div>
 
@@ -175,7 +215,12 @@ export function StructureLineDialog({
               onValueChange={(v) => form.setValue("applicableFromMonth", Number(v), { shouldValidate: true })}
             >
               <SelectTrigger id="line-from" aria-invalid={errors.applicableFromMonth ? true : undefined}>
-                <SelectValue />
+                <SelectValue>
+                  {(value: string | null) => {
+                    const m = Number(value);
+                    return m >= 1 && m <= 12 ? monthLabel(m) : copy.common.none;
+                  }}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {MONTHS.map((m) => (
@@ -194,7 +239,12 @@ export function StructureLineDialog({
               onValueChange={(v) => form.setValue("applicableToMonth", Number(v), { shouldValidate: true })}
             >
               <SelectTrigger id="line-to" aria-invalid={errors.applicableToMonth ? true : undefined}>
-                <SelectValue />
+                <SelectValue>
+                  {(value: string | null) => {
+                    const m = Number(value);
+                    return m >= 1 && m <= 12 ? monthLabel(m) : copy.common.none;
+                  }}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {MONTHS.map((m) => (

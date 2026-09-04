@@ -1,14 +1,16 @@
 "use client";
 
 import { CircleCheckIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import type {
   AssignFeeStructureInput,
   CreateConcessionInput,
 } from "@repo/contracts";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PermissionGate } from "@/components/permission-gate";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useClasses } from "@/features/classes/use-classes";
@@ -18,37 +20,27 @@ import { AssignStructureDialog } from "./assign-structure-dialog";
 import { ConcessionDialog } from "./concession-dialog";
 import { SubscriptionsSection } from "./subscriptions-section";
 import { OpeningBalancesSection } from "./opening-balances-section";
-import { installmentStatusClass, moneyCellClass } from "./fee-styles";
+import { FeeStatus } from "./fee-status";
+import { moneyCellClass } from "./fee-styles";
 import { useFeeHeads } from "./use-fee-setup";
-import { useFeeDues } from "./use-fee-dues";
+import { useFeeDues, useWaiveMutation } from "./use-fee-dues";
+import { usePayments } from "./use-fee-payments";
 import { useFeeProfileMutations, useStudentFeeAssignment } from "./use-fee-profile";
 import { copy } from "@/lib/copy";
 import { formatIsoDate } from "@/lib/format";
-import { formatMoney } from "@/lib/money";
+import { addMoney, formatMoney, isMoneyString, subtractMoney } from "@/lib/money";
+import type { FeeInstallment } from "@/lib/trpc/types";
 import { cn } from "@/lib/utils";
 
 /**
- * THE FEE PROFILE CARD — on the student detail page. Three shapes: NULL
- * assignment (the Assign CTA — null is "not yet", never an error),
- * active (summary + generate / concession / recompute + the open-dues
- * mini-table), suspended/cancelled (badge, no actions). Subscriptions
- * (UI5) and opening balances (UI9) join as sections inside this card.
+ * THE STUDENT FEE ACCOUNT (spec §§14–19) — the authoritative financial
+ * view for one student: summary first (billed / concessions / paid /
+ * outstanding), then instalments, recent payments, optional services,
+ * opening balances. One page, distinct groups — no tabs.
  *
- * The mini-table reads the same `fees.installment.dues` rows the Dues
- * tab shows — the card and the tab cannot disagree about what is owed.
- * The dues read is permission-degraded: a caller with the profile read
- * but not the (same) dues permission sees the summary without the
- * table, not a failed card.
+ * Waive moved here from Outstanding: per-instalment, never-paid-only,
+ * approve-tier (hidden from the accountant — duties).
  */
-
-function Detail({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-muted-foreground text-xs font-medium">{label}</span>
-      <span className="text-sm">{children}</span>
-    </div>
-  );
-}
 
 export function FeeProfileCard({ studentId }: { studentId: string }) {
   const { schoolId, activeSession } = useActiveContext();
@@ -57,10 +49,13 @@ export function FeeProfileCard({ studentId }: { studentId: string }) {
   const heads = useFeeHeads();
   const classes = useClasses();
   const dues = useFeeDues({ academicYearId: activeSession?.id, studentId });
+  const payments = usePayments(activeSession?.id, studentId);
   const { assign, generate, recompute, addConcession } = useFeeProfileMutations();
+  const waive = useWaiveMutation();
 
   const [assignOpen, setAssignOpen] = useState(false);
   const [concessionOpen, setConcessionOpen] = useState(false);
+  const [waiving, setWaiving] = useState<FeeInstallment | undefined>();
 
   // The assign dialog's enrollment options: this student's enrollments
   // in the active session, labelled by class.
@@ -82,7 +77,26 @@ export function FeeProfileCard({ studentId }: { studentId: string }) {
   }, [heads.data]);
 
   const row = assignment.data;
-  const openDues = dues.data ?? [];
+  const openDues = useMemo(() => dues.data ?? [], [dues.data]);
+
+  // Presentation sums of server balances — billed/concessions are the
+  // assignment's frozen snapshots, paid/outstanding sum the dues rows.
+  const finance = useMemo(() => {
+    if (!row) return null;
+    const base = row.baseAnnualAmount;
+    const net = row.netAnnualAmount;
+    const paid = openDues.reduce((sum, r) => addMoney(sum, r.paidAmount), "0.00");
+    const outstanding = openDues.reduce((sum, r) => addMoney(sum, r.balanceAmount), "0.00");
+    return {
+      billed: base,
+      concessions:
+        isMoneyString(base) && isMoneyString(net) ? subtractMoney(base, net) : "0.00",
+      paid,
+      outstanding,
+    };
+  }, [row, openDues]);
+
+  const recentPayments = useMemo(() => (payments.data ?? []).slice(0, 5), [payments.data]);
 
   return (
     <PermissionGate permission="student_fee_assignment:read">
@@ -116,42 +130,67 @@ export function FeeProfileCard({ studentId }: { studentId: string }) {
             </div>
           ) : (
             <>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Detail label={copy.fees.profile.baseAnnual}>
-                  {formatMoney(row.baseAnnualAmount)}
-                </Detail>
-                <Detail label={copy.fees.profile.netAnnual}>
-                  {formatMoney(row.netAnnualAmount)}
-                </Detail>
-                <Detail label={copy.fees.profile.fields.effectiveFrom}>
-                  {formatIsoDate(row.feeEffectiveFrom)}
-                </Detail>
-                <Detail label={copy.students.enrollment.statusLabel}>
-                  <span
-                    className={cn(
-                      "self-start",
-                      installmentStatusClass(row.status === "active" ? "paid" : "cancelled"),
-                    )}
-                  >
-                    {copy.fees.assignmentStatuses[row.status]}
-                  </span>
-                </Detail>
-              </div>
+              {finance ? (
+                <div className="grid gap-3 rounded-lg border p-4 sm:grid-cols-4">
+                  <div>
+                    <p className="text-muted-foreground text-xs font-medium">
+                      {copy.fees.profile.billedTotal}
+                    </p>
+                    <p className="text-lg font-bold tabular-nums">{formatMoney(finance.billed)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs font-medium">
+                      {copy.fees.profile.concessionsTotal}
+                    </p>
+                    <p className="text-lg font-bold tabular-nums">
+                      {formatMoney(finance.concessions)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs font-medium">
+                      {copy.fees.profile.paidTotal}
+                    </p>
+                    <p className="text-lg font-bold tabular-nums">{formatMoney(finance.paid)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs font-medium">
+                      {copy.fees.profile.outstandingTotal}
+                    </p>
+                    <p className="text-lg font-bold tabular-nums">
+                      {formatMoney(finance.outstanding)}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
 
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <PermissionGate permission="fee_payment:create">
+                  <Link
+                    href={`/fees/collect?studentId=${studentId}`}
+                    className={cn(buttonVariants())}
+                  >
+                    {copy.fees.profile.collectAction}
+                  </Link>
+                </PermissionGate>
                 <PermissionGate permission="student_fee_assignment:update">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => schoolId && generate.submit(schoolId, row.id)}
                     disabled={generate.isPending}
+                    title={copy.fees.profile.generateHelp}
                   >
                     <CircleCheckIcon data-icon="inline-start" />
                     {copy.fees.profile.generate}
                   </Button>
                 </PermissionGate>
                 <PermissionGate permission="fee_waiver:create">
-                  <Button variant="outline" size="sm" onClick={() => setConcessionOpen(true)}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setConcessionOpen(true)}
+                    title={copy.fees.profile.concessionHelp}
+                  >
                     <PlusIcon data-icon="inline-start" />
                     {copy.fees.profile.concession}
                   </Button>
@@ -162,6 +201,7 @@ export function FeeProfileCard({ studentId }: { studentId: string }) {
                     size="sm"
                     onClick={() => schoolId && recompute.submit(schoolId, row.id)}
                     disabled={recompute.isPending}
+                    title={copy.fees.profile.recomputeHelp}
                   >
                     <RefreshCwIcon data-icon="inline-start" />
                     {copy.fees.profile.recompute}
@@ -188,6 +228,7 @@ export function FeeProfileCard({ studentId }: { studentId: string }) {
                             {copy.fees.amounts.balance}
                           </th>
                           <th className="px-3 py-2 font-medium">Status</th>
+                          <th className="px-3 py-2 font-medium">{copy.common.actions}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -201,9 +242,24 @@ export function FeeProfileCard({ studentId }: { studentId: string }) {
                               {formatMoney(installment.balanceAmount)}
                             </td>
                             <td className="px-3 py-2">
-                              <span className={installmentStatusClass(installment.paymentStatus)}>
-                                {copy.fees.installmentStatuses[installment.paymentStatus]}
-                              </span>
+                              <FeeStatus kind="installment" status={installment.paymentStatus} />
+                            </td>
+                            <td className="px-3 py-2">
+                              <PermissionGate permission="fee_waiver:approve">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setWaiving(installment)}
+                                  disabled={installment.paymentStatus !== "unpaid"}
+                                  title={
+                                    installment.paymentStatus !== "unpaid"
+                                      ? copy.fees.dues.waiveBody
+                                      : undefined
+                                  }
+                                >
+                                  {copy.fees.dues.waiveAction}
+                                </Button>
+                              </PermissionGate>
                             </td>
                           </tr>
                         ))}
@@ -211,10 +267,55 @@ export function FeeProfileCard({ studentId }: { studentId: string }) {
                     </table>
                     {openDues.length > 5 ? (
                       <p className="text-muted-foreground border-t px-3 py-2 text-xs">
-                        +{openDues.length - 5} more open
+                        {copy.fees.profile.moreOpen(openDues.length - 5)}
                       </p>
                     ) : null}
                   </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold">{copy.fees.profile.recentPayments}</h3>
+                  <PermissionGate permission="fee_payment:read">
+                    <Link
+                      href="/fees/payments"
+                      className="text-primary text-sm hover:underline"
+                    >
+                      {copy.fees.profile.viewAllPayments}
+                    </Link>
+                  </PermissionGate>
+                </div>
+                {payments.isLoading ? (
+                  <p className="text-muted-foreground text-sm">{copy.common.loading}</p>
+                ) : recentPayments.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">{copy.fees.payments.emptyBody}</p>
+                ) : (
+                  <ul className="divide-y rounded-lg border">
+                    {recentPayments.map((payment) => (
+                      <li key={payment.id}>
+                        <Link
+                          href={`/fees/payments/${payment.id}`}
+                          className="hover:bg-accent flex items-center justify-between gap-2 px-3 py-2 transition-colors"
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate font-mono text-sm">
+                              {payment.receiptNumber}
+                            </span>
+                            <span className="text-muted-foreground text-xs">
+                              {formatIsoDate(payment.paymentDate)}
+                            </span>
+                          </span>
+                          <span className="flex items-center gap-2">
+                            <span className={cn("text-sm font-medium", moneyCellClass)}>
+                              {formatMoney(payment.totalAmount)}
+                            </span>
+                            <FeeStatus kind="payment" status={payment.paymentStatus} />
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
 
@@ -253,6 +354,24 @@ export function FeeProfileCard({ studentId }: { studentId: string }) {
             setConcessionOpen(false);
           } catch {
             // Refused: the toast carries the wording; the form stays.
+          }
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(waiving)}
+        onOpenChange={(open) => !open && setWaiving(undefined)}
+        title={copy.fees.dues.waiveTitle}
+        consequence={copy.fees.dues.waiveBody}
+        confirmLabel={copy.fees.dues.waiveConfirm}
+        destructive
+        pending={waive.isPending}
+        onConfirm={async () => {
+          if (!waiving || !schoolId) return;
+          try {
+            await waive.submit(schoolId, waiving.id);
+          } finally {
+            setWaiving(undefined);
           }
         }}
       />

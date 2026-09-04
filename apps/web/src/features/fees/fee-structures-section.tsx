@@ -133,17 +133,25 @@ export function FeeStructuresSection() {
         <h2 id="fee-structures-heading" className="font-heading text-base font-semibold">
           {copy.fees.structures.title}
         </h2>
-        <div className="flex items-center gap-2">
-          <Select
-            value={selectedYear ?? undefined}
-            onValueChange={(v) => setStructuresYear(v ?? undefined)}
-          >
-            <SelectTrigger
-              className="w-40"
-              aria-label={copy.fees.structures.fields.academicYear}
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-sm font-medium">
+              {copy.fees.structures.fields.academicYear}
+            </span>
+            <Select
+              value={selectedYear ?? undefined}
+              onValueChange={(v) => setStructuresYear(v ?? undefined)}
             >
-              <SelectValue />
-            </SelectTrigger>
+              <SelectTrigger
+                className="w-40"
+                aria-label={copy.fees.structures.fields.academicYear}
+              >
+                <SelectValue>
+                  {(value: string | null) =>
+                    sessions.find((s) => s.id === value)?.name ??
+                    copy.fees.structures.fields.academicYear}
+                </SelectValue>
+              </SelectTrigger>
             <SelectContent>
               {yearOptions.map((session) => (
                 <SelectItem key={session.id} value={session.id}>
@@ -152,6 +160,7 @@ export function FeeStructuresSection() {
               ))}
             </SelectContent>
           </Select>
+          </label>
           <PermissionGate permission="fee_structure:create">
             <Button onClick={() => setFormOpen(true)} disabled={!create.canSubmit}>
               <PlusIcon data-icon="inline-start" />
@@ -184,6 +193,29 @@ export function FeeStructuresSection() {
                 {copy.fees.installmentModes[row.installmentMode]}
               </p>
             </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="ghost" size="icon" aria-label={copy.common.actions}>
+                    <MoreHorizontalIcon />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end">
+                <PermissionGate permission="fee_structure:update">
+                  <DropdownMenuItem onClick={() => setEditing(row)}>
+                    <PencilIcon data-icon="inline-start" />
+                    {copy.common.edit}
+                  </DropdownMenuItem>
+                </PermissionGate>
+                <PermissionGate permission="fee_structure:update">
+                  <DropdownMenuItem onClick={() => setClosing(row)}>
+                    <CircleOffIcon data-icon="inline-start" />
+                    {copy.fees.structures.closeAction}
+                  </DropdownMenuItem>
+                </PermissionGate>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         )}
         empty={

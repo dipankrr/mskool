@@ -83,7 +83,10 @@ export function SubscribeDialog({
             onValueChange={(v) => form.setValue("feeHeadId", v ?? "", { shouldValidate: true })}
           >
             <SelectTrigger id="sub-head" aria-invalid={errors.feeHeadId ? true : undefined}>
-              <SelectValue placeholder="—" />
+              <SelectValue>
+                {(value: string | null) =>
+                  optionalHeads.find((head) => head.id === value)?.name ?? copy.common.none}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {optionalHeads.map((head) => (

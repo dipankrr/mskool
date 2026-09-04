@@ -131,7 +131,11 @@ export function FeeHeadDialog({
                 onValueChange={(v) => form.setValue("category", v as FeeHeadCategory)}
               >
                 <SelectTrigger id="fee-head-category" aria-invalid={errors.category ? true : undefined}>
-                  <SelectValue />
+                  <SelectValue>
+                    {(value: string | null) =>
+                      (value ? copy.fees.headCategories[value as FeeHeadCategory] : undefined) ??
+                      copy.common.none}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {CATEGORY_VALUES.map((value) => (

@@ -13,14 +13,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FeesTabs } from "@/features/fees/tabs";
+import { FilterField, FilterRow } from "@/features/fees/fee-filters";
 import { directionClass, moneyCellClass } from "@/features/fees/fee-styles";
-import type { LedgerDirection } from "@/features/fees/fee-enums";
 import { useLedger } from "@/features/fees/use-fee-ledger";
 import { useStudents } from "@/features/students/use-students";
 import { useActiveContext } from "@/features/session/active-context";
 import { copy } from "@/lib/copy";
 import { formatIsoDate } from "@/lib/format";
-import { formatMoney, subtractMoney, addMoney } from "@/lib/money";
+import { formatMoney, subtractMoney, addMoney, compareMoney, fromPaise, isMoneyString, toPaise } from "@/lib/money";
 import { createAppColumnHelper, type DataTableColumns } from "@/lib/table";
 import type { LedgerTransaction } from "@/lib/trpc/types";
 import { cn } from "@/lib/utils";
@@ -60,15 +60,19 @@ export default function FeesLedgerPage() {
 
   const rows = useMemo(() => {
     const all = ledger.data ?? [];
-    return typeFilter === ALL_TYPES
-      ? all
-      : all.filter((row) => row.transactionType === typeFilter);
+    const filtered =
+      typeFilter === ALL_TYPES
+        ? all
+        : all.filter((row) => row.transactionType === typeFilter);
+    // Oldest movement first — the running balance accumulates in order.
+    return [...filtered].sort(
+      (a, b) =>
+        a.transactionDate.localeCompare(b.transactionDate) || a.id.localeCompare(b.id),
+    );
   }, [ledger.data, typeFilter]);
 
   const net = useMemo(() => {
     // Totals describe the FILTERED rows — the same set the table shows.
-    // Summing the unfiltered query here made the header disagree with
-    // the table the moment a type filter was picked.
     let credit = "0.00";
     let debit = "0.00";
     for (const row of rows) {
@@ -78,10 +82,25 @@ export default function FeesLedgerPage() {
     return { credit, debit, net: subtractMoney(credit, debit) };
   }, [rows]);
 
+  /** Row id → running balance after that row (oldest → newest). Paise
+   *  arithmetic directly — the balance can legitimately go negative and
+   *  the wire helpers refuse signed strings. */
+  const runningById = useMemo(() => {
+    const map = new Map<string, string>();
+    let running = 0n;
+    for (const row of rows) {
+      if (isMoneyString(row.amount)) {
+        const paise = toPaise(row.amount);
+        running = row.direction === "credit" ? running + paise : running - paise;
+      }
+      map.set(row.id, fromPaise(running));
+    }
+    return map;
+  }, [rows]);
+
   const columns = useMemo<DataTableColumns<LedgerTransaction>>(
     () =>
-      column.columns([
-        column.accessor("transactionDate", {
+      column.columns([        column.accessor("transactionDate", {
           header: "Date",
           cell: ({ row }) => formatIsoDate(row.original.transactionDate),
         }),
@@ -108,20 +127,44 @@ export default function FeesLedgerPage() {
           header: copy.fees.payments.receipt,
           cell: ({ row }) => row.original.receiptNumber ?? copy.common.none,
         }),
-        column.accessor("direction", {
-          header: "Flow",
-          cell: ({ row }) => (
-            <span className={directionClass(row.original.direction as LedgerDirection)}>
-              {copy.fees.ledgerDirections[row.original.direction as LedgerDirection]}
-            </span>
-          ),
+        column.display({
+          id: "moneyIn",
+          header: copy.fees.ledger.moneyIn,
+          cell: ({ row }) =>
+            row.original.direction === "credit" ? (
+              <span className={cn("font-medium", moneyCellClass, directionClass("credit"))}>
+                {formatMoney(row.original.amount)}
+              </span>
+            ) : (
+              copy.common.none
+            ),
         }),
-        column.accessor("amount", {
-          header: copy.fees.amounts.total,
-          cell: ({ row }) => formatMoney(row.original.amount),
+        column.display({
+          id: "moneyOut",
+          header: copy.fees.ledger.moneyOut,
+          cell: ({ row }) =>
+            row.original.direction === "debit" ? (
+              <span className={cn("font-medium", moneyCellClass, directionClass("debit"))}>
+                {formatMoney(row.original.amount)}
+              </span>
+            ) : (
+              copy.common.none
+            ),
+        }),
+        column.display({
+          id: "running",
+          header: copy.fees.ledger.runningBalance,
+          cell: ({ row }) => {
+            const balance = runningById.get(row.original.id) ?? "0.00";
+            return (
+              <span className={cn("font-medium", moneyCellClass)}>
+                {formatMoney(balance)}
+              </span>
+            );
+          },
         }),
       ]),
-    [studentById],
+    [studentById, runningById],
   );
 
   const yearOptions = canSeeHistory ? sessions : sessions.filter((s) => s.isCurrent);
@@ -131,68 +174,111 @@ export default function FeesLedgerPage() {
       <PageHeader title={copy.fees.ledger.title} description={copy.fees.ledger.subtitle} />
       <FeesTabs has={has} />
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Select value={selectedYear ?? undefined} onValueChange={(v) => setYearId(v ?? undefined)}>
-          <SelectTrigger className="w-40" aria-label={copy.fees.structures.fields.academicYear}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {yearOptions.map((session) => (
-              <SelectItem key={session.id} value={session.id}>
-                {session.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <FilterRow className="mb-4">
+        <FilterField label={copy.fees.dues.filterSession}>
+          <Select value={selectedYear ?? undefined} onValueChange={(v) => setYearId(v ?? undefined)}>
+            <SelectTrigger className="w-40" aria-label={copy.fees.dues.filterSession}>
+              <SelectValue>
+                {(value: string | null) =>
+                  sessions.find((s) => s.id === value)?.name ?? copy.fees.dues.filterSession}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {yearOptions.map((session) => (
+                <SelectItem key={session.id} value={session.id}>
+                  {session.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FilterField>
 
-        <Select value={studentFilter} onValueChange={(v) => setStudentFilter(v ?? "all")}>
-          <SelectTrigger className="w-52" aria-label={copy.fees.dues.filterStudent}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{copy.fees.dues.filterAllStudents}</SelectItem>
-            {(students.data ?? []).map((s) => (
-              <SelectItem key={s.id} value={s.id}>
-                {s.firstName} {s.lastName} · {s.admissionNumber}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <FilterField label={copy.fees.dues.filterStudent}>
+          <Select value={studentFilter} onValueChange={(v) => setStudentFilter(v ?? "all")}>
+            <SelectTrigger className="w-52" aria-label={copy.fees.dues.filterStudent}>
+              <SelectValue>
+                {(value: string | null) => {
+                  if (!value || value === "all") return copy.fees.dues.filterAllStudents;
+                  const s = studentById.get(value);
+                  return s ? `${s.firstName} ${s.lastName}` : value;
+                }}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{copy.fees.dues.filterAllStudents}</SelectItem>
+              {(students.data ?? []).map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.firstName} {s.lastName} · {s.admissionNumber}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FilterField>
 
-        <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v ?? ALL_TYPES)}>
-          <SelectTrigger className="w-52" aria-label={copy.fees.ledger.filterType}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_TYPES}>{copy.fees.ledger.filterAllTypes}</SelectItem>
-            {Object.entries(copy.fees.ledgerTypes).map(([value, label]) => (
-              <SelectItem key={value} value={value}>
-                {label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+        <FilterField label={copy.fees.ledger.filterType}>
+          <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v ?? ALL_TYPES)}>
+            <SelectTrigger className="w-52" aria-label={copy.fees.ledger.filterType}>
+              <SelectValue>
+                {(value: string | null) =>
+                  !value || value === ALL_TYPES
+                    ? copy.fees.ledger.filterAllTypes
+                    : ((copy.fees.ledgerTypes as Record<string, string>)[value] ?? value)}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_TYPES}>{copy.fees.ledger.filterAllTypes}</SelectItem>
+              {Object.entries(copy.fees.ledgerTypes).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FilterField>
+      </FilterRow>
 
       {rows.length > 0 ? (
-        <div className="text-muted-foreground flex flex-wrap items-center gap-x-6 gap-y-1 text-xs">
-          {typeFilter !== ALL_TYPES ? (
-            <span>
-              {copy.fees.ledger.filterType}:{" "}
-              <span className="font-medium">
-                {(copy.fees.ledgerTypes as Record<string, string>)[typeFilter] ?? typeFilter}
-              </span>
-            </span>
-          ) : null}
-          <span>
-            In: <span className="font-medium">{formatMoney(net.credit)}</span>
-          </span>
-          <span>
-            Out: <span className="font-medium">{formatMoney(net.debit)}</span>
-          </span>
-          <span>
-            Net: <span className="font-medium">{formatMoney(net.net)}</span>
-          </span>
+        <div className="mb-4 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-lg border p-4">
+            <p className="text-muted-foreground text-sm">
+              {copy.fees.ledger.moneyIn}
+              {typeFilter !== ALL_TYPES ? (
+                <span>
+                  {" "}
+                  · {(copy.fees.ledgerTypes as Record<string, string>)[typeFilter] ?? typeFilter}
+                </span>
+              ) : null}
+            </p>
+            <p className={cn("text-2xl font-bold tracking-tight tabular-nums", moneyCellClass)}>
+              {formatMoney(net.credit)}
+            </p>
+          </div>
+          <div className="rounded-lg border p-4">
+            <p className="text-muted-foreground text-sm">
+              {copy.fees.ledger.moneyOut}
+              {typeFilter !== ALL_TYPES ? (
+                <span>
+                  {" "}
+                  · {(copy.fees.ledgerTypes as Record<string, string>)[typeFilter] ?? typeFilter}
+                </span>
+              ) : null}
+            </p>
+            <p className={cn("text-2xl font-bold tracking-tight tabular-nums", moneyCellClass)}>
+              {formatMoney(net.debit)}
+            </p>
+          </div>
+          <div className="rounded-lg border p-4">
+            <p className="text-muted-foreground text-sm">{copy.fees.ledger.netTotal}</p>
+            <p
+              className={cn(
+                "text-2xl font-bold tracking-tight tabular-nums",
+                moneyCellClass,
+                directionClass(compareMoney(net.net, "0.00") >= 0 ? "credit" : "debit"),
+              )}
+            >
+              {formatMoney(net.net)}
+            </p>
+          </div>
         </div>
       ) : null}
 
@@ -214,10 +300,26 @@ export default function FeesLedgerPage() {
                 {formatIsoDate(row.transactionDate)} ·{" "}
                 {row.receiptNumber ?? row.description ?? copy.common.none}
               </p>
+              <p className="text-muted-foreground mt-1 text-xs tabular-nums">
+                {copy.fees.ledger.runningBalance}:{" "}
+                {formatMoney(runningById.get(row.id) ?? "0.00")}
+              </p>
             </div>
-            <p className={cn("text-sm font-medium", moneyCellClass, directionClass(row.direction))}>
-              {formatMoney(row.amount)}
-            </p>
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              <span
+                className={cn(
+                  "rounded-md border px-2 py-0.5 text-xs font-medium",
+                  row.direction === "credit"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-100"
+                    : "border-rose-200 bg-rose-50 text-rose-950 dark:border-rose-900 dark:bg-rose-950/60 dark:text-rose-100",
+                )}
+              >
+                {row.direction === "credit" ? copy.fees.ledger.moneyIn : copy.fees.ledger.moneyOut}
+              </span>
+              <span className={cn("text-sm font-medium tabular-nums", moneyCellClass)}>
+                {formatMoney(row.amount)}
+              </span>
+            </div>
           </div>
         )}
         empty={

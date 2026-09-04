@@ -58,33 +58,56 @@ export function OpeningBalancesSection({
 
   const errors = form.formState.errors;
   const rows = balances.data ?? [];
+  const isEmpty = !balances.isLoading && rows.length === 0;
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold">{copy.fees.openingBalances.title}</h3>
-        <PermissionGate permission="fee_structure:create">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              form.reset({ studentId, academicYearId: activeSession?.id ?? "", amount: "" });
-              setOpen(true);
-            }}
-            disabled={!record.canSubmit || !activeSession}
-          >
-            <PlusIcon data-icon="inline-start" />
-            {copy.fees.openingBalances.add}
-          </Button>
-        </PermissionGate>
-      </div>
-      <p className="text-muted-foreground text-xs">{copy.fees.openingBalances.subtitle}</p>
-
-      {rows.length === 0 ? (
-        <p className="text-muted-foreground rounded-lg border border-dashed p-3 text-sm">
-          {copy.fees.openingBalances.emptyBody}
-        </p>
+      {isEmpty ? (
+        // Nothing carried forward: one quiet line, not a titled section
+        // with an empty dashed box.
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-muted-foreground text-sm">{copy.fees.openingBalances.emptyTitle}</p>
+          <PermissionGate permission="fee_structure:create">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                form.reset({ studentId, academicYearId: activeSession?.id ?? "", amount: "" });
+                setOpen(true);
+              }}
+              disabled={!record.canSubmit || !activeSession}
+            >
+              <PlusIcon data-icon="inline-start" />
+              {copy.fees.openingBalances.add}
+            </Button>
+          </PermissionGate>
+        </div>
       ) : (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">{copy.fees.openingBalances.title}</h3>
+            <PermissionGate permission="fee_structure:create">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  form.reset({ studentId, academicYearId: activeSession?.id ?? "", amount: "" });
+                  setOpen(true);
+                }}
+                disabled={!record.canSubmit || !activeSession}
+              >
+                <PlusIcon data-icon="inline-start" />
+                {copy.fees.openingBalances.add}
+              </Button>
+            </PermissionGate>
+          </div>
+          <p className="text-muted-foreground text-xs">{copy.fees.openingBalances.subtitle}</p>
+        </>
+      )}
+
+      {balances.isLoading ? (
+        <p className="text-muted-foreground py-2 text-sm">{copy.common.loading}</p>
+      ) : rows.length === 0 ? null : (
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full text-sm">
             <thead>
@@ -141,7 +164,10 @@ export function OpeningBalancesSection({
                 }
               >
                 <SelectTrigger id="ob-origin" aria-invalid={errors.originAcademicYearId ? true : undefined}>
-                  <SelectValue placeholder="—" />
+                  <SelectValue>
+                    {(value: string | null) =>
+                      originOptions.find((s) => s.id === value)?.name ?? copy.common.none}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {originOptions.map((s) => (

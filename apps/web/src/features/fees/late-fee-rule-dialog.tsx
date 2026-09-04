@@ -85,7 +85,11 @@ export function LateFeeRuleDialog({
               onValueChange={(v) => form.setValue("calculationType", v as LateFeeCalculationType)}
             >
               <SelectTrigger id="rule-type" aria-invalid={errors.calculationType ? true : undefined}>
-                <SelectValue />
+                <SelectValue>
+                  {(value: string | null) =>
+                    (value ? copy.fees.lateFeeTypes[value as LateFeeCalculationType] : undefined) ??
+                    copy.common.none}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {TYPES.map((t) => (

@@ -549,18 +549,36 @@ export const copy = {
     needsSession: "Create a session first.",
   },
 
-  /** The fees area: five tabs, one vocabulary. Money is never "amount" alone — say which money. */
+  /** The fees area: one vocabulary. Money is never "amount" alone — say which money. */
   fees: {
-    subtitle:
-      "Fee setup, dues, the collection counter, payments, and the ledger for the session you are working in.",
+    subtitle: "Collections, outstanding fees and the fee setup for the session you are working in.",
 
-    /** Tab labels — nouns, not verbs, per the attendance tabs rule. */
+    /** Tab labels — tasks, not database sections. */
     tabs: {
-      setup: "Setup",
-      dues: "Dues",
-      counter: "Counter",
+      overview: "Overview",
+      collect: "Collect",
+      outstanding: "Outstanding",
       payments: "Payments",
       ledger: "Ledger",
+      setup: "Setup",
+    },
+
+    /** The Fees landing page. */
+    overview: {
+      title: "Fees",
+      subtitle: "Monitor collections, outstanding fees and recent activity.",
+      collected: "Collected",
+      outstanding: "Outstanding",
+      overdue: "Overdue",
+      studentsWithDues: "Students with dues",
+      collectAction: "Collect payment",
+      outstandingTitle: "Outstanding",
+      viewAll: "View all outstanding",
+      recentTitle: "Recent payments",
+      emptyOutstanding: "No outstanding fees",
+      emptyOutstandingBody: "All students are up to date for this session.",
+      emptyRecent: "No payments yet",
+      emptyRecentBody: "The counter is where payments are recorded — the first one will appear here.",
     },
 
     /** Generic money-column headers. */
@@ -744,6 +762,9 @@ export const copy = {
         frequencyHelp: "How this head splits across the session.",
         fromMonth: "From month",
         toMonth: "To month",
+        windowHeader: "Applies",
+        wholeSession: "Whole session",
+        linePreview: (per: string, count: number) => `${per} × ${count} instalments`,
         monthsHelp: "The part of the session this head applies to — usually the whole session.",
       },
       lineCreated: "Fee line added.",
@@ -758,6 +779,7 @@ export const copy = {
         type: "Charges",
         value: "Value",
         valueHelp: "Flat rupees, a percentage of the instalment, or rupees per day.",
+        perDaySuffix: "/ day",
         max: "Cap",
         maxHelp: "Optional. The most this rule can charge on one instalment.",
         from: "Effective from",
@@ -790,6 +812,13 @@ export const copy = {
       },
       baseAnnual: "Annual before concessions",
       netAnnual: "Annual after concessions",
+      billedTotal: "Total billed",
+      concessionsTotal: "Concessions",
+      paidTotal: "Paid",
+      outstandingTotal: "Outstanding",
+      recentPayments: "Recent payments",
+      collectAction: "Collect payment",
+      viewAllPayments: "View all payments",
       generate: "Generate instalments",
       generateHelp:
         "Creates the session's instalment rows from the structure. Safe to run again — it fills gaps only, never rewrites existing rows.",
@@ -823,6 +852,7 @@ export const copy = {
       recomputed: "Concessions re-applied.",
       installmentsTitle: "Instalments",
       installmentsSubtitle: "What this student owes, head by head.",
+      moreOpen: (count: number) => `+${count} more open`,
       noInstallmentsTitle: "No instalments yet",
       noInstallmentsBody: "Generate them — they are built from the structure frozen at assignment.",
     },
@@ -857,17 +887,35 @@ export const copy = {
 
     // ---- Dues ----
     dues: {
-      title: "Dues",
-      subtitle:
-        "What is still owed this session, student by student. Cashiers collect from the Counter; this is the arrears view.",
-      emptyTitle: "No open dues",
-      emptyBody:
-        "Nothing is outstanding for this session and these filters. Either everything is collected, or no instalments have been generated yet.",
+      title: "Outstanding fees",
+      subtitle: "Students with unpaid or partially paid fees for this session.",
+      emptyTitle: "No outstanding fees",
+      emptyBody: "All students are up to date for this session.",
+      filterSession: "Session",
       filterStudent: "Student",
       filterAllStudents: "All students",
+      filterStatus: "Status",
+      filterAllStatuses: "All statuses",
+      statusOverdue: "Overdue",
+      statusDue: "Due",
+      searchLabel: "Search",
+      searchPlaceholder: "Search student…",
       dueBy: "Due by",
       dueByHelp: "Show only instalments due on or before this date.",
       grandTotal: "Total outstanding",
+      overdueTotal: "Overdue",
+      overdue: "Overdue",
+      studentHeader: "Student",
+      statusHeader: "Status",
+      studentsWithDues: "Students with dues",
+      studentsWithDuesCount: (count: number) =>
+        count === 1 ? "1 student with dues" : `${count} students with dues`,
+      studentsOverdue: "Students overdue",
+      studentsOverdueCount: (count: number) =>
+        count === 1 ? "1 student overdue" : `${count} students overdue`,
+      oldestDue: "Oldest due",
+      collectAction: "Collect",
+      viewAccount: "View account",
       owedBy: (name: string, total: string) => `${name} owes ${total}`,
       waiveAction: "Waive",
       waiveTitle: "Waive this instalment?",
@@ -880,43 +928,62 @@ export const copy = {
 
     // ---- Counter ----
     counter: {
-      title: "Counter",
-      subtitle:
-        "Record a payment taken at the desk. What you type here becomes the school's receipt.",
-      searchLabel: "Find the student",
+      title: "Collect payment",
+      subtitle: "Search, amount, method, receipt — the desk workflow.",
+      searchLabel: "Search student",
       searchPlaceholder: "Name or admission number…",
+      searchHelp: "Type a name or admission number, pick the student, and their balance appears.",
+      noResultsTitle: "No student found",
+      noResultsBody: "Check the spelling or admission number and try again.",
       selected: "Collecting for",
+      openCount: (count: number) =>
+        count === 1 ? "1 open instalment" : `${count} open instalments`,
       noOpenTitle: "Nothing to collect",
       noOpenBody:
         "This student has no instalments with a balance for this session. If you expected dues, check the session switcher.",
-      openBalances: "Opening balances",
-      openBalancesNote:
-        "Last session's carry-forward. Shown for the record — the counter collects instalments only.",
-      allocationsTitle: "Allocate the payment",
-      allocationsHelp:
-        "Tick the instalments this payment is for and type the amount against each. A payment can cover several instalments, or part of one.",
+      amountReceived: "Amount received",
+      invalidAmount: "Fix the highlighted amounts — use numbers like 1250.00.",
+      collectFull: (total: string) => `Collect full balance · ${total}`,
+      autoAppliedTitle: "Applied automatically",
+      autoAppliedHelp:
+        "Your payment is applied to the oldest outstanding instalments first.",
+      changeAllocation: "Change allocation",
+      hideAllocation: "Hide allocation",
+      allocatedOf: (allocated: string, total: string) => `Allocated ${allocated} / ${total}`,
+      unallocated: (left: string) => `${left} unallocated — it stays uncollected.`,
       amount: "Amount",
       payFull: "Pay in full",
       clear: "Clear",
       total: "Payment total",
       lateFeeNote:
         "If a late fee applies, the school's server works it out and it appears on the receipt — it is never typed here.",
-      mode: "Paid by",
+      mode: "Payment method",
       modeHelp: "Cash is confirmed immediately. Everything else waits for the bank — it shows as pending until confirmed.",
       paymentDate: "Paid on",
       transactionRef: "Reference",
       transactionRefHelp: "UPI reference, cheque number, or UTR.",
+      transactionRefCheque: "Cheque no.",
+      transactionRefDd: "DD no.",
+      transactionRefElectronic: "UPI ref / UTR",
       bankName: "Bank",
       chequeDate: "Cheque date",
       chequeDateHelp: "The date on the cheque, if it is post-dated.",
       remarks: "Remarks",
       remarksHelp: "Optional note for the receipt.",
       submit: "Record payment",
+      submitAmount: (total: string) => `Record ${total} payment`,
+      enterAmount: "Enter an amount to continue",
       submitting: "Recording…",
       recorded: (receipt: string) => `Payment recorded — receipt ${receipt}.`,
       pendingNote:
         "Recorded and awaiting confirmation — it shows as pending until a confirmer clears it.",
+      confirmationTitle: "Payment recorded",
+      collectAnother: "Collect another payment",
+      viewReceipt: "View receipt",
       receiptTitle: "Receipt",
+      receiptBranch: "Branch",
+      receiptStudent: "Student",
+      nextStudent: "Next student",
       print: "Print receipt",
     },
 
@@ -926,6 +993,8 @@ export const copy = {
       subtitle: "Every payment recorded this session, its status, and the actions it still allows.",
       emptyTitle: "No payments yet",
       emptyBody: "The counter is where payments are recorded — the first one will appear here.",
+      filterMethod: "Method",
+      filterAllMethods: "All methods",
       receipt: "Receipt",
       detailTitle: "Payment",
       allocationsTitle: "Applied to",
@@ -976,6 +1045,10 @@ export const copy = {
       emptyBody: "The ledger fills as payments, concessions, waivers and refunds happen.",
       filterType: "Type",
       filterAllTypes: "All types",
+      moneyIn: "Money in",
+      moneyOut: "Money out",
+      netTotal: "Net",
+      runningBalance: "Running balance",
       taxNote: "Taxable",
     },
 

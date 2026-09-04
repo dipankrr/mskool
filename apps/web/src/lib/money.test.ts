@@ -128,15 +128,15 @@ describe("compareMoney / minMoney / maxMoney / clampMoney", () => {
 
 describe("formatMoney / formatMoneyPlain", () => {
   it("formats with the rupee sign, en-IN grouping, two decimals", () => {
-    expect(formatMoney("12000.00")).toBe("₹ 12,000.00");
-    expect(formatMoney("1250000.00")).toBe("₹ 12,50,000.00");
-    expect(formatMoney("100000000.99")).toBe("₹ 10,00,00,000.99");
-    expect(formatMoney("0.50")).toBe("₹ 0.50");
-    expect(formatMoney("500")).toBe("₹ 500.00");
+    expect(formatMoney("12000.00")).toBe("₹12,000.00");
+    expect(formatMoney("1250000.00")).toBe("₹12,50,000.00");
+    expect(formatMoney("100000000.99")).toBe("₹10,00,00,000.99");
+    expect(formatMoney("0.50")).toBe("₹0.50");
+    expect(formatMoney("500")).toBe("₹500.00");
   });
 
   it("formats negatives with a true minus sign", () => {
-    expect(formatMoney("-12.50")).toBe("−₹ 12.50");
+    expect(formatMoney("-12.50")).toBe("−₹12.50");
   });
 
   it("renders absent or invalid input as an em dash, never as zero", () => {

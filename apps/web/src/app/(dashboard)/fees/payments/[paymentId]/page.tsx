@@ -17,7 +17,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FeesTabs } from "@/features/fees/tabs";
 import { paymentStatusClass, moneyCellClass } from "@/features/fees/fee-styles";
 import type { FeePaymentStatus } from "@/features/fees/fee-enums";
 import { usePaymentDetail, usePaymentMutations } from "@/features/fees/use-fee-payments";
@@ -112,7 +111,7 @@ const REFUND_MODES = ["cash", "upi", "cheque", "neft_rtgs", "dd"] as const;
 export default function FeePaymentDetailPage() {
   const params = useParams<{ paymentId: string }>();
   const paymentId = params.paymentId;
-  const { has, schoolId, activeSession } = useActiveContext();
+  const { schoolId, activeSession } = useActiveContext();
 
   const detail = usePaymentDetail(schoolId ?? undefined, paymentId);
   const students = useStudents();
@@ -191,7 +190,6 @@ export default function FeePaymentDetailPage() {
   return (
     <>
       <PageHeaderBlock receipt={payment.receiptNumber} />
-      <FeesTabs has={has} />
 
       <Card>
         <CardHeader>
@@ -255,10 +253,6 @@ export default function FeePaymentDetailPage() {
                 </tbody>
               </table>
             </div>
-            <p className="text-muted-foreground mt-1 text-xs">
-              {formatMoney(payment.amount)} + {formatMoney(payment.lateFeeAmount)} late fee ={" "}
-              {formatMoney(payment.totalAmount)}
-            </p>
           </div>
 
           {payment.statusReason ? (
@@ -314,7 +308,8 @@ export default function FeePaymentDetailPage() {
                   inputMode="decimal"
                   value={refundAmount}
                   onChange={(event) => setRefundAmount(event.target.value)}
-                  placeholder={payment.amount}
+                  placeholder={formatMoney(payment.amount)}
+                  aria-label={copy.fees.payments.refundFields.amount}
                 />
               </label>
               <div className="grid grid-cols-2 gap-3">
@@ -334,7 +329,12 @@ export default function FeePaymentDetailPage() {
                   </span>
                   <Select value={refundMode} onValueChange={(v) => setRefundMode(v as typeof refundMode)}>
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue>
+                        {(value: string | null) =>
+                          value
+                            ? (copy.fees.paymentModes[value as keyof typeof copy.fees.paymentModes] ?? copy.common.none)
+                            : copy.fees.payments.refundFields.mode}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {REFUND_MODES.map((m) => (

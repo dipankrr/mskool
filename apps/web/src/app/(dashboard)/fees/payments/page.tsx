@@ -14,7 +14,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FeesTabs } from "@/features/fees/tabs";
-import { paymentStatusClass, moneyCellClass } from "@/features/fees/fee-styles";
+import { FeeStatus } from "@/features/fees/fee-status";
+import { FilterField, FilterRow } from "@/features/fees/fee-filters";
+import { moneyCellClass } from "@/features/fees/fee-styles";
 import { usePayments } from "@/features/fees/use-fee-payments";
 import { useStudents } from "@/features/students/use-students";
 import { useActiveContext } from "@/features/session/active-context";
@@ -44,6 +46,8 @@ export default function FeesPaymentsPage() {
 
   const [yearId, setYearId] = useState<string | undefined>(undefined);
   const [studentFilter, setStudentFilter] = useState<string>("all");
+  const [modeFilter, setModeFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   const selectedYear = yearId ?? activeSession?.id;
   const payments = usePayments(
@@ -103,11 +107,7 @@ export default function FeesPaymentsPage() {
         }),
         column.accessor("paymentStatus", {
           header: "Status",
-          cell: ({ row }) => (
-            <span className={paymentStatusClass(row.original.paymentStatus)}>
-              {copy.fees.paymentStatuses[row.original.paymentStatus]}
-            </span>
-          ),
+          cell: ({ row }) => <FeeStatus kind="payment" status={row.original.paymentStatus} />,
         }),
       ]),
     [studentById],
@@ -115,42 +115,107 @@ export default function FeesPaymentsPage() {
 
   const yearOptions = canSeeHistory ? sessions : sessions.filter((s) => s.isCurrent);
 
+  const visiblePayments = useMemo(
+    () =>
+      (payments.data ?? []).filter(
+        (row) =>
+          (modeFilter === "all" || row.paymentMode === modeFilter) &&
+          (statusFilter === "all" || row.paymentStatus === statusFilter),
+      ),
+    [payments.data, modeFilter, statusFilter],
+  );
+
   return (
     <>
       <PageHeader title={copy.fees.payments.title} description={copy.fees.payments.subtitle} />
       <FeesTabs has={has} />
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Select value={selectedYear ?? undefined} onValueChange={(v) => setYearId(v ?? undefined)}>
-          <SelectTrigger className="w-40" aria-label={copy.fees.structures.fields.academicYear}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {yearOptions.map((session) => (
-              <SelectItem key={session.id} value={session.id}>
-                {session.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <FilterRow className="mb-4">
+        <FilterField label={copy.fees.dues.filterSession}>
+          <Select value={selectedYear ?? undefined} onValueChange={(v) => setYearId(v ?? undefined)}>
+            <SelectTrigger className="w-40" aria-label={copy.fees.dues.filterSession}>
+              <SelectValue>
+                {(value: string | null) =>
+                  sessions.find((s) => s.id === value)?.name ?? copy.fees.dues.filterSession}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {yearOptions.map((session) => (
+                <SelectItem key={session.id} value={session.id}>
+                  {session.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FilterField>
 
-        <Select value={studentFilter} onValueChange={(v) => setStudentFilter(v ?? "all")}>
-          <SelectTrigger className="w-52" aria-label={copy.fees.dues.filterStudent}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{copy.fees.dues.filterAllStudents}</SelectItem>
-            {(students.data ?? []).map((s) => (
-              <SelectItem key={s.id} value={s.id}>
-                {s.firstName} {s.lastName} · {s.admissionNumber}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+        <FilterField label={copy.fees.dues.filterStudent}>
+          <Select value={studentFilter} onValueChange={(v) => setStudentFilter(v ?? "all")}>
+            <SelectTrigger className="w-52" aria-label={copy.fees.dues.filterStudent}>
+              <SelectValue>
+                {(value: string | null) => {
+                  if (!value || value === "all") return copy.fees.dues.filterAllStudents;
+                  const s = studentById.get(value);
+                  return s ? `${s.firstName} ${s.lastName}` : value;
+                }}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{copy.fees.dues.filterAllStudents}</SelectItem>
+              {(students.data ?? []).map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.firstName} {s.lastName} · {s.admissionNumber}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FilterField>
+
+        <FilterField label={copy.fees.payments.filterMethod}>
+          <Select value={modeFilter} onValueChange={(v) => setModeFilter(v ?? "all")}>
+            <SelectTrigger className="w-44" aria-label={copy.fees.payments.filterMethod}>
+              <SelectValue>
+                {(value: string | null) =>
+                  !value || value === "all"
+                    ? copy.fees.payments.filterAllMethods
+                    : ((copy.fees.paymentModes as Record<string, string>)[value] ?? value)}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{copy.fees.payments.filterAllMethods}</SelectItem>
+              {Object.entries(copy.fees.paymentModes).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FilterField>
+
+        <FilterField label={copy.fees.dues.filterStatus}>
+          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? "all")}>
+            <SelectTrigger className="w-44" aria-label={copy.fees.dues.filterStatus}>
+              <SelectValue>
+                {(value: string | null) =>
+                  !value || value === "all"
+                    ? copy.fees.dues.filterAllStatuses
+                    : ((copy.fees.paymentStatuses as Record<string, string>)[value] ?? value)}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{copy.fees.dues.filterAllStatuses}</SelectItem>
+              {Object.entries(copy.fees.paymentStatuses).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FilterField>
+      </FilterRow>
 
       <DataTable
-        data={payments.data ?? []}
+        data={visiblePayments}
         columns={columns}
         getRowId={(row) => row.id}
         caption={copy.fees.payments.title}
@@ -177,9 +242,7 @@ export default function FeesPaymentsPage() {
               <span className={cn("text-sm font-medium", moneyCellClass)}>
                 {formatMoney(row.totalAmount)}
               </span>
-              <span className={paymentStatusClass(row.paymentStatus)}>
-                {copy.fees.paymentStatuses[row.paymentStatus]}
-              </span>
+              <FeeStatus kind="payment" status={row.paymentStatus} />
             </div>
           </div>
         )}
