@@ -518,7 +518,20 @@ export class ExamResultsService {
         ),
       );
 
+    // The section snapshot: ranks are computed per section, so the term row
+    // must remember where the student sat (mid-year moves don't rewrite it).
+    const [enrollment] = await tx
+      .select({ sectionId: studentEnrollments.sectionId })
+      .from(studentEnrollments)
+      .where(
+        and(
+          eq(studentEnrollments.studentId, studentId),
+          eq(studentEnrollments.academicYearId, term.academicYearId),
+        ),
+      );
+
     const values = {
+      sectionId: enrollment?.sectionId ?? null,
       totalMarks: allGradedOnly ? null : fromHundredths(aggregate.totalMarks),
       maxMarks: allGradedOnly ? null : fromHundredths(aggregate.maxMarks),
       percentage: allGradedOnly ? null : fromHundredths(aggregate.percentage),
@@ -766,7 +779,12 @@ export class ExamResultsService {
           .from(studentSubjectResults)
           .innerJoin(subjects, eq(studentSubjectResults.subjectId, subjects.id))
           .innerJoin(exams, eq(studentSubjectResults.examId, exams.id))
-          .where(inArray(studentSubjectResults.examId, termExamIds))
+          .where(
+            and(
+              eq(studentSubjectResults.studentId, studentId),
+              inArray(studentSubjectResults.examId, termExamIds),
+            ),
+          )
       : [];
 
     // One row per subject: exam-weighted term score (same maths as compute).
@@ -835,7 +853,9 @@ export class ExamResultsService {
       school: { name: "" },
       academicYear: { name: year?.name ?? "" },
       term: { id: termId, name: termRow?.name ?? "" },
-      subjects: [...bySubject.entries()].map(([subjectId, rows]) => {
+      subjects: [...bySubject.entries()]
+        .sort(([a], [b]) => (a < b ? -1 : 1))
+        .map(([subjectId, rows]) => {
         const score = rows[0]!.isExempted
           ? null
           : examWeightedSubjectScore(
@@ -1164,7 +1184,7 @@ export class ExamResultsService {
       let reIssued = 0;
       for (const card of currentCards) {
         const fresh = await this.assembleSnapshot(tx, card.studentId, exam.termId);
-        if (JSON.stringify(fresh) === JSON.stringify(card.snapshotData)) continue;
+        if (sameSnapshot(fresh, card.snapshotData)) continue;
         await tx
           .update(publishedReportCards)
           .set({ isCurrent: false })
@@ -1197,6 +1217,45 @@ export class ExamResultsService {
    * The quick edit's impact preview — computed live, never written. Returns
    * the revised numbers plus every OTHER student whose rank would move.
    */
+  // -------------------------------------------------------------------------
+  // Reads — staff card versions + the portal (hard rule 8's ONLY door)
+  // -------------------------------------------------------------------------
+
+  async listCardVersions(scope: DataScope, studentId: string) {
+    return db
+      .select()
+      .from(publishedReportCards)
+      .where(
+        and(eq(publishedReportCards.studentId, studentId), scopeWhere(scope, CARD_SCOPE_COLUMNS)),
+      )
+      .orderBy(desc(publishedReportCards.version));
+  }
+
+  /** The portal's card list: ownership-filtered, current-only by default. */
+  async listOwnedCards(studentIds: string[], academicYearId?: string) {
+    if (studentIds.length === 0) return [];
+    return db
+      .select()
+      .from(publishedReportCards)
+      .where(
+        and(
+          inArray(publishedReportCards.studentId, studentIds),
+          eq(publishedReportCards.isCurrent, true),
+          academicYearId ? eq(publishedReportCards.academicYearId, academicYearId) : undefined,
+        ),
+      )
+      .orderBy(desc(publishedReportCards.publishedAt));
+  }
+
+  async getOwnedCard(studentIds: string[], cardId: string) {
+    if (studentIds.length === 0) return null;
+    const [card] = await db
+      .select()
+      .from(publishedReportCards)
+      .where(and(eq(publishedReportCards.id, cardId), inArray(publishedReportCards.studentId, studentIds)));
+    return card ?? null;
+  }
+
   async previewRevision(scope: DataScope, input: SubmitRevisionInput) {
     const schoolId = requireSchoolId(scope);
     const [result] = await db
@@ -1262,7 +1321,10 @@ export class ExamResultsService {
    */
   async applyRevision(scope: DataScope, userId: string, input: SubmitRevisionInput) {
     const schoolId = requireSchoolId(scope);
-    return db.transaction(async (tx) => {
+
+    // STEP 1 — the ledger row FIRST, then the mark (hard rule 7). One small
+    // transaction holding only this row's lock.
+    const componentResultId = await db.transaction(async (tx) => {
       const [result] = await tx
         .select()
         .from(studentComponentResults)
@@ -1298,100 +1360,96 @@ export class ExamResultsService {
         .update(studentComponentResults)
         .set({ marksObtained: input.revisedMarks ?? null, gradeObtained: input.revisedGrade ?? null })
         .where(eq(studentComponentResults.id, result.id));
-
-      const [schedule] = await tx
-        .select({ classId: examSubjectSchedules.classId })
-        .from(examSubjectSchedules)
-        .where(eq(examSubjectSchedules.id, result.scheduleId));
-      if (schedule) {
-        await this.computeClassResults(scope, result.examId, schedule.classId);
-        const [exam] = await tx.select().from(exams).where(eq(exams.id, result.examId));
-        if (exam) {
-          await this.computeTermResult(tx, result.studentId, exam.termId, schoolId, scope.organizationId);
-          await this.computeTermRanks(scope, exam.termId);
-
-          // Re-photograph every current card of the class whose data moved.
-          const cohort = await this.cohortOf(tx, schedule.classId, exam.academicYearId, null);
-          const currentCards = await tx
-            .select()
-            .from(publishedReportCards)
-            .where(
-              and(
-                eq(publishedReportCards.termId, exam.termId),
-                eq(publishedReportCards.isCurrent, true),
-                inArray(
-                  publishedReportCards.studentId,
-                  cohort.map((c) => c.studentId),
-                ),
-              ),
-            );
-          for (const card of currentCards) {
-            const fresh = await this.assembleSnapshot(tx, card.studentId, exam.termId);
-            if (JSON.stringify(fresh) === JSON.stringify(card.snapshotData)) continue;
-            await tx
-              .update(publishedReportCards)
-              .set({ isCurrent: false })
-              .where(eq(publishedReportCards.id, card.id));
-            await tx.insert(publishedReportCards).values({
-              organizationId: card.organizationId,
-              schoolId: card.schoolId,
-              studentId: card.studentId,
-              academicYearId: card.academicYearId,
-              termId: card.termId,
-              version: card.version + 1,
-              replacesVersion: card.version,
-              snapshotData: fresh,
-              templateId: card.templateId,
-              revisionReason: `correction: ${input.reason}`,
-              publishedBy: userId,
-            });
-          }
-        }
-      }
-      return { componentResultId: result.id, applied: true };
+      return result.id;
     });
-  }
+    if (componentResultId === null) return null;
 
-  // -------------------------------------------------------------------------
-  // Reads — staff card versions + the portal (hard rule 8's ONLY door)
-  // -------------------------------------------------------------------------
-
-  async listCardVersions(scope: DataScope, studentId: string) {
-    return db
+    // STEP 2 — recompute on FRESH connections. The step-1 locks are released,
+    // so the engine's own transactions cannot deadlock against them.
+    const [resultRow] = await db
       .select()
-      .from(publishedReportCards)
-      .where(
-        and(eq(publishedReportCards.studentId, studentId), scopeWhere(scope, CARD_SCOPE_COLUMNS)),
-      )
-      .orderBy(desc(publishedReportCards.version));
-  }
+      .from(studentComponentResults)
+      .where(eq(studentComponentResults.id, componentResultId));
+    const [schedule] = await db
+      .select({ classId: examSubjectSchedules.classId })
+      .from(examSubjectSchedules)
+      .where(eq(examSubjectSchedules.id, resultRow!.scheduleId));
+    const [exam] = await db.select().from(exams).where(eq(exams.id, resultRow!.examId));
+    if (schedule && exam) {
+      await this.computeClassResults(scope, resultRow!.examId, schedule.classId);
+      await this.computeTermResult(db, resultRow!.studentId, exam.termId, schoolId, scope.organizationId);
+      await this.computeTermRanks(scope, exam.termId);
 
-  /** The portal's card list: ownership-filtered, current-only by default. */
-  async listOwnedCards(studentIds: string[], academicYearId?: string) {
-    if (studentIds.length === 0) return [];
-    return db
-      .select()
-      .from(publishedReportCards)
-      .where(
-        and(
-          inArray(publishedReportCards.studentId, studentIds),
-          eq(publishedReportCards.isCurrent, true),
-          academicYearId ? eq(publishedReportCards.academicYearId, academicYearId) : undefined,
-        ),
-      )
-      .orderBy(desc(publishedReportCards.publishedAt));
+      // STEP 3 — re-photograph every current card of the class whose frozen
+      // data moved. Idempotent: unchanged cards keep their version.
+      await db.transaction(async (tx) => {
+        const cohort = await this.cohortOf(tx, schedule.classId, exam.academicYearId, null);
+        const currentCards = await tx
+          .select()
+          .from(publishedReportCards)
+          .where(
+            and(
+              eq(publishedReportCards.termId, exam.termId),
+              eq(publishedReportCards.isCurrent, true),
+              inArray(
+                publishedReportCards.studentId,
+                cohort.map((c) => c.studentId),
+              ),
+            ),
+          );
+        for (const card of currentCards) {
+          const fresh = await this.assembleSnapshot(tx, card.studentId, exam.termId);
+          if (sameSnapshot(fresh, card.snapshotData)) continue;
+          await tx
+            .update(publishedReportCards)
+            .set({ isCurrent: false })
+            .where(eq(publishedReportCards.id, card.id));
+          await tx.insert(publishedReportCards).values({
+            organizationId: card.organizationId,
+            schoolId: card.schoolId,
+            studentId: card.studentId,
+            academicYearId: card.academicYearId,
+            termId: card.termId,
+            version: card.version + 1,
+            replacesVersion: card.version,
+            snapshotData: fresh,
+            templateId: card.templateId,
+            revisionReason: `correction: ${input.reason}`,
+            publishedBy: userId,
+          });
+        }
+      });
+    }
+    return { componentResultId, applied: true };
   }
+}
 
-  async getOwnedCard(studentIds: string[], cardId: string) {
-    if (studentIds.length === 0) return null;
-    const [card] = await db
-      .select()
-      .from(publishedReportCards)
-      .where(
-        and(eq(publishedReportCards.id, cardId), inArray(publishedReportCards.studentId, studentIds)),
-      );
-    return card ?? null;
-  }
+
+/**
+ * Two snapshots are the same card when everything but generatedAt matches.
+ * The comparison is CANONICAL (keys sorted recursively) because Postgres
+ * jsonb does not preserve key order — a naive stringify of a stored
+ * snapshot never equals a fresh assembly, even with identical data.
+ */
+function sameSnapshot(a: unknown, b: unknown): boolean {
+  const canonicalize = (v: unknown): string => {
+    if (v === null || typeof v !== "object") return JSON.stringify(v);
+    if (Array.isArray(v)) return "[" + v.map(canonicalize).join(",") + "]";
+    const keys = Object.keys(v as Record<string, unknown>).sort();
+    return (
+      "{" +
+      keys
+        .map((k) => JSON.stringify(k) + ":" + canonicalize((v as Record<string, unknown>)[k]))
+        .join(",") +
+      "}"
+    );
+  };
+  const strip = (v: unknown) => {
+    const copy = { ...(v as Record<string, unknown>) };
+    delete copy.generatedAt;
+    return canonicalize(copy);
+  };
+  return strip(a) === strip(b);
 }
 
 function isPassedAll(
