@@ -56,3 +56,4 @@ export * from "./fees-billing.service";
 // Fees: collection and the ledger — recordPayment (row-locked, idempotent),
 // the named status transitions, refunds, waivers, the gateway system path.
 export * from "./fees-collection.service";
+export * from "./exams-maths";
