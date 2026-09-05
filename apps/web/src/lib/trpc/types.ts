@@ -61,3 +61,13 @@ export type FeePayment = RouterOutputs["fees"]["payment"]["list"][number];
 export type PaymentDetail = RouterOutputs["fees"]["payment"]["detail"];
 export type LedgerTransaction = RouterOutputs["fees"]["ledger"]["list"][number];
 export type OpeningBalance = RouterOutputs["fees"]["ledger"]["listOpeningBalances"][number];
+
+// Exams — Phase 5 (ADR-032). Wire shapes the browser receives.
+export type SubjectType = RouterOutputs["exam"]["subjectTypes"]["list"][number];
+export type GradingScale = RouterOutputs["exam"]["gradingScales"]["list"][number];
+export type PassCriteria = RouterOutputs["exam"]["passCriteria"]["list"][number];
+export type Subject = RouterOutputs["subject"]["list"][number];
+export type Exam = RouterOutputs["exam"]["exam"]["list"][number];
+export type ExamDetail = RouterOutputs["exam"]["exam"]["byId"];
+export type ExamEligibility = RouterOutputs["exam"]["eligibility"]["list"][number];
+export type PublishedReportCard = RouterOutputs["portalExam"]["results"]["list"][number];

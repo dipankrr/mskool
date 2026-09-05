@@ -97,7 +97,6 @@ export const examRouter = router({
   subjectTypes: router({
     list: staffListProcedure("exam:read")
       .meta({ openapi: { method: "GET", path: "/exam/subject-types", tags: ["exams"], summary: "List the school's subject types", protect: true } })
-      .input(z.object({}))
       .output(z.array(subjectTypeSelectSchema))
       .query(({ ctx }) => examConfigService.listSubjectTypes(ctx.scopes)),
 
@@ -127,7 +126,6 @@ export const examRouter = router({
 
     applyPreset: staffProcedure("exam:create")
       .meta({ openapi: { method: "POST", path: "/exam/subject-types/apply-preset", tags: ["exams"], summary: "Seed the standard subject types", protect: true } })
-      .input(z.object({}))
       .output(z.array(subjectTypeSelectSchema))
       .mutation(({ ctx }) => examConfigService.applyCbsePreset(ctx.scope, ctx.userId)),
   }),
@@ -135,7 +133,6 @@ export const examRouter = router({
   gradingScales: router({
     list: staffListProcedure("exam:read")
       .meta({ openapi: { method: "GET", path: "/exam/grading-scales", tags: ["exams"], summary: "List grading scales with bands", protect: true } })
-      .input(z.object({}))
       .output(z.array(gradingScaleSelectSchema.extend({ bands: z.array(gradingScaleBandSelectSchema) })))
       .query(({ ctx }) => examConfigService.listGradingScales(ctx.scopes)),
 
