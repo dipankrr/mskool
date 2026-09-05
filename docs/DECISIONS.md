@@ -1231,3 +1231,110 @@ before the move (verified: zero references outside the schema), so no downstream
 changed. DOMAIN.md's report-card note now points at the mapping. When the exams phase
 builds `exam_subject_schedules`, it builds WITHOUT the two override columns the
 reference SQL shows there.
+
+## ADR-032 — Board-neutral subject typing, and the publication / correction / eligibility model for exams
+
+**Status:** accepted (2026-09-06, owner decision after a full design review; **supersedes ADR-031's storage location** and the reference SQL's subject/area design; implemented from migration 0013 onward).
+
+**Context.** The reference SQL carries a CBSE-flavored 4-value `category` on `subjects`
+(scholastic/coscholastic/vocational/language) and a fixed area enum on `coscholastic_assessments`.
+Three failures surface under review. First, the vocabulary is CBSE CCE terminology the PRD's
+ICSE/state/unaffiliated schools do not share, and behaviorally three of the four values are pure
+labels — the real behavior decomposes into the two result flags plus one bit neither the flags nor
+the enum captures: *does the subject get examined at all, or is it assessed by term-end grade?*
+Second, schools experience subject "types" as report-card **widgets** ("Main Subjects",
+"Co-curricular", "Personality") whose membership varies per class per year — the same subject is a
+graded activity in class 3 and a marked elective in class 9 — and some schools split an all-scoring
+marksheet into several widgets. Third, the design review surfaced independent gaps: mock exams
+cannot coexist with the weightage CHECK `(0,100]` + sum-to-100; the subject-level pass mark has a
+snapshot column but no config home; `terms.result_mode` conflates "standalone term card" with
+"feeds the annual"; graded-only subjects have no entry path; publication was all-or-nothing across
+a school; post-publication corrections had no batch story; and attendance eligibility risked
+over-enforcement for schools that never hard-detain.
+
+**Decision.**
+
+1. **`subject_types` — school-defined, board-neutral.** New table: `name` (unique per school),
+   `counts_toward_result`, `is_graded_only`, `assessment_mode` (`exam` | `term_grade`), `sequence`
+   (report-card widget order), `is_active`. `class_subject_mappings` carries `subject_type_id` +
+   `is_elective` + sequence. The flags live ON the type — one source of truth, edits lock once any
+   referencing (class, year, subject) has assessment data (name/sequence stay editable), and
+   reassignment to a type with different `is_graded_only` is the ADR-031 flip-guard flowing through
+   the type. **This supersedes ADR-031's storage location** while preserving its principle: two
+   independent booleans, never a mode enum, any combination allowed (including counted+graded for
+   GPA-mode primary classes). The `category` enum and the `coscholastic_assessments` area enum die;
+   a CBSE preset (`subjectTypes.applyPreset`) seeds the standard types; deactivate never delete.
+
+2. **`assessment_mode` — how assessment data enters.** `exam`: full pipeline (schedules,
+   components, marks entry; graded-only subjects get an implicit single "Overall" component, grade
+   via `grade_obtained`, which the component-results CHECK already permits). `term_grade`: no exam;
+   the (class) teacher enters grade + remarks per term in `term_assessments` — the reshaped
+   coscholastic table, keyed `(student, term, mapping)` instead of an area enum. Class teacher is
+   the default entry role (no subject-teacher assignment exists for areas).
+
+3. **All-gradedOnly classes → GPA branch.** When every counted subject of a class is graded-only
+   (lower primary), term/final aggregates are the grade-point average; percentage is suppressed;
+   ranks order by GPA; pass/fail counting is skipped.
+
+4. **Exam blueprint rules.** `exams.counts_toward_term_result` (mocks/practice run the full
+   pipeline, exempt from the term sum-to-100). `exam_subject_schedules.pass_marks` — the subject
+   pass mark configured per exam×class×subject, defaulting to Σ component pass marks (expresses
+   "≥50/100 in total" alongside component-level `pass_marks`/`is_mandatory_pass`). Strict coverage
+   validation (every counted subject scheduled in every counting exam) — relaxable later only
+   additively. Template/config edits refused once assessment data exists. Lifecycle
+   Draft→Scheduled→Ongoing→Marks_Entry→Under_Verification→Published→Locked as an explicit
+   transition map with preconditions (→Under_Verification: all cohort rows ≥Entered; publish:
+   freshness + readiness; exam Published when last class publishes).
+
+5. **Scales.** `grading_scales.is_default` (one per school; per-component override remains the
+   ICSE case). Bands are percentages, contiguous 0–100, validated gap/overlap-free.
+   `Percentile_Rank` rejected in v1.
+
+6. **Annual policy.** `terms.result_mode` = `weighted` (Σ term% × term weightage, weights sum to
+   100) | `last_term` (annual = last term verbatim). Every term ALWAYS gets a standalone result.
+
+7. **Publication.** Per-class `exam_class_publication` records; whole-exam publish is a loop.
+   Verification optional: publish requires all cohort rows ≥Entered (no Drafts); Entered rows
+   tolerated with a visible warning. New `marks:verify` permission — defaults class teacher /
+   VP / principal, subject teacher excluded (no self-verify); schools adjust via roles. The verify
+   UI is the review view of the entry grid, not a separate subsystem.
+
+8. **Corrections.** Revision windows on `exam_class_publication` (`published → revision_open →
+   re_issued`): during a window, each edit writes its `student_component_result_revisions` row
+   first (hard rule 7) but no recompute/re-version; at close, ONE recompute, ranks once, and every
+   rank-affected `published_report_cards` row re-versioned (`replaces_version`) atomically. A
+   single-mark quick edit is an invisible auto-window of size one: one approval dialog with live
+   impact preview. `computed_at` freshness gates publish and re-issue.
+
+9. **Attendance eligibility — advisory only.** `exam_eligibility` never blocks entry or
+   publication; it appears once on the readiness screen (below-bar list, one-click allow) and the
+   decision + reason are recorded. Recompute on exam state transitions + manually; missing row =
+   computed on demand.
+
+10. **Ratified compute rules.** Grace order: must-pass subjects first, then largest deficit,
+    never overshooting the pass line, caps respected. Compartment boundary evaluated after grace.
+    Decimal library throughout; round half-up only at storage boundaries; percentage from stored
+    totals. Resolved pass-policy snapshotted onto term/final results.
+
+11. **Portal & product philosophy.** Admin = efficient ERP; parent = narrative layer rendered
+    from published snapshots (type widgets, remarks, attendance ribbon, client-side print incl.
+    class-set; server-side PDF deferred). **Rule 8 clarification:** the portal may derive analytics
+    from PUBLISHED data only, never unpublished marks. Comparison privacy: aggregates/bands/
+    percentiles yes, other students' identities or exact marks never, school-level opt-in. Marks
+    entry autosaves per cell (single-row upsert, optimistic `updatedAt`).
+
+12. **Elective seam.** Compute resolves each student's subject set through a resolver. v1 resolver
+    = all counted exam-mode mappings of the class (roster from `student_enrollments`). The
+    reference's `student_subject_enrollments` (table 23 — the resolved layer: "Exams,
+    Attendance-per-subject, and Report Cards always read from here") remains the future source of
+    truth; landing it later is additive (tables + resolver swap + backfill of exact Auto rows +
+    generation/override workflow). Snapshots already freeze per-student subject lists per compute.
+
+**Consequences.** The schema grows 15 → 17 (`subject_types`, `exam_class_publication` added;
+`coscholastic_assessments` reshaped into `term_assessments`; `subjects.category` dropped; no
+schedule-level override columns — ADR-031's prohibition stands). `exams` gains
+`counts_toward_term_result`; schedules gain `pass_marks`. The reference's `subject_group_id`
+columns and table are deferred with the elective machinery. Migration numbering starts at `0013`
+(fees ended at `0012`). The owner authorized the build model: complete tested backbone before any
+UI; view endpoints designed only with their screens
+(`.kilo/plans/1788637674191-phase5-exams.md`).

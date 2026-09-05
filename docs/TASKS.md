@@ -6,6 +6,15 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
+**PHASE 5 STARTED (2026-09-06) — branch `feature/phase5-exams`.**
+Plan: `.kilo/plans/1788637674191-phase5-exams.md` — backbone-first (full
+tested domain core before any UI; view endpoints designed only with their
+screens). This commit is chunk **D1**: ADR-032 records the design review
+(subject types, blueprint rules, publication, revision windows, advisory
+attendance; supersedes ADR-031's storage location) and the Phase 5 section
+below is rewritten. Next chunk: **B1** — `feat(db)` 17 tables, migrations
+0013+, ADR-013 triggers, `db:verify` extensions.
+
 **FEES MERGED INTO MAIN (2026-09-05) — 172/172 smoke on main post-merge.**
 The two piles were joined with a NESTED merge, not the previously
 documented rebase: `feature/fees-ui` merged into `feature/phase4-fees`
@@ -773,16 +782,30 @@ webhook `system` context (ADR-009).
 
 ---
 
-## Phase 5 — Exams & results (15 tables)
+## Phase 5 — Exams & results (17 tables) — IN PROGRESS on `feature/phase5-exams`
 
-`grading_scales`, `grading_scale_bands`, `pass_criteria`, `exams`,
-`exam_subject_schedules`, `exam_components`, `exam_eligibility`,
-`student_component_results`, `student_component_result_revisions`,
-`student_subject_results`, `student_term_results`, `student_final_results`,
-`coscholastic_assessments`, `report_card_templates`, `published_report_cards`.
+Design: **ADR-032** (binding; supersedes ADR-031's storage location). Plan:
+`.kilo/plans/1788637674191-phase5-exams.md` — backbone-first, one chunk per
+commit, detailed commit messages.
 
-Includes the marks-≤-max and grading-scale-lock triggers (ADR-013). Student-visible
-results read `published_report_cards` **only** (hard rule 8).
+Layers: policy config (`subject_types`, `grading_scales`, `grading_scale_bands`,
+`pass_criteria`) → blueprint (`exams`, `exam_subject_schedules`,
+`exam_components`) → entry (`exam_eligibility`, `student_component_results`,
+`student_component_result_revisions`, `term_assessments`) → computed chain
+(`student_subject_results`, `student_term_results`, `student_final_results`) →
+publication (`report_card_templates`, `published_report_cards`,
+`exam_class_publication`).
+
+Chunks: D1 docs ✅ · B1 db schema + ADR-013 triggers + `db:verify` · B2 contracts
+(+ versioned snapshot Zod) · B3 `exams-maths` + property tests · B4a/b/c services
+· B5 routers (+ ADR-029 subject gate; `check:builders`) · B6 integration / smoke /
+seed · B7 hardening · S1–S5 UI slices (each begins with the
+frontend-product-ux skill and a screen spec).
+
+Hard rules: marks-≤-max + grading-scale-lock triggers (ADR-013); student-visible
+results read `published_report_cards` **only** (hard rule 8); post-publish edits
+flow through revision windows (hard rule 7); attendance eligibility is
+advisory-only (never blocks); `Percentile_Rank` scales rejected in v1.
 
 ---
 
@@ -792,4 +815,7 @@ results read `published_report_cards` **only** (hard rule 8).
 - **Phone-number-change flow** — permission + audit + session revocation. Must land
   before the student portal ships (ADR-007)
 - **Year rollover** — remapping `scope_nodes` and `role_assignments` across academic years
+- **Electives & subject enrollment** — `subject_groups` + `student_subject_enrollments`
+  (the resolved layer, reference table 23) land via the Phase 5 resolver seam
+  (ADR-032 §12); v1 = every student takes every counted mapping of the class
 - Notifications / WhatsApp, timetabling, admissions workflow, library, transport
