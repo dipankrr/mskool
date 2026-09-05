@@ -4,6 +4,7 @@ import type { SubmitRevisionInput } from "@repo/contracts";
 import { db } from "@repo/db";
 import {
   academicYears,
+  authzAuditLog,
   attendanceSummary,
   classSubjectMappings,
   examClassPublication,
@@ -1084,6 +1085,16 @@ export class ExamResultsService {
           set: { publishedBy: userId, publishedAt: new Date(), state: "published" },
         });
 
+      // The consequential act gets the append-only audit trail.
+      await tx.insert(authzAuditLog).values({
+        organizationId: scope.organizationId,
+        action: "result_published",
+        actorUserId: userId,
+        scopeId: classId,
+        permission: "exam:publish",
+        details: { examId, classId },
+      });
+
       // The exam is published when its LAST class is.
       const [remaining] = await tx
         .select({ count: sql<number>`count(*)::int` })
@@ -1360,6 +1371,16 @@ export class ExamResultsService {
         .update(studentComponentResults)
         .set({ marksObtained: input.revisedMarks ?? null, gradeObtained: input.revisedGrade ?? null })
         .where(eq(studentComponentResults.id, result.id));
+
+      await tx.insert(authzAuditLog).values({
+        organizationId: result.organizationId,
+        action: "result_corrected",
+        actorUserId: userId,
+        targetUserId: result.studentId,
+        scopeId: result.id,
+        permission: "marks:publish",
+        details: { previousMarks: result.marksObtained, revisedMarks: input.revisedMarks ?? null, reason: input.reason },
+      });
       return result.id;
     });
     if (componentResultId === null) return null;

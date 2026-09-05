@@ -161,6 +161,10 @@ export const authzAuditActionEnum = pgEnum("authz_audit_action", [
   "role_expired",
   "permission_added",
   "permission_removed",
+  // Phase 5 (ADR-032): publishing results and correcting them afterwards
+  // are consequential academic acts — same append-only audit trail.
+  "result_published",
+  "result_corrected",
 ]);
 
 /**
