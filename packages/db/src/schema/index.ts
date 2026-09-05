@@ -24,3 +24,7 @@ export * from "./attendance";
 // Fees: heads → structures → lines, late-fee rules — and in 0011 the
 // assignment/billing/collection/ledger layers. Phase 4.
 export * from "./fees";
+
+// Exams: subject types -> exams -> components; the marks pipeline; the
+// computed chain; published cards. Phase 5 (ADR-032).
+export * from "./exam";

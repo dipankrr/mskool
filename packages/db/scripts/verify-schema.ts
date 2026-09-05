@@ -129,12 +129,23 @@ async function main() {
         'fee_payments_late_fee_non_negative',
         'payment_allocations_amount_positive',
         'fee_refunds_amount_positive',
-        'financial_transactions_amount_positive'
+        'financial_transactions_amount_positive',
+        'grading_scale_bands_bounds',
+        'grading_scale_bands_point_range',
+        'pass_criteria_attendance_range',
+        'pass_criteria_grace_caps_present',
+        'pass_criteria_compartment_cap_present',
+        'exams_weightage_range',
+        'exam_components_max_positive',
+        'exam_components_pass_bounds',
+        'exam_components_weightage_range',
+        'student_component_results_value_present',
+        'student_component_results_exemption_typed'
       )
     ORDER BY con.conname
   `;
   for (const c of constraints) console.log(`  ${c.table_name}.${c.constraint_name}`);
-  report("all CHECK constraints exist", constraints.length === 27, `found ${constraints.length}/27`);
+  report("all CHECK constraints exist", constraints.length === 38, `found ${constraints.length}/38`);
 
   // contype 'x' is an EXCLUDE constraint. drizzle-kit cannot see these at all,
   // so their absence would be silent — hence checking the catalog directly.
@@ -175,6 +186,27 @@ async function main() {
       AND NOT tg.tgisinternal
   `;
   report("the ledger append-only trigger exists", ledgerTriggers.length === 1, `found ${ledgerTriggers.length}/1`);
+
+  // Phase 5's ADR-013 pair: marks can never exceed their component max, and
+  // a grading scale locks on first use by a computed result. Same
+  // invisible-to-drizzle-kit class, same catalog check.
+  const marksMaxTriggers = await sql<{ tgname: string }[]>`
+    SELECT tg.tgname FROM pg_trigger tg
+    JOIN pg_class rel ON rel.oid = tg.tgrelid
+    WHERE rel.relname = 'student_component_results'
+      AND tg.tgname = 'student_component_results_marks_max_trg'
+      AND NOT tg.tgisinternal
+  `;
+  report("the marks-max trigger exists", marksMaxTriggers.length === 1, `found ${marksMaxTriggers.length}/1`);
+
+  const scaleLockTriggers = await sql<{ tgname: string }[]>`
+    SELECT tg.tgname FROM pg_trigger tg
+    JOIN pg_class rel ON rel.oid = tg.tgrelid
+    WHERE rel.relname = 'student_subject_results'
+      AND tg.tgname = 'grading_scales_lock_trg'
+      AND NOT tg.tgisinternal
+  `;
+  report("the grading-scale lock trigger exists", scaleLockTriggers.length === 1, `found ${scaleLockTriggers.length}/1`);
 
   console.log("\n=== hard rule 11: every timestamp is timestamptz ===");
   const naive = await sql<{ table_name: string; column_name: string }[]>`
@@ -1292,6 +1324,165 @@ async function main() {
              original_payment_id, refund_amount, refund_date, refund_mode, reason)
           VALUES (${org.id}, ${school.id}, ${enrStudent.id}, ${enrYear.id},
                   ${firstPayment.id}, '0.00', '2030-04-20', 'cash', 'duplicate entry')`,
+    );
+  });
+
+  console.log("\n=== exams: schema guards (0013-0015, the ADR-013 pair) ===");
+  await inRollback(async (tx) => {
+    // A minimal exam world: org → school → year → term → class → subject →
+    // student → enrollment, plus the config the chain reads (a subject type,
+    // a default grading scale with one band, a class-subject mapping).
+    const [examOrg] = await tx<{ id: string }[]>`
+      INSERT INTO organizations (name, legal_name, slug)
+      VALUES ('Verify Exams Trust', 'Verify Exams Educational Trust', 'verify-exams-trust')
+      RETURNING id
+    `;
+    const [examSchool] = await tx<{ id: string }[]>`
+      INSERT INTO schools (organization_id, name, legal_name, code)
+      VALUES (${examOrg.id}, 'Verify Exams School', 'Verify Exams School', 'VX1')
+      RETURNING id
+    `;
+    const [examYear] = await tx<{ id: string }[]>`
+      INSERT INTO academic_years (organization_id, school_id, name, start_date, end_date, original_end_date)
+      VALUES (${examOrg.id}, ${examSchool.id}, '2031-32', '2031-04-01', '2032-03-31', '2032-03-31')
+      RETURNING id
+    `;
+    const [examTerm] = await tx<{ id: string }[]>`
+      INSERT INTO terms (organization_id, school_id, academic_year_id, name, sequence_number, start_date, end_date)
+      VALUES (${examOrg.id}, ${examSchool.id}, ${examYear.id}, 'Term 1', 1, '2031-04-01', '2031-09-30')
+      RETURNING id
+    `;
+    const [examClass] = await tx<{ id: string }[]>`
+      INSERT INTO classes (organization_id, school_id, name, numeric_order)
+      VALUES (${examOrg.id}, ${examSchool.id}, 'Exam Class 8', 8)
+      RETURNING id
+    `;
+    const [examSubject] = await tx<{ id: string }[]>`
+      INSERT INTO subjects (organization_id, school_id, name)
+      VALUES (${examOrg.id}, ${examSchool.id}, 'Verify Mathematics')
+      RETURNING id
+    `;
+    const [examStudent] = await tx<{ id: string }[]>`
+      INSERT INTO students
+        (organization_id, school_id, admission_number, first_name, last_name,
+         date_of_birth, gender)
+      VALUES (${examOrg.id}, ${examSchool.id}, 'VERIFY-E001', 'Verify', 'Exam Student',
+              '2012-06-15', 'male')
+      RETURNING id
+    `;
+    await tx`
+      INSERT INTO student_enrollments
+        (organization_id, school_id, student_id, academic_year_id, class_id)
+      VALUES (${examOrg.id}, ${examSchool.id}, ${examStudent.id}, ${examYear.id}, ${examClass.id})
+    `;
+    const [examSubjectType] = await tx<{ id: string }[]>`
+      INSERT INTO subject_types (organization_id, school_id, name)
+      VALUES (${examOrg.id}, ${examSchool.id}, 'Main Subjects')
+      RETURNING id
+    `;
+    const [examScale] = await tx<{ id: string }[]>`
+      INSERT INTO grading_scales (organization_id, school_id, name, is_default)
+      VALUES (${examOrg.id}, ${examSchool.id}, 'Verify 8-Point', true)
+      RETURNING id
+    `;
+    await tx`
+      INSERT INTO grading_scale_bands
+        (organization_id, school_id, grading_scale_id, min_marks, max_marks, grade_label, grade_point, sequence_number)
+      VALUES (${examOrg.id}, ${examSchool.id}, ${examScale.id}, '0.00', '100.00', 'A', '10.00', 1)
+    `;
+    await tx`
+      INSERT INTO class_subject_mappings
+        (organization_id, school_id, academic_year_id, class_id, subject_id, subject_type_id)
+      VALUES (${examOrg.id}, ${examSchool.id}, ${examYear.id}, ${examClass.id}, ${examSubject.id}, ${examSubjectType.id})
+    `;
+    const [exam] = await tx<{ id: string }[]>`
+      INSERT INTO exams (organization_id, school_id, academic_year_id, term_id, name)
+      VALUES (${examOrg.id}, ${examSchool.id}, ${examYear.id}, ${examTerm.id}, 'Verify Term 1 Final')
+      RETURNING id
+    `;
+    const [examSchedule] = await tx<{ id: string }[]>`
+      INSERT INTO exam_subject_schedules
+        (organization_id, school_id, exam_id, class_id, subject_id, exam_date, start_time, duration_minutes)
+      VALUES (${examOrg.id}, ${examSchool.id}, ${exam.id}, ${examClass.id}, ${examSubject.id},
+              '2031-09-10', '09:00:00', 180)
+      RETURNING id
+    `;
+    const [examComponent] = await tx<{ id: string }[]>`
+      INSERT INTO exam_components
+        (organization_id, school_id, schedule_id, name, max_marks, pass_marks, weightage_percentage)
+      VALUES (${examOrg.id}, ${examSchool.id}, ${examSchedule.id}, 'Theory', '80.00', '27.00', '100.00')
+      RETURNING id
+    `;
+
+    // Each case gets a FRESH component — the (student, exam, component)
+    // unique index would otherwise reject the second insert of the same
+    // triple, masking the rule under test.
+    let componentSeq = 0;
+    const componentResult = (
+      q: Queryable,
+      marks: string | null,
+      status: string,
+      absent: boolean,
+    ) => {
+      componentSeq += 1;
+      const componentName = `Theory v${componentSeq}`;
+      return (async () => {
+        const [comp] = await q`
+          INSERT INTO exam_components
+            (organization_id, school_id, schedule_id, name, max_marks, pass_marks, weightage_percentage)
+          VALUES (${examOrg.id}, ${examSchool.id}, ${examSchedule.id}, ${componentName}, '80.00', '27.00', '100.00')
+          RETURNING id
+        `;
+        return q`INSERT INTO student_component_results
+            (organization_id, school_id, student_id, exam_id, schedule_id, component_id,
+             marks_obtained, result_status, is_absent)
+          VALUES (${examOrg.id}, ${examSchool.id}, ${examStudent.id}, ${exam.id}, ${examSchedule.id},
+                  ${comp.id}, ${marks}, ${status}, ${absent})`;
+      })();
+    };
+
+    // Partial entry is valid: a draft row may be empty.
+    await expectAccept(tx, "a draft component result with no value is accepted", (q) =>
+      componentResult(q, null, "draft", false),
+    );
+    // Absence is not zero: an absent row carries a flag, not a mark.
+    await expectAccept(tx, "an absent entered row (flag, no mark) is accepted", (q) =>
+      componentResult(q, null, "entered", true),
+    );
+    // THE ADR-013 GUARD: no mark may exceed its component's max.
+    await expectReject(
+      tx,
+      "marks above the component max are rejected by the trigger",
+      "student_component_results_marks_max_trg",
+      (q) => componentResult(q, "81.00", "entered", false),
+    );
+    await expectAccept(tx, "marks within the component max are accepted", (q) =>
+      componentResult(q, "62.00", "entered", false),
+    );
+    await expectReject(
+      tx,
+      "a non-draft row with no value, flag, or grade is rejected",
+      "student_component_results_value_present",
+      (q) => componentResult(q, null, "entered", false),
+    );
+
+    // THE OTHER ADR-013 GUARD: first use locks the scale, forever.
+    await expectAccept(tx, "a subject result referencing the scale is accepted", (q) =>
+      q`INSERT INTO student_subject_results
+          (organization_id, school_id, student_id, exam_id, subject_id,
+           marks_obtained, max_marks, pass_marks, final_marks, is_passed,
+           counts_toward_result, is_graded_only, grading_scale_id)
+        VALUES (${examOrg.id}, ${examSchool.id}, ${examStudent.id}, ${exam.id}, ${examSubject.id},
+                '62.00', '80.00', '27.00', '62.00', true,
+                true, false, ${examScale.id})`,
+    );
+    const [lockedScale] = await tx<{ is_locked: boolean }[]>`
+      SELECT is_locked FROM grading_scales WHERE id = ${examScale.id}
+    `;
+    report(
+      "first use locked the grading scale",
+      lockedScale?.is_locked === true,
+      `is_locked = ${lockedScale?.is_locked}`,
     );
   });
 

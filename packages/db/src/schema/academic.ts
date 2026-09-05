@@ -234,23 +234,17 @@ export const sections = pgTable(
   ],
 );
 
-export const subjectCategoryEnum = pgEnum("subject_category", [
-  "scholastic",
-  "coscholastic",
-  "vocational",
-  "language",
-]);
-
 /**
- * A subject as one school teaches it: "Mathematics" with the school's own code
- * and category. School-scoped, NOT year-scoped — Maths is the same subject
- * every year; what changes yearly lives on sections and enrollments.
+ * A subject as one school teaches it: "Mathematics" with the school's own
+ * code. School-scoped, NOT year-scoped — Maths is the same subject every
+ * year; what changes yearly lives on sections and enrollments.
  *
- * `category` (reference SQL table 13) separates the co-scholastic pipeline
- * (ADR on exams; DOMAIN.md "separate pipeline, grades only"). It is a
- * CREATION-TIME seed only: the result flags it used to carry live on
- * `class_subject_mappings` (ADR-031), so `category` must never be derived
- * from at read time — Class 1 Maths is scholastic yet excluded from totals.
+ * The reference SQL's 4-value `category` (scholastic/coscholastic/…) is
+ * GONE — ADR-032: it was CBSE-only vocabulary whose behavior decomposed
+ * into school-defined `subject_types` (below) and it carried no behavior of
+ * its own. What kind of subject this is, how it is assessed, and where it
+ * renders on the report card are all per-class-per-year facts owned by the
+ * mapping's subject type.
  *
  * NOT in the scope tree — no `scope_nodes` row (hard rule 12 names
  * school/class/section only). A teacher's subject authority is a
@@ -279,8 +273,6 @@ export const subjects = pgTable(
     // arrive with the catalog; this stays the school's local handle.
     code: varchar({ length: 20 }),
 
-    category: subjectCategoryEnum().notNull().default("scholastic"),
-
     // Never hard-deleted (hard rule 2): results, fee structures and teacher
     // assignments all point here.
     isActive: boolean().notNull().default(true),
@@ -295,6 +287,64 @@ export const subjects = pgTable(
     uniqueIndex("subjects_school_name_uq").on(t.schoolId, t.name),
     index("subjects_school_idx").on(t.schoolId),
     index("subjects_org_idx").on(t.organizationId),
+  ],
+);
+
+export const subjectAssessmentModeEnum = pgEnum("subject_assessment_mode", [
+  "exam", // schedules, components, marks entry — the full pipeline
+  "term_grade", // no exam; grade + remarks entered at term end
+]);
+
+/**
+ * A school-defined kind of subject — the one row that answers "what is this
+ * subject FOR, here?" (ADR-032 §1). It owns the report-card widget ("Main
+ * Subjects", "Co-curricular", "Personality"…), the result math
+ * (`countsTowardResult`), the entry style (`isGradedOnly`), and how the
+ * assessment data is captured (`assessmentMode`). Board-neutral by design:
+ * a CBSE school seeds the preset, everyone else invents their own — the
+ * reference SQL's 4-value category enum and coscholastic area enum are
+ * deliberately absent.
+ *
+ * Lives in THIS file (not exam.ts) beside the mapping that references it —
+ * the FK would be an ESM import cycle the other way. The flag/mode fields
+ * LOCK once any (class, year, subject) referencing the type has assessment
+ * data (service-level guard); the widget name and order stay editable
+ * forever. Deactivation, never delete (hard rule 2).
+ */
+export const subjectTypes = pgTable(
+  "subject_types",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    organizationId: uuid()
+      .notNull()
+      .references(() => organizations.id),
+    schoolId: uuid()
+      .notNull()
+      .references(() => schools.id),
+
+    name: varchar({ length: 100 }).notNull(),
+
+    countsTowardResult: boolean().notNull().default(true),
+    isGradedOnly: boolean().notNull().default(false),
+    assessmentMode: subjectAssessmentModeEnum().notNull().default("exam"),
+
+    // Widget order on the report card; ties break by name.
+    sequence: smallint().notNull().default(0),
+
+    isActive: boolean().notNull().default(true),
+
+    createdBy: text().references(() => user.id),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex("subject_types_school_name_uq").on(t.schoolId, t.name),
+    index("subject_types_school_idx").on(t.schoolId),
+    index("subject_types_org_idx").on(t.organizationId),
   ],
 );
 
@@ -324,13 +374,14 @@ export const teacherAssignmentRoleEnum = pgEnum("teacher_assignment_role", [
  * exams-phase need (see this plan's S2 header). The FK would be a second
  * ALTER like the reference itself performs.
  *
- * The RESULT FLAGS live here, not on `subjects` (ADR-031): they answer
- * "does THIS class's Maths count THIS year?", which differs per class and per
- * year, so they live on the per-(year, class, subject) row. The reference
- * SQL's `exam_subject_schedules` override ("inherited from subject but can be
- * overridden per schedule") is deliberately superseded — an exam that
- * disagrees with its term's sibling would leave the annual rollup without a
- * defined answer. The exam chain reads THIS row, and only this row.
+ * The RESULT FLAGS lived here once (ADR-031) and now live on the row's
+ * SUBJECT TYPE (ADR-032 — school-defined, board-neutral): `countsTowardResult`
+ * and `isGradedOnly` are type facts, `subjectTypeId` names it. The reference
+ * SQL's `exam_subject_schedules` override remains deliberately superseded —
+ * an exam that disagrees with its term's sibling would leave the annual
+ * rollup without a defined answer. The exam chain reads the mapping's TYPE.
+ * (The two old flag columns dropped in migration 0016; nothing consumed
+ * them — verified before the move.)
  */
 export const classSubjectMappings = pgTable(
   "class_subject_mappings",
@@ -352,16 +403,11 @@ export const classSubjectMappings = pgTable(
       .notNull()
       .references(() => subjects.id),
 
-    // false = excluded from totals and pass calculation for every student
-    // taking this subject in this class this year. NOT the best-5/elective
-    // counting rule (per-student, an exams-phase aggregation policy) and NOT
-    // per-student exemption (`student_subject_results.is_exempted`).
-    countsTowardResult: boolean().notNull().default(true),
-    // true = no numeric marks; a grade is entered directly (Art, PE).
-    // Two INDEPENDENT booleans — all four combinations are legitimate
-    // (Class 1 Maths: numeric but excluded; Art: counted but graded-only) —
-    // so never collapse them into a mode enum.
-    isGradedOnly: boolean().notNull().default(false),
+    // The ADR-032 type: counts toward the result? graded-only? which
+    // report-card widget? Nullable in the DATABASE only because pre-ADR-032
+    // rows (demo seed) predate types — the service requires it at creation
+    // and `db:seed` regenerates every mapping with one.
+    subjectTypeId: uuid().references(() => subjectTypes.id),
 
     // true = NOT auto-assigned to every student; the class-count list that
     // matters for the template is "core subjects every child takes".
@@ -384,6 +430,7 @@ export const classSubjectMappings = pgTable(
       t.subjectId,
     ),
     index("class_subject_mappings_class_year_idx").on(t.classId, t.academicYearId),
+    index("class_subject_mappings_type_idx").on(t.subjectTypeId),
     index("class_subject_mappings_school_idx").on(t.schoolId),
     index("class_subject_mappings_org_idx").on(t.organizationId),
   ],

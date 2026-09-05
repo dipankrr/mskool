@@ -1,0 +1,3 @@
+ALTER TABLE "class_subject_mappings" ADD COLUMN "subject_type_id" uuid;--> statement-breakpoint
+ALTER TABLE "class_subject_mappings" ADD CONSTRAINT "class_subject_mappings_subject_type_id_subject_types_id_fk" FOREIGN KEY ("subject_type_id") REFERENCES "public"."subject_types"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "class_subject_mappings_type_idx" ON "class_subject_mappings" USING btree ("subject_type_id");
