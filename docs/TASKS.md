@@ -6,27 +6,25 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
-**FEES REDESIGN (spec `redesign-fees-UI-prompt.md`) IN PROGRESS, uncommitted on
-`feature/fees-ui` (stacked on F0 commit `abdb462`).** Owner decisions: no
-backend changes (gaps recorded in `docs/FEES-BACKEND-NEEDS.md`); demo-grade
-client aggregates where the spec assumes server numbers; money format
-changed to `₹1,000.00` (no space, `money.ts` + tests updated); dates stay
-`DD/MM/YYYY`; previous rebuild attempt discarded, spec built fresh. New IA:
-`/fees` Overview landing, `/fees/collect` (+`/fees/counter` shim),
-`/fees/outstanding` (+`/fees/dues` shim), payments, ledger (Money
-in/out + running balance), setup; student account redesigned on
-`/students/[id]` (summary, waive, recent payments). Gates green
-(check-types 8/8, lint 0 errors, web 89/89); browser-walked dark + light.
-**E2E now run and green (2026-09-04): 12 passed — the 3 rewritten
-counter tests (cash → receipt, cheque → pending, admin bounce →
-re-open) plus the 4 role walks, admission, marking ×2, session
-boundary. The first run 429'd in global-setup: the Express sign-in
-limiter (20/15min) was exhausted by earlier browser-walk sign-ins on
-the long-running dev servers — a transient, not a code bug; wait out
-the window or restart the API. Ends on the clean documented state
-(reset:demo → seed → smoke:authz 172/172). READY TO COMMIT.**
-Payment-detail instalment descriptions still need the server join
-(documented, UUID fallback kept).
+**FEES REVIEW & MERGE PREP DONE (2026-09-05) — both piles green, awaiting
+OWNER review + merge (briefing: `.kilo/plans/fees-review-briefing.md`;
+merge order: phase4-fees → main, then fees-ui rebases onto main).**
+Branch hygiene done the same day: the fees-ui history was rewritten to
+strip the two vendored agent skills (ui-ux-pro-max + vercel-react-
+best-practices, each duplicated under `.agents/skills/` and
+`.zcode/skills/` — 296 files, 154,924 lines, deletions only vs
+`backup/fees-ui-pre-strip`, which holds the pre-strip branch; commit
+messages unchanged, 14 commits, hashes changed from the plan commit
+onward). `.gitignore` now excludes both skill dirs (uncommitted).
+Fresh gates 2026-09-05, all green on BOTH branches: check-types 8/8;
+unit 4/4 packages; integration 135/135; db:verify; check:openapi;
+check:builders; fees-ui additionally lint 0 errors, smoke:authz 172/172
+(after `reset:demo -- --yes` → `db:seed`), E2E 12 passed. Two known
+transients, not code: `reset:demo` refuses without `--yes`; back-to-back
+sign-in-heavy runs (smoke + E2E) can exhaust the Express limiter
+(20/15min) and 429 — wait out the window and re-run. Payment-detail
+instalment descriptions still need the server join (documented, UUID
+fallback kept).
 
 **THE FEES UI SLICE IS COMPLETE — `feature/fees-ui`, 11 commits, stacked
 on `feature/phase4-fees` (which itself is the 20-commit Phase 4 backend,
