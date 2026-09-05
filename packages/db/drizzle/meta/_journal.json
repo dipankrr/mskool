@@ -71,6 +71,27 @@
       "when": 1788376139503,
       "tag": "0009_loose_kat_farrell",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788381526455,
+      "tag": "0010_brave_karen_page",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788382201689,
+      "tag": "0011_aspiring_rachel_grey",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788413137036,
+      "tag": "0012_wise_reptil",
+      "breakpoints": true
     }
   ]
 }

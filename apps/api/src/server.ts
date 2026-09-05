@@ -10,6 +10,7 @@ import { auth } from "@repo/auth";
 import { appRouter } from "@repo/trpc";
 import { createContext } from "@repo/trpc";
 import { openApiDocument } from "./openapi";
+import { feesWebhookRouter } from "./fees-webhook";
 import { env } from "./env";
 
 type Server = import("express").Application;
@@ -144,6 +145,15 @@ export function createServer() : Server {
   // better-auth mounts its own routes (sign-in, session, etc.) at /api/auth/* —
   // it needs the RAW body, so it's mounted BEFORE express.json().
   app.all("/api/auth/*", toNodeHandler(auth));
+
+  /**
+   * The fee gateway webhook (ADR-009) also needs the RAW body — its HMAC
+   * signature is computed over the bytes the provider sent, and
+   * express.json()'s parse-restringify round trip would break the comparison.
+   * Mounted with its own express.raw parser, before express.json(), so the
+   * signature covers exactly what the provider signed.
+   */
+  app.use(feesWebhookRouter);
 
 
   // An explicit ceiling: JSON payloads beyond this are malformed by

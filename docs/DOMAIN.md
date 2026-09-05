@@ -122,6 +122,13 @@ only way to handle one cheque covering three months, or half of one month.
   later rule change cannot alter a past receipt.
 - `opening_balances` carries prior-year dues forward tagged with their origin year, rather
   than polluting the current year's structure.
+- Mid-year structure line ADDITIONS generate new installments for existing assignments while
+  the assignment's snapshotted `base_annual_amount` / `net_annual_amount` headers are NOT
+  restated — the headers are historical snapshots of assignment time, and the sum of generated
+  installments is the operative truth (recorded owner decision, 2026-09-03). Percentage
+  consequence: all-heads concession percentages ride the header, so a stale header skews
+  concession maths for students whose structure grew post-assignment; revisit if a real school
+  does mid-year edits.
 
 ## 6. Exams & results (15)
 

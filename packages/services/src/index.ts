@@ -41,3 +41,18 @@ export * from "./enrollment.service";
 // Attendance: calendar (the marking gate), marking policy, periods. The
 // marking flow and the record layer append to this file in C5.
 export * from "./attendance.service";
+
+// Fees: the configuration layer — heads, structures, lines, late-fee rules,
+// subscriptions, concessions. The billing engine (F4) and collection (F5)
+// are their own files. Phase 4.
+export * from "./fees.service";
+
+// Fees: the billing engine — assignment resolution, the idempotent
+// installment generator, concession re-apportionment, opening balances.
+// The pure maths lives in fees-maths (no db imports, hermetically tested).
+export * from "./fees-maths";
+export * from "./fees-billing.service";
+
+// Fees: collection and the ledger — recordPayment (row-locked, idempotent),
+// the named status transitions, refunds, waivers, the gateway system path.
+export * from "./fees-collection.service";
