@@ -1,29 +1,46 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { PlusIcon } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useForm } from "react-hook-form";
 import Link from "next/link";
+
+import { createExamSchema, type CreateExamInput } from "@repo/contracts";
 
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
+import { FormDialog } from "@/components/form-dialog";
 import { PageHeader } from "@/components/page-header";
 import { PermissionGate } from "@/components/permission-gate";
+import { Button } from "@/components/ui/button";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useActiveContext } from "@/features/session/active-context";
+import {
+  useExamWorkflowMutations,
+  useExams,
+  useTerms,
+} from "@/features/exams/use-exam-workflow";
 import { createAppColumnHelper, type DataTableColumns } from "@/lib/table";
 import { copy } from "@/lib/copy";
-import { useActiveContext } from "@/features/session/active-context";
-import { useExams } from "@/features/exams/use-exam-workflow";
 
 /**
- * THE EXAMS HUB (S2, read-only slice): every exam for the active session
- * with its lifecycle badge, linking to the detail page. Creation and
- * blueprint editing land with the next S2 commit (specified in
- * .kilo/plans/specs/s2-exam-setup.md).
+ * THE EXAMS HUB (S2): every exam for the active session with its lifecycle
+ * badge; creation opens the term-picked dialog — the exam's year derives
+ * from its term, never from the client (ADR-032).
  */
 
-const column = createAppColumnHelper<ExamRow>();
-
 type ExamRow = NonNullable<ReturnType<typeof useExams>["data"]>[number];
+const column = createAppColumnHelper<ExamRow>();
 
 function statusLabel(status: string): string {
   const labels: Record<string, string> = {
@@ -38,9 +55,98 @@ function statusLabel(status: string): string {
   return labels[status] ?? status;
 }
 
+function ExamDialog({
+  open,
+  onOpenChange,
+  onSubmit,
+  pending,
+  terms,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (data: CreateExamInput) => Promise<void> | void;
+  pending: boolean;
+  terms: { id: string; name: string }[];
+}) {
+  const form = useForm<CreateExamInput>({
+    resolver: zodResolver(createExamSchema) as never,
+    defaultValues: {},
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    form.reset({ name: "", termId: terms[0]?.id ?? "", examType: "regular" });
+  }, [open, terms, form]);
+
+  return (
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={copy.exams.workflow.add}
+      submitLabel={copy.common.create}
+      pending={pending}
+      onSubmit={form.handleSubmit((data) => onSubmit(data))}
+    >
+      <>
+        <Field>
+          <FieldLabel htmlFor="exam-name">{copy.exams.subjects.fields.name}</FieldLabel>
+          <Input id="exam-name" maxLength={150} {...form.register("name")} />
+          <FieldError>{form.formState.errors.name?.message}</FieldError>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="exam-term">{copy.exams.workflow.term}</FieldLabel>
+          <Select
+            value={form.watch("termId")}
+            onValueChange={(v) => {
+              if (v) form.setValue("termId", v);
+            }}
+          >
+            <SelectTrigger id="exam-term">
+              <SelectValue>
+                {(value: string | null) =>
+                  value ? (terms.find((t) => t.id === value)?.name ?? copy.common.none) : copy.common.none
+                }
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {terms.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <FieldError>{form.formState.errors.termId?.message}</FieldError>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="exam-type">{copy.exams.workflow.type}</FieldLabel>
+          <Select
+            value={form.watch("examType")}
+            onValueChange={(v) => form.setValue("examType", v as CreateExamInput["examType"])}
+          >
+            <SelectTrigger id="exam-type">
+              <SelectValue>
+                {(value: string | null) => (value ? value.replace("_", " ") : copy.common.none)}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="regular">Regular</SelectItem>
+              <SelectItem value="mock">Mock</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+      </>
+    </FormDialog>
+  );
+}
+
 export default function ExamsPage() {
-  const { academicYearId } = useActiveContext();
+  const { academicYearId, has, scopeArgs } = useActiveContext();
   const exams = useExams(academicYearId);
+  const terms = useTerms(academicYearId);
+  const { create } = useExamWorkflowMutations();
+
+  const [formOpen, setFormOpen] = useState(false);
 
   const columns = useMemo<DataTableColumns<ExamRow>>(
     () =>
@@ -75,9 +181,12 @@ export default function ExamsPage() {
           <h2 id="exams-heading" className="font-heading text-base font-semibold">
             {copy.exams.workflow.title}
           </h2>
-          <PermissionGate permission="exam:create">
-            <span className="text-muted-foreground text-xs">{copy.exams.workflow.comingSoon}</span>
-          </PermissionGate>
+          {has("exam:create") && academicYearId ? (
+            <Button onClick={() => setFormOpen(true)}>
+              <PlusIcon data-icon="inline-start" />
+              {copy.exams.workflow.add}
+            </Button>
+          ) : null}
         </div>
 
         <DataTable
@@ -101,10 +210,26 @@ export default function ExamsPage() {
               icon={PlusIcon}
               title={copy.exams.workflow.emptyTitle}
               description={copy.exams.workflow.emptyBody}
+              action={
+                has("exam:create") && academicYearId ? (
+                  <Button onClick={() => setFormOpen(true)}>{copy.exams.workflow.add}</Button>
+                ) : undefined
+              }
             />
           }
         />
       </section>
+
+      <ExamDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        terms={terms.data ?? []}
+        pending={create.isPending}
+        onSubmit={async (data) => {
+          await create.mutateAsync({ ...scopeArgs(), data });
+          setFormOpen(false);
+        }}
+      />
     </>
   );
 }

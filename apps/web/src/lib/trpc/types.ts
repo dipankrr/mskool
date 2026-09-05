@@ -69,5 +69,7 @@ export type PassCriteria = RouterOutputs["exam"]["passCriteria"]["list"][number]
 export type Subject = RouterOutputs["subject"]["list"][number];
 export type Exam = RouterOutputs["exam"]["exam"]["list"][number];
 export type ExamDetail = RouterOutputs["exam"]["exam"]["byId"];
+export type ExamSchedule = NonNullable<ExamDetail>["schedules"][number];
+export type ExamComponent = ExamSchedule["components"][number];
 export type ExamEligibility = RouterOutputs["exam"]["eligibility"]["list"][number];
 export type PublishedReportCard = RouterOutputs["portalExam"]["results"]["list"][number];

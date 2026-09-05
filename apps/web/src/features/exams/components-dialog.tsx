@@ -1,0 +1,223 @@
+"use client";
+
+import { zodResolver } from "@hookform/resolvers/zod";
+import { PlusIcon, Trash2Icon } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useFieldArray, useForm } from "react-hook-form";
+import { saveExamComponentsInput, type SaveExamComponentsInput } from "@repo/contracts";
+
+import type { ExamComponent } from "@/lib/trpc/types";
+
+import { FormDialog } from "@/components/form-dialog";
+import { Button } from "@/components/ui/button";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { copy } from "@/lib/copy";
+
+/**
+ * ONE SUBJECT'S PAPER — the batch editor behind "Edit components".
+ *
+ * A paper is "Theory (80, pass 27, must pass) + Internal (20)": rows of
+ * parts whose weightages must sum to 100 (the contract's rule, surfaced
+ * here as a live counter so the error arrives before the submit does).
+ * Weightages stop being editable once marks exist — the server refuses
+ * with that wording; this dialog simply stays closed behind the schedule's
+ * locked state on the detail page.
+ *
+ * `sequenceNumber` is the row order at submit time; the form never asks.
+ */
+type FormValues = Omit<SaveExamComponentsInput, "components"> & {
+  components: Array<Omit<SaveExamComponentsInput["components"][number], "sequenceNumber">>;
+};
+
+export function ComponentsDialog({
+  open,
+  onOpenChange,
+  scheduleId,
+  scheduleLabel,
+  components,
+  pending,
+  onSubmit,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  scheduleId: string;
+  scheduleLabel: string;
+  components: ExamComponent[];
+  pending: boolean;
+  onSubmit: (data: SaveExamComponentsInput) => Promise<void> | void;
+}) {
+  const form = useForm<FormValues>({
+    resolver: zodResolver(saveExamComponentsInput) as never,
+    defaultValues: { scheduleId, components: [] },
+  });
+  const { fields, append, remove } = useFieldArray({ control: form.control, name: "components" });
+  const [weightSum, setWeightSum] = useState(0);
+
+  useEffect(() => {
+    if (!open) return;
+    form.reset({
+      scheduleId,
+      components: components.map((c) => ({
+        scheduleId: c.scheduleId,
+        name: c.name,
+        maxMarks: c.maxMarks,
+        passMarks: c.passMarks,
+        weightagePercentage: c.weightagePercentage,
+        isMandatoryPass: c.isMandatoryPass,
+      })),
+    });
+  }, [open, scheduleId, components, form]);
+
+  // Live weightage sum — the submit-time invariant, shown as you type.
+  useEffect(() => {
+    const subscription = form.watch((values) => {
+      const sum = (values.components ?? []).reduce<number>(
+        (total, row) => total + (Number(row?.weightagePercentage) || 0),
+        0,
+      );
+      setWeightSum(Math.round(sum * 100) / 100);
+    });
+    return () => subscription.unsubscribe();
+  }, [form]);
+
+  return (
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`${copy.exams.workflow.editComponentsFor} — ${scheduleLabel}`}
+      description={copy.exams.workflow.componentSubtitle}
+      pending={pending}
+      onSubmit={form.handleSubmit((data) =>
+        onSubmit({
+          scheduleId: data.scheduleId,
+          components: data.components.map((row, index) => ({
+            ...row,
+            scheduleId,
+            sequenceNumber: index + 1,
+          })),
+        }),
+      )}
+    >
+      <div className="flex flex-col gap-4">
+        {fields.map((field, index) => {
+          const rowError = form.formState.errors.components?.[index];
+          return (
+            <fieldset key={field.id} className="grid gap-3 rounded-lg border p-3 sm:grid-cols-2">
+              <Field data-invalid={rowError?.name ? true : undefined} className="sm:col-span-2">
+                <FieldLabel htmlFor={`component-name-${index}`}>
+                  {copy.exams.workflow.fields.name}
+                </FieldLabel>
+                <Input
+                  id={`component-name-${index}`}
+                  maxLength={100}
+                  placeholder="Theory"
+                  aria-invalid={rowError?.name ? true : undefined}
+                  {...form.register(`components.${index}.name`)}
+                />
+                <FieldError>{rowError?.name?.message}</FieldError>
+              </Field>
+
+              <Field data-invalid={rowError?.maxMarks ? true : undefined}>
+                <FieldLabel htmlFor={`component-max-${index}`}>
+                  {copy.exams.workflow.fields.maxMarks}
+                </FieldLabel>
+                <Input
+                  id={`component-max-${index}`}
+                  inputMode="decimal"
+                  placeholder="80"
+                  aria-invalid={rowError?.maxMarks ? true : undefined}
+                  {...form.register(`components.${index}.maxMarks`)}
+                />
+                <FieldError>{rowError?.maxMarks?.message}</FieldError>
+              </Field>
+
+              <Field data-invalid={rowError?.passMarks ? true : undefined}>
+                <FieldLabel htmlFor={`component-pass-${index}`}>
+                  {copy.exams.workflow.fields.passMarks}
+                </FieldLabel>
+                <Input
+                  id={`component-pass-${index}`}
+                  inputMode="decimal"
+                  placeholder="27"
+                  aria-invalid={rowError?.passMarks ? true : undefined}
+                  {...form.register(`components.${index}.passMarks`)}
+                />
+                <FieldError>{rowError?.passMarks?.message}</FieldError>
+              </Field>
+
+              <Field data-invalid={rowError?.weightagePercentage ? true : undefined}>
+                <FieldLabel htmlFor={`component-weight-${index}`}>
+                  {copy.exams.workflow.fields.weightage}
+                </FieldLabel>
+                <Input
+                  id={`component-weight-${index}`}
+                  inputMode="decimal"
+                  placeholder="80"
+                  aria-invalid={rowError?.weightagePercentage ? true : undefined}
+                  {...form.register(`components.${index}.weightagePercentage`)}
+                />
+                <FieldError>{rowError?.weightagePercentage?.message}</FieldError>
+              </Field>
+
+              <Field>
+                <div className="flex items-center gap-2 pt-6">
+                  <Switch
+                    id={`component-mandatory-${index}`}
+                    checked={Boolean(form.watch(`components.${index}.isMandatoryPass`))}
+                    onCheckedChange={(checked) =>
+                      form.setValue(`components.${index}.isMandatoryPass`, checked)
+                    }
+                  />
+                  <FieldLabel htmlFor={`component-mandatory-${index}`} className="!gap-1">
+                    {copy.exams.workflow.fields.mandatory}
+                  </FieldLabel>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto"
+                    onClick={() => remove(index)}
+                  >
+                    <Trash2Icon data-icon="inline-start" />
+                    {copy.exams.workflow.removeRow}
+                  </Button>
+                </div>
+              </Field>
+            </fieldset>
+          );
+        })}
+
+        <div className="flex items-center justify-between gap-3">
+          <p
+            className={
+              weightSum === 100
+                ? "text-muted-foreground text-sm"
+                : "text-destructive text-sm font-medium"
+            }
+          >
+            {copy.exams.workflow.weightSum}: {weightSum}% / 100%
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() =>
+              append({
+                scheduleId,
+                name: "",
+                maxMarks: "",
+                passMarks: "",
+                weightagePercentage: "",
+                isMandatoryPass: false,
+              })
+            }
+          >
+            <PlusIcon data-icon="inline-start" />
+            {copy.exams.workflow.addComponentRow}
+          </Button>
+        </div>
+      </div>
+    </FormDialog>
+  );
+}

@@ -70,6 +70,10 @@ export function useExamWorkflowMutations() {
     onError: (error) => toast.error(errorMessage(error)),
   });
   const transition = trpc.exam.exam.transition.useMutation({
+    onSuccess: async (_data, variables) => {
+      toast.success(copy.exams.workflow.transitioned);
+      await refreshExam(variables.examId);
+    },
     onError: (error) => toast.error(errorMessage(error)),
   });
   const saveSchedules = trpc.exam.schedules.save.useMutation({
@@ -82,6 +86,8 @@ export function useExamWorkflowMutations() {
   const saveComponents = trpc.exam.components.save.useMutation({
     onSuccess: async (_data, variables) => {
       toast.success(copy.exams.workflow.componentsSaved);
+      // The detail page reads components nested under byId — both keys.
+      await utils.exam.exam.byId.invalidate();
       await utils.exam.components.list.invalidate({ scheduleId: variables.scheduleId });
     },
     onError: (error) => toast.error(errorMessage(error)),
@@ -91,6 +97,105 @@ export function useExamWorkflowMutations() {
   });
 
   return { create, update, transition, saveSchedules, saveComponents, readiness, refreshExam };
+}
+
+export function useSchedules(examId: string | undefined) {
+  const { scopeArgs } = useActiveContext();
+  return trpc.exam.schedules.list.useQuery(
+    { ...scopeArgs(), examId: examId ?? "" },
+    { enabled: Boolean(examId) },
+  );
+}
+
+export function useComponents(scheduleId: string | undefined) {
+  const { scopeArgs } = useActiveContext();
+  return trpc.exam.components.list.useQuery(
+    { ...scopeArgs(), scheduleId: scheduleId ?? "" },
+    { enabled: Boolean(scheduleId) },
+  );
+}
+
+export function useReadiness(examId: string | undefined, classId: string | undefined) {
+  const { scopeArgs } = useActiveContext();
+  return trpc.exam.eligibility.readiness.useQuery(
+    { ...scopeArgs(), examId: examId ?? "", classId: classId ?? "" },
+    { enabled: Boolean(examId) && Boolean(classId) },
+  );
+}
+
+export function useEligibility(examId: string | undefined) {
+  const { scopeArgs } = useActiveContext();
+  return trpc.exam.eligibility.list.useQuery(
+    { ...scopeArgs(), examId: examId ?? "" },
+    { enabled: Boolean(examId) },
+  );
+}
+
+export function useEligibilityActions(examId: string) {
+  const utils = trpc.useUtils();
+  const { scopeArgs } = useActiveContext();
+
+  const refresh = async () => {
+    await utils.exam.eligibility.list.invalidate({ ...scopeArgs(), examId });
+    await utils.exam.exam.byId.invalidate();
+  };
+
+  const recompute = trpc.exam.eligibility.recompute.useMutation({
+    onSuccess: async () => {
+      toast.success(copy.exams.workflow.eligibilityRecomputed);
+      await refresh();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+  const override = trpc.exam.eligibility.override.useMutation({
+    onSuccess: async () => {
+      toast.success(copy.exams.workflow.studentAllowed);
+      await refresh();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+  return { recompute, override };
+}
+
+export function usePublicationActions(examId: string) {
+  const utils = trpc.useUtils();
+  const { scopeArgs } = useActiveContext();
+
+  const refreshAll = async () => {
+    await utils.exam.exam.byId.invalidate({ ...scopeArgs(), id: examId });
+    await utils.exam.exam.list.invalidate();
+    await utils.exam.eligibility.readiness.invalidate({ ...scopeArgs(), examId, classId: "" });
+  };
+
+  const publishClass = trpc.exam.publication.publishClass.useMutation({
+    onSuccess: async () => {
+      toast.success(copy.exams.workflow.classPublished);
+      await refreshAll();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+  const publishExam = trpc.exam.publication.publishExam.useMutation({
+    onSuccess: async (data) => {
+      toast.success(copy.exams.workflow.examPublished(data.publishedClasses));
+      await refreshAll();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+  const openWindow = trpc.exam.publication.openRevisionWindow.useMutation({
+    onSuccess: async () => {
+      toast.success(copy.exams.workflow.windowOpened);
+      await refreshAll();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+  const closeWindow = trpc.exam.publication.closeRevisionWindow.useMutation({
+    onSuccess: async (data) => {
+      toast.success(copy.exams.workflow.windowClosed(data?.reIssued ?? 0));
+      await refreshAll();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+  return { publishClass, publishExam, openWindow, closeWindow };
 }
 
 export type { SaveExamComponentsInput, SaveExamSchedulesInput };
