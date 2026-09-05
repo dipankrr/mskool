@@ -1,0 +1,1 @@
+ALTER TABLE "exam_subject_schedules" ADD COLUMN "pass_marks" numeric(6, 2) DEFAULT '0.00' NOT NULL;

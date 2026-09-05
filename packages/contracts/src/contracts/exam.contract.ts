@@ -221,6 +221,9 @@ export const examScheduleInput = createInsertSchema(examSubjectSchedules, {
   examDate: isoDate,
   durationMinutes: z.number().int().min(5).max(600),
   venue: z.string().max(150).optional(),
+  // Optional: the service derives the weighted default from the components;
+  // a school override (the ">=50/100 total" rule) lands here.
+  passMarks: marksString.optional(),
 })
   .omit({
     id: true,
@@ -466,7 +469,7 @@ export const reportCardSnapshotV1 = z.object({
     .object({
       workingDays: z.number().int(),
       daysPresent: z.number().int(),
-      percentage: z.string(),
+      percentage: z.string().nullable(),
     })
     .nullable(),
   /** Term-grade subjects (areas) + their remarks — never in the math. */

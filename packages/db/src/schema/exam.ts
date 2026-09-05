@@ -386,6 +386,12 @@ export const examSubjectSchedules = pgTable(
     durationMinutes: smallint().notNull(),
     venue: varchar({ length: 150 }),
 
+    // The subject-level pass mark ON THE WEIGHTED SCALE (0-100), snapshotted
+    // by the component save: default = Σ(pass_i/max_i × weight_i) — the raw
+    // sum of component passes in the canonical CBSE shape — overridable by
+    // the school (the "≥50/100 in total" rule, ADR-032).
+    passMarks: numeric({ precision: 6, scale: 2 }).notNull().default("0.00"),
+
     isLocked: boolean().notNull().default(false),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),

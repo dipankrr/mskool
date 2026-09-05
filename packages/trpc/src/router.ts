@@ -5,6 +5,7 @@ import { academicRouter } from "./routers/academic.router";
 import { assignmentRouter } from "./routers/assignment.router";
 import { attendanceRouter } from "./routers/attendance.router";
 import { enrollmentRouter, portalRouter } from "./routers/enrollment.router";
+import { examRouter, portalExamRouter } from "./routers/exam.router";
 import { feesRouter } from "./routers/fees.router";
 import { meRouter } from "./routers/me.router";
 import { schoolRouter } from "./routers/school.router";
@@ -43,6 +44,13 @@ export const appRouter = router({
   // The student portal: portal.enrollment.* — ownership only, no can(). More
   // portal domains join this sub-router as they land.
   portal: portalRouter,
+  // Exams: exam.subjectTypes.* / gradingScales.* / passCriteria.* / exam.* /
+  // schedules.* / components.* / eligibility.* / marks.* (the autosave cell
+  // is subject-gated, ADR-029) / results.* / publication.* / cards.* — and
+  // the portal's ONLY exam door, portal.exam.results.*, reading published
+  // snapshots exclusively (hard rule 8).
+  exam: examRouter,
+  portalExam: portalExamRouter,
 });
 
 

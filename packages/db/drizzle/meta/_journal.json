@@ -127,6 +127,13 @@
       "when": 1788641797258,
       "tag": "0017_serious_masked_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788643647161,
+      "tag": "0018_ambitious_stepford_cuckoos",
+      "breakpoints": true
     }
   ]
 }

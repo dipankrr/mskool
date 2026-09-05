@@ -11,7 +11,7 @@ export const RESOURCE_ACTIONS = {
   // ── Academic ──────────────────────────────────────────────────────────────
   student: ["create", "read", "update", "delete", "export"],
   attendance: ["create", "read", "update", "delete", "export"],
-  marks: ["create", "read", "update", "delete", "publish", "export"],
+  marks: ["create", "read", "update", "delete", "verify", "publish", "export"],
   report_card: ["read", "publish", "export"],
   homework: ["create", "read", "update", "delete"],
   timetable: ["create", "read", "update", "delete"],

@@ -134,7 +134,8 @@ export class ExamConfigService {
         organizationId: scope.organizationId,
         schoolId,
       })
-      .returning();
+      .returning()
+      .then((rows) => rows[0] ?? null);
   }
 
   /**
@@ -208,6 +209,36 @@ export class ExamConfigService {
     return row ?? null;
   }
 
+  /**
+   * The CBSE-flavored starter set (ADR-032 §1): Main Subjects (marked,
+   * counted), Co-curricular (graded-only, not counted), and Personality
+   * (term-grade areas — Discipline/Life Skills class of subjects). Idempotent
+   * per name: existing types are left alone.
+   */
+  async applyCbsePreset(scope: DataScope, userId?: string) {
+    const schoolId = requireSchoolId(scope);
+    const preset = [
+      { name: "Main Subjects", countsTowardResult: true, isGradedOnly: false, assessmentMode: "exam" as const, sequence: 0 },
+      { name: "Co-curricular", countsTowardResult: false, isGradedOnly: true, assessmentMode: "exam" as const, sequence: 1 },
+      { name: "Personality", countsTowardResult: false, isGradedOnly: true, assessmentMode: "term_grade" as const, sequence: 2 },
+    ];
+    const created = [];
+    for (const p of preset) {
+      const [existing] = await db
+        .select({ id: subjectTypes.id })
+        .from(subjectTypes)
+        .where(and(eq(subjectTypes.schoolId, schoolId), eq(subjectTypes.name, p.name)));
+      if (existing) continue;
+      created.push(
+        await db
+          .insert(subjectTypes)
+          .values({ ...p, organizationId: scope.organizationId, schoolId, createdBy: userId ?? null })
+          .returning(),
+      );
+    }
+    return created.flat();
+  }
+
   // -------------------------------------------------------------------------
   // Grading scales + bands (ADR-032 §5)
   // -------------------------------------------------------------------------
@@ -250,7 +281,8 @@ export class ExamConfigService {
    */
   async createGradingScale(scope: DataScope, input: CreateGradingScaleInput) {
     const schoolId = requireSchoolId(scope);
-    if (input.isDefault) {
+    const isDefault = input.isDefault ?? false;
+    if (isDefault) {
       // The one-default-per-school partial unique backs this up; unsetting
       // the previous default here saves the caller a second round trip.
       await db
@@ -287,7 +319,7 @@ export class ExamConfigService {
           schoolId,
           name: input.name,
           description: input.description,
-          isDefault: input.isDefault ?? false,
+          isDefault,
         })
         .returning();
       if (!scale) throw new Error("Failed to create grading scale.");
@@ -343,7 +375,11 @@ export class ExamConfigService {
    * Replaces ALL bands of an unlocked scale (the edit surface mirrors
    * create — contiguity is re-validated). Locked scales refuse.
    */
-  async replaceGradingScaleBands(scope: DataScope, id: string, input: CreateGradingScaleInput) {
+  async replaceGradingScaleBands(
+    scope: DataScope,
+    id: string,
+    input: { bands: CreateGradingScaleInput["bands"] },
+  ) {
     const schoolId = requireSchoolId(scope);
     const [scale] = await db
       .select()
@@ -418,7 +454,8 @@ export class ExamConfigService {
         schoolId,
         academicYearId,
       })
-      .returning();
+      .returning()
+      .then((rows) => rows[0] ?? null);
   }
 
   async updatePassCriteria(scope: DataScope, id: string, input: UpdatePassCriteriaInput) {
