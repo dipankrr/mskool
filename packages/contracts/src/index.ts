@@ -47,3 +47,7 @@ export * from "./contracts/attendance.contract";
 // rules, subscriptions, concessions). The billing and collection schemas
 // land with F4/F5. Phase 4.
 export * from "./contracts/fees.contract";
+
+// Exams: subject types, blueprint, the marks pipeline, the computed chain,
+// publication + the versioned snapshot. Phase 5 (ADR-032).
+export * from "./contracts/exam.contract";
