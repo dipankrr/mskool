@@ -11,6 +11,8 @@ import type {
 } from "@repo/contracts";
 import { db } from "@repo/db";
 import {
+  studentEnrollments as studentEnrollmentsSection,
+  studentSubjectResults,
   studentEnrollments,
   attendanceSummary,
   classSubjectMappings,
@@ -460,6 +462,106 @@ export class ExamMarksService {
         ),
       );
     return entered ?? { entered: 0, verified: 0, total: 0 };
+  }
+
+  /**
+   * THE READINESS VIEW (the publish screen's one call): entry completeness
+   * per the class's schedules, verification counts, the stale-compute flag,
+   * and the advisory below-bar attendance list. Advisory — nothing here
+   * blocks; it informs.
+   */
+  async readiness(scope: DataScope, examId: string, classId: string) {
+    const schoolId = requireSchoolId(scope);
+    const [exam] = await db
+      .select()
+      .from(exams)
+      .where(and(eq(exams.id, examId), eq(exams.schoolId, schoolId)));
+    if (!exam) return null;
+
+    const schedules = await db
+      .select({ id: examSubjectSchedules.id, sectionId: examSubjectSchedules.sectionId })
+      .from(examSubjectSchedules)
+      .where(and(eq(examSubjectSchedules.examId, examId), eq(examSubjectSchedules.classId, classId)));
+
+    let expectedEntries = 0;
+    let enteredEntries = 0;
+    let verifiedEntries = 0;
+    for (const schedule of schedules) {
+      const cohortWhere = schedule.sectionId
+        ? eq(studentEnrollmentsSection.sectionId, schedule.sectionId)
+        : eq(studentEnrollmentsSection.classId, classId);
+      const [cohort] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(studentEnrollmentsSection)
+        .where(
+          and(
+            eq(studentEnrollmentsSection.classId, classId),
+            eq(studentEnrollmentsSection.academicYearId, exam.academicYearId),
+            inArray(studentEnrollmentsSection.enrollmentStatus, ["active", "admitted", "section_assigned"]),
+            cohortWhere,
+          ),
+        );
+      const [components] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(examComponents)
+        .where(eq(examComponents.scheduleId, schedule.id));
+      expectedEntries += (cohort?.count ?? 0) * (components?.count ?? 0);
+
+      const [entryCounts] = await db
+        .select({
+          entered: sql<number>`count(*) FILTER (WHERE ${studentComponentResults.resultStatus} <> 'draft')::int`,
+          verified: sql<number>`count(*) FILTER (WHERE ${studentComponentResults.resultStatus} = 'verified')::int`,
+        })
+        .from(studentComponentResults)
+        .where(eq(studentComponentResults.scheduleId, schedule.id));
+      enteredEntries += entryCounts?.entered ?? 0;
+      verifiedEntries += entryCounts?.verified ?? 0;
+    }
+
+    const [stale] = await db
+      .select({ id: studentComponentResults.id })
+      .from(studentComponentResults)
+      .innerJoin(
+        studentSubjectResults,
+        and(
+          eq(studentComponentResults.studentId, studentSubjectResults.studentId),
+          eq(studentComponentResults.examId, studentSubjectResults.examId),
+        ),
+      )
+      .where(
+        and(
+          inArray(
+            studentComponentResults.scheduleId,
+            schedules.map((s) => s.id),
+          ),
+          sql`${studentComponentResults.updatedAt} > ${studentSubjectResults.computedAt}`,
+        ),
+      )
+      .limit(1);
+
+    const belowBar = await db
+      .select({
+        studentId: examEligibility.studentId,
+        attendancePercentage: examEligibility.attendancePercentage,
+        minRequiredPct: examEligibility.minRequiredPct,
+        isOverridden: examEligibility.isOverridden,
+      })
+      .from(examEligibility)
+      .where(
+        and(
+          eq(examEligibility.examId, examId),
+          eq(examEligibility.isEligible, false),
+          eq(examEligibility.isOverridden, false),
+        ),
+      );
+
+    return {
+      expectedEntries,
+      enteredEntries,
+      verifiedEntries,
+      staleCompute: stale != null,
+      belowBar,
+    };
   }
 
   // -------------------------------------------------------------------------

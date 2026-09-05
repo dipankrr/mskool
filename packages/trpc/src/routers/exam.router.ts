@@ -264,6 +264,27 @@ export const examRouter = router({
       .input(overrideEligibilityInput)
       .output(examEligibilitySelectSchema.nullable())
       .mutation(({ ctx, input }) => examMarksService.overrideEligibility(ctx.scope, ctx.userId, input)),
+
+    readiness: staffProcedure("exam:read", { resolveOwner: resolveExamOwner, gate: "overlap" })
+      .meta({ openapi: { method: "GET", path: "/exams/{examId}/readiness/{classId}", tags: ["exams"], summary: "The publish-readiness panel for one class", protect: true } })
+      .input(z.object({ examId: z.uuid(), classId: z.uuid() }))
+      .output(
+        z.object({
+          expectedEntries: z.number().int(),
+          enteredEntries: z.number().int(),
+          verifiedEntries: z.number().int(),
+          staleCompute: z.boolean(),
+          belowBar: z.array(
+            z.object({
+              studentId: z.uuid(),
+              attendancePercentage: z.string(),
+              minRequiredPct: z.string(),
+              isOverridden: z.boolean(),
+            }),
+          ),
+        }).nullable(),
+      )
+      .query(({ ctx, input }) => examMarksService.readiness(ctx.scope, input.examId, input.classId)),
   }),
 
   marks: router({
