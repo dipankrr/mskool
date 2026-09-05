@@ -6,16 +6,18 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
-**FEES REVIEW & MERGE PREP DONE (2026-09-05) — both piles green, awaiting
-OWNER review + merge (briefing: `.kilo/plans/fees-review-briefing.md`;
-merge order: phase4-fees → main, then fees-ui rebases onto main).**
-Branch hygiene done the same day: the fees-ui history was rewritten to
-strip the two vendored agent skills (ui-ux-pro-max + vercel-react-
-best-practices, each duplicated under `.agents/skills/` and
+**FEES MERGED INTO MAIN (2026-09-05) — 172/172 smoke on main post-merge.**
+The two piles were joined with a NESTED merge, not the previously
+documented rebase: `feature/fees-ui` merged into `feature/phase4-fees`
+(merge commit `42e306e`), then that into `main` (`bd10829`). The rebase
+step was deliberately skipped — owner's call after review: the merged
+main tree is byte-identical to the fees-ui tip that passed every gate,
+the nested path preserves all 34 commit hashes, and it avoids rebase
+conflict risk. Pre-merge hygiene the same day: the fees-ui history was
+rewritten to strip the two vendored agent skills (ui-ux-pro-max +
+vercel-react-best-practices, each duplicated under `.agents/skills/` and
 `.zcode/skills/` — 296 files, 154,924 lines, deletions only vs
-`backup/fees-ui-pre-strip`, which holds the pre-strip branch; commit
-messages unchanged, 14 commits, hashes changed from the plan commit
-onward). `.gitignore` now excludes both skill dirs (uncommitted).
+`backup/fees-ui-pre-strip`, which holds the pre-strip branch). `.gitignore` now excludes both skill dirs (uncommitted).
 Fresh gates 2026-09-05, all green on BOTH branches: check-types 8/8;
 unit 4/4 packages; integration 135/135; db:verify; check:openapi;
 check:builders; fees-ui additionally lint 0 errors, smoke:authz 172/172
@@ -33,9 +35,10 @@ entries: the backend's in
 `.kilo/plans/1788307200000-phase4-fees.md` + the hardening plan; the
 UI's in `.kilo/plans/1788440000000-fees-ui.md`, with the full
 what-actually-happened record in
-`.kilo/plans/1788440000000-fees-ui-report.md`. Merge order: phase4-fees
-first, then fees-ui rebases onto main as a clean apps/web-only pile
-(every UI commit touches only `apps/web` + the plan/report/docs files).**
+`.kilo/plans/1788440000000-fees-ui-report.md`. MERGED 2026-09-05 via a
+nested merge (fees-ui → phase4-fees → main) — the rebase-onto-main step
+described here originally was skipped deliberately; see the resume-here
+at the top.**
 
 - **What ships (UI0–UI10):** the Fees area — five permission-gated tabs
   (Setup / Dues / Counter / Payments / Ledger, the attendance-tabs
@@ -158,8 +161,8 @@ created WITHOUT the two override columns the reference SQL shows there.
 **Phase 4 fees — backend shipped on `feature/phase4-fees` (20 commits),
 the UI slice on `feature/fees-ui` (11 commits, stacked on it)** — see the
 resume-here at the top for what shipped, the verification surface, and
-what is deferred. Both piles await owner review + merge; the UI branch
-rebases onto main cleanly after the backend merges (apps/web-only).
+what is deferred. Both piles merged into main on 2026-09-05 (nested
+merge; see the resume-here at the top).
 
 ---
 

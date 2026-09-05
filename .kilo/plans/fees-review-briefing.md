@@ -107,30 +107,26 @@ And the durable armor: `apps/web/e2e/fees-counter.spec.ts` — three tests
 (cash → receipt, cheque → pending, admin bounce → dues re-open) that
 caught two real UI bugs before landing.
 
-## Merge-day sequence (yours to run, after your review)
+## Merge — DONE 2026-09-05, via a nested merge (not the sequence below)
+
+The sequence below was the original plan; the owner chose the simpler
+path after review, and it is recorded here so the deviation is
+intentional, not an omission:
 
 ```bash
-# 1. Backend into main
+git checkout feature/phase4-fees
+git merge --no-ff feature/fees-ui        # → 42e306e
 git checkout main
-git merge --no-ff feature/phase4-fees
-
-# 2. Rebase the UI pile onto the merged main (it is apps/web-only, so
-#    this should be clean; resolve only if a doc file conflicts)
-git checkout feature/fees-ui
-git rebase main
-
-# 3. Re-run the fast gates, then merge
-pnpm check-types && pnpm --filter @repo/web test && pnpm lint
-git checkout main
-git merge --no-ff feature/fees-ui
-
-# 4. Clean up once satisfied
-git branch -d feature/phase4-fees feature/fees-ui
-git branch -D backup/fees-ui-pre-strip   # only when fully confident
+git merge --no-ff feature/phase4-fees    # → bd10829
 ```
 
-Then `pnpm reset:demo -- --yes && pnpm db:seed && pnpm smoke:authz` on
-main to confirm the merged tree still passes the live matrix.
+Why this is equivalent-and-safer here: the UI branch already contained
+the backend, so the merged main tree is byte-identical to the fees-ui
+tip that passed every gate; all 34 commit hashes are preserved; no
+rebase, no conflict risk. Verified post-merge: `smoke:authz` 172/172 on
+main. The rebase route's only advantage (two separate merge commits on
+main, one per pile) was cosmetic and mattered for pile-level reverts
+that are unlikely for one feature.
 
 ## Commits this session left for you (on `feature/fees-ui`)
 
