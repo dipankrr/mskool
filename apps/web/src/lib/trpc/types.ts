@@ -42,3 +42,22 @@ export type CalendarDay = RouterOutputs["attendance"]["calendar"]["list"][number
 /** The scope every staff call carries. Lists send the org; mutations add a branch. */
 export type StaffScopeArgs = { organizationId: string };
 export type WriteScopeArgs = StaffScopeArgs & { schoolId: string };
+
+/*
+ * Fees. The router is mounted as `fees` (plural) in router.ts — the router
+ * file's own head comment says `fee.*`, which is stale. Money columns arrive
+ * as decimal strings; `lib/money.ts` is the only thing allowed to parse them.
+ */
+export type FeeHead = RouterOutputs["fees"]["head"]["list"][number];
+export type FeeStructure = RouterOutputs["fees"]["structure"]["list"][number];
+export type FeeStructureLine = RouterOutputs["fees"]["structure"]["listLines"][number];
+export type LateFeeRule = RouterOutputs["fees"]["structure"]["listLateFeeRules"][number];
+export type FeeSubscription = RouterOutputs["fees"]["subscription"]["list"][number];
+export type FeeAssignment = NonNullable<
+  RouterOutputs["fees"]["assignment"]["byStudent"]
+>;
+export type FeeInstallment = RouterOutputs["fees"]["installment"]["dues"][number];
+export type FeePayment = RouterOutputs["fees"]["payment"]["list"][number];
+export type PaymentDetail = RouterOutputs["fees"]["payment"]["detail"];
+export type LedgerTransaction = RouterOutputs["fees"]["ledger"]["list"][number];
+export type OpeningBalance = RouterOutputs["fees"]["ledger"]["listOpeningBalances"][number];

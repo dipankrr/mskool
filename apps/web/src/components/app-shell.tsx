@@ -6,6 +6,7 @@ import {
   CalendarDaysIcon,
   GraduationCapIcon,
   HomeIcon,
+  LandmarkIcon,
   MenuIcon,
   UserIcon,
   UsersIcon,
@@ -89,8 +90,14 @@ type NavItem = {
    * `school:read`, so Branches was a dead end for them: the list 403s and the screen
    * can only apologise. A navigation item that cannot work is worse than an absent one,
    * for the same reason `PermissionGate` hides actions rather than disabling them.
+   *
+   * An array is ANY-OF: the item shows when at least one permission is held. Fees is
+   * the reason this exists — its five tabs gate on five different reads, and a
+   * class teacher holding only `student_fee_assignment:read` still needs the area
+   * reachable for the Dues tab, while a vice-principal with `fee_report:read` alone
+   * still needs it for the Ledger.
    */
-  permission?: Permission;
+  permission?: Permission | readonly Permission[];
 };
 
 const NAV_ITEMS: NavItem[] = [
@@ -125,6 +132,23 @@ const NAV_ITEMS: NavItem[] = [
     icon: CalendarCheckIcon,
     permission: "attendance:read",
   },
+  {
+    href: "/fees",
+    label: copy.nav.fees,
+    icon: LandmarkIcon,
+    /*
+     * Any-of: the area's tabs gate on five reads (structure, assignment,
+     * payment:create, payment:read, report). Anyone who can see ONE tab needs
+     * the entry; the tabs filter the rest server-independently.
+     */
+    permission: [
+      "fee_structure:read",
+      "student_fee_assignment:read",
+      "fee_payment:create",
+      "fee_payment:read",
+      "fee_report:read",
+    ] as const satisfies readonly Permission[],
+  },
   { href: "/profile", label: copy.nav.profile, icon: UserIcon },
 ];
 
@@ -148,11 +172,19 @@ export function AppShell({ children }: { children: ReactNode }) {
    * Destinations the caller has no permission to read are dropped entirely. While
    * `me` is still resolving nothing is dropped, because the permission list is not
    * known yet and a nav bar that reshuffles as it loads is worse than one that waits.
+   * A permission may be an array — ANY-OF, the Fees case (see NavItem).
    */
   const schoolCount = ready ? state.value.schools.length : 0;
-  const navItems = NAV_ITEMS.filter(
-    (item) => !ready || !item.permission || state.value.has(item.permission),
-  ).map((item) =>
+  const hasSome = (permission?: NavItem["permission"]): boolean => {
+    if (!ready) return true;
+    if (!permission) return true;
+    // Array.isArray does not narrow `readonly Permission[]`, so discriminate on the single case.
+    if (typeof permission === "string") {
+      return state.value.has(permission);
+    }
+    return permission.some((p) => state.value.has(p));
+  };
+  const navItems = NAV_ITEMS.filter((item) => !ready || hasSome(item.permission)).map((item) =>
     item.href === "/branches" && ready
       ? { ...item, label: branchWord(schoolCount, true) }
       : item,

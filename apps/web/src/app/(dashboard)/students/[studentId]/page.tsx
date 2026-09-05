@@ -31,6 +31,7 @@ import {
 } from "@/features/students/assign-section-dialog";
 import { EnrollDialog } from "@/features/students/enroll-dialog";
 import { StudentEditDialog } from "@/features/students/student-edit-dialog";
+import { FeeProfileCard } from "@/features/fees/fee-profile-card";
 import {
   useStudent,
   useStudentEnrollments,
@@ -259,6 +260,8 @@ export default function StudentDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      <FeeProfileCard studentId={studentId} />
 
       <StudentEditDialog
         open={editOpen}

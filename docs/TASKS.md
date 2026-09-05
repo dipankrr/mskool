@@ -6,58 +6,102 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
-**PHASE 4 — FEES — BACKEND COMPLETE + SECURITY-HARDENED (branch
-`feature/phase4-fees`, 20 commits, unmerged).** All 14 tables live (migrations 0010–0012), the full contract → service → router chain, the
-money-safety proofs, and the 7-commit hardening slice (S0–S6). The plans and
-per-commit reviewer entries live in
-`.kilo/plans/1788307200000-phase4-fees.md` (the build contract),
-`.kilo/plans/1788307200000-phase4-fees-report.md` (what actually happened),
-and `.kilo/plans/1788384000000-phase4-fees-security-hardening.md` (the
-hardening contract). **The owner reviews commit-by-commit via the Reviewer's
-guide entries, then merges.** S4–S6 were still uncommitted at the time of
-writing — confirm `git log main..HEAD` shows 20 before merging.
+**FEES REVIEW & MERGE PREP DONE (2026-09-05) — both piles green, awaiting
+OWNER review + merge (briefing: `.kilo/plans/fees-review-briefing.md`;
+merge order: phase4-fees → main, then fees-ui rebases onto main).**
+Branch hygiene done the same day: the fees-ui history was rewritten to
+strip the two vendored agent skills (ui-ux-pro-max + vercel-react-
+best-practices, each duplicated under `.agents/skills/` and
+`.zcode/skills/` — 296 files, 154,924 lines, deletions only vs
+`backup/fees-ui-pre-strip`, which holds the pre-strip branch; commit
+messages unchanged, 14 commits, hashes changed from the plan commit
+onward). `.gitignore` now excludes both skill dirs (uncommitted).
+Fresh gates 2026-09-05, all green on BOTH branches: check-types 8/8;
+unit 4/4 packages; integration 135/135; db:verify; check:openapi;
+check:builders; fees-ui additionally lint 0 errors, smoke:authz 172/172
+(after `reset:demo -- --yes` → `db:seed`), E2E 12 passed. Two known
+transients, not code: `reset:demo` refuses without `--yes`; back-to-back
+sign-in-heavy runs (smoke + E2E) can exhaust the Express limiter
+(20/15min) and 429 — wait out the window and re-run. Payment-detail
+instalment descriptions still need the server join (documented, UUID
+fallback kept).
 
-- **What ships (20 commits: F0–F8 + hardening slice + S0–S6):** the configuration layer (heads,
-  structures, lines, late-fee rules), the resolution/billing/collection/
-  ledger layers (assignments, concessions, subscriptions, installments,
-  opening balances, payments, allocations, refunds,
-  financial_transactions, receipt_number_sequences), the billing engine
-  (assign → idempotent installment generation → windowed concession
-  re-apportionment), collection (row-locked receipt claim, payload-matched
-  idempotency, server-computed late fees, named status transitions, refunds,
-  waivers), the ADR-009 webhook seam (`POST /api/webhooks/fees`, HMAC over the raw
-  body, order-id idempotency, surplus refused, hostile edges pinned), 36 REST endpoints, a
-  49-test maths suite (43 examples + 6 fast-check properties), a 42-test integration suite against real
-  Postgres (incl. the IDOR matrix), seed fee fixtures, `reset:demo` for fixture hygiene,
-  and 172 live smoke checks — all green.
-- **The load-bearing decisions, now enforced:** hard rule 3 is a
-  HAND-WRITTEN trigger (append-only ledger; UPDATE/DELETE raise; proven
-  by `db:verify`); the receipt sequence is claimed `FOR UPDATE` inside
-  the payment transaction with the unique index as backstop; money is
-  decimal-strings on the wire and BigInt paise in every computation;
-  balances/totals are GENERATED columns; payment status moves only
-  through named operations; late fees are server-computed (never trusted
-  from the client); `online_portal` is webhook-only; concessions honor
-  validity windows; recompute re-derives frozen-ness under row locks.
-- **Deliberately deferred (recorded, do not assume they shipped):** the
-  real payment gateway (the seam is built; provider integration is
-  additive when keys exist), fee screens (backend first — the UI slice
-  is the natural next step), the concession approval workflow, security
-  deposits, GST reporting, Tally export, surplus advance (wallet),
-  sibling-discount auto-detection — plus the hardening deferrals: separation
-  of duties (detect-only), `authz_audit_log` writer, Postgres RLS.
-- **Verification surface:** `check-types` 8/8; `test` 215 unit
-  (86 authz + 49 services + 48 web + 32 trpc); `test:integration` 135
-  (93 authz + 42 fees); `db:verify` 119; `check:builders` + `check:openapi`
-  green (100 endpoints, 36 fee); `lint` 0 errors; `smoke:authz` 172/172
-  all-green after the S5 demo-org reset (21,006 fixture rows out, clean
-  re-seed). Demo org is freshly seeded — UI testing will drift it again;
-  re-run `reset:demo → seed → smoke` when a clean gate is needed.
+**THE FEES UI SLICE IS COMPLETE — `feature/fees-ui`, 11 commits, stacked
+on `feature/phase4-fees` (which itself is the 20-commit Phase 4 backend,
+also unmerged). The owner reviews BOTH piles via their Reviewer's-guide
+entries: the backend's in
+`.kilo/plans/1788307200000-phase4-fees.md` + the hardening plan; the
+UI's in `.kilo/plans/1788440000000-fees-ui.md`, with the full
+what-actually-happened record in
+`.kilo/plans/1788440000000-fees-ui-report.md`. Merge order: phase4-fees
+first, then fees-ui rebases onto main as a clean apps/web-only pile
+(every UI commit touches only `apps/web` + the plan/report/docs files).**
 
-**Next:** the fees UI slice (setup → collection counter → dues/ledger),
-or Phase 5 exams per the original roadmap — owner's call. The
-`system`-context webhook is built and testable without a gateway; a real
-provider integration needs only live keys and a signed caller.
+- **What ships (UI0–UI10):** the Fees area — five permission-gated tabs
+  (Setup / Dues / Counter / Payments / Ledger, the attendance-tabs
+  pattern; `/fees` redirects to the first permitted tab; one nav entry
+  via the new any-of NavItem permission); Setup (fee heads CRUD +
+  retire, structures + lines + late-fee rules with the contract's money
+  regex as field errors); the student fee profile card (assign →
+  generate → concession → recompute, optional-fee subscriptions,
+  opening balances); the DUES arrears view (grouped by student,
+  per-student + grand totals, per-row Waive with the never-paid rule
+  mirrored); THE COUNTER (student search → clamped allocation builder
+  → derived read-only total → mode-conditional fields → receipt with
+  the frozen late fee; idempotency key per attempt); Payments (list +
+  the state machine detail: pending → clear/cancel/bounce, cleared →
+  bounce/reverse/refund, terminal → records-kept note; reasons
+  required; approve-tier hidden from the accountant — duties);
+  Ledger (read-only, In/Out/Net) — plus `lib/money.ts` (the app's
+  first money module: BigInt paise, en-IN ₹ formatting, 41 tests)
+  and `copy.fees` (the area's whole vocabulary).
+- **The money-UI rules that held throughout (the plan's three):**
+  forms ARE the contracts (RHF+zodResolver on the exact @repo/contracts
+  schemas — the wire regex enforces itself client-side); the UI never
+  computes what the server owns (totals derived from allocations,
+  late fees only ever displayed from the server's receipt, concession
+  amounts toasted back, no optimistic updates on any money path); the
+  state machine is encoded in the UI (illegal transitions do not
+  render — corrected once when the E2E caught bounce-from-pending
+  missing against the service's own preconditions).
+- **The durable armor:** `e2e/fees-counter.spec.ts` (3 tests: cash →
+  receipt; cheque → pending; admin bounce → dues re-open) + the
+  accountant auth state in global-setup. **It caught two real UI bugs
+  before landing** — the counter's premature "Nothing to collect"
+  flash (query-race; now gates on isSuccess) and the missing
+  bounce-from-pending (the classic bounced-cheque case) — both fixed
+  in the same commit that added the spec.
+- **Walks, all DB-verified (never the toast):** every chunk was
+  walked in a real browser per role — heads created/retired,
+  structure lines + late-fee rules, assignment + ₹1,320 concession +
+  windowed recompute (three suspicion rounds cleared the backend
+  completely — the "failure" was walk-tooling: native value setters
+  for RHF dates), subscription + cancel, dues waived (waiver ledger
+  row), cash ₹1,400+₹100-late-fee receipt, cheque pending, cleared
+  cheque, reversal re-opening balances, ₹500 refund, opening balance
+  + its paired ledger row, ledger In 5,601 / Out 2,500 / Net 3,101.
+- **Verification surface (final full gate, all green):** check-types
+  8/8; unit 256 (86 authz + 49 services + 32 trpc + 89 web — money lib
+  added 41); integration 135 (93 authz + 42 fees); db:verify 119;
+  builders + openapi green (100 endpoints, 36 fee — unchanged; the UI
+  touches no backend); lint 0 errors (web warnings 18 → 15, BELOW the
+  pre-slice baseline); test:e2e 12 passed (4 specs + fees-counter);
+  smoke:authz 172/172 after `reset:demo → seed` (the UI's testing
+  consumed the demo dues — the documented fixture path; the FINAL
+  E2E run after the last reset re-drifts it again — run
+  `reset:demo → seed → smoke` for a clean gate whenever needed).
+- **Deliberately deferred (recorded in the plan's deferrals, not
+  silently dropped):** late-fee rule edit/deactivate (no endpoint;
+  sunset via effectiveTo), concession list endpoint, refund list
+  endpoint (ledger is the read path), opening-balance payment path,
+  duesListSchema.sectionId (unpicked), late-fee preview endpoint,
+  surplus/advance, the student PORTAL fee view, E2E beyond the
+  counter (walks cover the rest), receipt print CSS polish.
+
+**Next:** Phase 5 exams per the roadmap (ADR-031's mapping rules are
+binding), or the fees-deferral mop-up, or the housekeeping debt
+(`/me` organization exposure) — owner's call. The webhook seam needs
+only live keys + a signed caller for a real gateway.
 
 **Phase 3 remains complete** — see its section below; the Phase 2
 deferrals and the students slice's deferrals stand unchanged.
@@ -111,10 +155,11 @@ schedule-level override — and its phase obligations (snapshot at compute,
 are recorded in the ADR. When building Phase 5, `exam_subject_schedules` is
 created WITHOUT the two override columns the reference SQL shows there.
 
-**Phase 4 fees shipped on `feature/phase4-fees`** — see the resume-here
-at the top for what shipped and what is deferred. Alternatives if the
-owner prefers next: the E2E slice for the new screens, or the
-housekeeping debt (`pnpm lint`, `/me`'s organization exposure).
+**Phase 4 fees — backend shipped on `feature/phase4-fees` (20 commits),
+the UI slice on `feature/fees-ui` (11 commits, stacked on it)** — see the
+resume-here at the top for what shipped, the verification surface, and
+what is deferred. Both piles await owner review + merge; the UI branch
+rebases onto main cleanly after the backend merges (apps/web-only).
 
 ---
 

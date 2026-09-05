@@ -21,3 +21,8 @@ rough.md
 # Playwright artifacts (screenshots/traces from failed e2e runs).
 test-results/
 playwright-report/
+
+# Agent skills are installed to disk but never committed — 157k lines of vendored
+# data were once swept into a feature branch and had to be filtered out of history.
+.agents/skills/
+.zcode/skills/
