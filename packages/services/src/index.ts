@@ -57,3 +57,9 @@ export * from "./fees-billing.service";
 // the named status transitions, refunds, waivers, the gateway system path.
 export * from "./fees-collection.service";
 export * from "./exams-maths";
+
+// Exams: config/blueprint/lifecycle, the marks pipeline, and the compute/
+// publication engine. Phase 4 (B4).
+export * from "./exam-config.service";
+export * from "./exam-marks.service";
+export * from "./exam-results.service";
