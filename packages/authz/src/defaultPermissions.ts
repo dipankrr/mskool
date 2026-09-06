@@ -110,6 +110,12 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "portal_access:read",
     "portal_access:grant",
     "portal_access:revoke",
+    // The credential lifecycle (ADR-007): the principal owns the family
+    // login's phone and password — activation, reset, and the phone change
+    // (which is a credential change: audit + session revocation).
+    "portal_access:activate",
+    "portal_access:reset_password",
+    "portal_access:change_phone",
     // Manages the teaching-assignment layer (Phase 2 S2): which subjects each
     // class takes in a year, and who teaches what where.
     "subject_mapping:create",

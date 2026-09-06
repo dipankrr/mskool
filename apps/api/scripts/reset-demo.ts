@@ -72,6 +72,25 @@ import {
   terms,
   user,
 } from "@repo/db/schema";
+// Phase 5 exam tables — import explicitly beside the rest of the wipe list.
+import {
+  examClassPublication,
+  examComponents,
+  examEligibility,
+  examSubjectSchedules,
+  exams,
+  gradingScaleBands,
+  gradingScales,
+  passCriteria,
+  publishedReportCards,
+  studentComponentResultRevisions,
+  studentComponentResults,
+  studentFinalResults,
+  studentSubjectResults,
+  studentTermResults,
+  subjectTypes,
+  termAssessments,
+} from "@repo/db/schema";
 import { eq, inArray, like, or, sql } from "drizzle-orm";
 
 const DEMO_SLUG = "demo-trust";
@@ -203,6 +222,42 @@ async function main() {
   }
 
   // 4. People — portal and guardian links before enrollments before students.
+  // Phase 5 first: the computed exam chain references students (and cards
+  // reference terms), so the exam world leaves before the people do.
+  if (orgIds.length > 0) {
+    await wipe("student_component_result_revisions", () =>
+      db.delete(studentComponentResultRevisions).where(inArray(studentComponentResultRevisions.organizationId, orgIds)).returning());
+    await wipe("student_component_results", () =>
+      db.delete(studentComponentResults).where(inArray(studentComponentResults.organizationId, orgIds)).returning());
+    await wipe("student_subject_results", () =>
+      db.delete(studentSubjectResults).where(inArray(studentSubjectResults.organizationId, orgIds)).returning());
+    await wipe("student_final_results", () =>
+      db.delete(studentFinalResults).where(inArray(studentFinalResults.organizationId, orgIds)).returning());
+    await wipe("student_term_results", () =>
+      db.delete(studentTermResults).where(inArray(studentTermResults.organizationId, orgIds)).returning());
+    await wipe("term_assessments", () =>
+      db.delete(termAssessments).where(inArray(termAssessments.organizationId, orgIds)).returning());
+    await wipe("published_report_cards", () =>
+      db.delete(publishedReportCards).where(inArray(publishedReportCards.organizationId, orgIds)).returning());
+    await wipe("exam_class_publication", () =>
+      db.delete(examClassPublication).where(inArray(examClassPublication.organizationId, orgIds)).returning());
+    await wipe("pass_criteria", () =>
+      db.delete(passCriteria).where(inArray(passCriteria.organizationId, orgIds)).returning());
+    await wipe("exam_eligibility", () =>
+      db.delete(examEligibility).where(inArray(examEligibility.organizationId, orgIds)).returning());
+    await wipe("exam_components", () =>
+      db.delete(examComponents).where(inArray(examComponents.organizationId, orgIds)).returning());
+    await wipe("exam_subject_schedules", () =>
+      db.delete(examSubjectSchedules).where(inArray(examSubjectSchedules.organizationId, orgIds)).returning());
+    await wipe("exams", () =>
+      db.delete(exams).where(inArray(exams.organizationId, orgIds)).returning());
+    await wipe("grading_scale_bands", () =>
+      db.delete(gradingScaleBands).where(inArray(gradingScaleBands.organizationId, orgIds)).returning());
+    await wipe("grading_scales", () =>
+      db.delete(gradingScales).where(inArray(gradingScales.organizationId, orgIds)).returning());
+    await wipe("subject_types", () =>
+      db.delete(subjectTypes).where(inArray(subjectTypes.organizationId, orgIds)).returning());
+  }
   if (studentIds.length > 0) {
     await wipe("student_portal_access", () =>
       db.delete(studentPortalAccess).where(inArray(studentPortalAccess.studentId, studentIds)).returning());

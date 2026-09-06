@@ -19,13 +19,23 @@ cards, print pass, class set, attendance reports. Final gates: check-types
 8/8, unit, lint 0 errors, check:builders, check:openapi, exams integration
 8/8, smoke:authz 177/177, e2e 12/12, seed idempotent.
 
-**⚠ OPEN RIDER — ADR-007 phone-credential provisioning.** The portal pages
-(/portal/results) are read views over published cards; the portal is NOT
-shippable until the phone login stack lands: better-auth username plugin
-(`{org_slug}-{phone}`), portal activation + must_change_password, password
-reset, and the phone-change flow (own permission + audit row + session
-revocation). ADR-007 says the change-phone flow "must land before the
-portal ships" — that gate is still closed.
+**✓ RIDER CLOSED — ADR-007 phone-credential provisioning (2026-09-06).**
+The portal login stack landed: better-auth's username plugin (the stored
+username is `{org_slug}-{phone}`; the user table gains `username`,
+`display_username`, `must_change_password`, and `email` is now nullable —
+migration 0020), a `@repo/auth/credentials` seam that is the ONLY code
+outside better-auth touching passwords/usernames/sessions (better-auth's
+own internal adapter does the work — hard rule 9), and the
+`portalAccess.*` staff flows — activate (initial password +
+must_change_password), resetPassword (flag + full session revocation),
+changePhone (the credential change: audit row `portal_phone_changed` with
+the reason, old username dead, every live session revoked). Each action is
+its own permission (`portal_access:activate|reset_password|change_phone`,
+principal by default). Smoke proves the takeover path closed over HTTP:
+a pre-change session dies, the old username no longer signs in, the new
+one does, and the audit row exists. Remaining (UI, not security): the
+portal's own route group/nav and the first-login change-password screen
+ride with the portal-provisioning slice.
 
 **Known deferred (recorded, do not silently absorb):** best-of-N /
 elective aggregation, supplementary flow, elective machinery

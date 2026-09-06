@@ -973,6 +973,106 @@ async function seedExamWorld(params: {
     await examResultsService.publishClass(scope, actorUserId, examId, classId);
     console.log("  ~ exam published for the class (cards v1 issued)");
   }
+
+  // A SECOND exam, deliberately left open at marks_entry: the smoke's
+  // ADR-029 gate proof needs a live autosave cell, and the published exam
+  // above is frozen by design. Mathematics-only, one component — the
+  // smallest blueprint the state machine accepts (coverage is checked at
+  // the `scheduled` transition, and only counted mappings must be covered;
+  // a single-subject exam is legitimate).
+  const ENTRY_EXAM_NAME = "Term 1 Entrance Test";
+  const [existingEntryExam] = await db
+    .select({ id: exams.id, status: exams.status })
+    .from(exams)
+    .where(
+      and(
+        eq(exams.schoolId, schoolId),
+        eq(exams.termId, termId),
+        eq(exams.name, ENTRY_EXAM_NAME),
+      ),
+    );
+  let entryExamId = existingEntryExam?.id;
+  if (!entryExamId) {
+    const [created] = await db
+      .insert(exams)
+      .values({
+        organizationId: scope.organizationId,
+        schoolId,
+        termId,
+        academicYearId,
+        name: ENTRY_EXAM_NAME,
+        examType: "mock",
+      })
+      .returning({ id: exams.id });
+    entryExamId = created!.id;
+    console.log(`  + exam ${ENTRY_EXAM_NAME}`);
+  } else {
+    console.log(`  = exam ${ENTRY_EXAM_NAME} (exists, ${existingEntryExam!.status})`);
+  }
+  if (!existingEntryExam || existingEntryExam.status === "draft") {
+    // Both mapped subjects need schedules (the `scheduled` transition's
+    // coverage gate counts the class's counted mappings); only the
+    // Mathematics paper carries components — it is the smoke's cell.
+    await examConfigService.saveSchedules(scope, {
+      examId: entryExamId,
+      schedules: [
+        {
+          examId: entryExamId,
+          classId,
+          subjectId: subjectMathId,
+          examDate: "2025-08-04",
+          startTime: "09:00",
+          durationMinutes: 60,
+        },
+        {
+          examId: entryExamId,
+          classId,
+          subjectId: subjectPhysicsId,
+          examDate: "2025-08-06",
+          startTime: "09:00",
+          durationMinutes: 60,
+        },
+      ],
+    });
+    const entryScheduleId = (await examConfigService.listSchedules([scope], entryExamId)).find(
+      (s) => s.subjectId === subjectMathId,
+    )?.id;
+    if (!entryScheduleId) throw new Error("Entrance-test schedule missing.");
+    await examConfigService.saveComponents(scope, {
+      scheduleId: entryScheduleId,
+      components: [
+        {
+          scheduleId: entryScheduleId,
+          name: "Theory",
+          maxMarks: "100",
+          passMarks: "40",
+          weightagePercentage: "100",
+          sequenceNumber: 1,
+        },
+      ],
+    });
+    const entryPhysicsScheduleId = (await examConfigService.listSchedules([scope], entryExamId)).find(
+      (s) => s.subjectId === subjectPhysicsId,
+    )?.id;
+    if (!entryPhysicsScheduleId) throw new Error("Entrance-test Physics schedule missing.");
+    await examConfigService.saveComponents(scope, {
+      scheduleId: entryPhysicsScheduleId,
+      components: [
+        {
+          scheduleId: entryPhysicsScheduleId,
+          name: "Theory",
+          maxMarks: "100",
+          passMarks: "40",
+          weightagePercentage: "100",
+          sequenceNumber: 1,
+        },
+      ],
+    });
+    for (const target of ["scheduled", "ongoing", "marks_entry"] as const) {
+      await examConfigService.transition(scope, { examId: entryExamId, target });
+    }
+    console.log("  ~ entrance test left open at marks_entry (the smoke's gate target)");
+  }
 }
 
 async function main() {

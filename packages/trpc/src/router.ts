@@ -8,6 +8,7 @@ import { enrollmentRouter, portalRouter } from "./routers/enrollment.router";
 import { examRouter, portalExamRouter } from "./routers/exam.router";
 import { feesRouter } from "./routers/fees.router";
 import { meRouter } from "./routers/me.router";
+import { portalAccessRouter } from "./routers/portal-access.router";
 import { schoolRouter } from "./routers/school.router";
 import { studentRouter } from "./routers/student.router";
 import { subjectRouter } from "./routers/subject.router";
@@ -51,6 +52,10 @@ export const appRouter = router({
   // snapshots exclusively (hard rule 8).
   exam: examRouter,
   portalExam: portalExamRouter,
+  // Staff administration of the family login's credential (ADR-007): each
+  // action is its own permission; audit rows + session revocation are the
+  // service's business.
+  portalAccess: portalAccessRouter,
 });
 
 

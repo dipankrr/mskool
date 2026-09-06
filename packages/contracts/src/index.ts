@@ -51,3 +51,6 @@ export * from "./contracts/fees.contract";
 // Exams: subject types, blueprint, the marks pipeline, the computed chain,
 // publication + the versioned snapshot. Phase 5 (ADR-032).
 export * from "./contracts/exam.contract";
+
+// Portal access: the family login's credential lifecycle (ADR-007).
+export * from "./contracts/portal-access.contract";

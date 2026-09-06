@@ -165,6 +165,12 @@ export const authzAuditActionEnum = pgEnum("authz_audit_action", [
   // are consequential academic acts — same append-only audit trail.
   "result_published",
   "result_corrected",
+  // ADR-007's rider: the family login's credential is the phone number, so
+  // changing it is a credential change — activation, password reset, and
+  // the phone change (the account-takeover path) all get audit rows.
+  "portal_activated",
+  "portal_password_reset",
+  "portal_phone_changed",
 ]);
 
 /**

@@ -25,6 +25,7 @@ import { getRedis, invalidateUserAuthCache } from "@repo/authz";
 import { db } from "@repo/db";
 import {
   academicYears,
+  authzAuditLog,
   classSubjectMappings,
   classes,
   examComponents,
@@ -100,6 +101,33 @@ async function signIn(email: string): Promise<string> {
   const cookie = res.headers.getSetCookie?.().join("; ") ?? res.headers.get("set-cookie");
   if (!cookie) throw new Error(`No session cookie returned for ${email}.`);
   return cookie;
+}
+
+/** The ADR-007 portal credential: username (org_slug-phone) + password. */
+async function signInUsername(
+  username: string,
+  password: string,
+): Promise<{ ok: boolean; status: number; cookie: string | null; user: any }> {
+  const res = await fetch(`${API}/api/auth/sign-in/username`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: WEB_ORIGIN },
+    body: JSON.stringify({ username, password }),
+  });
+  const cookie = res.headers.getSetCookie?.().join("; ") ?? res.headers.get("set-cookie");
+  const body = (await res.json().catch(() => ({}))) as { user?: any };
+  return { ok: res.ok, status: res.status, cookie: cookie ?? null, user: body.user };
+}
+
+/** A raw better-auth get-session against a cookie — the revocation probe.
+ * `disableCookieCache` forces the authoritative DB read; a signed cookie
+ * cache would keep answering for a session the store no longer holds. */
+async function getSessionAlive(cookie: string): Promise<boolean> {
+  const res = await fetch(`${API}/api/auth/get-session?disableCookieCache=true`, {
+    headers: { cookie, origin: WEB_ORIGIN },
+  });
+  if (!res.ok) return false;
+  const body = (await res.json().catch(() => ({}))) as { user?: unknown } | null;
+  return Boolean(body?.user);
 }
 
 /**
@@ -2034,18 +2062,19 @@ async function main() {
 
   // --- Exams S3: the marks grid + the ADR-029 subject gate over the wire -----
   //
-  // The seed walks "Term 1 Examination" into marks_entry with a Mathematics
-  // (Theory + Internal) and a Physics paper for Class 6. The subject teacher
-  // is assigned Mathematics (and only Mathematics) in 6-A, so she is the
-  // exact caller the gate exists for: the permission says yes, the timetable
-  // decides which paper is hers.
+  // The seed leaves TWO exams: "Term 1 Examination" (published — the
+  // results/portal/print surfaces' data) and "Term 1 Entrance Test" held at
+  // marks_entry. The gate proof needs a live autosave cell, so it runs
+  // against the OPEN one. The subject teacher is assigned Mathematics (and
+  // only Mathematics) in 6-A, so she is the exact caller the gate exists
+  // for: the permission says yes, the timetable decides which paper is hers.
   const term1A = termsCurrentA.find((t) => t.name === "Term 1");
   const [examSeed] = term1A
     ? await db
         .select()
         .from(exams)
         .where(
-          and(eq(exams.schoolId, schoolA.id), eq(exams.termId, term1A.id), eq(exams.name, "Term 1 Examination")),
+          and(eq(exams.schoolId, schoolA.id), eq(exams.termId, term1A.id), eq(exams.name, "Term 1 Entrance Test")),
         )
     : [];
   if (!examSeed) {
@@ -2158,6 +2187,143 @@ async function main() {
     "principal is FORBIDDEN on the autosave (verify/publish, but no marks:create — the owner's matrix)",
     !principalSave.ok && principalSave.code === "FORBIDDEN",
     principalSave.ok ? "AUTHORIZED — a leak" : `code ${principalSave.code}`,
+  );
+
+  // --- Portal credentials: ADR-007's rider over the wire ----------------------
+  //
+  // The phone IS the login credential, so the smoke walks the whole
+  // The revocation experiment above left the principal's grants revoked
+  // (restored only at the very end) — the portal checks need them live.
+  const [principalUserForPortal] = await db
+    .select({ id: user.id })
+    .from(user)
+    .where(eq(user.email, PRINCIPAL_EMAIL));
+  await db
+    .update(roleAssignments)
+    .set({ revokedAt: null })
+    .where(eq(roleAssignments.userId, principalUserForPortal!.id));
+  await invalidateUserAuthCache(principalUserForPortal!.id);
+
+  // takeover-shaped lifecycle: activate → live session → phone change →
+  // that session is DEAD, the old username no longer signs in, the new one
+  // does, and the audit row records the change. Password reset follows the
+  // same shape. Phone numbers are per-run so re-running never collides with
+  // a previous run's credential.
+  const runSuffix = String(Date.now()).slice(-5);
+  const PORTAL_PHONE_1 = `98${runSuffix}001`;
+  const PORTAL_USERNAME_1 = `demo-trust-${PORTAL_PHONE_1}`;
+  const PORTAL_PHONE_2 = `98${runSuffix}002`;
+  const PORTAL_USERNAME_2 = `demo-trust-${PORTAL_PHONE_2}`;
+
+  const activatePortal = await mutate(principalCookie, "portalAccess.activate", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    studentId: student1.id,
+    phone: PORTAL_PHONE_1,
+    password: SEED_PASSWORD,
+  });
+  report(
+    "principal activates the family login (portal_access:activate)",
+    activatePortal.ok && activatePortal.data?.isActive === true,
+    activatePortal.ok ? "access row active" : `code ${activatePortal.code}`,
+  );
+
+  const portalLoginUserId = activatePortal.data?.userId as string | undefined;
+
+  const portalSignIn = await signInUsername(PORTAL_USERNAME_1, SEED_PASSWORD);
+  report(
+    "the family signs in by phone (username plugin, must_change_password flagged)",
+    portalSignIn.ok &&
+      portalSignIn.user?.username === PORTAL_USERNAME_1 &&
+      portalSignIn.user?.mustChangePassword === true,
+    portalSignIn.ok ? "signed in, flag set" : `status ${portalSignIn.status}`,
+  );
+
+  const portalCookie = portalSignIn.cookie!;
+
+  const subjectTeacherPhone = await mutate(subjectTeacherCookie, "portalAccess.changePhone", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    studentId: student1.id,
+    newPhone: PORTAL_PHONE_2,
+    reason: "hostile takeover attempt — must be refused",
+  });
+  report(
+    "subject_teacher is FORBIDDEN on the phone change (no portal_access:change_phone)",
+    !subjectTeacherPhone.ok && subjectTeacherPhone.code === "FORBIDDEN",
+    subjectTeacherPhone.ok ? "AUTHORIZED — a leak" : `code ${subjectTeacherPhone.code}`,
+  );
+
+  const phoneChange = await mutate(principalCookie, "portalAccess.changePhone", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    studentId: student1.id,
+    userId: portalLoginUserId,
+    newPhone: PORTAL_PHONE_2,
+    reason: "family changed their number; verified at the office",
+  });
+  report(
+    "principal changes the phone credential (audit + revocation run)",
+    phoneChange.ok && phoneChange.data === true,
+    phoneChange.ok ? "changed" : `code ${phoneChange.code}`,
+  );
+
+  const oldSessionAlive = await getSessionAlive(portalCookie);
+  report(
+    "the pre-change session is DEAD after the phone change (the takeover path closed)",
+    !oldSessionAlive,
+    oldSessionAlive ? "session survived — a leak" : "revoked",
+  );
+
+  const oldUsernameSignIn = await signInUsername(PORTAL_USERNAME_1, SEED_PASSWORD);
+  report(
+    "the OLD username no longer signs in",
+    !oldUsernameSignIn.ok,
+    oldUsernameSignIn.ok ? "signed in — a leak" : `status ${oldUsernameSignIn.status}`,
+  );
+
+  const newUsernameSignIn = await signInUsername(PORTAL_USERNAME_2, SEED_PASSWORD);
+  report(
+    "the NEW username signs in (with the same password — only the credential moved)",
+    newUsernameSignIn.ok && newUsernameSignIn.user?.username === PORTAL_USERNAME_2,
+    newUsernameSignIn.ok ? "signed in" : `status ${newUsernameSignIn.status}`,
+  );
+
+  const resetPortal = await mutate(principalCookie, "portalAccess.resetPassword", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    studentId: student1.id,
+    userId: portalLoginUserId,
+    password: "Password456!",
+  });
+  const postResetSessionAlive = newUsernameSignIn.cookie
+    ? await getSessionAlive(newUsernameSignIn.cookie)
+    : false;
+  const resetSignIn = await signInUsername(PORTAL_USERNAME_2, "Password456!");
+  report(
+    "password reset kills the live session and the new password signs in",
+    resetPortal.ok === true &&
+      !postResetSessionAlive &&
+      resetSignIn.ok &&
+      resetSignIn.user?.mustChangePassword === true,
+    resetPortal.ok
+      ? `reset ok; post-reset session ${postResetSessionAlive ? "ALIVE — a leak" : "revoked"}; new password ${resetSignIn.ok ? "works" : "fails"}`
+      : `code ${resetPortal.code}`,
+  );
+
+  const [phoneAuditRow] = await db
+    .select({ id: authzAuditLog.id })
+    .from(authzAuditLog)
+    .where(
+      and(
+        eq(authzAuditLog.organizationId, organization.id),
+        eq(authzAuditLog.action, "portal_phone_changed"),
+      ),
+    );
+  report(
+    "the phone change left its audit row (action, actor, reason)",
+    Boolean(phoneAuditRow),
+    phoneAuditRow ? "recorded" : "MISSING",
   );
 
   // Put the seed back the way we found it, so the script stays re-runnable.

@@ -22,9 +22,23 @@ import { pgTable, text, timestamp, boolean, index } from "drizzle-orm/pg-core";
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
-  email: text("email").notNull().unique(),
+  // ADR-007: portal logins have no email (families sign in by phone), and a
+  // synthetic address eventually gets mistaken for a real one — so email is
+  // nullable. Staff accounts keep theirs; better-auth's username plugin owns
+  // the portal credential instead.
+  email: text("email").unique(),
   emailVerified: boolean("email_verified").default(false).notNull(),
   image: text("image"),
+  // ADR-007's username plugin: the stored username is `{org_slug}-{phone}`
+  // (globally unique because the phone alone is not), displayUsername is
+  // what the login page echoes back.
+  username: text("username").unique(),
+  displayUsername: text("display_username"),
+  // Staff set the initial password at portal activation (and on reset):
+  // the flag forces a change on first login, and the portal's
+  // must_change_password check reads it (never settable by the client).
+  mustChangePassword: boolean("must_change_password").default(false).notNull(),
+  isSuperAdmin: boolean("is_super_admin").default(false),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
@@ -32,7 +46,6 @@ export const user = pgTable("user", {
     .defaultNow()
     .$onUpdate(() => /* @__PURE__ */ new Date())
     .notNull(),
-  isSuperAdmin: boolean("is_super_admin").default(false),
 });
 
 export const session = pgTable(

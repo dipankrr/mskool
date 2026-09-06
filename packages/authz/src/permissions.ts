@@ -62,7 +62,19 @@ export const RESOURCE_ACTIONS = {
   // ── Auth management ───────────────────────────────────────────────────────
   role_permission: ["read", "update"], // editing what a role may do
   role_assignment: ["read", "assign", "revoke"], // granting roles to staff
-  portal_access: ["read", "grant", "revoke"], // student/parent portal logins
+  portal_access: [
+    "read",
+    "grant",
+    "revoke",
+    // The credential lifecycle (ADR-007): activation sets the phone +
+    // initial password (must_change_password), reset_password re-issues a
+    // forgotten one, and change_phone changes the LOGIN CREDENTIAL itself —
+    // own permission because a silent phone change is a quiet
+    // account-takeover path (audit row + session revocation mandatory).
+    "activate",
+    "reset_password",
+    "change_phone",
+  ], // student/parent portal logins
 } as const satisfies Record<string, readonly string[]>;
 
 export type Resource = keyof typeof RESOURCE_ACTIONS;

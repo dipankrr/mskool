@@ -4,6 +4,7 @@
   "private": true,
   "exports": {
     ".": "./src/index.ts",
+    "./credentials": "./src/credentials.ts",
     "./client": "./src/client.ts"
   },
   "scripts": {
