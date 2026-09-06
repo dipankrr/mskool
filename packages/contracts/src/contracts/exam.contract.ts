@@ -472,6 +472,25 @@ export const studentEntriesOutputSchema = z
   .nullable();
 export type StudentEntriesOutput = z.infer<typeof studentEntriesOutputSchema>;
 
+/**
+ * THE CLASS SET (S5): every student's current card for the exam's reporting
+ * unit — the client-side print pass's data. `snapshotData` is the versioned
+ * reportCardSnapshotV1 JSONB; the client validates before rendering.
+ */
+export const classSetOutputSchema = z.object({
+  cards: z.array(
+    z.object({
+      id: z.uuid(),
+      studentId: z.uuid(),
+      version: z.number().int(),
+      isCurrent: z.boolean(),
+      snapshotData: z.unknown(),
+      publishedAt: z.date(),
+    }),
+  ),
+}).nullable();
+export type ClassSetOutput = z.infer<typeof classSetOutputSchema>;
+
 // ---------------------------------------------------------------------------
 // Revisions — the hard-rule-7 ledger + windows (ADR-032 §8)
 // ---------------------------------------------------------------------------

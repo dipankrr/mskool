@@ -334,6 +334,12 @@ export default function AttendanceCalendarPage() {
         actions={
           <div className="flex items-center gap-2">
           <Link
+            href="/attendance/reports"
+            className={buttonVariants({ variant: "outline" })}
+          >
+            {copy.attendance.reportsLink}
+          </Link>
+          <Link
             href="/attendance/policy"
             className={buttonVariants({ variant: "outline" })}
           >

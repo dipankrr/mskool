@@ -1,13 +1,16 @@
 "use client";
 
 import {
+  BookOpenIcon,
   Building2Icon,
   CalendarCheckIcon,
   CalendarDaysIcon,
+  ClipboardListIcon,
   GraduationCapIcon,
   HomeIcon,
   LandmarkIcon,
   MenuIcon,
+  Settings2Icon,
   UserIcon,
   UsersIcon,
 } from "lucide-react";
@@ -131,6 +134,25 @@ const NAV_ITEMS: NavItem[] = [
     label: copy.nav.attendance,
     icon: CalendarCheckIcon,
     permission: "attendance:read",
+  },
+  {
+    href: "/subjects",
+    label: copy.nav.subjects,
+    icon: BookOpenIcon,
+    permission: "subject:read",
+  },
+  {
+    href: "/exams",
+    label: copy.nav.exams,
+    icon: ClipboardListIcon,
+    permission: "exam:read",
+  },
+  {
+    href: "/exams/setup",
+    label: copy.nav.examSetup,
+    icon: Settings2Icon,
+    // Any-of: configuring the exam world needs create OR update.
+    permission: ["exam:create", "exam:update"] as const satisfies readonly Permission[],
   },
   {
     href: "/fees",

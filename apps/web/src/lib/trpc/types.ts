@@ -84,4 +84,7 @@ export type ExamStudentEntry = NonNullable<
   RouterOutputs["exam"]["marks"]["studentEntries"]
 >[number];
 export type ReportCardVersion = RouterOutputs["exam"]["cards"]["versions"][number];
+export type ExamClassCard = NonNullable<
+  RouterOutputs["exam"]["cards"]["classSet"]
+>["cards"][number];
 export type PublishedReportCard = RouterOutputs["portalExam"]["results"]["list"][number];

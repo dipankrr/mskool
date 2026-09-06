@@ -31,6 +31,7 @@ import {
   classResultsOutputSchema,
   publicationRowSchema,
   studentEntriesOutputSchema,
+  classSetOutputSchema,
 } from "@repo/contracts";
 import {
   examConfigService,
@@ -424,6 +425,14 @@ export const examRouter = router({
       .input(z.object({ studentId: z.uuid() }))
       .output(z.array(publishedReportCardSelectSchema))
       .query(({ ctx, input }) => examResultsService.listCardVersions(ctx.scope, input.studentId)),
+
+    classSet: staffProcedure("report_card:read", { resolveOwner: resolveExamOwner, gate: "overlap" })
+      .meta({ openapi: { method: "GET", path: "/exams/{id}/cards/{classId}", tags: ["publication"], summary: "The class's current cards for the exam's term (id = exam id)", protect: true } })
+      .input(z.object({ id: z.uuid(), classId: z.uuid() }))
+      .output(classSetOutputSchema)
+      .query(({ ctx, input }) =>
+        examResultsService.listClassCards(ctx.scope, input.id, input.classId),
+      ),
   }),
 });
 

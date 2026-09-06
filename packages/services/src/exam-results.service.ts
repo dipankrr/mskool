@@ -29,7 +29,7 @@ import {
   subjects,
   students as studentsTable,
 } from "@repo/db/schema";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   annualWeighted,
   applyGrace,
@@ -1278,6 +1278,60 @@ export class ExamResultsService {
           eq(examClassPublication.schoolId, schoolId),
         ),
       );
+  }
+
+  /**
+   * THE CLASS SET (S5) — every student's CURRENT card for the exam's
+   * reporting unit, for the client-side print pass. Published cards only,
+   * by construction of the table; isCurrent picks the latest version so a
+   * re-issued card supersedes its ancestor without extra logic here.
+   */
+  async listClassCards(scope: DataScope, examId: string, classId: string) {
+    const schoolId = requireSchoolId(scope);
+    const [exam] = await db
+      .select({
+        termId: exams.termId,
+        academicYearId: exams.academicYearId,
+      })
+      .from(exams)
+      .where(and(eq(exams.id, examId), eq(exams.schoolId, schoolId)));
+    if (!exam) return null;
+
+    const cohort = await db
+      .selectDistinct({ studentId: studentEnrollments.studentId })
+      .from(studentEnrollments)
+      .where(
+        and(
+          eq(studentEnrollments.academicYearId, exam.academicYearId),
+          eq(studentEnrollments.classId, classId),
+        ),
+      );
+    const studentIds = cohort.map((c) => c.studentId);
+    if (studentIds.length === 0) {
+      return { cards: [] };
+    }
+
+    const cards = await db
+      .select({
+        id: publishedReportCards.id,
+        studentId: publishedReportCards.studentId,
+        version: publishedReportCards.version,
+        isCurrent: publishedReportCards.isCurrent,
+        snapshotData: publishedReportCards.snapshotData,
+        publishedAt: publishedReportCards.publishedAt,
+      })
+      .from(publishedReportCards)
+      .where(
+        and(
+          eq(publishedReportCards.academicYearId, exam.academicYearId),
+          exam.termId
+            ? eq(publishedReportCards.termId, exam.termId)
+            : isNull(publishedReportCards.termId),
+          inArray(publishedReportCards.studentId, studentIds),
+          eq(publishedReportCards.isCurrent, true),
+        ),
+      );
+    return { cards };
   }
 
   /** One-click whole-exam publish: loops the classes that have schedules. */

@@ -261,6 +261,16 @@ export default function ExamResultsPage() {
                 </Button>
               ) : null}
             </PermissionGate>
+            <PermissionGate permission="report_card:read">
+              {classId ? (
+                <Link
+                  href={`/exams/${examId}/results/print?class=${classId}`}
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                >
+                  {copy.exams.card.printSet}
+                </Link>
+              ) : null}
+            </PermissionGate>
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-2 text-sm">
