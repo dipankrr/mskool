@@ -6,18 +6,33 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
-**PHASE 5 STARTED (2026-09-06) — branch `feature/phase5-exams`.**
+**PHASE 5 COMPLETE ON `feature/phase5-exams` (2026-09-06) — ready for owner review & merge.**
 Plan: `.kilo/plans/1788637674191-phase5-exams.md` — backbone-first (full
 tested domain core before any UI; view endpoints designed only with their
-screens). Progress: **D1** (ADR-032) → **B1–B7** (schema 0013–0019,
+screens). All chunks done: **D1** (ADR-032) → **B1–B7** (schema 0013–0019,
 contracts, maths + property proofs, services, tRPC routers + portal door,
-integration proofs, audit trail) → **S1** (config screens) → **S2**
-(exams hub + detail: batch schedule/component editors, lifecycle
-transitions, readiness panel) — all committed and gate-green. Next chunk:
-**S3** — marks entry grid (subject-gated autosave, eligibility badges,
-editability flags), verification view; plus the SMOKE + SEED riders
-(seed the exam world, extend smoke:authz) and the ADR-029 subject-gate
-HTTP proof.
+integration proofs, audit trail) → **S1** config screens → **S2** exams
+hub + detail (batch editors, lifecycle, readiness) → **S3** marks grid +
+verification (+ seed exam world, smoke 177/177, ADR-029 HTTP proof) →
+**S4** results/publication/correction windows/card history → **S5** portal
+cards, print pass, class set, attendance reports. Final gates: check-types
+8/8, unit, lint 0 errors, check:builders, check:openapi, exams integration
+8/8, smoke:authz 177/177, e2e 12/12, seed idempotent.
+
+**⚠ OPEN RIDER — ADR-007 phone-credential provisioning.** The portal pages
+(/portal/results) are read views over published cards; the portal is NOT
+shippable until the phone login stack lands: better-auth username plugin
+(`{org_slug}-{phone}`), portal activation + must_change_password, password
+reset, and the phone-change flow (own permission + audit row + session
+revocation). ADR-007 says the change-phone flow "must land before the
+portal ships" — that gate is still closed.
+
+**Known deferred (recorded, do not silently absorb):** best-of-N /
+elective aggregation, supplementary flow, elective machinery
+(student_subject_enrollments), CSV marks import, student_exam_results,
+system_subject_catalog, custom card layouts, server-side PDF,
+notifications/gamification, portal IA as its own route group with a child
+switcher. See the plan's deferrals section for the extension points.
 
 **FEES MERGED INTO MAIN (2026-09-05) — 172/172 smoke on main post-merge.**
 The two piles were joined with a NESTED merge, not the previously
