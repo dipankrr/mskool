@@ -278,6 +278,8 @@ export function useActiveContextState(): ActiveContextState {
  */
 export function ActiveContextGate({ children }: { children: ReactNode }) {
   const state = useActiveContextState();
+  const me = useMe();
+  const router = useRouter();
 
   if (state.status === "loading") return <ContextSkeleton />;
 
@@ -292,6 +294,15 @@ export function ActiveContextGate({ children }: { children: ReactNode }) {
   }
 
   if (state.status === "no-access") {
+    // A family login (ADR-007/008) is the EXPECTED no-access case, not a
+    // dead end: it owns children but holds no staff role, so this console
+    // is not its half of the product. Route it home to the portal instead
+    // of explaining what it cannot have. A genuinely role-less staff
+    // account gets the explanation.
+    if (me.data?.portal) {
+      router.replace("/portal/results");
+      return <ContextSkeleton />;
+    }
     return (
       <ContextMessage
         title={copy.access.noStaffAccessTitle}

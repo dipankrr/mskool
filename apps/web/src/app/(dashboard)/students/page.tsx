@@ -15,6 +15,10 @@ import { useClasses } from "@/features/classes/use-classes";
 import { useSections } from "@/features/sections/use-sections";
 import { AdmitStudentDialog } from "@/features/students/admit-dialog";
 import {
+  PortalAccessDialog,
+  PortalAccessRowAction,
+} from "@/features/students/portal-access-dialog";
+import {
   useStudentEnrollments,
   useStudents,
   useStudentMutations,
@@ -55,6 +59,7 @@ export default function StudentsPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [portalStudent, setPortalStudent] = useState<Student | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search.trim()), SEARCH_DEBOUNCE_MS);
@@ -141,6 +146,16 @@ export default function StudentsPage() {
         column.accessor("dateOfBirth", {
           header: copy.students.fields.dateOfBirth,
           cell: ({ row }) => formatIsoDate(row.original.dateOfBirth),
+        }),
+        column.display({
+          id: "portal",
+          header: copy.common.actions,
+          cell: ({ row }) => (
+            <PortalAccessRowAction
+              student={row.original}
+              onOpen={(student) => setPortalStudent(student)}
+            />
+          ),
         }),
       ]),
     // The label helper closes over the memoised maps; they change together.
@@ -240,6 +255,16 @@ export default function StudentsPage() {
           }
         }}
       />
+
+      {portalStudent ? (
+        <PortalAccessDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setPortalStudent(null);
+          }}
+          student={portalStudent}
+        />
+      ) : null}
     </>
   );
 }

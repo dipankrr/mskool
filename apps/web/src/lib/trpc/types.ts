@@ -87,4 +87,9 @@ export type ReportCardVersion = RouterOutputs["exam"]["cards"]["versions"][numbe
 export type ExamClassCard = NonNullable<
   RouterOutputs["exam"]["cards"]["classSet"]
 >["cards"][number];
+export type Term = RouterOutputs["academic"]["term"]["list"][number];
+export type ClassSubjectMappingRow =
+  RouterOutputs["assignment"]["subjectMapping"]["list"][number];
+export type SectionTeacherAssignmentRow =
+  RouterOutputs["assignment"]["teacherAssignment"]["list"][number];
 export type PublishedReportCard = RouterOutputs["portalExam"]["results"]["list"][number];

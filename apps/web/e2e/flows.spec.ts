@@ -33,11 +33,11 @@ const DETAIL_SUBTITLE = "The student's record: identity, session enrollment, and
  * A teaching day in the seeded 2025-26 calendar (Mon-Fri; not a holiday),
  * reserved for THE marking test so it starts unmarked on every run —
  * the mark itself is an upsert, so a re-run re-marks the same values.
- * History: 2025-12-01, then 2025-12-08 — both consumed by earlier runs
+ * History: 2025-12-01, 2025-12-08, then 2025-12-15 — all consumed by earlier runs
  * (a marked date makes the derived DONE state refuse the second mark,
  * correctly). Bumped again 2026-09-04 for the same reason.
  */
-const MARK_DATE = "2025-12-15";
+const MARK_DATE = "2025-12-22";
 const SECTION_LABEL = "Class 6 · A";
 
 /**
@@ -280,5 +280,71 @@ test.describe("read-only day view (principal)", () => {
     await expect(page.getByRole("button", { name: "Mark attendance" })).toHaveCount(0);
     await expect(page.getByText("present", { exact: false }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Change status" })).toHaveCount(0);
+  });
+});
+
+/**
+ * THE FAMILY DOOR (ADR-007, completed) — the parent's actual journey, signed
+ * in live because a family login has no saved storage state: pick the school
+ * (the public org resolver), type the seeded phone, land on the FORCED
+ * change-password screen, choose a password, and arrive at the published
+ * results card. The run changes the password back IN the session so a re-run
+ * starts from the seeded state.
+ *
+ * Verbatim from lib/copy.ts.
+ */
+const FAMILY_SCHOOL = "Demo Trust";
+const FAMILY_PASSWORD = "Password123!";
+const CHANGED_PASSWORD = "Password456!";
+
+test.describe("family login flow (portal)", () => {
+  test("signs in by phone, is forced to change the password, sees results", async ({
+    page,
+  }) => {
+    await page.goto("/login");
+    await page.getByRole("button", { name: "Family" }).click();
+    // The school picker is an input + datalist (not a Base UI Select):
+    // typing the org's exact name resolves the slug on change — the
+    // datalist only suggests. A wrong name leaves the slug unresolved and
+    // the submit disabled, so reaching the next step proves it worked.
+    await page.locator("#school").fill(FAMILY_SCHOOL);
+    await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeEnabled();
+    await page.locator("#phone").fill("9800000001");
+    await page.locator("#family-password").fill(FAMILY_PASSWORD);
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+
+    // The must-change gate: the portal layout redirects here before any
+    // portal content renders.
+    await expect(page).toHaveURL(/\/change-password/, { timeout: 15_000 });
+    await page.locator("#current").fill(FAMILY_PASSWORD);
+    await page.locator("#next").fill(CHANGED_PASSWORD);
+    await page.locator("#confirm").fill(CHANGED_PASSWORD);
+    await page.getByRole("button", { name: "Save password" }).click();
+
+    // Home: the family's results, from the published snapshots only. The
+    // heading pins it — "Results" also names the nav link and the subtitle.
+    await expect(page).toHaveURL(/\/portal\/results/, { timeout: 15_000 });
+    await expect(
+      page.getByRole("heading", { name: "Results" }),
+    ).toBeVisible();
+
+    // Leave the fixture as found: change back from inside the session. The
+    // call must target the API origin — the web app has no /api/auth route,
+    // so a same-origin fetch returns HTML and silently changes nothing (the
+    // exact bug this line once had). Credentials ride the page's cookie.
+    await page.evaluate(async () => {
+      await fetch(
+        "http://localhost:4000/api/auth/change-password",
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            currentPassword: "Password456!",
+            newPassword: "Password123!",
+          }),
+        },
+      );
+    });
   });
 });

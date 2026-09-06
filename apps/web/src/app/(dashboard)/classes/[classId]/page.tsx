@@ -28,6 +28,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SectionBulkDialog } from "@/features/sections/section-bulk-dialog";
+import { CurriculumSection } from "@/features/classes/curriculum-section";
 import { SectionFormDialog } from "@/features/sections/section-form-dialog";
 import {
   useClass,
@@ -349,6 +350,23 @@ export default function ClassDetailPage() {
           setClosing(undefined);
         }}
       />
+
+      {/*
+        The curriculum (S2's recorded straggler): which subjects this class
+        takes and who teaches them where. Needs the running session (the
+        mapping is year-scoped) and the class; sections are optional — the
+        subject mappings stand alone, the staffing table waits for them.
+      */}
+      {cls.data && activeSession ? (
+        <CurriculumSection
+          classId={classId}
+          academicYearId={activeSession.id}
+          sections={(sections.data ?? []).map((section) => ({
+            id: section.id,
+            name: section.name,
+          }))}
+        />
+      ) : null}
     </>
   );
 }

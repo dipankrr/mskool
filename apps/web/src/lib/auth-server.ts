@@ -48,3 +48,30 @@ export async function hasServerSession(): Promise<boolean> {
 
   return Boolean(session?.session);
 }
+
+/**
+ * The family login's session state (ADR-007): whether the credential is
+ * still temporary, so the (portal) layout can force the change screen.
+ *
+ * Returns null when there is no session — the same fail-closed direction
+ * as `hasServerSession`, for the same reasons. The `mustChangePassword`
+ * flag rides the session's user (better-auth surfaces custom user fields
+ * there), so one round-trip answers the layout's question. PORTAL IDENTITY
+ * is deliberately NOT answered here: ownership lives behind `me.get`
+ * (studentProcedure filters by it per request), and a server-side guess
+ * from the session alone would be wrong by construction.
+ */
+export async function readMustChangePassword(): Promise<boolean | null> {
+  const cookie = (await headers()).get("cookie") ?? "";
+
+  const res = await fetch(`${env.NEXT_PUBLIC_API_URL}/api/auth/get-session`, {
+    headers: { cookie },
+  });
+  if (!res.ok) return null;
+  const session = (await res.json()) as
+    | (SessionResponse & { user?: { mustChangePassword?: boolean | null } })
+    | null;
+  if (!session?.session) return null;
+
+  return session.user?.mustChangePassword ?? false;
+}

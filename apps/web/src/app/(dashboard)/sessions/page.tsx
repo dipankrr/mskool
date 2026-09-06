@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SessionFormDialog } from "@/features/sessions/session-form-dialog";
+import { TermsSection } from "@/features/sessions/terms-section";
 import { useSessionMutations, useSessions } from "@/features/sessions/use-sessions";
 import { useActiveContext } from "@/features/session/active-context";
 import { copy } from "@/lib/copy";
@@ -223,6 +224,14 @@ export default function SessionsPage() {
               />
             }
           />
+
+          {/* The term plan (S2's recorded straggler): terms hang off the
+              year, so they sit directly under the sessions table. */}
+          {rows
+            .filter((row) => row.isCurrent)
+            .map((row) => (
+              <TermsSection key={row.id} session={row} />
+            ))}
         </>
       )}
 

@@ -11,9 +11,10 @@ import {
   classes,
   sectionTeacherAssignments,
   sections,
+  staff as staffTable,
   subjects,
 } from "@repo/db/schema";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 
 /**
  * THE TEACHING-ASSIGNMENT LAYER — Phase 2 slice 2.
@@ -345,6 +346,43 @@ export class AssignmentService {
         ),
       )
       .orderBy(asc(sectionTeacherAssignments.createdAt));
+  }
+
+  /**
+   * The staffing picker's data (S2's curriculum straggler): the branch's
+   * active staff WITH a login, as (userId, name) pairs — the assignment
+   * row keys on the user id, so the picker must offer exactly those.
+   * Scope-filtered like every other read (hard rule 1); a section teacher
+   * does not receive the branch directory, only a school-scoped caller
+   * does.
+   */
+  async listTeacherDirectory(scopes: DataScope[]) {
+    // DISTINCT on (userId, name) would split a person listed twice; the
+    // grouping keeps one row per login id, the first name's ordering
+    // preserved.
+    const rows = await db
+      .select({
+        userId: staffTable.userId,
+        name: sql<string>`max(${staffTable.firstName} || ' ' || ${staffTable.lastName})`,
+      })
+      .from(staffTable)
+      .where(
+        and(
+          eq(staffTable.status, "active"),
+          isNotNull(staffTable.userId),
+          scopeWhere(scopes.map(atSchoolLevel), {
+            organizationId: staffTable.organizationId,
+            schoolId: staffTable.schoolId,
+          }),
+        ),
+      )
+      .groupBy(staffTable.userId)
+      .orderBy(asc(sql`min(${staffTable.firstName})`));
+    // The WHERE pins userId non-null; the select's type cannot see it.
+    return rows.map((row) => ({
+      userId: row.userId as string,
+      name: row.name ?? "",
+    }));
   }
 
   async getSectionTeacherAssignmentById(scope: DataScope, assignmentId: string) {

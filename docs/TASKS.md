@@ -31,11 +31,24 @@ must_change_password), resetPassword (flag + full session revocation),
 changePhone (the credential change: audit row `portal_phone_changed` with
 the reason, old username dead, every live session revoked). Each action is
 its own permission (`portal_access:activate|reset_password|change_phone`,
-principal by default). Smoke proves the takeover path closed over HTTP:
-a pre-change session dies, the old username no longer signs in, the new
-one does, and the audit row exists. Remaining (UI, not security): the
-portal's own route group/nav and the first-login change-password screen
-ride with the portal-provisioning slice.
+principal by default). Smoke proves the takeover path closed over HTTP.
+
+**✓ PORTAL UX COMPLETE (2026-09-06) — the family door exists.** The login
+page signs a family in by phone (Family tab: school picker over the public
+org resolver, remembered locally); `must_change_password` is enforced by
+the (portal) layout redirecting to the forced change screen (better-auth's
+/change-password clears the flag via the account-update hook); the
+(portal) route group has its own shell with the owned children from
+`me.get` (which now returns portal identity + the must-change flag), and a
+family login that reaches the staff console is routed home instead of a
+dead end. Staff administer the credential from the student register
+(PortalAccessDialog: activate / reset / change-phone, consequences stated,
+reason required). e2e walks the whole journey: phone sign-in → forced
+change → published results. The portal's attendance and fees views are
+honest "coming next" stubs — their slices are next. S2's recorded
+stragglers also landed: terms UI on /sessions and the class curriculum
+(subject mappings + teaching assignments + teacher directory) on the class
+page.
 
 **Known deferred (recorded, do not silently absorb):** best-of-N /
 elective aggregation, supplementary flow, elective machinery

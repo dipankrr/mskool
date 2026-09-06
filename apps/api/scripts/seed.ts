@@ -78,6 +78,7 @@ import {
   feeStructures,
   studentFeeAssignments,
 } from "@repo/db/schema";
+import { revokeUserSessions, setUserPassword } from "@repo/auth/credentials";
 import { and, eq, isNull } from "drizzle-orm";
 
 // Stable identifiers. The seed finds rows by these, which is what makes
@@ -1451,6 +1452,39 @@ async function main() {
   const parentUser = await findOrCreateUser(PARENT_EMAIL, "Demo Parent");
   await findOrCreatePortalAccess(parentUser.id, student1.id, true);
   await findOrCreatePortalAccess(parentUser.id, student2.id, false);
+
+  // The family CREDENTIAL (ADR-007): the e2e family flow signs in by phone,
+  // so the seed activates one for the seeded parent user — the same
+  // production flow the smoke proves, at a fixed number. Idempotent: the
+  // username is derived from the slug, so a re-run finds it and resets the
+  // password back to the known value with must_change_password RE-ARMED
+  // (the flow's final act sets it back itself).
+  const PARENT_PHONE = "9800000001";
+  {
+    const username = `demo-trust-${PARENT_PHONE}`;
+    const [existing] = await db
+      .select({ id: user.id })
+      .from(user)
+      .where(eq(user.username, username));
+    const portalUserId = existing?.id ?? parentUser.id;
+    if (existing) {
+      // Re-run: re-arm the flag and reset the known password so the e2e
+      // flow starts from the seeded state every time.
+      await setUserPassword(portalUserId, SEED_PASSWORD);
+      await db
+        .update(user)
+        .set({ mustChangePassword: true })
+        .where(eq(user.id, portalUserId));
+      await revokeUserSessions(portalUserId);
+    } else {
+      await db
+        .update(user)
+        .set({ username, displayUsername: username, mustChangePassword: true })
+        .where(eq(user.id, parentUser.id));
+      await setUserPassword(parentUser.id, SEED_PASSWORD);
+    }
+    console.log(`  = family login ${username} (password ${SEED_PASSWORD}, must-change)`);
+  }
 
   // Fixture-ONLY grant, mirroring the integration world: the demo org's
   // subject teacher exercises the enrollment read in the smoke's roster

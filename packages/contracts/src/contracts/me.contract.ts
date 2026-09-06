@@ -38,6 +38,18 @@ export const membershipSchema = z.object({
 });
 export type Membership = z.infer<typeof membershipSchema>;
 
+/**
+ * The portal identity half of `me` (ADR-007/008): present when this login
+ * owns children through `student_portal_access`. `mustChangePassword` is the
+ * credential state better-auth's session carries — the client uses it to
+ * force the first-login change screen before anything else.
+ */
+export const portalIdentitySchema = z.object({
+  /** The children this login may act for (ADR-008: one login → N students). */
+  studentIds: z.array(z.uuid()),
+});
+export type PortalIdentity = z.infer<typeof portalIdentitySchema>;
+
 export const meSchema = z.object({
   user: z.object({
     id: z.string(),
@@ -47,6 +59,9 @@ export const meSchema = z.object({
     email: z.string().nullable(),
     image: z.string().nullable(),
     isSuperAdmin: z.boolean(),
+    // ADR-007: staff set the initial (or reset) password; the flag forces a
+    // change on first login. Set only by the credential flows, never client.
+    mustChangePassword: z.boolean(),
   }),
   /**
    * Empty for a valid session with no staff role — a student, or a user whose
@@ -54,5 +69,7 @@ export const meSchema = z.object({
    * rather than as an error, since the session itself is fine.
    */
   memberships: z.array(membershipSchema),
+  /** Present (non-null) when this is a family login. */
+  portal: portalIdentitySchema.nullable(),
 });
 export type Me = z.infer<typeof meSchema>;

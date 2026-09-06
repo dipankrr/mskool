@@ -1,8 +1,24 @@
 import { betterAuth } from "better-auth";
 import { username } from "better-auth/plugins";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { eq } from "drizzle-orm";
 import { db } from "@repo/db";
+import { user as userTable } from "@repo/db/schema";
 import { env } from "./env";
+
+/**
+ * ADR-007's flag clearer, shared by the databaseHooks below and importable
+ * by the credential flows (the reset re-arms it deliberately). Direct db
+ * write rather than the internal adapter: this is a custom column outside
+ * better-auth's model, and the adapter's `updateUser` would pass it
+ * through its own validation round-trip for no benefit.
+ */
+export async function clearMustChangePassword(userId: string): Promise<void> {
+  await db
+    .update(userTable)
+    .set({ mustChangePassword: false })
+    .where(eq(userTable.id, userId));
+}
 
 /**
  * Server-side better-auth instance — authentication ONLY (who is this
@@ -63,6 +79,35 @@ export const auth = betterAuth({
       usernameValidator: (username) => /^[a-z0-9._-]+$/.test(username),
     }),
   ],
+
+  // ADR-007's must_change_password is OUR field, so better-auth does not
+  // clear it — but its /change-password endpoint is exactly the act that
+  // should. The endpoint updates the credential ACCOUNT row (not the user
+  // row), so the hook rides the account update that every password change
+  // performs; it then clears the flag on the owning user. This runs inside
+  // better-auth's own flow (the password was verified and re-hashed by
+  // then), wherever the change came from. Hard rule 9 still holds — this is
+  // configuration of better-auth, not code beside it.
+  databaseHooks: {
+    user: {
+      update: {
+        after: async (user) => {
+          if (user.mustChangePassword === false) return;
+          await clearMustChangePassword(user.id);
+        },
+      },
+    },
+    account: {
+      update: {
+        after: async (account) => {
+          // Only a password change carries a hash; the flag clears for the
+          // account's OWNER, whose id the account row carries.
+          if (!account.userId || !account.password) return;
+          await clearMustChangePassword(account.userId);
+        },
+      },
+    },
+  },
 });
 
 export type Session = typeof auth.$Infer.Session;

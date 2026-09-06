@@ -1,4 +1,4 @@
-import { getUserAuthCache } from "@repo/authz";
+import { getOwnedStudentIds, getUserAuthCache } from "@repo/authz";
 import { meSchema } from "@repo/contracts";
 import { identityService } from "@repo/services";
 import { z } from "zod";
@@ -40,6 +40,12 @@ export const meRouter = router({
       // the cache anyway.
       const authCache = await getUserAuthCache(user.id);
 
+      // ADR-007/008: the portal identity. The same ownership list every
+      // portal.* query filters by (getOwnedStudentIds) — surfaced once here so
+      // the client can route a family login to the portal shell instead of the
+      // staff one. No staff assignments does not mean "no access".
+      const ownedStudentIds = await getOwnedStudentIds(user.id);
+
       return {
         user: {
           id: user.id,
@@ -49,8 +55,12 @@ export const meRouter = router({
           // Column default is false but the column is nullable, so a row
           // predating the default reads as null rather than false.
           isSuperAdmin: user.isSuperAdmin ?? false,
+          // ADR-007: the credential state, from the session (better-auth's
+          // user row). Drives the forced first-login change screen.
+          mustChangePassword: (user as { mustChangePassword?: boolean | null }).mustChangePassword ?? false,
         },
         memberships: await identityService.getMemberships(authCache),
+        portal: ownedStudentIds.length > 0 ? { studentIds: ownedStudentIds } : null,
       };
     }),
 });

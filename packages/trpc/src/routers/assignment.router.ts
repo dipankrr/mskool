@@ -300,4 +300,25 @@ const teacherAssignmentRouter = router({
 export const assignmentRouter = router({
   subjectMapping: subjectMappingRouter,
   teacherAssignment: teacherAssignmentRouter,
+  /**
+   * The staffing picker's directory (S2's curriculum straggler): active
+   * staff with a login, as (userId, name) pairs. `teacher_assignment:read`
+   * is the permission — the picker exists to serve exactly that family.
+   */
+  teacherDirectory: staffListProcedure("teacher_assignment:read")
+    .meta({
+      openapi: {
+        method: "GET",
+        path: "/teacher-directory",
+        tags: ["teacher-assignments"],
+        summary: "The branch's active staff with logins (the staffing picker)",
+        protect: true,
+      },
+    })
+    .output(
+      z.array(z.object({ userId: z.string(), name: z.string() })),
+    )
+    .query(async ({ ctx }) =>
+      assignmentService.listTeacherDirectory(ctx.scopes),
+    ),
 });

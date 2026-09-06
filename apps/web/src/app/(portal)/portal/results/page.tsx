@@ -17,7 +17,6 @@ import {
   parseCardSnapshot,
   ReportCardView,
 } from "@/features/exams/report-card-view";
-import { useActiveContext } from "@/features/session/active-context";
 import { copy } from "@/lib/copy";
 import { formatIsoDate } from "@/lib/format";
 import { trpc } from "@/lib/trpc/client";
@@ -30,11 +29,15 @@ import { trpc } from "@/lib/trpc/client";
  * cannot reach this screen no matter how the component is misused. The
  * card renders from the frozen snapshot — nothing live, nothing computed
  * in the browser — and Print hands the exact same DOM to the printer.
+ *
+ * No activeContext here: that is the STAFF session's context (org/branch
+ * switchers). A family login has none — the ownership list IS its scope,
+ * and `portalExam.results.list` filters by it server-side. All years,
+ * all children, published cards only.
  */
 
 export default function PortalResultsPage() {
-  const { academicYearId } = useActiveContext();
-  const cards = trpc.portalExam.results.list.useQuery({ academicYearId: academicYearId ?? undefined });
+  const cards = trpc.portalExam.results.list.useQuery({});
   const [pickedCardId, setPickedCardId] = useState<string | null>(null);
 
   // Stable identity for the name map's dependency array.

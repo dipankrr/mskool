@@ -14,6 +14,11 @@ import {
   type UserAuthCache,
 } from "@repo/authz";
 import { assignmentService, studentService } from "@repo/services";
+// The ungated org resolver (below) reads one row: name + slug, both public
+// by nature. No other db use is legitimate in the builder module.
+import { db } from "@repo/db";
+import { organizations } from "@repo/db/schema";
+import { asc, eq, ilike } from "drizzle-orm";
 import { initTRPC, TRPCError } from "@trpc/server";
 import type { OpenApiMeta } from "trpc-to-openapi";
 import { z } from "zod";
@@ -598,4 +603,67 @@ export const healthRouter = router({
     .input(z.undefined())
     .output(z.string())
     .query(() => "Healthy"),
+
+  /**
+   * The login page's org resolver (ADR-007). A family signs in by phone,
+   * but the stored username is `{org_slug}-{phone}`, so the browser needs
+   * the slug BEFORE there is a session — `me` is unreachable and the org
+   * is unknowable. The subdomain carries it in production; in dev and on
+   * preview hosts it does not, so the page asks: "which school family are
+   * you?" and this turns the human answer into the slug.
+   *
+   * Ungated on purpose (same reasoning as `health`, and this is the second
+   * and last legitimate ungated route): the payload is one row's name +
+   * slug, both public by nature (they appear on every document the school
+   * prints). No ids beyond the slug's own, no members, no children — the
+   * ownership door stays shut behind the session.
+   */
+  orgBySlug: t.procedure
+    .meta({
+      openapi: {
+        method: "GET",
+        path: "/public/org",
+        tags: ["health"],
+        summary: "Resolve a school's org slug for the family login",
+        protect: false,
+      },
+    })
+    .input(z.object({ name: z.string().min(1).max(255) }))
+    .output(z.object({ slug: z.string(), name: z.string() }).nullable())
+    .query(({ input }) =>
+      db
+        .select({ slug: organizations.slug, name: organizations.name })
+        .from(organizations)
+        .where(eq(organizations.name, input.name))
+        .limit(1)
+        .then((rows) => rows[0] ?? null),
+    ),
+
+  /**
+   * The school picker's list. Name-only prefix match over orgs — the same
+   * public-by-nature fields (`slug`, `name`) as `orgBySlug`, enough for the
+   * datalist to suggest as the parent types. Capped, because a production
+   * multi-tenant has thousands of orgs and the picker needs a handful of
+   * suggestions, not a directory dump.
+   */
+  orgsByNamePrefix: t.procedure
+    .meta({
+      openapi: {
+        method: "GET",
+        path: "/public/orgs",
+        tags: ["health"],
+        summary: "School names for the family-login picker",
+        protect: false,
+      },
+    })
+    .input(z.object({ prefix: z.string().max(255) }))
+    .output(z.array(z.object({ slug: z.string(), name: z.string() })))
+    .query(({ input }) =>
+      db
+        .select({ slug: organizations.slug, name: organizations.name })
+        .from(organizations)
+        .where(ilike(organizations.name, `${input.prefix}%`))
+        .orderBy(asc(organizations.name))
+        .limit(10),
+    ),
 });
