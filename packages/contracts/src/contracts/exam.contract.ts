@@ -382,6 +382,96 @@ export const entryGridOutputSchema = z.object({
 }).nullable();
 export type EntryGridOutput = z.infer<typeof entryGridOutputSchema>;
 
+/**
+ * The results screen read (S4): roster + subject matrix + term totals +
+ * class stats — the computed chain only (a photograph of the last compute).
+ */
+export const classResultsOutputSchema = z.object({
+  examStatus: z.string(),
+  roster: z.array(
+    z.object({
+      studentId: z.uuid(),
+      rollNumber: z.string().nullable(),
+      admissionNumber: z.string(),
+      firstName: z.string(),
+      lastName: z.string(),
+    }),
+  ),
+  subjects: z.array(z.object({ id: z.uuid(), name: z.string() })),
+  subjectResults: z.array(
+    z.object({
+      studentId: z.uuid(),
+      subjectId: z.uuid(),
+      finalMarks: marksString.nullable(),
+      maxMarks: marksString,
+      graceMarksApplied: marksString,
+      isPassed: z.boolean(),
+      isAbsent: z.boolean(),
+      isExempted: z.boolean(),
+      grade: z.string().nullable(),
+      countsTowardResult: z.boolean(),
+      isGradedOnly: z.boolean(),
+      resultStatus: z.string(),
+    }),
+  ),
+  termResults: z.array(
+    z.object({
+      studentId: z.uuid(),
+      totalMarks: marksString.nullable(),
+      maxMarks: marksString.nullable(),
+      percentage: marksString.nullable(),
+      grade: z.string().nullable(),
+      isPassed: z.boolean(),
+      subjectsFailedCount: z.number().int(),
+      rankInSection: z.number().int().nullable(),
+      rankInClass: z.number().int().nullable(),
+      resultStatus: z.string(),
+      publishedAt: z.date().nullable(),
+    }),
+  ),
+  stats: z.array(
+    z.object({
+      subjectId: z.uuid(),
+      average: marksString.nullable(),
+      highest: marksString.nullable(),
+      passCount: z.number().int(),
+      enteredCount: z.number().int(),
+    }),
+  ),
+  classAverage: marksString.nullable(),
+}).nullable();
+export type ClassResultsOutput = z.infer<typeof classResultsOutputSchema>;
+
+/** One per-class publication record — the visible proof of the act (S4). */
+export const publicationRowSchema = z.object({
+  classId: z.uuid(),
+  state: z.string(),
+  publishedAt: z.date(),
+  revisionOpenedAt: z.date().nullable(),
+  reIssuedAt: z.date().nullable(),
+});
+export type PublicationRow = z.infer<typeof publicationRowSchema>;
+
+/** One student's component entries — the correction dialog's data (S4). */
+export const studentEntriesOutputSchema = z
+  .array(
+    z.object({
+      id: z.uuid(),
+      scheduleId: z.uuid(),
+      componentId: z.uuid(),
+      component: z.string(),
+      subjectId: z.uuid(),
+      maxMarks: marksString,
+      resultStatus: z.string(),
+      marksObtained: marksString.nullable(),
+      gradeObtained: z.string().nullable(),
+      isAbsent: z.boolean(),
+      isExempted: z.boolean(),
+    }),
+  )
+  .nullable();
+export type StudentEntriesOutput = z.infer<typeof studentEntriesOutputSchema>;
+
 // ---------------------------------------------------------------------------
 // Revisions — the hard-rule-7 ledger + windows (ADR-032 §8)
 // ---------------------------------------------------------------------------

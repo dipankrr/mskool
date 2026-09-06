@@ -27,6 +27,9 @@ import {
   academicYears,
   classSubjectMappings,
   classes,
+  examComponents,
+  examSubjectSchedules,
+  exams,
   organizations,
   roleAssignments,
   schools,
@@ -2027,6 +2030,134 @@ async function main() {
     "vice_principal reads the ledger (fee_report:read positive cell)",
     vpLedger.ok && Array.isArray(vpLedger.data),
     vpLedger.ok ? `${vpLedger.data.length} ledger rows` : `code ${vpLedger.code}`,
+  );
+
+  // --- Exams S3: the marks grid + the ADR-029 subject gate over the wire -----
+  //
+  // The seed walks "Term 1 Examination" into marks_entry with a Mathematics
+  // (Theory + Internal) and a Physics paper for Class 6. The subject teacher
+  // is assigned Mathematics (and only Mathematics) in 6-A, so she is the
+  // exact caller the gate exists for: the permission says yes, the timetable
+  // decides which paper is hers.
+  const term1A = termsCurrentA.find((t) => t.name === "Term 1");
+  const [examSeed] = term1A
+    ? await db
+        .select()
+        .from(exams)
+        .where(
+          and(eq(exams.schoolId, schoolA.id), eq(exams.termId, term1A.id), eq(exams.name, "Term 1 Examination")),
+        )
+    : [];
+  if (!examSeed) {
+    throw new Error("Exam seed missing — run `pnpm db:seed` (re-seeding is idempotent).");
+  }
+  const examSchedulesSeed = await db
+    .select()
+    .from(examSubjectSchedules)
+    .where(eq(examSubjectSchedules.examId, examSeed.id));
+  const mathScheduleSeed = examSchedulesSeed.find((s) => s.subjectId === subjectMathA.id);
+  const physicsScheduleSeed = examSchedulesSeed.find((s) => s.subjectId === subjectPhysicsA.id);
+  const mathTheorySeed = mathScheduleSeed
+    ? (
+        await db
+          .select()
+          .from(examComponents)
+          .where(and(eq(examComponents.scheduleId, mathScheduleSeed.id), eq(examComponents.name, "Theory")))
+      )[0]
+    : undefined;
+  const physicsTheorySeed = physicsScheduleSeed
+    ? (
+        await db
+          .select()
+          .from(examComponents)
+          .where(and(eq(examComponents.scheduleId, physicsScheduleSeed.id), eq(examComponents.name, "Theory")))
+      )[0]
+    : undefined;
+  if (!mathScheduleSeed || !physicsScheduleSeed || !mathTheorySeed || !physicsTheorySeed) {
+    throw new Error("Exam blueprint seed incomplete — run `pnpm db:seed`.");
+  }
+
+  const entryRead = await query(subjectTeacherCookie, "exam.marks.entry", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    examId: examSeed.id,
+    id: mathScheduleSeed.id,
+    sectionId: sectionA.id,
+  });
+  report(
+    "subject_teacher opens the Mathematics marks grid (marks:read + schedule overlap)",
+    entryRead.ok && Array.isArray(entryRead.data?.roster) && entryRead.data.roster.length >= 1,
+    entryRead.ok ? `${entryRead.data.roster.length} students` : `code ${entryRead.code}`,
+  );
+
+  const mathSave = await mutate(subjectTeacherCookie, "exam.marks.save", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    sectionId: sectionA.id,
+    subjectId: subjectMathA.id,
+    examId: examSeed.id,
+    scheduleId: mathScheduleSeed.id,
+    componentId: mathTheorySeed.id,
+    studentId: student1.id,
+    marks: "72",
+    isAbsent: false,
+    isExempted: false,
+  });
+  report(
+    "subject_teacher autosaves a Mathematics cell (the subject gate's positive cell)",
+    mathSave.ok && mathSave.data?.marksObtained === "72.00",
+    mathSave.ok ? `status ${mathSave.data?.resultStatus}` : `code ${mathSave.code}`,
+  );
+
+  const physicsSave = await mutate(subjectTeacherCookie, "exam.marks.save", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    sectionId: sectionA.id,
+    subjectId: subjectPhysicsA.id,
+    examId: examSeed.id,
+    scheduleId: physicsScheduleSeed.id,
+    componentId: physicsTheorySeed.id,
+    studentId: student1.id,
+    marks: "10",
+    isAbsent: false,
+    isExempted: false,
+  });
+  report(
+    "subject_teacher is NOT_FOUND on the Physics paper (no assignment — the timetable question, ADR-029)",
+    !physicsSave.ok && physicsSave.code === "NOT_FOUND",
+    physicsSave.ok ? "AUTHORIZED — a leak" : `code ${physicsSave.code}`,
+  );
+
+  const librarianEntry = await query(librarianCookie, "exam.marks.entry", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    examId: examSeed.id,
+    id: mathScheduleSeed.id,
+    sectionId: sectionA.id,
+  });
+  report(
+    "librarian is FORBIDDEN on the marks grid (no marks:read)",
+    !librarianEntry.ok && librarianEntry.code === "FORBIDDEN",
+    librarianEntry.ok ? "read — a leak" : `code ${librarianEntry.code}`,
+  );
+
+  const principalSave = await mutate(principalCookie, "exam.marks.save", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    sectionId: sectionA.id,
+    subjectId: subjectMathA.id,
+    examId: examSeed.id,
+    scheduleId: mathScheduleSeed.id,
+    componentId: mathTheorySeed.id,
+    studentId: student1.id,
+    marks: "80",
+    isAbsent: false,
+    isExempted: false,
+  });
+  report(
+    "principal is FORBIDDEN on the autosave (verify/publish, but no marks:create — the owner's matrix)",
+    !principalSave.ok && principalSave.code === "FORBIDDEN",
+    principalSave.ok ? "AUTHORIZED — a leak" : `code ${principalSave.code}`,
   );
 
   // Put the seed back the way we found it, so the script stays re-runnable.

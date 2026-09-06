@@ -76,4 +76,10 @@ export type ExamEntryGrid = NonNullable<RouterOutputs["exam"]["marks"]["entry"]>
 export type ExamEntryRosterRow = ExamEntryGrid["roster"][number];
 export type ExamEntryComponent = ExamEntryGrid["components"][number];
 export type ExamEntryCell = ExamEntryGrid["entries"][number];
+export type ExamClassResults = NonNullable<RouterOutputs["exam"]["results"]["table"]>;
+export type ExamPublicationRow = RouterOutputs["exam"]["publication"]["list"][number];
+export type ExamStudentEntry = NonNullable<
+  RouterOutputs["exam"]["marks"]["studentEntries"]
+>[number];
+export type ReportCardVersion = RouterOutputs["exam"]["cards"]["versions"][number];
 export type PublishedReportCard = RouterOutputs["portalExam"]["results"]["list"][number];

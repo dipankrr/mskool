@@ -22,8 +22,10 @@ export function useEntryGrid(
   sectionId?: string,
 ) {
   const { scopeArgs } = useActiveContext();
+  // `id` is the schedule's — the procedure is schedule-addressed (the
+  // builder's owner resolver needs the id field, the byId pattern).
   return trpc.exam.marks.entry.useQuery(
-    { ...scopeArgs(), examId: examId ?? "", scheduleId: scheduleId ?? "", sectionId },
+    { ...scopeArgs(), examId: examId ?? "", id: scheduleId ?? "", sectionId },
     { enabled: Boolean(examId && scheduleId) },
   );
 }
@@ -53,7 +55,7 @@ export function useVerifyEntries(examId: string, scheduleId: string) {
   return trpc.exam.marks.verify.useMutation({
     onSuccess: async (rows) => {
       toast.success(copy.exams.entry.verifiedToast(rows.length));
-      await utils.exam.marks.entry.invalidate({ ...scopeArgs(), examId, scheduleId });
+      await utils.exam.marks.entry.invalidate({ ...scopeArgs(), examId, id: scheduleId });
     },
     onError: (error) => toast.error(errorMessage(error)),
   });

@@ -35,8 +35,12 @@ import {
   academicYears,
   classSubjectMappings,
   classes,
+  examComponents,
+  exams,
+  gradingScales,
   organizations,
   orgRolePermissions,
+  passCriteria,
   roleAssignments,
   schools,
   sections,
@@ -54,6 +58,8 @@ import {
   assignmentService,
   attendanceService,
   enrollmentService,
+  examConfigService,
+  examMarksService,
   feesBillingService,
   feesCollectionService,
   feesService,
@@ -702,6 +708,214 @@ async function findOrCreatePortalAccess(
   return created;
 }
 
+/**
+ * THE EXAM WORLD (Phase 5) — enough exam machinery to exercise the marks
+ * UI end to end: subject types (CBSE preset), the default grading scale,
+ * pass criteria, one exam past its transition into marks entry with a
+ * Mathematics paper (Theory + Internal) for Class 6, and two students'
+ * entries (one clean, one with an absent internal) so the grid, the
+ * readiness panel, and the eligibility badges all have something true to
+ * show.
+ *
+ * Idempotent the same way as everything above: find-or-create at every
+ * step, and the state machine guards the setup — once the exam has left
+ * draft, the schedule/component saves are skipped (they would refuse);
+ * once entry is open, the entries are written (the autosave is an upsert,
+ * so re-running lands the same values).
+ */
+async function seedExamWorld(params: {
+  scope: DataScope;
+  academicYearId: string;
+  termId: string;
+  classId: string;
+  subjectMathId: string;
+  subjectPhysicsId: string;
+  studentIds: [string, string];
+  actorUserId: string;
+  enteringTeacherId: string;
+}): Promise<void> {
+  const { scope, academicYearId, termId, classId, subjectMathId, subjectPhysicsId, studentIds, actorUserId, enteringTeacherId } =
+    params;
+  const schoolId = scope.schoolId;
+  if (!schoolId) throw new Error("The exam world needs a branch-scoped scope.");
+
+  // Subject types — the CBSE preset is find-or-create by (school, name).
+  await examConfigService.applyCbsePreset(scope, actorUserId);
+  console.log("  = exam subject types (CBSE preset)");
+
+  // The default grading scale with a CBSE-shaped band set.
+  const [existingScale] = await db
+    .select({ id: gradingScales.id })
+    .from(gradingScales)
+    .where(and(eq(gradingScales.schoolId, schoolId), eq(gradingScales.name, "Demo Grading Scale")));
+  if (!existingScale) {
+    await examConfigService.createGradingScale(scope, {
+      name: "Demo Grading Scale",
+      isDefault: true,
+      bands: [
+        { minMarks: "0.00", maxMarks: "32.00", gradeLabel: "E", gradePoint: "0.00", sequenceNumber: 8 },
+        { minMarks: "32.00", maxMarks: "40.00", gradeLabel: "D", gradePoint: "4.00", sequenceNumber: 7 },
+        { minMarks: "40.00", maxMarks: "50.00", gradeLabel: "C2", gradePoint: "5.00", sequenceNumber: 6 },
+        { minMarks: "50.00", maxMarks: "60.00", gradeLabel: "C1", gradePoint: "6.00", sequenceNumber: 5 },
+        { minMarks: "60.00", maxMarks: "70.00", gradeLabel: "B2", gradePoint: "7.00", sequenceNumber: 4 },
+        { minMarks: "70.00", maxMarks: "80.00", gradeLabel: "B1", gradePoint: "8.00", sequenceNumber: 3 },
+        { minMarks: "80.00", maxMarks: "90.00", gradeLabel: "A2", gradePoint: "9.00", sequenceNumber: 2 },
+        { minMarks: "90.00", maxMarks: "100.00", gradeLabel: "A1", gradePoint: "10.00", sequenceNumber: 1 },
+      ],
+    });
+    console.log("  + grading scale Demo Grading Scale (8 bands, default)");
+  } else {
+    console.log("  = grading scale Demo Grading Scale (exists)");
+  }
+
+  // The school-default pass criteria for the year.
+  const [existingCriteria] = await db
+    .select({ id: passCriteria.id })
+    .from(passCriteria)
+    .where(
+      and(eq(passCriteria.schoolId, schoolId), eq(passCriteria.academicYearId, academicYearId)),
+    );
+  if (!existingCriteria) {
+    await examConfigService.createPassCriteria(scope, academicYearId, {
+      graceMarksAllowed: true,
+      compartmentAllowed: false,
+      maxGracePerSubject: "5.00",
+      maxGraceTotal: "15.00",
+      minAttendancePct: "75.00",
+    });
+    console.log("  + pass criteria (default, grace 5/subject, attendance 75%)");
+  } else {
+    console.log("  = pass criteria (exists)");
+  }
+
+  // The exam, its blueprint, and its walk into marks entry.
+  const EXAM_NAME = "Term 1 Examination";
+  const [existingExam] = await db
+    .select({ id: exams.id, status: exams.status })
+    .from(exams)
+    .where(and(eq(exams.schoolId, schoolId), eq(exams.termId, termId), eq(exams.name, EXAM_NAME)));
+  let examId = existingExam?.id;
+  if (!examId) {
+    const [created] = await db
+      .insert(exams)
+      .values({
+        organizationId: scope.organizationId,
+        schoolId,
+        termId,
+        academicYearId,
+        name: EXAM_NAME,
+        examType: "regular",
+      })
+      .returning({ id: exams.id, status: exams.status });
+    examId = created!.id;
+    console.log(`  + exam ${EXAM_NAME}`);
+  } else {
+    console.log(`  = exam ${EXAM_NAME} (exists, ${existingExam!.status})`);
+  }
+
+  const mathPaper = {
+    examId,
+    classId,
+    subjectId: subjectMathId,
+    examDate: "2025-07-10",
+    startTime: "09:00",
+    durationMinutes: 180,
+    venue: "Hall 1",
+  };
+  const physicsPaper = {
+    examId,
+    classId,
+    subjectId: subjectPhysicsId,
+    examDate: "2025-07-12",
+    startTime: "09:00",
+    durationMinutes: 120,
+    venue: "Hall 1",
+  };
+  const mathComponents = [
+    { scheduleId: "", name: "Theory", maxMarks: "80", passMarks: "27", weightagePercentage: "80", isMandatoryPass: true, sequenceNumber: 1 },
+    { scheduleId: "", name: "Internal", maxMarks: "20", passMarks: "7", weightagePercentage: "20", isMandatoryPass: false, sequenceNumber: 2 },
+  ];
+  const physicsComponents = [
+    { scheduleId: "", name: "Theory", maxMarks: "70", passMarks: "23", weightagePercentage: "70", isMandatoryPass: true, sequenceNumber: 1 },
+    { scheduleId: "", name: "Practical", maxMarks: "30", passMarks: "10", weightagePercentage: "30", isMandatoryPass: false, sequenceNumber: 2 },
+  ];
+
+  // Fresh enough to still shape the blueprint? The saves refuse (with
+  // reason) the moment entry has opened, so the state decides.
+  const shapable = !existingExam || existingExam.status === "draft";
+  if (shapable) {
+    await examConfigService.saveSchedules(scope, {
+      examId,
+      schedules: [mathPaper, physicsPaper],
+    });
+    const schedules = await examConfigService.listSchedules([scope], examId);
+    const mathScheduleId = schedules.find((s) => s.subjectId === subjectMathId)?.id;
+    const physicsScheduleId = schedules.find((s) => s.subjectId === subjectPhysicsId)?.id;
+    if (!mathScheduleId || !physicsScheduleId) {
+      throw new Error("Failed to seed the exam schedules.");
+    }
+
+    await examConfigService.saveComponents(scope, {
+      scheduleId: mathScheduleId,
+      components: mathComponents.map((c) => ({ ...c, scheduleId: mathScheduleId })),
+    });
+    await examConfigService.saveComponents(scope, {
+      scheduleId: physicsScheduleId,
+      components: physicsComponents.map((c) => ({ ...c, scheduleId: physicsScheduleId })),
+    });
+    console.log("  + schedules (Mathematics, Physics) with components");
+
+    // Draft → scheduled → ongoing → marks_entry: the coverage gate runs at
+    // `scheduled`, so the blueprint above must already be complete.
+    for (const target of ["scheduled", "ongoing", "marks_entry"] as const) {
+      await examConfigService.transition(scope, { examId, target });
+    }
+    console.log("  ~ exam walked to marks_entry");
+  }
+
+  // Entries: one clean student, one with an absent internal — the grid's
+  // two most instructive rows. The autosave is an upsert; re-running lands
+  // the same values.
+  const [examRow] = await db
+    .select({ status: exams.status })
+    .from(exams)
+    .where(eq(exams.id, examId));
+  if (examRow?.status === "marks_entry" || examRow?.status === "under_verification") {
+    const mathScheduleId = (
+      await examConfigService.listSchedules([scope], examId)
+    ).find((s) => s.subjectId === subjectMathId)?.id;
+    if (!mathScheduleId) throw new Error("Mathematics schedule missing at entry time.");
+    const components = await examConfigService.listComponents([scope], mathScheduleId);
+    const theory = components.find((c) => c.name === "Theory");
+    const internal = components.find((c) => c.name === "Internal");
+    if (!theory || !internal) throw new Error("Mathematics components missing at entry time.");
+
+    const marks: Array<{
+      studentId: string;
+      componentId: string;
+      marks: string | null;
+      isAbsent: boolean;
+    }> = [
+      { studentId: studentIds[0]!, componentId: theory.id, marks: "72", isAbsent: false },
+      { studentId: studentIds[0]!, componentId: internal.id, marks: "15", isAbsent: false },
+      { studentId: studentIds[1]!, componentId: theory.id, marks: "41", isAbsent: false },
+      { studentId: studentIds[1]!, componentId: internal.id, marks: null, isAbsent: true },
+    ];
+    for (const m of marks) {
+      await examMarksService.saveComponentResult(scope, enteringTeacherId, {
+        examId,
+        scheduleId: mathScheduleId,
+        componentId: m.componentId,
+        studentId: m.studentId,
+        marks: m.marks,
+        isAbsent: m.isAbsent,
+        isExempted: false,
+      });
+    }
+    console.log("  + component entries (2 students: one clean, one absent internal)");
+  }
+}
+
 async function main() {
   // The seed writes known-password logins. That must never touch production.
   if (process.env.NODE_ENV === "production") {
@@ -1276,6 +1490,19 @@ async function main() {
       console.log(`  + payment ${payment.receiptNumber} (cleared, seed)`);
     }
   }
+
+  // --- The exam world ---------------------------------------------------------
+  await seedExamWorld({
+    scope: scopeA,
+    academicYearId: currentYearA.id,
+    termId: term1A.id,
+    classId: classA.id,
+    subjectMathId: subjectMathA.id,
+    subjectPhysicsId: subjectPhysicsA.id,
+    studentIds: [student1.id, student2.id],
+    actorUserId: adminUser.id,
+    enteringTeacherId: subjectTeacherUser.id,
+  });
 
   // A previous run may have left a cached snapshot that predates these grants.
   await invalidateUserAuthCache(adminUser.id);

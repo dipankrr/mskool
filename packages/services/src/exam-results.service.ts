@@ -1114,6 +1114,172 @@ export class ExamResultsService {
     });
   }
 
+  /**
+   * THE LEAGUE TABLE READ (S4) — one call for the results screen: roster,
+   * the subject-result matrix, the term totals, and the class statistics
+   * that give the numbers meaning. Reads the COMPUTED chain only — this is
+   * a photograph of the last compute (the stale flag is the readiness
+   * panel's job, not repeated here).
+   */
+  async classResults(scope: DataScope, examId: string, classId: string) {
+    const schoolId = requireSchoolId(scope);
+    const [exam] = await db
+      .select({
+        id: exams.id,
+        termId: exams.termId,
+        status: exams.status,
+        academicYearId: exams.academicYearId,
+      })
+      .from(exams)
+      .where(and(eq(exams.id, examId), eq(exams.schoolId, schoolId)));
+    if (!exam) return null;
+
+    const roster = await db
+      .select({
+        studentId: studentEnrollments.studentId,
+        rollNumber: studentEnrollments.rollNumber,
+        admissionNumber: studentsTable.admissionNumber,
+        firstName: studentsTable.firstName,
+        lastName: studentsTable.lastName,
+      })
+      .from(studentEnrollments)
+      .innerJoin(studentsTable, eq(studentEnrollments.studentId, studentsTable.id))
+      .where(
+        and(
+          eq(studentEnrollments.academicYearId, exam.academicYearId),
+          eq(studentEnrollments.classId, classId),
+          inArray(studentEnrollments.enrollmentStatus, [
+            "admitted",
+            "section_assigned",
+            "active",
+          ]),
+        ),
+      )
+      .orderBy(asc(studentEnrollments.rollNumber), asc(studentsTable.lastName), asc(studentsTable.firstName));
+    const studentIds = roster.map((r) => r.studentId);
+
+    const subjectIds = (
+      await db
+        .selectDistinct({ subjectId: examSubjectSchedules.subjectId })
+        .from(examSubjectSchedules)
+        .where(eq(examSubjectSchedules.examId, examId))
+    ).map((s) => s.subjectId);
+    const subjectsOfExam = subjectIds.length
+      ? await db
+          .select({ id: subjects.id, name: subjects.name })
+          .from(subjects)
+          .where(inArray(subjects.id, subjectIds))
+      : [];
+
+    const subjectResults = studentIds.length
+      ? await db
+          .select({
+            studentId: studentSubjectResults.studentId,
+            subjectId: studentSubjectResults.subjectId,
+            finalMarks: studentSubjectResults.finalMarks,
+            maxMarks: studentSubjectResults.maxMarks,
+            graceMarksApplied: studentSubjectResults.graceMarksApplied,
+            isPassed: studentSubjectResults.isPassed,
+            isAbsent: studentSubjectResults.isAbsent,
+            isExempted: studentSubjectResults.isExempted,
+            grade: studentSubjectResults.grade,
+            countsTowardResult: studentSubjectResults.countsTowardResult,
+            isGradedOnly: studentSubjectResults.isGradedOnly,
+            resultStatus: studentSubjectResults.resultStatus,
+          })
+          .from(studentSubjectResults)
+          .where(
+            and(
+              eq(studentSubjectResults.examId, examId),
+              inArray(studentSubjectResults.studentId, studentIds),
+            ),
+          )
+      : [];
+
+    const termResults = studentIds.length
+      ? await db
+          .select({
+            studentId: studentTermResults.studentId,
+            totalMarks: studentTermResults.totalMarks,
+            maxMarks: studentTermResults.maxMarks,
+            percentage: studentTermResults.percentage,
+            grade: studentTermResults.grade,
+            isPassed: studentTermResults.isPassed,
+            subjectsFailedCount: studentTermResults.subjectsFailedCount,
+            rankInSection: studentTermResults.rankInSection,
+            rankInClass: studentTermResults.rankInClass,
+            resultStatus: studentTermResults.resultStatus,
+            publishedAt: studentTermResults.publishedAt,
+          })
+          .from(studentTermResults)
+          .where(
+            and(
+              eq(studentTermResults.termId, exam.termId),
+              inArray(studentTermResults.studentId, studentIds),
+            ),
+          )
+      : [];
+
+    // Per-subject class stats over the COUNTED, non-empty results.
+    const stats = subjectsOfExam.map((subject) => {
+      const rows = subjectResults.filter(
+        (r) =>
+          r.subjectId === subject.id &&
+          r.countsTowardResult &&
+          !r.isExempted &&
+          r.finalMarks != null,
+      );
+      const scores = rows.map((r) => Number(r.finalMarks));
+      const average =
+        scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
+      const highest = scores.length > 0 ? Math.max(...scores) : null;
+      return {
+        subjectId: subject.id,
+        average: average != null ? average.toFixed(2) : null,
+        highest: highest != null ? highest.toFixed(2) : null,
+        passCount: rows.filter((r) => r.isPassed).length,
+        enteredCount: rows.length,
+      };
+    });
+    const percentages = termResults
+      .map((r) => (r.percentage != null ? Number(r.percentage) : null))
+      .filter((p): p is number => p != null);
+    const classAverage =
+      percentages.length > 0
+        ? (percentages.reduce((a, b) => a + b, 0) / percentages.length).toFixed(2)
+        : null;
+
+    return {
+      examStatus: exam.status,
+      roster,
+      subjects: subjectsOfExam,
+      subjectResults,
+      termResults,
+      stats,
+      classAverage,
+    };
+  }
+
+  /** The per-class publication records — the visible proof of the act. */
+  async listPublications(scope: DataScope, examId: string) {
+    const schoolId = requireSchoolId(scope);
+    return db
+      .select({
+        classId: examClassPublication.classId,
+        state: examClassPublication.state,
+        publishedAt: examClassPublication.publishedAt,
+        revisionOpenedAt: examClassPublication.revisionOpenedAt,
+        reIssuedAt: examClassPublication.reIssuedAt,
+      })
+      .from(examClassPublication)
+      .where(
+        and(
+          eq(examClassPublication.examId, examId),
+          eq(examClassPublication.schoolId, schoolId),
+        ),
+      );
+  }
+
   /** One-click whole-exam publish: loops the classes that have schedules. */
   async publishExam(scope: DataScope, userId: string, examId: string) {
     const schoolId = requireSchoolId(scope);

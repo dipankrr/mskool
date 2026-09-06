@@ -583,6 +583,43 @@ export class ExamMarksService {
   }
 
   /**
+   * ONE STUDENT'S ENTRIES for an exam (S4) — the correction dialog's data:
+   * component results with paper + component labels, so the corrector names
+   * the exact cell they are revising. The ledger apply (hard rule 7) still
+   * refuses what it must; this read only displays.
+   */
+  async listStudentEntries(scope: DataScope, examId: string, studentId: string) {
+    const schoolId = requireSchoolId(scope);
+    return db
+      .select({
+        id: studentComponentResults.id,
+        scheduleId: studentComponentResults.scheduleId,
+        componentId: studentComponentResults.componentId,
+        component: examComponents.name,
+        subjectId: examSubjectSchedules.subjectId,
+        maxMarks: examComponents.maxMarks,
+        resultStatus: studentComponentResults.resultStatus,
+        marksObtained: studentComponentResults.marksObtained,
+        gradeObtained: studentComponentResults.gradeObtained,
+        isAbsent: studentComponentResults.isAbsent,
+        isExempted: studentComponentResults.isExempted,
+      })
+      .from(studentComponentResults)
+      .innerJoin(examComponents, eq(studentComponentResults.componentId, examComponents.id))
+      .innerJoin(
+        examSubjectSchedules,
+        eq(studentComponentResults.scheduleId, examSubjectSchedules.id),
+      )
+      .where(
+        and(
+          eq(studentComponentResults.examId, examId),
+          eq(studentComponentResults.studentId, studentId),
+          eq(studentComponentResults.schoolId, schoolId),
+        ),
+      );
+  }
+
+  /**
    * THE READINESS VIEW (the publish screen's one call): entry completeness
    * per the class's schedules, verification counts, the stale-compute flag,
    * and the advisory below-bar attendance list. Advisory — nothing here

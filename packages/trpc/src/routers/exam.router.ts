@@ -28,6 +28,9 @@ import {
   updateSubjectTypeSchema,
   verifyComponentResultsInput,
   entryGridOutputSchema,
+  classResultsOutputSchema,
+  publicationRowSchema,
+  studentEntriesOutputSchema,
 } from "@repo/contracts";
 import {
   examConfigService,
@@ -290,11 +293,19 @@ export const examRouter = router({
 
   marks: router({
     entry: staffProcedure("marks:read", { resolveOwner: resolveScheduleOwner, gate: "overlap" })
-      .meta({ openapi: { method: "GET", path: "/exam/marks/entry/{scheduleId}", tags: ["marks"], summary: "The marks entry grid for one paper", protect: true } })
-      .input(z.object({ examId: z.uuid(), scheduleId: z.uuid(), sectionId: z.uuid().optional() }))
+      .meta({ openapi: { method: "GET", path: "/exam/marks/entry/{id}", tags: ["marks"], summary: "The marks entry grid for one paper (id = schedule id)", protect: true } })
+      .input(z.object({ examId: z.uuid(), id: z.uuid(), sectionId: z.uuid().optional() }))
       .output(entryGridOutputSchema)
       .query(({ ctx, input }) =>
-        examMarksService.entryGrid(ctx.scope, input.examId, input.scheduleId, input.sectionId),
+        examMarksService.entryGrid(ctx.scope, input.examId, input.id, input.sectionId),
+      ),
+
+    studentEntries: staffProcedure("marks:read", { resolveOwner: resolveExamOwner, gate: "overlap" })
+      .meta({ openapi: { method: "GET", path: "/exams/{id}/students/{studentId}/entries", tags: ["marks"], summary: "One student's component entries (id = exam id)", protect: true } })
+      .input(z.object({ id: z.uuid(), studentId: z.uuid() }))
+      .output(studentEntriesOutputSchema)
+      .query(({ ctx, input }) =>
+        examMarksService.listStudentEntries(ctx.scope, input.id, input.studentId),
       ),
 
     save: staffProcedure("marks:create", { subjectGate: true })
@@ -330,6 +341,14 @@ export const examRouter = router({
   }),
 
   results: router({
+    table: staffProcedure("exam:read", { resolveOwner: resolveExamOwner, gate: "overlap" })
+      .meta({ openapi: { method: "GET", path: "/exams/{id}/results/{classId}", tags: ["results"], summary: "One class's results table (id = exam id)", protect: true } })
+      .input(z.object({ id: z.uuid(), classId: z.uuid() }))
+      .output(classResultsOutputSchema)
+      .query(({ ctx, input }) =>
+        examResultsService.classResults(ctx.scope, input.id, input.classId),
+      ),
+
     compute: staffProcedure("exam:update", { resolveOwner: resolveExamOwner })
       .meta({ openapi: { method: "POST", path: "/exams/{examId}/results/compute", tags: ["results"], summary: "Compute one class's results", protect: true } })
       .input(z.object({ examId: z.uuid(), classId: z.uuid() }))
@@ -354,6 +373,12 @@ export const examRouter = router({
   }),
 
   publication: router({
+    list: staffProcedure("exam:read", { resolveOwner: resolveExamOwner, gate: "overlap" })
+      .meta({ openapi: { method: "GET", path: "/exams/{id}/publications", tags: ["publication"], summary: "The exam's per-class publication records (id = exam id)", protect: true } })
+      .input(z.object({ id: z.uuid() }))
+      .output(z.array(publicationRowSchema).nullable())
+      .query(({ ctx, input }) => examResultsService.listPublications(ctx.scope, input.id)),
+
     publishClass: staffProcedure("exam:publish", { resolveOwner: resolveExamOwner })
       .meta({ openapi: { method: "POST", path: "/exams/{examId}/publish-class", tags: ["publication"], summary: "Publish one class's results", protect: true } })
       .input(publishClassInput)
