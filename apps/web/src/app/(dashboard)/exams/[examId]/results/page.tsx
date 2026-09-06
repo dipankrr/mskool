@@ -43,8 +43,8 @@ import { useActiveContext } from "@/features/session/active-context";
 import { useStudents } from "@/features/students/use-students";
 import { copy } from "@/lib/copy";
 import { formatIsoDate } from "@/lib/format";
+import type { ExamClassResults, ExamPublicationRow } from "@/lib/trpc/types";
 import { cn } from "@/lib/utils";
-import { trpc } from "@/lib/trpc/client";
 
 /**
  * RESULTS + PUBLICATION (S4) — the principal's decision surface.
@@ -72,7 +72,7 @@ export default function ExamResultsPage() {
   const [revisedMarks, setRevisedMarks] = useState("");
   const [revisionReason, setRevisionReason] = useState("");
 
-  const schedules = detail.data?.schedules ?? [];
+  const schedules = useMemo(() => detail.data?.schedules ?? [], [detail.data]);
   const classNameById = useMemo(() => {
     const map = new Map<string, string>();
     for (const klass of classes.data ?? []) map.set(klass.id, klass.name);
@@ -114,7 +114,7 @@ export default function ExamResultsPage() {
   }, [results.data?.subjects]);
 
   const termByStudent = useMemo(() => {
-    const map = new Map<string, (typeof results.data.termResults)[number]>();
+    const map = new Map<string, ExamClassResults["termResults"][number]>();
     for (const row of results.data?.termResults ?? []) map.set(row.studentId, row);
     return map;
   }, [results.data]);
@@ -125,7 +125,7 @@ export default function ExamResultsPage() {
     );
 
   const publicationsByClass = useMemo(() => {
-    const map = new Map<string, (typeof publications.data)[number]>();
+    const map = new Map<string, ExamPublicationRow>();
     for (const row of publications.data ?? []) map.set(row.classId, row);
     return map;
   }, [publications.data]);
@@ -594,7 +594,7 @@ export default function ExamResultsPage() {
                     ) : null}
                   </span>
                   <span className="text-muted-foreground">
-                    {formatIsoDate(card.issuedAt)}
+                    {formatIsoDate(card.publishedAt)}
                   </span>
                 </div>
               ))

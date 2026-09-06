@@ -275,6 +275,14 @@ export default function ExamDetailPage() {
               ] ?? target}
             </Button>
           ))}
+          {entryOpen || exam.status === "published" || exam.status === "locked" ? (
+            <Link
+              href={`/exams/${examId}/results`}
+              className={cn(buttonVariants({ variant: "outline" }))}
+            >
+              {copy.exams.results.title}
+            </Link>
+          ) : null}
         </div>
       ) : null}
 

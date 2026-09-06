@@ -1224,6 +1224,7 @@ export const copy = {
       cardHistory: "Card history",
       cardVersionsTitle: "Report card versions",
       correct: "Correct",
+      correctionApplied: "Correction recorded — the card re-issues when the window closes.",
       correctionTitle: "Correct this entry?",
       correctionConsequence:
         "A ledger row records the change with your name; the card re-issues when the window closes.",
