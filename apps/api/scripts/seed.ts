@@ -46,6 +46,7 @@ import {
   sections,
   sectionTeacherAssignments,
   staff,
+  studentComponentResults,
   studentEnrollments,
   studentPortalAccess,
   students,
@@ -60,6 +61,7 @@ import {
   enrollmentService,
   examConfigService,
   examMarksService,
+  examResultsService,
   feesBillingService,
   feesCollectionService,
   feesService,
@@ -880,11 +882,13 @@ async function seedExamWorld(params: {
     .select({ status: exams.status })
     .from(exams)
     .where(eq(exams.id, examId));
+  const allSchedules = await examConfigService.listSchedules([scope], examId);
+  const mathScheduleId = allSchedules.find((s) => s.subjectId === subjectMathId)?.id;
+  const physicsScheduleId = allSchedules.find((s) => s.subjectId === subjectPhysicsId)?.id;
+  if (!mathScheduleId || !physicsScheduleId) {
+    throw new Error("Exam schedules missing at entry time.");
+  }
   if (examRow?.status === "marks_entry" || examRow?.status === "under_verification") {
-    const mathScheduleId = (
-      await examConfigService.listSchedules([scope], examId)
-    ).find((s) => s.subjectId === subjectMathId)?.id;
-    if (!mathScheduleId) throw new Error("Mathematics schedule missing at entry time.");
     const components = await examConfigService.listComponents([scope], mathScheduleId);
     const theory = components.find((c) => c.name === "Theory");
     const internal = components.find((c) => c.name === "Internal");
@@ -913,6 +917,61 @@ async function seedExamWorld(params: {
       });
     }
     console.log("  + component entries (2 students: one clean, one absent internal)");
+
+    // The publication phase — complete the Physics papers, verify, walk to
+    // under_verification, compute, rank, publish — so the results screen,
+    // the correction windows, the class-set print, AND the portal door all
+    // have real data on a fresh seed. Guarded: only reachable from
+    // marks_entry (a published exam is left alone; idempotent re-runs).
+    const physicsEntries: Array<{
+      studentId: string;
+      componentId: string;
+      marks: string | null;
+      isAbsent: boolean;
+    }> = [];
+    const physicsComponents = await examConfigService.listComponents([scope], physicsScheduleId!);
+    const physicsTheory = physicsComponents.find((c) => c.name === "Theory");
+    const physicsPractical = physicsComponents.find((c) => c.name === "Practical");
+    if (physicsTheory && physicsPractical) {
+      physicsEntries.push(
+        { studentId: studentIds[0]!, componentId: physicsTheory.id, marks: "61", isAbsent: false },
+        { studentId: studentIds[0]!, componentId: physicsPractical.id, marks: "24", isAbsent: false },
+        { studentId: studentIds[1]!, componentId: physicsTheory.id, marks: "55", isAbsent: false },
+        { studentId: studentIds[1]!, componentId: physicsPractical.id, marks: "22", isAbsent: false },
+      );
+    }
+    for (const m of physicsEntries) {
+      await examMarksService.saveComponentResult(scope, enteringTeacherId, {
+        examId,
+        scheduleId: physicsScheduleId,
+        componentId: m.componentId,
+        studentId: m.studentId,
+        marks: m.marks,
+        isAbsent: m.isAbsent,
+        isExempted: false,
+      });
+    }
+
+    const entered = await db
+      .select({ id: studentComponentResults.id })
+      .from(studentComponentResults)
+      .where(
+        and(
+          eq(studentComponentResults.examId, examId),
+          eq(studentComponentResults.resultStatus, "entered"),
+        ),
+      );
+    if (entered.length > 0) {
+      await examMarksService.verifyComponentResults(scope, actorUserId, {
+        componentResultIds: entered.map((r) => r.id),
+      });
+    }
+    await examConfigService.transition(scope, { examId, target: "under_verification" });
+
+    await examResultsService.computeClassResults(scope, examId, classId);
+    await examResultsService.computeTermRanks(scope, termId);
+    await examResultsService.publishClass(scope, actorUserId, examId, classId);
+    console.log("  ~ exam published for the class (cards v1 issued)");
   }
 }
 
