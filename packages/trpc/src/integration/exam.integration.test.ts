@@ -379,6 +379,35 @@ describe("exams integration: the autosave cell", () => {
     expect(saved?.marksObtained).toBeNull();
     expect(saved?.resultStatus).toBe("entered");
   });
+
+  it("the entry grid returns the roster and the entries in one read; a foreign scope sees nothing", async () => {
+    const grid = await examMarksService.entryGrid(
+      scopeOf(world),
+      world.examId,
+      world.scheduleId,
+    );
+    expect(grid).not.toBeNull();
+    expect(grid!.roster.map((r) => r.studentId).sort()).toEqual(
+      [world.studentA, world.studentB].sort(),
+    );
+    expect(grid!.components.length).toBeGreaterThanOrEqual(1);
+    // The entries saved by the cases above are visible, keyed per student.
+    const byStudent = new Map(grid!.entries.map((e) => [e.studentId, e]));
+    expect(byStudent.get(world.studentA)?.marksObtained).toBe("75.00");
+    expect(byStudent.get(world.studentB)?.isAbsent).toBe(true);
+
+    const foreign = await examMarksService.entryGrid(
+      {
+        organizationId: crypto.randomUUID(),
+        schoolId: crypto.randomUUID(),
+        classId: null,
+        sectionId: null,
+      },
+      world.examId,
+      world.scheduleId,
+    );
+    expect(foreign).toBeNull();
+  });
 });
 
 describe("exams integration: compute, publish, and the frozen photographs", () => {

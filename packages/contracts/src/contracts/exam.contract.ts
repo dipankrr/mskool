@@ -333,6 +333,55 @@ export const verifyComponentResultsInput = z.object({
 });
 export type VerifyComponentResultsInput = z.infer<typeof verifyComponentResultsInput>;
 
+/**
+ * The entry grid read (S3): components + roster + existing entries in one
+ * shape, so the screen never stitches three calls client-side. `updatedAt`
+ * serializes to string in transit — the wire types derive from the router,
+ * not from here.
+ */
+export const entryGridOutputSchema = z.object({
+  examStatus: z.string(),
+  classId: z.uuid(),
+  sectionId: z.uuid().nullable(),
+  subjectId: z.uuid(),
+  passMarks: marksString,
+  isLocked: z.boolean(),
+  components: z.array(
+    z.object({
+      id: z.uuid(),
+      name: z.string(),
+      sequenceNumber: z.number().int(),
+      maxMarks: marksString,
+      passMarks: marksString,
+      weightagePercentage: pct100,
+      isMandatoryPass: z.boolean(),
+    }),
+  ),
+  roster: z.array(
+    z.object({
+      studentId: z.uuid(),
+      rollNumber: z.string().nullable(),
+      admissionNumber: z.string(),
+      firstName: z.string(),
+      lastName: z.string(),
+    }),
+  ),
+  entries: z.array(
+    z.object({
+      id: z.uuid(),
+      studentId: z.uuid(),
+      componentId: z.uuid(),
+      resultStatus: z.string(),
+      marksObtained: marksString.nullable(),
+      gradeObtained: z.string().nullable(),
+      isAbsent: z.boolean(),
+      isExempted: z.boolean(),
+      updatedAt: z.date(),
+    }),
+  ),
+}).nullable();
+export type EntryGridOutput = z.infer<typeof entryGridOutputSchema>;
+
 // ---------------------------------------------------------------------------
 // Revisions — the hard-rule-7 ledger + windows (ADR-032 §8)
 // ---------------------------------------------------------------------------

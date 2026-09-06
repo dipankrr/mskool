@@ -1376,10 +1376,17 @@ export class ExamResultsService {
         organizationId: result.organizationId,
         action: "result_corrected",
         actorUserId: userId,
-        targetUserId: result.studentId,
+        // The subject of a correction is a STUDENT, not a user row — the
+        // audit's target_user_id FKs to `user`, so the student rides in
+        // details (the ledger row already carries the entry).
         scopeId: result.id,
         permission: "marks:publish",
-        details: { previousMarks: result.marksObtained, revisedMarks: input.revisedMarks ?? null, reason: input.reason },
+        details: {
+          studentId: result.studentId,
+          previousMarks: result.marksObtained,
+          revisedMarks: input.revisedMarks ?? null,
+          reason: input.reason,
+        },
       });
       return result.id;
     });

@@ -80,6 +80,7 @@ const NEXT_TRANSITIONS: Record<string, readonly string[]> = {
 };
 
 const BLUEPRINT_EDITABLE = new Set(["draft", "scheduled"]);
+const ENTRY_OPEN = new Set(["marks_entry", "under_verification"]);
 
 function statusLabel(status: string): string {
   const labels: Record<string, string> = {
@@ -122,6 +123,7 @@ export default function ExamDetailPage() {
   // Stable identity for the hook dependency chain below.
   const schedules = useMemo(() => detail.data?.schedules ?? [], [detail.data]);
   const editable = Boolean(exam && BLUEPRINT_EDITABLE.has(exam.status));
+  const entryOpen = Boolean(exam && ENTRY_OPEN.has(exam.status));
 
   const classNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -188,21 +190,31 @@ export default function ExamDetailPage() {
           id: "components",
           header: copy.exams.workflow.componentSection,
           cell: ({ row }) => (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={!editable || !has("exam:update")}
-              onClick={() => setComponentsFor(row.original.id)}
-            >
-              {row.original.components.length > 0
-                ? `${row.original.components.length} ${copy.exams.workflow.componentSection.toLowerCase()}`
-                : copy.exams.workflow.addComponentRow}
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={!editable || !has("exam:update")}
+                onClick={() => setComponentsFor(row.original.id)}
+              >
+                {row.original.components.length > 0
+                  ? `${row.original.components.length} ${copy.exams.workflow.componentSection.toLowerCase()}`
+                  : copy.exams.workflow.addComponentRow}
+              </Button>
+              {entryOpen ? (
+                <Link
+                  href={`/exams/${examId}/entry`}
+                  className="text-sm font-medium hover:underline"
+                >
+                  {copy.exams.entry.title}
+                </Link>
+              ) : null}
+            </div>
           ),
         }),
       ]),
-    [subjectNameById, editable, has],
+    [subjectNameById, editable, entryOpen, examId, has],
   );
 
   if (detail.isLoading) {

@@ -23,6 +23,7 @@ import {
   exams,
   passCriteria,
   studentComponentResults,
+  students,
   subjectTypes,
   termAssessments,
 } from "@repo/db/schema";
@@ -462,6 +463,123 @@ export class ExamMarksService {
         ),
       );
     return entered ?? { entered: 0, verified: 0, total: 0 };
+  }
+
+  /**
+   * THE ENTRY GRID (S3) — one call gives the screen everything: the
+   * schedule's components, the roster (the enrollment cohort, narrowed to
+   * the section when the paper is section-scoped), and every existing
+   * component result. The read is schedule-addressed, so the ROUTER's
+   * owner resolver answers the tenancy question; the service re-checks
+   * the school anyway — a schedule id from another branch must be
+   * indistinguishable from a typo, not a 500.
+   */
+  async entryGrid(scope: DataScope, examId: string, scheduleId: string, sectionId?: string) {
+    const schoolId = requireSchoolId(scope);
+    const [schedule] = await db
+      .select()
+      .from(examSubjectSchedules)
+      .where(
+        and(
+          eq(examSubjectSchedules.id, scheduleId),
+          eq(examSubjectSchedules.examId, examId),
+          eq(examSubjectSchedules.schoolId, schoolId),
+        ),
+      );
+    if (!schedule) return null;
+
+    // A class-wide paper (NULL section) is entered SECTION by SECTION: the
+    // caller names the section whose roster it is entering (its own — the
+    // subject gate on the save enforces the assignment fact). The view
+    // section never widens a section-scoped paper.
+    const rosterSectionId = schedule.sectionId ?? sectionId ?? null;
+
+    const [exam] = await db
+      .select({ status: exams.status, academicYearId: exams.academicYearId })
+      .from(exams)
+      .where(eq(exams.id, examId));
+    if (!exam) return null;
+
+    const components = await db
+      .select({
+        id: examComponents.id,
+        name: examComponents.name,
+        sequenceNumber: examComponents.sequenceNumber,
+        maxMarks: examComponents.maxMarks,
+        passMarks: examComponents.passMarks,
+        weightagePercentage: examComponents.weightagePercentage,
+        isMandatoryPass: examComponents.isMandatoryPass,
+      })
+      .from(examComponents)
+      .where(eq(examComponents.scheduleId, scheduleId))
+      .orderBy(asc(examComponents.sequenceNumber), asc(examComponents.id));
+
+    // The roster: same cohort definition as the eligibility recompute
+    // (active enrollments in the paper's class), narrowed to the section
+    // when the paper is section-scoped. NULL-section papers sit the whole
+    // class — including students whose section is not yet assigned.
+    const roster = await db
+      .select({
+        studentId: studentEnrollments.studentId,
+        rollNumber: studentEnrollments.rollNumber,
+        admissionNumber: students.admissionNumber,
+        firstName: students.firstName,
+        lastName: students.lastName,
+      })
+      .from(studentEnrollments)
+      .innerJoin(students, eq(studentEnrollments.studentId, students.id))
+      .where(
+        and(
+          eq(studentEnrollments.academicYearId, exam.academicYearId),
+          eq(studentEnrollments.classId, schedule.classId),
+          rosterSectionId
+            ? eq(studentEnrollments.sectionId, rosterSectionId)
+            : undefined,
+          inArray(studentEnrollments.enrollmentStatus, [
+            "admitted",
+            "section_assigned",
+            "active",
+          ]),
+        ),
+      )
+      .orderBy(asc(studentEnrollments.rollNumber), asc(students.lastName), asc(students.firstName));
+
+    const entries = roster.length
+      ? await db
+          .select({
+            id: studentComponentResults.id,
+            studentId: studentComponentResults.studentId,
+            componentId: studentComponentResults.componentId,
+            resultStatus: studentComponentResults.resultStatus,
+            marksObtained: studentComponentResults.marksObtained,
+            gradeObtained: studentComponentResults.gradeObtained,
+            isAbsent: studentComponentResults.isAbsent,
+            isExempted: studentComponentResults.isExempted,
+            updatedAt: studentComponentResults.updatedAt,
+          })
+          .from(studentComponentResults)
+          .where(
+            and(
+              eq(studentComponentResults.scheduleId, scheduleId),
+              inArray(
+                studentComponentResults.studentId,
+                roster.map((r) => r.studentId),
+              ),
+            ),
+          )
+      : [];
+
+    return {
+      examStatus: exam.status,
+      classId: schedule.classId,
+      sectionId: schedule.sectionId,
+      subjectId: schedule.subjectId,
+      passMarks: schedule.passMarks,
+      isLocked: schedule.isLocked,
+      components,
+      roster,
+      entries,
+    };
   }
 
   /**

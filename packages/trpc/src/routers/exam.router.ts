@@ -27,6 +27,7 @@ import {
   updatePassCriteriaSchema,
   updateSubjectTypeSchema,
   verifyComponentResultsInput,
+  entryGridOutputSchema,
 } from "@repo/contracts";
 import {
   examConfigService,
@@ -288,6 +289,14 @@ export const examRouter = router({
   }),
 
   marks: router({
+    entry: staffProcedure("marks:read", { resolveOwner: resolveScheduleOwner, gate: "overlap" })
+      .meta({ openapi: { method: "GET", path: "/exam/marks/entry/{scheduleId}", tags: ["marks"], summary: "The marks entry grid for one paper", protect: true } })
+      .input(z.object({ examId: z.uuid(), scheduleId: z.uuid(), sectionId: z.uuid().optional() }))
+      .output(entryGridOutputSchema)
+      .query(({ ctx, input }) =>
+        examMarksService.entryGrid(ctx.scope, input.examId, input.scheduleId, input.sectionId),
+      ),
+
     save: staffProcedure("marks:create", { subjectGate: true })
       .meta({ openapi: { method: "PUT", path: "/exam/marks", tags: ["marks"], summary: "Autosave one marks cell", protect: true } })
       .input(

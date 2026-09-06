@@ -9,11 +9,15 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 **PHASE 5 STARTED (2026-09-06) — branch `feature/phase5-exams`.**
 Plan: `.kilo/plans/1788637674191-phase5-exams.md` — backbone-first (full
 tested domain core before any UI; view endpoints designed only with their
-screens). This commit is chunk **D1**: ADR-032 records the design review
-(subject types, blueprint rules, publication, revision windows, advisory
-attendance; supersedes ADR-031's storage location) and the Phase 5 section
-below is rewritten. Next chunk: **B1** — `feat(db)` 17 tables, migrations
-0013+, ADR-013 triggers, `db:verify` extensions.
+screens). Progress: **D1** (ADR-032) → **B1–B7** (schema 0013–0019,
+contracts, maths + property proofs, services, tRPC routers + portal door,
+integration proofs, audit trail) → **S1** (config screens) → **S2**
+(exams hub + detail: batch schedule/component editors, lifecycle
+transitions, readiness panel) — all committed and gate-green. Next chunk:
+**S3** — marks entry grid (subject-gated autosave, eligibility badges,
+editability flags), verification view; plus the SMOKE + SEED riders
+(seed the exam world, extend smoke:authz) and the ADR-029 subject-gate
+HTTP proof.
 
 **FEES MERGED INTO MAIN (2026-09-05) — 172/172 smoke on main post-merge.**
 The two piles were joined with a NESTED merge, not the previously
