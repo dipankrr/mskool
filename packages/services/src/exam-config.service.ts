@@ -632,7 +632,7 @@ export class ExamConfigService {
       const [exam] = await tx
         .select()
         .from(exams)
-        .where(and(eq(exams.id, input.examId), eq(exams.schoolId, schoolId)));
+        .where(and(eq(exams.id, input.id), eq(exams.schoolId, schoolId)));
       if (!exam) return null;
 
       const allowed = ExamConfigService.TRANSITIONS[exam.status] ?? [];
@@ -809,7 +809,7 @@ export class ExamConfigService {
       const [exam] = await tx
         .select()
         .from(exams)
-        .where(and(eq(exams.id, input.examId), eq(exams.schoolId, schoolId)));
+        .where(and(eq(exams.id, input.id), eq(exams.schoolId, schoolId)));
       if (!exam) return null;
       if ((ENTRY_OPEN_STATES as readonly string[]).includes(exam.status)) {
         throw new Error("Marks entry has opened — the exam blueprint is frozen.");
@@ -821,7 +821,7 @@ export class ExamConfigService {
         .from(examSubjectSchedules)
         .where(
           and(
-            eq(examSubjectSchedules.examId, input.examId),
+            eq(examSubjectSchedules.examId, input.id),
             inArray(examSubjectSchedules.classId, classIds),
           ),
         );
@@ -857,14 +857,14 @@ export class ExamConfigService {
             ...s,
             organizationId: scope.organizationId,
             schoolId,
-            examId: input.examId,
+            examId: input.id,
           })),
         );
       }
       return db
         .select()
         .from(examSubjectSchedules)
-        .where(eq(examSubjectSchedules.examId, input.examId));
+        .where(eq(examSubjectSchedules.examId, input.id));
     });
   }
 
@@ -893,7 +893,7 @@ export class ExamConfigService {
         .select()
         .from(examSubjectSchedules)
         .where(
-          and(eq(examSubjectSchedules.id, input.scheduleId), eq(examSubjectSchedules.schoolId, schoolId)),
+          and(eq(examSubjectSchedules.id, input.id), eq(examSubjectSchedules.schoolId, schoolId)),
         );
       if (!schedule) return null;
       if (schedule.isLocked) {
@@ -913,26 +913,26 @@ export class ExamConfigService {
       const [anyResult] = await tx
         .select({ id: studentComponentResults.id })
         .from(studentComponentResults)
-        .where(eq(studentComponentResults.scheduleId, input.scheduleId))
+        .where(eq(studentComponentResults.scheduleId, input.id))
         .limit(1);
       if (anyResult) {
         throw new Error("Marks exist against these components — they can no longer be restructured.");
       }
 
-      await tx.delete(examComponents).where(eq(examComponents.scheduleId, input.scheduleId));
+      await tx.delete(examComponents).where(eq(examComponents.scheduleId, input.id));
       await tx.insert(examComponents).values(
         input.components.map((c, i) => ({
           ...c,
           organizationId: scope.organizationId,
           schoolId,
-          scheduleId: input.scheduleId,
+          scheduleId: input.id,
           sequenceNumber: c.sequenceNumber ?? i,
         })),
       );
       return db
         .select()
         .from(examComponents)
-        .where(eq(examComponents.scheduleId, input.scheduleId))
+        .where(eq(examComponents.scheduleId, input.id))
         .orderBy(asc(examComponents.sequenceNumber));
     });
   }

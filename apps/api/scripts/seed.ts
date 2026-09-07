@@ -731,13 +731,14 @@ async function seedExamWorld(params: {
   academicYearId: string;
   termId: string;
   classId: string;
+  sectionId: string;
   subjectMathId: string;
   subjectPhysicsId: string;
   studentIds: [string, string];
   actorUserId: string;
   enteringTeacherId: string;
 }): Promise<void> {
-  const { scope, academicYearId, termId, classId, subjectMathId, subjectPhysicsId, studentIds, actorUserId, enteringTeacherId } =
+  const { scope, academicYearId, termId, classId, sectionId, subjectMathId, subjectPhysicsId, studentIds, actorUserId, enteringTeacherId } =
     params;
   const schoolId = scope.schoolId;
   if (!schoolId) throw new Error("The exam world needs a branch-scoped scope.");
@@ -848,7 +849,7 @@ async function seedExamWorld(params: {
   const shapable = !existingExam || existingExam.status === "draft";
   if (shapable) {
     await examConfigService.saveSchedules(scope, {
-      examId,
+      id: examId,
       schedules: [mathPaper, physicsPaper],
     });
     const schedules = await examConfigService.listSchedules([scope], examId);
@@ -859,11 +860,11 @@ async function seedExamWorld(params: {
     }
 
     await examConfigService.saveComponents(scope, {
-      scheduleId: mathScheduleId,
+      id: mathScheduleId,
       components: mathComponents.map((c) => ({ ...c, scheduleId: mathScheduleId })),
     });
     await examConfigService.saveComponents(scope, {
-      scheduleId: physicsScheduleId,
+      id: physicsScheduleId,
       components: physicsComponents.map((c) => ({ ...c, scheduleId: physicsScheduleId })),
     });
     console.log("  + schedules (Mathematics, Physics) with components");
@@ -871,7 +872,7 @@ async function seedExamWorld(params: {
     // Draft → scheduled → ongoing → marks_entry: the coverage gate runs at
     // `scheduled`, so the blueprint above must already be complete.
     for (const target of ["scheduled", "ongoing", "marks_entry"] as const) {
-      await examConfigService.transition(scope, { examId, target });
+      await examConfigService.transition(scope, { id: examId, target });
     }
     console.log("  ~ exam walked to marks_entry");
   }
@@ -910,6 +911,9 @@ async function seedExamWorld(params: {
       await examMarksService.saveComponentResult(scope, enteringTeacherId, {
         examId,
         scheduleId: mathScheduleId,
+        // The gate pair the router would check: this section, this subject.
+        sectionId,
+        subjectId: subjectMathId,
         componentId: m.componentId,
         studentId: m.studentId,
         marks: m.marks,
@@ -945,6 +949,8 @@ async function seedExamWorld(params: {
       await examMarksService.saveComponentResult(scope, enteringTeacherId, {
         examId,
         scheduleId: physicsScheduleId,
+        sectionId,
+        subjectId: subjectPhysicsId,
         componentId: m.componentId,
         studentId: m.studentId,
         marks: m.marks,
@@ -954,7 +960,10 @@ async function seedExamWorld(params: {
     }
 
     const entered = await db
-      .select({ id: studentComponentResults.id })
+      .select({
+        id: studentComponentResults.id,
+        scheduleId: studentComponentResults.scheduleId,
+      })
       .from(studentComponentResults)
       .where(
         and(
@@ -962,12 +971,28 @@ async function seedExamWorld(params: {
           eq(studentComponentResults.resultStatus, "entered"),
         ),
       );
-    if (entered.length > 0) {
+    // Verification binds one paper + section per batch, so group the
+    // entered rows by schedule and verify each paper separately.
+    const bySchedule = new Map<string, string[]>();
+    for (const row of entered) {
+      const list = bySchedule.get(row.scheduleId) ?? [];
+      list.push(row.id);
+      bySchedule.set(row.scheduleId, list);
+    }
+    const subjectBySchedule = new Map([
+      [mathScheduleId, subjectMathId],
+      [physicsScheduleId, subjectPhysicsId],
+    ]);
+    for (const [scheduleId, ids] of bySchedule) {
+      const subjectId = subjectBySchedule.get(scheduleId);
+      if (!subjectId) throw new Error("Seed verify hit an unknown paper.");
       await examMarksService.verifyComponentResults(scope, actorUserId, {
-        componentResultIds: entered.map((r) => r.id),
+        componentResultIds: ids,
+        sectionId,
+        subjectId,
       });
     }
-    await examConfigService.transition(scope, { examId, target: "under_verification" });
+    await examConfigService.transition(scope, { id: examId, target: "under_verification" });
 
     await examResultsService.computeClassResults(scope, examId, classId);
     await examResultsService.computeTermRanks(scope, termId);
@@ -1015,7 +1040,7 @@ async function seedExamWorld(params: {
     // coverage gate counts the class's counted mappings); only the
     // Mathematics paper carries components — it is the smoke's cell.
     await examConfigService.saveSchedules(scope, {
-      examId: entryExamId,
+      id: entryExamId,
       schedules: [
         {
           examId: entryExamId,
@@ -1040,7 +1065,7 @@ async function seedExamWorld(params: {
     )?.id;
     if (!entryScheduleId) throw new Error("Entrance-test schedule missing.");
     await examConfigService.saveComponents(scope, {
-      scheduleId: entryScheduleId,
+      id: entryScheduleId,
       components: [
         {
           scheduleId: entryScheduleId,
@@ -1057,7 +1082,7 @@ async function seedExamWorld(params: {
     )?.id;
     if (!entryPhysicsScheduleId) throw new Error("Entrance-test Physics schedule missing.");
     await examConfigService.saveComponents(scope, {
-      scheduleId: entryPhysicsScheduleId,
+      id: entryPhysicsScheduleId,
       components: [
         {
           scheduleId: entryPhysicsScheduleId,
@@ -1070,7 +1095,7 @@ async function seedExamWorld(params: {
       ],
     });
     for (const target of ["scheduled", "ongoing", "marks_entry"] as const) {
-      await examConfigService.transition(scope, { examId: entryExamId, target });
+      await examConfigService.transition(scope, { id: entryExamId, target });
     }
     console.log("  ~ entrance test left open at marks_entry (the smoke's gate target)");
   }
@@ -1690,6 +1715,7 @@ async function main() {
     academicYearId: currentYearA.id,
     termId: term1A.id,
     classId: classA.id,
+    sectionId: sectionA.id,
     subjectMathId: subjectMathA.id,
     subjectPhysicsId: subjectPhysicsA.id,
     studentIds: [student1.id, student2.id],

@@ -390,7 +390,7 @@ export default function ExamDetailPage() {
                   variant="outline"
                   size="sm"
                   disabled={recompute.isPending}
-                  onClick={() => recompute.mutate({ ...scopeArgs(), examId })}
+                  onClick={() => recompute.mutate({ ...scopeArgs(), id: examId })}
                 >
                   {copy.exams.workflow.readiness.compute}
                 </Button>
@@ -469,7 +469,7 @@ export default function ExamDetailPage() {
                     <Button
                       variant="outline"
                       disabled={publishExam.isPending}
-                      onClick={() => publishExam.mutate({ ...scopeArgs(), examId })}
+                      onClick={() => publishExam.mutate({ ...scopeArgs(), id: examId })}
                     >
                       {copy.exams.workflow.readiness.publishAll}
                     </Button>
@@ -552,7 +552,7 @@ export default function ExamDetailPage() {
           if (!transitionTarget) return;
           transition.mutate({
             ...scopeArgs(),
-            examId,
+            id: examId,
             target: transitionTarget as ExamTransitionInput["target"],
           });
           setTransitionTarget(null);
@@ -570,7 +570,7 @@ export default function ExamDetailPage() {
         pending={publishClass.isPending}
         onConfirm={() => {
           if (!publishClassId) return;
-          publishClass.mutate({ ...scopeArgs(), examId, classId: publishClassId });
+          publishClass.mutate({ ...scopeArgs(), id: examId, classId: publishClassId });
           setPublishClassId(null);
         }}
       />

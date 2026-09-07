@@ -2157,6 +2157,28 @@ async function main() {
     physicsSave.ok ? "AUTHORIZED — a leak" : `code ${physicsSave.code}`,
   );
 
+  // The gate pair is bound to the paper server-side: her OWN assigned pair
+  // (6-A Maths) aimed at the Physics schedule must write nothing — a null
+  // row, never a cross-paper write.
+  const mismatchSave = await mutate(subjectTeacherCookie, "exam.marks.save", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    sectionId: sectionA.id,
+    subjectId: subjectMathA.id,
+    examId: examSeed.id,
+    scheduleId: physicsScheduleSeed.id,
+    componentId: physicsTheorySeed.id,
+    studentId: student1.id,
+    marks: "10",
+    isAbsent: false,
+    isExempted: false,
+  });
+  report(
+    "subject_teacher's own pair aimed at another paper writes nothing (pair bound to schedule)",
+    mismatchSave.ok && mismatchSave.data == null,
+    !mismatchSave.ok ? `code ${mismatchSave.code}` : `data ${JSON.stringify(mismatchSave.data)}`,
+  );
+
   const librarianEntry = await query(librarianCookie, "exam.marks.entry", {
     organizationId: organization.id,
     schoolId: schoolA.id,

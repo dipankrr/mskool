@@ -1494,7 +1494,7 @@ export class ExamResultsService {
       .from(studentComponentResults)
       .where(
         and(
-          eq(studentComponentResults.id, input.componentResultId),
+          eq(studentComponentResults.id, input.id),
           eq(studentComponentResults.schoolId, schoolId),
         ),
       );
@@ -1540,7 +1540,7 @@ export class ExamResultsService {
     }));
 
     return {
-      componentResultId: input.componentResultId,
+      componentResultId: input.id,
       affected: affected,
     } as unknown as import("@repo/contracts").RevisionImpact;
   }
@@ -1561,7 +1561,7 @@ export class ExamResultsService {
         .from(studentComponentResults)
         .where(
           and(
-            eq(studentComponentResults.id, input.componentResultId),
+            eq(studentComponentResults.id, input.id),
             eq(studentComponentResults.schoolId, schoolId),
           ),
         )

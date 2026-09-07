@@ -50,7 +50,8 @@ export function ComponentsDialog({
 }) {
   const form = useForm<FormValues>({
     resolver: zodResolver(saveExamComponentsInput) as never,
-    defaultValues: { scheduleId, components: [] },
+    // `id` is the schedule's — the save route is schedule-addressed.
+    defaultValues: { id: scheduleId, components: [] },
   });
   const { fields, append, remove } = useFieldArray({ control: form.control, name: "components" });
   const [weightSum, setWeightSum] = useState(0);
@@ -58,7 +59,7 @@ export function ComponentsDialog({
   useEffect(() => {
     if (!open) return;
     form.reset({
-      scheduleId,
+      id: scheduleId,
       components: components.map((c) => ({
         scheduleId: c.scheduleId,
         name: c.name,
@@ -91,7 +92,7 @@ export function ComponentsDialog({
       pending={pending}
       onSubmit={form.handleSubmit((data) =>
         onSubmit({
-          scheduleId: data.scheduleId,
+          id: scheduleId,
           components: data.components.map((row, index) => ({
             ...row,
             scheduleId,

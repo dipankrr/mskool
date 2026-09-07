@@ -36,7 +36,7 @@ export function useSaveCell(examId: string, scheduleId: string) {
 
   return trpc.exam.marks.save.useMutation({
     onSuccess: async () => {
-      await utils.exam.eligibility.readiness.invalidate({ ...scopeArgs(), examId });
+      await utils.exam.eligibility.readiness.invalidate({ ...scopeArgs(), id: examId });
     },
     onError: (error) => {
       // The cell's worded refusals (conflict, > max, verified lock,

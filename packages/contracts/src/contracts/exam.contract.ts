@@ -245,7 +245,10 @@ export type UpdateExamInput = z.infer<typeof updateExamSchema>;
  * moves get worded errors, never a silent flip.
  */
 export const examTransitionInput = z.object({
-  examId: z.uuid(),
+  // `id` (not `examId`): owner-resolved procedures address the row as `id`
+  // — the builder's gate resolves `input.id`, so any other name leaves the
+  // gate checking nothing the handler touches.
+  id: z.uuid(),
   target: z.enum(examStatusValues),
 });
 export type ExamTransitionInput = z.infer<typeof examTransitionInput>;
@@ -277,7 +280,8 @@ export type ExamScheduleInput = z.infer<typeof examScheduleInput>;
 
 /** A schedule save is a BATCH: the setup screen edits the class's whole grid. */
 export const saveExamSchedulesInput = z.object({
-  examId: z.uuid(),
+  // `id` = the exam (owner-resolved; see examTransitionInput).
+  id: z.uuid(),
   schedules: z.array(examScheduleInput),
 });
 export type SaveExamSchedulesInput = z.infer<typeof saveExamSchedulesInput>;
@@ -289,7 +293,7 @@ export const examComponentInput = createInsertSchema(examComponents, {
   name: z.string().min(1).max(100),
   maxMarks: marksString,
   passMarks: marksString,
-  weightagePercentage: pct100,
+  weightagePercentage: weightPct,
   negativeMarksPerWrong: z
     .string()
     .regex(/^\d{1,2}(\.\d{1,2})?$/)
@@ -304,7 +308,8 @@ export const examComponentInput = createInsertSchema(examComponents, {
 export type ExamComponentInput = z.infer<typeof examComponentInput>;
 
 export const saveExamComponentsInput = z.object({
-  scheduleId: z.uuid(),
+  // `id` = the schedule (owner-resolved; see examTransitionInput).
+  id: z.uuid(),
   components: z.array(examComponentInput).min(1),
 });
 export type SaveExamComponentsInput = z.infer<typeof saveExamComponentsInput>;
@@ -366,6 +371,11 @@ export type SaveComponentResultInput = z.infer<typeof saveComponentResultInput>;
  */
 export const verifyComponentResultsInput = z.object({
   componentResultIds: z.array(z.uuid()).min(1),
+  // The grid's section + the paper's subject: the router's subjectGate
+  // answers the assignment fact on this pair, and the service binds every
+  // row to it (one schedule, enrolled students) before verifying.
+  sectionId: z.uuid(),
+  subjectId: z.uuid(),
 });
 export type VerifyComponentResultsInput = z.infer<typeof verifyComponentResultsInput>;
 
@@ -389,7 +399,7 @@ export const entryGridOutputSchema = z.object({
       sequenceNumber: z.number().int(),
       maxMarks: marksString,
       passMarks: marksString,
-  weightagePercentage: weightPct,
+      weightagePercentage: pct100,
       isMandatoryPass: z.boolean(),
     }),
   ),
@@ -537,7 +547,8 @@ export const componentRevisionSelectSchema = createSelectSchema(
 export type ComponentRevision = z.infer<typeof componentRevisionSelectSchema>;
 
 export const submitRevisionInput = z.object({
-  componentResultId: z.uuid(),
+  // `id` = the component result (owner-resolved; see examTransitionInput).
+  id: z.uuid(),
   revisedMarks: marksString.nullable().optional(),
   revisedGrade: z.string().max(10).nullable().optional(),
   revisionType: z.enum(["marks_correction", "re_evaluation", "data_entry_error", "other"]),
@@ -574,16 +585,18 @@ export type RevisionImpact = z.infer<typeof revisionImpactSchema>;
 // ---------------------------------------------------------------------------
 
 export const publishClassInput = z.object({
-  examId: z.uuid(),
+  // `id` = the exam (owner-resolved; see examTransitionInput).
+  id: z.uuid(),
   classId: z.uuid(),
 });
 export type PublishClassInput = z.infer<typeof publishClassInput>;
 
-export const publishExamInput = z.object({ examId: z.uuid() });
+export const publishExamInput = z.object({ id: z.uuid() });
 export type PublishExamInput = z.infer<typeof publishExamInput>;
 
 export const revisionWindowInput = z.object({
-  examId: z.uuid(),
+  // `id` = the exam (owner-resolved; see examTransitionInput).
+  id: z.uuid(),
   classId: z.uuid(),
 });
 export type RevisionWindowInput = z.infer<typeof revisionWindowInput>;

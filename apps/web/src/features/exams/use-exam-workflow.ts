@@ -72,14 +72,14 @@ export function useExamWorkflowMutations() {
   const transition = trpc.exam.exam.transition.useMutation({
     onSuccess: async (_data, variables) => {
       toast.success(copy.exams.workflow.transitioned);
-      await refreshExam(variables.examId);
+      await refreshExam(variables.id);
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
   const saveSchedules = trpc.exam.schedules.save.useMutation({
     onSuccess: async (_data, variables) => {
       toast.success(copy.exams.workflow.schedulesSaved);
-      await refreshExam(variables.examId);
+      await refreshExam(variables.id);
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -88,7 +88,7 @@ export function useExamWorkflowMutations() {
       toast.success(copy.exams.workflow.componentsSaved);
       // The detail page reads components nested under byId — both keys.
       await utils.exam.exam.byId.invalidate();
-      await utils.exam.components.list.invalidate({ scheduleId: variables.scheduleId });
+      await utils.exam.components.list.invalidate({ id: variables.id });
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -110,7 +110,7 @@ export function useSchedules(examId: string | undefined) {
 export function useComponents(scheduleId: string | undefined) {
   const { scopeArgs } = useActiveContext();
   return trpc.exam.components.list.useQuery(
-    { ...scopeArgs(), scheduleId: scheduleId ?? "" },
+    { ...scopeArgs(), id: scheduleId ?? "" },
     { enabled: Boolean(scheduleId) },
   );
 }
@@ -118,7 +118,7 @@ export function useComponents(scheduleId: string | undefined) {
 export function useReadiness(examId: string | undefined, classId: string | undefined) {
   const { scopeArgs } = useActiveContext();
   return trpc.exam.eligibility.readiness.useQuery(
-    { ...scopeArgs(), examId: examId ?? "", classId: classId ?? "" },
+    { ...scopeArgs(), id: examId ?? "", classId: classId ?? "" },
     { enabled: Boolean(examId) && Boolean(classId) },
   );
 }
@@ -164,7 +164,7 @@ export function usePublicationActions(examId: string) {
   const refreshAll = async () => {
     await utils.exam.exam.byId.invalidate({ ...scopeArgs(), id: examId });
     await utils.exam.exam.list.invalidate();
-    await utils.exam.eligibility.readiness.invalidate({ ...scopeArgs(), examId, classId: "" });
+    await utils.exam.eligibility.readiness.invalidate({ ...scopeArgs(), id: examId, classId: "" });
   };
 
   const publishClass = trpc.exam.publication.publishClass.useMutation({

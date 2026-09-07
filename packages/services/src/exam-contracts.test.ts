@@ -2,6 +2,7 @@ import {
   createExamSchema,
   createPassCriteriaSchema,
   createSubjectTypeSchema,
+  examComponentInput,
   gradingScaleBandInput,
 } from "@repo/contracts";
 import { describe, expect, it } from "vitest";
@@ -72,6 +73,18 @@ describe("exam creation accepts minimal payloads", () => {
       });
       expect(parsed.success, weightageInTerm).toBe(false);
     }
+  });
+
+  it("rejects zero component weightages", () => {
+    expect(
+      examComponentInput.safeParse({
+        scheduleId: TERM,
+        name: "Theory",
+        maxMarks: "80",
+        passMarks: "27",
+        weightagePercentage: "0",
+      }).success,
+    ).toBe(false);
   });
 
   it("improvement without a link is refused; null is not a link", () => {

@@ -62,14 +62,15 @@ export function ScheduleDialog({
 }) {
   const form = useForm<FormValues>({
     resolver: zodResolver(saveExamSchedulesInput) as never,
-    defaultValues: { examId, schedules: [] },
+    // `id` is the exam's — the save route is exam-addressed (owner gate).
+    defaultValues: { id: examId, schedules: [] },
   });
   const { fields, append, remove } = useFieldArray({ control: form.control, name: "schedules" });
 
   useEffect(() => {
     if (!open) return;
     form.reset({
-      examId,
+      id: examId,
       schedules: schedules.map((s) => ({
         examId,
         classId: s.classId,
@@ -94,7 +95,7 @@ export function ScheduleDialog({
       title={`${copy.exams.workflow.editScheduleFor} — ${className}`}
       description={copy.exams.workflow.scheduleSubtitle}
       pending={pending}
-      onSubmit={form.handleSubmit((data) => onSubmit({ ...data, examId }))}
+      onSubmit={form.handleSubmit((data) => onSubmit({ ...data, id: examId }))}
     >
       <div className="flex flex-col gap-4">
         {fields.map((field, index) => {

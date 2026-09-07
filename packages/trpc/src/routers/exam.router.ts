@@ -62,10 +62,15 @@ import {
  *
  * Permissions (authz vocabulary, one addition): `exam:*` runs the config and
  * lifecycle, `marks:create/update` the autosave cell (subject-gated),
- * `marks:verify` the review view (class teacher / VP / principal by default;
- * schools tighten via roles), `marks:publish` the correction ledger
+ * `marks:verify` the review view (subject-gated too — one paper + section
+ * per batch; class teacher / VP / principal by default; schools tighten via
+ * roles), `marks:publish` the correction ledger
  * (cache-bypassed sensitive permission), `report_card:read` staff card
  * history. Publication is `exam:publish` — a school-level act.
+ *
+ * Owner-resolved mutations address the row as `id` (the builder's gate
+ * resolves `input.id`): `examId`/`scheduleId`/`componentResultId` never
+ * appear as top-level input names on those routes.
  */
 
 const resolveExamOwner: OwnerResolver = async (organizationId, id) => {
@@ -231,7 +236,7 @@ export const examRouter = router({
       .query(({ ctx, input }) => examConfigService.listSchedules(ctx.scopes, input.examId)),
 
     save: staffProcedure("exam:update", { resolveOwner: resolveExamOwner })
-      .meta({ openapi: { method: "PUT", path: "/exams/{examId}/schedules", tags: ["exams"], summary: "Replace a class's schedules", protect: true } })
+      .meta({ openapi: { method: "PUT", path: "/exams/{id}/schedules", tags: ["exams"], summary: "Replace a class's schedules", protect: true } })
       .input(saveExamSchedulesInput)
       .output(z.array(examScheduleSelectSchema).nullable())
       .mutation(({ ctx, input }) => examConfigService.saveSchedules(ctx.scope, input)),
@@ -239,13 +244,13 @@ export const examRouter = router({
 
   components: router({
     list: staffProcedure("exam:read", { resolveOwner: resolveScheduleOwner, gate: "overlap" })
-      .meta({ openapi: { method: "GET", path: "/exam/schedules/{scheduleId}/components", tags: ["exams"], summary: "One schedule's components", protect: true } })
-      .input(z.object({ scheduleId: z.uuid() }))
+      .meta({ openapi: { method: "GET", path: "/exam/schedules/{id}/components", tags: ["exams"], summary: "One schedule's components", protect: true } })
+      .input(z.object({ id: z.uuid() }))
       .output(z.array(examComponentSelectSchema))
-      .query(({ ctx, input }) => examConfigService.listComponents([ctx.scope], input.scheduleId)),
+      .query(({ ctx, input }) => examConfigService.listComponents([ctx.scope], input.id)),
 
     save: staffProcedure("exam:update", { resolveOwner: resolveScheduleOwner })
-      .meta({ openapi: { method: "PUT", path: "/exam/schedules/{scheduleId}/components", tags: ["exams"], summary: "Replace a schedule's components", protect: true } })
+      .meta({ openapi: { method: "PUT", path: "/exam/schedules/{id}/components", tags: ["exams"], summary: "Replace a schedule's components", protect: true } })
       .input(saveExamComponentsInput)
       .output(z.array(examComponentSelectSchema).nullable())
       .mutation(({ ctx, input }) => examConfigService.saveComponents(ctx.scope, input)),
@@ -259,10 +264,10 @@ export const examRouter = router({
       .query(({ ctx, input }) => examMarksService.listEligibility(ctx.scopes, input.examId)),
 
     recompute: staffProcedure("exam:update", { resolveOwner: resolveExamOwner })
-      .meta({ openapi: { method: "POST", path: "/exams/{examId}/eligibility/recompute", tags: ["exams"], summary: "Recompute eligibility for the cohort", protect: true } })
-      .input(z.object({ examId: z.uuid() }))
+      .meta({ openapi: { method: "POST", path: "/exams/{id}/eligibility/recompute", tags: ["exams"], summary: "Recompute eligibility for the cohort", protect: true } })
+      .input(z.object({ id: z.uuid() }))
       .output(z.array(z.object({ studentId: z.uuid(), isEligible: z.boolean() })).nullable())
-      .mutation(({ ctx, input }) => examMarksService.recomputeEligibility(ctx.scope, input.examId)),
+      .mutation(({ ctx, input }) => examMarksService.recomputeEligibility(ctx.scope, input.id)),
 
     override: staffProcedure("exam:update")
       .meta({ openapi: { method: "POST", path: "/exams/eligibility/override", tags: ["exams"], summary: "Allow a below-bar student, with a reason", protect: true } })
@@ -271,8 +276,8 @@ export const examRouter = router({
       .mutation(({ ctx, input }) => examMarksService.overrideEligibility(ctx.scope, ctx.userId, input)),
 
     readiness: staffProcedure("exam:read", { resolveOwner: resolveExamOwner, gate: "overlap" })
-      .meta({ openapi: { method: "GET", path: "/exams/{examId}/readiness/{classId}", tags: ["exams"], summary: "The publish-readiness panel for one class", protect: true } })
-      .input(z.object({ examId: z.uuid(), classId: z.uuid() }))
+      .meta({ openapi: { method: "GET", path: "/exams/{id}/readiness/{classId}", tags: ["exams"], summary: "The publish-readiness panel for one class", protect: true } })
+      .input(z.object({ id: z.uuid(), classId: z.uuid() }))
       .output(
         z.object({
           expectedEntries: z.number().int(),
@@ -289,7 +294,7 @@ export const examRouter = router({
           ),
         }).nullable(),
       )
-      .query(({ ctx, input }) => examMarksService.readiness(ctx.scope, input.examId, input.classId)),
+      .query(({ ctx, input }) => examMarksService.readiness(ctx.scope, input.id, input.classId)),
   }),
 
   marks: router({
@@ -332,7 +337,7 @@ export const examRouter = router({
         examMarksService.saveComponentResult(ctx.scope, ctx.userId, input),
       ),
 
-    verify: staffProcedure("marks:verify")
+    verify: staffProcedure("marks:verify", { subjectGate: true })
       .meta({ openapi: { method: "POST", path: "/exam/marks/verify", tags: ["marks"], summary: "Verify a batch of entries", protect: true } })
       .input(verifyComponentResultsInput)
       .output(z.array(componentResultSelectSchema))
@@ -351,11 +356,11 @@ export const examRouter = router({
       ),
 
     compute: staffProcedure("exam:update", { resolveOwner: resolveExamOwner })
-      .meta({ openapi: { method: "POST", path: "/exams/{examId}/results/compute", tags: ["results"], summary: "Compute one class's results", protect: true } })
-      .input(z.object({ examId: z.uuid(), classId: z.uuid() }))
+      .meta({ openapi: { method: "POST", path: "/exams/{id}/results/compute", tags: ["results"], summary: "Compute one class's results", protect: true } })
+      .input(z.object({ id: z.uuid(), classId: z.uuid() }))
       .output(z.array(z.object({ studentId: z.uuid() })).nullable())
       .mutation(({ ctx, input }) =>
-        examResultsService.computeClassResults(ctx.scope, input.examId, input.classId),
+        examResultsService.computeClassResults(ctx.scope, input.id, input.classId),
       ),
 
     computeTermRanks: staffProcedure("exam:update")
@@ -381,33 +386,33 @@ export const examRouter = router({
       .query(({ ctx, input }) => examResultsService.listPublications(ctx.scope, input.id)),
 
     publishClass: staffProcedure("exam:publish", { resolveOwner: resolveExamOwner })
-      .meta({ openapi: { method: "POST", path: "/exams/{examId}/publish-class", tags: ["publication"], summary: "Publish one class's results", protect: true } })
+      .meta({ openapi: { method: "POST", path: "/exams/{id}/publish-class", tags: ["publication"], summary: "Publish one class's results", protect: true } })
       .input(publishClassInput)
       .output(z.object({ examId: z.uuid(), classId: z.uuid(), published: z.boolean() }).nullable())
       .mutation(({ ctx, input }) =>
-        examResultsService.publishClass(ctx.scope, ctx.userId, input.examId, input.classId),
+        examResultsService.publishClass(ctx.scope, ctx.userId, input.id, input.classId),
       ),
 
     publishExam: staffProcedure("exam:publish", { resolveOwner: resolveExamOwner })
-      .meta({ openapi: { method: "POST", path: "/exams/{examId}/publish", tags: ["publication"], summary: "Publish every class of the exam", protect: true } })
+      .meta({ openapi: { method: "POST", path: "/exams/{id}/publish", tags: ["publication"], summary: "Publish every class of the exam", protect: true } })
       .input(publishExamInput)
       .output(z.object({ publishedClasses: z.number().int() }))
-      .mutation(({ ctx, input }) => examResultsService.publishExam(ctx.scope, ctx.userId, input.examId)),
+      .mutation(({ ctx, input }) => examResultsService.publishExam(ctx.scope, ctx.userId, input.id)),
 
     openRevisionWindow: staffProcedure("marks:publish", { resolveOwner: resolveExamOwner })
-      .meta({ openapi: { method: "POST", path: "/exams/{examId}/revision-window/open", tags: ["publication"], summary: "Open a correction window for one class", protect: true } })
+      .meta({ openapi: { method: "POST", path: "/exams/{id}/revision-window/open", tags: ["publication"], summary: "Open a correction window for one class", protect: true } })
       .input(revisionWindowInput)
       .output(examClassPublicationSelectSchema.nullable())
       .mutation(({ ctx, input }) =>
-        examResultsService.openRevisionWindow(ctx.scope, ctx.userId, input.examId, input.classId),
+        examResultsService.openRevisionWindow(ctx.scope, ctx.userId, input.id, input.classId),
       ),
 
     closeRevisionWindow: staffProcedure("marks:publish", { resolveOwner: resolveExamOwner })
-      .meta({ openapi: { method: "POST", path: "/exams/{examId}/revision-window/close", tags: ["publication"], summary: "Close the window: recompute and re-issue affected cards", protect: true } })
+      .meta({ openapi: { method: "POST", path: "/exams/{id}/revision-window/close", tags: ["publication"], summary: "Close the window: recompute and re-issue affected cards", protect: true } })
       .input(revisionWindowInput)
       .output(z.object({ reIssued: z.number().int() }).nullable())
       .mutation(({ ctx, input }) =>
-        examResultsService.closeRevisionWindow(ctx.scope, ctx.userId, input.examId, input.classId),
+        examResultsService.closeRevisionWindow(ctx.scope, ctx.userId, input.id, input.classId),
       ),
 
     applyRevision: staffProcedure("marks:publish", { resolveOwner: resolveComponentResultOwner })

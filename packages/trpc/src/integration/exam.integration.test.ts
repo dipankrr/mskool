@@ -294,23 +294,23 @@ describe("exams integration: the lifecycle state machine", () => {
 
     // draft -> ongoing is illegal (must be scheduled first).
     await expect(
-      examConfigService.transition(scope, { examId: world.examId, target: "ongoing" }),
+      examConfigService.transition(scope, { id: world.examId, target: "ongoing" }),
     ).rejects.toThrow(/Cannot move an exam from draft to ongoing/);
 
     const scheduled = await examConfigService.transition(scope, {
-      examId: world.examId,
+      id: world.examId,
       target: "scheduled",
     });
     expect(scheduled?.status).toBe("scheduled");
 
     // scheduled -> marks_entry skips two states — refused.
     await expect(
-      examConfigService.transition(scope, { examId: world.examId, target: "marks_entry" }),
+      examConfigService.transition(scope, { id: world.examId, target: "marks_entry" }),
     ).rejects.toThrow(/Cannot move an exam from scheduled to marks_entry/);
 
-    await examConfigService.transition(scope, { examId: world.examId, target: "ongoing" });
+    await examConfigService.transition(scope, { id: world.examId, target: "ongoing" });
     const entry = await examConfigService.transition(scope, {
-      examId: world.examId,
+      id: world.examId,
       target: "marks_entry",
     });
     expect(entry?.status).toBe("marks_entry");
@@ -320,10 +320,13 @@ describe("exams integration: the lifecycle state machine", () => {
 describe("exams integration: the autosave cell", () => {
   it("creates lazily, then refuses a stale writer (no lost update)", async () => {
     const scope = scopeOf(world);
+    // The gate pair the router checks: this section, this subject.
     const base = {
       examId: world.examId,
       scheduleId: world.scheduleId,
       componentId: world.componentId,
+      sectionId: world.sectionId,
+      subjectId: world.subjectId,
       isAbsent: false,
       isExempted: false,
     };
@@ -371,6 +374,8 @@ describe("exams integration: the autosave cell", () => {
       examId: world.examId,
       scheduleId: world.scheduleId,
       componentId: world.componentId,
+      sectionId: world.sectionId,
+      subjectId: world.subjectId,
       studentId: world.studentB,
       isAbsent: true,
       isExempted: false,
@@ -378,6 +383,75 @@ describe("exams integration: the autosave cell", () => {
     expect(saved?.isAbsent).toBe(true);
     expect(saved?.marksObtained).toBeNull();
     expect(saved?.resultStatus).toBe("entered");
+  });
+
+  it("binds the gate pair to the paper and the student to the section", async () => {
+    const scope = scopeOf(world);
+    const pair = { sectionId: world.sectionId, subjectId: world.subjectId };
+    const cell = {
+      examId: world.examId,
+      scheduleId: world.scheduleId,
+      componentId: world.componentId,
+    };
+
+    // Wrong subject: a gate pair from one paper never writes another.
+    const wrongSubject = await examMarksService.saveComponentResult(scope, PRINCIPAL, {
+      ...cell,
+      ...pair,
+      subjectId: crypto.randomUUID(),
+      studentId: world.studentA,
+      marks: "10",
+      isAbsent: false,
+      isExempted: false,
+    });
+    expect(wrongSubject).toBeNull();
+
+    // Cross-exam: this examId paired with that paper's schedule.
+    const crossExam = await examMarksService.saveComponentResult(scope, PRINCIPAL, {
+      ...cell,
+      ...pair,
+      examId: crypto.randomUUID(),
+      studentId: world.studentA,
+      marks: "10",
+      isAbsent: false,
+      isExempted: false,
+    });
+    expect(crossExam).toBeNull();
+
+    // A student no enrollment covers: outside this paper's cohort.
+    const outsider = await examMarksService.saveComponentResult(scope, PRINCIPAL, {
+      ...cell,
+      ...pair,
+      studentId: crypto.randomUUID(),
+      marks: "10",
+      isAbsent: false,
+      isExempted: false,
+    });
+    expect(outsider).toBeNull();
+
+    // Verify binds the same way: the entered row verifies under its own
+    // pair, and a foreign pair is refused before any row moves.
+    const [row] = await db
+      .select()
+      .from(studentComponentResults)
+      .where(
+        and(
+          eq(studentComponentResults.studentId, world.studentA),
+          eq(studentComponentResults.componentId, world.componentId),
+        ),
+      );
+    const verified = await examMarksService.verifyComponentResults(scope, PRINCIPAL, {
+      componentResultIds: [row!.id],
+      ...pair,
+    });
+    expect(verified.find((r) => r.id === row!.id)?.resultStatus).toBe("verified");
+    await expect(
+      examMarksService.verifyComponentResults(scope, PRINCIPAL, {
+        componentResultIds: [row!.id],
+        sectionId: world.sectionId,
+        subjectId: crypto.randomUUID(),
+      }),
+    ).rejects.toThrow(/stated subject/);
   });
 
   it("the entry grid returns the roster and the entries in one read; a foreign scope sees nothing", async () => {
@@ -416,7 +490,7 @@ describe("exams integration: compute, publish, and the frozen photographs", () =
 
     // Entry complete (A: 72, B: absent) -> verification may open.
     const verification = await examConfigService.transition(scope, {
-      examId: world.examId,
+      id: world.examId,
       target: "under_verification",
     });
     expect(verification?.status).toBe("under_verification");
@@ -492,7 +566,7 @@ describe("exams integration: hard rule 7 — the correction ledger", () => {
 
     // B was absent; the office later records the approved mark 35 (pass at 33).
     const applied = await examResultsService.applyRevision(scope, PRINCIPAL, {
-      componentResultId: (
+      id: (
         await db
           .select()
           .from(studentComponentResults)

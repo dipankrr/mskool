@@ -256,7 +256,14 @@ export default function ExamEntryPage() {
         pending={verify.isPending}
         onConfirm={() => {
           if (verifiableIds.length === 0) return;
-          verify.mutate({ ...scopeArgs(), componentResultIds: verifiableIds });
+          verify.mutate({
+            ...scopeArgs(),
+            componentResultIds: verifiableIds,
+            // The same gate pair as the save: the paper's own section (or
+            // the picked one for class-wide papers) and its subject.
+            sectionId: grid.data?.sectionId ?? pickedSectionId ?? "",
+            subjectId: grid.data?.subjectId ?? "",
+          });
           setVerifyOpen(false);
         }}
       />

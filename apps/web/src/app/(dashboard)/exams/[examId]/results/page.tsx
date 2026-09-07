@@ -159,7 +159,7 @@ export default function ExamResultsPage() {
     if (!correctingEntry || revisedMarks.trim() === "" || revisionReason.trim().length < 3) return;
     applyRevision.mutate({
       ...scopeArgs(),
-      componentResultId: correctingEntry,
+      id: correctingEntry,
       revisedMarks: revisedMarks.trim(),
       revisionType: "marks_correction",
       reason: revisionReason.trim(),
@@ -212,7 +212,7 @@ export default function ExamResultsPage() {
           <Button
             variant="outline"
             disabled={compute.isPending || computeRanks.isPending}
-            onClick={() => classId && compute.mutate({ ...scopeArgs(), examId, classId })}
+            onClick={() => classId && compute.mutate({ ...scopeArgs(), id: examId, classId })}
           >
             {copy.exams.results.compute}
           </Button>
@@ -236,7 +236,7 @@ export default function ExamResultsPage() {
                 size="sm"
                 disabled={publishClass.isPending}
                 onClick={() =>
-                  classId && publishClass.mutate({ ...scopeArgs(), examId, classId })
+                  classId && publishClass.mutate({ ...scopeArgs(), id: examId, classId })
                 }
               >
                 {copy.exams.workflow.readiness.publishClass}
@@ -245,7 +245,7 @@ export default function ExamResultsPage() {
                 variant="outline"
                 size="sm"
                 disabled={publishExam.isPending}
-                onClick={() => publishExam.mutate({ ...scopeArgs(), examId })}
+                onClick={() => publishExam.mutate({ ...scopeArgs(), id: examId })}
               >
                 {copy.exams.workflow.readiness.publishAll}
               </Button>
@@ -478,9 +478,9 @@ export default function ExamResultsPage() {
         onConfirm={() => {
           if (!classId || !windowAction) return;
           if (windowAction === "open") {
-            openWindow.mutate({ ...scopeArgs(), examId, classId });
+            openWindow.mutate({ ...scopeArgs(), id: examId, classId });
           } else {
-            closeWindow.mutate({ ...scopeArgs(), examId, classId });
+            closeWindow.mutate({ ...scopeArgs(), id: examId, classId });
           }
           setWindowAction(null);
         }}
