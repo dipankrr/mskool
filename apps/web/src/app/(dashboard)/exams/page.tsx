@@ -118,27 +118,33 @@ function ExamDialog({
         </Field>
         <Field>
           <FieldLabel htmlFor="exam-term">{copy.exams.workflow.term}</FieldLabel>
-          <Select
-            value={form.watch("termId")}
-            onValueChange={(v) => {
-              if (v) form.setValue("termId", v);
-            }}
-          >
-            <SelectTrigger id="exam-term">
-              <SelectValue>
-                {(value: string | null) =>
-                  value ? (terms.find((t) => t.id === value)?.name ?? copy.common.none) : copy.common.none
-                }
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {terms.map((t) => (
-                <SelectItem key={t.id} value={t.id}>
-                  {t.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {terms.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              {copy.exams.workflow.noTermsTitle} — {copy.exams.workflow.noTermsBody}
+            </p>
+          ) : (
+            <Select
+              value={form.watch("termId")}
+              onValueChange={(v) => {
+                if (v) form.setValue("termId", v);
+              }}
+            >
+              <SelectTrigger id="exam-term">
+                <SelectValue>
+                  {(value: string | null) =>
+                    value ? (terms.find((t) => t.id === value)?.name ?? copy.common.none) : copy.common.none
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {terms.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <FieldError>{form.formState.errors.termId?.message}</FieldError>
         </Field>
         <Field>
@@ -252,11 +258,25 @@ export default function ExamsPage() {
         }),
         column.accessor("examType", {
           header: copy.exams.workflow.type,
-          cell: ({ row }) => <Badge variant="outline">{row.original.examType}</Badge>,
+          cell: ({ row }) => (
+            <Badge variant="outline">
+              {EXAM_TYPE_LABELS[row.original.examType] ?? row.original.examType}
+            </Badge>
+          ),
         }),
         column.accessor("status", {
           header: copy.exams.workflow.status,
           cell: ({ row }) => <Badge variant="outline">{statusLabel(row.original.status)}</Badge>,
+        }),
+        column.accessor("termName", {
+          header: copy.exams.workflow.term,
+        }),
+        column.accessor("scheduledClasses", {
+          header: copy.exams.workflow.progress,
+          cell: ({ row }) =>
+            row.original.scheduledClasses === 0
+              ? copy.common.none
+              : `${row.original.publishedClasses}/${row.original.scheduledClasses} ${copy.exams.workflow.publishedSuffix}`,
         }),
       ]),
     [],
@@ -266,7 +286,7 @@ export default function ExamsPage() {
 
   return (
     <>
-      <PageHeader title={copy.exams.setup.title} description={copy.exams.setup.subtitle} />
+      <PageHeader title={copy.exams.workflow.title} description={copy.exams.setup.subtitle} />
       <section aria-labelledby="exams-heading" className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 id="exams-heading" className="font-heading text-base font-semibold">
@@ -293,6 +313,12 @@ export default function ExamsPage() {
               <p className="flex items-center justify-between font-medium">
                 {row.name}
                 <Badge variant="outline">{statusLabel(row.status)}</Badge>
+              </p>
+              <p className="text-muted-foreground mt-1 text-xs">
+                {EXAM_TYPE_LABELS[row.examType] ?? row.examType} · {row.termName || copy.common.none}
+                {row.scheduledClasses > 0
+                  ? ` · ${row.publishedClasses}/${row.scheduledClasses} ${copy.exams.workflow.publishedSuffix}`
+                  : null}
               </p>
             </Link>
           )}

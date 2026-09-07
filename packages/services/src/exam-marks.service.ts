@@ -328,6 +328,7 @@ export class ExamMarksService {
           isLocked: examSubjectSchedules.isLocked,
           examId: examSubjectSchedules.examId,
           examStatus: exams.status,
+          allowsNegativeMarking: exams.allowsNegativeMarking,
           academicYearId: exams.academicYearId,
           classId: examSubjectSchedules.classId,
           sectionId: examSubjectSchedules.sectionId,
@@ -390,6 +391,11 @@ export class ExamMarksService {
       }
       if (!["marks_entry", "under_verification"].includes(schedule.examStatus)) {
         throw new Error("Marks entry is not open for this exam.");
+      }
+      // The floor the DB trigger doesn't check (it caps at max only):
+      // negatives need the exam's explicit opt-in.
+      if (input.marks != null && Number(input.marks) < 0 && !schedule.allowsNegativeMarking) {
+        throw new Error("This exam does not allow negative marks.");
       }
 
       const [component] = await tx
@@ -697,10 +703,52 @@ export class ExamMarksService {
     const rosterSectionId = schedule.sectionId ?? sectionId ?? null;
 
     const [exam] = await db
-      .select({ status: exams.status, academicYearId: exams.academicYearId })
+      .select({
+        status: exams.status,
+        academicYearId: exams.academicYearId,
+        allowsNegativeMarking: exams.allowsNegativeMarking,
+      })
       .from(exams)
       .where(eq(exams.id, examId));
     if (!exam) return null;
+
+    // Graded-only exam-mode papers are entered as GRADES on an implicit
+    // single "Overall" component (ADR-032 §2). The row is ensured here so
+    // the grid always has a column to type into — first open wins, the
+    // unique index absorbs a racing second.
+    const [mapping] = await db
+      .select({
+        mode: subjectTypes.assessmentMode,
+        gradedOnly: subjectTypes.isGradedOnly,
+      })
+      .from(classSubjectMappings)
+      .innerJoin(subjectTypes, eq(classSubjectMappings.subjectTypeId, subjectTypes.id))
+      .where(
+        and(
+          eq(classSubjectMappings.classId, schedule.classId),
+          eq(classSubjectMappings.academicYearId, exam.academicYearId),
+          eq(classSubjectMappings.subjectId, schedule.subjectId),
+        ),
+      );
+    const isGradedOnly = mapping?.mode === "exam" && mapping?.gradedOnly === true;
+    if (isGradedOnly) {
+      await db
+        .insert(examComponents)
+        .values({
+          organizationId: schedule.organizationId,
+          schoolId,
+          scheduleId,
+          name: "Overall",
+          maxMarks: "100.00",
+          passMarks: "0.00",
+          weightagePercentage: "100.00",
+          isMandatoryPass: false,
+          sequenceNumber: 0,
+        })
+        .onConflictDoNothing({
+          target: [examComponents.scheduleId, examComponents.name],
+        });
+    }
 
     const components = await db
       .select({
@@ -778,6 +826,8 @@ export class ExamMarksService {
       subjectId: schedule.subjectId,
       passMarks: schedule.passMarks,
       isLocked: schedule.isLocked,
+      isGradedOnly,
+      allowsNegativeMarking: exam.allowsNegativeMarking,
       components,
       roster,
       entries,

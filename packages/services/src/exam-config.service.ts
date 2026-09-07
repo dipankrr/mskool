@@ -21,6 +21,7 @@ import { db } from "@repo/db";
 import {
   academicYears,
   classSubjectMappings,
+  examClassPublication,
   examComponents,
   examSubjectSchedules,
   exams,
@@ -30,9 +31,10 @@ import {
   studentComponentResults,
   studentEnrollments,
   subjectTypes,
+  termAssessments,
   terms,
 } from "@repo/db/schema";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql, type AnyColumn } from "drizzle-orm";
 
 /**
  * EXAM CONFIG + BLUEPRINT + LIFECYCLE — B4a of Phase 5 (ADR-032).
@@ -101,7 +103,7 @@ export class ExamConfigService {
   // -------------------------------------------------------------------------
 
   async listSubjectTypes(scopes: DataScope[]) {
-    return db
+    const rows = await db
       .select()
       .from(subjectTypes)
       .where(
@@ -111,6 +113,54 @@ export class ExamConfigService {
         ),
       )
       .orderBy(asc(subjectTypes.sequence), asc(subjectTypes.name));
+    if (rows.length === 0) return [];
+    // Lock flags, batched: type ids with assessment data behind them —
+    // component results AND term assessments (term_grade types never touch
+    // the exam pipeline). Any history counts, deliberately: the flags feed
+    // frozen snapshots, so repurposing a used type rewrites the past.
+    const schoolIds = [...new Set(scopes.map((s) => s.schoolId).filter((id): id is string => id != null))];
+    const orgIds = [...new Set(scopes.map((s) => s.organizationId))];
+    const tenantFilter = (orgCol: AnyColumn, schoolCol: AnyColumn) =>
+      schoolIds.length > 0
+        ? inArray(schoolCol, schoolIds)
+        : inArray(orgCol, orgIds);
+    const viaExams = await db
+      .selectDistinct({ typeId: classSubjectMappings.subjectTypeId })
+      .from(studentComponentResults)
+      .innerJoin(
+        examSubjectSchedules,
+        eq(studentComponentResults.scheduleId, examSubjectSchedules.id),
+      )
+      .innerJoin(
+        classSubjectMappings,
+        and(
+          eq(classSubjectMappings.subjectId, examSubjectSchedules.subjectId),
+          eq(classSubjectMappings.classId, examSubjectSchedules.classId),
+        ),
+      )
+      .where(
+        tenantFilter(
+          studentComponentResults.organizationId,
+          studentComponentResults.schoolId,
+        ),
+      );
+    const viaTerms = await db
+      .selectDistinct({ typeId: classSubjectMappings.subjectTypeId })
+      .from(termAssessments)
+      .innerJoin(
+        classSubjectMappings,
+        eq(termAssessments.mappingId, classSubjectMappings.id),
+      )
+      .where(
+        tenantFilter(termAssessments.organizationId, termAssessments.schoolId),
+      );
+    const locked = new Set(
+      [...viaExams, ...viaTerms].map((r) => r.typeId),
+    );
+    return rows.map((row) => ({
+      ...row,
+      hasAssessmentData: locked.has(row.id),
+    }));
   }
 
   async getSubjectTypeById(scope: DataScope, id: string) {
@@ -174,7 +224,23 @@ export class ExamConfigService {
             ),
           )
           .limit(1);
-        if (used) {
+        // Term-grade types never touch the exam pipeline — their data
+        // lives in term_assessments, checked separately.
+        const [termUsed] = await tx
+          .select({ id: termAssessments.id })
+          .from(termAssessments)
+          .innerJoin(
+            classSubjectMappings,
+            eq(termAssessments.mappingId, classSubjectMappings.id),
+          )
+          .where(
+            and(
+              eq(classSubjectMappings.subjectTypeId, id),
+              eq(termAssessments.schoolId, schoolId),
+            ),
+          )
+          .limit(1);
+        if (used ?? termUsed) {
           throw new Error(
             "This subject type already has assessment data — its result flags and assessment mode are locked. Assign a different type to the class instead.",
           );
@@ -226,10 +292,20 @@ export class ExamConfigService {
     const created = [];
     for (const p of preset) {
       const [existing] = await db
-        .select({ id: subjectTypes.id })
+        .select({ id: subjectTypes.id, isActive: subjectTypes.isActive })
         .from(subjectTypes)
         .where(and(eq(subjectTypes.schoolId, schoolId), eq(subjectTypes.name, p.name)));
-      if (existing) continue;
+      // A deactivated preset row reactivates instead of blocking silently.
+      if (existing?.isActive) continue;
+      if (existing) {
+        const [revived] = await db
+          .update(subjectTypes)
+          .set({ ...p, isActive: true })
+          .where(eq(subjectTypes.id, existing.id))
+          .returning();
+        if (revived) created.push(revived);
+        continue;
+      }
       created.push(
         await db
           .insert(subjectTypes)
@@ -283,20 +359,14 @@ export class ExamConfigService {
   async createGradingScale(scope: DataScope, input: CreateGradingScaleInput) {
     const schoolId = requireSchoolId(scope);
     const isDefault = input.isDefault ?? false;
-    if (isDefault) {
-      // The one-default-per-school partial unique backs this up; unsetting
-      // the previous default here saves the caller a second round trip.
-      await db
-        .update(gradingScales)
-        .set({ isDefault: false })
-        .where(and(eq(gradingScales.schoolId, schoolId), eq(gradingScales.isDefault, true)));
-    }
 
     const sorted = input.bands
+      // Exact integer-hundredths — binary float makes "90.10"*100 ≠ 9010
+      // and valid decimal bands fail contiguity on dust.
       .map((b) => ({
         ...b,
-        min: Number(b.minMarks) * 100,
-        max: Number(b.maxMarks) * 100,
+        min: Number(toHundredths(b.minMarks)),
+        max: Number(toHundredths(b.maxMarks)),
       }))
       .sort((a, b) => a.min - b.min);
     if (sorted[0]!.min !== 0) {
@@ -313,6 +383,14 @@ export class ExamConfigService {
     }
 
     return db.transaction(async (tx) => {
+      // The default swap lives INSIDE the insert transaction: a failure
+      // after an outside unset used to leave the school with no default.
+      if (isDefault) {
+        await tx
+          .update(gradingScales)
+          .set({ isDefault: false })
+          .where(and(eq(gradingScales.schoolId, schoolId), eq(gradingScales.isDefault, true)));
+      }
       const [scale] = await tx
         .insert(gradingScales)
         .values({
@@ -339,6 +417,39 @@ export class ExamConfigService {
         })),
       );
       return { ...scale, bands: await tx.select().from(gradingScaleBands).where(eq(gradingScaleBands.gradingScaleId, scale.id)) };
+    });
+  }
+
+  /**
+   * Makes a scale the school default — unset + set in one transaction, so
+   * the school never sits with none (or two). Safe on locked scales: the
+   * switch only steers FUTURE computes; frozen results keep grading as
+   * they did.
+   */
+  async makeDefaultGradingScale(scope: DataScope, id: string) {
+    const schoolId = requireSchoolId(scope);
+    return db.transaction(async (tx) => {
+      const [scale] = await tx
+        .select()
+        .from(gradingScales)
+        .where(and(eq(gradingScales.id, id), eq(gradingScales.schoolId, schoolId)));
+      if (!scale) return null;
+      await tx
+        .update(gradingScales)
+        .set({ isDefault: false })
+        .where(and(eq(gradingScales.schoolId, schoolId), eq(gradingScales.isDefault, true)));
+      const [row] = await tx
+        .update(gradingScales)
+        .set({ isDefault: true })
+        .where(eq(gradingScales.id, id))
+        .returning();
+      if (!row) return null;
+      const bands = await tx
+        .select()
+        .from(gradingScaleBands)
+        .where(eq(gradingScaleBands.gradingScaleId, id))
+        .orderBy(asc(gradingScaleBands.sequenceNumber));
+      return { ...row, bands };
     });
   }
 
@@ -398,7 +509,10 @@ export class ExamConfigService {
       );
     }
     const sorted = input.bands
-      .map((b) => ({ min: Number(b.minMarks) * 100, max: Number(b.maxMarks) * 100 }))
+      .map((b) => ({
+        min: Number(toHundredths(b.minMarks)),
+        max: Number(toHundredths(b.maxMarks)),
+      }))
       .sort((a, b) => a.min - b.min);
     if (sorted[0]!.min !== 0 || sorted[sorted.length - 1]!.max !== 10000) {
       throw new Error("Bands must be contiguous and cover 0-100.");
@@ -478,7 +592,7 @@ export class ExamConfigService {
   // -------------------------------------------------------------------------
 
   async listExams(scopes: DataScope[], academicYearId?: string) {
-    return db
+    const rows = await db
       .select()
       .from(exams)
       .where(
@@ -488,6 +602,43 @@ export class ExamConfigService {
         ),
       )
       .orderBy(asc(exams.name));
+    if (rows.length === 0) return [];
+    // Hub progress: scheduled vs published classes per exam, batched.
+    const ids = rows.map((e) => e.id);
+    const scheduled = await db
+      .selectDistinct({
+        examId: examSubjectSchedules.examId,
+        classId: examSubjectSchedules.classId,
+      })
+      .from(examSubjectSchedules)
+      .where(inArray(examSubjectSchedules.examId, ids));
+    const published = await db
+      .selectDistinct({
+        examId: examClassPublication.examId,
+        classId: examClassPublication.classId,
+      })
+      .from(examClassPublication)
+      .where(inArray(examClassPublication.examId, ids));
+    const termRows = await db
+      .select({ id: terms.id, name: terms.name })
+      .from(terms)
+      .where(
+        inArray(
+          terms.id,
+          [...new Set(rows.map((e) => e.termId))],
+        ),
+      );
+    const termById = new Map(termRows.map((t) => [t.id, t.name]));
+    return rows.map((exam) => ({
+      ...exam,
+      termName: termById.get(exam.termId) ?? "",
+      scheduledClasses: new Set(
+        scheduled.filter((s) => s.examId === exam.id).map((s) => s.classId),
+      ).size,
+      publishedClasses: new Set(
+        published.filter((p) => p.examId === exam.id).map((p) => p.classId),
+      ).size,
+    }));
   }
 
   /** One exam with its schedules and each schedule's components — the detail screen's shape. */
@@ -887,6 +1038,17 @@ export class ExamConfigService {
       }
 
       if (existing.length > 0) {
+        // Components first: they FK to their schedules with no cascade,
+        // and deleting schedules under them 500s on the FK. Safe here —
+        // the results check above proved no marks reference them.
+        await tx
+          .delete(examComponents)
+          .where(
+            inArray(
+              examComponents.scheduleId,
+              existing.map((s) => s.id),
+            ),
+          );
         await tx
           .delete(examSubjectSchedules)
           .where(
@@ -946,12 +1108,16 @@ export class ExamConfigService {
       }
 
       const weightSum = input.components.reduce(
-        (acc, c) => acc + Number(c.weightagePercentage),
-        0,
+        (acc, c) => acc + toHundredths(c.weightagePercentage),
+        0n,
       );
-      if (Math.round(weightSum * 100) !== 10000) {
+      if (weightSum !== 10000n) {
+        const shown = input.components.reduce(
+          (acc, c) => acc + Number(c.weightagePercentage),
+          0,
+        );
         throw new Error(
-          `Component weightages must sum to exactly 100 (currently ${weightSum}).`,
+          `Component weightages must sum to exactly 100 (currently ${shown}).`,
         );
       }
 

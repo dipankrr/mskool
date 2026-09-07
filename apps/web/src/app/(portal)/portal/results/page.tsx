@@ -18,6 +18,7 @@ import {
   ReportCardView,
 } from "@/features/exams/report-card-view";
 import { copy } from "@/lib/copy";
+import { errorMessage } from "@/lib/errors";
 import { formatIsoDate } from "@/lib/format";
 import { trpc } from "@/lib/trpc/client";
 
@@ -73,6 +74,21 @@ export default function PortalResultsPage() {
     );
   }
 
+  // A failed fetch is not "no results" — say so, with a retry.
+  if (cards.error) {
+    return (
+      <>
+        <PageHeader title={copy.exams.portal.title} description={copy.exams.portal.subtitle} />
+        <div className="mt-6 flex flex-col items-start gap-2" role="alert">
+          <p className="text-destructive text-sm">{errorMessage(cards.error)}</p>
+          <Button variant="outline" size="sm" onClick={() => void cards.refetch()}>
+            {copy.common.retry}
+          </Button>
+        </div>
+      </>
+    );
+  }
+
   if (list.length === 0) {
     return (
       <>
@@ -124,10 +140,17 @@ export default function PortalResultsPage() {
 
       {card.isLoading ? (
         <Spinner className="mt-6" />
+      ) : card.error ? (
+        <div className="mt-6 flex flex-col items-start gap-2" role="alert">
+          <p className="text-destructive text-sm">{errorMessage(card.error)}</p>
+          <Button variant="outline" size="sm" onClick={() => void card.refetch()}>
+            {copy.common.retry}
+          </Button>
+        </div>
       ) : snapshot ? (
         <ReportCardView snapshot={snapshot} />
       ) : (
-        <p className="text-muted-foreground text-sm">{copy.exams.card.invalid}</p>
+        <p className="text-muted-foreground text-sm">{copy.exams.portal.loadFailed}</p>
       )}
     </>
   );

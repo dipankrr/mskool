@@ -32,6 +32,7 @@ import {
 import { useActiveContext } from "@/features/session/active-context";
 import { useSections } from "@/features/sections/use-sections";
 import { copy } from "@/lib/copy";
+import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc/client";
 
@@ -66,7 +67,6 @@ export default function ExamEntryPage() {
   // her section before the roster loads.
   const [pickedSectionId, setPickedSectionId] = useState<string | null>(null);
   const grid = useEntryGrid(examId, scheduleId ?? undefined, pickedSectionId ?? undefined);
-  const needsSection = Boolean(grid.data && !grid.data.sectionId && !pickedSectionId);
   const sections = useSections(grid.data?.classId ?? undefined, {
     enabled: Boolean(grid.data && !grid.data.sectionId),
   });
@@ -147,7 +147,9 @@ export default function ExamEntryPage() {
     return (
       <EmptyState
         title={copy.exams.entry.title}
-        description={copy.exams.entry.notOpen}
+        description={
+          schedules.length === 0 ? copy.exams.entry.noBlueprint : copy.exams.entry.notOpen
+        }
         action={
           <Link href={`/exams/${examId}`} className={cn(buttonVariants({ variant: "outline" }))}>
             <ArrowLeftIcon data-icon="inline-start" />
@@ -200,15 +202,21 @@ export default function ExamEntryPage() {
           </SelectContent>
         </Select>
 
-        {needsSection ? (
+        {!grid.data?.sectionId ? (
           <Select
-            value=""
+            value={pickedSectionId ?? ""}
             onValueChange={(v) => {
-              if (v) setPickedSectionId(v);
+              setPickedSectionId(v || null);
             }}
           >
             <SelectTrigger aria-label={copy.exams.entry.section} className="w-56">
-              <SelectValue>{copy.exams.entry.section}</SelectValue>
+              <SelectValue>
+                {(value: string | null) =>
+                  value
+                    ? ((sections.data ?? []).find((s) => s.id === value)?.name ?? copy.common.none)
+                    : copy.exams.entry.section
+                }
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {(sections.data ?? []).map((section) => (
@@ -238,6 +246,13 @@ export default function ExamEntryPage() {
 
       {grid.isLoading ? (
         <Spinner className="mt-8" />
+      ) : grid.error ? (
+        <div className="mt-8 flex flex-col items-start gap-2" role="alert">
+          <p className="text-destructive text-sm">{errorMessage(grid.error)}</p>
+          <Button variant="outline" size="sm" onClick={() => void grid.refetch()}>
+            {copy.common.retry}
+          </Button>
+        </div>
       ) : grid.data ? (
         <MarksEntryGrid
           grid={grid.data}

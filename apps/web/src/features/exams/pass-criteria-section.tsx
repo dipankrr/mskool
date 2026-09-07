@@ -17,12 +17,22 @@ import { EmptyState } from "@/components/empty-state";
 import { FormDialog } from "@/components/form-dialog";
 import { PermissionGate } from "@/components/permission-gate";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { createAppColumnHelper, type DataTableColumns } from "@/lib/table";
 import { copy } from "@/lib/copy";
+import { trpc } from "@/lib/trpc/client";
 import { useActiveContext } from "@/features/session/active-context";
+import { useClasses } from "@/features/classes/use-classes";
 import { usePassCriteria, usePassCriteriaMutations } from "./use-exam-config";
 
 /**
@@ -41,12 +51,20 @@ function CriteriaDialog({
   onSubmit,
   pending,
   criteria,
+  classes,
+  subjects,
+  hasDefault,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (data: CreatePassCriteriaInput) => Promise<void> | void;
   pending: boolean;
   criteria?: PassCriteria;
+  /** Classes for the override picker (create only). */
+  classes: { id: string; name: string }[];
+  /** School subjects for the must-pass picker. */
+  subjects: { id: string; name: string }[];
+  hasDefault: boolean;
 }) {
   const isEdit = Boolean(criteria);
 
@@ -61,20 +79,27 @@ function CriteriaDialog({
       isEdit
         ? {
             minSubjectsToPass: criteria?.minSubjectsToPass ?? undefined,
+            mandatoryPassSubjectIds: criteria?.mandatoryPassSubjectIds ?? [],
             graceMarksAllowed: criteria?.graceMarksAllowed ?? false,
             maxGracePerSubject: criteria?.maxGracePerSubject ?? undefined,
             maxGraceTotal: criteria?.maxGraceTotal ?? undefined,
             compartmentAllowed: criteria?.compartmentAllowed ?? false,
             maxSubjectsForCompartment: criteria?.maxSubjectsForCompartment ?? undefined,
             minAttendancePct: criteria?.minAttendancePct ?? "75.00",
+            absentMandatoryFails: criteria?.absentMandatoryFails ?? true,
+            exemptRenormalizes: criteria?.exemptRenormalizes ?? false,
           }
         : {
             graceMarksAllowed: false,
             compartmentAllowed: false,
             minAttendancePct: "75.00",
+            mandatoryPassSubjectIds: [],
+            classId: hasDefault ? undefined : null,
+            absentMandatoryFails: true,
+            exemptRenormalizes: false,
           },
     );
-  }, [open, isEdit, criteria, form]);
+  }, [open, isEdit, criteria, hasDefault, form]);
 
   const grace = form.watch("graceMarksAllowed");
   const compartment = form.watch("compartmentAllowed");
@@ -89,6 +114,40 @@ function CriteriaDialog({
       pending={pending}
     >
       <FieldGroup>
+        {!isEdit ? (
+          <Field>
+            <FieldLabel htmlFor="criteria-class">{copy.exams.criteria.fields.class}</FieldLabel>
+            <Select
+              value={form.watch("classId") ?? "default"}
+              onValueChange={(v) => {
+                form.setValue("classId", v === "default" ? null : v);
+              }}
+            >
+              <SelectTrigger id="criteria-class">
+                <SelectValue>
+                  {(value: string | null) =>
+                    !value || value === "default"
+                      ? copy.exams.criteria.defaultBadge
+                      : (classes.find((c) => c.id === value)?.name ?? copy.common.none)
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default" disabled={hasDefault}>
+                  {copy.exams.criteria.defaultBadge}
+                  {hasDefault ? ` (${copy.exams.criteria.defaultExists})` : ""}
+                </SelectItem>
+                {classes.map((klass) => (
+                  <SelectItem key={klass.id} value={klass.id}>
+                    {klass.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <FieldDescription>{copy.exams.criteria.fields.classHelp}</FieldDescription>
+            <FieldError>{form.formState.errors.classId?.message}</FieldError>
+          </Field>
+        ) : null}
         <Field>
           <FieldLabel htmlFor="criteria-min-subjects">{copy.exams.criteria.fields.minSubjects}</FieldLabel>
           <Input
@@ -97,6 +156,33 @@ function CriteriaDialog({
             {...form.register("minSubjectsToPass", { setValueAs: (v) => (v === "" ? null : Number(v)) })}
           />
           <FieldError>{form.formState.errors.minSubjectsToPass?.message}</FieldError>
+        </Field>
+
+        <Field>
+          <FieldLabel>{copy.exams.criteria.fields.mandatory}</FieldLabel>
+          <FieldDescription>{copy.exams.criteria.fields.mandatoryHelp}</FieldDescription>
+          <div className="grid gap-1 sm:grid-cols-2">
+            {subjects.map((subject) => {
+              const picked = form.watch("mandatoryPassSubjectIds") ?? [];
+              return (
+                <Field key={subject.id} orientation="horizontal">
+                  <Checkbox
+                    id={`criteria-must-${subject.id}`}
+                    checked={picked.includes(subject.id)}
+                    onCheckedChange={(checked) => {
+                      form.setValue(
+                        "mandatoryPassSubjectIds",
+                        checked === true
+                          ? [...picked, subject.id]
+                          : picked.filter((id) => id !== subject.id),
+                      );
+                    }}
+                  />
+                  <FieldLabel htmlFor={`criteria-must-${subject.id}`}>{subject.name}</FieldLabel>
+                </Field>
+              );
+            })}
+          </div>
         </Field>
 
         <Field>
@@ -169,6 +255,34 @@ function CriteriaDialog({
           <FieldDescription>{copy.exams.criteria.fields.attendance}</FieldDescription>
           <FieldError>{form.formState.errors.minAttendancePct?.message}</FieldError>
         </Field>
+
+        <Field>
+          <div className="flex items-center gap-2">
+            <Switch
+              id="criteria-absent-fails"
+              checked={form.watch("absentMandatoryFails") ?? true}
+              onCheckedChange={(checked) => form.setValue("absentMandatoryFails", checked)}
+            />
+            <FieldLabel htmlFor="criteria-absent-fails" className="!gap-1">
+              {copy.exams.criteria.fields.absentFails}
+            </FieldLabel>
+          </div>
+          <FieldDescription>{copy.exams.criteria.fields.absentFailsHelp}</FieldDescription>
+        </Field>
+
+        <Field>
+          <div className="flex items-center gap-2">
+            <Switch
+              id="criteria-exempt-renormalize"
+              checked={form.watch("exemptRenormalizes") ?? false}
+              onCheckedChange={(checked) => form.setValue("exemptRenormalizes", checked)}
+            />
+            <FieldLabel htmlFor="criteria-exempt-renormalize" className="!gap-1">
+              {copy.exams.criteria.fields.exemptRenormalize}
+            </FieldLabel>
+          </div>
+          <FieldDescription>{copy.exams.criteria.fields.exemptRenormalizeHelp}</FieldDescription>
+        </Field>
       </FieldGroup>
     </FormDialog>
   );
@@ -178,9 +292,25 @@ export function PassCriteriaSection() {
   const { academicYearId, scopeArgs } = useActiveContext();
   const criteria = usePassCriteria(academicYearId);
   const { create, update } = usePassCriteriaMutations(academicYearId);
+  const classes = useClasses();
+  const subjects = trpc.subject.list.useQuery(scopeArgs(), {
+    enabled: Boolean(academicYearId),
+  });
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<PassCriteria | undefined>();
+
+  const classNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const klass of classes.data ?? []) map.set(klass.id, klass.name);
+    return map;
+  }, [classes.data]);
+
+  const subjectNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const subject of subjects.data ?? []) map.set(subject.id, subject.name);
+    return map;
+  }, [subjects.data]);
 
   const columns = useMemo<DataTableColumns<PassCriteria>>(
     () =>
@@ -192,7 +322,23 @@ export function PassCriteriaSection() {
             row.original.classId === null ? (
               <Badge variant="outline">{copy.exams.criteria.defaultBadge}</Badge>
             ) : (
-              <Badge variant="outline">{copy.exams.criteria.classBadge}</Badge>
+              <Badge variant="outline">
+                {classNameById.get(row.original.classId) ?? copy.exams.criteria.classBadge}
+              </Badge>
+            ),
+        }),
+        column.display({
+          id: "mustPass",
+          header: copy.exams.criteria.fields.mandatory,
+          cell: ({ row }) =>
+            (row.original.mandatoryPassSubjectIds ?? []).length > 0 ? (
+              <span className="text-xs">
+                {(row.original.mandatoryPassSubjectIds ?? [])
+                  .map((id) => subjectNameById.get(id) ?? id)
+                  .join(", ")}
+              </span>
+            ) : (
+              copy.common.none
             ),
         }),
         column.display({
@@ -219,8 +365,34 @@ export function PassCriteriaSection() {
         column.accessor("minAttendancePct", {
           header: copy.exams.criteria.fields.attendance,
         }),
+        column.display({
+          id: "policy",
+          header: copy.exams.criteria.fields.policy,
+          cell: ({ row }) => (
+            <span className="text-muted-foreground text-xs">
+              {row.original.absentMandatoryFails
+                ? copy.exams.criteria.fields.absentFailsShort
+                : copy.exams.criteria.fields.absentPassesShort}
+              {" · "}
+              {row.original.exemptRenormalizes
+                ? copy.exams.criteria.fields.exemptRenormalizeShort
+                : copy.exams.criteria.fields.exemptZeroShort}
+            </span>
+          ),
+        }),
+        column.display({
+          id: "actions",
+          header: "",
+          cell: ({ row }) => (
+            <PermissionGate permission="exam:update">
+              <Button variant="ghost" size="sm" onClick={() => setEditing(row.original)}>
+                {copy.common.edit}
+              </Button>
+            </PermissionGate>
+          ),
+        }),
       ]),
-    [],
+    [classNameById, subjectNameById],
   );
 
   const rows = criteria.data ?? [];
@@ -233,16 +405,16 @@ export function PassCriteriaSection() {
           {copy.exams.criteria.title}
         </h2>
         <PermissionGate permission="exam:create">
-          <Button
-            onClick={() => setFormOpen(true)}
-            disabled={!academicYearId || hasDefault}
-          >
+          <Button onClick={() => setFormOpen(true)} disabled={!academicYearId}>
             <PlusIcon data-icon="inline-start" />
             {copy.exams.criteria.add}
           </Button>
         </PermissionGate>
       </div>
       <p className="text-muted-foreground -mt-1 text-sm">{copy.exams.criteria.subtitle}</p>
+      {hasDefault ? (
+        <p className="text-muted-foreground text-xs">{copy.exams.criteria.defaultExistsNote}</p>
+      ) : null}
 
       <DataTable
         data={rows}
@@ -289,6 +461,9 @@ export function PassCriteriaSection() {
           }
         }}
         criteria={editing}
+        classes={(classes.data ?? []).map((c) => ({ id: c.id, name: c.name }))}
+        subjects={(subjects.data ?? []).map((s) => ({ id: s.id, name: s.name }))}
+        hasDefault={hasDefault}
         pending={create.isPending || update.isPending}
         onSubmit={async (data) => {
           try {

@@ -702,6 +702,49 @@ describe("exams integration: hard rule 7 — the correction ledger", () => {
   }, 120_000);
 });
 
+describe("exams config: locks and defaults", () => {
+  it("a used scale refuses band edits but renames, switches default atomically, and locks types with data", async () => {
+    const scope = scopeOf(world);
+
+    // The fixture's default scale graded real results — bands frozen.
+    const scales = await examConfigService.listGradingScales([scope]);
+    const current = scales.find((s) => s.isDefault)!;
+    await expect(
+      examConfigService.replaceGradingScaleBands(scope, current.id, {
+        bands: [{ minMarks: "0", maxMarks: "100", gradeLabel: "Z" }],
+      }),
+    ).rejects.toThrow(/locked/);
+    const renamed = await examConfigService.updateGradingScale(scope, current.id, {
+      name: "ITG Scale Renamed",
+    });
+    expect(renamed?.name).toBe("ITG Scale Renamed");
+
+    // A new scale becomes default in one swap; exactly one default remains.
+    const fresh = await examConfigService.createGradingScale(scope, {
+      name: "ITG Scale 2",
+      isDefault: false,
+      bands: [{ minMarks: "0", maxMarks: "100", gradeLabel: "P" }],
+    });
+    const switched = await examConfigService.makeDefaultGradingScale(scope, fresh!.id);
+    expect(switched?.isDefault).toBe(true);
+    const after = await examConfigService.listGradingScales([scope]);
+    expect(after.find((s) => s.id === current.id)?.isDefault).toBe(false);
+    expect(after.filter((s) => s.isDefault)).toHaveLength(1);
+
+    // The Main type backs assessed mappings — flagged locked, flags refuse.
+    const types = await examConfigService.listSubjectTypes([scope]);
+    const main = types.find((t) => t.name === "Main Subjects")!;
+    expect(main.hasAssessmentData).toBe(true);
+    await expect(
+      examConfigService.updateSubjectType(scope, main.id, { isGradedOnly: true }),
+    ).rejects.toThrow(/locked/);
+    const renamedType = await examConfigService.updateSubjectType(scope, main.id, {
+      name: "Main Subjects Renamed",
+    });
+    expect(renamedType?.name).toBe("Main Subjects Renamed");
+  });
+});
+
 describe("exams integration: tenancy", () => {
   it("a foreign scope resolves nothing — null, never a leak", async () => {
     const foreignScope: DataScope = {

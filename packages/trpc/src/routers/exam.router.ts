@@ -107,7 +107,7 @@ export const examRouter = router({
   subjectTypes: router({
     list: staffListProcedure("exam:read")
       .meta({ openapi: { method: "GET", path: "/exam/subject-types", tags: ["exams"], summary: "List the school's subject types", protect: true } })
-      .output(z.array(subjectTypeSelectSchema))
+      .output(z.array(subjectTypeSelectSchema.extend({ hasAssessmentData: z.boolean() })))
       .query(({ ctx }) => examConfigService.listSubjectTypes(ctx.scopes)),
 
     byId: staffProcedure("exam:read", { resolveOwner: resolveSubjectTypeOwner, gate: "overlap" })
@@ -165,6 +165,12 @@ export const examRouter = router({
       .mutation(({ ctx, input }) =>
         examConfigService.replaceGradingScaleBands(ctx.scope, input.id, { bands: input.bands }),
       ),
+
+    makeDefault: staffProcedure("exam:update", { resolveOwner: resolveGradingScaleOwner })
+      .meta({ openapi: { method: "POST", path: "/exam/grading-scales/{id}/make-default", tags: ["exams"], summary: "Make this scale the school default", protect: true } })
+      .input(z.object({ id: z.uuid() }))
+      .output(gradingScaleSelectSchema.extend({ bands: z.array(gradingScaleBandSelectSchema) }).nullable())
+      .mutation(({ ctx, input }) => examConfigService.makeDefaultGradingScale(ctx.scope, input.id)),
   }),
 
   passCriteria: router({
@@ -193,7 +199,15 @@ export const examRouter = router({
     list: staffListProcedure("exam:read")
       .meta({ openapi: { method: "GET", path: "/exams", tags: ["exams"], summary: "List exams", protect: true } })
       .input(z.object({ academicYearId: z.uuid().optional() }))
-      .output(z.array(examSelectSchema))
+      .output(
+        z.array(
+          examSelectSchema.extend({
+            termName: z.string(),
+            scheduledClasses: z.number().int(),
+            publishedClasses: z.number().int(),
+          }),
+        ),
+      )
       .query(({ ctx, input }) => examConfigService.listExams(ctx.scopes, input.academicYearId)),
 
     byId: staffProcedure("exam:read", { resolveOwner: resolveExamOwner, gate: "overlap" })

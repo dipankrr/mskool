@@ -6,7 +6,7 @@ import { useEffect } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 import { saveExamSchedulesInput, type SaveExamSchedulesInput } from "@repo/contracts";
 
-import type { ExamSchedule, Subject } from "@/lib/trpc/types";
+import type { ExamSchedule, Section, Subject } from "@/lib/trpc/types";
 
 import { FormDialog } from "@/components/form-dialog";
 import { Button } from "@/components/ui/button";
@@ -46,6 +46,7 @@ export function ScheduleDialog({
   className,
   schedules,
   subjects,
+  sections,
   pending,
   onSubmit,
 }: {
@@ -57,6 +58,8 @@ export function ScheduleDialog({
   /** The class's current rows (wire shape) — become the form's defaults. */
   schedules: ExamSchedule[];
   subjects: Subject[];
+  /** The class's sections — a paper is class-wide or one section's. */
+  sections: Section[];
   pending: boolean;
   onSubmit: (data: SaveExamSchedulesInput) => Promise<void> | void;
 }) {
@@ -74,6 +77,9 @@ export function ScheduleDialog({
       schedules: schedules.map((s) => ({
         examId,
         classId: s.classId,
+        // Round-tripped, never dropped: omitting it would silently widen a
+        // section paper to the whole class on save.
+        sectionId: s.sectionId,
         subjectId: s.subjectId,
         examDate: s.examDate,
         // `type="time"` speaks HH:MM; the wire carries HH:MM:SS.
@@ -108,8 +114,7 @@ export function ScheduleDialog({
               <Field data-invalid={rowError?.subjectId ? true : undefined} className="sm:col-span-2">
                 <FieldLabel htmlFor={`schedule-subject-${index}`}>
                   {copy.exams.workflow.fields.subject}
-                </FieldLabel>
-                <Select
+                </FieldLabel>                <Select
                   value={form.watch(`schedules.${index}.subjectId`)}
                   onValueChange={(v) => {
                     if (v) form.setValue(`schedules.${index}.subjectId`, v);
@@ -136,6 +141,40 @@ export function ScheduleDialog({
                   </SelectContent>
                 </Select>
                 <FieldError>{rowError?.subjectId?.message}</FieldError>
+              </Field>
+
+              <Field data-invalid={rowError?.sectionId ? true : undefined} className="sm:col-span-2">
+                <FieldLabel htmlFor={`schedule-section-${index}`}>
+                  {copy.exams.workflow.fields.section}
+                </FieldLabel>
+                <Select
+                  value={form.watch(`schedules.${index}.sectionId`) ?? "all"}
+                  onValueChange={(v) => {
+                    form.setValue(`schedules.${index}.sectionId`, v === "all" ? null : v);
+                  }}
+                >
+                  <SelectTrigger
+                    id={`schedule-section-${index}`}
+                    aria-invalid={rowError?.sectionId ? true : undefined}
+                  >
+                    <SelectValue>
+                      {(value: string | null) =>
+                        value && value !== "all"
+                          ? (sections.find((s) => s.id === value)?.name ?? copy.common.none)
+                          : copy.exams.workflow.allSections
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{copy.exams.workflow.allSections}</SelectItem>
+                    {sections.map((section) => (
+                      <SelectItem key={section.id} value={section.id}>
+                        {section.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FieldError>{rowError?.sectionId?.message}</FieldError>
               </Field>
 
               <Field data-invalid={rowError?.examDate ? true : undefined}>
@@ -230,16 +269,17 @@ export function ScheduleDialog({
         <Button
           type="button"
           variant="outline"
-          onClick={() =>
-            append({
-              examId,
-              classId,
-              subjectId: "",
-              examDate: "",
-              startTime: "",
-              durationMinutes: 60,
-            })
-          }
+            onClick={() =>
+              append({
+                examId,
+                classId,
+                sectionId: null,
+                subjectId: "",
+                examDate: "",
+                startTime: "",
+                durationMinutes: 60,
+              })
+            }
         >
           <PlusIcon data-icon="inline-start" />
           {copy.exams.workflow.addScheduleRow}

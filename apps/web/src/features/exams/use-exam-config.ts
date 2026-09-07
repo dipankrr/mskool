@@ -100,8 +100,15 @@ export function useGradingScaleMutations() {
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
+  const makeDefault = trpc.exam.gradingScales.makeDefault.useMutation({
+    onSuccess: async () => {
+      toast.success(copy.exams.scales.madeDefault);
+      await refresh();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
 
-  return { create, update, replaceBands };
+  return { create, update, replaceBands, makeDefault };
 }
 
 export function usePassCriteria(academicYearId: string | null) {

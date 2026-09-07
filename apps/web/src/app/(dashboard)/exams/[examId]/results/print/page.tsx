@@ -16,6 +16,7 @@ import {
 } from "@/features/exams/report-card-view";
 import { useActiveContext } from "@/features/session/active-context";
 import { copy } from "@/lib/copy";
+import { errorMessage } from "@/lib/errors";
 import type { ExamClassCard } from "@/lib/trpc/types";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc/client";
@@ -50,8 +51,22 @@ export default function ClassSetPrintPage() {
   if (cards.isLoading) {
     return (
       <>
-        <PageHeader title={copy.exams.results.cardHistory} description={undefined} />
+        <PageHeader title={copy.exams.card.printSet} description={undefined} />
         <Spinner className="mt-10" />
+      </>
+    );
+  }
+
+  if (cards.error) {
+    return (
+      <>
+        <PageHeader title={copy.exams.card.printSet} description={undefined} />
+        <div className="mt-6 flex flex-col items-start gap-2" role="alert">
+          <p className="text-destructive text-sm">{errorMessage(cards.error)}</p>
+          <Button variant="outline" size="sm" onClick={() => void cards.refetch()}>
+            {copy.common.retry}
+          </Button>
+        </div>
       </>
     );
   }
@@ -59,7 +74,7 @@ export default function ClassSetPrintPage() {
   if (!classId || snapshots.length === 0) {
     return (
       <>
-        <PageHeader title={copy.exams.results.cardHistory} description={undefined} />
+        <PageHeader title={copy.exams.card.printSet} description={undefined} />
         <EmptyState
           title={copy.exams.portal.emptyTitle}
           description={copy.exams.portal.emptyBody}
@@ -77,12 +92,16 @@ export default function ClassSetPrintPage() {
     );
   }
 
+  // Invalid snapshots are listed, never silently dropped — a missing card
+  // on print day is a fact the office must see, not an empty page.
+  const invalidCount = (cards.data?.cards ?? []).length - snapshots.length;
+
   return (
     <>
       <div className="print:hidden">
         <PageHeader
-          title={copy.exams.results.cardHistory}
-          description={`${snapshots.length} ${snapshots.length === 1 ? "card" : "cards"}`}
+          title={copy.exams.card.printSet}
+          description={copy.exams.card.printCount(snapshots.length)}
           actions={
             <div className="flex gap-2">
               <Link
@@ -102,6 +121,11 @@ export default function ClassSetPrintPage() {
       </div>
 
       <div className="flex flex-col gap-6">
+        {invalidCount > 0 ? (
+          <p className="text-destructive text-sm print:hidden">
+            {copy.exams.card.invalidCount(invalidCount)}
+          </p>
+        ) : null}
         {snapshots.map(({ snapshot }) => (
           <div key={snapshot.student.admissionNumber} className="break-after-page">
             <ReportCardView snapshot={snapshot} />

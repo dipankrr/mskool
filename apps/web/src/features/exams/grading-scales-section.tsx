@@ -2,13 +2,14 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { LockIcon, MoreHorizontalIcon, PencilIcon, PlusIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 
 import { createGradingScaleSchema, type CreateGradingScaleInput } from "@repo/contracts";
 
 import { DataTable } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { FormDialog } from "@/components/form-dialog";
 import { PermissionGate } from "@/components/permission-gate";
 import { Badge } from "@/components/ui/badge";
@@ -19,8 +20,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { createAppColumnHelper, type DataTableColumns } from "@/lib/table";
 import type { GradingScale } from "@/lib/trpc/types";
 import { copy } from "@/lib/copy";
@@ -114,6 +116,32 @@ function GradingScaleDialog({
           <Input id="scale-name" maxLength={100} {...form.register("name")} />
         </Field>
 
+        <Field>
+          <FieldLabel htmlFor="scale-description">{copy.exams.scales.fields.description}</FieldLabel>
+          <Input
+            id="scale-description"
+            maxLength={255}
+            {...form.register("description", {
+              setValueAs: (v) => (v === "" ? undefined : v),
+            })}
+          />
+        </Field>
+
+        {!isEdit ? (
+          <Field>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="scale-default"
+                checked={form.watch("isDefault") ?? false}
+                onCheckedChange={(checked) => form.setValue("isDefault", checked)}
+              />
+              <FieldLabel htmlFor="scale-default" className="!gap-1">
+                {copy.exams.scales.fields.isDefault}
+              </FieldLabel>
+            </div>
+          </Field>
+        ) : null}
+
         {isEdit && locked ? (
           <p className="text-muted-foreground flex items-center gap-2 text-sm">
             <LockIcon className="size-4" />
@@ -121,6 +149,7 @@ function GradingScaleDialog({
           </p>
         ) : null}
 
+        {!(isEdit && locked) ? (
         <div className="flex flex-col gap-2">
           <FieldLabel>{copy.exams.scales.fields.bands}</FieldLabel>
           {bands.fields.map((field, index) => (
@@ -174,6 +203,7 @@ function GradingScaleDialog({
           </Button>
           <FieldError>{form.formState.errors.bands?.root?.message}</FieldError>
         </div>
+        ) : null}
       </FieldGroup>
     </FormDialog>
   );
@@ -182,10 +212,18 @@ function GradingScaleDialog({
 export function GradingScalesSection() {
   const { scopeArgs } = useActiveContext();
   const scales = useGradingScales();
-  const { create, update, replaceBands } = useGradingScaleMutations();
+  const { create, update, replaceBands, makeDefault } = useGradingScaleMutations();
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<GradingScale | undefined>();
+  const [deactivating, setDeactivating] = useState<GradingScale | undefined>();
+
+  const runMakeDefault = useCallback(
+    (id: string) => {
+      makeDefault.mutate({ ...scopeArgs(), id });
+    },
+    [makeDefault, scopeArgs],
+  );
 
   const columns = useMemo<DataTableColumns<GradingScale>>(
     () =>
@@ -237,13 +275,22 @@ export function GradingScalesSection() {
                     <PencilIcon data-icon="inline-start" />
                     {copy.common.edit}
                   </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={row.original.isDefault}
+                    onClick={() => runMakeDefault(row.original.id)}
+                  >
+                    {copy.exams.scales.makeDefault}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setDeactivating(row.original)}>
+                    {copy.exams.scales.deactivateScale}
+                  </DropdownMenuItem>
                 </PermissionGate>
               </DropdownMenuContent>
             </DropdownMenu>
           ),
         }),
       ]),
-    [],
+    [runMakeDefault],
   );
 
   const rows = scales.data ?? [];
@@ -311,8 +358,23 @@ export function GradingScalesSection() {
         pending={create.isPending || replaceBands.isPending || update.isPending}
         onSubmit={async (data, id) => {
           try {
-            if (id) {
-              await replaceBands.mutateAsync({ ...scopeArgs(), id, bands: data.bands });
+            if (id && editing) {
+              // Name/description travel the update route; bands travel the
+              // replace route (locked scales never reach here — the editor
+              // hides their bands and the service refuses anyway).
+              if (
+                data.name !== editing.name ||
+                (data.description ?? null) !== (editing.description ?? null)
+              ) {
+                await update.mutateAsync({
+                  ...scopeArgs(),
+                  id,
+                  data: { name: data.name, description: data.description },
+                });
+              }
+              if (!editing.isLocked) {
+                await replaceBands.mutateAsync({ ...scopeArgs(), id, bands: data.bands });
+              }
             } else {
               await create.mutateAsync({ ...scopeArgs(), ...data });
             }
@@ -321,6 +383,24 @@ export function GradingScalesSection() {
           } catch {
             // The toast carries the server's wording; the form stays open.
           }
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deactivating)}
+        onOpenChange={(open) => {
+          if (!open) setDeactivating(undefined);
+        }}
+        title={copy.exams.scales.deactivateScaleTitle}
+        consequence={copy.exams.scales.deactivateScaleBody}
+        confirmLabel={copy.exams.scales.deactivateScale}
+        pending={update.isPending}
+        onConfirm={() => {
+          if (!deactivating) return;
+          update.mutate(
+            { ...scopeArgs(), id: deactivating.id, data: { isActive: false } },
+            { onSuccess: () => setDeactivating(undefined) },
+          );
         }}
       />
     </section>

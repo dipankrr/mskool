@@ -44,6 +44,7 @@ import {
   useTerms,
 } from "@/features/exams/use-exam-workflow";
 import { useClasses } from "@/features/classes/use-classes";
+import { useSections } from "@/features/sections/use-sections";
 import { useActiveContext } from "@/features/session/active-context";
 import { useStudents } from "@/features/students/use-students";
 import { copy } from "@/lib/copy";
@@ -82,6 +83,23 @@ const NEXT_TRANSITIONS: Record<string, readonly string[]> = {
 const BLUEPRINT_EDITABLE = new Set(["draft", "scheduled"]);
 const ENTRY_OPEN = new Set(["marks_entry", "under_verification"]);
 
+/**
+ * Button copy per move: targets are status names (`draft`, `locked`), but
+ * the back-moves read differently — and the lock is the one irreversible
+ * act, styled destructive with its consequence stated.
+ */
+function transitionCopy(examStatus: string, target: string) {
+  const backToEntry = target === "marks_entry" && examStatus === "under_verification";
+  const labelKey = backToEntry ? "back_to_entry" : target;
+  const labels = copy.exams.workflow.transitions as Record<string, string | undefined>;
+  const consequences = copy.exams.workflow.transitionConsequences as Record<string, string | undefined>;
+  return {
+    label: labels[labelKey] ?? target,
+    consequence: consequences[labelKey] ?? "",
+    destructive: target === "locked",
+  };
+}
+
 function statusLabel(status: string): string {
   const labels: Record<string, string> = {
     draft: "Draft",
@@ -113,11 +131,16 @@ export default function ExamDetailPage() {
   const { publishClass, publishExam } = usePublicationActions(examId);
 
   const [scheduleFor, setScheduleFor] = useState<string | null>(null);
-  const [componentsFor, setComponentsFor] = useState<string | null>(null);
-  const [transitionTarget, setTransitionTarget] = useState<string | null>(null);
+  const [componentsFor, setComponentsFor] = useState<string | null>(null);  const [transitionTarget, setTransitionTarget] = useState<string | null>(null);
   const [publishClassId, setPublishClassId] = useState<string | null>(null);
+  const [publishAllConfirm, setPublishAllConfirm] = useState(false);
   const [allowing, setAllowing] = useState<string | null>(null);
   const [allowReason, setAllowReason] = useState("");
+  // Sections of the class being edited — the paper's section picker.
+  // Disabled until a class is picked so a foreign class never 403s the dialog.
+  const dialogSections = useSections(scheduleFor ?? undefined, {
+    enabled: scheduleFor != null,
+  });
 
   const exam = detail.data?.exam;
   // Stable identity for the hook dependency chain below.
@@ -187,21 +210,49 @@ export default function ExamDetailPage() {
           header: copy.exams.workflow.fields.duration,
         }),
         scheduleColumn.display({
+          id: "venue",
+          header: copy.exams.workflow.fields.venue,
+          cell: ({ row }) => row.original.venue || copy.common.none,
+        }),
+        scheduleColumn.display({
+          id: "state",
+          header: copy.exams.workflow.status,
+          cell: ({ row }) =>
+            row.original.isLocked ? (
+              <Badge variant="secondary">{copy.exams.workflow.lockedBadge}</Badge>
+            ) : (
+              copy.common.none
+            ),
+        }),
+        scheduleColumn.display({
           id: "components",
           header: copy.exams.workflow.componentSection,
           cell: ({ row }) => (
             <div className="flex items-center gap-1">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={!editable || !has("exam:update")}
-                onClick={() => setComponentsFor(row.original.id)}
-              >
-                {row.original.components.length > 0
-                  ? `${row.original.components.length} ${copy.exams.workflow.componentSection.toLowerCase()}`
-                  : copy.exams.workflow.addComponentRow}
-              </Button>
+              {editable && has("exam:update") ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setComponentsFor(row.original.id)}
+                >
+                  {row.original.components.length > 0
+                    ? `${row.original.components.length} ${copy.exams.workflow.componentSection.toLowerCase()}`
+                    : copy.exams.workflow.addComponentRow}
+                </Button>
+              ) : (
+                // Frozen papers stay READABLE: parts, max, pass, weight.
+                <span className="text-muted-foreground text-xs">
+                  {row.original.components.length > 0
+                    ? row.original.components
+                        .map(
+                          (c) =>
+                            `${c.name} ${Number(c.maxMarks)} (${copy.exams.workflow.fields.passMarksOverrideShort} ${Number(c.passMarks)}, ${Number(c.weightagePercentage)}%)`,
+                        )
+                        .join(" · ")
+                    : copy.common.none}
+                </span>
+              )}
               {entryOpen ? (
                 <Link
                   href={`/exams/${examId}/entry`}
@@ -263,18 +314,19 @@ export default function ExamDetailPage() {
       {/* Lifecycle — the next legal moves; the server words any refusal. */}
       {allowedTargets.length > 0 && has("exam:update") ? (
         <div className="flex flex-wrap gap-2">
-          {allowedTargets.map((target) => (
-            <Button
-              key={target}
-              variant={target === "lock" ? "destructive" : "outline"}
-              disabled={transition.isPending}
-              onClick={() => setTransitionTarget(target)}
-            >
-              {copy.exams.workflow.transitions[
-                target as keyof typeof copy.exams.workflow.transitions
-              ] ?? target}
-            </Button>
-          ))}
+          {allowedTargets.map((target) => {
+            const t = transitionCopy(exam.status, target);
+            return (
+              <Button
+                key={target}
+                variant={t.destructive ? "destructive" : "outline"}
+                disabled={transition.isPending}
+                onClick={() => setTransitionTarget(target)}
+              >
+                {t.label}
+              </Button>
+            );
+          })}
           {entryOpen || exam.status === "published" || exam.status === "locked" ? (
             <Link
               href={`/exams/${examId}/results`}
@@ -422,6 +474,21 @@ export default function ExamDetailPage() {
                     <p className="text-muted-foreground text-sm">
                       {copy.exams.workflow.readiness.belowBar}
                     </p>
+                    {has("exam:update") &&
+                    readiness.data.belowBar.some((row) => !row.isOverridden) ? (
+                      <div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setAllowing("ALL");
+                            setAllowReason("");
+                          }}
+                        >
+                          {copy.exams.workflow.readiness.allowAll}
+                        </Button>
+                      </div>
+                    ) : null}
                     <ul className="flex flex-col gap-1">
                       {readiness.data.belowBar.map((row) => (
                         <li
@@ -446,7 +513,9 @@ export default function ExamDetailPage() {
                               {copy.exams.workflow.readiness.allow}
                             </Button>
                           ) : (
-                            <Badge variant="secondary">{copy.common.yes}</Badge>
+                            <Badge variant="secondary">
+                              {copy.exams.workflow.readiness.allowedBadge}
+                            </Badge>
                           )}
                         </li>
                       ))}
@@ -469,7 +538,7 @@ export default function ExamDetailPage() {
                     <Button
                       variant="outline"
                       disabled={publishExam.isPending}
-                      onClick={() => publishExam.mutate({ ...scopeArgs(), id: examId })}
+                      onClick={() => setPublishAllConfirm(true)}
                     >
                       {copy.exams.workflow.readiness.publishAll}
                     </Button>
@@ -492,6 +561,7 @@ export default function ExamDetailPage() {
         className={scheduleForClass}
         schedules={scheduleRows}
         subjects={subjects.data ?? []}
+        sections={dialogSections.data ?? []}
         pending={saveSchedules.isPending}
         onSubmit={async (data) => {
           await saveSchedules.mutateAsync({ ...scopeArgs(), ...data });
@@ -526,27 +596,17 @@ export default function ExamDetailPage() {
           if (!open) setTransitionTarget(null);
         }}
         title={`${copy.exams.workflow.transitions.confirmTitle} ${
-          transitionTarget
-            ? (copy.exams.workflow.transitions[
-                transitionTarget as keyof typeof copy.exams.workflow.transitions
-              ] ?? transitionTarget)
-            : ""
+          transitionTarget && exam ? transitionCopy(exam.status, transitionTarget).label : ""
         }`}
         consequence={
-          transitionTarget
-            ? (copy.exams.workflow.transitionConsequences[
-                transitionTarget as keyof typeof copy.exams.workflow.transitionConsequences
-              ] ?? "")
-            : ""
+          transitionTarget && exam ? transitionCopy(exam.status, transitionTarget).consequence : ""
         }
         confirmLabel={
-          transitionTarget
-            ? (copy.exams.workflow.transitions[
-                transitionTarget as keyof typeof copy.exams.workflow.transitions
-              ] ?? transitionTarget)
+          transitionTarget && exam
+            ? transitionCopy(exam.status, transitionTarget).label
             : copy.common.save
         }
-        destructive={transitionTarget === "lock"}
+        destructive={transitionTarget === "locked"}
         pending={transition.isPending}
         onConfirm={() => {
           if (!transitionTarget) return;
@@ -575,6 +635,21 @@ export default function ExamDetailPage() {
         }}
       />
 
+      <ConfirmDialog
+        open={publishAllConfirm}
+        onOpenChange={(open) => {
+          if (!open) setPublishAllConfirm(false);
+        }}
+        title={copy.exams.workflow.readiness.publishAll}
+        consequence={copy.exams.workflow.readiness.publishedNote}
+        confirmLabel={copy.exams.workflow.readiness.publishAll}
+        pending={publishExam.isPending}
+        onConfirm={() => {
+          publishExam.mutate({ ...scopeArgs(), id: examId });
+          setPublishAllConfirm(false);
+        }}
+      />
+
       {/* The advisory override — a reason is required, recorded with the user. */}
       <Dialog
         open={Boolean(allowing)}
@@ -584,9 +659,15 @@ export default function ExamDetailPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{copy.exams.workflow.readiness.allowTitle}</DialogTitle>
+            <DialogTitle>
+              {allowing === "ALL"
+                ? copy.exams.workflow.readiness.allowAllTitle
+                : copy.exams.workflow.readiness.allowTitle}
+            </DialogTitle>
             <DialogDescription>
-              {allowingStudent ?? copy.common.none} — {copy.exams.workflow.readiness.belowBar}
+              {allowing === "ALL"
+                ? copy.exams.workflow.readiness.allowAllConsequence
+                : `${allowingStudent ?? copy.common.none} — ${copy.exams.workflow.readiness.belowBar}`}
             </DialogDescription>
           </DialogHeader>
           <Field>
@@ -610,15 +691,31 @@ export default function ExamDetailPage() {
             </Button>
             <Button
               disabled={allowReason.trim().length < 3 || override.isPending}
-              onClick={() => {
+              onClick={async () => {
                 if (!allowing) return;
-                override.mutate({
-                  ...scopeArgs(),
-                  examId,
-                  studentId: allowing,
-                  overrideEligible: true,
-                  reason: allowReason.trim(),
-                });
+                const reason = allowReason.trim();
+                if (allowing === "ALL") {
+                  // One reason, every below-bar student: sequential, each
+                  // recorded with this user — entry itself stays unblocked.
+                  const pending = (readiness.data?.belowBar ?? []).filter((r) => !r.isOverridden);
+                  for (const row of pending) {
+                    await override.mutateAsync({
+                      ...scopeArgs(),
+                      examId,
+                      studentId: row.studentId,
+                      overrideEligible: true,
+                      reason,
+                    });
+                  }
+                } else {
+                  override.mutate({
+                    ...scopeArgs(),
+                    examId,
+                    studentId: allowing,
+                    overrideEligible: true,
+                    reason,
+                  });
+                }
                 setAllowing(null);
               }}
             >

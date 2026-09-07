@@ -42,6 +42,7 @@ import { usePublicationActions } from "@/features/exams/use-exam-workflow";
 import { useActiveContext } from "@/features/session/active-context";
 import { useStudents } from "@/features/students/use-students";
 import { copy } from "@/lib/copy";
+import { errorMessage } from "@/lib/errors";
 import { formatIsoDate } from "@/lib/format";
 import type { ExamClassResults, ExamPublicationRow } from "@/lib/trpc/types";
 import { cn } from "@/lib/utils";
@@ -56,6 +57,41 @@ import { cn } from "@/lib/utils";
  * the reason, and the engine re-issues only the cards that changed.
  */
 
+interface CardSubject {
+  subjectId?: unknown;
+  subjectName?: unknown;
+  marksObtained?: unknown;
+  grade?: unknown;
+}
+
+/** Defensive read: snapshotData is versioned JSON, never trust its shape. */
+function cardSubjects(card: { snapshotData?: unknown }): CardSubject[] {
+  const snap = card.snapshotData;
+  if (typeof snap !== "object" || snap === null) return [];
+  const subjects = (snap as { subjects?: unknown }).subjects;
+  return Array.isArray(subjects) ? (subjects as CardSubject[]) : [];
+}
+
+function subjectReading(s: CardSubject): string {
+  const mark = typeof s.marksObtained === "string" ? s.marksObtained : null;
+  const grade = typeof s.grade === "string" ? s.grade : null;
+  return mark ?? grade ?? "—";
+}
+
+/** What moved between two consecutive card versions, one line per subject. */
+function versionDiff(older: CardSubject[], newer: CardSubject[]): string[] {
+  const oldById = new Map(older.map((s) => [String(s.subjectId), s]));
+  const lines: string[] = [];
+  for (const n of newer) {
+    const o = oldById.get(String(n.subjectId));
+    const name = typeof n.subjectName === "string" ? n.subjectName : "?";
+    if (!o || subjectReading(o) !== subjectReading(n)) {
+      lines.push(`${name}: ${o ? subjectReading(o) : "—"} → ${subjectReading(n)}`);
+    }
+  }
+  return lines;
+}
+
 export default function ExamResultsPage() {
   const params = useParams<{ examId: string }>();
   const examId = params.examId;
@@ -66,10 +102,12 @@ export default function ExamResultsPage() {
   const students = useStudents();
   const [pickedClassId, setPickedClassId] = useState<string | null>(null);
   const [windowAction, setWindowAction] = useState<"open" | "close" | null>(null);
+  const [publishConfirm, setPublishConfirm] = useState<"class" | "all" | null>(null);
   const [historyFor, setHistoryFor] = useState<string | null>(null);
   const [correcting, setCorrecting] = useState<string | null>(null);
   const [correctingEntry, setCorrectingEntry] = useState<string | null>(null);
   const [revisedMarks, setRevisedMarks] = useState("");
+  const [revisedGrade, setRevisedGrade] = useState("");
   const [revisionReason, setRevisionReason] = useState("");
 
   const schedules = useMemo(() => detail.data?.schedules ?? [], [detail.data]);
@@ -132,7 +170,6 @@ export default function ExamResultsPage() {
 
   const entries = useStudentEntries(examId, correcting ?? undefined);
   const versions = useCardVersions(historyFor ?? undefined);
-
   if (detail.isLoading) {
     return <PageHeader title={copy.common.loading} description={undefined} />;
   }
@@ -156,17 +193,22 @@ export default function ExamResultsPage() {
   const windowOpen = publication?.state === "revision_open";
 
   const submitCorrection = () => {
-    if (!correctingEntry || revisedMarks.trim() === "" || revisionReason.trim().length < 3) return;
+    if (!correctingEntry || revisionReason.trim().length < 3) return;
+    const marks = revisedMarks.trim() === "" ? null : revisedMarks.trim();
+    const grade = revisedGrade.trim() === "" ? null : revisedGrade.trim();
+    if (marks === null && grade === null) return;
     applyRevision.mutate({
       ...scopeArgs(),
       id: correctingEntry,
-      revisedMarks: revisedMarks.trim(),
+      revisedMarks: marks,
+      revisedGrade: grade,
       revisionType: "marks_correction",
       reason: revisionReason.trim(),
     });
     setCorrecting(null);
     setCorrectingEntry(null);
     setRevisedMarks("");
+    setRevisedGrade("");
     setRevisionReason("");
   };
 
@@ -235,9 +277,7 @@ export default function ExamResultsPage() {
               <Button
                 size="sm"
                 disabled={publishClass.isPending}
-                onClick={() =>
-                  classId && publishClass.mutate({ ...scopeArgs(), id: examId, classId })
-                }
+                onClick={() => classId && setPublishConfirm("class")}
               >
                 {copy.exams.workflow.readiness.publishClass}
               </Button>
@@ -245,7 +285,7 @@ export default function ExamResultsPage() {
                 variant="outline"
                 size="sm"
                 disabled={publishExam.isPending}
-                onClick={() => publishExam.mutate({ ...scopeArgs(), id: examId })}
+                onClick={() => setPublishConfirm("all")}
               >
                 {copy.exams.workflow.readiness.publishAll}
               </Button>
@@ -307,6 +347,13 @@ export default function ExamResultsPage() {
       {/* The league table. */}
       {results.isLoading ? (
         <Spinner className="mt-6" />
+      ) : results.error ? (
+        <div className="mt-6 flex flex-col items-start gap-2" role="alert">
+          <p className="text-destructive text-sm">{errorMessage(results.error)}</p>
+          <Button variant="outline" size="sm" onClick={() => void results.refetch()}>
+            {copy.common.retry}
+          </Button>
+        </div>
       ) : results.data ? (
         rosterRows.length === 0 || results.data.termResults.length === 0 ? (
           <EmptyState title={copy.exams.results.title} description={copy.exams.results.notComputed} />
@@ -336,6 +383,9 @@ export default function ExamResultsPage() {
                     </th>
                     <th scope="col" className="py-2 pr-3 font-medium">
                       {copy.exams.results.grade}
+                    </th>
+                    <th scope="col" className="py-2 pr-3 font-medium">
+                      {copy.exams.results.state}
                     </th>
                     <th scope="col" className="py-2 pr-3 font-medium" />
                   </tr>
@@ -381,6 +431,7 @@ export default function ExamResultsPage() {
                             : "—"}
                         </td>
                         <td className="py-2 pr-3">{term?.percentage ?? "—"}</td>
+                        <td className="py-2 pr-3">{term?.grade ?? "—"}</td>
                         <td className="py-2 pr-3">
                           {term ? (
                             <Badge variant={term.isPassed ? "secondary" : "destructive"}>
@@ -407,6 +458,7 @@ export default function ExamResultsPage() {
                                   setCorrecting(student.studentId);
                                   setCorrectingEntry(null);
                                   setRevisedMarks("");
+                                  setRevisedGrade("");
                                   setRevisionReason("");
                                 }}
                               >
@@ -451,6 +503,35 @@ export default function ExamResultsPage() {
           </>
         )
       ) : null}
+
+      {/* Publish confirmation — parents see the cards from here on. */}
+      <ConfirmDialog
+        open={Boolean(publishConfirm)}
+        onOpenChange={(open) => {
+          if (!open) setPublishConfirm(null);
+        }}
+        title={
+          publishConfirm === "all"
+            ? copy.exams.workflow.readiness.publishAll
+            : copy.exams.workflow.readiness.publishClass
+        }
+        consequence={copy.exams.workflow.readiness.publishedNote}
+        confirmLabel={
+          publishConfirm === "all"
+            ? copy.exams.workflow.readiness.publishAll
+            : copy.exams.workflow.readiness.publishClass
+        }
+        pending={publishClass.isPending || publishExam.isPending}
+        onConfirm={() => {
+          if (!publishConfirm) return;
+          if (publishConfirm === "all") {
+            publishExam.mutate({ ...scopeArgs(), id: examId });
+          } else if (classId) {
+            publishClass.mutate({ ...scopeArgs(), id: examId, classId });
+          }
+          setPublishConfirm(null);
+        }}
+      />
 
       {/* Correction-window confirmation. */}
       <ConfirmDialog
@@ -512,9 +593,12 @@ export default function ExamResultsPage() {
                 <SelectValue>
                   {(value: string | null) => {
                     const entry = (entries.data ?? []).find((e) => e.id === value);
-                    return entry
-                      ? `${studentNameById.get("") ?? ""}${entry.component} (${Number(entry.marksObtained ?? 0)} / ${Number(entry.maxMarks)})`
-                      : copy.exams.results.entry;
+                    if (!entry) return copy.exams.results.entry;
+                    const current =
+                      entry.gradeObtained ?? entry.marksObtained != null
+                        ? `${entry.gradeObtained ?? Number(entry.marksObtained)} / ${Number(entry.maxMarks)}`
+                        : copy.common.none;
+                    return `${entry.component} (${current})`;
                   }}
                 </SelectValue>
               </SelectTrigger>
@@ -541,6 +625,20 @@ export default function ExamResultsPage() {
                 />
               </div>
             ) : null}
+            {correctingEntry ? (
+              <div>
+                <label htmlFor="revised-grade" className="text-sm font-medium">
+                  {copy.exams.results.revisedGrade}
+                </label>
+                <Input
+                  id="revised-grade"
+                  maxLength={10}
+                  value={revisedGrade}
+                  placeholder={copy.exams.results.revisedGradePlaceholder}
+                  onChange={(event) => setRevisedGrade(event.target.value)}
+                />
+              </div>
+            ) : null}
             <div>
               <label htmlFor="revision-reason" className="text-sm font-medium">
                 {copy.exams.workflow.readiness.reason}
@@ -560,7 +658,7 @@ export default function ExamResultsPage() {
             <Button
               disabled={
                 !correctingEntry ||
-                revisedMarks.trim() === "" ||
+                (revisedMarks.trim() === "" && revisedGrade.trim() === "") ||
                 revisionReason.trim().length < 3 ||
                 applyRevision.isPending
               }
@@ -590,24 +688,40 @@ export default function ExamResultsPage() {
             {(versions.data ?? []).length === 0 ? (
               <p className="text-muted-foreground text-sm">{copy.common.none}</p>
             ) : (
-              (versions.data ?? []).map((card) => (
-                <div
-                  key={card.id}
-                  className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm"
-                >
-                  <span>
-                    v{card.version}
-                    {card.isCurrent ? (
-                      <Badge variant="secondary" className="ml-2">
-                        {copy.common.current}
-                      </Badge>
+              (versions.data ?? []).map((card, index) => {
+                // Versions arrive newest-first: the previous version is next.
+                const previous = (versions.data ?? [])[index + 1];
+                const changes = previous
+                  ? versionDiff(cardSubjects(previous), cardSubjects(card))
+                  : [];
+                return (
+                  <div
+                    key={card.id}
+                    className="flex flex-col gap-1 rounded-lg border px-3 py-2 text-sm"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span>
+                        v{card.version}
+                        {card.isCurrent ? (
+                          <Badge variant="secondary" className="ml-2">
+                            {copy.common.current}
+                          </Badge>
+                        ) : null}
+                      </span>
+                      <span className="text-muted-foreground">
+                        {formatIsoDate(card.publishedAt)}
+                      </span>
+                    </div>
+                    {changes.length > 0 ? (
+                      <ul className="text-muted-foreground list-disc pl-5 text-xs">
+                        {changes.map((line) => (
+                          <li key={line}>{line}</li>
+                        ))}
+                      </ul>
                     ) : null}
-                  </span>
-                  <span className="text-muted-foreground">
-                    {formatIsoDate(card.publishedAt)}
-                  </span>
-                </div>
-              ))
+                  </div>
+                );
+              })
             )}
           </div>
         </DialogContent>

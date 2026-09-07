@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { MoreHorizontalIcon, PencilIcon, PlusIcon, SparklesIcon, SquarePenIcon } from "lucide-react";
+import { LockIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, SparklesIcon, SquarePenIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 
@@ -72,6 +72,9 @@ function SubjectTypeDialog({
   type?: SubjectType;
 }) {
   const isEdit = Boolean(type);
+  // Locked types keep name/sequence editable; the grading behaviour is
+  // frozen by assessment data (the server refuses with the reason).
+  const locked = Boolean(type?.hasAssessmentData);
 
   const form = useForm<TypeFormValues>({
     resolver: zodResolver(isEdit ? (updateSubjectTypeSchema as never) : (createSubjectTypeSchema as never)) as never,
@@ -108,11 +111,19 @@ function SubjectTypeDialog({
           <Input id="subject-type-name" maxLength={100} {...form.register("name")} />
         </Field>
 
+        {locked ? (
+          <p className="text-muted-foreground flex items-center gap-2 text-sm">
+            <LockIcon className="size-4" />
+            {copy.exams.types.lockedNote}
+          </p>
+        ) : null}
+
         <Field>
           <FieldLabel htmlFor="subject-type-mode">{copy.exams.types.fields.mode}</FieldLabel>
           <Select
             value={form.watch("assessmentMode")}
             onValueChange={(v) => form.setValue("assessmentMode", v as "exam" | "term_grade")}
+            disabled={locked}
           >
             <SelectTrigger id="subject-type-mode">
               <SelectValue />
@@ -130,6 +141,7 @@ function SubjectTypeDialog({
               id="subject-type-counts"
               checked={Boolean(form.watch("countsTowardResult"))}
               onCheckedChange={(checked) => form.setValue("countsTowardResult", checked)}
+              disabled={locked}
             />
             <FieldLabel htmlFor="subject-type-counts" className="!gap-1">
               {copy.exams.types.fields.counts}
@@ -144,6 +156,7 @@ function SubjectTypeDialog({
               id="subject-type-graded"
               checked={Boolean(form.watch("isGradedOnly"))}
               onCheckedChange={(checked) => form.setValue("isGradedOnly", checked)}
+              disabled={locked}
             />
             <FieldLabel htmlFor="subject-type-graded" className="!gap-1">
               {copy.exams.types.fields.graded}
@@ -179,7 +192,20 @@ export function SubjectTypesSection() {
       column.columns([
         column.accessor("name", {
           header: copy.exams.types.fields.name,
-          cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
+          cell: ({ row }) => (
+            <span className="flex items-center gap-2 font-medium">
+              {row.original.name}
+              {row.original.hasAssessmentData ? (
+                <Badge variant="outline">
+                  <LockIcon />
+                  {copy.exams.types.lockedBadge}
+                </Badge>
+              ) : null}
+            </span>
+          ),
+        }),
+        column.accessor("sequence", {
+          header: copy.exams.types.fields.sequence,
         }),
         column.accessor("countsTowardResult", {
           header: copy.exams.types.fields.counts,
@@ -239,7 +265,8 @@ export function SubjectTypesSection() {
             <Button
               variant="outline"
               onClick={() => {
-                void applyPreset.mutateAsync({ organizationId: scopeArgs().organizationId }).catch(() => {});
+                // Full branch scope: the preset seeds one school's types.
+                void applyPreset.mutateAsync({ ...scopeArgs() }).catch(() => {});
               }}
               disabled={applyPreset.isPending}
             >
@@ -308,12 +335,12 @@ export function SubjectTypesSection() {
             action={
               <div className="flex gap-2">
                 <PermissionGate permission="exam:create">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      void applyPreset.mutateAsync({ organizationId: scopeArgs().organizationId }).catch(() => {});
-                    }}
-                  >
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    void applyPreset.mutateAsync({ ...scopeArgs() }).catch(() => {});
+                  }}
+                >
                     {copy.exams.types.applyPreset}
                   </Button>
                 </PermissionGate>

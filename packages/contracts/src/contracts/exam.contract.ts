@@ -154,6 +154,10 @@ export type PassCriteria = z.infer<typeof passCriteriaSelectSchema>;
 
 export const createPassCriteriaSchema = createInsertSchema(passCriteria, {
   minSubjectsToPass: z.number().int().min(1).max(50).nullable().optional(),
+  // Must-pass subjects (grace rescues these first); empty = none named.
+  // Plain optional (not .default): drizzle-zod's inferred input type
+  // drops array defaults, and the DB default fills omissions anyway.
+  mandatoryPassSubjectIds: z.array(z.uuid()).optional(),
   graceMarksAllowed: z.boolean().optional().default(false),
   maxGracePerSubject: pct100.nullable().optional(),
   maxGraceTotal: pct100.nullable().optional(),
@@ -392,6 +396,10 @@ export const entryGridOutputSchema = z.object({
   subjectId: z.uuid(),
   passMarks: marksString,
   isLocked: z.boolean(),
+  // Graded-only exam-mode papers are entered as grades, not marks (the
+  // implicit Overall component); negative marking follows the exam flag.
+  isGradedOnly: z.boolean(),
+  allowsNegativeMarking: z.boolean(),
   components: z.array(
     z.object({
       id: z.uuid(),
