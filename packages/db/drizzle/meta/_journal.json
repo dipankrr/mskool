@@ -148,6 +148,13 @@
       "when": 1788657077079,
       "tag": "0020_square_captain_flint",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1788720000000,
+      "tag": "0021_exam_type_test",
+      "breakpoints": true
     }
   ]
 }

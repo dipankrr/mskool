@@ -15,7 +15,8 @@ import { FormDialog } from "@/components/form-dialog";
 import { PageHeader } from "@/components/page-header";
 import { PermissionGate } from "@/components/permission-gate";
 import { Button } from "@/components/ui/button";
-import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -55,18 +56,28 @@ function statusLabel(status: string): string {
   return labels[status] ?? status;
 }
 
+const EXAM_TYPE_LABELS: Record<string, string> = {
+  regular: copy.exams.workflow.typeRegular,
+  supplementary: copy.exams.workflow.typeSupplementary,
+  improvement: copy.exams.workflow.typeImprovement,
+  mock: copy.exams.workflow.typeMock,
+  test: copy.exams.workflow.typeTest,
+};
+
 function ExamDialog({
   open,
   onOpenChange,
   onSubmit,
   pending,
   terms,
+  exams,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (data: CreateExamInput) => Promise<void> | void;
   pending: boolean;
   terms: { id: string; name: string }[];
+  exams: { id: string; name: string }[];
 }) {
   const form = useForm<CreateExamInput>({
     resolver: zodResolver(createExamSchema) as never,
@@ -75,8 +86,20 @@ function ExamDialog({
 
   useEffect(() => {
     if (!open) return;
-    form.reset({ name: "", termId: terms[0]?.id ?? "", examType: "regular" });
+    form.reset({
+      name: "",
+      termId: terms[0]?.id ?? "",
+      examType: "regular",
+      weightageInTerm: "100.00",
+      countsTowardTermResult: true,
+    });
   }, [open, terms, form]);
+
+  const examType = form.watch("examType");
+  // Practice papers run the full pipeline but never count — the server
+  // forces the flag, so the counting options stay hidden for them.
+  const nonCounting = examType === "mock" || examType === "test";
+  const needsLink = examType === "supplementary" || examType === "improvement";
 
   return (
     <FormDialog
@@ -121,20 +144,88 @@ function ExamDialog({
         <Field>
           <FieldLabel htmlFor="exam-type">{copy.exams.workflow.type}</FieldLabel>
           <Select
-            value={form.watch("examType")}
-            onValueChange={(v) => form.setValue("examType", v as CreateExamInput["examType"])}
+            value={examType}
+            onValueChange={(v) => {
+              const next = v as CreateExamInput["examType"];
+              form.setValue("examType", next);
+              // Keep the hidden counting fields consistent with the type
+              // so a stale weightage can never ride along on a mock/test.
+              form.setValue("countsTowardTermResult", next !== "mock" && next !== "test");
+              if (next !== "supplementary" && next !== "improvement") {
+                form.setValue("linkedExamId", null);
+              }
+            }}
           >
             <SelectTrigger id="exam-type">
               <SelectValue>
-                {(value: string | null) => (value ? value.replace("_", " ") : copy.common.none)}
+                {(value: string | null) => (value ? (EXAM_TYPE_LABELS[value] ?? value) : copy.common.none)}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="regular">Regular</SelectItem>
-              <SelectItem value="mock">Mock</SelectItem>
+              <SelectItem value="regular">{copy.exams.workflow.typeRegular}</SelectItem>
+              <SelectItem value="supplementary">{copy.exams.workflow.typeSupplementary}</SelectItem>
+              <SelectItem value="improvement">{copy.exams.workflow.typeImprovement}</SelectItem>
+              <SelectItem value="mock">{copy.exams.workflow.typeMock}</SelectItem>
+              <SelectItem value="test">{copy.exams.workflow.typeTest}</SelectItem>
             </SelectContent>
           </Select>
+          <FieldError>{form.formState.errors.examType?.message}</FieldError>
         </Field>
+        {needsLink ? (
+          <Field>
+            <FieldLabel htmlFor="exam-linked">{copy.exams.workflow.linkedExam}</FieldLabel>
+            <Select
+              value={form.watch("linkedExamId") ?? ""}
+              onValueChange={(v) => {
+                form.setValue("linkedExamId", v || null);
+              }}
+            >
+              <SelectTrigger id="exam-linked">
+                <SelectValue>
+                  {(value: string | null) =>
+                    value ? (exams.find((e) => e.id === value)?.name ?? copy.common.none) : copy.common.none
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {exams.map((e) => (
+                  <SelectItem key={e.id} value={e.id}>
+                    {e.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <FieldDescription>{copy.exams.workflow.linkedExamHelp}</FieldDescription>
+            <FieldError>{form.formState.errors.linkedExamId?.message}</FieldError>
+          </Field>
+        ) : null}
+        {nonCounting ? (
+          <p className="text-sm text-muted-foreground">{copy.exams.workflow.nonCountingNote}</p>
+        ) : (
+          <>
+            <Field>
+              <FieldLabel htmlFor="exam-weightage">{copy.exams.workflow.weightage}</FieldLabel>
+              <Input
+                id="exam-weightage"
+                inputMode="decimal"
+                placeholder="100.00"
+                {...form.register("weightageInTerm")}
+              />
+              <FieldDescription>{copy.exams.workflow.weightageHelp}</FieldDescription>
+              <FieldError>{form.formState.errors.weightageInTerm?.message}</FieldError>
+            </Field>
+            <Field orientation="horizontal">
+              <Checkbox
+                id="exam-counts"
+                checked={form.watch("countsTowardTermResult") ?? true}
+                onCheckedChange={(v) => form.setValue("countsTowardTermResult", v === true)}
+              />
+              <FieldLabel htmlFor="exam-counts">{copy.exams.workflow.countsToward}</FieldLabel>
+            </Field>
+            <FieldDescription>{copy.exams.workflow.countsTowardHelp}</FieldDescription>
+            <FieldError>{form.formState.errors.countsTowardTermResult?.message}</FieldError>
+          </>
+        )}
       </>
     </FormDialog>
   );
@@ -224,9 +315,21 @@ export default function ExamsPage() {
         open={formOpen}
         onOpenChange={setFormOpen}
         terms={terms.data ?? []}
+        exams={rows.map((r) => ({ id: r.id, name: r.name }))}
         pending={create.isPending}
         onSubmit={async (data) => {
-          await create.mutateAsync({ ...scopeArgs(), data });
+          // Practice papers never count: send no weightage so no stale
+          // value rides along (the server forces the flag anyway).
+          const payload: CreateExamInput =
+            data.examType === "mock" || data.examType === "test"
+              ? {
+                  name: data.name,
+                  termId: data.termId,
+                  examType: data.examType,
+                  countsTowardTermResult: false,
+                }
+              : data;
+          await create.mutateAsync({ ...scopeArgs(), data: payload });
           setFormOpen(false);
         }}
       />

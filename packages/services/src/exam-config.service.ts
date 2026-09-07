@@ -552,9 +552,17 @@ export class ExamConfigService {
       }
       // The exam's year is DERIVED from its term — the client never supplies
       // it, so an exam can never claim a year its term does not belong to.
+      // Mock and test papers run the full pipeline but never count toward
+      // the term: the server forces the flag rather than trusting the
+      // client, so a crafted request cannot smuggle a practice paper into
+      // the term aggregate.
+      const countsTowardTermResult =
+        input.examType === "mock" || input.examType === "test"
+          ? false
+          : (input.countsTowardTermResult ?? true);
       const [exam] = await tx
         .insert(exams)
-        .values({ ...input, organizationId: scope.organizationId, schoolId, academicYearId: term.academicYearId })
+        .values({ ...input, organizationId: scope.organizationId, schoolId, academicYearId: term.academicYearId, countsTowardTermResult })
         .returning();
       return exam ?? null;
     });
@@ -571,11 +579,15 @@ export class ExamConfigService {
 
       // Weight/count changes move every future result's denominator — once
       // marks exist, they are frozen (the revision window is the correction
-      // path, not this).
+      // path, not this). The lock keys on the RESULTING counting state, not
+      // the stored one: flipping a non-counting exam to counting with a new
+      // weight restates history exactly as badly as editing a counting one.
+      const willCount =
+        input.countsTowardTermResult ?? exam.countsTowardTermResult;
       if (
         (input.weightageInTerm !== undefined ||
           input.countsTowardTermResult !== undefined) &&
-        exam.countsTowardTermResult
+        willCount
       ) {
         const [anyResult] = await tx
           .select({ id: studentComponentResults.id })

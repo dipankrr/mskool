@@ -268,6 +268,7 @@ export const examTypeEnum = pgEnum("exam_type", [
   "supplementary", // second chance; links back via linkedExamId
   "improvement", // rewrite-for-a-better-mark; links back via linkedExamId
   "mock", // practice — runs the full pipeline, never counts (see countsTowardTermResult)
+  "test", // class test — runs the full pipeline, never counts (see countsTowardTermResult)
 ]);
 
 export const examStatusEnum = pgEnum("exam_status", [

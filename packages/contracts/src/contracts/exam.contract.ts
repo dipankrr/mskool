@@ -49,7 +49,30 @@ const marksString = z
 
 const pct100 = z
   .string()
-  .regex(/^\d{1,3}(\.\d{1,2})?$/, "Use a percentage between 0 and 100.");
+  .regex(/^\d{1,3}(\.\d{1,2})?$/, "Use a percentage between 0 and 100.")
+  .refine((v) => Number(v) <= 100, {
+    message: "Use a percentage between 0 and 100.",
+  });
+
+/**
+ * A weightage: like pct100 but strictly positive — the DB CHECKs on
+ * `exams.weightage_in_term` and `exam_components.weightage_percentage`
+ * are `(0,100]`, so "0" must fail here with words, not at insert.
+ */
+const weightPct = pct100.refine((v) => Number(v) > 0, {
+  message: "Weightage must be above 0.",
+});
+
+/**
+ * Exact decimal-string → integer-hundredths comparison WITHOUT float:
+ * `Number("90.10") * 100` need not be exactly 9010 in binary, so band
+ * boundary checks use string arithmetic. pct100-shaped inputs only
+ * (non-negative, ≤2 decimals) — negatives never reach here.
+ */
+function hundredthsOf(decimal: string): number {
+  const [whole = "0", frac = ""] = decimal.split(".");
+  return Number(whole) * 100 + Number((frac + "00").slice(0, 2));
+}
 
 const omitTenant = {
   id: true,
@@ -69,16 +92,11 @@ export type SubjectType = z.infer<typeof subjectTypeSelectSchema>;
 
 export const createSubjectTypeSchema = createInsertSchema(subjectTypes, {
   name: z.string().min(1).max(100),
-  sequence: z.number().int().min(0).max(999),
-  assessmentMode: z.enum(["exam", "term_grade"]),
-})
-  .omit(omitTenant)
-  .refine(
-    (v) => v.assessmentMode !== "term_grade" || !v.isGradedOnly === false || true,
-    // Term-grade types are graded-only by nature; the service normalizes —
-    // no hard constraint here, any flag combo is legitimate (ADR-031's
-    // independence principle, now on the type).
-  );
+  // Optional: the DB defaults them (sequence 0, mode exam) — a minimal
+  // payload must validate; the columns' own schemas still apply when sent.
+  sequence: z.number().int().min(0).max(999).optional(),
+  assessmentMode: z.enum(["exam", "term_grade"]).optional(),
+}).omit(omitTenant);
 export type CreateSubjectTypeInput = z.infer<typeof createSubjectTypeSchema>;
 
 export const updateSubjectTypeSchema = createInsertSchema(subjectTypes, {
@@ -108,7 +126,7 @@ export const gradingScaleBandInput = z
     descriptor: z.string().max(100).optional(),
     sequenceNumber: z.number().int().min(0).max(999).optional(),
   })
-  .refine((v) => v.maxMarks >= v.minMarks, {
+  .refine((v) => hundredthsOf(v.maxMarks) >= hundredthsOf(v.minMarks), {
     message: "A band cannot end before it starts.",
     path: ["maxMarks"],
   });
@@ -141,7 +159,8 @@ export const createPassCriteriaSchema = createInsertSchema(passCriteria, {
   maxGraceTotal: pct100.nullable().optional(),
   compartmentAllowed: z.boolean().optional().default(false),
   maxSubjectsForCompartment: z.number().int().min(1).max(20).nullable().optional(),
-  minAttendancePct: pct100,
+  // Optional: the DB defaults the bar to 75 — a minimal payload validates.
+  minAttendancePct: pct100.optional(),
 })
   .omit({ ...omitTenant, academicYearId: true })
   .refine(
@@ -149,6 +168,15 @@ export const createPassCriteriaSchema = createInsertSchema(passCriteria, {
       !v.compartmentAllowed ||
       (v.maxSubjectsForCompartment ?? 0) >= 1,
     { message: "A compartment policy needs a subject cap." },
+  )
+  .refine(
+    (v) =>
+      !v.graceMarksAllowed ||
+      (v.maxGracePerSubject != null && v.maxGraceTotal != null),
+    {
+      message:
+        "Allowing grace marks needs both caps — per subject and total.",
+    },
   );
 export type CreatePassCriteriaInput = z.infer<typeof createPassCriteriaSchema>;
 
@@ -179,18 +207,26 @@ export const examStatusValues = [
 
 export const createExamSchema = createInsertSchema(exams, {
   name: z.string().min(1).max(150),
-  weightageInTerm: pct100,
+  // Optional: the DB defaults the weight to 100 — a minimal payload
+  // (name + term + type) must validate; the dialog sends it explicitly
+  // for counting exams.
+  weightageInTerm: weightPct.optional(),
 })
   .omit({ ...omitTenant, academicYearId: true, status: true })
   .refine(
-    (v) => v.examType !== "supplementary" || v.linkedExamId !== undefined,
-    { message: "A supplementary exam must link the exam it redeems." },
+    (v) =>
+      (v.examType !== "supplementary" && v.examType !== "improvement") ||
+      typeof v.linkedExamId === "string",
+    {
+      message:
+        "A supplementary or improvement exam must link the exam it redeems.",
+    },
   );
 export type CreateExamInput = z.infer<typeof createExamSchema>;
 
 export const updateExamSchema = createInsertSchema(exams, {
   name: z.string().min(1).max(150),
-  weightageInTerm: pct100,
+  weightageInTerm: weightPct,
 })
   .omit({
     ...omitTenant,
@@ -353,7 +389,7 @@ export const entryGridOutputSchema = z.object({
       sequenceNumber: z.number().int(),
       maxMarks: marksString,
       passMarks: marksString,
-      weightagePercentage: pct100,
+  weightagePercentage: weightPct,
       isMandatoryPass: z.boolean(),
     }),
   ),
