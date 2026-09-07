@@ -140,6 +140,30 @@ describe("exams property: the weighted rollup", () => {
       ),
     );
   });
+
+  it("exemption defaults to zero's effect, renormalizes when the school opts in", () => {
+    // Theory (80) exempt, Internal 18/20 (weight 20): default scores the
+    // exemption as zero; renormalized it leaves the denominator.
+    const components = [
+      { marks: null, maxMarks: 8000n, weightagePercentage: 8000n, exempted: true },
+      { marks: 1800n, maxMarks: 2000n, weightagePercentage: 2000n, exempted: false },
+    ];
+    expect(weightedComponentRollup(components)).toBe(1800n);
+    expect(weightedComponentRollup(components, { renormalizeExempt: true })).toBe(9000n);
+  });
+
+  it("an unattempted mandatory paper fails only under an absent-fails policy", () => {
+    const pass = 3300n;
+    // No mark, explicitly absent, policy on → failed.
+    expect(componentFailed(null, pass, { absent: true, absentFails: true })).toBe(true);
+    // Same absence, policy off → not failed (zero's effect only).
+    expect(componentFailed(null, pass, { absent: true, absentFails: false })).toBe(false);
+    // Exempted is never absence — never fails here.
+    expect(componentFailed(null, pass, { absent: false, absentFails: true })).toBe(false);
+    // A real mark below the line always fails, policy or not.
+    expect(componentFailed(3200n, pass, { absent: false, absentFails: false })).toBe(true);
+    expect(componentFailed(3300n, pass, { absent: false, absentFails: true })).toBe(false);
+  });
 });
 
 describe("exams property: grace never overshoots, caps bind, must-pass first", () => {
@@ -321,14 +345,30 @@ describe("exams property: grades land in exactly one contiguous band", () => {
     })
     .filter((bands) => bands.length > 0 && bands[bands.length - 1]!.maxMarks === 10000n);
 
-  it("every percentage 0-100 finds exactly one band", () => {
+  it("every percentage 0-100 grades deterministically — boundaries go UP", () => {
     fc.assert(
       fc.property(arbContiguousScale, arbHundredths(0n, 10000n), (bands, pct) => {
-        const hits = bands.filter((b) => pct >= b.minMarks && pct <= b.maxMarks);
-        expect(hits.length).toBe(1);
-        expect(gradeFor(pct, bands)?.gradeLabel).toBe(hits[0]!.gradeLabel);
+        const got = gradeFor(pct, bands);
+        expect(got).not.toBeNull();
+        // Shared endpoints belong to the UPPER band: the winner is the
+        // matching band with the highest floor, never input order.
+        const winner = [...bands]
+          .filter((b) => pct >= b.minMarks && pct <= b.maxMarks)
+          .sort((a, b) => (a.minMarks > b.minMarks ? -1 : 1))[0]!;
+        expect(got?.gradeLabel).toBe(winner.gradeLabel);
       }),
     );
+  });
+
+  it("a boundary value matches the upper band regardless of input order", () => {
+    const bands: GradeBand[] = [
+      { minMarks: 9000n, maxMarks: 10000n, gradeLabel: "A", gradePoint: 1000n },
+      { minMarks: 8000n, maxMarks: 9000n, gradeLabel: "B", gradePoint: 900n },
+      { minMarks: 0n, maxMarks: 8000n, gradeLabel: "C", gradePoint: 800n },
+    ];
+    expect(gradeFor(9000n, bands)?.gradeLabel).toBe("A");
+    expect(gradeFor(9000n, [...bands].reverse())?.gradeLabel).toBe("A");
+    expect(gradeFor(8999n, bands)?.gradeLabel).toBe("B");
   });
 });
 

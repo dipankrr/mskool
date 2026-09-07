@@ -1028,6 +1028,9 @@ async function seedExamWorld(params: {
         academicYearId,
         name: ENTRY_EXAM_NAME,
         examType: "mock",
+        // Practice papers never count (the service forces this on the
+        // create path; the seed inserts directly, so it states it).
+        countsTowardTermResult: false,
       })
       .returning({ id: exams.id });
     entryExamId = created!.id;

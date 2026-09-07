@@ -5,7 +5,7 @@ import {
 } from "./academic.service";
 import { examMarksService } from "./exam-marks.service";
 import { scopeWhere, type DataScope } from "@repo/authz";
-import type {
+import { fromHundredths, toHundredths } from "./exams-maths";import type {
   CreateExamInput,
   CreateGradingScaleInput,
   CreatePassCriteriaInput,
@@ -656,6 +656,33 @@ export class ExamConfigService {
           throw new Error(
             `Coverage incomplete: ${gaps.length} counted subject(s) of some class(es) are missing from this exam. Every counted subject must be scheduled.`,
           );
+        }
+        // Counting exams of a term sum to exactly 100 — misconfiguration
+        // fails loudly at blueprint time, never hides inside the term
+        // maths' renormalization. Non-counting exams (mocks, tests) skip.
+        if (exam.countsTowardTermResult) {
+          const termExams = await tx
+            .select({
+              weightageInTerm: exams.weightageInTerm,
+              countsTowardTermResult: exams.countsTowardTermResult,
+            })
+            .from(exams)
+            .where(
+              and(
+                eq(exams.termId, exam.termId),
+                eq(exams.schoolId, schoolId),
+                eq(exams.countsTowardTermResult, true),
+              ),
+            );
+          const sum = termExams.reduce(
+            (acc, e) => acc + toHundredths(e.weightageInTerm),
+            0n,
+          );
+          if (sum !== 10000n) {
+            throw new Error(
+              `Counting exams of this term weigh ${fromHundredths(sum)} — they must sum to exactly 100. Adjust the weightages first.`,
+            );
+          }
         }
       }
 

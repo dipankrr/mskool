@@ -221,6 +221,15 @@ export const passCriteria = pgTable(
     compartmentAllowed: boolean().notNull().default(false),
     maxSubjectsForCompartment: smallint(),
 
+    // An unattempted mandatory paper fails its subject. Schools that never
+    // fail on absence (low-stakes tests) switch this off for the year;
+    // absence still scores zero's effect either way.
+    absentMandatoryFails: boolean().notNull().default(true),
+    // Exempt components leave the denominator (the student never sat them).
+    // Off by default: historically exemption scored zero's effect, and
+    // flipping existing years silently would restate frozen results.
+    exemptRenormalizes: boolean().notNull().default(false),
+
     minAttendancePct: numeric({ precision: 5, scale: 2 })
       .notNull()
       .default("75.00"),

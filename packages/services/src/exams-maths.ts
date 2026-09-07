@@ -73,19 +73,28 @@ export interface ComponentScoreInput {
   maxMarks: bigint;
   /** The component's weightage percentage (hundredths: 80% → 8000n). */
   weightagePercentage: bigint;
+  /** Medical/board exemption — the student never sat this component. */
+  exempted?: boolean;
 }
 
 /**
  * The weighted rollup: contribution_i = marks_i / max_i × weight_i, summed.
  * The subject's max on this scale is Σ weight_i (= 100 when the blueprint
- * validates, but the function renormalizes defensively). Absent/exempt
- * components contribute ZERO — absence is not zero, it IS zero's effect
- * here while `isAbsent` rides alongside for display.
+ * validates, but the function renormalizes defensively). Absent components
+ * contribute ZERO — absence is not zero, it IS zero's effect here while
+ * `isAbsent` rides alongside for display. Exempt components ALSO score
+ * zero's effect UNLESS `renormalizeExempt` is set — then they leave the
+ * denominator entirely (never sat means never counted). The flag is school
+ * policy (`pass_criteria.exempt_renormalizes`, default off for history).
  */
-export function weightedComponentRollup(components: ComponentScoreInput[]): bigint {
+export function weightedComponentRollup(
+  components: ComponentScoreInput[],
+  opts?: { renormalizeExempt?: boolean },
+): bigint {
   let total = 0n;
   let weightSum = 0n;
   for (const c of components) {
+    if (opts?.renormalizeExempt && c.exempted) continue;
     weightSum += c.weightagePercentage;
     if (c.marks === null || c.maxMarks === 0n) continue;
     // contribution (marks-hundredths) = marks × weight% / max. Units:
@@ -136,8 +145,15 @@ export function evaluatePass(input: PassEvaluationInput): boolean {
 }
 
 /** A component fails its own scale when the mark is below its pass mark. */
-export function componentFailed(marks: bigint | null, passMark: bigint): boolean {
-  if (marks === null) return false; // absent/exempt is handled elsewhere
+export function componentFailed(
+  marks: bigint | null,
+  passMark: bigint,
+  opts?: { absent?: boolean; absentFails?: boolean },
+): boolean {
+  // No mark: an explicitly absent (not exempted) mandatory paper fails when
+  // the school says so (`pass_criteria.absent_mandatory_fails`, default on).
+  // Exempted papers never fail here — exemption excuses, it does not accuse.
+  if (marks === null) return opts?.absent === true && opts?.absentFails === true;
   return marks < passMark;
 }
 
@@ -206,16 +222,20 @@ export interface GradeBand {
 }
 
 /**
- * The band containing `percentageHundredths` (inclusive both ends — the
- * school convention). Returns null when the percentage falls outside every
- * band; scale creation validates contiguity 0-100 so a covered percentage
- * always lands in exactly one.
+ * The band containing `percentageHundredths`. Bands are contiguous with
+ * SHARED endpoints (scale creation enforces it), so a boundary value sits
+ * in two bands — the UPPER one wins ("90 and above" reads as A), decided
+ * by descending floor order, never by input order. Returns null outside
+ * every band; a covered percentage always lands in exactly one.
  */
 export function gradeFor(
   percentageHundredths: bigint,
   bands: GradeBand[],
 ): { gradeLabel: string; gradePoint: bigint | null } | null {
-  for (const band of bands) {
+  const ordered = [...bands].sort((a, b) =>
+    a.minMarks !== b.minMarks ? (a.minMarks > b.minMarks ? -1 : 1) : 0,
+  );
+  for (const band of ordered) {
     if (percentageHundredths >= band.minMarks && percentageHundredths <= band.maxMarks) {
       return { gradeLabel: band.gradeLabel, gradePoint: band.gradePoint };
     }

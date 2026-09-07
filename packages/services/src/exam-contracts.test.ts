@@ -136,4 +136,14 @@ describe("setup defaults stay optional", () => {
       }).success,
     ).toBe(true);
   });
+
+  it("absence/exemption policy flags are optional and defaulted", () => {
+    const minimal = createPassCriteriaSchema.safeParse({});
+    expect(minimal.success).toBe(true);
+    const explicit = createPassCriteriaSchema.safeParse({
+      absentMandatoryFails: false,
+      exemptRenormalizes: true,
+    });
+    expect(explicit.success).toBe(true);
+  });
 });

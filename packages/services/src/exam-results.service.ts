@@ -6,6 +6,7 @@ import {
   academicYears,
   authzAuditLog,
   attendanceSummary,
+  classes,
   classSubjectMappings,
   examClassPublication,
   examComponents,
@@ -16,6 +17,7 @@ import {
   passCriteria,
   publishedReportCards,
   reportCardTemplates,
+  schools,
   studentComponentResultRevisions,
   studentComponentResults,
   studentFinalResults,
@@ -40,6 +42,8 @@ import {
   fromHundredths,
   gpaAggregate,
   gradeFor,
+  mulDivHalfUp,
+  percentageOf,
   termAggregate,
   toHundredths,
   weightedComponentRollup,
@@ -76,10 +80,10 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 /** The shared reads accept either an open transaction or the root db. */
 type DbLike = Tx | typeof db;
 
-/** Half-up percentage (hundredths of a percent), tolerating a zero max. */
+/** The maths core's single rounding (percentageOf), tolerating a zero max. */
 function percentageOfSafe(total: bigint, max: bigint): bigint {
   if (max === 0n) return 0n;
-  return total < 0n ? -(((-total) * 10000n + max / 2n) / max) : (total * 10000n + max / 2n) / max;
+  return percentageOf(total, max);
 }
 
 export class ExamResultsService {
@@ -265,26 +269,32 @@ export class ExamResultsService {
             continue;
           }
 
+          const renormalizeExempt = criteria?.exemptRenormalizes ?? false;
+          const absentFails = criteria?.absentMandatoryFails ?? true;
           const inputs = scheduleComponents.map((c) => {
             const row = studentRows.find((r) => r.componentId === c.id);
+            // Exemption excuses (never a failure); absence accuses only when
+            // the school's policy says an unattempted mandatory paper fails.
+            const exempted = row?.isExempted ?? false;
             return {
+              id: c.id,
               marks: row?.marksObtained != null ? toHundredths(row.marksObtained) : null,
               maxMarks: toHundredths(c.maxMarks),
               weightagePercentage: toHundredths(c.weightagePercentage),
               passMarks: toHundredths(c.passMarks),
               mandatory: c.isMandatoryPass,
+              exempted,
+              absent: (row?.isAbsent ?? false) && !exempted,
             };
           });
-          const marks = weightedComponentRollup(
-            inputs.map((c) => ({
-              marks: c.marks,
-              maxMarks: c.maxMarks,
-              weightagePercentage: c.weightagePercentage,
-            })),
-          );
+          const marks = weightedComponentRollup(inputs, { renormalizeExempt });
+          // The failed COMPONENT's own id — the pre-filter index pointed at
+          // innocent components whenever an earlier one passed.
           const failedComponents = inputs
-            .filter((c) => c.mandatory && componentFailed(c.marks, c.passMarks))
-            .map((_, i) => scheduleComponents[i]!.id);
+            .filter((c) =>
+              c.mandatory && componentFailed(c.marks, c.passMarks, { absent: c.absent, absentFails }),
+            )
+            .map((c) => c.id);
           const passMark = toHundredths(schedule.passMarks);
           const isPassed = evaluatePass({
             finalMarks: marks,
@@ -439,13 +449,19 @@ export class ExamResultsService {
         ),
       );
 
-    const classId = (
-      await tx
-        .select({ classId: examSubjectSchedules.classId })
-        .from(examSubjectSchedules)
-        .where(inArray(examSubjectSchedules.examId, termExamIds))
-        .limit(1)
-    )[0]?.classId;
+    // THE student's class — never the term's first schedule row. Exams
+    // spanning classes with different mappings used to compute every other
+    // class against the wrong subject set (subjects silently skipped).
+    const [studentEnrollment] = await tx
+      .select({ classId: studentEnrollments.classId })
+      .from(studentEnrollments)
+      .where(
+        and(
+          eq(studentEnrollments.studentId, studentId),
+          eq(studentEnrollments.academicYearId, term.academicYearId),
+        ),
+      );
+    const classId = studentEnrollment?.classId ?? null;
     const subjectSet = classId
       ? await this.resolveSubjectSet(tx, classId, term.academicYearId)
       : [];
@@ -495,9 +511,13 @@ export class ExamResultsService {
     const countedScores = scores.filter((s) => s.countsTowardResult);
     const allGradedOnly =
       countedScores.length > 0 && countedScores.every((s) => s.isGradedOnly);
-    const gpa = allGradedOnly
-      ? gpaAggregate(countedScores.map((s) => s.gradePoint ?? 0n))
-      : null;
+    // Missing grade points are EXCLUDED, never zeroes — one undescribed
+    // band must not drag the whole GPA down.
+    const gradedPoints = countedScores
+      .map((s) => s.gradePoint)
+      .filter((gp): gp is bigint => gp !== null);
+    const gpa =
+      allGradedOnly && gradedPoints.length > 0 ? gpaAggregate(gradedPoints) : null;
 
     const aggregate = termAggregate(
       countedScores.map((s) => ({
@@ -615,7 +635,7 @@ export class ExamResultsService {
 
     let updated = 0;
     const now = new Date();
-    for (const [sectionId, entries] of bySection) {
+    for (const entries of bySection.values()) {
       for (const [id, rank] of computeRanks(entries)) {
         await tx
           .update(studentTermResults)
@@ -623,26 +643,47 @@ export class ExamResultsService {
           .where(eq(studentTermResults.id, id));
         updated += 1;
       }
+    }
 
-      // rankInClass across every section of this section's class.
-      const [section] = await tx
-        .select({ classId: sections.classId })
-        .from(sections)
-        .where(eq(sections.id, sectionId));
-      if (!section) continue;
-      const classRows = rows.filter((r) => {
-        const sectionIdOf = r.sectionId;
-        return sectionIdOf != null;
-      });
-      const classEntries: { id: string; score: bigint }[] = [];
-      for (const r of classRows) {
-        if (!r.sectionId) continue;
-        const [sec] = await tx.select({ classId: sections.classId }).from(sections).where(eq(sections.id, r.sectionId));
-        if (sec?.classId === section.classId) {
-          classEntries.push({ id: r.id, score: scoreOf(r) });
-        }
-      }
-      for (const [id, rank] of computeRanks(classEntries)) {
+    // rankInClass across the class: one batched section→class map (not a
+    // query per student), then one ranking per class. Sectionless students
+    // — admitted but unassigned, a legal state — get a class rank through
+    // their enrollment; they simply have no section rank.
+    const [term] = await tx.select().from(terms).where(eq(terms.id, termId));
+    const sectionIds = [...new Set(rows.map((r) => r.sectionId).filter((s): s is string => s != null))];
+    const sectionRows = sectionIds.length
+      ? await tx
+          .select({ id: sections.id, classId: sections.classId })
+          .from(sections)
+          .where(inArray(sections.id, sectionIds))
+      : [];
+    const classBySection = new Map(sectionRows.map((s) => [s.id, s.classId]));
+    const sectionlessIds = [...new Set(rows.filter((r) => !r.sectionId).map((r) => r.studentId))];
+    const enrollmentRows =
+      term && sectionlessIds.length
+        ? await tx
+            .select({ studentId: studentEnrollments.studentId, classId: studentEnrollments.classId })
+            .from(studentEnrollments)
+            .where(
+              and(
+                inArray(studentEnrollments.studentId, sectionlessIds),
+                eq(studentEnrollments.academicYearId, term.academicYearId),
+              ),
+            )
+        : [];
+    const classByStudent = new Map(enrollmentRows.map((e) => [e.studentId, e.classId]));
+    const byClass = new Map<string, { id: string; score: bigint }[]>();
+    for (const row of rows) {
+      const classId =
+        (row.sectionId ? classBySection.get(row.sectionId) : undefined) ??
+        classByStudent.get(row.studentId);
+      if (!classId) continue;
+      const list = byClass.get(classId) ?? [];
+      list.push({ id: row.id, score: scoreOf(row) });
+      byClass.set(classId, list);
+    }
+    for (const entries of byClass.values()) {
+      for (const [id, rank] of computeRanks(entries)) {
         await tx
           .update(studentTermResults)
           .set({ rankInClass: rank, rankComputedAt: now })
@@ -687,8 +728,24 @@ export class ExamResultsService {
         .map((r) => ({ row: r, term: yearTerms.find((t) => t.id === r.termId)! }))
         .sort((a, b) => a.term.sequenceNumber - b.term.sequenceNumber);
       const last = ordered[ordered.length - 1]!.row;
+      // result_mode (cumulative = feeds the annual, terminal = stands
+      // alone): any cumulative term makes the annual a weighted average;
+      // a year of only terminal terms reads the last one verbatim.
+      const cumulative = ordered.filter((o) => o.term.resultMode === "cumulative");
+      const isCumulative = cumulative.length > 0;
+      if (isCumulative) {
+        const weightSum = cumulative.reduce(
+          (acc, o) => acc + toHundredths(o.term.weightage),
+          0n,
+        );
+        if (weightSum !== 10000n) {
+          throw new Error(
+            `The year's cumulative terms weigh ${fromHundredths(weightSum)} — they must sum to exactly 100. Adjust the term weightages first.`,
+          );
+        }
+      }
       const weighted = annualWeighted(
-        ordered.map((o) => ({
+        (isCumulative ? cumulative : ordered).map((o) => ({
           percentage: toHundredths(o.row.percentage ?? "0.00"),
           weightage: toHundredths(o.term.weightage),
         })),
@@ -696,27 +753,54 @@ export class ExamResultsService {
       const lastOnly = toHundredths(last.percentage ?? "0.00");
       // The policy: cumulative terms fold into the annual; a terminal last
       // term IS the annual.
-      const isCumulative = ordered.some((o) => o.term.resultMode === "cumulative");
       const percentage = isCumulative ? weighted : lastOnly;
       const grade = scale ? gradeFor(percentage, scale.bands) : null;
-      const failedCount = ordered.reduce((a, o) => a + o.row.subjectsFailedCount, 0);
-
+      // DISTINCT failed subjects across the year — one subject failed in
+      // two terms is one failing subject against the compartment cap, not
+      // two. (Summing per-term counts parked compartment students at
+      // `detained` for a single weak subject.)
+      const failedSubjects = [
+        ...new Set(ordered.flatMap((o) => o.row.subjectsFailed ?? [])),
+      ];
+      // Promotion: every term passed, or the last term passed (the final
+      // say — a recovery in T2 promotes). Otherwise compartment within the
+      // cap, else detained. Students with no term rows at all get no final
+      // row — a verdict nobody computed must not be fabricated.
       const promotionStatus: "promoted" | "detained" | "compartment" =
         isPassedAll(ordered) || last.isPassed
           ? "promoted"
-          : criteria?.compartmentAllowed && failedCount <= (criteria.maxSubjectsForCompartment ?? 0)
+          : criteria?.compartmentAllowed &&
+              failedSubjects.length <= (criteria.maxSubjectsForCompartment ?? 0)
             ? "compartment"
             : "detained";
       const isPassed = promotionStatus === "promoted";
 
       const values = {
+        totalMarks: fromHundredths(percentage),
+        maxMarks: "100.00",
         percentage: fromHundredths(percentage),
         grade: grade?.gradeLabel ?? null,
         gradePoint: grade?.gradePoint ? fromHundredths(grade.gradePoint) : null,
         isPassed,
-        subjectsFailedCount: failedCount,
+        subjectsFailedCount: failedSubjects.length,
+        subjectsFailed: failedSubjects,
+        compartmentSubjects:
+          promotionStatus === "compartment" ? failedSubjects : [],
         attendancePercentage: last.attendancePercentage,
         promotionStatus,
+        passPolicySnapshot: criteria
+          ? {
+              minSubjectsToPass: criteria.minSubjectsToPass,
+              mandatoryPassSubjectIds: criteria.mandatoryPassSubjectIds,
+              graceMarksAllowed: criteria.graceMarksAllowed,
+              maxGracePerSubject: criteria.maxGracePerSubject,
+              maxGraceTotal: criteria.maxGraceTotal,
+              compartmentAllowed: criteria.compartmentAllowed,
+              maxSubjectsForCompartment:
+                criteria.maxSubjectsForCompartment,
+              minAttendancePct: criteria.minAttendancePct,
+            }
+          : null,
         computedAt: new Date(),
       };
 
@@ -760,6 +844,7 @@ export class ExamResultsService {
         firstName: studentsTable.firstName,
         lastName: studentsTable.lastName,
         admissionNumber: studentsTable.admissionNumber,
+        schoolId: studentsTable.schoolId,
       })
       .from(studentsTable)
       .where(eq(studentsTable.id, studentId));
@@ -770,6 +855,36 @@ export class ExamResultsService {
           .from(academicYears)
           .where(eq(academicYears.id, termRow.academicYearId))
       : [{ name: "" }];
+
+    // Identity is FROZEN, not referenced: a reprint in 2032 shows the
+    // class/section/roll/school as they were, even if the student moved.
+    const [enrollment] = termRow
+      ? await tx
+          .select({
+            classId: studentEnrollments.classId,
+            sectionId: studentEnrollments.sectionId,
+            rollNumber: studentEnrollments.rollNumber,
+          })
+          .from(studentEnrollments)
+          .where(
+            and(
+              eq(studentEnrollments.studentId, studentId),
+              eq(studentEnrollments.academicYearId, termRow.academicYearId),
+            ),
+          )
+      : [];
+    const [klass] = enrollment
+      ? await tx.select({ name: classes.name }).from(classes).where(eq(classes.id, enrollment.classId))
+      : [];
+    const [section] = enrollment?.sectionId
+      ? await tx.select({ name: sections.name }).from(sections).where(eq(sections.id, enrollment.sectionId))
+      : [];
+    const [school] = student?.schoolId
+      ? await tx.select({ name: schools.name }).from(schools).where(eq(schools.id, student.schoolId))
+      : [];
+    const scale = student?.schoolId
+      ? await this.resolveDefaultScale(tx, student.schoolId)
+      : null;
 
     const termExamIds = (
       await tx
@@ -815,14 +930,33 @@ export class ExamResultsService {
       .from(studentTermResults)
       .where(and(eq(studentTermResults.studentId, studentId), eq(studentTermResults.termId, termId)));
 
-    const typeBySubject = new Map<string, { name: string; sequence: number }>();
+    const typeBySubject = new Map<string, { id: string; name: string; sequence: number }>();
     for (const [subjectId] of bySubject) {
-      const [row] = await tx
-        .select({ name: subjectTypes.name, sequence: subjectTypes.sequence })
-        .from(classSubjectMappings)
-        .innerJoin(subjectTypes, eq(classSubjectMappings.subjectTypeId, subjectTypes.id))
-        .where(eq(classSubjectMappings.subjectId, subjectId));
-      if (row) typeBySubject.set(subjectId, row);
+      // Class-scoped: the same subject can be typed differently in two
+      // classes — the student's own class/year wins. Subject-only is the
+      // fallback for cards whose enrollment is gone (never borrowed across
+      // classes when the enrollment exists but the mapping doesn't).
+      let resolved: { id: string; name: string; sequence: number } | undefined;
+      if (enrollment && termRow) {
+        [resolved] = await tx
+          .select({ id: subjectTypes.id, name: subjectTypes.name, sequence: subjectTypes.sequence })
+          .from(classSubjectMappings)
+          .innerJoin(subjectTypes, eq(classSubjectMappings.subjectTypeId, subjectTypes.id))
+          .where(
+            and(
+              eq(classSubjectMappings.subjectId, subjectId),
+              eq(classSubjectMappings.classId, enrollment.classId),
+              eq(classSubjectMappings.academicYearId, termRow.academicYearId),
+            ),
+          );
+      } else {
+        [resolved] = await tx
+          .select({ id: subjectTypes.id, name: subjectTypes.name, sequence: subjectTypes.sequence })
+          .from(classSubjectMappings)
+          .innerJoin(subjectTypes, eq(classSubjectMappings.subjectTypeId, subjectTypes.id))
+          .where(eq(classSubjectMappings.subjectId, subjectId));
+      }
+      if (resolved) typeBySubject.set(subjectId, resolved);
     }
 
     const assessments = await tx
@@ -861,15 +995,24 @@ export class ExamResultsService {
       student: {
         name: `${student?.firstName ?? ""} ${student?.lastName ?? ""}`.trim(),
         admissionNumber: student?.admissionNumber ?? "",
-        className: "",
-        sectionName: null,
-        rollNumber: null,
+        className: klass?.name ?? "",
+        sectionName: section?.name ?? null,
+        rollNumber: enrollment?.rollNumber ?? null,
       },
-      school: { name: "" },
+      school: { name: school?.name ?? "" },
       academicYear: { name: year?.name ?? "" },
       term: { id: termId, name: termRow?.name ?? "" },
+      // Print order, not UUID order: the school's own widget sequence,
+      // then subject name.
       subjects: [...bySubject.entries()]
-        .sort(([a], [b]) => (a < b ? -1 : 1))
+        .sort(([aId, aRows], [bId, bRows]) => {
+          const aType = typeBySubject.get(aId);
+          const bType = typeBySubject.get(bId);
+          const aSeq = aType?.sequence ?? 999;
+          const bSeq = bType?.sequence ?? 999;
+          if (aSeq !== bSeq) return aSeq - bSeq;
+          return (aRows[0]?.subjectName ?? "").localeCompare(bRows[0]?.subjectName ?? "");
+        })
         .map(([subjectId, rows]) => {
         const score = rows[0]!.isExempted
           ? null
@@ -881,16 +1024,19 @@ export class ExamResultsService {
               })),
             );
         const type = typeBySubject.get(subjectId);
+        // The TERM grade of the term score — not the first exam's grade.
+        const termGrade = score !== null && scale ? gradeFor(score, scale.bands) : null;
         return {
           subjectId,
           subjectName: rows[0]!.subjectName,
-          subjectTypeId: null,
+          subjectTypeId: type?.id ?? null,
           widgetName: type?.name ?? null,
           widgetSequence: type?.sequence ?? null,
           marksObtained: score === null || (score === 0n && rows.every((r) => r.isAbsent)) ? null : fromHundredths(score),
           maxMarks: "100.00",
-          grade: rows[0]!.grade,
-          gradePoint: rows[0]!.gradePoint,
+          grade: termGrade?.gradeLabel ?? rows[0]!.grade,
+          gradePoint:
+            termGrade?.gradePoint != null ? fromHundredths(termGrade.gradePoint) : rows[0]!.gradePoint,
           isAbsent: rows.some((r) => r.isAbsent),
           isExempted: rows.some((r) => r.isExempted),
           countsTowardResult: rows[0]!.countsTowardResult,
@@ -1248,6 +1394,8 @@ export class ExamResultsService {
       : [];
 
     // Per-subject class stats over the COUNTED, non-empty results.
+    // BigInt hundredths end to end (hard rule 4's cousin) — the old float
+    // path could sit a hundredth off the stored aggregates.
     const stats = subjectsOfExam.map((subject) => {
       const rows = subjectResults.filter(
         (r) =>
@@ -1256,14 +1404,19 @@ export class ExamResultsService {
           !r.isExempted &&
           r.finalMarks != null,
       );
-      const scores = rows.map((r) => Number(r.finalMarks));
+      const scores = rows.map((r) => toHundredths(r.finalMarks!));
       const average =
-        scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
-      const highest = scores.length > 0 ? Math.max(...scores) : null;
+        scores.length > 0
+          ? fromHundredths(mulDivHalfUp(scores.reduce((a, b) => a + b, 0n), 1n, BigInt(scores.length)))
+          : null;
+      const highest =
+        scores.length > 0
+          ? fromHundredths(scores.reduce((a, b) => (a > b ? a : b)))
+          : null;
       return {
         subjectId: subject.id,
-        average: average != null ? average.toFixed(2) : null,
-        highest: highest != null ? highest.toFixed(2) : null,
+        average,
+        highest,
         passCount: rows.filter((r) => r.isPassed).length,
         enteredCount: rows.length,
       };
