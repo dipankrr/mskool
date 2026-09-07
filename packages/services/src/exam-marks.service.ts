@@ -113,8 +113,11 @@ export class ExamMarksService {
    * The actual cohort recompute, shared by the state transition. Reads the
    * attendance summary (term row, else annual) and the resolved criteria
    * per class, then upserts one eligibility row per cohort student.
+   * Public for ExamConfigService.transition (ADR-032 §9 recomputes on
+   * transitions) — always called with the caller's open transaction, never
+   * in its own, so a failed recompute rolls the transition back.
    */
-  private async recomputeCohortEligibility(
+  async recomputeCohortEligibility(
     tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
     examId: string,
     termId: string,
@@ -893,6 +896,9 @@ export class ExamMarksService {
       )
       .limit(1);
 
+    // Below-bar, scoped to THIS class: eligibility rows carry no class, so
+    // join the year's enrollment — a sibling class's below-bar students
+    // must never invite overrides against the wrong cohort.
     const belowBar = await db
       .select({
         studentId: examEligibility.studentId,
@@ -901,6 +907,19 @@ export class ExamMarksService {
         isOverridden: examEligibility.isOverridden,
       })
       .from(examEligibility)
+      .innerJoin(
+        studentEnrollments,
+        and(
+          eq(studentEnrollments.studentId, examEligibility.studentId),
+          eq(studentEnrollments.academicYearId, exam.academicYearId),
+          eq(studentEnrollments.classId, classId),
+          inArray(studentEnrollments.enrollmentStatus, [
+            "active",
+            "admitted",
+            "section_assigned",
+          ]),
+        ),
+      )
       .where(
         and(
           eq(examEligibility.examId, examId),

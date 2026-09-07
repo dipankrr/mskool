@@ -176,10 +176,24 @@ export class ExamResultsService {
   /**
    * Recomputes subject results (grace, grades, snapshots) for one exam's
    * class, then each cohort student's term result. Idempotent.
+   *
+   * `tx` is the closeRevisionWindow escape hatch: inside that window-close
+   * the whole recompute must commit or roll back WITH the re-issue, so the
+   * caller passes its open transaction instead of letting this method open
+   * an independent (separately-committing) one.
    */
-  async computeClassResults(scope: DataScope, examId: string, classId: string) {
+  async computeClassResults(scope: DataScope, examId: string, classId: string, tx?: Tx) {
+    if (tx) return this.computeClassResultsTx(tx, scope, examId, classId);
+    return db.transaction((inner) => this.computeClassResultsTx(inner, scope, examId, classId));
+  }
+
+  // NOTE: the engine body below sits in a bare block on purpose — it is the
+  // old transaction callback verbatim, so `git blame` still points at the
+  // original authorship instead of a reindent. Do not "clean" it without
+  // keeping the body identical.
+  private async computeClassResultsTx(tx: Tx, scope: DataScope, examId: string, classId: string) {
     const schoolId = requireSchoolId(scope);
-    return db.transaction(async (tx) => {
+    {
       const [exam] = await tx
         .select()
         .from(exams)
@@ -388,7 +402,7 @@ export class ExamResultsService {
         await this.computeTermResult(tx, studentId, exam.termId, schoolId, scope.organizationId);
       }
       return processed;
-    });
+    }
   }
 
   /**
@@ -581,9 +595,9 @@ export class ExamResultsService {
    * across the class. Score = percentage (GPA classes rank by grade point).
    * Competition ranking; ties share.
    */
-  async computeTermRanks(scope: DataScope, termId: string) {
+  async computeTermRanks(scope: DataScope, termId: string, tx: DbLike = db) {
     const schoolId = requireSchoolId(scope);
-    const rows = await db
+    const rows = await tx
       .select()
       .from(studentTermResults)
       .where(and(eq(studentTermResults.termId, termId), eq(studentTermResults.schoolId, schoolId)));
@@ -603,7 +617,7 @@ export class ExamResultsService {
     const now = new Date();
     for (const [sectionId, entries] of bySection) {
       for (const [id, rank] of computeRanks(entries)) {
-        await db
+        await tx
           .update(studentTermResults)
           .set({ rankInSection: rank, rankComputedAt: now })
           .where(eq(studentTermResults.id, id));
@@ -611,7 +625,7 @@ export class ExamResultsService {
       }
 
       // rankInClass across every section of this section's class.
-      const [section] = await db
+      const [section] = await tx
         .select({ classId: sections.classId })
         .from(sections)
         .where(eq(sections.id, sectionId));
@@ -623,13 +637,13 @@ export class ExamResultsService {
       const classEntries: { id: string; score: bigint }[] = [];
       for (const r of classRows) {
         if (!r.sectionId) continue;
-        const [sec] = await db.select({ classId: sections.classId }).from(sections).where(eq(sections.id, r.sectionId));
+        const [sec] = await tx.select({ classId: sections.classId }).from(sections).where(eq(sections.id, r.sectionId));
         if (sec?.classId === section.classId) {
           classEntries.push({ id: r.id, score: scoreOf(r) });
         }
       }
       for (const [id, rank] of computeRanks(classEntries)) {
-        await db
+        await tx
           .update(studentTermResults)
           .set({ rankInClass: rank, rankComputedAt: now })
           .where(eq(studentTermResults.id, id));
@@ -933,14 +947,17 @@ export class ExamResultsService {
         .where(and(eq(examSubjectSchedules.examId, examId), eq(examSubjectSchedules.classId, classId)));
 
       // Entry completeness: every schedule's cohort × components have rows.
+      // ROWS, not distinct students — one entered cell per student still
+      // leaves the class half-entered, and publishing it would silently
+      // score the missing components as zero.
       for (const schedule of schedules) {
         const cohort = await this.cohortOf(tx, classId, exam.academicYearId, schedule.sectionId);
         const [components] = await tx
           .select({ count: sql<number>`count(*)::int` })
           .from(examComponents)
           .where(eq(examComponents.scheduleId, schedule.id));
-        const entered = await tx
-          .selectDistinct({ studentId: studentComponentResults.studentId })
+        const [entered] = await tx
+          .select({ count: sql<number>`count(*)::int` })
           .from(studentComponentResults)
           .where(
             and(
@@ -948,7 +965,8 @@ export class ExamResultsService {
               sql`${studentComponentResults.resultStatus} <> 'draft'`,
             ),
           );
-        if ((components?.count ?? 0) === 0 || entered.length < cohort.length) {
+        const expected = cohort.length * (components?.count ?? 0);
+        if ((components?.count ?? 0) === 0 || (entered?.count ?? 0) < expected) {
           throw new Error(
             "Entry is incomplete for this class — every student needs every component entered (or marked absent).",
           );
@@ -987,10 +1005,19 @@ export class ExamResultsService {
       const cohortIds = cohort.map((c) => c.studentId);
 
       if (scheduleIds.length > 0) {
+        // Only entered-or-better rows flip: the gate above proved no drafts
+        // remain, and this predicate keeps the flip total even if a draft
+        // ever sneaks in — flipping an empty draft would violate the
+        // value-present CHECK and abort the whole publication.
         await tx
           .update(studentComponentResults)
           .set({ resultStatus: "published", publishedAt: new Date() })
-          .where(inArray(studentComponentResults.scheduleId, scheduleIds));
+          .where(
+            and(
+              inArray(studentComponentResults.scheduleId, scheduleIds),
+              sql`${studentComponentResults.resultStatus} <> 'draft'`,
+            ),
+          );
       }
       if (cohortIds.length > 0) {
         await tx
@@ -1353,6 +1380,11 @@ export class ExamResultsService {
   // Revision windows + the quick edit (hard rule 7)
   // -------------------------------------------------------------------------
 
+  /**
+   * Opens a correction window for one class. Reopenable: after a close
+   * (`re_issued`) a later correction opens a new window rather than
+   * forcing a hand edit — every correction stays ledgered.
+   */
   async openRevisionWindow(scope: DataScope, userId: string, examId: string, classId: string) {
     const schoolId = requireSchoolId(scope);
     const [row] = await db
@@ -1362,7 +1394,7 @@ export class ExamResultsService {
         and(
           eq(examClassPublication.examId, examId),
           eq(examClassPublication.classId, classId),
-          eq(examClassPublication.state, "published"),
+          inArray(examClassPublication.state, ["published", "re_issued"]),
           eq(examClassPublication.schoolId, schoolId),
         ),
       )
@@ -1374,6 +1406,10 @@ export class ExamResultsService {
    * Closes the window: ONE recompute of the class's students, ranks once,
    * then every card whose frozen data differs gets a new version — all in
    * one transaction. Cards that did not change keep their version.
+   *
+   * The engine calls below run INSIDE this transaction (the shared-tx
+   * overloads): an outer rollback undoes the recompute too, never a
+   * recomputed aggregate with un-re-versioned cards.
    */
   async closeRevisionWindow(scope: DataScope, userId: string, examId: string, classId: string) {
     const schoolId = requireSchoolId(scope);
@@ -1386,18 +1422,22 @@ export class ExamResultsService {
             eq(examClassPublication.examId, examId),
             eq(examClassPublication.classId, classId),
             eq(examClassPublication.state, "revision_open"),
+            eq(examClassPublication.schoolId, schoolId),
           ),
         );
       if (!publication) return null;
 
-      const [exam] = await tx.select().from(exams).where(eq(exams.id, examId));
+      const [exam] = await tx
+        .select()
+        .from(exams)
+        .where(and(eq(exams.id, examId), eq(exams.schoolId, schoolId)));
       if (!exam) return null;
       const cohort = await this.cohortOf(tx, classId, exam.academicYearId, null);
-      await this.computeClassResults(scope, examId, classId);
-      for (const { studentId } of cohort) {
-        await this.computeTermResult(tx, studentId, exam.termId, schoolId, scope.organizationId);
-      }
-      await this.computeTermRanks(scope, exam.termId);
+      // One engine pass: computeClassResults already folds each student's
+      // term result (no second per-student loop — it doubles the term
+      // compute on large cohorts for identical rows).
+      await this.computeClassResults(scope, examId, classId, tx);
+      await this.computeTermRanks(scope, exam.termId, tx);
 
       const currentCards = await tx
         .select()
@@ -1444,10 +1484,6 @@ export class ExamResultsService {
     });
   }
 
-  /**
-   * The quick edit's impact preview — computed live, never written. Returns
-   * the revised numbers plus every OTHER student whose rank would move.
-   */
   // -------------------------------------------------------------------------
   // Reads — staff card versions + the portal (hard rule 8's ONLY door)
   // -------------------------------------------------------------------------
@@ -1483,79 +1519,37 @@ export class ExamResultsService {
     const [card] = await db
       .select()
       .from(publishedReportCards)
-      .where(and(eq(publishedReportCards.id, cardId), inArray(publishedReportCards.studentId, studentIds)));
-    return card ?? null;
-  }
-
-  async previewRevision(scope: DataScope, input: SubmitRevisionInput) {
-    const schoolId = requireSchoolId(scope);
-    const [result] = await db
-      .select()
-      .from(studentComponentResults)
       .where(
         and(
-          eq(studentComponentResults.id, input.id),
-          eq(studentComponentResults.schoolId, schoolId),
+          eq(publishedReportCards.id, cardId),
+          inArray(publishedReportCards.studentId, studentIds),
+          // Current only, like the list: superseded versions are history,
+          // reachable through the versions read — never as "the" card.
+          eq(publishedReportCards.isCurrent, true),
         ),
       );
-    if (!result) return null;
-
-    const [schedule] = await db
-      .select({ classId: examSubjectSchedules.classId })
-      .from(examSubjectSchedules)
-      .where(eq(examSubjectSchedules.id, result.scheduleId));
-    const [exam] = await db.select().from(exams).where(eq(exams.id, result.examId));
-    if (!schedule || !exam) return null;
-
-    // Simulate: apply the mark, recompute in-memory ranks for the section,
-    // and diff against the current ones.
-    await this.computeClassResults(scope, result.examId, schedule.classId);
-    await this.computeTermResult(db, result.studentId, exam.termId, schoolId, scope.organizationId);
-    await this.computeTermRanks(scope, exam.termId);
-
-    const cohort = await db.transaction(async (tx) =>
-      this.cohortOf(tx, schedule.classId, exam.academicYearId, null),
-    );
-    const affected = (
-      await db
-        .select({
-          studentId: studentTermResults.studentId,
-          rank: studentTermResults.rankInSection,
-          percentage: studentTermResults.percentage,
-        })
-        .from(studentTermResults)
-        .where(
-          and(
-            eq(studentTermResults.termId, exam.termId),
-            inArray(
-              studentTermResults.studentId,
-              cohort.map((c) => c.studentId),
-            ),
-          ),
-        )
-    ).map((r) => ({
-      studentId: r.studentId,
-      rank: r.rank,
-      percentage: r.percentage,
-    }));
-
-    return {
-      componentResultId: input.id,
-      affected: affected,
-    } as unknown as import("@repo/contracts").RevisionImpact;
+    return card ?? null;
   }
 
   /**
    * Applies a post-publication correction: the ledger row FIRST (hard rule
    * 7), then the mark, then the recompute, then the re-photograph of every
    * affected card — one transaction.
+   *
+   * Window enforcement: with an open window for the paper's class the edit
+   * only ledgers + updates the mark (the close recomputes once for all of
+   * them — no card moves mid-window). Without one, the single correction
+   * applies atomically (the plan's invisible auto-window of size one).
+   * Requested == approved by design: the control is the window (or the
+   * single-actor quick edit) + the mandatory reason + the ledger + the
+   * audit row — there is no maker-checker queue in v1.
    */
   async applyRevision(scope: DataScope, userId: string, input: SubmitRevisionInput) {
     const schoolId = requireSchoolId(scope);
 
     // STEP 1 — the ledger row FIRST, then the mark (hard rule 7). One small
     // transaction holding only this row's lock.
-    const componentResultId = await db.transaction(async (tx) => {
+    const step1 = await db.transaction(async (tx) => {
       const [result] = await tx
         .select()
         .from(studentComponentResults)
@@ -1569,6 +1563,9 @@ export class ExamResultsService {
       if (!result) return null;
       if (["draft", "entered"].includes(result.resultStatus)) {
         throw new Error("This entry is not published — edit it directly in the grid.");
+      }
+      if (result.resultStatus === "locked") {
+        throw new Error("This exam is locked — corrections are closed.");
       }
 
       await tx.insert(studentComponentResultRevisions).values({
@@ -1608,9 +1605,39 @@ export class ExamResultsService {
           reason: input.reason,
         },
       });
-      return result.id;
+
+      // Window check: with an open window the close owns the recompute —
+      // this step ledgers + updates the mark and stops. A locked exam
+      // refuses everything, window or not.
+      const [schedule] = await tx
+        .select({ classId: examSubjectSchedules.classId })
+        .from(examSubjectSchedules)
+        .where(eq(examSubjectSchedules.id, result.scheduleId));
+      const [exam] = await tx
+        .select({ status: exams.status })
+        .from(exams)
+        .where(eq(exams.id, result.examId));
+      if (!schedule || !exam) {
+        throw new Error("The paper no longer exists in this school.");
+      }
+      if (exam.status === "locked") {
+        throw new Error("This exam is locked — corrections are closed.");
+      }
+      const [publication] = await tx
+        .select({ state: examClassPublication.state })
+        .from(examClassPublication)
+        .where(
+          and(
+            eq(examClassPublication.examId, result.examId),
+            eq(examClassPublication.classId, schedule.classId),
+            eq(examClassPublication.schoolId, schoolId),
+          ),
+        );
+      return { id: result.id, deferred: publication?.state === "revision_open" };
     });
-    if (componentResultId === null) return null;
+    if (step1 === null) return null;
+    const { id: componentResultId, deferred } = step1;
+    if (deferred) return { componentResultId, applied: true };
 
     // STEP 2 — recompute on FRESH connections. The step-1 locks are released,
     // so the engine's own transactions cannot deadlock against them.

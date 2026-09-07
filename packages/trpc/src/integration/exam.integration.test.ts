@@ -617,6 +617,89 @@ describe("exams integration: hard rule 7 — the correction ledger", () => {
     expect(aCards).toHaveLength(1);
     expect(aCards[0]!.version).toBe(1);
   });
+
+  it("windows accumulate without recompute; close re-issues once; windows reopen", async () => {
+    const scope = scopeOf(world);
+
+    // Open a window on the published class (reopenable states only).
+    const opened = await examResultsService.openRevisionWindow(
+      scope,
+      PRINCIPAL,
+      world.examId,
+      world.classId,
+    );
+    expect(opened?.state).toBe("revision_open");
+
+    // Correct A's mark inside the window: ledgered + mark updated, but NO
+    // recompute — the card stays v1 and the aggregate stays 75.
+    const [aRow] = await db
+      .select()
+      .from(studentComponentResults)
+      .where(
+        and(
+          eq(studentComponentResults.studentId, world.studentA),
+          eq(studentComponentResults.componentId, world.componentId),
+        ),
+      );
+    const queued = await examResultsService.applyRevision(scope, PRINCIPAL, {
+      id: aRow!.id,
+      revisedMarks: "80",
+      revisionType: "marks_correction",
+      reason: "re-evaluation raised the mark to 80",
+    });
+    expect(queued?.applied).toBe(true);
+
+    const [staleSubject] = await db
+      .select()
+      .from(studentSubjectResults)
+      .where(eq(studentSubjectResults.studentId, world.studentA));
+    expect(staleSubject?.finalMarks).toBe("75.00");
+    const aCardsBefore = await db
+      .select()
+      .from(publishedReportCards)
+      .where(eq(publishedReportCards.studentId, world.studentA));
+    expect(aCardsBefore.filter((c) => c.isCurrent)).toHaveLength(1);
+    expect(aCardsBefore.find((c) => c.isCurrent)!.version).toBe(1);
+
+    // Close: one recompute, ranks once, the moved card re-versioned.
+    const closed = await examResultsService.closeRevisionWindow(
+      scope,
+      PRINCIPAL,
+      world.examId,
+      world.classId,
+    );
+    expect(closed!.reIssued).toBeGreaterThanOrEqual(1);
+    const [freshSubject] = await db
+      .select()
+      .from(studentSubjectResults)
+      .where(eq(studentSubjectResults.studentId, world.studentA));
+    expect(freshSubject?.finalMarks).toBe("80.00");
+    const aCardsAfter = await db
+      .select()
+      .from(publishedReportCards)
+      .where(eq(publishedReportCards.studentId, world.studentA));
+    expect(aCardsAfter.find((c) => c.isCurrent)!.version).toBe(2);
+
+    // A second correction is possible: the window reopens from re_issued,
+    // and an empty close re-issues nothing.
+    const reopened = await examResultsService.openRevisionWindow(
+      scope,
+      PRINCIPAL,
+      world.examId,
+      world.classId,
+    );
+    expect(reopened?.state).toBe("revision_open");
+    const emptyClose = await examResultsService.closeRevisionWindow(
+      scope,
+      PRINCIPAL,
+      world.examId,
+      world.classId,
+    );
+    expect(emptyClose!.reIssued).toBe(0);
+    // Slow on a cloud DB by design: open + apply + full single-tx close
+    // (compute + ranks + snapshots) + reopen + close brushes the 30s
+    // default, so this test carries its own budget.
+  }, 120_000);
 });
 
 describe("exams integration: tenancy", () => {

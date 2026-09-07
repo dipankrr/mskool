@@ -3,6 +3,7 @@ import {
   requireSchoolId,
   yearVisibilityWhere,
 } from "./academic.service";
+import { examMarksService } from "./exam-marks.service";
 import { scopeWhere, type DataScope } from "@repo/authz";
 import type {
   CreateExamInput,
@@ -672,6 +673,21 @@ export class ExamConfigService {
         .set({ status: input.target })
         .where(eq(exams.id, exam.id))
         .returning();
+      // ADR-032 §9: eligibility recomputes on state transitions. marks_entry
+      // is the moment the advisory must be fresh — the readiness screen and
+      // the below-bar list read it from here on. Same transaction: a failed
+      // recompute rolls the transition back, never a moved exam with stale
+      // advice.
+      if (input.target === "marks_entry") {
+        await examMarksService.recomputeCohortEligibility(
+          tx,
+          exam.id,
+          exam.termId,
+          exam.academicYearId,
+          schoolId,
+          scope.organizationId,
+        );
+      }
       return row ?? null;
     });
   }
@@ -760,7 +776,7 @@ export class ExamConfigService {
           ),
         );
       const [entered] = await tx
-        .select({ count: sql<number>`count(distinct ${studentComponentResults.studentId})::int` })
+        .select({ count: sql<number>`count(*)::int` })
         .from(studentComponentResults)
         .where(
           and(
@@ -773,8 +789,10 @@ export class ExamConfigService {
         .from(examComponents)
         .where(eq(examComponents.scheduleId, schedule.id));
       const componentCount = components?.count ?? 0;
+      // ROWS, not distinct students: one entered cell per student is still
+      // a half-empty grid. A partially-entered class must not verify.
       const expected = (cohort?.count ?? 0) * componentCount;
-      const actual = (entered?.count ?? 0) * componentCount;
+      const actual = entered?.count ?? 0;
       gaps += Math.max(0, expected - actual);
     }
     return gaps;
