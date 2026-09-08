@@ -164,3 +164,30 @@ Defects found (exam surfaces):
 Journey selectors preserved by design (the track wraps the SAME buttons
 with the SAME labels; badges carry text).
 
+## Round 4 — the owner's question: "are you sure no issues exist?"
+
+No — and the audit proved the point. Three suites had been changed but
+not re-run after the round-2/3 fixes:
+
+- **B6 exam integration: 11/11 green** (re-run; the service changes did
+  not regress it).
+- **smoke:authz: BROKEN — found and fixed.** Two real regressions from
+  the round-2 seed change (the demo teacher gaining Physics):
+  (a) the staffing-count assertions (2 → 3) in both the individual check
+  and the matrix loop; (b) the ADR-029 negative proof — the subject
+  teacher could no longer BE the "permission yes, assignment no" case,
+  so the proof was RE-CAST on the class teacher (homeroom holds
+  marks:create, no subject assignment at all): her save must answer
+  NOT_FOUND, the gate's indistinguishable-from-nonexistent wording. The
+  demo-world drift (e2e-created students breaking count checks) was
+  cleared the documented way: reset:demo + db:seed. **187/187 green.**
+- **e2e full suite: first pass 14/15** — the one failure was the
+  session-boundary spec hitting the RESTORED sign-in limiter (429; the
+  documented back-to-back transient, the limiter doing its job since it
+  is live again). Re-run after the window.
+
+The honest answer to the owner's question: no suite is a proof of
+absence. What exists now is a much wider net — conformance, journey,
+integration, smoke, e2e, unit, static guards — all green, and each
+regression this round was found by RE-RUNNING rather than assuming.
+

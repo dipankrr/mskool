@@ -749,7 +749,10 @@ async function main() {
     "subject_teacher lists 6-A's open assignments",
     staList.ok &&
       Array.isArray(staList.data) &&
-      staList.data.length === 2 &&
+      // 3 since Phase 6a: the demo teacher takes BOTH subjects (the
+      // journey needed a teacher for every scheduled paper) plus the
+      // class teacher's homeroom row.
+      staList.data.length === 3 &&
       staList.data.some((r: any) => r.id === staSubjectTeacher.id) &&
       staList.data.every((r: any) => r.sectionId === sectionA.id),
     staList.ok ? `got ${staList.data?.length}` : `code ${staList.code}`,
@@ -1442,7 +1445,9 @@ async function main() {
             ? undefined
             : (d) =>
                 Array.isArray(d) &&
-                d.length === 2 &&
+                // 3 since Phase 6a: the demo teacher takes BOTH subjects
+                // (the journey's requirement) plus the homeroom row.
+                d.length === 3 &&
                 d.every((r: any) => r.sectionId === sectionA.id),
       },
       {
@@ -2137,7 +2142,14 @@ async function main() {
     mathSave.ok ? `status ${mathSave.data?.resultStatus}` : `code ${mathSave.code}`,
   );
 
-  const physicsSave = await mutate(subjectTeacherCookie, "exam.marks.save", {
+  // ADR-029's negative proof, RE-CAST in Phase 6a: the subject teacher
+  // now teaches BOTH subjects (the journey needed a teacher for every
+  // scheduled paper), so she can no longer BE the "permission yes,
+  // assignment no" case. The class teacher can: she holds marks:create
+  // (homeroom) but has NO subject assignment at all — a save to either
+  // paper must answer NOT_FOUND, which is the gate's indistinguishable
+  // from-nonexistent wording.
+  const physicsSave = await mutate(teacherCookie, "exam.marks.save", {
     organizationId: organization.id,
     schoolId: schoolA.id,
     sectionId: sectionA.id,
@@ -2151,7 +2163,7 @@ async function main() {
     isExempted: false,
   });
   report(
-    "subject_teacher is NOT_FOUND on the Physics paper (no assignment — the timetable question, ADR-029)",
+    "class_teacher (marks:create, no subject assignment) is NOT_FOUND on the Physics paper — the timetable question, ADR-029",
     !physicsSave.ok && physicsSave.code === "NOT_FOUND",
     physicsSave.ok ? "AUTHORIZED — a leak" : `code ${physicsSave.code}`,
   );
