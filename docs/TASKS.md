@@ -6,6 +6,43 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
+**PHASE 6a (BUG HUNT) COMPLETE ON `feature/phase5-exams` (2026-09-08) — 3 commits, ready for owner review.**
+The owner found core-flow bugs by clicking ("can't even create an exam")
+that every gate was green through. Root cause: no suite sent UI-shaped
+payloads through the real router (integration called services directly;
+smoke tested authorization only; e2e walked mounts, not dialogs).
+Phase 6a closed that hole — plan:
+`.kilo/plans/1788702000000-phase6a-exam-bughunt.md`, full inventory:
+`.kilo/plans/phase6a-bug-inventory.md`.
+
+- **9772cde** — the conformance detector (every exam procedure through
+  tRPC createCaller with UI-shaped payloads, real Postgres) + BUG-1..5
+  (weightage contract, row-key omissions, the save-returns-empty tx
+  race, ~25 worded refusals that 500'd, the subjectTypeId picker).
+- **ea6f9d6** — the browser journey (`exam-lifecycle.spec.ts`: principal
+  creates in the dialog → both papers → components → transitions →
+  subject-teacher context enters BOTH papers' marks (wire-verified) →
+  verification → publish; green twice) + BUG-6..10 (fresh-exam dead
+  end, dialog row-wipe on refetch, a self-caught hooks crash, the
+  roster/gate section conflation, the componentless-paper gate
+  disagreement).
+- **0e73d46** — the UI pass with BOTH skills loaded: the lifecycle
+  track (the seven-state walk made visible) + status badge color map.
+
+Ten real bugs found and fixed this phase (on top of the owner's own five
+hardening commits 64afe9a..4af8f5e). Gates at each commit: check-types
+8/8, unit 287, lint 0 errors, builders + openapi, conformance 5/5,
+journey green. The sign-in rate limiter's local-only testing edit was
+reverted — server.ts is byte-identical to HEAD before the merge.
+
+**Next (recorded, not silently dropped):** grade-only entry UI (backend
+exists), mapping delete/end (backend), exam edit dialog, section-scoped
+papers + per-component overrides UI, hub/results typography follow-ups,
+staff + role management (platform gap), exports, portal attendance/fees
+slices.
+
+---
+
 **PHASE 5 COMPLETE ON `feature/phase5-exams` (2026-09-06) — ready for owner review & merge.**
 Plan: `.kilo/plans/1788637674191-phase5-exams.md` — backbone-first (full
 tested domain core before any UI; view endpoints designed only with their
