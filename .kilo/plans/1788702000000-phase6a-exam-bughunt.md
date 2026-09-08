@@ -115,3 +115,28 @@ inspection + general request still working).
   regex-edit code from the shell, use the Edit tool.
 - Commit 1 next: all of the above + gates.
 
+## Round 2 — the browser journey (Commit 2's work)
+
+- `exam-lifecycle.spec.ts`: the principal's journey through the REAL
+  browser — create in the dialog (mock; the seeded exam owns the term's
+  100), schedule BOTH counted subjects, components on BOTH papers,
+  three transitions, marks entry AS THE SUBJECT TEACHER (fresh context
+  with her storage state — marks:create is hers, not the principal's),
+  BOTH papers entered (wire-verified 200s, not UI markers), readiness
+  6/6, verification, publish → "<term> · Published". **GREEN twice
+  consecutively (1.5m each).**
+- The journey caught BUG-6..10 (see the inventory's Round 2 section) —
+  five more real bugs, including one self-inflicted regression (BUG-8)
+  caught within a single run. Iteration lessons recorded in the spec's
+  comments: dialog form-reset races (fill after terms resolve), popup
+  re-render detachment (rows built one at a time), desktop+mobile input
+  duplicates (`:visible` scope), the stale-render row-button click
+  (scoped to the Physics ROW after "2 components" proves the refetch
+  landed), and the publish-confirm race (dialog waited before clicking).
+- The seed's demo teacher now also teaches Physics (one person, two
+  subjects — the small-school shape; the journey needs a teacher who can
+  enter every scheduled paper).
+- Process change after the owner's fair criticism: the journey now runs
+  SYNCHRONOUSLY with a 10-minute command timeout — no more
+  background+sleep polling.
+

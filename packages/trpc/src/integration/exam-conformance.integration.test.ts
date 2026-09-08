@@ -283,7 +283,6 @@ describe("exam router conformance — UI-shaped payloads through the real router
       ...scopeArgs(organizationId, schoolId),
       examId: exam!.id,
       id: scheduleId,
-      sectionId,
     });
     expect(grid?.roster?.length).toBe(1);
 

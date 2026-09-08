@@ -552,6 +552,22 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
       "Schedule at least one subject for this exam before scheduling it.",
   },
   {
+    // BUG-10: a componentless paper passed verification trivially (0
+    // expected entries) and then blocked publish untranslated. Refused at
+    // scheduling time now, with the subject names.
+    match: /^Every scheduled paper needs at least one component/i,
+    code: "BAD_REQUEST",
+    message:
+      "Every scheduled paper needs its parts (e.g. Theory, Internal) before the exam can be scheduled.",
+  },
+  {
+    // The publish-side entry-completeness rule (kept as the backstop).
+    match: /^Entry is incomplete for this class/i,
+    code: "CONFLICT",
+    message:
+      "Some marks are still missing — every student needs every part entered (or marked absent) before publishing.",
+  },
+  {
     // findCoverageGaps: a class's counted subjects must all be on the exam.
     match: /^Coverage incomplete/i,
     code: "BAD_REQUEST",

@@ -318,10 +318,10 @@ export const examRouter = router({
   marks: router({
     entry: staffProcedure("marks:read", { resolveOwner: resolveScheduleOwner, gate: "overlap" })
       .meta({ openapi: { method: "GET", path: "/exam/marks/entry/{id}", tags: ["marks"], summary: "The marks entry grid for one paper (id = schedule id)", protect: true } })
-      .input(z.object({ examId: z.uuid(), id: z.uuid(), sectionId: z.uuid().optional() }))
+      .input(z.object({ examId: z.uuid(), id: z.uuid() }))
       .output(entryGridOutputSchema)
       .query(({ ctx, input }) =>
-        examMarksService.entryGrid(ctx.scope, input.examId, input.id, input.sectionId),
+        examMarksService.entryGrid(ctx.scope, input.examId, input.id),
       ),
 
     studentEntries: staffProcedure("marks:read", { resolveOwner: resolveExamOwner, gate: "overlap" })

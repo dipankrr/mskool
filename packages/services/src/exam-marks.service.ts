@@ -682,7 +682,7 @@ export class ExamMarksService {
    * the school anyway — a schedule id from another branch must be
    * indistinguishable from a typo, not a 500.
    */
-  async entryGrid(scope: DataScope, examId: string, scheduleId: string, sectionId?: string) {
+  async entryGrid(scope: DataScope, examId: string, scheduleId: string) {
     const schoolId = requireSchoolId(scope);
     const [schedule] = await db
       .select()
@@ -696,11 +696,13 @@ export class ExamMarksService {
       );
     if (!schedule) return null;
 
-    // A class-wide paper (NULL section) is entered SECTION by SECTION: the
-    // caller names the section whose roster it is entering (its own — the
-    // subject gate on the save enforces the assignment fact). The view
-    // section never widens a section-scoped paper.
-    const rosterSectionId = schedule.sectionId ?? sectionId ?? null;
+    // BUG-9 fix: the roster follows the PAPER's scope, never the caller's
+    // section pick. The pick exists solely as the ADR-029 save gate's
+    // (section, subject) fact — conflating it with the roster filter made
+    // class-wide papers un-completable through the UI: the grid showed one
+    // section's students while the verification gate counts the whole
+    // class cohort, so unsectioned students could never be entered.
+    const rosterSectionId = schedule.sectionId ?? null;
 
     const [exam] = await db
       .select({

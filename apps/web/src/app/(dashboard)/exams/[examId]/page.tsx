@@ -276,6 +276,22 @@ export default function ExamDetailPage() {
     [subjectNameById, editable, entryOpen, examId, has],
   );
 
+  // BUG-7 fix: these feed the dialogs' form-reset effects, so they MUST be
+  // identity-stable across parent re-renders — an inline filter() hands the
+  // dialog a fresh array on every render, and any background query refetch
+  // (window refocus, staleTime expiry) then wiped the user's in-progress
+  // rows. Memoized: identity changes only when the data really does. They
+  // sit BEFORE the early returns — hooks cannot follow a conditional return
+  // (the Rules of Hooks crash this page when they did).
+  const scheduleRows = useMemo(
+    () => schedules.filter((s) => s.classId === scheduleFor),
+    [schedules, scheduleFor],
+  );
+  const componentsSchedule = useMemo(
+    () => schedules.find((s) => s.id === componentsFor),
+    [schedules, componentsFor],
+  );
+
   if (detail.isLoading) {
     return (
       <>
@@ -302,8 +318,6 @@ export default function ExamDetailPage() {
 
   const allowedTargets = NEXT_TRANSITIONS[exam.status] ?? [];
   const scheduleForClass = classNameById.get(scheduleFor ?? "") ?? "";
-  const scheduleRows = schedules.filter((s) => s.classId === scheduleFor);
-  const componentsSchedule = schedules.find((s) => s.id === componentsFor);
   const allowingStudent = studentNameById.get(allowing ?? "");
 
   return (
@@ -355,14 +369,26 @@ export default function ExamDetailPage() {
           {copy.exams.workflow.scheduleSubtitle}
         </p>
 
-        {examClassIds.length === 0 ? (
-          <EmptyState
-            icon={PlusIcon}
-            title={copy.exams.workflow.scheduleSection}
-            description={copy.exams.workflow.scheduleSubtitle}
-          />
-        ) : (
-          examClassIds.map((classId) => (
+        {/* BUG-6 fix: the class cards used to render only for classes that
+            ALREADY had schedules — a fresh exam was a dead end with no way
+            to add the first paper. While the blueprint is editable, every
+            class of the branch is offered; once entry has opened, only the
+            scheduled classes remain (readiness keeps its own list). */}
+        {(() => {
+          const schedulableClassIds =
+            editable && has("exam:update")
+              ? (classes.data ?? []).map((k) => k.id)
+              : examClassIds;
+          if (schedulableClassIds.length === 0) {
+            return (
+              <EmptyState
+                icon={PlusIcon}
+                title={copy.exams.workflow.scheduleSection}
+                description={copy.exams.workflow.scheduleSubtitle}
+              />
+            );
+          }
+          return schedulableClassIds.map((classId) => (
             <Card key={classId}>
               <CardHeader className="flex-row items-center justify-between">
                 <CardTitle>{classNameById.get(classId) ?? classId}</CardTitle>
@@ -414,8 +440,8 @@ export default function ExamDetailPage() {
                 />
               </CardContent>
             </Card>
-          ))
-        )}
+          ));
+        })()}
       </section>
 
       {/* Readiness — the checklist publish re-checks, advisory and live. */}

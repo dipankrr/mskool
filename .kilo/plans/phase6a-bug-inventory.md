@@ -108,3 +108,41 @@ the setup-screen payloads.
 - Exam name/weightage edit UI (endpoint exists), section-scoped papers,
   per-component grading-scale override, negative marking — schema/service
   features without dialogs.
+
+## Round 2 — the browser journey's catches (BUG-6..10)
+
+The e2e journey (exam-lifecycle.spec.ts) then walked the same lifecycle
+through the real browser and found five more, all fixed:
+
+- **BUG-6:** a fresh exam was a dead end — the detail page's class cards
+  rendered only for classes that ALREADY had schedules, so there was no
+  way to add the first paper. Fixed: while the blueprint is editable,
+  every class of the branch is offered.
+- **BUG-7:** the ScheduleDialog wiped in-progress rows on any background
+  query refetch — the parent recomputed `schedules.filter(...)` every
+  render, handing the dialog's form-reset effect a fresh array identity;
+  React Query's default refetchOnWindowFocus made it a real-user bug
+  (tab away mid-edit, rows gone). Fixed: memoized identities.
+- **BUG-8 (self-inflicted, caught in one run):** the BUG-7 fix initially
+  placed hooks after the component's early returns — a Rules of Hooks
+  violation that crashed the whole page. The journey's own timeout
+  snapshot ("This page hit a problem") caught it. Fixed.
+- **BUG-9:** marks entry conflated the ROSTER filter with the ADR-029
+  gate's section fact. Class-wide papers filtered the grid to one
+  section while the verification gate counts the whole class cohort —
+  unsectioned students could never be entered, so verification could
+  never pass; and before a section was picked, cells accepted typing but
+  every save silently no-opped. Fixed: the roster follows the PAPER's
+  scope (service); the section pick is only the save's gate fact; the
+  grid waits for the pick instead of rendering no-op cells.
+- **BUG-10:** the gates disagreed about componentless papers —
+  verification counted `cohort × 0 components = 0 expected` and passed
+  trivially, then publish refused with an untranslated 500. Fixed: a
+  paper with no parts is refused at SCHEDULING time, worded, with the
+  subject named; publish's rule stays as the backstop (also translated).
+
+The journey also surfaced two product-behavior confirmations (not bugs):
+the principal cannot enter marks (the owner's matrix — the journey now
+switches to the subject teacher's context for that leg, which is the
+real workflow), and a second counting exam in a full term is correctly
+refused (the journey's exam is a mock, which never counts).

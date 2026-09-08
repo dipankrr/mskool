@@ -1381,6 +1381,7 @@ export const copy = {
       subtitle: "One paper at a time. Marks save as you go — the cell says when it has landed.",
       paper: "Paper",
       section: "Section",
+      pickSectionFirst: "Choose your section above before entering marks — it is what authorizes the save.",
       roll: "Roll",
       student: "Student",
       max: "Max",

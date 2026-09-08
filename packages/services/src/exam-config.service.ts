@@ -31,6 +31,7 @@ import {
   studentComponentResults,
   studentEnrollments,
   subjectTypes,
+  subjects,
   termAssessments,
   terms,
 } from "@repo/db/schema";
@@ -796,11 +797,39 @@ export class ExamConfigService {
 
       if (input.target === "scheduled") {
         const schedules = await tx
-          .select({ id: examSubjectSchedules.id })
+          .select({
+            id: examSubjectSchedules.id,
+            subjectId: examSubjectSchedules.subjectId,
+          })
           .from(examSubjectSchedules)
           .where(eq(examSubjectSchedules.examId, exam.id));
         if (schedules.length === 0) {
           throw new Error("Schedule at least one subject before scheduling the exam.");
+        }
+        // BUG-10 fix: a scheduled paper with NO components passed
+        // verification trivially (cohort × 0 components = 0 expected
+        // entries) and then blocked publish with an untranslated refusal —
+        // the gates disagreed about what an empty paper means. A paper
+        // with no parts is a BLUEPRINT error; it is refused here, at
+        // scheduling time, with words.
+        const componentCounts = await tx
+          .select({
+            scheduleId: examSubjectSchedules.id,
+            subjectName: subjects.name,
+            components: sql<number>`count(${examComponents.id})::int`,
+          })
+          .from(examSubjectSchedules)
+          .innerJoin(subjects, eq(examSubjectSchedules.subjectId, subjects.id))
+          .leftJoin(examComponents, eq(examComponents.scheduleId, examSubjectSchedules.id))
+          .where(eq(examSubjectSchedules.examId, exam.id))
+          .groupBy(examSubjectSchedules.id, subjects.name);
+        const emptyPapers = componentCounts.filter((p) => p.components === 0);
+        if (emptyPapers.length > 0) {
+          throw new Error(
+            `Every scheduled paper needs at least one component — add the parts (e.g. Theory, Internal) for ${emptyPapers
+              .map((p) => p.subjectName)
+              .join(", ")}.`,
+          );
         }
         const gaps = await this.findCoverageGaps(tx, exam.id, exam.academicYearId);
         if (gaps.length > 0) {

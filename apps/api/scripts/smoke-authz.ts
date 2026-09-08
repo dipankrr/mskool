@@ -2111,7 +2111,6 @@ async function main() {
     schoolId: schoolA.id,
     examId: examSeed.id,
     id: mathScheduleSeed.id,
-    sectionId: sectionA.id,
   });
   report(
     "subject_teacher opens the Mathematics marks grid (marks:read + schedule overlap)",
@@ -2184,7 +2183,6 @@ async function main() {
     schoolId: schoolA.id,
     examId: examSeed.id,
     id: mathScheduleSeed.id,
-    sectionId: sectionA.id,
   });
   report(
     "librarian is FORBIDDEN on the marks grid (no marks:read)",

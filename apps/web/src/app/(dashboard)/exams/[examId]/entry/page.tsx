@@ -62,14 +62,18 @@ export default function ExamEntryPage() {
   const schedules = detail.data?.schedules ?? [];
   const scheduleId = pickedScheduleId ?? schedules[0]?.id ?? null;
 
-  // A class-wide paper is entered section by section (the subject gate
-  // checks the (section, subject) assignment fact) — the teacher names
-  // her section before the roster loads.
+  // The teacher's section pick is the ADR-029 save gate's (section,
+  // subject) fact — never a roster filter (BUG-9: the roster follows the
+  // PAPER's scope server-side, so class-wide papers show the whole class
+  // while the pick authorizes the save).
   const [pickedSectionId, setPickedSectionId] = useState<string | null>(null);
-  const grid = useEntryGrid(examId, scheduleId ?? undefined, pickedSectionId ?? undefined);
+  const grid = useEntryGrid(examId, scheduleId ?? undefined);
   const sections = useSections(grid.data?.classId ?? undefined, {
     enabled: Boolean(grid.data && !grid.data.sectionId),
   });
+  // A class-wide paper cannot be SAVED until the section is named — the
+  // grid waits for it rather than rendering cells that silently no-op.
+  const needsSection = Boolean(grid.data && !grid.data.sectionId && !pickedSectionId);
 
   // A new schedule may belong to a different class — the section choice
   // does not carry over.
@@ -256,6 +260,13 @@ export default function ExamEntryPage() {
           <Button variant="outline" size="sm" onClick={() => void grid.refetch()}>
             {copy.common.retry}
           </Button>
+        </div>
+      ) : needsSection ? (
+        // The gate's fact must be named BEFORE cells render — a grid that
+        // accepts typing but no-ops every save is the silent-failure UX
+        // this replaces (BUG-9).
+        <div className="mt-8 flex flex-col items-start gap-2">
+          <p className="text-sm">{copy.exams.entry.pickSectionFirst}</p>
         </div>
       ) : grid.data ? (
         <MarksEntryGrid

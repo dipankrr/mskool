@@ -1373,6 +1373,17 @@ async function main() {
     role: "subject_teacher",
     subjectId: subjectMathA.id,
   });
+  // The same teacher also takes Physics — one person, two subjects is the
+  // normal small-school shape, and the exam journey needs a teacher who
+  // can enter every paper the blueprint schedules (ADR-029's gate keys on
+  // the (section, subject) assignment).
+  await findOrCreateSectionTeacherAssignment(scopeA, {
+    sectionId: sectionA.id,
+    academicYearId: currentYearA.id,
+    userId: subjectTeacherUser.id,
+    role: "subject_teacher",
+    subjectId: subjectPhysicsA.id,
+  });
   const staHomeroom = await findOrCreateSectionTeacherAssignment(scopeA, {
     sectionId: sectionA.id,
     academicYearId: currentYearA.id,
