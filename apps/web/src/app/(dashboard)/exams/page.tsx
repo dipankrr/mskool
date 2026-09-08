@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { createExamSchema, type CreateExamInput } from "@repo/contracts";
 
 import { Badge } from "@/components/ui/badge";
+import { statusBadgeVariant } from "@/features/exams/exam-lifecycle-track";
 import { DataTable } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { FormDialog } from "@/components/form-dialog";
@@ -267,7 +268,11 @@ export default function ExamsPage() {
         }),
         column.accessor("status", {
           header: copy.exams.workflow.status,
-          cell: ({ row }) => <Badge variant="outline">{statusLabel(row.original.status)}</Badge>,
+          cell: ({ row }) => (
+            <Badge variant={statusBadgeVariant(row.original.status)}>
+              {statusLabel(row.original.status)}
+            </Badge>
+          ),
         }),
         column.accessor("termName", {
           header: copy.exams.workflow.term,
@@ -313,7 +318,7 @@ export default function ExamsPage() {
             <Link href={`/exams/${row.id}`} className="block rounded-lg border p-4">
               <p className="flex items-center justify-between font-medium">
                 {row.name}
-                <Badge variant="outline">{statusLabel(row.status)}</Badge>
+                <Badge variant={statusBadgeVariant(row.status)}>{statusLabel(row.status)}</Badge>
               </p>
               <p className="text-muted-foreground mt-1 text-xs">
                 {EXAM_TYPE_LABELS[row.examType] ?? row.examType} · {row.termName || copy.common.none}

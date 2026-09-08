@@ -140,3 +140,27 @@ inspection + general request still working).
   SYNCHRONOUSLY with a 10-minute command timeout — no more
   background+sleep polling.
 
+## Round 3 — the UI/UX pass (Commit 3)
+
+Skills loaded for real this time: `frontend-product-ux-skill` (workflow/
+states/hierarchy review) and `frontend-design` (the visual layer never
+opened during S1–S5). Defect list from the review, then what shipped:
+
+Defects found (exam surfaces):
+1. The exam's seven-state walk was INVISIBLE — a row of context-less
+   buttons; "where are we, what's next" (the page's single job) was
+   unanswerable at a glance. → The lifecycle TRACK: done states check,
+   current state fills and labels, future stays quiet; the transition
+   buttons stay beside it (the map and the legs).
+2. Every status badge was variant="outline" — seven states, one look;
+   scanning the hub meant reading text rows. → statusBadgeVariant map
+   (entry states filled, published secondary, locked destructive; text
+   always names the state, color never the only signal).
+3. (Recorded, not fixed this pass — the restraint call: one signature
+   element, quiet surroundings): hub density/term grouping, results
+   table typography, portal card print styling. These are follow-ups,
+   not regressions.
+
+Journey selectors preserved by design (the track wraps the SAME buttons
+with the SAME labels; badges carry text).
+

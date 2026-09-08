@@ -35,6 +35,7 @@ import { EmptyState } from "@/components/empty-state";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { PageHeader } from "@/components/page-header";
 import { ComponentsDialog } from "@/features/exams/components-dialog";
+import { ExamLifecycleTrack, statusBadgeVariant } from "@/features/exams/exam-lifecycle-track";
 import { ScheduleDialog } from "@/features/exams/schedule-dialog";
 import {
   useEligibilityActions,
@@ -332,6 +333,11 @@ export default function ExamDetailPage() {
           </Link>
         }
       />
+
+      {/* The walk, made visible: where this exam is and what remains.
+          The transition BUTTONS below stay — the track is the map, the
+          buttons are the legs. */}
+      <ExamLifecycleTrack status={exam.status} />
 
       {/* Lifecycle — the next legal moves; the server words any refusal. */}
       {allowedTargets.length > 0 && has("exam:update") ? (
