@@ -79,6 +79,12 @@ export function CurriculumSection({
     staleTime: 30_000,
     enabled: canReadMappings,
   });
+  // ADR-032's subject types — the mapping create REQUIRES one (the service
+  // refuses without), so the picker reads them whenever the dialog can open.
+  const subjectTypes = trpc.exam.subjectTypes.list.useQuery(scopeArgs(), {
+    staleTime: 30_000,
+    enabled: canReadMappings,
+  });
   const mappings = trpc.assignment.subjectMapping.list.useQuery(
     { ...scopeArgs(), academicYearId, classId },
     { enabled: canReadMappings },
@@ -97,6 +103,7 @@ export function CurriculumSection({
 
   const [mappingOpen, setMappingOpen] = useState(false);
   const [mappingSubject, setMappingSubject] = useState("");
+  const [mappingType, setMappingType] = useState("");
   const [mappingSequence, setMappingSequence] = useState("");
   const [assignmentOpen, setAssignmentOpen] = useState(false);
   const [assignmentSubject, setAssignmentSubject] = useState("");
@@ -110,6 +117,14 @@ export function CurriculumSection({
     }
     return map;
   }, [subjects.data]);
+
+  const typeNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const type of (subjectTypes.data ?? []) as Array<{ id: string; name: string }>) {
+      map.set(type.id, type.name);
+    }
+    return map;
+  }, [subjectTypes.data]);
 
   const mappingIds = new Set((mappings.data ?? []).map((m) => m.subjectId));
   const mappableSubjects = (subjects.data ?? []).filter(
@@ -335,7 +350,7 @@ export function CurriculumSection({
         pending={createMapping.isPending}
         onSubmit={(event) => {
           event.preventDefault();
-          if (!mappingSubject) return;
+          if (!mappingSubject || !mappingType) return;
           createMapping.mutate({
             ...scopeArgs(),
             academicYearId,
@@ -345,6 +360,11 @@ export function CurriculumSection({
               academicYearId,
               classId,
               subjectId: mappingSubject,
+              // ADR-032's core idea: the TYPE decides whether the subject
+              // counts toward the result, is graded-only, and which card
+              // widget it renders in. The service refuses a mapping without
+              // one — this dialog once omitted it and could never succeed.
+              subjectTypeId: mappingType,
               sequenceNumber: Number(mappingSequence || (mappings.data?.length ?? 0) + 1),
             },
           });
@@ -376,6 +396,33 @@ export function CurriculumSection({
             </SelectContent>
           </Select>
           <FieldDescription>{copy.classes.curriculum.subjectHelp}</FieldDescription>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="curriculum-type">{copy.classes.curriculum.subjectType}</FieldLabel>
+          <Select
+            value={mappingType}
+            onValueChange={(v) => {
+              if (v) setMappingType(v);
+            }}
+          >
+            <SelectTrigger id="curriculum-type">
+              <SelectValue>
+                {(value: string | null) =>
+                  value
+                    ? (typeNameById.get(value) ?? copy.common.none)
+                    : copy.common.required
+                }
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {((subjectTypes.data ?? []) as Array<{ id: string; name: string }>).map((type) => (
+                <SelectItem key={type.id} value={type.id}>
+                  {type.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <FieldDescription>{copy.classes.curriculum.subjectTypeHelp}</FieldDescription>
         </Field>
         <Field>
           <FieldLabel htmlFor="curriculum-sequence">{copy.sessions.termFields.sequence}</FieldLabel>

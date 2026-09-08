@@ -61,7 +61,6 @@ export function ComponentsDialog({
     form.reset({
       id: scheduleId,
       components: components.map((c) => ({
-        scheduleId: c.scheduleId,
         name: c.name,
         maxMarks: c.maxMarks,
         passMarks: c.passMarks,
@@ -95,7 +94,6 @@ export function ComponentsDialog({
           id: scheduleId,
           components: data.components.map((row, index) => ({
             ...row,
-            scheduleId,
             sequenceNumber: index + 1,
           })),
         }),
@@ -205,7 +203,6 @@ export function ComponentsDialog({
             variant="outline"
             onClick={() =>
               append({
-                scheduleId,
                 name: "",
                 maxMarks: "",
                 passMarks: "",

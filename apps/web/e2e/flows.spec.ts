@@ -33,12 +33,11 @@ const DETAIL_SUBTITLE = "The student's record: identity, session enrollment, and
  * A teaching day in the seeded 2025-26 calendar (Mon-Fri; not a holiday),
  * reserved for THE marking test so it starts unmarked on every run —
  * the mark itself is an upsert, so a re-run re-marks the same values.
- * History: 2025-12-01, 2025-12-08, then 2025-12-15 — all consumed by earlier runs
- * (a marked date makes the derived DONE state refuse the second mark,
- * correctly). Bumped again 2026-09-04 for the same reason.
+ * History: 2025-12-01, 2025-12-08, 2025-12-15, 2025-12-22 — all consumed by
+ * earlier runs (a marked date makes the derived DONE state refuse the
+ * second mark, correctly). Bumped again 2026-09-08 for the same reason.
  */
-const MARK_DATE = "2025-12-22";
-const SECTION_LABEL = "Class 6 · A";
+const MARK_DATE = "2025-12-29";const SECTION_LABEL = "Class 6 · A";
 
 /**
  * Opens a Base UI select and picks an option by its visible label. The
@@ -296,6 +295,42 @@ test.describe("read-only day view (principal)", () => {
 const FAMILY_SCHOOL = "Demo Trust";
 const FAMILY_PASSWORD = "Password123!";
 const CHANGED_PASSWORD = "Password456!";
+
+test.describe("exam creation flow (principal)", () => {
+  test.use({ storageState: "../../auth-principal.json" });
+
+  test("creates an exam from the hub and it lists afterwards", async ({
+    page,
+  }) => {
+    // The regression for the missing-branch bug: the create mutation used
+    // to send org-only scope, so the server always answered "choose a
+    // branch first" no matter what the switcher showed. A listed row is
+    // the server's truth, not the toast's.
+    const stamp = Date.now().toString(36);
+    const name = `E2E Exam ${stamp}`;
+
+    await page.goto("/exams");
+    await expect(page.getByRole("heading", { name: "Exams" }).first()).toBeVisible();
+    await page.waitForLoadState("networkidle");
+
+    await page.getByRole("button", { name: "Add exam" }).first().click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByText("Add exam")).toBeVisible();
+
+    await dialog.locator("#exam-name").fill(name);
+    // The year's first term — whatever the seed names it, the first
+    // option is a real term and the create only needs one.
+    await dialog.locator("#exam-term").click();
+    await page.getByRole("option").first().click();
+
+    // Type stays Regular, weightage stays 100 — the defaults are the test.
+    await dialog.getByRole("button", { name: "Create" }).click();
+    await expect(dialog).toBeHidden();
+
+    // The hub lists her by name — the row came back from the server.
+    await expect(page.getByRole("link", { name })).toBeVisible();
+  });
+});
 
 test.describe("family login flow (portal)", () => {
   test("signs in by phone, is forced to change the password, sees results", async ({

@@ -537,6 +537,8 @@ export const copy = {
       subtitle: "The subjects this class takes this year. The exam blueprint's coverage gate counts these rows.",
       subject: "Subject",
       subjectHelp: "Each subject maps once; a wrong mapping is unmapped and re-added, never re-pointed.",
+      subjectType: "Result type",
+      subjectTypeHelp: "Decides whether it counts toward the result, takes a grade instead of marks, and which card section it appears in.",
       mapSubject: "Map subject",
       mapped: "Subject mapped.",
       elective: "Elective",

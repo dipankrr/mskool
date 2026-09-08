@@ -1046,7 +1046,6 @@ async function seedExamWorld(params: {
       id: entryExamId,
       schedules: [
         {
-          examId: entryExamId,
           classId,
           subjectId: subjectMathId,
           examDate: "2025-08-04",
@@ -1054,7 +1053,6 @@ async function seedExamWorld(params: {
           durationMinutes: 60,
         },
         {
-          examId: entryExamId,
           classId,
           subjectId: subjectPhysicsId,
           examDate: "2025-08-06",
@@ -1071,7 +1069,6 @@ async function seedExamWorld(params: {
       id: entryScheduleId,
       components: [
         {
-          scheduleId: entryScheduleId,
           name: "Theory",
           maxMarks: "100",
           passMarks: "40",
@@ -1088,7 +1085,6 @@ async function seedExamWorld(params: {
       id: entryPhysicsScheduleId,
       components: [
         {
-          scheduleId: entryPhysicsScheduleId,
           name: "Theory",
           maxMarks: "100",
           passMarks: "40",

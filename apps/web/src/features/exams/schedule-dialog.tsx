@@ -75,10 +75,11 @@ export function ScheduleDialog({
     form.reset({
       id: examId,
       schedules: schedules.map((s) => ({
-        examId,
         classId: s.classId,
         // Round-tripped, never dropped: omitting it would silently widen a
-        // section paper to the whole class on save.
+        // section paper to the whole class on save. (The exam itself rides
+        // the envelope's `id` — per-row examId was removed from the
+        // contract in Phase 6a.)
         sectionId: s.sectionId,
         subjectId: s.subjectId,
         examDate: s.examDate,
@@ -271,7 +272,6 @@ export function ScheduleDialog({
           variant="outline"
             onClick={() =>
               append({
-                examId,
                 classId,
                 sectionId: null,
                 subjectId: "",

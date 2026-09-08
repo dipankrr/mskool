@@ -272,6 +272,12 @@ export const examScheduleInput = createInsertSchema(examSubjectSchedules, {
     id: true,
     organizationId: true,
     schoolId: true,
+    // The exam comes from the envelope's `id`, stamped by the service on
+    // every row — a per-row examId would let a row claim a different exam
+    // than the one being saved, and it made the UI's row shape (classId +
+    // subjectId only) a 400: the ScheduleDialog's save never worked.
+    // Found by the conformance suite, Phase 6a.
+    examId: true,
     isLocked: true,
     createdAt: true,
     updatedAt: true,
@@ -304,7 +310,16 @@ export const examComponentInput = createInsertSchema(examComponents, {
     .nullable()
     .optional(),
 })
-  .omit({ id: true, organizationId: true, schoolId: true, createdAt: true, updatedAt: true })
+  .omit({
+    id: true,
+    organizationId: true,
+    schoolId: true,
+    // The schedule comes from the envelope's `id`, stamped by the service
+    // on every row — same reasoning as examScheduleInput's examId omit.
+    scheduleId: true,
+    createdAt: true,
+    updatedAt: true,
+  })
   .refine((v) => Number(v.passMarks) <= Number(v.maxMarks), {
     message: "Pass marks cannot exceed the maximum.",
     path: ["passMarks"],

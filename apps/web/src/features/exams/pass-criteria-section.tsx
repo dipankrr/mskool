@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { PlusIcon, ScrollTextIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 
 import {
   createPassCriteriaSchema,
@@ -289,7 +290,7 @@ function CriteriaDialog({
 }
 
 export function PassCriteriaSection() {
-  const { academicYearId, scopeArgs } = useActiveContext();
+  const { academicYearId, scopeArgs, writeScopeArgs } = useActiveContext();
   const criteria = usePassCriteria(academicYearId);
   const { create, update } = usePassCriteriaMutations(academicYearId);
   const classes = useClasses();
@@ -467,10 +468,15 @@ export function PassCriteriaSection() {
         pending={create.isPending || update.isPending}
         onSubmit={async (data) => {
           try {
+            const scope = writeScopeArgs();
+            if (!scope) {
+              toast.error(copy.errors.needsBranch);
+              return;
+            }
             if (editing) {
-              await update.mutateAsync({ ...scopeArgs(), id: editing.id, data });
+              await update.mutateAsync({ ...scope, id: editing.id, data });
             } else if (academicYearId) {
-              await create.mutateAsync({ ...scopeArgs(), academicYearId, data });
+              await create.mutateAsync({ ...scope, academicYearId, data });
             }
             setFormOpen(false);
             setEditing(undefined);

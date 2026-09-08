@@ -537,6 +537,160 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
     message:
       "That status change is not allowed right now. Refresh to see the enrollment's current state.",
   },
+  // ── The exam domain (exam-config/marks/results services) ──────────────────
+  // Every one of these is a DELIBERATE workflow refusal with wording the
+  // service chose (ADR-032's "worded errors, never a silent flip") — but
+  // until this block existed, translateError did not know them, so each one
+  // reached the browser as "Something went wrong. Please try again." The
+  // gates worked; nobody could read the reason. Found by the Phase 6a
+  // conformance walk: a coverage refusal 500'd instead of wording itself.
+  {
+    // transition → scheduled with no blueprint.
+    match: /^Schedule at least one subject/i,
+    code: "BAD_REQUEST",
+    message:
+      "Schedule at least one subject for this exam before scheduling it.",
+  },
+  {
+    // findCoverageGaps: a class's counted subjects must all be on the exam.
+    match: /^Coverage incomplete/i,
+    code: "BAD_REQUEST",
+    message:
+      "Some subjects this class teaches are missing from the exam. Every counted subject must be scheduled.",
+  },
+  {
+    // The term-weightage invariant: counting exams of a term sum to 100.
+    match: /^Counting exams of this term weigh/i,
+    code: "BAD_REQUEST",
+    message:
+      "This term's counting exams now weigh more than 100 in total. Adjust the weightages first.",
+  },
+  {
+    // The lifecycle map: an illegal from→to move.
+    match: /^Cannot move an exam from/i,
+    code: "BAD_REQUEST",
+    message:
+      "That state change is not allowed. The exam's current state decides what comes next.",
+  },
+  {
+    // The template locks: entry has opened, marks exist.
+    match: /blueprint is frozen|can no longer be restructured|component result exists/i,
+    code: "CONFLICT",
+    message:
+      "Marks exist for this exam — its blueprint can no longer be restructured.",
+  },
+  {
+    match: /This schedule is locked — marks entry has begun/i,
+    code: "CONFLICT",
+    message: "Marks entry has begun on this paper — its components are locked.",
+  },
+  {
+    match: /weightages must sum to exactly 100/i,
+    code: "BAD_REQUEST",
+    message:
+      "Component weightages must add up to exactly 100. Adjust the parts so they total 100.",
+  },
+  {
+    // saveComponentResult's state and concurrency refusals.
+    match: /Marks entry is not open for this exam/i,
+    code: "CONFLICT",
+    message: "Marks entry is not open for this exam yet.",
+  },
+  {
+    match: /open a revision window to correct it|through the revision ledger|can no longer be autosaved/i,
+    code: "CONFLICT",
+    message:
+      "This entry is locked. Corrections go through the revision window after publication.",
+  },
+  {
+    match: /changed while you were typing/i,
+    code: "CONFLICT",
+    message:
+      "Someone else saved this cell while you were typing — refresh the cell and reapply.",
+  },
+  {
+    // Verification: partial entry refuses.
+    match: /mark entries are still missing/i,
+    code: "BAD_REQUEST",
+    message:
+      "Some marks are still missing — every student needs every part entered (or marked absent) before verification.",
+  },
+  {
+    match: /unentered entry cannot be verified/i,
+    code: "BAD_REQUEST",
+    message: "An empty entry cannot be verified — enter a value or mark it absent first.",
+  },
+  {
+    // The publish gates.
+    match: /must be under verification before any class can publish/i,
+    code: "CONFLICT",
+    message:
+      "The exam must be in verification before results can be published.",
+  },
+  {
+    match: /recompute the results before publishing/i,
+    code: "CONFLICT",
+    message:
+      "Marks changed after the last compute — recompute the results before publishing.",
+  },
+  {
+    // The revision-window guards (correct through the window, not around it).
+    match: /Revision window is not open|revision window is already open|No revision window is open/i,
+    code: "CONFLICT",
+    message:
+      "The correction window decides when marks can change after publication — open it first.",
+  },
+  {
+    match: /class has already been published/i,
+    code: "CONFLICT",
+    message: "This class's results are already published.",
+  },
+  {
+    // Term not of this school (createExam's parent guard).
+    match: /^Term not found in this school/i,
+    code: "BAD_REQUEST",
+    message:
+      "That term is not at this branch. Choose a term from the branch you are working in.",
+  },
+  {
+    // Weight/count lock once marks exist.
+    match: /weight in the term can no longer change/i,
+    code: "CONFLICT",
+    message:
+      "This exam already has marks — its weight in the term can no longer change.",
+  },
+  {
+    // Grading-scale lifecycle guards.
+    match: /contiguous — no gaps or overlaps|Bands must start at 0|Bands must end at 100|cannot end before it starts/i,
+    code: "BAD_REQUEST",
+    message:
+      "Grading bands must sit side by side from 0 to 100 with no gaps or overlaps.",
+  },
+  {
+    match: /scale is locked|already has assessment data/i,
+    code: "CONFLICT",
+    message:
+      "This is already in use — its policy is locked. Create a new one to change it.",
+  },
+  {
+    // Subject-type flag lock.
+    match: /already has assessment data — its result flags and assessment mode are locked/i,
+    code: "CONFLICT",
+    message:
+      "This subject type already has assessment data — its flags are locked. Assign a different type instead.",
+  },
+  {
+    // Portal access (ADR-007).
+    match: /already belongs to another portal login|is already this login's phone/i,
+    code: "CONFLICT",
+    message: "That phone number is already in use by another family login.",
+  },
+  {
+    match: /more than one active portal login/i,
+    code: "BAD_REQUEST",
+    message:
+      "This student has more than one active family login — choose which login to change.",
+  },
 ];
 
 // ---------------------------------------------------------------------------

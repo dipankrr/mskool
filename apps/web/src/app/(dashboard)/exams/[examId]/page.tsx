@@ -4,6 +4,7 @@ import { ArrowLeftIcon, PencilIcon, PlusIcon } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import {
   Button,
@@ -118,7 +119,7 @@ const scheduleColumn = createAppColumnHelper<ScheduleRow>();
 export default function ExamDetailPage() {
   const params = useParams<{ examId: string }>();
   const examId = params.examId;
-  const { scopeArgs, has } = useActiveContext();
+  const { scopeArgs, has, writeScopeArgs } = useActiveContext();
 
   const detail = useExamDetail(examId);
   const classes = useClasses();
@@ -143,6 +144,13 @@ export default function ExamDetailPage() {
   });
 
   const exam = detail.data?.exam;
+  // School-parent writes: the branch rides along, or the user is asked to
+  // pick one. Org-only scope always fails server-side (requireSchoolId).
+  const writeScope = () => {
+    const scope = writeScopeArgs();
+    if (!scope) toast.error(copy.errors.needsBranch);
+    return scope;
+  };
   // Stable identity for the hook dependency chain below.
   const schedules = useMemo(() => detail.data?.schedules ?? [], [detail.data]);
   const editable = Boolean(exam && BLUEPRINT_EDITABLE.has(exam.status));
@@ -442,7 +450,11 @@ export default function ExamDetailPage() {
                   variant="outline"
                   size="sm"
                   disabled={recompute.isPending}
-                  onClick={() => recompute.mutate({ ...scopeArgs(), id: examId })}
+                  onClick={() => {
+                    const scope = writeScope();
+                    if (!scope) return;
+                    recompute.mutate({ ...scope, id: examId });
+                  }}
                 >
                   {copy.exams.workflow.readiness.compute}
                 </Button>
@@ -564,7 +576,9 @@ export default function ExamDetailPage() {
         sections={dialogSections.data ?? []}
         pending={saveSchedules.isPending}
         onSubmit={async (data) => {
-          await saveSchedules.mutateAsync({ ...scopeArgs(), ...data });
+          const scope = writeScope();
+          if (!scope) return;
+          await saveSchedules.mutateAsync({ ...scope, ...data });
           setScheduleFor(null);
         }}
       />
@@ -583,7 +597,9 @@ export default function ExamDetailPage() {
           components={componentsSchedule.components}
           pending={saveComponents.isPending}
           onSubmit={async (data) => {
-            await saveComponents.mutateAsync({ ...scopeArgs(), ...data });
+            const scope = writeScope();
+            if (!scope) return;
+            await saveComponents.mutateAsync({ ...scope, ...data });
             setComponentsFor(null);
           }}
         />
@@ -610,8 +626,10 @@ export default function ExamDetailPage() {
         pending={transition.isPending}
         onConfirm={() => {
           if (!transitionTarget) return;
+          const scope = writeScope();
+          if (!scope) return;
           transition.mutate({
-            ...scopeArgs(),
+            ...scope,
             id: examId,
             target: transitionTarget as ExamTransitionInput["target"],
           });
@@ -630,7 +648,9 @@ export default function ExamDetailPage() {
         pending={publishClass.isPending}
         onConfirm={() => {
           if (!publishClassId) return;
-          publishClass.mutate({ ...scopeArgs(), id: examId, classId: publishClassId });
+          const scope = writeScope();
+          if (!scope) return;
+          publishClass.mutate({ ...scope, id: examId, classId: publishClassId });
           setPublishClassId(null);
         }}
       />
@@ -645,7 +665,9 @@ export default function ExamDetailPage() {
         confirmLabel={copy.exams.workflow.readiness.publishAll}
         pending={publishExam.isPending}
         onConfirm={() => {
-          publishExam.mutate({ ...scopeArgs(), id: examId });
+          const scope = writeScope();
+          if (!scope) return;
+          publishExam.mutate({ ...scope, id: examId });
           setPublishAllConfirm(false);
         }}
       />
@@ -694,13 +716,15 @@ export default function ExamDetailPage() {
               onClick={async () => {
                 if (!allowing) return;
                 const reason = allowReason.trim();
+                const scope = writeScope();
+                if (!scope) return;
                 if (allowing === "ALL") {
                   // One reason, every below-bar student: sequential, each
                   // recorded with this user — entry itself stays unblocked.
                   const pending = (readiness.data?.belowBar ?? []).filter((r) => !r.isOverridden);
                   for (const row of pending) {
                     await override.mutateAsync({
-                      ...scopeArgs(),
+                      ...scope,
                       examId,
                       studentId: row.studentId,
                       overrideEligible: true,
@@ -709,7 +733,7 @@ export default function ExamDetailPage() {
                   }
                 } else {
                   override.mutate({
-                    ...scopeArgs(),
+                    ...scope,
                     examId,
                     studentId: allowing,
                     overrideEligible: true,

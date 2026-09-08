@@ -120,6 +120,10 @@ export default function ExamEntryPage() {
     // own, or the one the entering teacher picked for a class-wide paper.
     const sectionId = grid.data?.sectionId ?? pickedSectionId;
     if (!sectionId) return null;
+    // Org scope on purpose: the section pair addresses the school node
+    // server-side, which is exactly how a section-scoped teacher (no
+    // school:read, no selected branch) reaches her own paper. Demanding a
+    // branch here would lock every teacher out.
     return saveCell.mutateAsync({
       ...scopeArgs(),
       examId,
@@ -269,17 +273,23 @@ export default function ExamEntryPage() {
         consequence={copy.exams.entry.verifyConsequence}
         confirmLabel={copy.exams.entry.verify}
         pending={verify.isPending}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (verifiableIds.length === 0) return;
-          verify.mutate({
-            ...scopeArgs(),
-            componentResultIds: verifiableIds,
-            // The same gate pair as the save: the paper's own section (or
-            // the picked one for class-wide papers) and its subject.
-            sectionId: grid.data?.sectionId ?? pickedSectionId ?? "",
-            subjectId: grid.data?.subjectId ?? "",
-          });
-          setVerifyOpen(false);
+          try {
+            await verify.mutateAsync({
+              ...scopeArgs(),
+              componentResultIds: verifiableIds,
+              // The same gate pair as the save: the paper's own section (or
+              // the picked one for class-wide papers) and its subject.
+              // Org scope, same reasoning as onSave above.
+              sectionId: grid.data?.sectionId ?? pickedSectionId ?? "",
+              subjectId: grid.data?.subjectId ?? "",
+            });
+            setVerifyOpen(false);
+          } catch {
+            // The toast carries the wording; the dialog stays open so the
+            // failure is seen, not swallowed behind a closed dialog.
+          }
         }}
       />
     </>

@@ -1068,7 +1068,12 @@ export class ExamConfigService {
           })),
         );
       }
-      return db
+      // Read back through the TRANSACTION's connection: a db.select() here
+      // would borrow a second pool connection that cannot see this
+      // transaction's uncommitted rows — the save looked like it returned
+      // nothing, and the UI re-fetched into the same race. Same class as
+      // the applyRevision fix (Phase 5 B6).
+      return tx
         .select()
         .from(examSubjectSchedules)
         .where(eq(examSubjectSchedules.examId, input.id));
@@ -1140,7 +1145,9 @@ export class ExamConfigService {
           sequenceNumber: c.sequenceNumber ?? i,
         })),
       );
-      return db
+      // Same as saveSchedules: read back through tx, not db — the borrowed
+      // second connection cannot see uncommitted rows.
+      return tx
         .select()
         .from(examComponents)
         .where(eq(examComponents.scheduleId, input.id))

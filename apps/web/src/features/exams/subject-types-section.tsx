@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { LockIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, SparklesIcon, SquarePenIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 
 import {
   createSubjectTypeSchema,
@@ -179,9 +180,16 @@ function SubjectTypeDialog({
 }
 
 export function SubjectTypesSection() {
-  const { scopeArgs } = useActiveContext();
+  const { writeScopeArgs } = useActiveContext();
   const types = useSubjectTypes();
   const { create, update, deactivate, applyPreset } = useSubjectTypeMutations();
+
+  // School-parent writes (org-only scope fails server-side).
+  const writeScope = () => {
+    const scope = writeScopeArgs();
+    if (!scope) toast.error(copy.errors.needsBranch);
+    return scope;
+  };
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<SubjectType | undefined>();
@@ -265,8 +273,10 @@ export function SubjectTypesSection() {
             <Button
               variant="outline"
               onClick={() => {
+                const scope = writeScope();
+                if (!scope) return;
                 // Full branch scope: the preset seeds one school's types.
-                void applyPreset.mutateAsync({ ...scopeArgs() }).catch(() => {});
+                void applyPreset.mutateAsync({ ...scope }).catch(() => {});
               }}
               disabled={applyPreset.isPending}
             >
@@ -338,7 +348,9 @@ export function SubjectTypesSection() {
                 <Button
                   variant="outline"
                   onClick={() => {
-                    void applyPreset.mutateAsync({ ...scopeArgs() }).catch(() => {});
+                    const scope = writeScope();
+                    if (!scope) return;
+                    void applyPreset.mutateAsync({ ...scope }).catch(() => {});
                   }}
                 >
                     {copy.exams.types.applyPreset}
@@ -365,10 +377,12 @@ export function SubjectTypesSection() {
         pending={create.isPending || update.isPending}
         onSubmit={async (data) => {
           try {
+            const scope = writeScope();
+            if (!scope) return;
             if (editing) {
-              await update.mutateAsync({ ...scopeArgs(), id: editing.id, data: data as UpdateSubjectTypeInput });
+              await update.mutateAsync({ ...scope, id: editing.id, data: data as UpdateSubjectTypeInput });
             } else {
-              await create.mutateAsync({ ...scopeArgs(), data: data as CreateSubjectTypeInput });
+              await create.mutateAsync({ ...scope, data: data as CreateSubjectTypeInput });
             }
             setFormOpen(false);
             setEditing(undefined);
@@ -389,7 +403,9 @@ export function SubjectTypesSection() {
         onConfirm={async () => {
           if (!retiring) return;
           try {
-            await deactivate.mutateAsync({ ...scopeArgs(), id: retiring.id });
+            const scope = writeScope();
+            if (!scope) return;
+            await deactivate.mutateAsync({ ...scope, id: retiring.id });
           } finally {
             setRetiring(undefined);
           }

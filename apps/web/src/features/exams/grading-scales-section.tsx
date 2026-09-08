@@ -3,6 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { LockIcon, MoreHorizontalIcon, PencilIcon, PlusIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { useFieldArray, useForm } from "react-hook-form";
 
 import { createGradingScaleSchema, type CreateGradingScaleInput } from "@repo/contracts";
@@ -210,9 +211,16 @@ function GradingScaleDialog({
 }
 
 export function GradingScalesSection() {
-  const { scopeArgs } = useActiveContext();
+  const { writeScopeArgs } = useActiveContext();
   const scales = useGradingScales();
   const { create, update, replaceBands, makeDefault } = useGradingScaleMutations();
+
+  // School-parent writes (org-only scope fails server-side).
+  const writeScope = useCallback(() => {
+    const scope = writeScopeArgs();
+    if (!scope) toast.error(copy.errors.needsBranch);
+    return scope;
+  }, [writeScopeArgs]);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<GradingScale | undefined>();
@@ -220,9 +228,11 @@ export function GradingScalesSection() {
 
   const runMakeDefault = useCallback(
     (id: string) => {
-      makeDefault.mutate({ ...scopeArgs(), id });
+      const scope = writeScope();
+      if (!scope) return;
+      makeDefault.mutate({ ...scope, id });
     },
-    [makeDefault, scopeArgs],
+    [makeDefault, writeScope],
   );
 
   const columns = useMemo<DataTableColumns<GradingScale>>(
@@ -358,6 +368,8 @@ export function GradingScalesSection() {
         pending={create.isPending || replaceBands.isPending || update.isPending}
         onSubmit={async (data, id) => {
           try {
+            const scope = writeScope();
+            if (!scope) return;
             if (id && editing) {
               // Name/description travel the update route; bands travel the
               // replace route (locked scales never reach here — the editor
@@ -367,16 +379,16 @@ export function GradingScalesSection() {
                 (data.description ?? null) !== (editing.description ?? null)
               ) {
                 await update.mutateAsync({
-                  ...scopeArgs(),
+                  ...scope,
                   id,
                   data: { name: data.name, description: data.description },
                 });
               }
               if (!editing.isLocked) {
-                await replaceBands.mutateAsync({ ...scopeArgs(), id, bands: data.bands });
+                await replaceBands.mutateAsync({ ...scope, id, bands: data.bands });
               }
             } else {
-              await create.mutateAsync({ ...scopeArgs(), ...data });
+              await create.mutateAsync({ ...scope, ...data });
             }
             setFormOpen(false);
             setEditing(undefined);
@@ -397,8 +409,10 @@ export function GradingScalesSection() {
         pending={update.isPending}
         onConfirm={() => {
           if (!deactivating) return;
+          const scope = writeScope();
+          if (!scope) return;
           update.mutate(
-            { ...scopeArgs(), id: deactivating.id, data: { isActive: false } },
+            { ...scope, id: deactivating.id, data: { isActive: false } },
             { onSuccess: () => setDeactivating(undefined) },
           );
         }}

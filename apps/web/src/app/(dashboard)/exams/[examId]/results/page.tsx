@@ -4,6 +4,7 @@ import { ArrowLeftIcon } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -95,7 +96,7 @@ function versionDiff(older: CardSubject[], newer: CardSubject[]): string[] {
 export default function ExamResultsPage() {
   const params = useParams<{ examId: string }>();
   const examId = params.examId;
-  const { scopeArgs, has } = useActiveContext();
+  const { scopeArgs, has, writeScopeArgs } = useActiveContext();
 
   const detail = useExamDetail(examId);
   const classes = useClasses();
@@ -170,6 +171,14 @@ export default function ExamResultsPage() {
 
   const entries = useStudentEntries(examId, correcting ?? undefined);
   const versions = useCardVersions(historyFor ?? undefined);
+
+  // School-parent writes (see the detail page): org-only scope fails
+  // server-side, so the branch rides along or the user is asked.
+  const writeScope = () => {
+    const scope = writeScopeArgs();
+    if (!scope) toast.error(copy.errors.needsBranch);
+    return scope;
+  };
   if (detail.isLoading) {
     return <PageHeader title={copy.common.loading} description={undefined} />;
   }
@@ -197,8 +206,10 @@ export default function ExamResultsPage() {
     const marks = revisedMarks.trim() === "" ? null : revisedMarks.trim();
     const grade = revisedGrade.trim() === "" ? null : revisedGrade.trim();
     if (marks === null && grade === null) return;
+    const scope = writeScope();
+    if (!scope) return;
     applyRevision.mutate({
-      ...scopeArgs(),
+      ...scope,
       id: correctingEntry,
       revisedMarks: marks,
       revisedGrade: grade,
@@ -254,14 +265,23 @@ export default function ExamResultsPage() {
           <Button
             variant="outline"
             disabled={compute.isPending || computeRanks.isPending}
-            onClick={() => classId && compute.mutate({ ...scopeArgs(), id: examId, classId })}
+            onClick={() => {
+              if (!classId) return;
+              const scope = writeScope();
+              if (!scope) return;
+              compute.mutate({ ...scope, id: examId, classId });
+            }}
           >
             {copy.exams.results.compute}
           </Button>
           <Button
             variant="ghost"
             disabled={compute.isPending || computeRanks.isPending}
-            onClick={() => computeRanks.mutate({ ...scopeArgs(), termId: detail.data!.exam.termId })}
+            onClick={() => {
+              const scope = writeScope();
+              if (!scope) return;
+              computeRanks.mutate({ ...scope, termId: detail.data!.exam.termId });
+            }}
           >
             {copy.exams.results.computeRanks}
           </Button>
@@ -524,10 +544,12 @@ export default function ExamResultsPage() {
         pending={publishClass.isPending || publishExam.isPending}
         onConfirm={() => {
           if (!publishConfirm) return;
+          const scope = writeScope();
+          if (!scope) return;
           if (publishConfirm === "all") {
-            publishExam.mutate({ ...scopeArgs(), id: examId });
+            publishExam.mutate({ ...scope, id: examId });
           } else if (classId) {
-            publishClass.mutate({ ...scopeArgs(), id: examId, classId });
+            publishClass.mutate({ ...scope, id: examId, classId });
           }
           setPublishConfirm(null);
         }}
@@ -558,10 +580,12 @@ export default function ExamResultsPage() {
         pending={openWindow.isPending || closeWindow.isPending}
         onConfirm={() => {
           if (!classId || !windowAction) return;
+          const scope = writeScope();
+          if (!scope) return;
           if (windowAction === "open") {
-            openWindow.mutate({ ...scopeArgs(), id: examId, classId });
+            openWindow.mutate({ ...scope, id: examId, classId });
           } else {
-            closeWindow.mutate({ ...scopeArgs(), id: examId, classId });
+            closeWindow.mutate({ ...scope, id: examId, classId });
           }
           setWindowAction(null);
         }}

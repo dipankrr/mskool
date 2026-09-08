@@ -5,6 +5,7 @@ import { PlusIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import Link from "next/link";
+import { toast } from "sonner";
 
 import { createExamSchema, type CreateExamInput } from "@repo/contracts";
 
@@ -238,7 +239,7 @@ function ExamDialog({
 }
 
 export default function ExamsPage() {
-  const { academicYearId, has, scopeArgs } = useActiveContext();
+  const { academicYearId, has, writeScopeArgs } = useActiveContext();
   const exams = useExams(academicYearId);
   const terms = useTerms(academicYearId);
   const { create } = useExamWorkflowMutations();
@@ -344,6 +345,13 @@ export default function ExamsPage() {
         exams={rows.map((r) => ({ id: r.id, name: r.name }))}
         pending={create.isPending}
         onSubmit={async (data) => {
+          // School-parent write: the branch rides along, or the user is
+          // asked to pick one — org-only scope always fails server-side.
+          const scope = writeScopeArgs();
+          if (!scope) {
+            toast.error(copy.errors.needsBranch);
+            return;
+          }
           // Practice papers never count: send no weightage so no stale
           // value rides along (the server forces the flag anyway).
           const payload: CreateExamInput =
@@ -355,7 +363,7 @@ export default function ExamsPage() {
                   countsTowardTermResult: false,
                 }
               : data;
-          await create.mutateAsync({ ...scopeArgs(), data: payload });
+          await create.mutateAsync({ ...scope, data: payload });
           setFormOpen(false);
         }}
       />

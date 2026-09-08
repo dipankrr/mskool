@@ -62,9 +62,13 @@ import {
  *
  * Permissions (authz vocabulary, one addition): `exam:*` runs the config and
  * lifecycle, `marks:create/update` the autosave cell (subject-gated),
- * `marks:verify` the review view (subject-gated too — one paper + section
- * per batch; class teacher / VP / principal by default; schools tighten via
- * roles), `marks:publish` the correction ledger
+ * `marks:verify` the review view — deliberately NOT subject-gated: the
+ * verifiers are class teachers, VPs and principals, who hold no teaching
+ * assignment (the gate fact), while the entering subject teacher is
+ * excluded by simply not holding the permission. The service still binds
+ * every batch to one paper + section + enrolled students, so a batch can
+ * neither wander papers nor verify strangers.
+ * `marks:publish` the correction ledger
  * (cache-bypassed sensitive permission), `report_card:read` staff card
  * history. Publication is `exam:publish` — a school-level act.
  *
@@ -351,7 +355,7 @@ export const examRouter = router({
         examMarksService.saveComponentResult(ctx.scope, ctx.userId, input),
       ),
 
-    verify: staffProcedure("marks:verify", { subjectGate: true })
+    verify: staffProcedure("marks:verify")
       .meta({ openapi: { method: "POST", path: "/exam/marks/verify", tags: ["marks"], summary: "Verify a batch of entries", protect: true } })
       .input(verifyComponentResultsInput)
       .output(z.array(componentResultSelectSchema))
