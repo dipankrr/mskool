@@ -67,6 +67,11 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "attendance:update",
     "attendance:export",
     "marks:read",
+    // ADR-029 amendment: the subject gate no longer freezes non-teaching
+    // holders out, so the principal/VP defaults now include create — the
+    // "teacher absent, principal enters marks" small-school case. Their
+    // scope (school) is the bound; schools strip it per-org as always.
+    "marks:create",
     "marks:update",
     "marks:verify",
     "marks:publish",
@@ -152,6 +157,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "attendance:update",
     "attendance:export",
     "marks:read",
+    "marks:create",
     "marks:update",
     "marks:verify",
     "marks:publish",

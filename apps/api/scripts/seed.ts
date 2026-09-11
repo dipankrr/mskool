@@ -1384,6 +1384,38 @@ async function main() {
     role: "subject_teacher",
     subjectId: subjectPhysicsA.id,
   });
+  // A MATH-ONLY teacher — the ADR-029 amendment's crossing proof needs
+  // someone whose only grant is the teaching role and whose subject is
+  // NOT Physics. Everyone else in the demo either teaches both subjects
+  // or holds broader roles (which the amendment lets pass).
+  const mathOnlyTeacherUser = await findOrCreateUser(
+    "subject-teacher-math@demo-trust.test",
+    "Demo Math Teacher",
+  );
+  await findOrCreateStaff(
+    organization.id,
+    schoolA.id,
+    mathOnlyTeacherUser.id,
+    "EMP-MATHONLY",
+    "Vikram",
+    "Iyer",
+    "Subject Teacher",
+  );
+  await findOrCreateAssignment(
+    mathOnlyTeacherUser.id,
+    organization.id,
+    "subject_teacher",
+    "section",
+    sectionA.id,
+    adminUser.id,
+  );
+  await findOrCreateSectionTeacherAssignment(scopeA, {
+    sectionId: sectionA.id,
+    academicYearId: currentYearA.id,
+    userId: mathOnlyTeacherUser.id,
+    role: "subject_teacher",
+    subjectId: subjectMathA.id,
+  });
   const staHomeroom = await findOrCreateSectionTeacherAssignment(scopeA, {
     sectionId: sectionA.id,
     academicYearId: currentYearA.id,
@@ -1771,7 +1803,8 @@ Done.
   ${ADMIN_EMAIL}            org_admin @ org         → both schools
   ${PRINCIPAL_EMAIL}        principal @ school A    → school A only
   ${TEACHER_EMAIL}          class_teacher @ Class 6 → no read_history
-  ${SUBJECT_TEACHER_EMAIL}  subject_teacher @ Class 6-A
+  ${SUBJECT_TEACHER_EMAIL}  subject_teacher @ Class 6-A (Math + Physics)
+  subject-teacher-math@demo-trust.test  subject_teacher @ Class 6-A (Math only — the gate's crossing proof)
   ${VICE_PRINCIPAL_EMAIL}   vice_principal @ school A
   ${ACCOUNTANT_EMAIL}       accountant @ school A
   ${LIBRARIAN_EMAIL}        librarian @ school A

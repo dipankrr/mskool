@@ -3,7 +3,7 @@
 import { ArrowLeftIcon } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -59,7 +59,10 @@ export default function ExamEntryPage() {
   const subjects = trpc.subject.list.useQuery(scopeArgs(), { staleTime: 30_000 });
   const [pickedScheduleId, setPickedScheduleId] = useState<string | null>(null);
 
-  const schedules = detail.data?.schedules ?? [];
+  // Stable identity (the BUG-11 fix's dependency chain): the inline `?? []`
+  // made a fresh array every render, which the memoized derivations below
+  // (scheduleClassId) would see as a change.
+  const schedules = useMemo(() => detail.data?.schedules ?? [], [detail.data]);
   const scheduleId = pickedScheduleId ?? schedules[0]?.id ?? null;
 
   // The teacher's section pick is the ADR-029 save gate's (section,
@@ -67,18 +70,38 @@ export default function ExamEntryPage() {
   // PAPER's scope server-side, so class-wide papers show the whole class
   // while the pick authorizes the save).
   const [pickedSectionId, setPickedSectionId] = useState<string | null>(null);
-  const grid = useEntryGrid(examId, scheduleId ?? undefined);
-  const sections = useSections(grid.data?.classId ?? undefined, {
-    enabled: Boolean(grid.data && !grid.data.sectionId),
+  const grid = useEntryGrid(examId, scheduleId ?? undefined, pickedSectionId ?? undefined);
+  // BUG-11: the picker's sections hang off the PAPER's class (from the
+  // stable detail query), never off grid.data — the pick changes the
+  // grid query's key, grid.data blinks to undefined mid-refetch, and a
+  // picker keyed on it lost its options for exactly that instant: Base UI
+  // saw a controlled value with no matching item and "corrected" the
+  // pick back to null. The console caught the double onValueChange (the
+  // id, then null, ~0ms apart).
+  const scheduleClassId = useMemo(
+    () => schedules.find((s) => s.id === scheduleId)?.classId ?? null,
+    [schedules, scheduleId],
+  );
+  const sections = useSections(scheduleClassId ?? undefined, {
+    enabled: Boolean(scheduleClassId && grid.data && !grid.data.sectionId),
   });
   // A class-wide paper cannot be SAVED until the section is named — the
   // grid waits for it rather than rendering cells that silently no-op.
   const needsSection = Boolean(grid.data && !grid.data.sectionId && !pickedSectionId);
 
-  // A new schedule may belong to a different class — the section choice
-  // does not carry over.
+  // Switching papers may change the class — the section choice does not
+  // carry over. Only a genuine SWITCH resets: the detail query's first
+  // resolution also changes scheduleId (null → first id) and a reset
+  // there would wipe a pick made during a slow load.
+  const prevScheduleIdRef = useRef<string | null>(null);
   useEffect(() => {
-    setPickedSectionId(null);
+    if (
+      prevScheduleIdRef.current !== null &&
+      prevScheduleIdRef.current !== scheduleId
+    ) {
+      setPickedSectionId(null);
+    }
+    prevScheduleIdRef.current = scheduleId;
   }, [scheduleId]);
   const eligibility = useEligibility(examId);
   const saveCell = useSaveCell(examId, scheduleId ?? "");
@@ -269,12 +292,25 @@ export default function ExamEntryPage() {
           <p className="text-sm">{copy.exams.entry.pickSectionFirst}</p>
         </div>
       ) : grid.data ? (
-        <MarksEntryGrid
-          grid={grid.data}
-          editable={entryOpen}
-          eligibility={eligibilityMap}
-          onSave={onSave}
-        />
+        <>
+          {/* ADR-029 (amended): the server already knows whether THIS
+              caller's saves would pass the gate — cells that can't
+              succeed never look editable, and the refusal says its real
+              reason instead of blaming the record. */}
+          {grid.data.canEnter === false ? (
+            <p className="bg-muted text-muted-foreground -mt-2 mb-2 rounded-lg px-4 py-3 text-sm">
+              {grid.data.canEnterReason === "not-assigned"
+                ? copy.exams.entry.readOnlyNotAssigned
+                : copy.exams.entry.readOnlyNoPermission}
+            </p>
+          ) : null}
+          <MarksEntryGrid
+            grid={grid.data}
+            editable={entryOpen && grid.data.canEnter !== false}
+            eligibility={eligibilityMap}
+            onSave={onSave}
+          />
+        </>
       ) : null}
 
       <ConfirmDialog

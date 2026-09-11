@@ -1205,20 +1205,25 @@ describe("the subjectGate — subject-level access is a second fact", () => {
     expect(result.sectionId).toBe(world.section6aId);
   });
 
-  it("her OWN section, the ADJACENT subject: NOT_FOUND — the Phase-1 leftover closes", async () => {
-    // She is scoped to 6-A, and the scope tree has no subject axis, so can()
-    // alone would let her enter every subject in it. The assignment fact is
-    // what refuses — and it refuses with the GENERIC wording, identical for a
-    // fabricated subject id, so probing combinations reveals nothing.
+  it("her OWN section, the ADJACENT subject: FORBIDDEN, honest words — the amendment", async () => {
+    // She is scoped to 6-A, and the scope tree has no subject axis, so
+    // can() alone would let her enter every subject in it. The assignment
+    // fact still refuses — but the ADR-029 AMENDMENT made the refusal
+    // FORBIDDEN with words written for the teacher it refuses (the only
+    // population left reaching it), instead of the old
+    // indistinguishable-from-nonexistent NOT_FOUND the UI dressed as
+    // "this record may have been closed or moved."
     await expectTrpcError(
       marksAt(U().subjectS6A, world.section6aId, world.subjectA1PhysicsId),
-      "NOT_FOUND",
-      "Resource not found.",
+      "FORBIDDEN",
+      "You are not the assigned teacher for this paper.",
     );
+    // A fabricated subject id is the same refusal — the wording names the
+    // caller's own facts, never which subjects exist.
     await expectTrpcError(
       marksAt(U().subjectS6A, world.section6aId, FABRICATED_SUBJECT),
-      "NOT_FOUND",
-      "Resource not found.",
+      "FORBIDDEN",
+      "You are not the assigned teacher for this paper.",
     );
   });
 
@@ -1233,16 +1238,19 @@ describe("the subjectGate — subject-level access is a second fact", () => {
     );
   });
 
-  it("the HOMEROOM teacher holds marks:create but no subject fact — NOT_FOUND", async () => {
-    // teacherC6's STA row is the class_teacher homeroom fact; the fact query
-    // states its own terms (role = subject_teacher), so the timetable saying
-    // "homeroom" confers no subject authority. He covers 6-A, passes the
-    // permission gate, and still cannot enter marks.
-    await expectTrpcError(
-      marksAt(U().teacherC6, world.section6aId, world.subjectA1MathId),
-      "NOT_FOUND",
-      "Resource not found.",
+  it("the HOMEROOM teacher holds marks:create and enters under his scope — the amendment", async () => {
+    // ADR-029 AMENDED: the assignment fact constrains only the
+    // subject_teacher role. teacherC6's homeroom row confers no subject,
+    // but his class_teacher grant of marks:create plus his scope IS his
+    // authority — "if a role has permission then it can do it" (the
+    // owner's rule). He covers 6-A, passes the gates, and the save
+    // resolves.
+    const result = await marksAt(
+      U().teacherC6,
+      world.section6aId,
+      world.subjectA1MathId,
     );
+    expect(result.sectionId).toBe(world.section6aId);
   });
 });
 

@@ -41,12 +41,14 @@ import {
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
+  evaluateSubjectGate,
   router,
   staffListProcedure,
   staffProcedure,
   studentProcedure,
   type OwnerResolver,
 } from "../trpc";
+import { loadScopeNode } from "@repo/authz";
 
 /**
  * EXAMS — Phase 5 (ADR-032). Namespaced `exam.*` for the staff side and
@@ -318,11 +320,49 @@ export const examRouter = router({
   marks: router({
     entry: staffProcedure("marks:read", { resolveOwner: resolveScheduleOwner, gate: "overlap" })
       .meta({ openapi: { method: "GET", path: "/exam/marks/entry/{id}", tags: ["marks"], summary: "The marks entry grid for one paper (id = schedule id)", protect: true } })
-      .input(z.object({ examId: z.uuid(), id: z.uuid() }))
+      .input(z.object({ examId: z.uuid(), id: z.uuid(), sectionId: z.uuid().optional() }))
       .output(entryGridOutputSchema)
-      .query(({ ctx, input }) =>
-        examMarksService.entryGrid(ctx.scope, input.examId, input.id),
-      ),
+      .query(async ({ ctx, input }) => {
+        const grid = await examMarksService.entryGrid(
+          ctx.scope,
+          input.examId,
+          input.id,
+        );
+        if (!grid) return null;
+        // ADR-029 (amended): the same verdict the save's gate will reach,
+        // computed up front so the UI never shows editable cells a save
+        // would refuse. The advisory sectionId only feeds this — the roster
+        // follows the paper's scope (BUG-9).
+        if (!input.sectionId) {
+          return { ...grid, canEnter: null, canEnterReason: null };
+        }
+        const sectionNode = await loadScopeNode(
+          input.sectionId,
+          ctx.organizationId,
+        );
+        if (!sectionNode) {
+          return { ...grid, canEnter: null, canEnterReason: null };
+        }
+        const verdict = await evaluateSubjectGate({
+          authCache: ctx.authCache,
+          organizationId: ctx.organizationId,
+          userId: ctx.userId,
+          sectionNode,
+          sectionId: input.sectionId,
+          subjectId: grid.subjectId,
+          permission: "marks:create",
+        });
+        return {
+          ...grid,
+          canEnter: verdict === "pass",
+          canEnterReason:
+            verdict === "pass"
+              ? null
+              : verdict === "no-permission"
+                ? ("no-permission" as const)
+                : ("not-assigned" as const),
+        };
+      }),
 
     studentEntries: staffProcedure("marks:read", { resolveOwner: resolveExamOwner, gate: "overlap" })
       .meta({ openapi: { method: "GET", path: "/exams/{id}/students/{studentId}/entries", tags: ["marks"], summary: "One student's component entries (id = exam id)", protect: true } })

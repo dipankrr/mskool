@@ -146,3 +146,31 @@ the principal cannot enter marks (the owner's matrix — the journey now
 switches to the subject teacher's context for that leg, which is the
 real workflow), and a second counting exam in a full term is correctly
 refused (the journey's exam is a mock, which never counts).
+
+## Round 5 — the ADR-029 amendment's build (owner-superseded design)
+
+The owner rejected the original gate's collateral (every non-teaching
+holder of marks:create frozen out; the admin's click found it) and
+superseded the design (ADR-029a in DECISIONS.md): permission + scope
+decide for every role except subject_teacher, which stays
+assignment-constrained; dual hats union. Building it surfaced one more
+real bug:
+
+- **BUG-11:** the marks entry page's section picker lost its options
+  for exactly the instant the grid query refetched on a new key —
+  grid.data blinked to undefined, the sections query (keyed on
+  grid.data.classId) blinked with it, and Base UI "corrected" the
+  controlled Select's now-orphaned value back to null. The console
+  caught the smoking gun: onValueChange firing twice, the id then null,
+  ~0ms apart. Fixed: the picker's sections hang off the PAPER's class
+  (from the stable detail query), never off grid data. Any keyed grid
+  refetch would have triggered this — the canEnter feature merely made
+  the pick change the key.
+
+Also fixed en route (the smoke's own, found by the new positive
+checks): the revocation experiment left the principal's grants revoked
+through the entire exam section — the old "principal is FORBIDDEN"
+check passed for the wrong reason. The experiment now restores
+immediately after its own assertion. And the smoke's sign-in origin
+now takes the FIRST entry of a comma-separated CORS_ORIGIN (the .env
+grew an ngrok domain; the API splits the list, the smoke didn't).

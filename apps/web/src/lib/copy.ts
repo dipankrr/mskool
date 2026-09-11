@@ -1382,6 +1382,8 @@ export const copy = {
       paper: "Paper",
       section: "Section",
       pickSectionFirst: "Choose your section above before entering marks — it is what authorizes the save.",
+      readOnlyNotAssigned: "Marks entry for this paper is for its assigned subject teacher — you're viewing read-only.",
+      readOnlyNoPermission: "Entering marks needs the marks:create permission — you're viewing read-only.",
       roll: "Roll",
       student: "Student",
       max: "Max",

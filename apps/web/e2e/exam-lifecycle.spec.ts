@@ -178,13 +178,17 @@ test.describe("exam lifecycle (principal through the browser)", () => {
     await teacherPage.goto(`/exams/${examId}/entry`);
     await teacherPage.waitForURL(/\/entry/, { timeout: 15_000 });
     // Class-wide paper: the grid waits for the section pick (the gate's
-    // fact) — wait for the picker to appear, then choose. Section-scoped
-    // papers render no picker; the wait times out harmlessly.
+    // fact). The listbox must be VISIBLE before its option is clicked —
+    // the sections query resolving mid-open re-renders the options and a
+    // click racing that lands on a detaching node commits nothing (the
+    // run-4/5 lesson, which the schedule dialog's picker already applies).
     const sectionTrigger = teacherPage.locator('[aria-label="Section"]');
-    await sectionTrigger.waitFor({ state: "visible", timeout: 10_000 }).catch(() => {});
+    await sectionTrigger.waitFor({ state: "visible", timeout: 20_000 }).catch(() => {});
     if (await sectionTrigger.isVisible()) {
       await sectionTrigger.click();
+      await expect(teacherPage.getByRole("listbox")).toBeVisible({ timeout: 10_000 });
       await teacherPage.getByRole("option", { name: "A", exact: true }).click();
+      await expect(sectionTrigger).toContainText("A", { timeout: 10_000 });
     }
     // The grid renders after the roster loads — wait for the first cell.
     await expect(teacherPage.locator('input[type="number"]').first()).toBeVisible({
@@ -214,7 +218,9 @@ test.describe("exam lifecycle (principal through the browser)", () => {
       await trigger.waitFor({ state: "visible", timeout: 10_000 }).catch(() => {});
       if (await trigger.isVisible()) {
         await trigger.click();
+        await expect(teacherPage.getByRole("listbox")).toBeVisible({ timeout: 10_000 });
         await teacherPage.getByRole("option", { name: "A", exact: true }).click();
+        await expect(trigger).toContainText("A", { timeout: 10_000 });
       }
     };
     const paperTrigger = teacherPage.locator('[aria-label="Paper"]');

@@ -191,3 +191,35 @@ absence. What exists now is a much wider net — conformance, journey,
 integration, smoke, e2e, unit, static guards — all green, and each
 regression this round was found by RE-RUNNING rather than assuming.
 
+
+## Round 5 — the ADR-029 amendment (owner-superseded design), one commit
+
+The owner found the gate's collateral by clicking (admin + marks:create =
+frozen out of marks entry, refused as "record closed or moved"),
+rejected two draft designs (role-name bypasses: "permissions can change
+school by school"; scope-based bypasses: reopens the teacher-swap hole),
+and supplied the rule: **permission + scope decide for every role except
+subject_teacher, which stays assignment-constrained; dual hats union.**
+ADR-029a records it (DECISIONS.md). Implemented as evaluateSubjectGate
+(trpc.ts), honest FORBIDDEN wording + the web error layer's explicit
+allowlist, canEnter/canEnterReason on the entry read + read-only-with-
+reason UI, principal/VP marks:create defaults.
+
+Building it caught **BUG-11** (the section picker's options blinking
+with every keyed grid refetch — grid.data blinked, the picker's query
+keyed on it blinked, Base UI reset the controlled value; the console
+caught onValueChange firing id-then-null). Fixed at the source: the
+picker hangs off the paper's class from the stable detail query.
+
+The smoke's new positive checks also exposed that its revocation
+experiment left the principal revoked through the exam section — the old
+FORBIDDEN check passed for the wrong reason. And the smoke's sign-in
+origin now takes the first entry of a comma CORS_ORIGIN (the owner's
+ngrok domain joined .env; the API splits the list, the smoke didn't).
+
+Verification: unit 35/35 (4 new gate cases), trpc integration 151/151
+(gate describe re-pinned to the amended table), conformance 5/5 (the
+truth table through the router), smoke 189/189 (admin+, dual-hat+,
+homeroom+, crossing− honest), journey green, all static gates clean.
+The owner's concurrent ngrok/CORS work (server.ts, env.ts ×2,
+next.config, auth-client, trpc client) deliberately left uncommitted.

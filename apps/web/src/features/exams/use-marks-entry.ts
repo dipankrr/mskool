@@ -16,14 +16,19 @@ import { trpc } from "@/lib/trpc/client";
  * these hooks own transport and toasts.
  */
 
-export function useEntryGrid(examId: string | undefined, scheduleId: string | undefined) {
+export function useEntryGrid(
+  examId: string | undefined,
+  scheduleId: string | undefined,
+  /** ADVISORY: feeds the caller's canEnter verdict, never the roster (BUG-9). */
+  sectionId?: string,
+) {
   const { scopeArgs } = useActiveContext();
   // `id` is the schedule's — the procedure is schedule-addressed (the
   // builder's owner resolver needs the id field, the byId pattern). The
   // roster follows the PAPER's scope server-side; the teacher's section
-  // pick is only the save gate's fact (BUG-9).
+  // pick is only the save gate's fact (BUG-9) and the canEnter hint.
   return trpc.exam.marks.entry.useQuery(
-    { ...scopeArgs(), examId: examId ?? "", id: scheduleId ?? "" },
+    { ...scopeArgs(), examId: examId ?? "", id: scheduleId ?? "", ...(sectionId ? { sectionId } : {}) },
     { enabled: Boolean(examId && scheduleId) },
   );
 }

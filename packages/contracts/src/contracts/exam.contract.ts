@@ -411,6 +411,16 @@ export const entryGridOutputSchema = z.object({
   subjectId: z.uuid(),
   passMarks: marksString,
   isLocked: z.boolean(),
+  /**
+   * ADR-029 (amended): would THIS caller's marks.save on this paper pass
+   * the gate? Null when the entering section is not yet named (the UI's
+   * section pick); false with a reason means the grid renders read-only
+   * with the honest line instead of editable cells that would refuse.
+   * The advisory sectionId on the read feeds exactly this — it NEVER
+   * filters the roster (BUG-9's lesson).
+   */
+  canEnter: z.boolean().nullable(),
+  canEnterReason: z.enum(["no-permission", "not-assigned"]).nullable(),
   // Graded-only exam-mode papers are entered as grades, not marks (the
   // implicit Overall component); negative marking follows the exam flag.
   isGradedOnly: z.boolean(),

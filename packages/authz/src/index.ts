@@ -66,13 +66,17 @@ export { can, getDataScopes, permissionsInOrg } from "./can";
 
 // Scope maths and the query filter every service must apply (hard rule 1).
 //
-// scopeCovers / intersectScopes / isAssignmentExpired are internal to this
-// package now (can() and getDataScopes() are their only callers) — the unit
-// tests import them from ./scope directly. Re-export them only when something
-// outside genuinely needs the raw maths.
+// scopeCovers / isAssignmentExpired left the internal-only list in the
+// ADR-029 amendment: the subject gate (packages/trpc) needs the raw
+// maths to implement "a broader grant of the permission wins over the
+// teaching constraint" — iterating the caller's cached assignments the
+// same way can() does. intersectScopes stays internal (getDataScopes
+// remains its only caller).
 export {
   dataScopeFromNode,
+  isAssignmentExpired,
   orgScopeNode,
+  scopeCovers,
   scopeWhere,
   type ScopeColumns,
 } from "./scope";

@@ -61,7 +61,12 @@ const API = process.env.SMOKE_API_URL ?? "http://localhost:4000";
  * has to be reproduced by hand. It must match CORS_ORIGIN, which is what
  * packages/auth passes to better-auth's `trustedOrigins`.
  */
-const WEB_ORIGIN = process.env.CORS_ORIGIN ?? "http://localhost:3000";
+// CORS_ORIGIN may be a comma-separated list (local + a tunnel domain); a
+// browser sends ONE origin per request, and the API splits the list into
+// better-auth's trustedOrigins — the smoke emulates the first entry.
+const WEB_ORIGIN =
+  (process.env.CORS_ORIGIN ?? "http://localhost:3000").split(",")[0]?.trim() ??
+  "http://localhost:3000";
 
 const ADMIN_EMAIL = "admin@demo-trust.test";
 const PRINCIPAL_EMAIL = "principal@demo-trust.test";
@@ -137,7 +142,7 @@ async function getSessionAlive(cookie: string): Promise<boolean> {
  */
 type TrpcEnvelope = {
   result?: { data?: unknown };
-  error?: { data?: { code?: string } };
+  error?: { data?: { code?: string }; message?: string };
 };
 
 type TrpcResult = {
@@ -147,6 +152,8 @@ type TrpcResult = {
   data?: any;
   /** e.g. "FORBIDDEN", "NOT_FOUND". Absent on success. */
   code?: string;
+  /** The server's message, when an assertion pins the wording (the honest refusals). */
+  message?: string;
 };
 
 async function readEnvelope(res: Response): Promise<TrpcResult> {
@@ -156,6 +163,7 @@ async function readEnvelope(res: Response): Promise<TrpcResult> {
     status: res.status,
     data: body.result?.data,
     code: body.error?.data?.code,
+    message: body.error?.message,
   };
 }
 
@@ -749,10 +757,9 @@ async function main() {
     "subject_teacher lists 6-A's open assignments",
     staList.ok &&
       Array.isArray(staList.data) &&
-      // 3 since Phase 6a: the demo teacher takes BOTH subjects (the
-      // journey needed a teacher for every scheduled paper) plus the
-      // class teacher's homeroom row.
-      staList.data.length === 3 &&
+      // 4 since the ADR-029 amendment: the demo teacher (both subjects),
+      // the Math-only crossing-proof teacher, and the homeroom row.
+      staList.data.length === 4 &&
       staList.data.some((r: any) => r.id === staSubjectTeacher.id) &&
       staList.data.every((r: any) => r.sectionId === sectionA.id),
     staList.ok ? `got ${staList.data?.length}` : `code ${staList.code}`,
@@ -1445,9 +1452,9 @@ async function main() {
             ? undefined
             : (d) =>
                 Array.isArray(d) &&
-                // 3 since Phase 6a: the demo teacher takes BOTH subjects
-                // (the journey's requirement) plus the homeroom row.
-                d.length === 3 &&
+                // 4 since the ADR-029 amendment: both-subjects +
+                // Math-only teachers + the homeroom row.
+                d.length === 4 &&
                 d.every((r: any) => r.sectionId === sectionA.id),
       },
       {
@@ -1732,6 +1739,17 @@ async function main() {
     !afterRevoke.ok && afterRevoke.code === "FORBIDDEN",
     afterRevoke.ok ? "STILL AUTHORIZED after revoke" : `code ${afterRevoke.code}`,
   );
+
+  // The experiment ends HERE — restore immediately. It used to stay
+  // revoked until the portal section, which silently made every later
+  // principal call run under revoked grants (the old "principal is
+  // FORBIDDEN on the autosave" check passed for the wrong reason; the
+  // amendment's positive check exposed it).
+  await db
+    .update(roleAssignments)
+    .set({ revokedAt: null })
+    .where(eq(roleAssignments.userId, principalUser.id));
+  await invalidateUserAuthCache(principalUser.id);
 
 
   // --- Fees: the accountant collects; the class teacher cannot ---------------
@@ -2142,14 +2160,11 @@ async function main() {
     mathSave.ok ? `status ${mathSave.data?.resultStatus}` : `code ${mathSave.code}`,
   );
 
-  // ADR-029's negative proof, RE-CAST in Phase 6a: the subject teacher
-  // now teaches BOTH subjects (the journey needed a teacher for every
-  // scheduled paper), so she can no longer BE the "permission yes,
-  // assignment no" case. The class teacher can: she holds marks:create
-  // (homeroom) but has NO subject assignment at all — a save to either
-  // paper must answer NOT_FOUND, which is the gate's indistinguishable
-  // from-nonexistent wording.
-  const physicsSave = await mutate(teacherCookie, "exam.marks.save", {
+  // ADR-029 AMENDED — the truth table over HTTP:
+  // (a) the class teacher (homeroom, marks:create, no subject rows)
+  //     ENTERS the Physics paper: permission + scope decide for every
+  //     non-teaching role.
+  const classTeacherPhysicsSave = await mutate(teacherCookie, "exam.marks.save", {
     organizationId: organization.id,
     schoolId: schoolA.id,
     sectionId: sectionA.id,
@@ -2163,14 +2178,64 @@ async function main() {
     isExempted: false,
   });
   report(
-    "class_teacher (marks:create, no subject assignment) is NOT_FOUND on the Physics paper — the timetable question, ADR-029",
-    !physicsSave.ok && physicsSave.code === "NOT_FOUND",
-    physicsSave.ok ? "AUTHORIZED — a leak" : `code ${physicsSave.code}`,
+    "class_teacher (homeroom, marks:create) enters the Physics paper — permission + scope decide (ADR-029 amended)",
+    classTeacherPhysicsSave.ok && classTeacherPhysicsSave.data?.marksObtained === "10.00",
+    classTeacherPhysicsSave.ok ? `entered ${classTeacherPhysicsSave.data?.marksObtained}` : `code ${classTeacherPhysicsSave.code}`,
+  );
+
+  // (b) the crossing refusal — the ONLY population the gate still
+  //     constrains: a teacher whose sole grant is subject_teacher and
+  //     whose subject is not this paper's. The Math-only seeded teacher
+  //     answers FORBIDDEN with words written for her, not the old
+  //     indistinguishable NOT_FOUND the UI dressed as "closed or moved".
+  const mathOnlyCookie = await signIn("subject-teacher-math@demo-trust.test");
+  const crossingSave = await mutate(mathOnlyCookie, "exam.marks.save", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    sectionId: sectionA.id,
+    subjectId: subjectPhysicsA.id,
+    examId: examSeed.id,
+    scheduleId: physicsScheduleSeed.id,
+    componentId: physicsTheorySeed.id,
+    studentId: student1.id,
+    marks: "10",
+    isAbsent: false,
+    isExempted: false,
+  });
+  report(
+    "Math-only subject_teacher is FORBIDDEN on the Physics paper, honest wording (the gate's remaining population)",
+    !crossingSave.ok &&
+      crossingSave.code === "FORBIDDEN" &&
+      crossingSave.message === "You are not the assigned teacher for this paper.",
+    crossingSave.ok ? "AUTHORIZED — a leak" : `${crossingSave.code}: ${crossingSave.message}`,
+  );
+
+  // (c) her OWN paper resolves — the constraint is per-subject, not a
+  //     blanket freeze on the role.
+  const mathOnlyOwnSave = await mutate(mathOnlyCookie, "exam.marks.save", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    sectionId: sectionA.id,
+    subjectId: subjectMathA.id,
+    examId: examSeed.id,
+    scheduleId: mathScheduleSeed.id,
+    componentId: mathTheorySeed.id,
+    studentId: student1.id,
+    marks: "68",
+    isAbsent: false,
+    isExempted: false,
+  });
+  report(
+    "Math-only subject_teacher enters her OWN paper (the constraint is per-subject)",
+    mathOnlyOwnSave.ok && mathOnlyOwnSave.data?.marksObtained === "68.00",
+    mathOnlyOwnSave.ok ? `entered ${mathOnlyOwnSave.data?.marksObtained}` : `code ${mathOnlyOwnSave.code}`,
   );
 
   // The gate pair is bound to the paper server-side: her OWN assigned pair
   // (6-A Maths) aimed at the Physics schedule must write nothing — a null
-  // row, never a cross-paper write.
+  // row, never a cross-paper write. (The demo teacher holds both subjects
+  // so the GATE passes her; it is the SERVICE's pair binding that answers
+  // null here — two distinct facts, both pinned.)
   const mismatchSave = await mutate(subjectTeacherCookie, "exam.marks.save", {
     organizationId: organization.id,
     schoolId: schoolA.id,
@@ -2202,6 +2267,9 @@ async function main() {
     librarianEntry.ok ? "read — a leak" : `code ${librarianEntry.code}`,
   );
 
+  // (d) The principal — the case the owner's click found frozen: a
+  //     school-scoped marks:create grant with no teaching rows anywhere
+  //     enters marks under their scope.
   const principalSave = await mutate(principalCookie, "exam.marks.save", {
     organizationId: organization.id,
     schoolId: schoolA.id,
@@ -2216,9 +2284,9 @@ async function main() {
     isExempted: false,
   });
   report(
-    "principal is FORBIDDEN on the autosave (verify/publish, but no marks:create — the owner's matrix)",
-    !principalSave.ok && principalSave.code === "FORBIDDEN",
-    principalSave.ok ? "AUTHORIZED — a leak" : `code ${principalSave.code}`,
+    "principal (school-scoped marks:create, no teaching rows) enters marks — the amendment's row (ADR-029)",
+    principalSave.ok && principalSave.data?.marksObtained === "80.00",
+    principalSave.ok ? `entered ${principalSave.data?.marksObtained}` : `code ${principalSave.code}`,
   );
 
   // --- Portal credentials: ADR-007's rider over the wire ----------------------

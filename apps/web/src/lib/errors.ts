@@ -68,6 +68,30 @@ function looksTechnical(message: string): boolean {
   );
 }
 
+/**
+ * Server-authored FORBIDDEN messages that ARE for a screen. The default is
+ * to hide the server's wording for this code (the permission gate's
+ * messages are machine-shaped; resolveNode's deliberately conflates
+ * missing with not-yours) — but the subject gate's refusal (ADR-029
+ * amended) is written for the teacher it refuses, and hiding it is how
+ * "You are not the assigned teacher for this paper" once became "This
+ * record may have been closed or moved." Explicit allowlist, so nothing
+ * else leaks through by pattern accident.
+ */
+const HONEST_FORBIDDEN_MESSAGES: RegExp[] = [
+  /^You are not the assigned teacher for this paper\.$/,
+];
+
+function honestForbiddenOrFallback(
+  message: string | undefined,
+  fallback: string,
+): string {
+  if (!message) return fallback;
+  return HONEST_FORBIDDEN_MESSAGES.some((pattern) => pattern.test(message))
+    ? message
+    : fallback;
+}
+
 /** A server-authored message if it is fit to show, otherwise the fallback. */
 function humanOrFallback(message: string | undefined, fallback: string): string {
   if (!message) return fallback;
@@ -121,14 +145,20 @@ export function toFriendlyError(cause: unknown): FriendlyError {
       };
 
     /**
-     * Never the server's wording. `staffProcedure` names the permission it wanted
-     * and `resolveNode` deliberately conflates "missing" with "not yours" so a
-     * caller cannot probe which ids exist — neither is a sentence for a screen.
+     * Mostly never the server's wording: `staffProcedure` names the
+     * permission it wanted and `resolveNode` deliberately conflates
+     * "missing" with "not yours" so a caller cannot probe which ids
+     * exist — neither is a sentence for a screen. The allowlisted
+     * exceptions are refusals WRITTEN for the reader (the subject
+     * gate's honest wording).
      */
     case "FORBIDDEN":
       return {
         kind: "forbidden",
-        message: copy.errors.forbidden,
+        message: honestForbiddenOrFallback(
+          cause.message,
+          copy.errors.forbidden,
+        ),
         retryable: false,
         requiresSignIn: false,
       };

@@ -4,13 +4,16 @@ import {
   getDataScopes,
   getOwnedStudentIds,
   getUserAuthCache,
+  isAssignmentExpired,
   loadScopeNode,
   orgScopeNode,
   permissionsInOrg,
+  scopeCovers,
   SENSITIVE_PERMISSIONS,
   type DataScope,
   type Permission,
   type ResourceContext,
+  type ScopeNode,
   type UserAuthCache,
 } from "@repo/authz";
 import { assignmentService, studentService } from "@repo/services";
@@ -199,6 +202,74 @@ export type OwnerResolver = (
 ) => Promise<{ type: string; id: string } | null>;
 
 /**
+ * ADR-029 (AMENDED — see DECISIONS.md). The subject-assignment check
+ * constrains ONE role: `subject_teacher` — the teaching-scoped role whose
+ * entire authority is the timetable. Everyone else follows the system's
+ * standing rule: permission + scope decide (schools shape both per-org;
+ * the code assumes nothing about which roles hold what).
+ *
+ *   - Permission not held via `subject_teacher` (admins, principals,
+ *     homeroom class teachers, any custom role) → PASS. Scope already
+ *     bound them.
+ *   - Held via `subject_teacher` AND via any OTHER role covering the
+ *     section → PASS. The union rule everywhere else in this system:
+ *     more authority never means less capability (the dual-hat case —
+ *     the admin who also teaches).
+ *   - Held via `subject_teacher` alone → the (section, subject)
+ *     assignment must be theirs, open. The original ADR-029 population:
+ *     the Physics teacher entering Chemistry marks, and the swapped-out
+ *     teacher whose assignment ended mid-term.
+ *
+ * Exported because the marks entry read computes `canEnter` from the same
+ * verdict — the UI must never show editable cells a save would refuse.
+ */
+export type SubjectGateVerdict = "pass" | "no-permission" | "not-assigned";
+
+export async function evaluateSubjectGate(args: {
+  authCache: UserAuthCache;
+  organizationId: string;
+  userId: string;
+  /** The addressed section's node (the save input's sectionId resolves it). */
+  sectionNode: ScopeNode;
+  sectionId: string;
+  subjectId: string;
+  permission: Permission;
+}): Promise<SubjectGateVerdict> {
+  const { authCache, organizationId, userId, sectionNode, sectionId, subjectId, permission } =
+    args;
+  const orgPerms = authCache.orgPermissions[organizationId];
+  if (!orgPerms) return "no-permission";
+
+  const now = new Date();
+  // Active grants of THIS permission that reach the section — the same
+  // loop can() runs for this node, enumerated because the question below
+  // is not "any?" but "via which role?".
+  const granting = authCache.assignments.filter(
+    (a) =>
+      a.organizationId === organizationId &&
+      !isAssignmentExpired(a, now) &&
+      scopeCovers(a, sectionNode) &&
+      (orgPerms[a.roleType] ?? []).includes(permission),
+  );
+  if (granting.length === 0) return "no-permission";
+
+  // Only the teaching role is assignment-constrained.
+  if (!granting.some((a) => a.roleType === "subject_teacher")) return "pass";
+
+  // The union rule: any non-teaching grant of the same permission wins.
+  if (granting.some((a) => a.roleType !== "subject_teacher")) return "pass";
+
+  // Teaching authority alone: the subject must be theirs, open.
+  const assigned = await assignmentService.hasSubjectAssignment(
+    organizationId,
+    userId,
+    sectionId,
+    subjectId,
+  );
+  return assigned ? "pass" : "not-assigned";
+}
+
+/**
  * The portal ownership gate, as a PURE function so the refusal's shape is
  * unit-testable without a database (S4.2): the requested student must appear
  * in this login's ACTIVE `student_portal_access` rows. One parent login may
@@ -384,30 +455,36 @@ export function staffProcedure(
         });
       }
 
-      // ADR-029, the second fact. The permission gate above answers the ROLE
-      // question; this answers the TIMETABLE question the scope tree cannot
-      // express. Deliberately ordered AFTER the permission gate: the shapes
-      // above decide 403-vs-404 for the permission axis, and this one only
-      // ever answers 404 with the generic wording — an unassigned (section,
-      // subject) pair is indistinguishable from a nonexistent one, so probing
-      // combinations reveals nothing about who teaches where.
+      // ADR-029 (AMENDED), the second fact — the subject-assignment check
+      // now constrains only the subject_teacher role (see
+      // evaluateSubjectGate above for the amended rule and its reasoning).
+      // The refusal is FORBIDDEN with honest words: the only population
+      // that still reaches it is teaching-role holders crossing subjects
+      // or whose assignment ended, and telling a caller their OWN
+      // assignment fact reveals nothing about anyone else's.
       if (opts.subjectGate) {
         const { sectionId, subjectId } = input as {
           sectionId: string;
           subjectId: string;
         };
 
-        const assigned = await assignmentService.hasSubjectAssignment(
+        const verdict = await evaluateSubjectGate({
+          authCache,
           organizationId,
           userId,
+          sectionNode: node,
           sectionId,
           subjectId,
-        );
+          permission,
+        });
 
-        if (!assigned) {
+        if (verdict !== "pass") {
           throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Resource not found.",
+            code: "FORBIDDEN",
+            message:
+              verdict === "no-permission"
+                ? "You do not have access to this resource."
+                : "You are not the assigned teacher for this paper.",
           });
         }
       }

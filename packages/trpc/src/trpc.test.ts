@@ -879,11 +879,13 @@ describe("staffProcedure — the subjectGate: the second fact", () => {
     expect(result.scope?.sectionId).toBe(SECTION_6A);
   });
 
-  it("her OWN section, an ADJACENT subject: NOT_FOUND, generic wording", async () => {
-    // THE Phase-1 leftover, pinned at the unit level: the scope tree made her
-    // section-wide, and only the assignment fact narrows her to Physics. The
-    // denial is indistinguishable from a made-up subject id, so probing
-    // combinations reveals nothing about who teaches what where.
+  it("her OWN section, an ADJACENT subject: FORBIDDEN, honest wording (the amendment)", async () => {
+    // THE Phase-1 leftover, pinned at the unit level: the scope tree made
+    // her section-wide, and only the assignment fact narrows her to
+    // Physics. The ADR-029 amendment made the refusal FORBIDDEN with
+    // words written for the teacher it refuses — the only population
+    // still reaching it — instead of the old indistinguishable NOT_FOUND
+    // that the UI dressed as "this record may have been closed or moved."
     seedAssigned();
 
     await expectTrpcError(
@@ -892,12 +894,12 @@ describe("staffProcedure — the subjectGate: the second fact", () => {
         sectionId: SECTION_6A,
         subjectId: PHYSICS,
       }),
-      "NOT_FOUND",
-      "Resource not found.",
+      "FORBIDDEN",
+      "You are not the assigned teacher for this paper.",
     );
   });
 
-  it("an ENDED assignment is the same NOT_FOUND — the fact is open-rows-only", async () => {
+  it("an ENDED assignment is the same FORBIDDEN — the fact is open-rows-only", async () => {
     // She used to teach it; the swap must bite immediately (ADR-029's
     // no-cache reasoning), not on a five-minute TTL.
     seedAssigned({ effectiveTo: "2025-01-01" });
@@ -908,15 +910,83 @@ describe("staffProcedure — the subjectGate: the second fact", () => {
         sectionId: SECTION_6A,
         subjectId: MATH,
       }),
-      "NOT_FOUND",
-      "Resource not found.",
+      "FORBIDDEN",
+      "You are not the assigned teacher for this paper.",
     );
   });
 
-  it("permission first: without marks:create she is FORBIDDEN, not NOT_FOUND", async () => {
+  it("AMENDMENT: a non-teaching role with the permission passes — permission + scope decide", async () => {
+    // The owner's rule: "if a role has permission then it can do it." An
+    // org-scoped admin with marks:create and NO assignment rows enters
+    // marks under their scope; schools strip the permission per-org and
+    // the code never assumes which roles hold it.
+    seedGrants(
+      [{ userId: "user-admin", roleType: "org_admin", scopeType: "org", scopeId: ORG }],
+      [["org_admin", "marks:create"]],
+    );
+    dbState.rows.set(TABLE.sta, []);
+
+    const result = await subjectCaller("user-admin").probe({
+      organizationId: ORG,
+      sectionId: SECTION_6A,
+      subjectId: PHYSICS,
+    });
+
+    expect(result.scope?.sectionId).toBe(SECTION_6A);
+  });
+
+  it("AMENDMENT: the dual hat — a second, non-teaching grant of the permission wins", async () => {
+    // The union rule everywhere else in this system: more authority never
+    // means less capability. A teacher who is ALSO the principal enters
+    // any subject in her section; the principal grant overrides the
+    // teaching constraint (the Physics teacher entering Chemistry remains
+    // refused when teaching is her ONLY grant — the test above).
+    seedGrants(
+      [
+        { userId: TEACHER_S, roleType: "subject_teacher", scopeType: "section", scopeId: SECTION_6A },
+        { userId: TEACHER_S, roleType: "principal", scopeType: "school", scopeId: SCHOOL_A },
+      ],
+      [
+        ["subject_teacher", "marks:create"],
+        ["principal", "marks:create"],
+      ],
+    );
+    dbState.rows.set(TABLE.sta, [staRow()]);
+
+    const result = await subjectCaller(TEACHER_S).probe({
+      organizationId: ORG,
+      sectionId: SECTION_6A,
+      subjectId: PHYSICS,
+    });
+
+    expect(result.scope?.sectionId).toBe(SECTION_6A);
+  });
+
+  it("AMENDMENT: the class teacher (homeroom, no subject rows) passes", async () => {
+    // "Class teacher can also enter/update marks under her scope if the
+    // role has the permissions." Her assignment row has no subject, so
+    // the teaching constraint never applies to her.
+    seedGrants(
+      [{ userId: "user-class-teacher", roleType: "class_teacher", scopeType: "section", scopeId: SECTION_6A }],
+      [["class_teacher", "marks:create"]],
+    );
+    dbState.rows.set(TABLE.sta, [
+      staRow({ userId: "user-class-teacher", subjectId: null, role: "class_teacher" }),
+    ]);
+
+    const result = await subjectCaller("user-class-teacher").probe({
+      organizationId: ORG,
+      sectionId: SECTION_6A,
+      subjectId: PHYSICS,
+    });
+
+    expect(result.scope?.sectionId).toBe(SECTION_6A);
+  });
+
+  it("permission first: without marks:create she is FORBIDDEN, not gate-refused", async () => {
     // The shapes are ordered — the permission gate decides 403, the fact
-    // decides 404. A caller who holds nothing gets the permission answer even
-    // when the fact would also have refused.
+    // decides the gate's 403. A caller who holds nothing gets the
+    // permission answer even when the fact would also have refused.
     dbState.rows.set(TABLE.sta, [staRow()]);
 
     await expectTrpcError(

@@ -95,12 +95,15 @@ describe("exam router conformance — UI-shaped payloads through the real router
   let classId: string;
   let sectionId: string;
   let subjectId: string;
+  /** The second subject — the gate truth-table's crossing paper. */
+  let physicsSubjectId: string;
   let academicYearId: string;
   let termId: string;
   let studentId: string;
   /** call(path, input) — every router call goes through makeCaller's accessor. */
   let call: Call;
   let subjectTeacherId: string;
+  let principalId: string;
 
   beforeAll(async () => {
     // ---- fixture --------------------------------------------------------
@@ -184,15 +187,25 @@ describe("exam router conformance — UI-shaped payloads through the real router
       .insert(sectionTeacherAssignments)
       .values({ organizationId: org!.id, schoolId: school.id, sectionId: section.id, academicYearId: year.id, userId: teacher!.id, role: "subject_teacher", subjectId: subject!.id });
 
+    // The gate truth-table's second subject: a paper the subject teacher
+    // is NOT assigned to (the crossing case) and the dual-hat principal
+    // becomes able to enter once granted a teaching row mid-walk.
+    const [physicsSubject] = await db
+      .insert(subjects)
+      .values({ organizationId: org!.id, schoolId: school.id, name: "Physics", code: "PHY" })
+      .returning();
+
     organizationId = org!.id;
     schoolId = school.id;
     classId = klass.id;
     sectionId = section.id;
     subjectId = subject!.id;
+    physicsSubjectId = physicsSubject!.id;
     academicYearId = year.id;
     termId = term.id;
     studentId = student!.id;
     subjectTeacherId = teacher!.id;
+    principalId = principal!.id;
     call = makeCaller({ id: principal!.id });
   });
 
@@ -253,11 +266,21 @@ describe("exam router conformance — UI-shaped payloads through the real router
           startTime: "09:00",
           durationMinutes: 120,
         },
+        // The crossing paper: scheduled (coverage allows supersets), one
+        // component (BUG-10: componentless papers refuse the transition).
+        {
+          classId,
+          subjectId: physicsSubjectId,
+          examDate: "2031-07-12",
+          startTime: "09:00",
+          durationMinutes: 120,
+        },
       ],
     });
     expect(Array.isArray(saved)).toBe(true);
-    expect(saved!.length).toBe(1);
+    expect(saved!.length).toBe(2);
     const scheduleId = saved![0]!.id;
+    const physicsScheduleId = saved![1]!.id;
 
     // ComponentsDialog's payload on that schedule (id = schedule, rows bare).
     const components = await call("exam.components.save", {
@@ -269,6 +292,14 @@ describe("exam router conformance — UI-shaped payloads through the real router
       ],
     });
     expect(components!.length).toBe(2);
+    const physicsComponents = await call("exam.components.save", {
+      ...scopeArgs(organizationId, schoolId),
+      id: physicsScheduleId,
+      components: [
+        { name: "Theory", maxMarks: "100", passMarks: "40", weightagePercentage: "100", sequenceNumber: 1 },
+      ],
+    });
+    expect(physicsComponents!.length).toBe(1);
 
     // The transition the detail page's button sends.
     await expect(
@@ -318,6 +349,70 @@ describe("exam router conformance — UI-shaped payloads through the real router
       isExempted: false,
     });
     expect(cell2?.resultStatus).toBe("entered");
+
+    // ── The ADR-029 amendment's truth table, through the real router ────
+    // Row 1 — the teaching role crossing subjects: the Math-only teacher
+    // saves the PHYSICS paper's cell → FORBIDDEN, honest words (the old
+    // gate answered NOT_FOUND/generic, which the UI dressed as "this
+    // record may have been closed or moved").
+    const teacherCrossing = await makeCaller({ id: subjectTeacherId })(
+      "exam.marks.save",
+      {
+        ...scopeArgs(organizationId, schoolId),
+        sectionId,
+        subjectId: physicsSubjectId,
+        examId: exam!.id,
+        scheduleId: physicsScheduleId,
+        componentId: physicsComponents![0]!.id,
+        studentId,
+        marks: "50",
+        isAbsent: false,
+        isExempted: false,
+      },
+    ).catch((error: { code?: string; message?: string }) => error);
+    expect(teacherCrossing).toMatchObject({
+      code: "FORBIDDEN",
+      message: "You are not the assigned teacher for this paper.",
+    });
+
+    // The grid read carries the verdict: the teacher's Physics grid is
+    // read-only with the reason; her Math grid is enterable.
+    const teacherPhysicsGrid = await makeCaller({ id: subjectTeacherId })(
+      "exam.marks.entry",
+      { ...scopeArgs(organizationId, schoolId), examId: exam!.id, id: physicsScheduleId, sectionId },
+    );
+    expect(teacherPhysicsGrid?.canEnter).toBe(false);
+    expect(teacherPhysicsGrid?.canEnterReason).toBe("not-assigned");
+    const teacherMathGrid = await makeCaller({ id: subjectTeacherId })(
+      "exam.marks.entry",
+      { ...scopeArgs(organizationId, schoolId), examId: exam!.id, id: scheduleId, sectionId },
+    );
+    expect(teacherMathGrid?.canEnter).toBe(true);
+
+    // Row 2 — permission + scope decide for everyone else: the principal
+    // (school-scoped, no teaching assignment anywhere) enters the Physics
+    // paper's cell — the exact case the owner's click found frozen.
+    const principalCell = await call("exam.marks.save", {
+      ...scopeArgs(organizationId, schoolId),
+      sectionId,
+      subjectId: physicsSubjectId,
+      examId: exam!.id,
+      scheduleId: physicsScheduleId,
+      componentId: physicsComponents![0]!.id,
+      studentId,
+      marks: "55",
+      isAbsent: false,
+      isExempted: false,
+    });
+    expect(principalCell?.resultStatus).toBe("entered");
+    expect(principalCell?.marksObtained).toBe("55.00");
+    const principalGrid = await call("exam.marks.entry", {
+      ...scopeArgs(organizationId, schoolId),
+      examId: exam!.id,
+      id: physicsScheduleId,
+      sectionId,
+    });
+    expect(principalGrid?.canEnter).toBe(true);
 
     // Eligibility recompute + readiness — the readiness panel's calls.
     await call("exam.eligibility.recompute", { ...scopeArgs(organizationId, schoolId), id: exam!.id });

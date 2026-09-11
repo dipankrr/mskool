@@ -1109,6 +1109,70 @@ resolves. The Phase-1 leftover "Subject-level access is not enforced" ticks when
 lands. No endpoint consumes the gate yet; the marks slice (Phase 5) MUST use the builder,
 and `check:builders` enforces that.
 
+---
+
+## ADR-029a — ADR-029 amendment: the subject fact constrains only the teaching role; permission + scope decide for everyone else
+
+**Accepted (2026-09-11), superseding ADR-029's gate behavior.** The owner found the
+original gate's collateral by clicking: an org admin holding `marks:create` (via
+`ALL_PERMISSIONS`) opened the marks grid, typed, and was told "This record is no longer
+available. It may have been closed or moved." — the UI's NOT_FOUND translation of the
+gate's deliberately generic refusal. Nothing was closed; the gate had frozen every
+non-teaching holder of the permission out of the entire feature.
+
+**The amended rule (the owner's words, made precise):**
+
+1. *Permission + scope decide.* If the caller holds the gated permission through any
+   role other than `subject_teacher` — org_admin, principal, class_teacher, any custom
+   role a school invents — the assignment check never applies. Their `DataScope` is the
+   bound, exactly as for every other write. No role names are special-cased to bypass;
+   the ONE constrained role is the teaching role the timetable fact belongs to.
+2. *The union rule wins for dual hats.* A caller who holds the permission through BOTH
+   the teaching role and another role passes everywhere their scope covers — more
+   authority never means less capability, matching `can()`'s union semantics everywhere
+   else. (The initial amendment draft constrained "anyone with subject-scoped
+   assignment rows in the section"; the owner rejected that: the admin who also teaches
+   Math would have had LESS power in their own section than in every other one.)
+3. *The teaching role is constrained by its assignments.* Only `subject_teacher` grants
+   are assignment-checked: the (section, subject) must be theirs, open. This is the
+   original ADR-029 population — the Physics teacher entering Chemistry marks — and the
+   swapped-out teacher whose assignment ended mid-term.
+
+**The refusal is honest now:** `FORBIDDEN` — "You are not the assigned teacher for
+this paper." The original's indistinguishable-from-nonexistent `NOT_FOUND` protected
+against probing which (section, subject) assignments exist; under the amendment the
+only callers reaching the refusal are teaching-role holders being told their OWN fact,
+which reveals nothing about anyone else. The web error layer allowlists exactly this
+message (its FORBIDDEN branch otherwise hides server wording — resolveNode's
+missing-vs-not-yours conflation is load-bearing).
+
+**Default matrix:** principal and vice_principal gain `marks:create` (data, per-org
+editable as always) — the "teacher absent, principal enters marks" small-school case.
+
+**UX twin (the bug that exposed all this):** the marks entry grid response now carries
+`canEnter`/`canEnterReason` computed by the same `evaluateSubjectGate`; the page renders
+read-only with the honest line for callers who cannot save, instead of editable cells
+that refuse on typing. A grid that accepts typing but no-ops every save is the BUG-9
+pattern wearing a different coat.
+
+**Why not scope-based instead of role-based (the design tried first):** "anyone with
+no subject-scoped rows in the section passes" reopens the teacher-swap hole — a
+subject_teacher whose assignment ended but whose section-scoped role grant remains has
+no rows, and would pass as "non-teaching staff." Keying on the role closes that hole
+and matches the owner's framing exactly. The one role-name coupling is on the
+CONSTRAINING side (the role whose meaning is the timetable), never on the bypass side.
+
+**Consequences.** `evaluateSubjectGate` (exported from the trpc builders) implements
+the rule; the `subjectGate` middleware consumes it; the marks entry read consumes it
+for `canEnter`. The smoke's negative proof re-casts on a seeded Math-only teacher
+(the demo teacher now teaches both subjects); its class-teacher and principal checks
+flip to positives. The old smoke "principal is FORBIDDEN on the autosave" check
+passed for a WRONG reason (a revocation experiment left the principal's grants
+revoked through the exam section) — the experiment now restores immediately after its
+own assertion. Truth table pinned at unit level (35), integration level (the authz
+suite's gate describe, re-expectations), conformance level (router-shaped payloads),
+and smoke level (HTTP).
+
 ## ADR-030 — Attendance records edit in place; the corrections table is dropped for a reason column
 
 **Status:** accepted (2026-08-31, owner decision during Phase 3 planning; implemented in C5).

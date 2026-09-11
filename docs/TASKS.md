@@ -6,6 +6,24 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
+**ADR-029 AMENDED (2026-09-11) — subject gate: permission + scope decide; only the teaching role is assignment-constrained.**
+The owner found the original gate's collateral (an admin with
+`marks:create` was frozen out of marks entry entirely, refused with a
+misleading "record closed or moved" message) and superseded the design:
+**ADR-029a** in `docs/DECISIONS.md`. New rule: any role other than
+`subject_teacher` holding a gated permission passes under scope alone;
+dual hats union (highest grant wins); the teaching role stays
+assignment-checked with an HONEST refusal ("You are not the assigned
+teacher for this paper"). The marks grid now carries a server-computed
+`canEnter`/`canEnterReason` — read-only with a real explanation instead
+of editable cells that refuse on typing. Principal + VP defaults gain
+`marks:create`. Building it also fixed BUG-11 (the section picker losing
+its options on every keyed grid refetch — grid.data blinked, the
+picker's query blinked with it, Base UI reset the pick). Verified:
+unit 35, trpc integration 151 (truth table re-pinned), conformance 5/5
+(router-level truth table), smoke 189/189, journey green. One commit on
+`feature/phase5-exams`.
+
 **PHASE 6a (BUG HUNT) COMPLETE ON `feature/phase5-exams` (2026-09-08) — 3 commits, ready for owner review.**
 The owner found core-flow bugs by clicking ("can't even create an exam")
 that every gate was green through. Root cause: no suite sent UI-shaped
