@@ -96,7 +96,7 @@ function versionDiff(older: CardSubject[], newer: CardSubject[]): string[] {
 export default function ExamResultsPage() {
   const params = useParams<{ examId: string }>();
   const examId = params.examId;
-  const { scopeArgs, has, writeScopeArgs } = useActiveContext();
+  const { has, writeScopeArgs } = useActiveContext();
 
   const detail = useExamDetail(examId);
   const classes = useClasses();
@@ -299,7 +299,7 @@ export default function ExamResultsPage() {
                 disabled={publishClass.isPending}
                 onClick={() => classId && setPublishConfirm("class")}
               >
-                {copy.exams.workflow.readiness.publishClass}
+                {copy.exams.workflow.publication.publishClass}
               </Button>
               <Button
                 variant="outline"
@@ -307,7 +307,7 @@ export default function ExamResultsPage() {
                 disabled={publishExam.isPending}
                 onClick={() => setPublishConfirm("all")}
               >
-                {copy.exams.workflow.readiness.publishAll}
+                {copy.exams.workflow.publication.publishAll}
               </Button>
             </PermissionGate>
             <PermissionGate permission="marks:publish">
@@ -532,14 +532,14 @@ export default function ExamResultsPage() {
         }}
         title={
           publishConfirm === "all"
-            ? copy.exams.workflow.readiness.publishAll
-            : copy.exams.workflow.readiness.publishClass
+            ? copy.exams.workflow.publication.publishAll
+            : copy.exams.workflow.publication.publishClass
         }
-        consequence={copy.exams.workflow.readiness.publishedNote}
+        consequence={copy.exams.workflow.publication.publishedNote}
         confirmLabel={
           publishConfirm === "all"
-            ? copy.exams.workflow.readiness.publishAll
-            : copy.exams.workflow.readiness.publishClass
+            ? copy.exams.workflow.publication.publishAll
+            : copy.exams.workflow.publication.publishClass
         }
         pending={publishClass.isPending || publishExam.isPending}
         onConfirm={() => {
@@ -665,12 +665,12 @@ export default function ExamResultsPage() {
             ) : null}
             <div>
               <label htmlFor="revision-reason" className="text-sm font-medium">
-                {copy.exams.workflow.readiness.reason}
+                {copy.exams.workflow.publication.reason}
               </label>
               <Input
                 id="revision-reason"
                 value={revisionReason}
-                placeholder={copy.exams.workflow.readiness.reasonPlaceholder}
+                placeholder={copy.exams.workflow.publication.reasonPlaceholder}
                 onChange={(event) => setRevisionReason(event.target.value)}
               />
             </div>

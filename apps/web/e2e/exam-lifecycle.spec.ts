@@ -7,10 +7,11 @@ import { expect, test, type Page } from "@playwright/test";
  * Everything else tests a layer: the conformance suite proves the router
  * accepts UI-shaped payloads, smoke:authz proves authorization, the
  * integration suite proves the services. This spec proves the PRODUCT:
- * a principal clicks "Add exam", fills the dialog, schedules the papers,
- * enters marks as the subject teacher would see them, walks the lifecycle,
- * and publishes — nothing but the real browser, the real API, the seeded
- * demo world.
+ * a principal clicks "Add exam", fills the dialog, adds the class (the
+ * papers prefill themselves from the class's subjects), splits one paper's
+ * parts, enters marks as the subject teacher would see them, walks the
+ * lifecycle, and publishes — nothing but the real browser, the real API,
+ * the seeded demo world.
  *
  * Fixture notes:
  * - The created exam is a MOCK: the seeded "Term 1 Examination" already
@@ -74,42 +75,38 @@ test.describe("exam lifecycle (principal through the browser)", () => {
       timeout: 15_000,
     });
 
-    // ── 2. The detail page: schedules for BOTH counted subjects ─────────
+    // ── 2. The detail page: "Add classes" pre-fills the papers ──────────
+    // The redesigned flow: the principal picks classes; every mapped
+    // subject becomes a prefilled paper (working-day dates, 09:30, one
+    // full-mark Theory part). Class 6 maps exactly Mathematics + Physics.
     await page.getByRole("link", { name: examName }).click();
     await page.waitForURL(/\/exams\/[0-9a-f-]{36}/);
     // The URL carries the id every later step needs (the teacher context
     // and the post-entry return both navigate by it).
     const examId = page.url().split("/").pop()!;
-    await page.getByRole("button", { name: "Edit schedules" }).first().click();
-    // Rows are built one at a time: appending re-renders the open popups.
-    // Each pick waits for the listbox to actually open — the aggressive
-    // re-render can swallow a popup that was never shown.
-    const pickSubject = async (row: number, name: string) => {
-      await page.waitForTimeout(400);
-      await page.locator(`#schedule-subject-${row}`).click();
-      const listbox = page.getByRole("listbox");
-      await expect(listbox).toBeVisible({ timeout: 10_000 });
-      await page.getByRole("option", { name }).click();
-    };
-    await page.getByRole("dialog").getByRole("button", { name: "Add subject" }).click();
-    await pickSubject(0, "Mathematics");
-    await page.locator("#schedule-date-0").fill("2025-09-10");
-    await page.locator("#schedule-start-0").fill("09:00");
-    await page.getByRole("dialog").getByRole("button", { name: "Add subject" }).click();
-    await pickSubject(1, "Physics");
-    await page.locator("#schedule-date-1").fill("2025-09-12");
-    await page.locator("#schedule-start-1").fill("09:00");
-    await page.getByRole("button", { name: "Save" }).click();
-    await expect(
-      page.getByRole("button", { name: "Add component" }).first(),
-    ).toBeVisible({ timeout: 15_000 });
+    // A fresh exam shows TWO "Add classes" affordances — the section
+    // toolbar and the empty state. Both open the same dialog.
+    await page.getByRole("button", { name: "Add classes" }).first().click();
+    const addDialog = page.getByRole("dialog", { name: "Add classes to this exam" });
+    await expect(addDialog).toBeVisible({ timeout: 10_000 });
+    await addDialog.locator("label", { hasText: "Class 6" }).click();
+    await addDialog.getByRole("button", { name: "Add classes" }).click();
+    // Both papers land prefilled — the prefill path IS the happy path.
+    await expect(page.getByRole("cell", { name: "Mathematics" })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(page.getByRole("cell", { name: "Physics" })).toBeVisible();
 
-    // ── 3. Components on the Mathematics paper ──────────────────────────
-    // The row button opens the ComponentsDialog; the dialog's own append
-    // button shares the label, so the appends are scoped to the dialog.
-    await page.getByRole("button", { name: "Add component" }).first().click();
-    await page.getByRole("dialog").getByRole("button", { name: "Add component" }).click();
-    await page.locator("#component-name-0").fill("Theory");
+    // ── 3. Split the Mathematics paper into Theory + Internal ───────────
+    // The prefill's single Theory part is a valid default; this edit keeps
+    // the ComponentsDialog walked and the weighted pass-mark math covered.
+    await page
+      .getByRole("row", { name: /Mathematics/ })
+      .getByRole("button", { name: "1 component" })
+      .click();
+    await expect(
+      page.getByRole("dialog").getByRole("button", { name: "Add component" }),
+    ).toBeVisible({ timeout: 15_000 });
     await page.locator("#component-max-0").fill("80");
     await page.locator("#component-pass-0").fill("27");
     await page.locator("#component-weight-0").fill("80");
@@ -119,29 +116,9 @@ test.describe("exam lifecycle (principal through the browser)", () => {
     await page.locator("#component-pass-1").fill("7");
     await page.locator("#component-weight-1").fill("20");
     await page.getByRole("dialog").getByRole("button", { name: "Save" }).click();
-
-    // ── 3b. Components on the Physics paper (BUG-10: a componentless
-    // paper passed verification trivially and then blocked publish).
-    // Wait for the post-save refetch to land first — in the stale render
-    // the MATH row's button still reads "Add component", and clicking it
-    // re-opens the wrong editor. Then the click is scoped to the Physics
-    // ROW, so no ordering assumption can misfire.
     await expect(
-      page.getByRole("button", { name: "2 components" }),
+      page.getByRole("row", { name: /Mathematics/ }).getByRole("button", { name: "2 components" }),
     ).toBeVisible({ timeout: 15_000 });
-    await page
-      .getByRole("row", { name: /Physics/ })
-      .getByRole("button", { name: "Add component" })
-      .click();
-    await expect(
-      page.getByRole("dialog").getByRole("button", { name: "Add component" }),
-    ).toBeVisible({ timeout: 15_000 });
-    await page.getByRole("dialog").getByRole("button", { name: "Add component" }).click();
-    await page.locator("#component-name-0").fill("Theory");
-    await page.locator("#component-max-0").fill("100");
-    await page.locator("#component-pass-0").fill("40");
-    await page.locator("#component-weight-0").fill("100");
-    await page.getByRole("dialog").getByRole("button", { name: "Save" }).click();
 
     // ── 4. The lifecycle: schedule → ongoing → marks entry ──────────────
     const transition = async (label: string) => {
@@ -247,25 +224,25 @@ test.describe("exam lifecycle (principal through the browser)", () => {
 
     // ── 6. Back on the principal's page: verification, then publish ─────
     await page.goto(`/exams/${examId}`);
-    // The readiness checklist must show every entry landed before the
-    // verification transition is attempted (it refuses partial entry).
+    // The Results & publication card must show every entry landed before
+    // the verification transition is attempted (it refuses partial entry).
     // 2 students × (2 Math + 1 Physics components) = 6 expected.
-    await expect(page.getByText(/Entries: 6\/6/)).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/Marks entered: 6\/6/)).toBeVisible({ timeout: 30_000 });
     await transition("Start verification");
-    // The readiness panel: publish THIS class. The ConfirmDialog is waited
-    // for BEFORE its confirm is clicked — the transition's re-render can
-    // swallow a click that arrives too early (the run-31 race).
-    await page.getByRole("button", { name: "Publish this class" }).click();
+    // Publish THIS class. The ConfirmDialog is waited for BEFORE its
+    // confirm is clicked — the transition's re-render can swallow a click
+    // that arrives too early (the run-31 race).
+    await page.getByRole("button", { name: "Publish results for this class" }).click();
     const confirmButton = page
       .getByRole("alertdialog")
-      .getByRole("button", { name: "Publish this class" });
+      .getByRole("button", { name: "Publish results for this class" });
     await expect(confirmButton).toBeVisible({ timeout: 15_000 });
     await confirmButton.click();
-    // The exam's header now reads "<term> · Published" — the status the
-    // whole journey was walking toward.
-    await expect(page.getByText(/· Published$/)).toBeVisible({
-      timeout: 60_000,
-    });
+    // Published — the page's primary action becomes "View results" (the
+    // stage-aware body's signal that the whole journey landed).
+    await expect(
+      page.getByRole("link", { name: "View results" }),
+    ).toBeVisible({ timeout: 60_000 });
   });
 
   // Silence the unused lint while keeping the type import for future flows.

@@ -6,6 +6,32 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
+**PHASE 6b — EXAM DETAIL REDESIGN COMPLETE ON `feature/phase5-exams` (2026-09-12) — web-only, one commit.**
+The owner walked the flow and redesigned it; this implements their brief
+plus a UX pass (plan: `.kilo/plans/1789200000000-exam-detail-redesign.md`):
+the exam detail page is now stage-aware — draft/scheduled lead with class
+CHIPS and one papers table (no more stacked per-class cards); "Add
+classes" replaces hand-adding every paper (each class's curriculum
+mappings become prefilled rows — working-day dates, 09:30, 180 min — plus
+one full-mark Theory part per paper, all editable through the ordinary
+batch saves; `schedules.save` returning the created rows is what lets the
+UI chain the default components). The readiness panel became "Results &
+publication", exists ONLY from marks entry onward, and its checklist now
+lives inside the publish confirm's consequence; the mislabeled "Compute
+results" button (it was eligibility recompute) is now honest. One solid
+next-action button per stage; back-moves/lock live in a "More actions"
+overflow; ScheduleDialog rewritten from stacked fieldsets to a date-sheet
+table; copy pass ("Papers", "Below pass mark", "Allow to sit"); client-side
+date-overlap lint on papers (advisory). Two e2e-caught bugs en route: the
+transition copy lost its from-state context ("Open marks entry" rendered
+as the back-move label from `ongoing`) and silent raw mutations in the
+prefill path (now the shared toasting hooks). Verified: check-types 8/8,
+lint 0 errors, units green, FULL e2e 15/15 (journey rewritten: Add classes
+→ prefilled papers → split Math parts → lifecycle → publish), screenshots
+reviewed for draft/entry states. Still open from the exams list: grade-only
+entry UI, exam edit dialog, mapping delete/end, section-scoped papers UI,
+results typography.
+
 **ADR-029 AMENDED (2026-09-11) — subject gate: permission + scope decide; only the teaching role is assignment-constrained.**
 The owner found the original gate's collateral (an admin with
 `marks:create` was frozen out of marks entry entirely, refused with a

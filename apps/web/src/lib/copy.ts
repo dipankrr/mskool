@@ -1450,13 +1450,33 @@ export const copy = {
       emptyTitle: "No exams yet",
       emptyBody: "Create the term's exam, schedule its subjects, and enter marks.",
       editExam: "Edit exam",
-      scheduleSection: "Schedules",
-      scheduleSubtitle: "Which class writes which subject, when. Saved per class.",
+      papersSection: "Papers",
+      papersSubtitle:
+        "Which class writes which subject, when. New classes start with every subject they teach — edit what differs.",
+      papersEmptyBody:
+        "No classes yet. Add one — its papers are created from the subjects it teaches.",
       allSections: "Whole class",
       lockedBadge: "Frozen",
-      editScheduleFor: "Edit schedules",
+      editScheduleFor: "Edit papers",
       addScheduleRow: "Add subject",
       removeRow: "Remove",
+      addClasses: "Add classes",
+      addClassesTitle: "Add classes to this exam",
+      addClassesDescription:
+        "Papers are created for each class's subjects with placeholder dates and one full-mark part — adjust anything afterwards.",
+      addClassesEmpty: "Every class in the branch is already in this exam.",
+      addClassesNone: "No classes selected.",
+      addClassesAdded: (classes: number, papers: number) =>
+        `${classes} ${classes === 1 ? "class" : "classes"} added · ${papers} ${
+          papers === 1 ? "paper" : "papers"
+        } created from the class subjects.`,
+      removeClass: "Remove class",
+      removeClassTitle: "Remove this class from the exam?",
+      removeClassConsequence:
+        "Its papers and their parts are deleted. This is only possible before marks entry opens.",
+      removeClassConfirm: "Remove class",
+      conflictWith: (subject: string) => `Overlaps ${subject}`,
+      moreActions: "More actions",
       componentSection: "Components",
       componentSubtitle: "The parts of each subject's paper. Weightages must sum to 100.",
       editComponentsFor: "Edit components",
@@ -1511,26 +1531,34 @@ export const copy = {
         reIssued === 1
           ? "Window closed — 1 card re-issued."
           : `Window closed — ${reIssued} cards re-issued.`,
-      readiness: {
-        title: "Publish readiness",        entries: "Entries",
+      publication: {
+        title: "Results & publication",
+        subtitle:
+          "Compute the results, review them, then publish. Parents see results only once published.",
+        entries: "Marks entered",
         verified: "Verified",
-        stale: "Marks changed after the last compute — recompute before publishing.",
-        fresh: "Compute is fresh.",
-        compute: "Compute results",
+        stale: "Marks changed since the last compute — compute on the results page before publishing.",
+        fresh: "Results up to date",
+        eligibilityRecheck: "Recheck attendance eligibility",
         belowBar: "Below the attendance bar (advisory — allowing records the decision)",
-        allowAll: "Allow all",
-        allow: "Allow",
+        belowCount: (count: number) =>
+          count === 1
+            ? "1 student below the attendance bar"
+            : `${count} students below the attendance bar`,
+        allowAll: "Allow all to sit",
+        allow: "Allow to sit",
         allowedBadge: "Allowed — recorded",
         allowTitle: "Allow this student?",
-        allowAllTitle: "Allow every below-bar student?",
+        allowAllTitle: "Allow every below-attendance student?",
         allowAllConsequence:
           "One reason is recorded for all of them, with your name. Entry itself is never blocked.",
         reason: "Reason",
         reasonPlaceholder: "e.g. Medical leave certified by the principal",
         reasonRequired: "Say why — the reason is recorded with your name.",
-        publishClass: "Publish this class",
+        publishClass: "Publish results for this class",
         publishAll: "Publish all classes",
         publishedNote: "Results become visible to parents when published.",
+        viewResults: "View results",
       },
     },
     criteria: {

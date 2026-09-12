@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeftIcon, PencilIcon, PlusIcon } from "lucide-react";
+import { ArrowLeftIcon, MoreHorizontalIcon } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -20,22 +20,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { DataTable } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { PageHeader } from "@/components/page-header";
 import { ComponentsDialog } from "@/features/exams/components-dialog";
 import { ExamLifecycleTrack, statusBadgeVariant } from "@/features/exams/exam-lifecycle-track";
+import { PapersSection } from "@/features/exams/papers-section";
 import { ScheduleDialog } from "@/features/exams/schedule-dialog";
 import {
   useEligibilityActions,
@@ -50,25 +49,24 @@ import { useSections } from "@/features/sections/use-sections";
 import { useActiveContext } from "@/features/session/active-context";
 import { useStudents } from "@/features/students/use-students";
 import { copy } from "@/lib/copy";
-import { formatIsoDate } from "@/lib/format";
-import { createAppColumnHelper, type DataTableColumns } from "@/lib/table";
 import type { ExamTransitionInput } from "@repo/contracts";
-import type { ExamDetail } from "@/lib/trpc/types";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc/client";
 
 /**
- * EXAM DETAIL (S2) — the blueprint and the walk to publication.
+ * EXAM DETAIL — one screen that changes shape with the lifecycle stage.
  *
- * Header: status + the lifecycle's next buttons (each a ConfirmDialog
- * whose consequence text is the state's meaning, so "open marks entry"
- * also says "the schedule freezes"). Body: schedules grouped per class
- * (batch editor), components per schedule, then the readiness panel —
- * the checklist the API will re-check at publish time, shown even when
- * incomplete because partial entry is a legitimate state to navigate.
+ * The lifecycle track is the map (kept — the owner named it the good
+ * part); the page is the legs: draft/scheduled lead with the class chips
+ * and their papers (created from each class's subjects by "Add classes",
+ * not hand-added), marks entry onward leads with entry links and the
+ * Results & publication card — which exists ONLY from entry onward, since
+ * a draft has nothing to publish. ONE solid button is the stage's next
+ * action; back-moves and secondary links live in the overflow menu.
+ *
+ * The server remains the referee: every transition and publish re-checks
+ * its preconditions, and a refusal arrives with its own wording.
  */
-
-type ScheduleRow = NonNullable<ExamDetail>["schedules"][number];
 
 // The service's transition map, mirrored for the buttons; the server
 // remains the referee — an illegal move gets its worded refusal.
@@ -82,13 +80,25 @@ const NEXT_TRANSITIONS: Record<string, readonly string[]> = {
   locked: [],
 };
 
+const STATUS_ORDER = [
+  "draft",
+  "scheduled",
+  "ongoing",
+  "marks_entry",
+  "under_verification",
+  "published",
+  "locked",
+] as const;
+
 const BLUEPRINT_EDITABLE = new Set(["draft", "scheduled"]);
 const ENTRY_OPEN = new Set(["marks_entry", "under_verification"]);
 
 /**
  * Button copy per move: targets are status names (`draft`, `locked`), but
- * the back-moves read differently — and the lock is the one irreversible
- * act, styled destructive with its consequence stated.
+ * the back-moves read differently — `marks_entry` is only a BACK move when
+ * you're in verification (from ongoing it is the forward move) — and the
+ * lock is the one irreversible act, styled destructive with its
+ * consequence stated.
  */
 function transitionCopy(examStatus: string, target: string) {
   const backToEntry = target === "marks_entry" && examStatus === "under_verification";
@@ -115,8 +125,6 @@ function statusLabel(status: string): string {
   return labels[status] ?? status;
 }
 
-const scheduleColumn = createAppColumnHelper<ScheduleRow>();
-
 export default function ExamDetailPage() {
   const params = useParams<{ examId: string }>();
   const examId = params.examId;
@@ -132,8 +140,10 @@ export default function ExamDetailPage() {
   const { recompute, override } = useEligibilityActions(examId);
   const { publishClass, publishExam } = usePublicationActions(examId);
 
+  const [activeClassId, setActiveClassId] = useState<string | null>(null);
   const [scheduleFor, setScheduleFor] = useState<string | null>(null);
-  const [componentsFor, setComponentsFor] = useState<string | null>(null);  const [transitionTarget, setTransitionTarget] = useState<string | null>(null);
+  const [componentsFor, setComponentsFor] = useState<string | null>(null);
+  const [transitionTarget, setTransitionTarget] = useState<string | null>(null);
   const [publishClassId, setPublishClassId] = useState<string | null>(null);
   const [publishAllConfirm, setPublishAllConfirm] = useState(false);
   const [allowing, setAllowing] = useState<string | null>(null);
@@ -163,12 +173,6 @@ export default function ExamDetailPage() {
     return map;
   }, [classes.data]);
 
-  const subjectNameById = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const subject of subjects.data ?? []) map.set(subject.id, subject.name);
-    return map;
-  }, [subjects.data]);
-
   const termName = useMemo(
     () => (terms.data ?? []).find((t) => t.id === exam?.termId)?.name ?? null,
     [terms.data, exam?.termId],
@@ -182,13 +186,14 @@ export default function ExamDetailPage() {
       .map((klass) => klass.id);
   }, [classes.data, schedules]);
 
-  const [readinessClassId, setReadinessClassId] = useState<string | null>(null);
+  // The chips follow the data: default to the first class in the exam,
+  // fall back when the active one leaves it (removed, or data refreshed).
   useEffect(() => {
-    if (readinessClassId && examClassIds.includes(readinessClassId)) return;
-    setReadinessClassId(examClassIds[0] ?? null);
-  }, [examClassIds, readinessClassId]);
+    if (activeClassId && examClassIds.includes(activeClassId)) return;
+    setActiveClassId(examClassIds[0] ?? null);
+  }, [examClassIds, activeClassId]);
 
-  const readiness = useReadiness(examId, readinessClassId ?? undefined);
+  const readiness = useReadiness(examId, activeClassId ?? undefined);
 
   const studentNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -197,85 +202,6 @@ export default function ExamDetailPage() {
     }
     return map;
   }, [students.data]);
-
-  const scheduleColumns = useMemo<DataTableColumns<ScheduleRow>>(
-    () =>
-      scheduleColumn.columns([
-        scheduleColumn.display({
-          id: "subject",
-          header: copy.exams.workflow.fields.subject,
-          cell: ({ row }) => subjectNameById.get(row.original.subjectId) ?? copy.common.none,
-        }),
-        scheduleColumn.accessor("examDate", {
-          header: copy.exams.workflow.fields.date,
-          cell: ({ row }) => formatIsoDate(row.original.examDate),
-        }),
-        scheduleColumn.display({
-          id: "start",
-          header: copy.exams.workflow.fields.startTime,
-          cell: ({ row }) => row.original.startTime.slice(0, 5),
-        }),
-        scheduleColumn.accessor("durationMinutes", {
-          header: copy.exams.workflow.fields.duration,
-        }),
-        scheduleColumn.display({
-          id: "venue",
-          header: copy.exams.workflow.fields.venue,
-          cell: ({ row }) => row.original.venue || copy.common.none,
-        }),
-        scheduleColumn.display({
-          id: "state",
-          header: copy.exams.workflow.status,
-          cell: ({ row }) =>
-            row.original.isLocked ? (
-              <Badge variant="secondary">{copy.exams.workflow.lockedBadge}</Badge>
-            ) : (
-              copy.common.none
-            ),
-        }),
-        scheduleColumn.display({
-          id: "components",
-          header: copy.exams.workflow.componentSection,
-          cell: ({ row }) => (
-            <div className="flex items-center gap-1">
-              {editable && has("exam:update") ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setComponentsFor(row.original.id)}
-                >
-                  {row.original.components.length > 0
-                    ? `${row.original.components.length} ${copy.exams.workflow.componentSection.toLowerCase()}`
-                    : copy.exams.workflow.addComponentRow}
-                </Button>
-              ) : (
-                // Frozen papers stay READABLE: parts, max, pass, weight.
-                <span className="text-muted-foreground text-xs">
-                  {row.original.components.length > 0
-                    ? row.original.components
-                        .map(
-                          (c) =>
-                            `${c.name} ${Number(c.maxMarks)} (${copy.exams.workflow.fields.passMarksOverrideShort} ${Number(c.passMarks)}, ${Number(c.weightagePercentage)}%)`,
-                        )
-                        .join(" · ")
-                    : copy.common.none}
-                </span>
-              )}
-              {entryOpen ? (
-                <Link
-                  href={`/exams/${examId}/entry`}
-                  className="text-sm font-medium hover:underline"
-                >
-                  {copy.exams.entry.title}
-                </Link>
-              ) : null}
-            </div>
-          ),
-        }),
-      ]),
-    [subjectNameById, editable, entryOpen, examId, has],
-  );
 
   // BUG-7 fix: these feed the dialogs' form-reset effects, so they MUST be
   // identity-stable across parent re-renders — an inline filter() hands the
@@ -318,180 +244,136 @@ export default function ExamDetailPage() {
   }
 
   const allowedTargets = NEXT_TRANSITIONS[exam.status] ?? [];
+  const order = (status: string) => STATUS_ORDER.indexOf(status as (typeof STATUS_ORDER)[number]);
+  // Forward = later in the lifecycle; the first forward move is THE next
+  // action (the solid button). Everything else demotes to the overflow.
+  const forwardTargets = allowedTargets.filter((t) => order(t) > order(exam.status));
+  const backTargets = allowedTargets.filter((t) => order(t) < order(exam.status));
+  const primaryTransition = forwardTargets[0];
+  const resultsLink = entryOpen || exam.status === "published" || exam.status === "locked";
+  const primaryIsResults = !primaryTransition && resultsLink;
+
   const scheduleForClass = classNameById.get(scheduleFor ?? "") ?? "";
   const allowingStudent = studentNameById.get(allowing ?? "");
+  const publication = copy.exams.workflow.publication;
+
+  // The publish confirm's consequence carries the live checklist — the
+  // pre-publication state is part of the consequence, not a separate
+  // panel to decode first.
+  const publishConsequence = () => {
+    const parts: string[] = [];
+    if (readiness.data) {
+      parts.push(
+        `${publication.entries}: ${readiness.data.enteredEntries}/${readiness.data.expectedEntries}`,
+      );
+      parts.push(`${publication.verified}: ${readiness.data.verifiedEntries}`);
+      const below = readiness.data.belowBar.filter((r) => !r.isOverridden).length;
+      if (below > 0) parts.push(publication.belowCount(below));
+    }
+    parts.push(publication.publishedNote);
+    return parts.join(" · ");
+  };
 
   return (
     <>
       <PageHeader
         title={exam.name}
-        description={[termName, statusLabel(exam.status)].filter(Boolean).join(" · ")}
+        description={termName ?? undefined}
         actions={
-          <Link href="/exams" className={cn(buttonVariants({ variant: "outline" }))}>
-            <ArrowLeftIcon data-icon="inline-start" />
-            {copy.common.back}
-          </Link>
+          <>
+            <Badge variant={statusBadgeVariant(exam.status)}>{statusLabel(exam.status)}</Badge>
+            <Link href="/exams" className={cn(buttonVariants({ variant: "outline" }))}>
+              <ArrowLeftIcon data-icon="inline-start" />
+              {copy.common.back}
+            </Link>
+          </>
         }
       />
 
-      {/* The walk, made visible: where this exam is and what remains.
-          The transition BUTTONS below stay — the track is the map, the
-          buttons are the legs. */}
+      {/* The walk, made visible: where this exam is and what remains. */}
       <ExamLifecycleTrack status={exam.status} />
 
-      {/* Lifecycle — the next legal moves; the server words any refusal. */}
-      {allowedTargets.length > 0 && has("exam:update") ? (
-        <div className="flex flex-wrap gap-2">
-          {allowedTargets.map((target) => {
-            const t = transitionCopy(exam.status, target);
-            return (
-              <Button
-                key={target}
-                variant={t.destructive ? "destructive" : "outline"}
-                disabled={transition.isPending}
-                onClick={() => setTransitionTarget(target)}
-              >
-                {t.label}
-              </Button>
-            );
-          })}
-          {entryOpen || exam.status === "published" || exam.status === "locked" ? (
-            <Link
-              href={`/exams/${examId}/results`}
-              className={cn(buttonVariants({ variant: "outline" }))}
+      {/* ONE solid next action; back-moves and links in the overflow. */}
+      {has("exam:update") || primaryIsResults ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {primaryTransition && has("exam:update") ? (
+            <Button
+              disabled={transition.isPending}
+              onClick={() => setTransitionTarget(primaryTransition)}
             >
-              {copy.exams.results.title}
+              {transitionCopy(exam.status, primaryTransition).label}
+            </Button>
+          ) : null}
+          {primaryIsResults ? (
+            <Link href={`/exams/${examId}/results`} className={cn(buttonVariants())}>
+              {publication.viewResults}
             </Link>
+          ) : null}
+          {(backTargets.length > 0 && has("exam:update")) ||
+          (resultsLink && !primaryIsResults) ||
+          (exam.status === "published" && has("exam:update")) ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="outline">
+                    <MoreHorizontalIcon data-icon="inline-start" />
+                    {copy.exams.workflow.moreActions}
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="start">
+                {resultsLink && !primaryIsResults ? (
+                  <DropdownMenuItem render={<Link href={`/exams/${examId}/results`} />}>
+                    {publication.viewResults}
+                  </DropdownMenuItem>
+                ) : null}
+                {has("exam:update")
+                  ? backTargets.map((target) => (
+                      <DropdownMenuItem
+                        key={target}
+                        onClick={() => setTransitionTarget(target)}
+                      >
+                        {transitionCopy(exam.status, target).label}
+                      </DropdownMenuItem>
+                    ))
+                  : null}
+                {has("exam:update") && exam.status === "published" ? (
+                  <DropdownMenuItem
+                    className="text-destructive"
+                    onClick={() => setTransitionTarget("locked")}
+                  >
+                    {transitionCopy(exam.status, "locked").label}
+                  </DropdownMenuItem>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
           ) : null}
         </div>
       ) : null}
 
-      {/* Schedules, one group per class. */}
-      <section aria-labelledby="schedules-heading" className="flex flex-col gap-3">
-        <h2 id="schedules-heading" className="font-heading text-base font-semibold">
-          {copy.exams.workflow.scheduleSection}
-        </h2>
-        <p className="text-muted-foreground -mt-2 text-sm">
-          {copy.exams.workflow.scheduleSubtitle}
-        </p>
+      <PapersSection
+        examId={examId}
+        editable={editable}
+        entryOpen={entryOpen}
+        canUpdate={has("exam:update")}
+        schedules={schedules}
+        classes={classes.data ?? []}
+        subjects={subjects.data ?? []}
+        academicYearId={exam.academicYearId}
+        activeClassId={activeClassId}
+        onActiveClassChange={setActiveClassId}
+        onEditPapers={setScheduleFor}
+        onEditComponents={setComponentsFor}
+      />
 
-        {/* BUG-6 fix: the class cards used to render only for classes that
-            ALREADY had schedules — a fresh exam was a dead end with no way
-            to add the first paper. While the blueprint is editable, every
-            class of the branch is offered; once entry has opened, only the
-            scheduled classes remain (readiness keeps its own list). */}
-        {(() => {
-          const schedulableClassIds =
-            editable && has("exam:update")
-              ? (classes.data ?? []).map((k) => k.id)
-              : examClassIds;
-          if (schedulableClassIds.length === 0) {
-            return (
-              <EmptyState
-                icon={PlusIcon}
-                title={copy.exams.workflow.scheduleSection}
-                description={copy.exams.workflow.scheduleSubtitle}
-              />
-            );
-          }
-          return schedulableClassIds.map((classId) => (
-            <Card key={classId}>
-              <CardHeader className="flex-row items-center justify-between">
-                <CardTitle>{classNameById.get(classId) ?? classId}</CardTitle>
-                {editable && has("exam:update") ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setScheduleFor(classId)}
-                  >
-                    <PencilIcon data-icon="inline-start" />
-                    {copy.exams.workflow.editScheduleFor}
-                  </Button>
-                ) : null}
-              </CardHeader>
-              <CardContent>
-                <DataTable
-                  data={schedules.filter((s) => s.classId === classId)}
-                  columns={scheduleColumns}
-                  getRowId={(row) => row.id}
-                  caption={copy.exams.workflow.scheduleSection}
-                  isLoading={detail.isLoading}
-                  error={detail.error}
-                  onRetry={() => void detail.refetch()}
-                  renderCard={(row) => (
-                    <div className="rounded-lg border p-4">
-                      <p className="font-medium">
-                        {subjectNameById.get(row.subjectId) ?? copy.common.none}
-                      </p>
-                      <p className="text-muted-foreground text-xs">
-                        {formatIsoDate(row.examDate)} · {row.startTime.slice(0, 5)} ·{" "}
-                        {row.durationMinutes} min · {row.venue ?? copy.common.none}
-                      </p>
-                    </div>
-                  )}
-                  empty={
-                    <EmptyState
-                      title={copy.exams.workflow.addScheduleRow}
-                      description={copy.exams.workflow.scheduleSubtitle}
-                      action={
-                        editable && has("exam:update") ? (
-                          <Button variant="outline" onClick={() => setScheduleFor(classId)}>
-                            <PlusIcon data-icon="inline-start" />
-                            {copy.exams.workflow.addScheduleRow}
-                          </Button>
-                        ) : undefined
-                      }
-                    />
-                  }
-                />
-              </CardContent>
-            </Card>
-          ));
-        })()}
-      </section>
-
-      {/* Readiness — the checklist publish re-checks, advisory and live. */}
-      {examClassIds.length > 0 ? (
+      {/* Results & publication — exists only from marks entry onward; a
+          draft has nothing to publish, and showing the machinery then is
+          exactly what made it unreadable. */}
+      {entryOpen && examClassIds.length > 0 && activeClassId ? (
         <Card>
-          <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
-            <CardTitle>{copy.exams.workflow.readiness.title}</CardTitle>
-            <div className="flex items-center gap-2">
-              <Select
-                value={readinessClassId ?? ""}
-                onValueChange={(v) => {
-                  if (v) setReadinessClassId(v);
-                }}
-              >
-                <SelectTrigger aria-label={copy.exams.workflow.fields.class} className="w-44">
-                  <SelectValue>
-                    {(value: string | null) =>
-                      value ? (classNameById.get(value) ?? copy.common.none) : copy.common.none
-                    }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {examClassIds.map((classId) => (
-                    <SelectItem key={classId} value={classId}>
-                      {classNameById.get(classId) ?? classId}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {has("exam:update") ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={recompute.isPending}
-                  onClick={() => {
-                    const scope = writeScope();
-                    if (!scope) return;
-                    recompute.mutate({ ...scope, id: examId });
-                  }}
-                >
-                  {copy.exams.workflow.readiness.compute}
-                </Button>
-              ) : null}
-            </div>
+          <CardHeader>
+            <CardTitle>{publication.title}</CardTitle>
+            <p className="text-muted-foreground mt-1 text-sm">{publication.subtitle}</p>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {readiness.isLoading ? (
@@ -500,24 +382,35 @@ export default function ExamDetailPage() {
               <>
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                   <Badge variant="outline">
-                    {copy.exams.workflow.readiness.entries}: {readiness.data.enteredEntries}/
+                    {publication.entries}: {readiness.data.enteredEntries}/
                     {readiness.data.expectedEntries}
                   </Badge>
                   <Badge variant="outline">
-                    {copy.exams.workflow.readiness.verified}: {readiness.data.verifiedEntries}
+                    {publication.verified}: {readiness.data.verifiedEntries}
                   </Badge>
                   <Badge variant={readiness.data.staleCompute ? "destructive" : "secondary"}>
-                    {readiness.data.staleCompute
-                      ? copy.exams.workflow.readiness.stale
-                      : copy.exams.workflow.readiness.fresh}
+                    {readiness.data.staleCompute ? publication.stale : publication.fresh}
                   </Badge>
+                  {has("exam:update") ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="ms-auto"
+                      disabled={recompute.isPending}
+                      onClick={() => {
+                        const scope = writeScope();
+                        if (!scope) return;
+                        recompute.mutate({ ...scope, id: examId });
+                      }}
+                    >
+                      {publication.eligibilityRecheck}
+                    </Button>
+                  ) : null}
                 </div>
 
                 {readiness.data.belowBar.length > 0 ? (
                   <div className="flex flex-col gap-2">
-                    <p className="text-muted-foreground text-sm">
-                      {copy.exams.workflow.readiness.belowBar}
-                    </p>
+                    <p className="text-muted-foreground text-sm">{publication.belowBar}</p>
                     {has("exam:update") &&
                     readiness.data.belowBar.some((row) => !row.isOverridden) ? (
                       <div>
@@ -529,7 +422,7 @@ export default function ExamDetailPage() {
                             setAllowReason("");
                           }}
                         >
-                          {copy.exams.workflow.readiness.allowAll}
+                          {publication.allowAll}
                         </Button>
                       </div>
                     ) : null}
@@ -554,12 +447,10 @@ export default function ExamDetailPage() {
                                 setAllowReason("");
                               }}
                             >
-                              {copy.exams.workflow.readiness.allow}
+                              {publication.allow}
                             </Button>
                           ) : (
-                            <Badge variant="secondary">
-                              {copy.exams.workflow.readiness.allowedBadge}
-                            </Badge>
+                            <Badge variant="secondary">{publication.allowedBadge}</Badge>
                           )}
                         </li>
                       ))}
@@ -567,24 +458,20 @@ export default function ExamDetailPage() {
                   </div>
                 ) : null}
 
-                <p className="text-muted-foreground text-sm">
-                  {copy.exams.workflow.readiness.publishedNote}
-                </p>
-
                 {has("exam:publish") ? (
                   <div className="flex flex-wrap gap-2">
                     <Button
                       disabled={publishClass.isPending}
-                      onClick={() => setPublishClassId(readinessClassId)}
+                      onClick={() => setPublishClassId(activeClassId)}
                     >
-                      {copy.exams.workflow.readiness.publishClass}
+                      {publication.publishClass}
                     </Button>
                     <Button
                       variant="outline"
                       disabled={publishExam.isPending}
                       onClick={() => setPublishAllConfirm(true)}
                     >
-                      {copy.exams.workflow.readiness.publishAll}
+                      {publication.publishAll}
                     </Button>
                   </div>
                 ) : null}
@@ -594,7 +481,7 @@ export default function ExamDetailPage() {
         </Card>
       ) : null}
 
-      {/* Per-class schedule batch editor */}
+      {/* Per-class paper grid editor */}
       <ScheduleDialog
         open={Boolean(scheduleFor)}
         onOpenChange={(open) => {
@@ -615,7 +502,7 @@ export default function ExamDetailPage() {
         }}
       />
 
-      {/* Per-schedule components batch editor */}
+      {/* Per-paper components batch editor */}
       {componentsSchedule ? (
         <ComponentsDialog
           open
@@ -624,7 +511,7 @@ export default function ExamDetailPage() {
           }}
           scheduleId={componentsSchedule.id}
           scheduleLabel={`${classNameById.get(componentsSchedule.classId) ?? ""} — ${
-            subjectNameById.get(componentsSchedule.subjectId) ?? ""
+            subjects.data?.find((s) => s.id === componentsSchedule.subjectId)?.name ?? ""
           }`}
           components={componentsSchedule.components}
           pending={saveComponents.isPending}
@@ -644,16 +531,10 @@ export default function ExamDetailPage() {
           if (!open) setTransitionTarget(null);
         }}
         title={`${copy.exams.workflow.transitions.confirmTitle} ${
-          transitionTarget && exam ? transitionCopy(exam.status, transitionTarget).label : ""
+          transitionTarget ? transitionCopy(exam.status, transitionTarget).label : ""
         }`}
-        consequence={
-          transitionTarget && exam ? transitionCopy(exam.status, transitionTarget).consequence : ""
-        }
-        confirmLabel={
-          transitionTarget && exam
-            ? transitionCopy(exam.status, transitionTarget).label
-            : copy.common.save
-        }
+        consequence={transitionTarget ? transitionCopy(exam.status, transitionTarget).consequence : ""}
+        confirmLabel={transitionTarget ? transitionCopy(exam.status, transitionTarget).label : copy.common.save}
         destructive={transitionTarget === "locked"}
         pending={transition.isPending}
         onConfirm={() => {
@@ -674,9 +555,9 @@ export default function ExamDetailPage() {
         onOpenChange={(open) => {
           if (!open) setPublishClassId(null);
         }}
-        title={copy.exams.workflow.readiness.publishClass}
-        consequence={copy.exams.workflow.readiness.publishedNote}
-        confirmLabel={copy.exams.workflow.readiness.publishClass}
+        title={publication.publishClass}
+        consequence={publishConsequence()}
+        confirmLabel={publication.publishClass}
         pending={publishClass.isPending}
         onConfirm={() => {
           if (!publishClassId) return;
@@ -692,9 +573,9 @@ export default function ExamDetailPage() {
         onOpenChange={(open) => {
           if (!open) setPublishAllConfirm(false);
         }}
-        title={copy.exams.workflow.readiness.publishAll}
-        consequence={copy.exams.workflow.readiness.publishedNote}
-        confirmLabel={copy.exams.workflow.readiness.publishAll}
+        title={publication.publishAll}
+        consequence={publishConsequence()}
+        confirmLabel={publication.publishAll}
         pending={publishExam.isPending}
         onConfirm={() => {
           const scope = writeScope();
@@ -714,29 +595,25 @@ export default function ExamDetailPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {allowing === "ALL"
-                ? copy.exams.workflow.readiness.allowAllTitle
-                : copy.exams.workflow.readiness.allowTitle}
+              {allowing === "ALL" ? publication.allowAllTitle : publication.allowTitle}
             </DialogTitle>
             <DialogDescription>
               {allowing === "ALL"
-                ? copy.exams.workflow.readiness.allowAllConsequence
-                : `${allowingStudent ?? copy.common.none} — ${copy.exams.workflow.readiness.belowBar}`}
+                ? publication.allowAllConsequence
+                : `${allowingStudent ?? copy.common.none} — ${publication.belowBar}`}
             </DialogDescription>
           </DialogHeader>
           <Field>
-            <FieldLabel htmlFor="allow-reason">{copy.exams.workflow.readiness.reason}</FieldLabel>
+            <FieldLabel htmlFor="allow-reason">{publication.reason}</FieldLabel>
             <Input
               id="allow-reason"
               value={allowReason}
-              placeholder={copy.exams.workflow.readiness.reasonPlaceholder}
+              placeholder={publication.reasonPlaceholder}
               maxLength={500}
               onChange={(event) => setAllowReason(event.target.value)}
             />
             {allowReason.trim().length < 3 ? (
-              <p className="text-muted-foreground text-xs">
-                {copy.exams.workflow.readiness.reasonRequired}
-              </p>
+              <p className="text-muted-foreground text-xs">{publication.reasonRequired}</p>
             ) : null}
           </Field>
           <DialogFooter>
@@ -775,7 +652,7 @@ export default function ExamDetailPage() {
                 setAllowing(null);
               }}
             >
-              {copy.exams.workflow.readiness.allow}
+              {publication.allow}
             </Button>
           </DialogFooter>
         </DialogContent>

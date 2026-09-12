@@ -10,7 +10,6 @@ import type { ExamSchedule, Section, Subject } from "@/lib/trpc/types";
 
 import { FormDialog } from "@/components/form-dialog";
 import { Button } from "@/components/ui/button";
-import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -22,15 +21,20 @@ import {
 import { copy } from "@/lib/copy";
 
 /**
- * ONE CLASS'S EXAM GRID — the batch editor behind "Edit schedules".
+ * ONE CLASS'S PAPER GRID — the batch editor behind "Edit papers".
  *
- * The save is a batch, not a row-at-a-time (the service replaces the
- * class's schedules in one transaction), so the whole grid is the form:
- * `useFieldArray` holds one row per subject paper, and submit sends the
- * class's rows as `saveExamSchedulesInput`. Deleting every row is legal —
- * an empty grid is a state a drafting exam can be in — but the
- * `scheduled` transition refuses to fire until coverage is complete, and
- * that refusal is the guard, not this dialog.
+ * A date sheet, not a stack of fieldsets: one row per subject with inline
+ * inputs, because the principal reads this the way the printed date sheet
+ * reads — subject down the page, day/time across. `overflow-x-auto` keeps
+ * the table honest on a phone rather than crushing seven columns.
+ *
+ * The save is a batch, not row-at-a-time (the service replaces the class's
+ * schedules — and the parts of the rows it replaces — in one transaction),
+ * so the whole grid is the form: `useFieldArray` holds one row per paper.
+ * Deleting every row is legal — an empty grid is a state a draft can be
+ * in, and "Remove class" in the papers section uses exactly that — but the
+ * `scheduled` transition refuses until coverage is complete; that refusal
+ * is the guard, not this dialog.
  *
  * The pass-mark override starts empty: the server derives the weighted
  * default from the components, and a school only types here for the
@@ -77,9 +81,7 @@ export function ScheduleDialog({
       schedules: schedules.map((s) => ({
         classId: s.classId,
         // Round-tripped, never dropped: omitting it would silently widen a
-        // section paper to the whole class on save. (The exam itself rides
-        // the envelope's `id` — per-row examId was removed from the
-        // contract in Phase 6a.)
+        // section paper to the whole class on save.
         sectionId: s.sectionId,
         subjectId: s.subjectId,
         examDate: s.examDate,
@@ -95,181 +97,174 @@ export function ScheduleDialog({
 
   const errors = form.formState.errors.schedules;
 
+  const header = copy.exams.workflow.fields;
+
   return (
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
       title={`${copy.exams.workflow.editScheduleFor} — ${className}`}
-      description={copy.exams.workflow.scheduleSubtitle}
+      description={copy.exams.workflow.papersSubtitle}
       pending={pending}
       onSubmit={form.handleSubmit((data) => onSubmit({ ...data, id: examId }))}
     >
-      <div className="flex flex-col gap-4">
-        {fields.map((field, index) => {
-          const rowError = errors?.[index];
-          return (
-            <fieldset
-              key={field.id}
-              className="grid gap-3 rounded-lg border p-3 sm:grid-cols-2"
-            >
-              <Field data-invalid={rowError?.subjectId ? true : undefined} className="sm:col-span-2">
-                <FieldLabel htmlFor={`schedule-subject-${index}`}>
-                  {copy.exams.workflow.fields.subject}
-                </FieldLabel>                <Select
-                  value={form.watch(`schedules.${index}.subjectId`)}
-                  onValueChange={(v) => {
-                    if (v) form.setValue(`schedules.${index}.subjectId`, v);
-                  }}
-                >
-                  <SelectTrigger
-                    id={`schedule-subject-${index}`}
-                    aria-invalid={rowError?.subjectId ? true : undefined}
-                  >
-                    <SelectValue>
-                      {(value: string | null) =>
-                        value
-                          ? (subjects.find((s) => s.id === value)?.name ?? copy.common.none)
-                          : copy.common.required
-                      }
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {subjects.map((subject) => (
-                      <SelectItem key={subject.id} value={subject.id}>
-                        {subject.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FieldError>{rowError?.subjectId?.message}</FieldError>
-              </Field>
+      <div className="flex flex-col gap-3">
+        <div className="-mx-1 overflow-x-auto px-1">
+          <table className="w-full min-w-[720px] border-separate border-spacing-0 text-sm">
+            <thead>
+              <tr className="text-muted-foreground text-left text-xs">
+                <th className="pb-1 pe-2 font-medium">{header.subject}</th>
+                <th className="pb-1 pe-2 font-medium">{header.section}</th>
+                <th className="pb-1 pe-2 font-medium">{header.date}</th>
+                <th className="pb-1 pe-2 font-medium">{header.startTime}</th>
+                <th className="pb-1 pe-2 font-medium">{header.duration}</th>
+                <th className="pb-1 pe-2 font-medium">{header.venue}</th>
+                <th className="pb-1 pe-2 font-medium">{header.passMarksOverrideShort}</th>
+                <th className="pb-1" aria-label={copy.common.actions} />
+              </tr>
+            </thead>
+            <tbody>
+              {fields.map((field, index) => {
+                const rowError = errors?.[index];
+                const invalid = (key: string) => rowError?.[key as keyof typeof rowError];
+                return (
+                  <tr key={field.id}>
+                    <td className="pb-2 pe-2 align-top">
+                      <Select
+                        value={form.watch(`schedules.${index}.subjectId`)}
+                        onValueChange={(v) => {
+                          if (v) form.setValue(`schedules.${index}.subjectId`, v);
+                        }}
+                      >
+                        <SelectTrigger
+                          aria-label={`${header.subject} ${index + 1}`}
+                          aria-invalid={invalid("subjectId") ? true : undefined}
+                          className="w-36"
+                        >
+                          <SelectValue>
+                            {(value: string | null) =>
+                              value
+                                ? (subjects.find((s) => s.id === value)?.name ?? copy.common.none)
+                                : copy.common.required
+                            }
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {subjects.map((subject) => (
+                            <SelectItem key={subject.id} value={subject.id}>
+                              {subject.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="pb-2 pe-2 align-top">
+                      <Select
+                        value={form.watch(`schedules.${index}.sectionId`) ?? "all"}
+                        onValueChange={(v) => {
+                          form.setValue(`schedules.${index}.sectionId`, v === "all" ? null : v);
+                        }}
+                      >
+                        <SelectTrigger
+                          aria-label={`${header.section} ${index + 1}`}
+                          aria-invalid={invalid("sectionId") ? true : undefined}
+                          className="w-28"
+                        >
+                          <SelectValue>
+                            {(value: string | null) =>
+                              value && value !== "all"
+                                ? (sections.find((s) => s.id === value)?.name ?? copy.common.none)
+                                : copy.exams.workflow.allSections
+                            }
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{copy.exams.workflow.allSections}</SelectItem>
+                          {sections.map((section) => (
+                            <SelectItem key={section.id} value={section.id}>
+                              {section.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="pb-2 pe-2 align-top">
+                      <Input
+                        type="date"
+                        aria-label={`${header.date} ${index + 1}`}
+                        aria-invalid={invalid("examDate") ? true : undefined}
+                        className="w-36"
+                        {...form.register(`schedules.${index}.examDate`)}
+                      />
+                    </td>
+                    <td className="pb-2 pe-2 align-top">
+                      <Input
+                        type="time"
+                        aria-label={`${header.startTime} ${index + 1}`}
+                        aria-invalid={invalid("startTime") ? true : undefined}
+                        className="w-24"
+                        {...form.register(`schedules.${index}.startTime`)}
+                      />
+                    </td>
+                    <td className="pb-2 pe-2 align-top">
+                      <Input
+                        type="number"
+                        min={5}
+                        max={600}
+                        inputMode="numeric"
+                        aria-label={`${header.duration} ${index + 1}`}
+                        aria-invalid={invalid("durationMinutes") ? true : undefined}
+                        className="w-20"
+                        {...form.register(`schedules.${index}.durationMinutes`, {
+                          setValueAs: (v) => (v === "" ? undefined : Number(v)),
+                        })}
+                      />
+                    </td>
+                    <td className="pb-2 pe-2 align-top">
+                      <Input
+                        maxLength={150}
+                        aria-label={`${header.venue} ${index + 1}`}
+                        aria-invalid={invalid("venue") ? true : undefined}
+                        className="w-32"
+                        {...form.register(`schedules.${index}.venue`, {
+                          setValueAs: (v) => (v === "" ? undefined : v),
+                        })}
+                      />
+                    </td>
+                    <td className="pb-2 pe-2 align-top">
+                      <Input
+                        inputMode="decimal"
+                        aria-label={`${header.passMarksOverride} ${index + 1}`}
+                        aria-invalid={invalid("passMarks") ? true : undefined}
+                        className="w-20"
+                        placeholder={copy.common.none}
+                        {...form.register(`schedules.${index}.passMarks`, {
+                          setValueAs: (v) => (v === "" ? undefined : v),
+                        })}
+                      />
+                    </td>
+                    <td className="pb-2 align-top">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`${copy.exams.workflow.removeRow} ${index + 1}`}
+                        onClick={() => remove(index)}
+                      >
+                        <Trash2Icon />
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
 
-              <Field data-invalid={rowError?.sectionId ? true : undefined} className="sm:col-span-2">
-                <FieldLabel htmlFor={`schedule-section-${index}`}>
-                  {copy.exams.workflow.fields.section}
-                </FieldLabel>
-                <Select
-                  value={form.watch(`schedules.${index}.sectionId`) ?? "all"}
-                  onValueChange={(v) => {
-                    form.setValue(`schedules.${index}.sectionId`, v === "all" ? null : v);
-                  }}
-                >
-                  <SelectTrigger
-                    id={`schedule-section-${index}`}
-                    aria-invalid={rowError?.sectionId ? true : undefined}
-                  >
-                    <SelectValue>
-                      {(value: string | null) =>
-                        value && value !== "all"
-                          ? (sections.find((s) => s.id === value)?.name ?? copy.common.none)
-                          : copy.exams.workflow.allSections
-                      }
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{copy.exams.workflow.allSections}</SelectItem>
-                    {sections.map((section) => (
-                      <SelectItem key={section.id} value={section.id}>
-                        {section.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FieldError>{rowError?.sectionId?.message}</FieldError>
-              </Field>
-
-              <Field data-invalid={rowError?.examDate ? true : undefined}>
-                <FieldLabel htmlFor={`schedule-date-${index}`}>
-                  {copy.exams.workflow.fields.date}
-                </FieldLabel>
-                <Input
-                  id={`schedule-date-${index}`}
-                  type="date"
-                  aria-invalid={rowError?.examDate ? true : undefined}
-                  {...form.register(`schedules.${index}.examDate`)}
-                />
-                <FieldError>{rowError?.examDate?.message}</FieldError>
-              </Field>
-
-              <Field data-invalid={rowError?.startTime ? true : undefined}>
-                <FieldLabel htmlFor={`schedule-start-${index}`}>
-                  {copy.exams.workflow.fields.startTime}
-                </FieldLabel>
-                <Input
-                  id={`schedule-start-${index}`}
-                  type="time"
-                  aria-invalid={rowError?.startTime ? true : undefined}
-                  {...form.register(`schedules.${index}.startTime`)}
-                />
-                <FieldError>{rowError?.startTime?.message}</FieldError>
-              </Field>
-
-              <Field data-invalid={rowError?.durationMinutes ? true : undefined}>
-                <FieldLabel htmlFor={`schedule-duration-${index}`}>
-                  {copy.exams.workflow.fields.duration}
-                </FieldLabel>
-                <Input
-                  id={`schedule-duration-${index}`}
-                  type="number"
-                  min={5}
-                  max={600}
-                  inputMode="numeric"
-                  aria-invalid={rowError?.durationMinutes ? true : undefined}
-                  {...form.register(`schedules.${index}.durationMinutes`, {
-                    setValueAs: (v) => (v === "" ? undefined : Number(v)),
-                  })}
-                />
-                <FieldError>{rowError?.durationMinutes?.message}</FieldError>
-              </Field>
-
-              <Field data-invalid={rowError?.venue ? true : undefined}>
-                <FieldLabel htmlFor={`schedule-venue-${index}`}>
-                  {copy.exams.workflow.fields.venue}
-                </FieldLabel>
-                <Input
-                  id={`schedule-venue-${index}`}
-                  maxLength={150}
-                  aria-invalid={rowError?.venue ? true : undefined}
-                  {...form.register(`schedules.${index}.venue`, {
-                    setValueAs: (v) => (v === "" ? undefined : v),
-                  })}
-                />
-                <FieldError>{rowError?.venue?.message}</FieldError>
-              </Field>
-
-              <Field data-invalid={rowError?.passMarks ? true : undefined} className="sm:col-span-2">
-                <FieldLabel htmlFor={`schedule-pass-${index}`}>
-                  {copy.exams.workflow.fields.passMarksOverride}
-                </FieldLabel>
-                <Input
-                  id={`schedule-pass-${index}`}
-                  inputMode="decimal"
-                  aria-invalid={rowError?.passMarks ? true : undefined}
-                  {...form.register(`schedules.${index}.passMarks`, {
-                    setValueAs: (v) => (v === "" ? undefined : v),
-                  })}
-                />
-                <FieldError>{rowError?.passMarks?.message}</FieldError>
-              </Field>
-
-              <div className="sm:col-span-2 flex justify-end">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => remove(index)}
-                >
-                  <Trash2Icon data-icon="inline-start" />
-                  {copy.exams.workflow.removeRow}
-                </Button>
-              </div>
-            </fieldset>
-          );
-        })}
-
-        <Button
-          type="button"
-          variant="outline"
+        <div>
+          <Button
+            type="button"
+            variant="outline"
             onClick={() =>
               append({
                 classId,
@@ -280,10 +275,11 @@ export function ScheduleDialog({
                 durationMinutes: 60,
               })
             }
-        >
-          <PlusIcon data-icon="inline-start" />
-          {copy.exams.workflow.addScheduleRow}
-        </Button>
+          >
+            <PlusIcon data-icon="inline-start" />
+            {copy.exams.workflow.addScheduleRow}
+          </Button>
+        </div>
       </div>
     </FormDialog>
   );
