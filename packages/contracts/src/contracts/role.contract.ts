@@ -68,6 +68,52 @@ export const rolePermissionRowSchema = z.object({
 });
 export type RolePermissionRow = z.infer<typeof rolePermissionRowSchema>;
 
+/**
+ * The EDITOR's vocabulary (ADR-036), served rather than imported — the web
+ * never imports @repo/authz runtime code. One category holds the resources
+ * it groups; each resource carries its selectable actions.
+ */
+export const permissionCategorySchema = z.object({
+  category: z.string(),
+  resources: z.array(
+    z.object({
+      resource: z.string(),
+      actions: z.array(z.string()),
+    }),
+  ),
+});
+export type PermissionCategory = z.infer<typeof permissionCategorySchema>;
+
+export const rolePermissionDefaultsSchema = z.object({
+  catalog: z.array(permissionCategorySchema),
+  defaults: z.array(rolePermissionRowSchema),
+});
+export type RolePermissionDefaults = z.infer<typeof rolePermissionDefaultsSchema>;
+
+/**
+ * BATCHED matrix edit (ADR-036): the UI collects checkbox toggles behind a
+ * dirty bar and saves the whole diff in one call. `add`/`remove` are plain
+ * `resource:action` strings — validated against the union server-side with
+ * `isPermission`, so an invalid permission is refused, never stored.
+ */
+export const updateRolePermissionsInput = z.object({
+  roleType: roleTypeSchema,
+  add: z.array(z.string().min(1)).max(200).default([]),
+  remove: z.array(z.string().min(1)).max(200).default([]),
+});
+export type UpdateRolePermissionsInput = z.infer<typeof updateRolePermissionsInput>;
+
+export const resetRolePermissionsInput = z.object({
+  roleType: roleTypeSchema,
+});
+export type ResetRolePermissionsInput = z.infer<typeof resetRolePermissionsInput>;
+
+export const rolePermissionChangeResultSchema = z.object({
+  added: z.number().int().min(0),
+  removed: z.number().int().min(0),
+});
+export type RolePermissionChangeResult = z.infer<typeof rolePermissionChangeResultSchema>;
+
 /** An assignment joined with a human-readable label for its target node. */
 export const roleAssignmentViewSchema = roleAssignmentSelectSchema.extend({
   scopeLabel: z.string(),

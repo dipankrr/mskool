@@ -795,6 +795,32 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
     message:
       "This role is already granted to this person at this scope. Revoke the existing grant first.",
   },
+
+  // The permission editor (ADR-036): the locks and the vocabulary checks.
+  {
+    match: /cannot be edited — it is the bootstrap role/i,
+    code: "BAD_REQUEST",
+    message:
+      "The organisation admin role cannot be edited — it is the bootstrap role. Grant another role instead.",
+  },
+  {
+    match: /You hold this role yourself/i,
+    code: "BAD_REQUEST",
+    message:
+      "You hold this role yourself — have a colleague with the permission make this change.",
+  },
+  {
+    match: /is not a permission this system knows/i,
+    code: "BAD_REQUEST",
+    message:
+      "That is not a permission this system knows. Refresh the editor and try again.",
+  },
+  {
+    match: /both added and removed/i,
+    code: "BAD_REQUEST",
+    message:
+      "That permission is both added and removed in the same save — refresh the editor and re-apply the change.",
+  },
 ];
 
 // ---------------------------------------------------------------------------

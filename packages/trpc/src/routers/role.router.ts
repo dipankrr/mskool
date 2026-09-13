@@ -1,9 +1,13 @@
 import {
   assignRoleSchema,
+  resetRolePermissionsInput,
   revokeRoleSchema,
   roleAssignmentSelectSchema,
   roleAssignmentViewSchema,
+  rolePermissionChangeResultSchema,
+  rolePermissionDefaultsSchema,
   rolePermissionRowSchema,
+  updateRolePermissionsInput,
 } from "@repo/contracts";
 import { roleService } from "@repo/services";
 import { TRPCError } from "@trpc/server";
@@ -26,8 +30,12 @@ import { router, staffListProcedure, staffProcedure } from "../trpc";
  * user's cache snapshot — the change lands on their next request, not in
  * five minutes (ADR-035 closes the Phase 1 "no audit writer" debt).
  *
- * The matrix read is deliberately read-only: `role_permission:update` is
- * deferred (ADR-035) — orgs run on the seeded defaults.
+ * The matrix read powers the editor (ADR-036): `permissionDefaults` serves
+ * the grouped catalog + shipped defaults as data, `permissionUpdate` applies
+ * a batched diff, `permissionReset` restores one role. Both writes carry
+ * ADR-036's two locks (never org_admin, never a role you hold) in the
+ * service, audit every changed permission, and end with an org-wide cache
+ * invalidation — a matrix change touches every holder of the role.
  */
 const resolveAssignmentOwner = async (organizationId: string, id: string) => {
   const owner = await roleService.getAssignmentOwnerId(organizationId, id);
@@ -114,8 +122,8 @@ export const roleRouter = router({
       return row;
     }),
 
-  // The org's permission matrix, read-only. Display is the v1 scope;
-  // editing waits for a real tenant's request (ADR-035).
+  // The org's permission matrix, read-only. Editing lives in the ADR-036
+  // procedures below.
   permissions: staffListProcedure("role_permission:read")
     .meta({
       openapi: {
@@ -129,5 +137,89 @@ export const roleRouter = router({
     .output(z.array(rolePermissionRowSchema))
     .query(async ({ ctx }) => {
       return roleService.listPermissions(ctx.organizationId);
+    }),
+
+  // The editor's vocabulary: the grouped catalog (resource → actions, by
+  // display category) and the shipped defaults, as DATA — the web never
+  // imports @repo/authz runtime code (ADR-036).
+  permissionDefaults: staffListProcedure("role_permission:read")
+    .meta({
+      openapi: {
+        method: "GET",
+        path: "/role/permissions/defaults",
+        tags: ["roles"],
+        summary: "The permission catalog and the shipped default matrix",
+        protect: true,
+      },
+    })
+    .output(rolePermissionDefaultsSchema)
+    .query(async () => {
+      return roleService.permissionDefaults();
+    }),
+
+  /**
+   * The batched matrix edit (ADR-036). The two locks live in the service;
+   * the actor's own role types are resolved here from the caller's auth
+   * cache (expiry-filtered — an expired grant must not protect a role from
+   * its holder's edit, it simply isn't held). `role_permission:update` is
+   * SENSITIVE, so the gate itself read fresh.
+   */
+  permissionUpdate: staffProcedure("role_permission:update")
+    .meta({
+      openapi: {
+        method: "POST",
+        path: "/role/permissions/update",
+        tags: ["roles"],
+        summary: "Apply a batched permission diff to one role",
+        protect: true,
+      },
+    })
+    .input(updateRolePermissionsInput)
+    .output(rolePermissionChangeResultSchema)
+    .mutation(async ({ ctx, input }) => {
+      const actorRoleTypes = ctx.authCache.assignments
+        .filter(
+          (a) =>
+            a.organizationId === ctx.organizationId &&
+            (a.expiresAt === null || a.expiresAt > new Date()),
+        )
+        .map((a) => a.roleType);
+
+      return roleService.updatePermissions(
+        ctx.organizationId,
+        ctx.userId,
+        actorRoleTypes,
+        input,
+      );
+    }),
+
+  // The safety hatch: restore one role to the shipped defaults, diff-only.
+  permissionReset: staffProcedure("role_permission:update")
+    .meta({
+      openapi: {
+        method: "POST",
+        path: "/role/permissions/reset",
+        tags: ["roles"],
+        summary: "Restore one role to the shipped default matrix",
+        protect: true,
+      },
+    })
+    .input(resetRolePermissionsInput)
+    .output(rolePermissionChangeResultSchema)
+    .mutation(async ({ ctx, input }) => {
+      const actorRoleTypes = ctx.authCache.assignments
+        .filter(
+          (a) =>
+            a.organizationId === ctx.organizationId &&
+            (a.expiresAt === null || a.expiresAt > new Date()),
+        )
+        .map((a) => a.roleType);
+
+      return roleService.resetPermissions(
+        ctx.organizationId,
+        ctx.userId,
+        actorRoleTypes,
+        input.roleType,
+      );
     }),
 });

@@ -1,8 +1,17 @@
-import { invalidateUserAuthCache } from "@repo/authz";
+import {
+  DEFAULT_ROLE_PERMISSIONS,
+  invalidateOrgAuthCache,
+  invalidateUserAuthCache,
+  isPermission,
+  RESOURCE_ACTIONS,
+  RESOURCE_CATEGORIES,
+} from "@repo/authz";
 import type {
   AssignRoleInput,
+  PermissionCategory,
   RevokeRoleInput,
   RoleAssignmentView,
+  RoleType,
 } from "@repo/contracts";
 import { db } from "@repo/db";
 import {
@@ -249,8 +258,7 @@ export class RoleService {
 
   /**
    * The org's permission matrix as flat rows (role × permission), for the
-   * read-only display. `role_permission:update` is deliberately deferred —
-   * orgs run on the seeded defaults (ADR-035).
+   * read-only display. Editing lives in the ADR-036 editor below.
    */
   async listPermissions(organizationId: string) {
     return db
@@ -258,6 +266,193 @@ export class RoleService {
       .from(orgRolePermissions)
       .where(eq(orgRolePermissions.organizationId, organizationId))
       .orderBy(asc(orgRolePermissions.roleType), asc(orgRolePermissions.permission));
+  }
+
+  // --- The permission EDITOR (ADR-036) --------------------------------------
+
+  /**
+   * The editor's vocabulary, served rather than imported: the web never
+   * imports @repo/authz runtime code, so the catalog (resources grouped by
+   * display category) and the shipped defaults cross this boundary as data.
+   */
+  permissionDefaults(): {
+    catalog: PermissionCategory[];
+    defaults: { roleType: RoleType; permission: string }[];
+  } {
+    const byCategory = new Map<string, PermissionCategory["resources"]>();
+    for (const [category, resources] of Object.entries(RESOURCE_CATEGORIES)) {
+      byCategory.set(
+        category,
+        resources.map((resource) => ({
+          resource,
+          actions: [...(RESOURCE_ACTIONS[resource] ?? [])],
+        })),
+      );
+    }
+
+    const catalog: PermissionCategory[] = [...byCategory.entries()].map(
+      ([category, resources]) => ({ category, resources }),
+    );
+
+    const defaults = Object.entries(DEFAULT_ROLE_PERMISSIONS).flatMap(
+      ([roleType, permissions]) =>
+        (permissions as string[]).map((permission) => ({
+          roleType: roleType as RoleType,
+          permission,
+        })),
+    );
+
+    return { catalog, defaults };
+  }
+
+  /**
+   * ADR-036's two hard locks, shared by update and reset. Both are refused
+   * with the fix named; the UI renders the same locks read-only, but the
+   * check lives HERE because a REST caller does not read the UI.
+   */
+  private assertRoleEditable(roleType: RoleType, actorRoleTypes: string[]) {
+    if (roleType === "org_admin") {
+      throw new Error(
+        "The organisation admin role cannot be edited — it is the bootstrap role. Grant another role instead.",
+      );
+    }
+    if (actorRoleTypes.includes(roleType)) {
+      throw new Error(
+        "You hold this role yourself — have a colleague with the permission make this change.",
+      );
+    }
+  }
+
+  /**
+   * Applies a batched matrix diff for one role. Every CHANGED permission
+   * writes its own audit row (added or removed — unchanged permissions are
+   * not audited, so a no-op save writes nothing), and the change ends with
+   * an ORG-WIDE cache invalidation: every holder of the role is affected,
+   * so per-user invalidation cannot be enough.
+   */
+  async updatePermissions(
+    organizationId: string,
+    actorUserId: string,
+    actorRoleTypes: string[],
+    input: { roleType: RoleType; add: string[]; remove: string[] },
+  ) {
+    this.assertRoleEditable(input.roleType, actorRoleTypes);
+
+    const invalid = [...input.add, ...input.remove].find((p) => !isPermission(p));
+    if (invalid) {
+      throw new Error(`"${invalid}" is not a permission this system knows.`);
+    }
+    const overlap = input.add.find((p) => input.remove.includes(p));
+    if (overlap) {
+      throw new Error(
+        `"${overlap}" is both added and removed — the request contradicts itself.`,
+      );
+    }
+
+    let added = 0;
+    if (input.add.length > 0) {
+      const inserted = await db
+        .insert(orgRolePermissions)
+        .values(
+          input.add.map((permission) => ({
+            organizationId,
+            roleType: input.roleType,
+            permission,
+          })),
+        )
+        .onConflictDoNothing({
+          target: [
+            orgRolePermissions.organizationId,
+            orgRolePermissions.roleType,
+            orgRolePermissions.permission,
+          ],
+        })
+        .returning({ permission: orgRolePermissions.permission });
+
+      added = inserted.length;
+      if (added > 0) {
+        await db.insert(authzAuditLog).values(
+          inserted.map((row) => ({
+            organizationId,
+            action: "permission_added" as const,
+            actorUserId,
+            roleType: input.roleType,
+            permission: row.permission,
+            details: { source: "permission_editor" },
+          })),
+        );
+      }
+    }
+
+    let removed = 0;
+    if (input.remove.length > 0) {
+      const deleted = await db
+        .delete(orgRolePermissions)
+        .where(
+          and(
+            eq(orgRolePermissions.organizationId, organizationId),
+            eq(orgRolePermissions.roleType, input.roleType),
+            inArray(orgRolePermissions.permission, input.remove),
+          ),
+        )
+        .returning({ permission: orgRolePermissions.permission });
+
+      removed = deleted.length;
+      if (removed > 0) {
+        await db.insert(authzAuditLog).values(
+          deleted.map((row) => ({
+            organizationId,
+            action: "permission_removed" as const,
+            actorUserId,
+            roleType: input.roleType,
+            permission: row.permission,
+            details: { source: "permission_editor" },
+          })),
+        );
+      }
+    }
+
+    if (added > 0 || removed > 0) {
+      await invalidateOrgAuthCache(organizationId);
+    }
+
+    return { added, removed };
+  }
+
+  /**
+   * Restores one role to the shipped defaults — the editor's safety hatch.
+   * Only the DIFF is written (and audited): permissions the role already
+   * holds that the defaults also contain are left untouched.
+   */
+  async resetPermissions(
+    organizationId: string,
+    actorUserId: string,
+    actorRoleTypes: string[],
+    roleType: RoleType,
+  ) {
+    this.assertRoleEditable(roleType, actorRoleTypes);
+
+    const defaults = DEFAULT_ROLE_PERMISSIONS[roleType] ?? [];
+    const current = await db
+      .select({ permission: orgRolePermissions.permission })
+      .from(orgRolePermissions)
+      .where(
+        and(
+          eq(orgRolePermissions.organizationId, organizationId),
+          eq(orgRolePermissions.roleType, roleType),
+        ),
+      );
+    const currentSet = new Set<string>(current.map((r) => r.permission));
+    const defaultSet = new Set<string>(defaults);
+
+    const toAdd = defaults.filter((p) => !currentSet.has(p));
+    const toRemove = [...currentSet].filter((p) => !defaultSet.has(p));
+
+    return this.updatePermissions(organizationId, actorUserId, actorRoleTypes, {
+      roleType,
+      add: toAdd,
+      remove: toRemove,
+    });
   }
 
   /**
