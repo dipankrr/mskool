@@ -1503,3 +1503,54 @@ user's cache entry). Self-registration stays closed (ADR-021) — the org
 is still the only identity issuer. The forced-change flow needs no new
 machinery: the flag, the hook that clears it, and the console redirect
 all exist from the portal work.
+
+## ADR-036 — The permission matrix is editable, with two hard locks: never the org_admin role, never a role you hold
+
+**Context.** Every org runs on `DEFAULT_ROLE_PERMISSIONS`, seeded once at
+provisioning (ADR-011). `role_permission:update` existed in the vocabulary
+and the SENSITIVE list from day one with no write path. The staff slice
+(ADR-035) shipped the matrix as read-only and deferred editing. The owner
+has now asked for it, with one explicit rule of their own: **an admin must
+not edit their own role's permissions.**
+
+**Decision.**
+
+1. **Two server-enforced locks, refused with honest words:**
+   - **The `org_admin` role is never editable** — it is the bootstrap role.
+     An org that can strip it can brick itself: no user could grant anything
+     back. The lock is on the ROLE, not the caller, so not even an
+     org_admin can edit it.
+   - **A caller cannot edit a role they personally hold.** The actor's own
+     role types are resolved from their auth cache in the router; a match is
+     a BAD_REQUEST naming the fix ("have a colleague make this change"). No
+     self-lockout, even accidentally.
+2. **Editing is batched, not per-click.** One procedure,
+   `role.permissionUpdate`, takes `{ roleType, add: string[], remove:
+   string[] }` and applies the whole diff in one call — the UI collects
+   checkbox toggles behind a dirty bar and saves once. One mutation for a
+   matrix change, one confirm for its blast radius ("every accountant in
+   this trust gains 2 and loses 1, immediately"). Added permissions are
+   validated with `isPermission` — an invalid permission cannot be named,
+   still less stored; the unique index absorbs duplicate adds idempotently.
+   `role.permissionReset` restores one role to the shipped defaults — the
+   safety hatch, under the same two locks.
+3. **Every changed permission writes its own audit row**
+   (`permission_added` / `permission_removed` — enum values that existed
+   from Phase 1), and the change ends with `invalidateOrgAuthCache(org)`:
+   a matrix change affects EVERY holder of the role, so per-user
+   invalidation is not enough. `role_permission:update` is SENSITIVE, so
+   the gate reads fresh.
+4. **The editor's vocabulary is served, not imported.** The web never
+   imports `@repo/authz` runtime code; `role.permissionDefaults` returns
+   both the org's current matrix rows AND the full catalog
+   (resource → actions, grouped by display category) derived from
+   `RESOURCE_ACTIONS`/`RESOURCE_CATEGORIES`. The UI renders resources
+   grouped by category, each resource's actions as checkboxes.
+
+**Consequences.** The matrix card gains an Edit affordance per editable
+role; locked roles explain themselves (bootstrap role / you hold this
+role). `syncDefaultPermissions` stays insert-only — editing an org's
+matrix makes it DIVERGE from the defaults deliberately, and the "modified"
+badge plus reset is how an admin sees and undoes that divergence. Only
+org-level roles are editable as data; nobody edits a scope-specific
+matrix because there is no such table.
