@@ -21,8 +21,10 @@ import {
   saveComponentResultInput,
   saveExamComponentsInput,
   saveExamSchedulesInput,
+  saveTermAssessmentInput,
   subjectTypeSelectSchema,
   submitRevisionInput,
+  termAssessmentSelectSchema,
   updateExamSchema,
   updatePassCriteriaSchema,
   updateSubjectTypeSchema,
@@ -495,6 +497,27 @@ export const examRouter = router({
       .output(classSetOutputSchema)
       .query(({ ctx, input }) =>
         examResultsService.listClassCards(ctx.scope, input.id, input.classId),
+      ),
+  }),
+
+  // The term_grade pipeline: areas and graded subjects that never sit a
+  // paper. Entry is a subject-content write, so it rides the same gate
+  // pair as the marks grid (ADR-029/029a) — the input carries sectionId +
+  // subjectId for the fact check; the service verifies the mapping's type
+  // really is term_grade.
+  termGrades: router({
+    list: staffListProcedure("exam:read")
+      .meta({ openapi: { method: "GET", path: "/exam/term-grades", tags: ["exams"], summary: "One term's term-grade entries", protect: true } })
+      .input(z.object({ termId: z.uuid() }))
+      .output(z.array(termAssessmentSelectSchema))
+      .query(({ ctx, input }) => examMarksService.listTermAssessments(ctx.scopes, input.termId)),
+
+    save: staffProcedure("marks:create", { subjectGate: true })
+      .meta({ openapi: { method: "PUT", path: "/exam/term-grades", tags: ["exams"], summary: "Save one student's term grade for one subject", protect: true } })
+      .input(saveTermAssessmentInput)
+      .output(termAssessmentSelectSchema.nullable())
+      .mutation(({ ctx, input }) =>
+        examMarksService.saveTermAssessment(ctx.scope, ctx.userId, input),
       ),
   }),
 });

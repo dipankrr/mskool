@@ -255,8 +255,6 @@ async function main() {
       db.delete(gradingScaleBands).where(inArray(gradingScaleBands.organizationId, orgIds)).returning());
     await wipe("grading_scales", () =>
       db.delete(gradingScales).where(inArray(gradingScales.organizationId, orgIds)).returning());
-    await wipe("subject_types", () =>
-      db.delete(subjectTypes).where(inArray(subjectTypes.organizationId, orgIds)).returning());
   }
   if (studentIds.length > 0) {
     await wipe("student_portal_access", () =>
@@ -283,10 +281,14 @@ async function main() {
       db.delete(staff).where(inArray(staff.organizationId, orgIds)).returning());
   }
 
-  // 5. Academic spine.
+  // 5. Academic spine. Mappings FK subject_types, so they go FIRST — the
+  // seed's term_grade type gave the demo world its first subject_types row
+  // and exposed this ordering.
   if (orgIds.length > 0) {
     await wipe("class_subject_mappings", () =>
       db.delete(classSubjectMappings).where(inArray(classSubjectMappings.organizationId, orgIds)).returning());
+    await wipe("subject_types", () =>
+      db.delete(subjectTypes).where(inArray(subjectTypes.organizationId, orgIds)).returning());
     await wipe("subjects", () =>
       db.delete(subjects).where(inArray(subjects.organizationId, orgIds)).returning());
     await wipe("sections", () =>

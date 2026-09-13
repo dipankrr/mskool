@@ -488,6 +488,44 @@ describe("exams integration: compute, publish, and the frozen photographs", () =
   it("computes, ranks, publishes per class, and freezes the cards", async () => {
     const scope = scopeOf(world);
 
+    // Per-component grading override (the ICSE case, ADR-032 §5): the part
+    // gets its OWN grade on ITS scale — stamped onto the component result,
+    // beside the marks. Bands land "Star" at ≥50 so the assertion
+    // can never be satisfied by the default scale's lone "A". Labels stay within varchar(10).
+    const [overrideScale] = await db
+      .insert(gradingScales)
+      .values({
+        organizationId: world.organizationId,
+        schoolId: world.schoolId,
+        name: "Override Scale",
+        isDefault: false,
+      })
+      .returning();
+    await db.insert(gradingScaleBands).values([
+      {
+        organizationId: world.organizationId,
+        schoolId: world.schoolId,
+        gradingScaleId: overrideScale!.id,
+        minMarks: "0.00",
+        maxMarks: "50.00",
+        gradeLabel: "Pass",
+        sequenceNumber: 1,
+      },
+      {
+        organizationId: world.organizationId,
+        schoolId: world.schoolId,
+        gradingScaleId: overrideScale!.id,
+        minMarks: "50.00",
+        maxMarks: "100.00",
+        gradeLabel: "Star",
+        sequenceNumber: 2,
+      },
+    ]);
+    await db
+      .update(examComponents)
+      .set({ gradingScaleId: overrideScale!.id })
+      .where(eq(examComponents.id, world.componentId));
+
     // Entry complete (A: 72, B: absent) -> verification may open.
     const verification = await examConfigService.transition(scope, {
       id: world.examId,
@@ -497,6 +535,18 @@ describe("exams integration: compute, publish, and the frozen photographs", () =
 
     const computed = await examResultsService.computeClassResults(scope, world.examId, world.classId);
     expect(computed).toHaveLength(2);
+
+    // A's 75/100 grades "Star" on the override scale, beside the
+    // marks; absent B has nothing to grade. The SUBJECT's grade ("A") is
+    // still the default scale's — the override is additive.
+    const stamped = await db
+      .select()
+      .from(studentComponentResults)
+      .where(eq(studentComponentResults.componentId, world.componentId));
+    const aComponent = stamped.find((r) => r.studentId === world.studentA);
+    const bComponent = stamped.find((r) => r.studentId === world.studentB);
+    expect(aComponent?.gradeObtained).toBe("Star");
+    expect(bComponent?.gradeObtained ?? null).toBeNull();
 
     const subjects = await db
       .select()

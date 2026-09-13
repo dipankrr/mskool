@@ -157,6 +157,31 @@ const subjectMappingRouter = router({
       }
             return mapping;
     }),
+
+  // END a mapping (ADR-033): remove the class's (year, subject) pair. The
+  // service refuses when term-grade entries hang off it — the record is not
+  // the template.
+  end: staffProcedure("subject_mapping:delete", {
+    resolveOwner: resolveClassSubjectMappingOwner,
+  })
+    .meta({
+      openapi: {
+        method: "DELETE",
+        path: "/subject-mappings/{id}",
+        tags: ["subject-mappings"],
+        summary: "End (remove) a class's subject mapping",
+        protect: true,
+      },
+    })
+    .input(z.object({ id: z.uuid() }))
+    .output(classSubjectMappingSelectSchema.nullable())
+    .mutation(async ({ ctx, input }) => {
+      const mapping = await assignmentService.endClassSubjectMapping(ctx.scope, input.id);
+      if (!mapping) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Subject mapping not found." });
+      }
+      return mapping;
+    }),
 });
 
 // ---------------------------------------------------------------------------

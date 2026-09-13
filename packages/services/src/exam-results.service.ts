@@ -227,6 +227,31 @@ export class ExamResultsService {
       const subjectSet = await this.resolveSubjectSet(tx, classId, exam.academicYearId);
       const cohort = await this.cohortOf(tx, classId, exam.academicYearId, null);
 
+      // The per-component scale overrides (the ICSE case): a component with
+      // its own scale gets its own grade — the reference SQL's "this
+      // component gets its own independent grade" — stamped onto the
+      // component result's gradeObtained (the column the schema names as
+      // exactly this data's home). The subject's grade stays on the school
+      // default; this is additive, never a re-grading of the aggregate.
+      const overrideScaleIds = [
+        ...new Set(
+          components
+            .map((c) => c.gradingScaleId)
+            .filter((id): id is string => id != null),
+        ),
+      ];
+      const overrideBands = overrideScaleIds.length
+        ? await tx
+            .select({
+              scaleId: gradingScaleBands.gradingScaleId,
+              minMarks: gradingScaleBands.minMarks,
+              maxMarks: gradingScaleBands.maxMarks,
+              gradeLabel: gradingScaleBands.gradeLabel,
+            })
+            .from(gradingScaleBands)
+            .where(inArray(gradingScaleBands.gradingScaleId, overrideScaleIds))
+        : [];
+
       const processed: { studentId: string }[] = [];
       for (const { studentId } of cohort) {
         const outcomes: {
@@ -250,6 +275,32 @@ export class ExamResultsService {
           const studentRows = componentRows.filter(
             (r) => r.scheduleId === schedule.id && r.studentId === studentId,
           );
+
+          // Stamp the override components' own grades: marks → percent →
+          // band on THAT scale. Only rows that exist and carry marks — an
+          // absent or exempt part has nothing to grade. Re-runnable: a row
+          // already showing the right grade is left alone.
+          for (const row of studentRows) {
+            if (row.marksObtained == null) continue;
+            const component = scheduleComponents.find((c) => c.id === row.componentId);
+            if (!component?.gradingScaleId) continue;
+            const max = toHundredths(component.maxMarks);
+            if (max === 0n) continue;
+            const pct = (toHundredths(row.marksObtained) * 10000n) / max;
+            const band = overrideBands.find(
+              (b) =>
+                b.scaleId === component.gradingScaleId &&
+                pct >= toHundredths(b.minMarks) &&
+                pct <= toHundredths(b.maxMarks),
+            );
+            const grade = band?.gradeLabel ?? null;
+            if (grade !== row.gradeObtained) {
+              await tx
+                .update(studentComponentResults)
+                .set({ gradeObtained: grade })
+                .where(eq(studentComponentResults.id, row.id));
+            }
+          }
 
           if (mapping.isGradedOnly) {
             const overall = studentRows.find((r) => r.gradeObtained !== null);

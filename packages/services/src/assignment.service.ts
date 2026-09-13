@@ -13,6 +13,7 @@ import {
   sections,
   staff as staffTable,
   subjects,
+  termAssessments,
 } from "@repo/db/schema";
 import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 
@@ -223,10 +224,55 @@ export class AssignmentService {
   }
 
   /**
-   * The owning branch of a mapping (B6 adapter) — its schoolId column. No
-   * DELETE, ever (hard rule 2) and no fake "removal": a wrong mapping is fixed
-   * by ending its year's structure, not by mutating this row into meaning
-   * something else — `isElective` is a real flag, not a tombstone.
+   * END a mapping: remove the class's (year, subject) pair. The old stance —
+   * "no DELETE, ever" — is superseded (ADR-033): a wrongly mapped subject in
+   * the UI's pickers is worse than an honest removal, and the mapping is
+   * template data, not the ledger. The ONE guard that matters: term-grade
+   * entries hang off the mapping (they FK it directly), so a mapping with
+   * assessment data refuses — that data is the record, not the template.
+   * Papers and assignments reference the SUBJECT, not the mapping, and
+   * survive.
+   */
+  async endClassSubjectMapping(scope: DataScope, mappingId: string) {
+    return db.transaction(async (tx) => {
+      const [mapping] = await tx
+        .select({
+          id: classSubjectMappings.id,
+          subjectName: subjects.name,
+        })
+        .from(classSubjectMappings)
+        .innerJoin(subjects, eq(classSubjectMappings.subjectId, subjects.id))
+        .where(
+          and(
+            eq(classSubjectMappings.id, mappingId),
+            scopeWhere(atSchoolLevel(scope), MAPPING_SCOPE_COLUMNS),
+          ),
+        );
+      if (!mapping) return null;
+
+      const [entry] = await tx
+        .select({ id: termAssessments.id })
+        .from(termAssessments)
+        .where(eq(termAssessments.mappingId, mappingId))
+        .limit(1);
+      if (entry) {
+        throw new Error(
+          `"${mapping.subjectName}" has term-grade entries for this class — removing the mapping would orphan them. End its entries first.`,
+        );
+      }
+
+      const [removed] = await tx
+        .delete(classSubjectMappings)
+        .where(eq(classSubjectMappings.id, mappingId))
+        .returning();
+      return removed ?? null;
+    });
+  }
+
+  /**
+   * The owning branch of a mapping (B6 adapter) — its schoolId column.
+   * Removal now exists as `endClassSubjectMapping` (ADR-033 superseded the
+   * old "no DELETE" stance) — guarded, never a tombstone flip.
    */
   async getClassSubjectMappingOwnerId(
     organizationId: string,

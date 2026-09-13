@@ -1402,3 +1402,53 @@ columns and table are deferred with the elective machinery. Migration numbering 
 (fees ended at `0012`). The owner authorized the build model: complete tested backbone before any
 UI; view endpoints designed only with their screens
 (`.kilo/plans/1788637674191-phase5-exams.md`).
+
+## ADR-033 — Subject mappings can be ENDED (removed) with a guarded delete
+
+**Context.** ADR-032's era left mappings immutable by design ("no DELETE, ever"): a
+wrong mapping was to be structurally corrected, and `isElective` was a flag, not a
+tombstone. In practice a wrongly mapped subject lingers in every picker that reads
+mappings — the exam papers editor ("Add subject"), term-grade entry, the coverage
+gate — and the only fix was the database. Mappings are TEMPLATE data (what this
+class takes this year), not the ledger; the immutability stance over-applied the
+append-only discipline that hard rule 3 reserves for money and hard rule 7 for
+published results.
+
+**Decision.** `subject_mapping:delete` exists and ENDs a mapping (a real row
+delete, `assignment.subjectMapping.end` / `endClassSubjectMapping`). One guard
+carries the whole decision: a mapping with `term_assessments` rows REFUSES —
+those entries FK the mapping directly, so removing it would orphan assessment
+data; the record is not the template. Everything else that references the
+SUBJECT (exam papers, teaching assignments, computed results) survives by
+construction. The principal holds the permission by default. This supersedes the
+"no DELETE" comment in the assignment service explicitly.
+
+**Consequences.** No schema change (no `is_active`/`effective_to` column — a
+removed mapping can be re-added, which is the honest undo). The class curriculum
+section gains a per-row Remove with a confirm dialog stating the consequence.
+e2e/conformance pins: end works on a clean mapping; refuses on an entered one.
+
+## ADR-034 — The student/parent-facing surface is mobile-only; the web app is staff-only
+
+**Context.** The Phase 5 portal shipped as a web route group (`apps/web`
+`(portal)`: phone sign-in, forced password change, published results,
+print). The owner has decided families will never be served a web
+frontend — the student/parent surface will be a mobile application.
+
+**Decision.** The web app serves STAFF only. The family-facing product is
+mobile, to be built as its own app (natively or cross-platform) in the
+monorepo (`apps/mobile`), consuming the SAME API surface that exists
+today: `studentProcedure` ownership authorization, the phone-credential
+lifecycle (better-auth username plugin, must-change-password,
+reset/change-phone), `published_report_cards` as the only
+portal-readable store (hard rule 8 — unchanged), and the `portalExam`
+router. Nothing backend moves.
+
+**Consequences.** The web `(portal)` route group becomes a STOPGAP — keep
+it working until the mobile app exists (it is finished, tested, and is
+the living reference for the mobile app's API usage); delete it when the
+app ships. Portal attendance/fees slices and any portal IA/
+notifications/gamification work move to the MOBILE backlog — the web
+stubs stay honest "coming next" placeholders or die with the route
+group. The staff-side Portal Access management (activate / reset /
+change-phone) is console work and stays on web untouched.

@@ -122,10 +122,12 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "portal_access:reset_password",
     "portal_access:change_phone",
     // Manages the teaching-assignment layer (Phase 2 S2): which subjects each
-    // class takes in a year, and who teaches what where.
+    // class takes in a year, and who teaches what where. The delete ends a
+    // mapping (ADR-033) — guarded against orphaning term-grade entries.
     "subject_mapping:create",
     "subject_mapping:read",
     "subject_mapping:update",
+    "subject_mapping:delete",
     "teacher_assignment:create",
     "teacher_assignment:read",
     "teacher_assignment:update",

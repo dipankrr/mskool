@@ -279,8 +279,58 @@ describe("exam router conformance — UI-shaped payloads through the real router
     });
     expect(Array.isArray(saved)).toBe(true);
     expect(saved!.length).toBe(2);
-    const scheduleId = saved![0]!.id;
-    const physicsScheduleId = saved![1]!.id;
+
+    // "Remove class" is an EXPLICIT removal list (`removeClassIds`), not an
+    // empty batch — the replace works per class PRESENT in the payload, so
+    // the old empty-batch remove silently deleted nothing.
+    const emptied = await call("exam.schedules.save", {
+      ...scopeArgs(organizationId, schoolId),
+      id: exam!.id,
+      schedules: [],
+      removeClassIds: [classId],
+    });
+    expect(emptied).toEqual([]);
+    const afterRemove = await call("exam.schedules.list", {
+      ...scopeArgs(organizationId, schoolId),
+      examId: exam!.id,
+    });
+    expect(afterRemove!.length).toBe(0);
+    // And one save cannot both remove a class and save its rows.
+    await expect(
+      call("exam.schedules.save", {
+        ...scopeArgs(organizationId, schoolId),
+        id: exam!.id,
+        schedules: [
+          { classId, subjectId, examDate: "2031-07-10", startTime: "09:00", durationMinutes: 120 },
+        ],
+        removeClassIds: [classId],
+      }),
+    ).rejects.toThrow(/removed and saved in one pass/);
+
+    // Re-create the two papers the rest of this flow walks through.
+    const resaved = await call("exam.schedules.save", {
+      ...scopeArgs(organizationId, schoolId),
+      id: exam!.id,
+      schedules: [
+        {
+          classId,
+          subjectId,
+          examDate: "2031-07-10",
+          startTime: "09:00",
+          durationMinutes: 120,
+        },
+        {
+          classId,
+          subjectId: physicsSubjectId,
+          examDate: "2031-07-12",
+          startTime: "09:00",
+          durationMinutes: 120,
+        },
+      ],
+    });
+    expect(resaved!.length).toBe(2);
+    const scheduleId = resaved![0]!.id;
+    const physicsScheduleId = resaved![1]!.id;
 
     // ComponentsDialog's payload on that schedule (id = schedule, rows bare).
     const components = await call("exam.components.save", {
@@ -300,6 +350,29 @@ describe("exam router conformance — UI-shaped payloads through the real router
       ],
     });
     expect(physicsComponents!.length).toBe(1);
+
+    // Editing the date sheet must NOT touch the parts: the identity-keyed
+    // save updates surviving rows IN PLACE (the delete-all/insert-all it
+    // replaced silently wiped every paper's components on any edit).
+    await call("exam.schedules.save", {
+      ...scopeArgs(organizationId, schoolId),
+      id: exam!.id,
+      schedules: [
+        { classId, subjectId, examDate: "2031-07-11", startTime: "10:00", durationMinutes: 150 },
+        {
+          classId,
+          subjectId: physicsSubjectId,
+          examDate: "2031-07-12",
+          startTime: "09:00",
+          durationMinutes: 120,
+        },
+      ],
+    });
+    const compsAfterEdit = await call("exam.components.list", {
+      ...scopeArgs(organizationId, schoolId),
+      id: scheduleId,
+    });
+    expect(compsAfterEdit!.length).toBe(2);
 
     // The transition the detail page's button sends.
     await expect(
@@ -459,5 +532,114 @@ describe("exam router conformance — UI-shaped payloads through the real router
     });
     expect(scale?.id).toBeDefined();
     void gradingScaleBands; void gradingScales; void passCriteria; void examComponents; void examSubjectSchedules;
+  });
+
+  it("exam.exam.update — the edit dialog's payload (name; weight/count freeze is the service's)", async () => {
+    const [exam] = await db
+      .select()
+      .from(exams)
+      .where(and(eq(exams.schoolId, schoolId), eq(exams.name, "Conformance Exam 2")));
+    const updated = await call("exam.exam.update", {
+      ...scopeArgs(organizationId, schoolId),
+      id: exam!.id,
+      data: { name: "Conformance Exam 2 (renamed)", allowsNegativeMarking: true },
+    });
+    expect(updated?.name).toBe("Conformance Exam 2 (renamed)");
+    expect(updated?.allowsNegativeMarking).toBe(true);
+  });
+
+  it("subjectMapping.end — remove a mapping; refuse one with term-grade entries", async () => {
+    // A throwaway mapping ends cleanly…
+    const [throwaway] = await db
+      .insert(subjects)
+      .values({ organizationId: organizationId, schoolId, name: "Art", code: "ART" })
+      .returning();
+    const [thrownType] = await db
+      .insert(subjectTypes)
+      .values({ organizationId: organizationId, schoolId, name: "Art Type", countsTowardResult: false, isGradedOnly: true, assessmentMode: "term_grade", sequence: 3 })
+      .returning();
+    const created = await call("assignment.subjectMapping.create", {
+      ...scopeArgs(organizationId, schoolId),
+      academicYearId,
+      classId,
+      subjectId: throwaway!.id,
+      data: { academicYearId, classId, subjectId: throwaway!.id, subjectTypeId: thrownType!.id, sequenceNumber: 2 },
+    });
+    const ended = await call("assignment.subjectMapping.end", {
+      ...scopeArgs(organizationId, schoolId),
+      id: created!.id,
+    });
+    expect(ended?.id).toBe(created!.id);
+  });
+
+  it("termGrades.save / list — the term-grade entry screen's payloads through the gate", async () => {
+    // The Personality-style mapping: term_grade mode (the preset's third row).
+    const [personality] = await db
+      .insert(subjects)
+      .values({ organizationId: organizationId, schoolId, name: "Personality", code: "PER" })
+      .returning();
+    const [personalityType] = await db
+      .insert(subjectTypes)
+      .values({ organizationId: organizationId, schoolId, name: "Personality", countsTowardResult: false, isGradedOnly: true, assessmentMode: "term_grade", sequence: 4 })
+      .returning();
+    const mapping = await call("assignment.subjectMapping.create", {
+      ...scopeArgs(organizationId, schoolId),
+      academicYearId,
+      classId,
+      subjectId: personality!.id,
+      data: { academicYearId, classId, subjectId: personality!.id, subjectTypeId: personalityType!.id, sequenceNumber: 3 },
+    });
+    expect(mapping?.id).toBeDefined();
+
+    // The principal saves (ADR-029a: permission + scope, no teaching row
+    // needed) — the same payload the grades page builds on blur.
+    const saved = await call("exam.termGrades.save", {
+      ...scopeArgs(organizationId, schoolId),
+      studentId,
+      termId,
+      mappingId: mapping!.id,
+      sectionId,
+      subjectId: personality!.id,
+      grade: "A",
+      teacherRemarks: "Shows initiative",
+    });
+    expect(saved?.grade).toBe("A");
+    const listed = await call("exam.termGrades.list", {
+      ...scopeArgs(organizationId, schoolId),
+      termId,
+    });
+    expect(listed!.some((row: { id: string }) => row.id === saved!.id)).toBe(true);
+
+    // The mapping with entries now REFUSES to end — the record is not the
+    // template.
+    await expect(
+      call("assignment.subjectMapping.end", {
+        ...scopeArgs(organizationId, schoolId),
+        id: mapping!.id,
+      }),
+    ).rejects.toThrow(/term-grade entries/);
+
+    // An EXAM-mode mapping is refused at save even through the gate —
+    // its grades come from marks, never this screen.
+    const [mathMapping] = await db
+      .select()
+      .from(classSubjectMappings)
+      .where(
+        and(
+          eq(classSubjectMappings.schoolId, schoolId),
+          eq(classSubjectMappings.subjectId, subjectId),
+        ),
+      );
+    await expect(
+      call("exam.termGrades.save", {
+        ...scopeArgs(organizationId, schoolId),
+        studentId,
+        termId,
+        mappingId: mathMapping!.id,
+        sectionId,
+        subjectId,
+        grade: "A",
+      }),
+    ).rejects.toThrow(/assessed by exams/);
   });
 });

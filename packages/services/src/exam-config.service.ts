@@ -1040,9 +1040,18 @@ export class ExamConfigService {
         throw new Error("Marks entry has opened — the exam blueprint is frozen.");
       }
 
-      const classIds = [...new Set(input.schedules.map((s) => s.classId))];
+      // Removal is explicit (`removeClassIds`): the replace works per
+      // class PRESENT in the payload, so an empty array used to be a
+      // silent no-op that "Remove class" rode on and quietly did nothing.
+      const removeClassIds = [...new Set(input.removeClassIds ?? [])];
+      if (removeClassIds.some((id) => input.schedules.some((s) => s.classId === id))) {
+        throw new Error(
+          "A class cannot be both removed and saved in one pass — remove it, then re-add its papers.",
+        );
+      }
+      const classIds = [...new Set([...input.schedules.map((s) => s.classId), ...removeClassIds])];
       const existing = await tx
-        .select({ id: examSubjectSchedules.id })
+        .select()
         .from(examSubjectSchedules)
         .where(
           and(
@@ -1066,36 +1075,54 @@ export class ExamConfigService {
         throw new Error("Marks exist for this exam's schedules — they can no longer be restructured.");
       }
 
-      if (existing.length > 0) {
-        // Components first: they FK to their schedules with no cascade,
-        // and deleting schedules under them 500s on the FK. Safe here —
-        // the results check above proved no marks reference them.
+      // Identity-keyed sync, not delete-all/insert-all: a paper IS its
+      // (class, subject, section), and its components (and lock, and any
+      // marks references) belong to that identity. Editing the date sheet
+      // used to delete and recreate every row — silently wiping the parts
+      // the prefill had just created. A row whose identity survives the
+      // save is UPDATED in place; only identities that vanish are deleted
+      // (their components first — no cascade on the FK).
+      const keyOf = (classId: string, subjectId: string, sectionId: string | null | undefined) =>
+        `${classId}|${subjectId}|${sectionId ?? "*"}`;
+      const existingByKey = new Map(
+        existing.map((r) => [keyOf(r.classId, r.subjectId, r.sectionId), r] as const),
+      );
+      const payloadKeys = new Set(
+        input.schedules.map((s) => keyOf(s.classId, s.subjectId, s.sectionId)),
+      );
+      const toDelete = existing.filter(
+        (r) => !payloadKeys.has(keyOf(r.classId, r.subjectId, r.sectionId)),
+      );
+      if (toDelete.length > 0) {
         await tx
           .delete(examComponents)
-          .where(
-            inArray(
-              examComponents.scheduleId,
-              existing.map((s) => s.id),
-            ),
-          );
+          .where(inArray(examComponents.scheduleId, toDelete.map((r) => r.id)));
         await tx
           .delete(examSubjectSchedules)
-          .where(
-            inArray(
-              examSubjectSchedules.id,
-              existing.map((s) => s.id),
-            ),
-          );
+          .where(inArray(examSubjectSchedules.id, toDelete.map((r) => r.id)));
       }
-      if (input.schedules.length > 0) {
-        await tx.insert(examSubjectSchedules).values(
-          input.schedules.map((s) => ({
+      for (const s of input.schedules) {
+        const match = existingByKey.get(keyOf(s.classId, s.subjectId, s.sectionId));
+        if (match) {
+          await tx
+            .update(examSubjectSchedules)
+            .set({
+              examDate: s.examDate,
+              startTime: s.startTime,
+              durationMinutes: s.durationMinutes,
+              venue: s.venue ?? null,
+              // Cleared override returns to the not-yet-snapshotted default.
+              passMarks: s.passMarks ?? "0.00",
+            })
+            .where(eq(examSubjectSchedules.id, match.id));
+        } else {
+          await tx.insert(examSubjectSchedules).values({
             ...s,
             organizationId: scope.organizationId,
             schoolId,
             examId: input.id,
-          })),
-        );
+          });
+        }
       }
       // Read back through the TRANSACTION's connection: a db.select() here
       // would borrow a second pool connection that cannot see this

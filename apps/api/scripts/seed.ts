@@ -34,6 +34,7 @@ import { db } from "@repo/db";
 import {
   academicYears,
   classSubjectMappings,
+  subjectTypes,
   classes,
   examComponents,
   exams,
@@ -507,6 +508,7 @@ async function findOrCreateClassSubjectMapping(
   classId: string,
   subjectId: string,
   sequenceNumber: number,
+  subjectTypeId?: string,
 ) {
   const [existing] = await db
     .select()
@@ -528,6 +530,7 @@ async function findOrCreateClassSubjectMapping(
     classId,
     subjectId,
     sequenceNumber,
+    ...(subjectTypeId ? { subjectTypeId } : {}),
   });
   console.log("  + class-subject mapping");
   return mapping;
@@ -1234,6 +1237,9 @@ async function main() {
     SUBJECT_PHYSICS_NAME,
     SUBJECT_PHYSICS_CODE,
   );
+  // The term_grade pipeline's demo subject (ADR-032 §3): never sits a
+  // paper — it is graded at term end on the Term grades screen.
+  const subjectPersonalityA = await findOrCreateSubject(scopeA, "Personality", "PER");
 
   // School B's catalogue: the SAME "Mathematics" name. Identical names across
   // branches are exactly why the smoke asserts by ID, not by name — a broken
@@ -1351,12 +1357,29 @@ async function main() {
   // to 6-A with no assignment to her name until now — the smoke's staffing
   // assertions need the fact rows to exist, and "who teaches 6-A" is two rows
   // of different roles, which is what makes exactness meaningful.
+  // The Main TYPE (exam, counted) — every paper-sitting mapping carries a
+  // type now: the papers prefill and coverage gate read the type's mode,
+  // so a null-type mapping is invisible to both.
+  const [existingMainTypeA] = await db
+    .select()
+    .from(subjectTypes)
+    .where(and(eq(subjectTypes.schoolId, scopeA.schoolId), eq(subjectTypes.name, "Main")));
+  const mainTypeA =
+    existingMainTypeA ??
+    await examConfigService.createSubjectType(scopeA, {
+      name: "Main",
+      countsTowardResult: true,
+      isGradedOnly: false,
+      assessmentMode: "exam",
+      sequence: 0,
+    });
   const mappingMathA = await findOrCreateClassSubjectMapping(
     scopeA,
     currentYearA.id,
     classA.id,
     subjectMathA.id,
     1,
+    mainTypeA!.id,
   );
   const mappingPhysicsA = await findOrCreateClassSubjectMapping(
     scopeA,
@@ -1364,6 +1387,31 @@ async function main() {
     classA.id,
     subjectPhysicsA.id,
     2,
+    mainTypeA!.id,
+  );
+  // The Personality TYPE (term_grade) + its mapping — the Term grades
+  // screen's data. Non-counting and paperless: the coverage gate reads
+  // counted exam-mode mappings only, so nothing exam-side changes.
+  const [existingPersonalityType] = await db
+    .select()
+    .from(subjectTypes)
+    .where(and(eq(subjectTypes.schoolId, scopeA.schoolId), eq(subjectTypes.name, "Personality")));
+  const personalityType =
+    existingPersonalityType ??
+    await examConfigService.createSubjectType(scopeA, {
+      name: "Personality",
+      countsTowardResult: false,
+      isGradedOnly: true,
+      assessmentMode: "term_grade",
+      sequence: 2,
+    });
+  await findOrCreateClassSubjectMapping(
+    scopeA,
+    currentYearA.id,
+    classA.id,
+    subjectPersonalityA.id,
+    3,
+    personalityType!.id,
   );
 
   const staSubjectTeacher = await findOrCreateSectionTeacherAssignment(scopeA, {
@@ -1429,12 +1477,27 @@ async function main() {
   // something.
   const classB = await findOrCreateClass(scopeB, CLASS_B_NAME, CLASS_B_ORDER);
   const sectionB = await findOrCreateSection(scopeB, yearB.id, classB.id, SECTION_A_NAME);
+  // B gets its own "Main" type — types are school-scoped, never borrowed.
+  const [existingMainTypeB] = await db
+    .select()
+    .from(subjectTypes)
+    .where(and(eq(subjectTypes.schoolId, scopeB.schoolId), eq(subjectTypes.name, "Main")));
+  const mainTypeB =
+    existingMainTypeB ??
+    await examConfigService.createSubjectType(scopeB, {
+      name: "Main",
+      countsTowardResult: true,
+      isGradedOnly: false,
+      assessmentMode: "exam",
+      sequence: 0,
+    });
   const mappingMathB = await findOrCreateClassSubjectMapping(
     scopeB,
     yearB.id,
     classB.id,
     subjectMathB.id,
     1,
+    mainTypeB!.id,
   );
 
   // --- Terms -------------------------------------------------------------------

@@ -118,7 +118,14 @@ function scanMissingSubjectGate(file: string) {
     .join("\n");
 
   for (const permission of SUBJECT_GATED_WRITES) {
-    const literal = new RegExp(escapeRegExp(`"${permission}"`), "g");
+    // Builders only: the permission ALSO appears as a plain property
+    // (`evaluateSubjectGate({ permission: "marks:create" })` — ADR-029a),
+    // and that read-side check must not demand a builder gate it doesn't
+    // carry.
+    const literal = new RegExp(
+      `(?:staffProcedure|staffListProcedure)\\(\\s*"${escapeRegExp(permission)}"`,
+      "g",
+    );
     for (const match of content.matchAll(literal)) {
       const rest = content.slice(match.index!);
       const nextCall = ["staffProcedure(", "staffListProcedure("]

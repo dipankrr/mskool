@@ -721,10 +721,10 @@ async function main() {
     classId: classA.id,
   });
   report(
-    "principal lists Class 6's mappings",
+    "principal lists Class 6's mappings (Math, Physics + the term-grade Personality)",
     mappingList.ok &&
       Array.isArray(mappingList.data) &&
-      mappingList.data.length === 2 &&
+      mappingList.data.length === 3 &&
       mappingList.data.every((m: any) => m.schoolId === schoolA.id),
     mappingList.ok ? `got ${mappingList.data?.length}` : `code ${mappingList.code}`,
   );
@@ -739,10 +739,10 @@ async function main() {
     },
   );
   report(
-    "class_teacher lists the same two mappings",
+    "class_teacher lists the same three mappings",
     teacherMappingList.ok &&
       Array.isArray(teacherMappingList.data) &&
-      teacherMappingList.data.length === 2 &&
+      teacherMappingList.data.length === 3 &&
       teacherMappingList.data.every((m: any) => m.schoolId === schoolA.id),
   );
 
@@ -1434,7 +1434,7 @@ async function main() {
         expect: OK,
         dataCheck: (d) =>
           Array.isArray(d) &&
-          d.length === 2 &&
+          d.length === 3 &&
           d.some((m: any) => m.id === mappingMathA.id) &&
           d.every((m: any) => m.schoolId === schoolA.id),
       },

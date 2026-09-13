@@ -48,9 +48,11 @@ export const RESOURCE_ACTIONS = {
   // (ADR-011) — a school may hand it to whichever roles it trusts with history.
   academic_year: ["create", "read", "update", "delete", "read_history"],
   // The teaching-assignment layer (Phase 2 S2): which subjects a class takes in a
-  // year, and who teaches what where. No `delete` — mappings are structurally
-  // corrected, assignments are ended via endAssignment (append-on-change).
-  subject_mapping: ["create", "read", "update"],
+  // year, and who teaches what where. `delete` ENDS a mapping (ADR-033 — it
+  // supersedes the old "no delete" stance), guarded: a mapping with
+  // term-grade entries refuses. Assignments are still never deleted —
+  // they are ended via endAssignment (append-on-change).
+  subject_mapping: ["create", "read", "update", "delete"],
   teacher_assignment: ["create", "read", "update"],
   exam: ["create", "read", "update", "delete", "publish"],
   enrollment: ["create", "read", "update", "delete"],

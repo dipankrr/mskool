@@ -596,6 +596,27 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
       "Marks exist for this exam — its blueprint can no longer be restructured.",
   },
   {
+    // Removal and save raced into one payload — the client splits them.
+    match: /both removed and saved in one pass/i,
+    code: "BAD_REQUEST",
+    message:
+      "A class can't be both removed and saved in one pass — remove it, then add its papers separately.",
+  },
+  {
+    // Ending a mapping whose term grades exist would orphan them (ADR-033).
+    match: /term-grade entries/i,
+    code: "CONFLICT",
+    message:
+      "This subject has term-grade entries for the class — the entries must be removed before the mapping can be.",
+  },
+  {
+    // Term-grade entry aimed at an exam-mode subject — the wrong screen.
+    match: /exam-assessed subject/i,
+    code: "BAD_REQUEST",
+    message:
+      "That subject is assessed by exams — its grades come from marks, not term-grade entry.",
+  },
+  {
     match: /This schedule is locked — marks entry has begun/i,
     code: "CONFLICT",
     message: "Marks entry has begun on this paper — its components are locked.",

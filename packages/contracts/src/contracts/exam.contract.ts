@@ -293,6 +293,11 @@ export const saveExamSchedulesInput = z.object({
   // `id` = the exam (owner-resolved; see examTransitionInput).
   id: z.uuid(),
   schedules: z.array(examScheduleInput),
+  // Classes whose papers this save REMOVES entirely. An empty `schedules`
+  // array alone removes nothing — the replace works per class PRESENT in
+  // the payload, so "delete the lot" was indistinguishable from "touch
+  // nothing"; removal has to be explicit.
+  removeClassIds: z.array(z.uuid()).optional(),
 });
 export type SaveExamSchedulesInput = z.infer<typeof saveExamSchedulesInput>;
 
@@ -737,6 +742,11 @@ export const saveTermAssessmentInput = z.object({
   studentId: z.uuid(),
   termId: z.uuid(),
   mappingId: z.uuid(),
+  // The subject gate's pair (ADR-029): entry is authorized by section +
+  // subject, not by the mapping row alone — the same fact check the marks
+  // grid answers.
+  sectionId: z.uuid(),
+  subjectId: z.uuid(),
   grade: z.string().min(1).max(10),
   descriptor: z.string().max(100).optional(),
   teacherRemarks: z.string().max(500).optional(),
