@@ -1452,3 +1452,54 @@ notifications/gamification work move to the MOBILE backlog — the web
 stubs stay honest "coming next" placeholders or die with the route
 group. The staff-side Portal Access management (activate / reset /
 change-phone) is console work and stays on web untouched.
+
+## ADR-035 — Staff logins are provisioned by the org, one password hand-off, forced change at first sign-in
+
+**Context.** The `staff` table exists (ADR-008: employment identity,
+`staff.userId` nullable, distinct from `user`), but no staff member can
+be created or given a login through the product — the demo seed is the
+only writer. Building the Staff & role management slice (contract →
+service → router → UI) raises one real design decision: how does a staff
+member acquire a credential?
+
+**Decision.**
+
+1. **A staff record and a login are separate acts.** Creating a staff row
+   does NOT create a `user`. A login is provisioned later from the staff
+   detail page ("Create login"), because a school may employ someone
+   before they need console access, and deactivating a staff row must not
+   silently decide what happens to a live credential.
+2. **Provisioning = initial password + `must_change_password`.** The admin
+   who creates the login sets an initial password and hands it to the
+   staff member (in person or by phone). The user row is created with
+   `mustChangePassword: true`, so the FIRST sign-in is forced through
+   better-auth's change-password flow (the ADR-007 rider machinery,
+   already proven for the portal). After that hand-off, exactly one
+   person knows the credential — the audit trail stays attributable.
+   Resetting a login re-arms the flag and revokes every live session,
+   identical to the portal's `resetPassword`.
+3. **The credential seam is the ONLY writer (hard rule 9).** User rows are
+   created with `email: null` (no synthetic emails, ADR-007), the
+   username is the `{org_slug}-{employee_code}` shape validated by the
+   existing username plugin, and all password/session work goes through
+   `@repo/auth/credentials` (`setUserPassword`, `revokeUserSessions`).
+4. **Every grant, revoke, and credential act writes `authz_audit_log`** —
+   `role_granted` / `role_revoked` (enum values that already exist) for
+   assignments, `staff_login_created` / `staff_password_reset` (new enum
+   values, one migration) for credentials. The Phase 1 debt "the audit
+   table has no writer" closes here, with the first real callers.
+5. **Deferred from v1** (recorded, not silently dropped): editing the
+   role→permission matrix (`role_permission:update` stays
+   display-only — orgs use `DEFAULT_ROLE_PERMISSIONS` until a real
+   tenant asks), `staff:export`, staff invite-by-email, deprovisioning
+   automation on staff deactivation (the UI warns; the credential stays
+   until separately reset).
+
+**Consequences.** Staff CRUD and role assignment follow the established
+vertical-slice pattern (`school.router.ts` shape; role assignment
+mutations are SENSITIVE permissions, so they bypass the Redis auth cache
+and take effect immediately; assignment changes invalidate the affected
+user's cache entry). Self-registration stays closed (ADR-021) — the org
+is still the only identity issuer. The forced-change flow needs no new
+machinery: the flag, the hook that clears it, and the console redirect
+all exist from the portal work.
