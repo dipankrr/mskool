@@ -240,6 +240,17 @@ type ConstraintTranslation = {
  * entry also has a form that reads correctly without them.
  */
 const CONSTRAINT_TRANSLATIONS: Record<string, ConstraintTranslation> = {
+  // staff ----------------------------------------------------------------
+  staff_org_employee_code_uq: {
+    code: "CONFLICT",
+    message: (error) => {
+      const code = keyValue(error, "employee_code");
+      return code
+        ? `An employee with code ${code} already exists in this organisation. Employee codes are unique — check the existing record first.`
+        : "An employee with that code already exists in this organisation. Employee codes are unique — check the existing record first.";
+    },
+  },
+
   // academic_years -------------------------------------------------------
   academic_years_no_overlap_excl: {
     code: "CONFLICT",
@@ -727,6 +738,62 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
     code: "BAD_REQUEST",
     message:
       "This student has more than one active family login — choose which login to change.",
+  },
+
+  // Staff login provisioning (ADR-035).
+  {
+    match: /already has a login/i,
+    code: "CONFLICT",
+    message:
+      "This staff member already has a login. Reset the password instead of creating another.",
+  },
+  {
+    match: /Logins are provisioned for active staff only/i,
+    code: "BAD_REQUEST",
+    message:
+      "Logins are provisioned for active staff only. Reactivate the record first if this is a mistake.",
+  },
+  {
+    match: /contains characters a login cannot use/i,
+    code: "BAD_REQUEST",
+    message:
+      "The employee code contains characters a login cannot use — letters, digits, dots, hyphens, and underscores only.",
+  },
+  {
+    match: /is already taken — check the employee code/i,
+    code: "CONFLICT",
+    message:
+      "That login name is already taken. Check the employee code — two staff members may share a code.",
+  },
+  {
+    match: /no login to reset/i,
+    code: "BAD_REQUEST",
+    message: "This staff member has no login yet. Create one first.",
+  },
+  {
+    // Role assignments (ADR-005): the grant's own facts, worded by the service.
+    match: /granted at the organisation itself/i,
+    code: "BAD_REQUEST",
+    message:
+      "An organisation-scoped role is granted at the organisation itself — leave the branch empty for org-wide roles.",
+  },
+  {
+    match: /does not exist in this organisation, or does not match/i,
+    code: "BAD_REQUEST",
+    message:
+      "That scope does not exist in this organisation, or does not match the chosen scope type.",
+  },
+  {
+    match: /holds no staff record in this organisation/i,
+    code: "BAD_REQUEST",
+    message:
+      "That user holds no staff record in this organisation. Create the staff record before assigning roles.",
+  },
+  {
+    match: /already granted to this person at this scope/i,
+    code: "CONFLICT",
+    message:
+      "This role is already granted to this person at this scope. Revoke the existing grant first.",
   },
 ];
 
