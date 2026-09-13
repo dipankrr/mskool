@@ -2,6 +2,7 @@
 
 import {
   BookOpenIcon,
+  BriefcaseIcon,
   Building2Icon,
   CalendarCheckIcon,
   CalendarDaysIcon,
@@ -129,6 +130,12 @@ const NAV_ITEMS: NavItem[] = [
     label: copy.nav.students,
     icon: UsersIcon,
     permission: "student:read",
+  },
+  {
+    href: "/staff",
+    label: copy.nav.staff,
+    icon: BriefcaseIcon,
+    permission: ["staff:read", "role_assignment:read"] as const satisfies readonly Permission[],
   },
   {
     href: "/attendance/calendar",

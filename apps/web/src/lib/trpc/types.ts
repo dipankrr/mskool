@@ -93,3 +93,10 @@ export type ClassSubjectMappingRow =
 export type SectionTeacherAssignmentRow =
   RouterOutputs["assignment"]["teacherAssignment"]["list"][number];
 export type PublishedReportCard = RouterOutputs["portalExam"]["results"]["list"][number];
+
+// Staff & roles (ADR-008, ADR-035). The employment register and the
+// assignment views the browser receives.
+export type Staff = RouterOutputs["staff"]["list"][number];
+export type RoleAssignmentView = RouterOutputs["role"]["assignments"][number];
+export type RolePermissionRow = RouterOutputs["role"]["permissions"][number];
+
