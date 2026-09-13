@@ -6,6 +6,64 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
+**STAFF & ROLE MANAGEMENT COMPLETE (2026-09-14) — on `feature/staff-management`, stacked on `feature/phase5-exams` (exams still UNMERGED; at merge time: staff → exams → main, the nested fees precedent). The platform gap is closed: ADR-035.**
+
+The slice shipped in 8 commits (b5636e8..a3d8c45):
+
+1. **ADR-035** — staff logins are provisioned by the org: employment record
+   and login are SEPARATE acts; provisioning = initial password +
+   `must_change_password` (the portal's ADR-007 rider machinery, reused);
+   `role_permission:update` and `staff:export` deliberately DEFERRED — the
+   matrix is read-only, orgs run on the seeded defaults.
+2. **Contracts + db** — `staff.contract.ts` (CRUD + login inputs),
+   `role.contract.ts` (assign/revoke/matrix views); migration 0023 adds
+   `staff_login_created`/`staff_password_reset` to the audit enum. NOTE: the
+   hand-written 0021/0022 migrations had NO snapshot files, so drizzle
+   re-emitted their content into 0023 — the missing snapshots were
+   RECONSTRUCTED and 0023 reduced to the enum-only diff. If migrations are
+   regenerated again, the chain is now sound.
+3. **Services** — `staff.service.ts` (register CRUD, `getStaffOwnerId` B6
+   adapter, createLogin/resetLogin through the `@repo/auth/credentials`
+   seam, audit rows), `role.service.ts` (assign validates the grant's own
+   facts — node in org, type match, staff-backed target, no duplicate live
+   grant; revoke is a soft delete carrying the reason; EVERY act writes
+   `authz_audit_log` and calls `invalidateUserAuthCache(target)` — the
+   Phase 1 "audit table has no writer" debt is CLOSED).
+4. **Routers** — `staff.*` (list/byId/create/update/deactivate/login/
+   login-reset; logins gated `staff:update`, not their own permission) and
+   `role.*` (assignments/assign/revoke/permissions). **`role.assign` is
+   authorized against the TARGET node via `addressedBy: "id"`** — the
+   caller must cover the node they grant AT. `role_assignment:assign/
+   revoke` are SENSITIVE (fresh gate reads). principal + vice_principal
+   gained `role_permission:read` (the matrix is part of the role-management
+   job).
+5. **UI** — `/staff` register (searchable, permission-gated, show-former-
+   staff toggle) + detail page (profile card, Console login card with
+   hand-off copy, Roles card with assign/revoke dialogs, the org's
+   read-only permission matrix with the person's roles marked). Nav entry
+   gated `["staff:read", "role_assignment:read"]`.
+6. **Proofs** — seed gains the DEMO-00x staff world (DEMO-007 is the
+   LOGIN-LESS provisioning demo; re-seed will NOT reset a login created for
+   her — first smoke run provisions it, later runs skip); smoke 212/212
+   (register read pinned per role ×8, grant→duplicate→revoke→audit over
+   HTTP); integration 169/169 (staff suite: register tenancy, provisioning
+   + audit, grant/duplicate/revoke/audit); e2e 15/15; check-types 8/8;
+   lint 0 errors; browser-walked (screenshots reviewed, no console errors).
+7. **Two fixtures worth knowing:** better-auth user ids are TEXT —
+   `z.uuid()` on userId rejected every real id (fixed to `z.string().min(1)`);
+   staff `dateOfBirth`/`dateOfJoining` are OPTIONAL (drizzle-zod makes
+   `date()` columns required by default — a school hires first, fills in
+   later).
+8. **`/teacher-directory`** (the staffing picker on the academic router)
+   still exists beside `staff.list` — different jobs: picker vs register.
+   Left untouched deliberately.
+
+Known deferred (ADR-035, do not silently absorb): role_permission:update
+(editing the matrix), staff:export, invite-by-email, deprovisioning
+automation on staff deactivation (the UI warns; revoke is explicit),
+class/section-level scope picker in the assign dialog (data model supports
+it; HR grants at org/branch only in v1).
+
 **SCOPE DECISION — ADR-034 (2026-09-12): the student/parent surface is MOBILE-ONLY; the web app is staff-only.**
 The web `(portal)` route group (login, results, print) is a stopgap —
 keep it until the mobile app exists, then delete. Portal attendance/
