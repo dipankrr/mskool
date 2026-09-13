@@ -40,7 +40,11 @@ export type RoleAssignment = z.infer<typeof roleAssignmentSelectSchema>;
  * type-checked against this router).
  */
 export const assignRoleSchema = z.object({
-  userId: z.uuid(),
+  /**
+   * better-auth's own id — TEXT, not a uuid (hard rule 10's exception).
+   * z.uuid() here rejected every real user id.
+   */
+  userId: z.string().min(1),
   roleType: roleTypeSchema,
   scopeType: scopeTypeSchema,
   /** Temporary delegation — "cover this class while she is on leave". */

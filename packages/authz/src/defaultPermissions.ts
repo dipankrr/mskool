@@ -112,6 +112,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "role_assignment:read",
     "role_assignment:assign",
     "role_assignment:revoke",
+    // The permission matrix is part of the role-management job: whoever may
+    // grant and revoke roles must see what each role holds (read-only —
+    // role_permission:update is deferred, ADR-035).
+    "role_permission:read",
     "portal_access:read",
     "portal_access:grant",
     "portal_access:revoke",
@@ -180,6 +184,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "announcement:publish",
     "fee_report:read",
     "role_assignment:read",
+    "role_permission:read",
     "portal_access:read",
   ],
 

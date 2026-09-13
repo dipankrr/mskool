@@ -55,7 +55,7 @@ export const roleRouter = router({
         protect: true,
       },
     })
-    .input(z.object({ userId: z.uuid() }))
+    .input(z.object({ userId: z.string().min(1) }))
     .output(z.array(roleAssignmentViewSchema))
     .query(async ({ ctx, input }) => {
       return roleService.listForUser(ctx.organizationId, input.userId);
