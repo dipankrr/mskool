@@ -1,6 +1,6 @@
 "use client";
 
-import { MoreHorizontalIcon, PlusIcon, UsersIcon } from "lucide-react";
+import { MoreHorizontalIcon, PlusIcon, Trash2Icon, UsersIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DataTable } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { FormDialog } from "@/components/form-dialog";
@@ -154,6 +155,21 @@ export function CurriculumSection({
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  // END a mapping (ADR-033). The service refuses when term-grade entries
+  // hang off it and words the refusal — the dialog simply stays closed.
+  const [unmappingFor, setUnmappingFor] = useState<ClassSubjectMappingRow | null>(null);
+  const endMapping = trpc.assignment.subjectMapping.end.useMutation({
+    onSuccess: async () => {
+      toast.success(copy.classes.curriculum.unmapAction + ".");
+      await utils.assignment.subjectMapping.list.invalidate();
+      setUnmappingFor(null);
+    },
+    onError: (error) => {
+      toast.error(errorMessage(error));
+      setUnmappingFor(null);
+    },
+  });
+
   const mappingColumns = useMemo<DataTableColumns<ClassSubjectMappingRow>>(
     () =>
       mappingColumn.columns([
@@ -172,6 +188,24 @@ export function CurriculumSection({
             row.original.isElective ? (
               <Badge variant="outline">{copy.classes.curriculum.elective}</Badge>
             ) : null,
+        }),
+        mappingColumn.display({
+          id: "actions",
+          header: copy.common.actions,
+          cell: ({ row }) => (
+            <PermissionGate permission="subject_mapping:delete">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`${copy.classes.curriculum.unmapAction} ${
+                  subjectNameById.get(row.original.subjectId) ?? ""
+                }`}
+                onClick={() => setUnmappingFor(row.original)}
+              >
+                <Trash2Icon />
+              </Button>
+            </PermissionGate>
+          ),
         }),
       ]),
     [subjectNameById],
@@ -543,6 +577,26 @@ export function CurriculumSection({
           </Select>
         </Field>
       </FormDialog>
+
+      {/* Unmap confirm — the service refuses when term-grade entries exist
+          and words the refusal; this states the consequence up front. */}
+      <ConfirmDialog
+        open={unmappingFor != null}
+        onOpenChange={(open) => {
+          if (!open) setUnmappingFor(null);
+        }}
+        title={copy.classes.curriculum.unmapTitle}
+        consequence={`${subjectNameById.get(unmappingFor?.subjectId ?? "") ?? ""} — ${
+          copy.classes.curriculum.unmapBody
+        }`}
+        confirmLabel={copy.classes.curriculum.unmapConfirm}
+        destructive
+        pending={endMapping.isPending}
+        onConfirm={() => {
+          if (!unmappingFor) return;
+          endMapping.mutate({ ...scopeArgs(), id: unmappingFor.id });
+        }}
+      />
     </section>
   );
 }

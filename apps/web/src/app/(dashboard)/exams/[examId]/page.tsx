@@ -33,9 +33,9 @@ import { EmptyState } from "@/components/empty-state";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { PageHeader } from "@/components/page-header";
 import { ComponentsDialog } from "@/features/exams/components-dialog";
+import { ExamEditDialog } from "@/features/exams/exam-edit-dialog";
 import { ExamLifecycleTrack, statusBadgeVariant } from "@/features/exams/exam-lifecycle-track";
 import { PapersSection } from "@/features/exams/papers-section";
-import { ScheduleDialog } from "@/features/exams/schedule-dialog";
 import {
   useEligibilityActions,
   useExamDetail,
@@ -45,7 +45,6 @@ import {
   useTerms,
 } from "@/features/exams/use-exam-workflow";
 import { useClasses } from "@/features/classes/use-classes";
-import { useSections } from "@/features/sections/use-sections";
 import { useActiveContext } from "@/features/session/active-context";
 import { useStudents } from "@/features/students/use-students";
 import { copy } from "@/lib/copy";
@@ -136,23 +135,18 @@ export default function ExamDetailPage() {
   const terms = useTerms(detail.data?.exam.academicYearId ?? null);
   const students = useStudents();
 
-  const { transition, saveSchedules, saveComponents } = useExamWorkflowMutations();
+  const { transition, update, saveComponents } = useExamWorkflowMutations();
   const { recompute, override } = useEligibilityActions(examId);
   const { publishClass, publishExam } = usePublicationActions(examId);
 
   const [activeClassId, setActiveClassId] = useState<string | null>(null);
-  const [scheduleFor, setScheduleFor] = useState<string | null>(null);
   const [componentsFor, setComponentsFor] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
   const [transitionTarget, setTransitionTarget] = useState<string | null>(null);
   const [publishClassId, setPublishClassId] = useState<string | null>(null);
   const [publishAllConfirm, setPublishAllConfirm] = useState(false);
   const [allowing, setAllowing] = useState<string | null>(null);
   const [allowReason, setAllowReason] = useState("");
-  // Sections of the class being edited — the paper's section picker.
-  // Disabled until a class is picked so a foreign class never 403s the dialog.
-  const dialogSections = useSections(scheduleFor ?? undefined, {
-    enabled: scheduleFor != null,
-  });
 
   const exam = detail.data?.exam;
   // School-parent writes: the branch rides along, or the user is asked to
@@ -203,17 +197,9 @@ export default function ExamDetailPage() {
     return map;
   }, [students.data]);
 
-  // BUG-7 fix: these feed the dialogs' form-reset effects, so they MUST be
-  // identity-stable across parent re-renders — an inline filter() hands the
-  // dialog a fresh array on every render, and any background query refetch
-  // (window refocus, staleTime expiry) then wiped the user's in-progress
-  // rows. Memoized: identity changes only when the data really does. They
-  // sit BEFORE the early returns — hooks cannot follow a conditional return
-  // (the Rules of Hooks crash this page when they did).
-  const scheduleRows = useMemo(
-    () => schedules.filter((s) => s.classId === scheduleFor),
-    [schedules, scheduleFor],
-  );
+  // The components editor's schedule, identity-stable across refetches.
+  // It sits BEFORE the early returns — hooks cannot follow a conditional
+  // return (the Rules of Hooks crash this page when they did).
   const componentsSchedule = useMemo(
     () => schedules.find((s) => s.id === componentsFor),
     [schedules, componentsFor],
@@ -253,7 +239,6 @@ export default function ExamDetailPage() {
   const resultsLink = entryOpen || exam.status === "published" || exam.status === "locked";
   const primaryIsResults = !primaryTransition && resultsLink;
 
-  const scheduleForClass = classNameById.get(scheduleFor ?? "") ?? "";
   const allowingStudent = studentNameById.get(allowing ?? "");
   const publication = copy.exams.workflow.publication;
 
@@ -309,7 +294,7 @@ export default function ExamDetailPage() {
               {publication.viewResults}
             </Link>
           ) : null}
-          {(backTargets.length > 0 && has("exam:update")) ||
+          {has("exam:update") ||
           (resultsLink && !primaryIsResults) ||
           (exam.status === "published" && has("exam:update")) ? (
             <DropdownMenu>
@@ -322,6 +307,11 @@ export default function ExamDetailPage() {
                 }
               />
               <DropdownMenuContent align="start">
+                {has("exam:update") ? (
+                  <DropdownMenuItem onClick={() => setEditOpen(true)}>
+                    {copy.exams.workflow.editExam}
+                  </DropdownMenuItem>
+                ) : null}
                 {resultsLink && !primaryIsResults ? (
                   <DropdownMenuItem render={<Link href={`/exams/${examId}/results`} />}>
                     {publication.viewResults}
@@ -362,7 +352,6 @@ export default function ExamDetailPage() {
         academicYearId={exam.academicYearId}
         activeClassId={activeClassId}
         onActiveClassChange={setActiveClassId}
-        onEditPapers={setScheduleFor}
         onEditComponents={setComponentsFor}
       />
 
@@ -481,27 +470,6 @@ export default function ExamDetailPage() {
         </Card>
       ) : null}
 
-      {/* Per-class paper grid editor */}
-      <ScheduleDialog
-        open={Boolean(scheduleFor)}
-        onOpenChange={(open) => {
-          if (!open) setScheduleFor(null);
-        }}
-        examId={examId}
-        classId={scheduleFor ?? ""}
-        className={scheduleForClass}
-        schedules={scheduleRows}
-        subjects={subjects.data ?? []}
-        sections={dialogSections.data ?? []}
-        pending={saveSchedules.isPending}
-        onSubmit={async (data) => {
-          const scope = writeScope();
-          if (!scope) return;
-          await saveSchedules.mutateAsync({ ...scope, ...data });
-          setScheduleFor(null);
-        }}
-      />
-
       {/* Per-paper components batch editor */}
       {componentsSchedule ? (
         <ComponentsDialog
@@ -514,6 +482,7 @@ export default function ExamDetailPage() {
             subjects.data?.find((s) => s.id === componentsSchedule.subjectId)?.name ?? ""
           }`}
           components={componentsSchedule.components}
+          examAllowsNegativeMarking={exam.allowsNegativeMarking}
           pending={saveComponents.isPending}
           onSubmit={async (data) => {
             const scope = writeScope();
@@ -523,6 +492,21 @@ export default function ExamDetailPage() {
           }}
         />
       ) : null}
+
+      {/* The exam's own details — the server freezes weight/count once
+          marks exist and words the refusal; the dialog stays open. */}
+      <ExamEditDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        exam={exam}
+        pending={update.isPending}
+        onSubmit={async ({ id, data }) => {
+          const scope = writeScope();
+          if (!scope) return;
+          await update.mutateAsync({ ...scope, id, data });
+          setEditOpen(false);
+        }}
+      />
 
       {/* Lifecycle confirmation — the consequence says what the state means. */}
       <ConfirmDialog

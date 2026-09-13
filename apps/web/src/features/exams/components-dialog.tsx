@@ -10,13 +10,23 @@ import type { ExamComponent } from "@/lib/trpc/types";
 
 import { FormDialog } from "@/components/form-dialog";
 import { Button } from "@/components/ui/button";
-import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { useActiveContext } from "@/features/session/active-context";
 import { copy } from "@/lib/copy";
+import { trpc } from "@/lib/trpc/client";
 
 /**
- * ONE SUBJECT'S PAPER — the batch editor behind "Edit components".
+ * ONE SUBJECT'S PAPER — the batch editor behind the papers table's
+ * "Components" button.
  *
  * A paper is "Theory (80, pass 27, must pass) + Internal (20)": rows of
  * parts whose weightages must sum to 100 (the contract's rule, surfaced
@@ -24,6 +34,16 @@ import { copy } from "@/lib/copy";
  * Weightages stop being editable once marks exist — the server refuses
  * with that wording; this dialog simply stays closed behind the schedule's
  * locked state on the detail page.
+ *
+ * Two of the reference design's per-component options live here (both
+ * schema-backed from day one):
+ * - **Grading scale** — "this component gets its own independent grade"
+ *   (the ICSE case): compute stamps the band's grade onto the component
+ *   result, beside the marks. "School default" clears the override.
+ * - **Negative marking** — visible only when the EXAM allows it (the
+ *   master switch lives in the exam's create/edit dialog). The entered
+ *   marks are NET — the deduction happens at the desk, the field records
+ *   the rate the desk used.
  *
  * `sequenceNumber` is the row order at submit time; the form never asks.
  */
@@ -37,6 +57,7 @@ export function ComponentsDialog({
   scheduleId,
   scheduleLabel,
   components,
+  examAllowsNegativeMarking,
   pending,
   onSubmit,
 }: {
@@ -45,6 +66,8 @@ export function ComponentsDialog({
   scheduleId: string;
   scheduleLabel: string;
   components: ExamComponent[];
+  /** The exam's master switch — the per-part options stay hidden without it. */
+  examAllowsNegativeMarking: boolean;
   pending: boolean;
   onSubmit: (data: SaveExamComponentsInput) => Promise<void> | void;
 }) {
@@ -66,6 +89,9 @@ export function ComponentsDialog({
         passMarks: c.passMarks,
         weightagePercentage: c.weightagePercentage,
         isMandatoryPass: c.isMandatoryPass,
+        allowsNegativeMarking: c.allowsNegativeMarking,
+        negativeMarksPerWrong: c.negativeMarksPerWrong ?? undefined,
+        gradingScaleId: c.gradingScaleId ?? undefined,
       })),
     });
   }, [open, scheduleId, components, form]);
@@ -102,6 +128,7 @@ export function ComponentsDialog({
       <div className="flex flex-col gap-4">
         {fields.map((field, index) => {
           const rowError = form.formState.errors.components?.[index];
+          const partNegative = Boolean(form.watch(`components.${index}.allowsNegativeMarking`));
           return (
             <fieldset key={field.id} className="grid gap-3 rounded-lg border p-3 sm:grid-cols-2">
               <Field data-invalid={rowError?.name ? true : undefined} className="sm:col-span-2">
@@ -160,8 +187,17 @@ export function ComponentsDialog({
                 <FieldError>{rowError?.weightagePercentage?.message}</FieldError>
               </Field>
 
+              <Field data-invalid={rowError?.gradingScaleId ? true : undefined}>
+                <FieldLabel htmlFor={`component-scale-${index}`}>
+                  {copy.exams.workflow.fields.gradingScale}
+                </FieldLabel>
+                <GradingScaleField form={form} index={index} />
+                <FieldDescription>{copy.exams.workflow.fields.gradingScaleHelp}</FieldDescription>
+                <FieldError>{rowError?.gradingScaleId?.message}</FieldError>
+              </Field>
+
               <Field>
-                <div className="flex items-center gap-2 pt-6">
+                <div className="flex items-center gap-2 pt-2">
                   <Switch
                     id={`component-mandatory-${index}`}
                     checked={Boolean(form.watch(`components.${index}.isMandatoryPass`))}
@@ -172,18 +208,59 @@ export function ComponentsDialog({
                   <FieldLabel htmlFor={`component-mandatory-${index}`} className="!gap-1">
                     {copy.exams.workflow.fields.mandatory}
                   </FieldLabel>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="ml-auto"
-                    onClick={() => remove(index)}
-                  >
-                    <Trash2Icon data-icon="inline-start" />
-                    {copy.exams.workflow.removeRow}
-                  </Button>
                 </div>
               </Field>
+
+              {examAllowsNegativeMarking ? (
+                <>
+                  <Field>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id={`component-negative-${index}`}
+                        checked={partNegative}
+                        onCheckedChange={(checked) =>
+                          form.setValue(`components.${index}.allowsNegativeMarking`, checked)
+                        }
+                      />
+                      <FieldLabel htmlFor={`component-negative-${index}`} className="!gap-1">
+                        {copy.exams.workflow.fields.negative}
+                      </FieldLabel>
+                    </div>
+                  </Field>
+                  {partNegative ? (
+                    <Field data-invalid={rowError?.negativeMarksPerWrong ? true : undefined}>
+                      <FieldLabel htmlFor={`component-negrate-${index}`}>
+                        {copy.exams.workflow.fields.negativeRate}
+                      </FieldLabel>
+                      <Input
+                        id={`component-negrate-${index}`}
+                        inputMode="decimal"
+                        placeholder="0.25"
+                        aria-invalid={rowError?.negativeMarksPerWrong ? true : undefined}
+                        {...form.register(`components.${index}.negativeMarksPerWrong`, {
+                          setValueAs: (v) => (v === "" ? undefined : v),
+                        })}
+                      />
+                      <FieldDescription>
+                        {copy.exams.workflow.fields.negativeRateHelp}
+                      </FieldDescription>
+                      <FieldError>{rowError?.negativeMarksPerWrong?.message}</FieldError>
+                    </Field>
+                  ) : null}
+                </>
+              ) : null}
+
+              <div className="sm:col-span-2 flex justify-end">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => remove(index)}
+                >
+                  <Trash2Icon data-icon="inline-start" />
+                  {copy.exams.workflow.removeRow}
+                </Button>
+              </div>
             </fieldset>
           );
         })}
@@ -208,6 +285,9 @@ export function ComponentsDialog({
                 passMarks: "",
                 weightagePercentage: "",
                 isMandatoryPass: false,
+                allowsNegativeMarking: false,
+                negativeMarksPerWrong: undefined,
+                gradingScaleId: undefined,
               })
             }
           >
@@ -217,5 +297,51 @@ export function ComponentsDialog({
         </div>
       </div>
     </FormDialog>
+  );
+}
+
+/** The scale picker — "School default" (null) plus the school's active scales. */
+function GradingScaleField({
+  form,
+  index,
+}: {
+  form: ReturnType<typeof useForm<FormValues>>;
+  index: number;
+}) {
+  const { scopeArgs } = useActiveContext();
+  const scales = trpc.exam.gradingScales.list.useQuery(scopeArgs(), {
+    staleTime: 30_000,
+  });
+  return (
+    <Select
+      value={(form.watch(`components.${index}.gradingScaleId`) as string | undefined) ?? "default"}
+      onValueChange={(v) =>
+        form.setValue(
+          `components.${index}.gradingScaleId`,
+          v === "default" ? undefined : v,
+        )
+      }
+    >
+      <SelectTrigger id={`component-scale-${index}`}>
+        <SelectValue>
+          {(value: string | null) =>
+            value
+              ? (scales.data?.find((s) => s.id === value)?.name ??
+                copy.exams.workflow.fields.gradingScaleDefault)
+              : copy.exams.workflow.fields.gradingScaleDefault
+          }
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="default">
+          {copy.exams.workflow.fields.gradingScaleDefault}
+        </SelectItem>
+        {(scales.data ?? []).map((scale) => (
+          <SelectItem key={scale.id} value={scale.id}>
+            {scale.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }

@@ -200,11 +200,17 @@ test.describe("marking flow (class teacher)", () => {
     // possible all-present stored day, Absent never equals Half day.
     let taps = CYCLE.indexOf(successor);
     if (taps === 0) taps = 2;
+    // The chips START at Present ("All present" reset them), so the label
+    // the taps land on is CYCLE[taps] — the successor, EXCEPT the stored-
+    // Half-day case where the wheel is deliberately diverted (a landed
+    // Present could equal the stored day). Runs advance the wheel one step
+    // each, so that fifth-run case genuinely occurs.
+    const landed = CYCLE[taps]!;
     for (let i = 0; i < taps; i++) {
       await chip.click();
     }
     await expect(
-      page.getByRole("button", { name: `Change status — currently ${successor}` }).first(),
+      page.getByRole("button", { name: `Change status — currently ${landed}` }).first(),
     ).toBeVisible();
 
     // Submit: the click starts an async mutation — wait until the
@@ -236,13 +242,13 @@ test.describe("marking flow (class teacher)", () => {
     await expect(page.getByRole("button", { name: DONE_TITLE })).toBeDisabled();
 
     // The pre-fill comes from the stored marks: the first roster row reads
-    // the successor status this run wrote. The "rest read Present" half of
+    // the landed status this run wrote. The "rest read Present" half of
     // the original assertion assumed a multi-student roster (the admission
     // spec used to add one); the reset demo org ships section A with ONE
     // student, so that half is conditional — assert it only when a second
     // row exists.
     await expect(
-      page.getByRole("button", { name: `Change status — currently ${successor}` }).first(),
+      page.getByRole("button", { name: `Change status — currently ${landed}` }).first(),
     ).toBeVisible();
     const rosterRows = page.getByRole("button", { name: /^Change status — currently / });
     if ((await rosterRows.count()) > 1) {
@@ -254,7 +260,7 @@ test.describe("marking flow (class teacher)", () => {
     // Editing flips the day out of done: one more chip tap makes the status
     // differ from the stored marks, so the button re-enables.
     await page
-      .getByRole("button", { name: `Change status — currently ${successor}` })
+      .getByRole("button", { name: `Change status — currently ${landed}` })
       .first()
       .click();
     await expect(page.getByRole("button", { name: "Mark attendance" })).toBeEnabled();

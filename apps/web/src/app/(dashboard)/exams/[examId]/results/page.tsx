@@ -379,11 +379,17 @@ export default function ExamResultsPage() {
           <EmptyState title={copy.exams.results.title} description={copy.exams.results.notComputed} />
         ) : (
           <>
+            <h2 className="font-heading text-base font-semibold">
+              {copy.exams.results.tableTitle}
+              <span className="text-muted-foreground ms-2 text-sm font-normal">
+                {classNameById.get(classId ?? "") ?? ""}
+              </span>
+            </h2>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <caption className="sr-only">{copy.exams.results.title}</caption>
                 <thead>
-                  <tr className="border-b text-left">
+                  <tr className="text-muted-foreground border-b text-left text-xs">
                     <th scope="col" className="py-2 pr-3 font-medium">
                       {copy.exams.results.rank}
                     </th>
@@ -391,17 +397,21 @@ export default function ExamResultsPage() {
                       {copy.exams.results.student}
                     </th>
                     {results.data.subjects.map((subject) => (
-                      <th scope="col" key={subject.id} className="py-2 pr-3 font-medium">
+                      <th
+                        scope="col"
+                        key={subject.id}
+                        className="py-2 pr-3 text-right font-medium"
+                      >
                         {subject.name}
                       </th>
                     ))}
-                    <th scope="col" className="py-2 pr-3 font-medium">
+                    <th scope="col" className="py-2 pr-3 text-right font-medium">
                       {copy.exams.results.total}
                     </th>
-                    <th scope="col" className="py-2 pr-3 font-medium">
+                    <th scope="col" className="py-2 pr-3 text-right font-medium">
                       {copy.exams.results.percent}
                     </th>
-                    <th scope="col" className="py-2 pr-3 font-medium">
+                    <th scope="col" className="py-2 pr-3 text-center font-medium">
                       {copy.exams.results.grade}
                     </th>
                     <th scope="col" className="py-2 pr-3 font-medium">
@@ -418,7 +428,7 @@ export default function ExamResultsPage() {
                     const term = termByStudent.get(student.studentId);
                     return (
                       <tr key={student.studentId} className="border-b last:border-b-0">
-                        <td className="py-2 pr-3 font-medium">
+                        <td className="text-muted-foreground py-2 pr-3 tabular-nums">
                           {term?.rankInClass ?? "—"}
                         </td>
                         <td className="py-2 pr-3">
@@ -429,29 +439,46 @@ export default function ExamResultsPage() {
                         </td>
                         {results.data!.subjects.map((subject) => {
                           const row = subjectResultFor(student.studentId, subject.id);
+                          const cell = row
+                            ? row.isExempted
+                              ? copy.exams.results.exempt
+                              : row.isAbsent
+                                ? copy.exams.results.absent
+                                : row.isGradedOnly
+                                  ? (row.grade ?? "—")
+                                  : row.finalMarks != null
+                                    ? `${Number(row.finalMarks)}/${Number(row.maxMarks)}`
+                                    : "—"
+                            : "—";
+                          const stateCell =
+                            row?.isExempted || row?.isAbsent || !row || cell === "—";
                           return (
-                            <td key={subject.id} className="py-2 pr-3">
-                              {row
-                                ? row.isExempted
-                                  ? copy.exams.results.exempt
-                                  : row.isAbsent
-                                    ? copy.exams.results.absent
-                                    : row.isGradedOnly
-                                      ? (row.grade ?? "—")
-                                      : row.finalMarks != null
-                                        ? `${Number(row.finalMarks)}/${Number(row.maxMarks)}`
-                                        : "—"
-                                : "—"}
+                            <td
+                              key={subject.id}
+                              className={cn(
+                                "py-2 pr-3 text-right tabular-nums",
+                                stateCell && "text-muted-foreground",
+                              )}
+                            >
+                              {cell}
                             </td>
                           );
                         })}
-                        <td className="py-2 pr-3">
+                        <td className="py-2 pr-3 text-right font-medium tabular-nums">
                           {term?.totalMarks != null
                             ? `${Number(term.totalMarks)}/${term.maxMarks != null ? Number(term.maxMarks) : "—"}`
                             : "—"}
                         </td>
-                        <td className="py-2 pr-3">{term?.percentage ?? "—"}</td>
-                        <td className="py-2 pr-3">{term?.grade ?? "—"}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums">
+                          {term?.percentage != null ? `${term.percentage}%` : "—"}
+                        </td>
+                        <td className="py-2 pr-3 text-center">
+                          {term?.grade ? (
+                            <span className="font-medium">{term.grade}</span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
                         <td className="py-2 pr-3">
                           {term ? (
                             <Badge variant={term.isPassed ? "secondary" : "destructive"}>
@@ -501,22 +528,35 @@ export default function ExamResultsPage() {
               </CardHeader>
               <CardContent className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {results.data.stats.map((stat) => (
-                  <div key={stat.subjectId} className="rounded-lg border p-3 text-sm">
+                  <div key={stat.subjectId} className="rounded-lg border p-3">
                     <p className="font-medium">{subjectNameById.get(stat.subjectId) ?? stat.subjectId}</p>
-                    <p className="text-muted-foreground">
-                      {copy.exams.results.average}: {stat.average ?? "—"}
-                    </p>
-                    <p className="text-muted-foreground">
-                      {copy.exams.results.highest}: {stat.highest ?? "—"}
-                    </p>
-                    <p className="text-muted-foreground">
-                      {copy.exams.results.passCount}: {stat.passCount}/{stat.enteredCount}
-                    </p>
+                    <dl className="text-muted-foreground mt-1.5 space-y-0.5 text-sm">
+                      <div className="flex justify-between gap-2">
+                        <dt>{copy.exams.results.average}</dt>
+                        <dd className="text-foreground font-medium tabular-nums">
+                          {stat.average ?? "—"}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <dt>{copy.exams.results.highest}</dt>
+                        <dd className="text-foreground font-medium tabular-nums">
+                          {stat.highest ?? "—"}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <dt>{copy.exams.results.passCount}</dt>
+                        <dd className="text-foreground font-medium tabular-nums">
+                          {stat.passCount}/{stat.enteredCount}
+                        </dd>
+                      </div>
+                    </dl>
                   </div>
                 ))}
-                <div className="rounded-lg border p-3 text-sm">
-                  <p className="font-medium">{copy.exams.results.classAverage}</p>
-                  <p className="text-muted-foreground">{results.data.classAverage ?? "—"}%</p>
+                <div className="border-primary/30 bg-primary/5 rounded-lg border p-3">
+                  <p className="text-muted-foreground text-xs">{copy.exams.results.classAverage}</p>
+                  <p className="font-heading text-2xl font-semibold tabular-nums">
+                    {results.data.classAverage != null ? `${results.data.classAverage}%` : "—"}
+                  </p>
                 </div>
               </CardContent>
             </Card>

@@ -6,6 +6,103 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
+**SCOPE DECISION — ADR-034 (2026-09-12): the student/parent surface is MOBILE-ONLY; the web app is staff-only.**
+The web `(portal)` route group (login, results, print) is a stopgap —
+keep it until the mobile app exists, then delete. Portal attendance/
+fees slices and portal IA/notifications move to the MOBILE backlog
+(their web stubs are placeholders). Backend portal layer is unchanged
+and frontend-agnostic; `apps/mobile` consumes the same tRPC surface
+when built. Staff-side Portal Access management stays on web.
+
+**THE EXAM/RESULT FIVE — COMPLETE (2026-09-12) — UNCOMMITTED, awaiting owner review (they said don't commit).**
+All five recorded leftovers landed in one pass, on top of the uncommitted
+Phase 6b R2 fixes (class removal, inline papers editor, class-scoped
+subject picker — see the entry below):
+1. **Grade-only / term-assessment entry UI** — the term_grade pipeline got
+   its screen: `/exams/grades` (nav "Term grades"), class → section →
+   term pickers, the class's term_grade subjects as chips, the roster in
+   roll order, grade + remarks saving on blur through the SAME subject
+   gate as the marks grid (`exam.termGrades.save`,
+   `staffProcedure("marks:create", { subjectGate: true })`; the input
+   carries sectionId + subjectId for the fact check). Backend endpoints
+   are NEW (`exam.termGrades.list/save` — the service existed unwired);
+   the contract's `saveTermAssessmentInput` grew the gate pair. The seed
+   gains a Personality (term_grade) subject + type mapped to Class 6 so
+   the screen is demonstrable; the papers prefill and "Add subject" now
+   filter to EXAM-mode subjects only (a term-grade subject must never be
+   scheduled).
+2. **Exam edit** — "More actions → Edit exam" (name, weight/count,
+   negative-marking master switch; weight/count freeze is the service's
+   worded refusal). Conformance pins it.
+3. **Mapping end (ADR-033)** — supersedes the "no DELETE, ever" stance:
+   `subject_mapping:delete` (principal), `assignment.subjectMapping.end`,
+   guarded — a mapping with term-grade entries REFUSES (worded). Class
+   curriculum rows gain Remove with a consequence-stating confirm.
+   `reset-demo`'s wipe order fixed (mappings before subject_types) — the
+   seed's first demo subject_types row exposed it.
+4. **Per-component overrides** — the ComponentsDialog gains a grading
+   scale picker ("this component gets its own independent grade", the
+   reference SQL's ICSE case) and per-part negative marking (visible only
+   when the exam's master switch allows it; create/edit dialogs expose
+   the switch). Compute stamps the override grade onto
+   `student_component_results.gradeObtained` (the column the schema names
+   for exactly this) — integration pins A's 75/100 → "Star" with the
+   subject grade untouched.
+5. **Results typography pass** — "Class results" section heading, numeric
+   columns right-aligned tabular-nums, muted empty/absent/exempt cells,
+   grade centered, stats as label:value definitions with a class-average
+   hero card.
+Verified: check-types 8/8, lint 0 errors, units (86+80+35+89),
+integration **154/154** (conformance 8/8 with the new pins), smoke
+**189/189**, **full e2e 15/15** (the routes walk covers the new
+/exams/grades page for every role), builders + openapi clean. Three
+fixtures moved with the work, all deliberate: the smoke's Class 6
+mapping counts 2 → 3 (the Personality mapping), the seed gives every
+paper-sitting mapping a "Main" exam type (null-type mappings are
+invisible to the papers prefill and the coverage gate — the journey
+caught the prefill creating a Personality PAPER before the filter
+existed), and `reset-demo` wipes mappings before subject_types. The
+sign-in rate limiter was disabled locally for the smoke/e2e runs and
+RESTORED — server.ts is back to the owner's exact working-tree state.
+
+**PHASE 6b R2 — OWNER FEEDBACK FIXES (2026-09-12) — UNCOMMITTED, awaiting owner review (they said don't commit).**
+Three catches from the owner's own click-through of the redesign, plus
+what the re-test surfaced:
+1. **Remove class never worked** — `schedules.save` replaces per class
+   PRESENT in the payload, so an empty batch was a silent no-op. The
+   contract gains `removeClassIds` (exam.contract), the service deletes
+   those classes' rows under the same frozen/marks guards, and the
+   conformance suite pins both the removal and the
+   remove+save-in-one-pass refusal (worded in trpc/errors.ts).
+2. **Editing a paper wiped its components** — found by the rewritten
+   journey: the save was delete-all/insert-all, so ANY paper edit
+   silently destroyed the parts (the prefill's Theory, a school's
+   custom split, the lock). The save is now IDENTITY-KEYED
+   (class+subject+section): surviving rows UPDATE in place — parts,
+   lock, and ids persist; only vanished identities are deleted.
+   Conformance pins "date-sheet edit keeps the 2 parts".
+3. **The papers editor is now ON THE PAGE** (no popup) — ScheduleDialog
+   deleted; draft/scheduled rows are inline inputs with a dirty bar
+   (Save changes/Discard), per-class drafts survive chip hops, and
+   "Add subject" offers only the class's MAPPED subjects without a
+   paper (never the whole-school catalogue — the owner's third catch).
+Also fixed en route: the add-classes component-chaining re-ran over
+ALL exam rows (would have reset other classes' customized parts) — now
+filtered to the classes just added; and check:builders false-positived
+on `evaluateSubjectGate({ permission: "marks:create" })` (ADR-029a's
+read-side check) — the scan now matches builder calls only.
+Verified: check-types 8/8, lint 0 errors, units (86+80+35+89),
+integration 151 (conformance 5/5 with the new pins), journey green,
+builders + openapi clean, flows green — with two e2e-side finds that
+were NOT exam bugs: the marking-flow spec's wheel diverter asserted the
+diverted-to label wrongly (asserted `successor` where the taps land on
+CYCLE[taps]; it bites on the fifth consecutive run) — fixed; and the
+family-login spec is ONE-SHOT per seed (passing it changes the demo
+family's password and clears must_change_password) — `pnpm db:seed`
+re-arms it, re-run it after any seed. Working tree holds all of this
+UNCOMMITTED for the owner's review (their instruction), on top of their
+own ngrok/CORS files.
+
 **PHASE 6b — EXAM DETAIL REDESIGN COMPLETE ON `feature/phase5-exams` (2026-09-12) — web-only, one commit.**
 The owner walked the flow and redesigned it; this implements their brief
 plus a UX pass (plan: `.kilo/plans/1789200000000-exam-detail-redesign.md`):

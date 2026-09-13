@@ -94,6 +94,7 @@ function ExamDialog({
       examType: "regular",
       weightageInTerm: "100.00",
       countsTowardTermResult: true,
+      allowsNegativeMarking: false,
     });
   }, [open, terms, form]);
 
@@ -234,6 +235,15 @@ function ExamDialog({
             <FieldError>{form.formState.errors.countsTowardTermResult?.message}</FieldError>
           </>
         )}
+        <Field orientation="horizontal">
+          <Checkbox
+            id="exam-negative"
+            checked={form.watch("allowsNegativeMarking") ?? false}
+            onCheckedChange={(v) => form.setValue("allowsNegativeMarking", v === true)}
+          />
+          <FieldLabel htmlFor="exam-negative">{copy.exams.workflow.fields.negativeSwitch}</FieldLabel>
+          <FieldDescription>{copy.exams.workflow.fields.negativeSwitchHelp}</FieldDescription>
+        </Field>
       </>
     </FormDialog>
   );

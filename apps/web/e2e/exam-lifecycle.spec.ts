@@ -97,12 +97,21 @@ test.describe("exam lifecycle (principal through the browser)", () => {
     });
     await expect(page.getByRole("cell", { name: "Physics" })).toBeVisible();
 
+    // ── 2b. The grid is editable ON THE PAGE (no popup) ─────────────────
+    // Type into the Mathematics venue cell; the dirty bar appears; the
+    // save is the batch endpoint and the bar disappears when it lands.
+    await page.getByRole("textbox", { name: "Venue 1" }).fill("Hall 1");
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect(page.getByRole("button", { name: "Save changes" })).toBeHidden({
+      timeout: 15_000,
+    });
+
     // ── 3. Split the Mathematics paper into Theory + Internal ───────────
     // The prefill's single Theory part is a valid default; this edit keeps
     // the ComponentsDialog walked and the weighted pass-mark math covered.
     await page
       .getByRole("row", { name: /Mathematics/ })
-      .getByRole("button", { name: "1 component" })
+      .getByRole("button", { name: "Components" })
       .click();
     await expect(
       page.getByRole("dialog").getByRole("button", { name: "Add component" }),
@@ -116,9 +125,7 @@ test.describe("exam lifecycle (principal through the browser)", () => {
     await page.locator("#component-pass-1").fill("7");
     await page.locator("#component-weight-1").fill("20");
     await page.getByRole("dialog").getByRole("button", { name: "Save" }).click();
-    await expect(
-      page.getByRole("row", { name: /Mathematics/ }).getByRole("button", { name: "2 components" }),
-    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("dialog")).toBeHidden({ timeout: 15_000 });
 
     // ── 4. The lifecycle: schedule → ongoing → marks entry ──────────────
     const transition = async (label: string) => {

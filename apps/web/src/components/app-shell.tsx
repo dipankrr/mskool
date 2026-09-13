@@ -10,6 +10,7 @@ import {
   HomeIcon,
   LandmarkIcon,
   MenuIcon,
+  NotebookPenIcon,
   Settings2Icon,
   UserIcon,
   UsersIcon,
@@ -145,6 +146,12 @@ const NAV_ITEMS: NavItem[] = [
     href: "/exams",
     label: copy.nav.exams,
     icon: ClipboardListIcon,
+    permission: "exam:read",
+  },
+  {
+    href: "/exams/grades",
+    label: copy.nav.termGrades,
+    icon: NotebookPenIcon,
     permission: "exam:read",
   },
   {
