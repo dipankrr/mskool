@@ -1350,6 +1350,46 @@ async function main() {
     await invalidateUserAuthCache(personaUser.id);
   }
 
+  // --- The staff register (ADR-035) ------------------------------------------
+  //
+  // The extended personas get their employment rows (the Staff screen needs a
+  // register to show), plus ONE member with no login at all — the demo path
+  // for "Create login": the employment record exists, the credential does
+  // not, and provisioning it is a separate audited act.
+  await findOrCreateStaff(organization.id, schoolA.id, adminUser.id, "DEMO-001", "Demo Org", "Admin", "Organisation Administrator");
+  await findOrCreateStaff(organization.id, schoolA.id, principalUser.id, "DEMO-002", "Demo", "Principal", "Principal");
+  for (const persona of [
+    { email: VICE_PRINCIPAL_EMAIL, code: "DEMO-003", first: "Demo", last: "Vice Principal", designation: "Vice Principal" },
+    { email: ACCOUNTANT_EMAIL, code: "DEMO-004", first: "Demo", last: "Accountant", designation: "Accountant" },
+    { email: LIBRARIAN_EMAIL, code: "DEMO-005", first: "Demo", last: "Librarian", designation: "Librarian" },
+    { email: STAFF_COORDINATOR_EMAIL, code: "DEMO-006", first: "Demo", last: "Staff Coordinator", designation: "Staff Coordinator" },
+  ]) {
+    const [personaUser] = await db.select({ id: user.id }).from(user).where(eq(user.email, persona.email));
+    if (personaUser) {
+      await findOrCreateStaff(organization.id, schoolA.id, personaUser.id, persona.code, persona.first, persona.last, persona.designation);
+    }
+  }
+  // The login-less member: userId deliberately null (ADR-008 — employment is
+  // distinct from login; ADR-035 — the credential is a separate act).
+  const [assistant] = await db
+    .select()
+    .from(staff)
+    .where(and(eq(staff.organizationId, organization.id), eq(staff.employeeCode, "DEMO-007")));
+  if (!assistant) {
+    await db.insert(staff).values({
+      organizationId: organization.id,
+      schoolId: schoolA.id,
+      userId: null,
+      employeeCode: "DEMO-007",
+      firstName: "Demo",
+      lastName: "Assistant",
+      designation: "Office Assistant",
+    });
+    console.log("  + staff DEMO-007 (no login — the provisioning demo)");
+  } else {
+    console.log("  = staff DEMO-007 (exists)");
+  }
+
   // --- The teaching-assignment layer -----------------------------------------
   //
   // Mappings say which subjects Class 6 takes this session; assignment rows

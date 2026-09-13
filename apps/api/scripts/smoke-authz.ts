@@ -36,6 +36,7 @@ import {
   schools,
   sections,
   sectionTeacherAssignments,
+  staff,
   studentEnrollments,
   students,
   subjects,
@@ -48,7 +49,7 @@ import {
   feeStructures,
   studentFeeAssignments,
 } from "@repo/db/schema";
-import { and, asc, eq, isNull, ne } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 import { createHmac } from "node:crypto";
 
 const API = process.env.SMOKE_API_URL ?? "http://localhost:4000";
@@ -1689,6 +1690,137 @@ async function main() {
     },
   );
 
+  // --- Staff & roles (ADR-035) — the register, the matrix, and the gates -----
+  //
+  // The register read is HR-facing: org_admin, principal, vice_principal,
+  // and staff_coordinator see it; teachers, the accountant, and the
+  // librarian do not. Writes are pinned negatively here — the positive
+  // create/login flows live in the integration suite, because the smoke
+  // must stay re-runnable without minting rows.
+  const [demoAssistant] = await db
+    .select()
+    .from(staff)
+    .where(and(eq(staff.organizationId, orgId), eq(staff.employeeCode, "DEMO-007")));
+  if (!demoAssistant) {
+    throw new Error("Staff seed incomplete — expected DEMO-007. Run `pnpm db:seed`.");
+  }
+  const [adminUser] = await db.select().from(user).where(eq(user.email, ADMIN_EMAIL));
+  if (!adminUser) throw new Error("Admin user missing.");
+
+  const staffListOk = (d: any) =>
+    Array.isArray(d) && d.some((s: any) => s.employeeCode === "DEMO-007");
+  for (const [role, cookie, ok] of [
+    ["org_admin", adminCookie, true],
+    ["principal", principalCookie, true],
+    ["vice_principal", vicePrincipalCookie, true],
+    ["staff_coordinator", staffCoordinatorCookie, true],
+    ["class_teacher", teacherCookie, false],
+    ["subject_teacher", subjectTeacherCookie, false],
+    ["accountant", accountantCookie, false],
+    ["librarian", librarianCookie, false],
+  ] as const) {
+    rows.push({
+      role,
+      cookie,
+      path: "staff.list",
+      input: { organizationId: orgId },
+      method: "query",
+      expect: ok ? OK : forbidden,
+      dataCheck: ok ? staffListOk : undefined,
+    });
+  }
+  rows.push(
+    // Overlap read through resolveStaffOwner: the row's owning branch is
+    // resolved, then the gate asks whether any grant reaches into it.
+    {
+      role: "principal",
+      cookie: principalCookie,
+      path: "staff.byId",
+      input: { organizationId: orgId, id: demoAssistant.id },
+      method: "query",
+      expect: OK,
+      dataCheck: (d) => d?.employeeCode === "DEMO-007",
+    },
+    {
+      role: "class_teacher",
+      cookie: teacherCookie,
+      path: "staff.byId",
+      input: { organizationId: orgId, id: demoAssistant.id },
+      method: "query",
+      expect: forbidden,
+    },
+    {
+      role: "accountant",
+      cookie: accountantCookie,
+      path: "staff.create",
+      input: {
+        organizationId: orgId,
+        schoolId: schoolA.id,
+        data: { employeeCode: "SMOKE-PROBE", firstName: "Smoke", lastName: "Probe" },
+      },
+      method: "mutation",
+      expect: forbidden,
+    },
+    {
+      role: "class_teacher",
+      cookie: teacherCookie,
+      path: "staff.createLogin",
+      input: { organizationId: orgId, id: demoAssistant.id, password: "SmokeProbe123!" },
+      method: "mutation",
+      expect: forbidden,
+    },
+    {
+      role: "accountant",
+      cookie: accountantCookie,
+      path: "role.assign",
+      input: {
+        organizationId: orgId,
+        id: schoolA.id,
+        userId: adminUser.id,
+        roleType: "librarian",
+        scopeType: "school",
+      },
+      method: "mutation",
+      expect: forbidden,
+    },
+    // The permission matrix is readable by anyone with role_permission:read;
+    // nobody else.
+    {
+      role: "principal",
+      cookie: principalCookie,
+      path: "role.permissions",
+      input: { organizationId: orgId },
+      method: "query",
+      expect: OK,
+      dataCheck: (d) => Array.isArray(d) && d.length > 0,
+    },
+    {
+      role: "class_teacher",
+      cookie: teacherCookie,
+      path: "role.permissions",
+      input: { organizationId: orgId },
+      method: "query",
+      expect: forbidden,
+    },
+    {
+      role: "principal",
+      cookie: principalCookie,
+      path: "role.assignments",
+      input: { organizationId: orgId, userId: adminUser.id },
+      method: "query",
+      expect: OK,
+      dataCheck: (d) => Array.isArray(d) && d.length > 0,
+    },
+    {
+      role: "class_teacher",
+      cookie: teacherCookie,
+      path: "role.assignments",
+      input: { organizationId: orgId, userId: adminUser.id },
+      method: "query",
+      expect: forbidden,
+    },
+  );
+
   for (const row of rows) {
     const result =
       row.method === "query"
@@ -1750,6 +1882,95 @@ async function main() {
     .set({ revokedAt: null })
     .where(eq(roleAssignments.userId, principalUser.id));
   await invalidateUserAuthCache(principalUser.id);
+
+  // --- Staff & roles: grant → duplicate → revoke → audit (ADR-035) -----------
+  //
+  // The positive grant flow, over HTTP with the UI's shape: the principal
+  // grants a role AT his own school node (addressedBy:"id" makes that node
+  // the gate), the duplicate is CONFLICT, the revoke lands with a reason,
+  // the second revoke is NOT_FOUND, and both acts leave authz_audit_log
+  // rows — the Phase 1 debt closing for real.
+  const grantInput = {
+    organizationId: orgId,
+    id: schoolA.id,
+    userId: principalUser.id,
+    roleType: "librarian" as const,
+    scopeType: "school" as const,
+  };
+  const grant = await mutate(principalCookie, "role.assign", grantInput);
+  report(
+    "principal grants librarian @ own school",
+    grant.ok && (grant.data as any)?.roleType === "librarian",
+    grant.ok ? "" : `code ${grant.code}`,
+  );
+
+  const duplicateGrant = await mutate(principalCookie, "role.assign", grantInput);
+  report(
+    "duplicate grant is CONFLICT",
+    !duplicateGrant.ok && duplicateGrant.code === "CONFLICT",
+    duplicateGrant.ok ? "duplicate accepted" : `code ${duplicateGrant.code}`,
+  );
+
+  const grantId = (grant.data as any)?.id as string | undefined;
+  const revokeGrant = grantId
+    ? await mutate(principalCookie, "role.revoke", {
+        organizationId: orgId,
+        id: grantId,
+        reason: "Smoke cleanup — the grant was a proof",
+      })
+    : { ok: false, code: "NO_GRANT" as const };
+  report(
+    "revoke lands (reason carried)",
+    revokeGrant.ok,
+    revokeGrant.ok ? "" : `code ${revokeGrant.code}`,
+  );
+
+  const revokeAgain = grantId
+    ? await mutate(principalCookie, "role.revoke", {
+        organizationId: orgId,
+        id: grantId,
+        reason: "Smoke cleanup — second attempt",
+      })
+    : { ok: false, code: "NO_GRANT" as const };
+  report(
+    "second revoke is NOT_FOUND",
+    !revokeAgain.ok && revokeAgain.code === "NOT_FOUND",
+    revokeAgain.ok ? "revoked twice" : `code ${revokeAgain.code}`,
+  );
+
+  if (grantId) {
+    const auditRows = await db
+      .select({ action: authzAuditLog.action })
+      .from(authzAuditLog)
+      .where(
+        and(
+          eq(authzAuditLog.organizationId, orgId),
+          inArray(authzAuditLog.action, ["role_granted", "role_revoked"]),
+        ),
+      )
+      .orderBy(desc(authzAuditLog.createdAt))
+      .limit(2);
+    report(
+      "audit rows written for grant + revoke",
+      new Set(auditRows.map((r) => r.action)).size === 2,
+      `got ${auditRows.map((r) => r.action).join(", ")}`,
+    );
+  }
+
+  // A grant the target's staff record cannot back: a user with no staff row
+  // cannot be assigned a role — the service refuses with the fix named.
+  const assignToNonStaff = await mutate(principalCookie, "role.assign", {
+    organizationId: orgId,
+    id: schoolA.id,
+    userId: "smoke-nonstaff-user",
+    roleType: "librarian",
+    scopeType: "school",
+  });
+  report(
+    "assign to a user with no staff record is BAD_REQUEST",
+    !assignToNonStaff.ok && assignToNonStaff.code === "BAD_REQUEST",
+    assignToNonStaff.ok ? "accepted" : `code ${assignToNonStaff.code}`,
+  );
 
 
   // --- Fees: the accountant collects; the class teacher cannot ---------------
