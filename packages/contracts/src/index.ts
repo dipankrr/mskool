@@ -54,3 +54,9 @@ export * from "./contracts/exam.contract";
 
 // Portal access: the family login's credential lifecycle (ADR-007).
 export * from "./contracts/portal-access.contract";
+
+// Staff: the employment register and its login provisioning (ADR-008, ADR-035).
+export * from "./contracts/staff.contract";
+
+// Roles: role assignments and the read-only permission matrix (ADR-005).
+export * from "./contracts/role.contract";

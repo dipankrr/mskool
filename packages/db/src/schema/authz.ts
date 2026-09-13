@@ -171,6 +171,11 @@ export const authzAuditActionEnum = pgEnum("authz_audit_action", [
   "portal_activated",
   "portal_password_reset",
   "portal_phone_changed",
+  // ADR-035: staff login provisioning is a credential act with the same
+  // hand-off sensitivity — who issued a login, and who re-armed the
+  // forced password change, is exactly what an audit asks about.
+  "staff_login_created",
+  "staff_password_reset",
 ]);
 
 /**
