@@ -9,7 +9,9 @@ import { examRouter, portalExamRouter } from "./routers/exam.router";
 import { feesRouter } from "./routers/fees.router";
 import { meRouter } from "./routers/me.router";
 import { portalAccessRouter } from "./routers/portal-access.router";
+import { roleRouter } from "./routers/role.router";
 import { schoolRouter } from "./routers/school.router";
+import { staffRouter } from "./routers/staff.router";
 import { studentRouter } from "./routers/student.router";
 import { subjectRouter } from "./routers/subject.router";
 
@@ -56,6 +58,12 @@ export const appRouter = router({
   // action is its own permission; audit rows + session revocation are the
   // service's business.
   portalAccess: portalAccessRouter,
+  // The employment register and its login provisioning (ADR-008, ADR-035):
+  // staff.list/byId/create/update/deactivate + the login acts.
+  staff: staffRouter,
+  // Role assignments: grant at the addressed scope, revoke with a reason,
+  // and the read-only permission matrix (ADR-005, ADR-035).
+  role: roleRouter,
 });
 
 
