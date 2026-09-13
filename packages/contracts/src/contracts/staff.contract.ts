@@ -31,8 +31,10 @@ export const createStaffSchema = createInsertSchema(staff, {
   employeeCode: z.string().min(1).max(50),
   firstName: z.string().min(1).max(100),
   lastName: z.string().min(1).max(100),
-  dateOfBirth: isoDate,
-  dateOfJoining: isoDate,
+  // A school hires first and fills the rest in — dates are optional, unlike
+  // the student contract's admission-time DOB.
+  dateOfBirth: isoDate.optional(),
+  dateOfJoining: isoDate.optional(),
   phone: z.string().min(5).max(20).nullish(),
   email: z.email().nullish(),
   pincode: z
@@ -69,8 +71,8 @@ export type CreateStaffInput = z.infer<typeof createStaffSchema>;
 export const updateStaffSchema = createInsertSchema(staff, {
   firstName: z.string().min(1).max(100),
   lastName: z.string().min(1).max(100),
-  dateOfBirth: isoDate,
-  dateOfJoining: isoDate,
+  dateOfBirth: isoDate.optional(),
+  dateOfJoining: isoDate.optional(),
   phone: z.string().min(5).max(20).nullish(),
   email: z.email().nullish(),
   pincode: z

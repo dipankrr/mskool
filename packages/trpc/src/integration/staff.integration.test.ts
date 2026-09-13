@@ -160,10 +160,11 @@ describe("staff & roles (ADR-035)", () => {
       .select()
       .from(userTable)
       .where(eq(userTable.id, provisionedUserId));
-    expect(user.mustChangePassword).toBe(true);
-    expect(user.email).toBeNull();
+    expect(user!).toBeTruthy();
+    expect(user!.mustChangePassword).toBe(true);
+    expect(user!.email).toBeNull();
     // The username is {org_slug}-{employee_code}, lower-cased.
-    expect(user.username).toBe(
+    expect(user!.username).toBe(
       `${org!.slug}-${code("T1")}`.toLowerCase(),
     );
 
@@ -194,7 +195,8 @@ describe("staff & roles (ADR-035)", () => {
       .select()
       .from(userTable)
       .where(eq(userTable.id, provisionedUserId));
-    expect(user.mustChangePassword).toBe(true);
+    expect(user!).toBeTruthy();
+    expect(user!.mustChangePassword).toBe(true);
 
     const [audit] = await db
       .select()
