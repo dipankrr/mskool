@@ -215,3 +215,54 @@ export function useRoleMutations() {
     },
   };
 }
+
+/** The permission editor's vocabulary: grouped catalog + shipped defaults. */
+export function usePermissionDefaults(enabled: boolean) {
+  const { scopeArgs } = useActiveContext();
+
+  return trpc.role.permissionDefaults.useQuery(scopeArgs(), {
+    enabled,
+    staleTime: 5 * 60 * 1000,
+    // A missing catalog is not retryable, and a refused one is not
+    // transient.
+    retry: false,
+  });
+}
+
+export function usePermissionMutations() {
+  const { scopeArgs } = useActiveContext();
+  const utils = trpc.useUtils();
+
+  const refresh = async () => {
+    await utils.role.permissions.invalidate();
+  };
+
+  const update = trpc.role.permissionUpdate.useMutation({
+    onSuccess: async (result) => {
+      toast.success(copy.staff.editorSaved(result.added, result.removed));
+      await refresh();
+    },
+    // The locks and the vocabulary refusals arrive worded (ADR-036).
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const reset = trpc.role.permissionReset.useMutation({
+    onSuccess: async () => {
+      toast.success(copy.staff.editorResetDone);
+      await refresh();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  return {
+    update: {
+      ...update,
+      submit: (input: { roleType: RoleType; add: string[]; remove: string[] }) =>
+        update.mutateAsync({ ...scopeArgs(), ...input }),
+    },
+    reset: {
+      ...reset,
+      submit: (roleType: RoleType) => reset.mutateAsync({ ...scopeArgs(), roleType }),
+    },
+  };
+}

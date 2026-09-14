@@ -1276,6 +1276,39 @@ export const copy = {
     revokeHelp: "The reason is recorded in the audit log, together with who revoked what and when.",
     matrixTitle: "What each role may do",
     matrixHelp: "The organisation's permission matrix, read-only. The person's roles are marked.",
+    editorEdit: "Edit",
+    editorTitle: "Edit permissions",
+    editorHelp:
+      "Tick what this role may do. Saving applies the change to EVERY holder of the role, immediately — it is recorded in the audit log.",
+    editorSearch: "Filter permissions",
+    editorSearchPlaceholder: "Search a resource or action…",
+    editorEmpty: "Nothing matches this filter.",
+    editorDirty: (added: number, removed: number) =>
+      `${added} to grant · ${removed} to withdraw`,
+    editorSave: "Save changes",
+    editorDiscard: "Discard",
+    editorReset: "Reset to defaults",
+    editorResetTitle: "Restore the shipped defaults?",
+    editorResetBody: (changes: number) =>
+      `${changes} permission${changes === 1 ? "" : "s"} will change for every holder of this role, immediately. This is how an admin gets back to a known-good matrix.`,
+    editorConfirmTitle: "Apply these permission changes?",
+    editorConfirmBody: (added: number, removed: number) =>
+      `Every holder of this role gains ${added} and loses ${removed} permission${added + removed === 1 ? "" : "s"}, immediately. The change is recorded in the audit log.`,
+    editorSaved: (added: number, removed: number) =>
+      `Saved — ${added} granted, ${removed} withdrawn.`,
+    editorResetDone: "Restored to the shipped defaults.",
+    editorLockedBootstrap: "The bootstrap role — it cannot be edited, by anyone.",
+    editorModified: "Modified",
+    editorNoChanges: "No changes to save.",
+    categories: {
+      Academic: "Academic",
+      Finance: "Fees",
+      Staff: "Staff & leave",
+      Communication: "Announcements",
+      Structure: "Branches & classes",
+      Configuration: "Configuration",
+      Auth: "Access & roles",
+    },
     roles: {
       org_admin: "Organisation admin",
       principal: "Principal",
