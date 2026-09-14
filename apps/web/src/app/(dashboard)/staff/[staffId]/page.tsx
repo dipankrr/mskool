@@ -30,7 +30,7 @@ import {
   EditStaffDialog,
 } from "@/features/staff/staff-form-dialogs";
 import { StaffLoginDialog } from "@/features/staff/staff-login-dialog";
-import { RoleMatrixCard, StaffRolesCard } from "@/features/staff/staff-roles-card";
+import { StaffRolesCard } from "@/features/staff/staff-roles-card";
 import { useStaff, useStaffMutations } from "@/features/staff/use-staff";
 import { copy } from "@/lib/copy";
 import { formatIsoDate } from "@/lib/format";
@@ -178,7 +178,6 @@ export default function StaffDetailPage() {
           </Card>
 
           <StaffRolesCard userId={member.userId ?? ""} />
-          <RoleMatrixCard userId={member.userId ?? ""} enabled={Boolean(member.userId)} />
         </div>
 
         <div className="flex w-full flex-col gap-6 lg:w-80">

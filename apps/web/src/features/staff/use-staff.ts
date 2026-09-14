@@ -266,3 +266,13 @@ export function usePermissionMutations() {
     },
   };
 }
+
+/** WHO holds each role — the Roles area's companion read. */
+export function useRoleHolders(enabled: boolean) {
+  const { scopeArgs } = useActiveContext();
+
+  return trpc.role.holders.useQuery(scopeArgs(), {
+    enabled,
+    staleTime: THIRTY_SECONDS,
+  });
+}

@@ -59,22 +59,51 @@ export const copy = {
     sessions: "Sessions",
     classes: "Classes",
     students: "Students",
-    attendance: "Calendar",
+    attendance: "Attendance",
     fees: "Fees",
     subjects: "Subjects",
     exams: "Exams",
     examSetup: "Exam Setup",
     termGrades: "Term grades",
     staff: "Staff",
+    roles: "Roles",
     profile: "Profile",
+    /** Sidebar section labels. */
+    groupDaily: "Daily",
+    groupAcademics: "Academics",
+    groupAdministration: "Administration",
+    /** Sub-actions under the sidebar's expandable items. */
+    allStudents: "All students",
+    admitStudent: "Admit student",
+    attendanceCalendar: "Calendar",
+    attendanceMark: "Mark",
+    attendancePolicy: "Policy",
+    attendanceReports: "Reports",
+    allClasses: "All classes",
+    createClass: "Create class",
+    createExam: "Create exam",
+    allSessions: "All sessions",
+    createSession: "Create session",
+    /**
+     * The Branches sub-item labels are composed at the call site so they follow
+     * `branchWord` — one school reads "School", several read "Branches".
+     * "Create" comes from `common.create`.
+     */
+    allPrefix: "All",
+    /** The command palette. */
+    searchPlaceholder: "Search…",
+    searchKbdHint: "Ctrl K",
+    searchNoResults: "No matching destination",
+    /** The mobile tab that opens the one menu sheet. */
+    more: "More",
     menu: "Menu",
     openMenu: "Open menu",
     closeMenu: "Close menu",
     toggleTheme: "Toggle theme",
     signOut: "Sign out",
-    /** The hamburger sheet: everything that decides what the app is showing you. */
-    contextTitle: "What you're working on",
-    contextSubtitle: "Choose the branch and session these screens apply to.",
+    /** The mobile menu sheet: navigation plus the context that decides what the screens apply to. */
+    contextTitle: "Menu",
+    contextSubtitle: "Choose where to go, and the branch and session these screens apply to.",
     chooseBranch: "Choose a branch",
     noBranch: "No branch",
     organization: "Trust",
@@ -1256,7 +1285,6 @@ export const copy = {
       "Login created. Hand over the password — the forced change applies at first sign-in.",
     loginResetDone: "Password reset. Live sessions were signed out.",
     rolesTitle: "Roles",
-    rolesEmpty: "No roles granted. A staff member without a role cannot do anything in the console.",
     roleAssign: "Assign role",
     roleAssignTitle: "Assign a role",
     roleAssignHelp:
@@ -1309,6 +1337,11 @@ export const copy = {
       Configuration: "Configuration",
       Auth: "Access & roles",
     },
+    rolesSubtitle: "Who may do what — the organisation's roles, their holders, and their permissions.",
+    rolesEmpty: 'No roles configured. The shipped defaults define eight roles; they appear here once the permission matrix loads.',
+    holdersTitle: 'People holding this role',
+    holdersEmpty: "Nobody holds this role yet. Assign it from a staff member's page.",
+    roleDetailSubtitle: 'What this role may do, and who holds it.',
     roles: {
       org_admin: "Organisation admin",
       principal: "Principal",

@@ -1,6 +1,7 @@
 "use client";
 
 import { PencilIcon, PlusIcon, ShieldCheckIcon } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { FormDialog } from "@/components/form-dialog";
@@ -30,9 +31,7 @@ import {
 } from "@/components/ui/select";
 import { useBranches } from "@/features/branches/use-branches";
 import {
-  usePermissionDefaults,
   useRoleMutations,
-  useRolePermissions,
   useStaffRoles,
 } from "@/features/staff/use-staff";
 import { PermissionEditorDialog } from "@/features/staff/permission-editor-dialog";
@@ -57,7 +56,7 @@ import type { RoleAssignmentView } from "@/lib/trpc/types";
  * with a minimum-length field, not a bare confirm.
  */
 
-const ROLE_TYPES = [
+export const ROLE_TYPES = [
   "org_admin",
   "principal",
   "vice_principal",
@@ -110,9 +109,12 @@ export function StaffRolesCard({ userId }: { userId: string }) {
                 className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
               >
                 <div className="flex min-w-0 flex-col">
-                  <span className="font-medium">
+                  <Link
+                    href={`/roles/${assignment.roleType}`}
+                    className="font-medium hover:underline"
+                  >
                     {copy.staff.roles[assignment.roleType]}
-                  </span>
+                  </Link>
                   <span className="text-muted-foreground truncate text-xs">
                     {assignment.scopeLabel}
                     {assignment.expiresAt
@@ -364,149 +366,5 @@ function RevokeRoleDialog({
         {tooShort ? <FieldError>{copy.staff.revokeReason}</FieldError> : null}
       </Field>
     </FormDialog>
-  );
-}
-
-/**
- * The org's permission matrix, degraded per permission, with ADR-036's
- * editor wired in per role. The `org_admin` lock renders statically (the
- * role's name is the lock); the self-role lock is the server's honest
- * refusal — the client does not know the caller's roles, and the worded
- * toast says exactly what to do.
- */
-export function RoleMatrixCard({
-  userId,
-  enabled,
-}: {
-  userId: string;
-  enabled: boolean;
-}) {
-  const { has } = useActiveContext();
-  const canRead = enabled && has("role_permission:read");
-  const matrix = useRolePermissions(canRead);
-  const defaultsQuery = usePermissionDefaults(canRead && has("role_permission:update"));
-  const roles = useStaffRoles(userId);
-
-  const [editing, setEditing] = useState<string | null>(null);
-
-  const canEdit = has("role_permission:update");
-
-  const ownRoles = useMemo(
-    () => new Set<string>((roles.data ?? []).map((a) => a.roleType)),
-    [roles.data],
-  );
-
-  const byRole = useMemo(() => {
-    const map = new Map<string, string[]>();
-    for (const row of matrix.data ?? []) {
-      const list = map.get(row.roleType) ?? [];
-      list.push(row.permission);
-      map.set(row.roleType, list);
-    }
-    return map;
-  }, [matrix.data]);
-
-  const modifiedRoles = useMemo(() => {
-    const defaults = defaultsQuery.data?.defaults ?? [];
-    const byRoleDefaults = new Map<string, Set<string>>();
-    for (const row of defaults) {
-      const set = byRoleDefaults.get(row.roleType) ?? new Set<string>();
-      set.add(row.permission);
-      byRoleDefaults.set(row.roleType, set);
-    }
-    const modified = new Set<string>();
-    for (const [roleType, permissions] of byRole) {
-      const roleDefaults = byRoleDefaults.get(roleType);
-      if (!roleDefaults) continue;
-      if (
-        permissions.length !== roleDefaults.size ||
-        permissions.some((p) => !roleDefaults.has(p))
-      ) {
-        modified.add(roleType);
-      }
-    }
-    return modified;
-  }, [defaultsQuery.data, byRole]);
-
-  if (!canRead) return null;
-
-  if (byRole.size === 0) return null;
-
-  const editingRoleType = editing as RoleType | null;
-  const editingPermissions = editing ? (byRole.get(editing) ?? []) : [];
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <ShieldCheckIcon className="size-4" />
-          {copy.staff.matrixTitle}
-        </CardTitle>
-        <CardDescription>{copy.staff.matrixHelp}</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        {[...byRole.entries()]
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([roleType, permissions]) => {
-            const isBootstrap = roleType === "org_admin";
-            const editable = canEdit && !isBootstrap;
-            return (
-              <details key={roleType} className="rounded-lg border p-3">
-                <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium">
-                  {copy.staff.roles[roleType as keyof typeof copy.staff.roles]}
-                  {ownRoles.has(roleType) ? (
-                    <Badge variant="secondary">{copy.staff.rolesTitle}</Badge>
-                  ) : null}
-                  {modifiedRoles.has(roleType) ? (
-                    <Badge variant="outline">{copy.staff.editorModified}</Badge>
-                  ) : null}
-                  <span className="text-muted-foreground ml-auto text-xs">
-                    {permissions.length}
-                  </span>
-                  {editable ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        setEditing(roleType);
-                      }}
-                    >
-                      <PencilIcon data-icon="inline-start" />
-                      {copy.staff.editorEdit}
-                    </Button>
-                  ) : null}
-                </summary>
-                <ul className="mt-2 flex flex-wrap gap-1">
-                  {[...permissions].sort().map((permission) => (
-                    <li key={permission}>
-                      <Badge variant="outline" className="font-mono text-xs">
-                        {permission}
-                      </Badge>
-                    </li>
-                  ))}
-                </ul>
-                {isBootstrap ? (
-                  <p className="text-muted-foreground mt-2 text-xs">
-                    {copy.staff.editorLockedBootstrap}
-                  </p>
-                ) : null}
-              </details>
-            );
-          })}
-      </CardContent>
-
-      {editingRoleType ? (
-        <PermissionEditorDialog
-          open
-          onOpenChange={(open) => {
-            if (!open) setEditing(null);
-          }}
-          roleType={editingRoleType}
-          roleLabel={copy.staff.roles[editingRoleType as keyof typeof copy.staff.roles]}
-          currentPermissions={editingPermissions}
-        />
-      ) : null}
-    </Card>
   );
 }
