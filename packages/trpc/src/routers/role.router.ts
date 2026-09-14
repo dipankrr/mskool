@@ -4,6 +4,7 @@ import {
   revokeRoleSchema,
   roleAssignmentSelectSchema,
   roleAssignmentViewSchema,
+  roleHolderSchema,
   rolePermissionChangeResultSchema,
   rolePermissionDefaultsSchema,
   rolePermissionRowSchema,
@@ -137,6 +138,23 @@ export const roleRouter = router({
     .output(z.array(rolePermissionRowSchema))
     .query(async ({ ctx }) => {
       return roleService.listPermissions(ctx.organizationId);
+    }),
+
+  // WHO holds each role — the Roles area's companion read. Same permission
+  // as the matrix: knowing who has power is part of seeing the power.
+  holders: staffListProcedure("role_permission:read")
+    .meta({
+      openapi: {
+        method: "GET",
+        path: "/role/holders",
+        tags: ["roles"],
+        summary: "Active role assignments with each holder's name",
+        protect: true,
+      },
+    })
+    .output(z.array(roleHolderSchema))
+    .query(async ({ ctx }) => {
+      return roleService.listHolders(ctx.organizationId);
     }),
 
   // The editor's vocabulary: the grouped catalog (resource → actions, by

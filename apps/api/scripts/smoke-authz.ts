@@ -1845,6 +1845,27 @@ async function main() {
       method: "query",
       expect: forbidden,
     },
+    // WHO holds each role — the Roles area's companion read. The seeded
+    // org_admin must appear; a teacher without the permission does not see
+    // the answer at all.
+    {
+      role: "org_admin",
+      cookie: adminCookie,
+      path: "role.holders",
+      input: { organizationId: orgId },
+      method: "query",
+      expect: OK,
+      dataCheck: (d) =>
+        Array.isArray(d) && d.some((h: any) => h.roleType === "org_admin"),
+    },
+    {
+      role: "class_teacher",
+      cookie: teacherCookie,
+      path: "role.holders",
+      input: { organizationId: orgId },
+      method: "query",
+      expect: forbidden,
+    },
     {
       role: "principal",
       cookie: principalCookie,

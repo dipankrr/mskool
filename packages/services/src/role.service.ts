@@ -268,6 +268,39 @@ export class RoleService {
       .orderBy(asc(orgRolePermissions.roleType), asc(orgRolePermissions.permission));
   }
 
+  /**
+   * WHO holds each role — the Roles area's companion view. Joins each
+   * ACTIVE assignment to the holder's staff record (the person's name is
+   * the register's, not the login's); users with no staff row cannot exist
+   * among active assignments, because the grant guard requires one.
+   */
+  async listHolders(organizationId: string) {
+    const rows = await db
+      .select({
+        roleType: roleAssignments.roleType,
+        staffId: staff.id,
+        firstName: staff.firstName,
+        lastName: staff.lastName,
+        userId: roleAssignments.userId,
+      })
+      .from(roleAssignments)
+      .innerJoin(staff, eq(staff.userId, roleAssignments.userId))
+      .where(
+        and(
+          eq(roleAssignments.organizationId, organizationId),
+          isNull(roleAssignments.revokedAt),
+        ),
+      )
+      .orderBy(asc(roleAssignments.roleType), asc(staff.lastName), asc(staff.firstName));
+
+    return rows.map((row) => ({
+      roleType: row.roleType,
+      staffId: row.staffId,
+      name: [row.firstName, row.lastName].filter(Boolean).join(" "),
+      userId: row.userId,
+    }));
+  }
+
   // --- The permission EDITOR (ADR-036) --------------------------------------
 
   /**

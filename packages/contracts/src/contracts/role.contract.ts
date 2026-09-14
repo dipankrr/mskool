@@ -119,3 +119,12 @@ export const roleAssignmentViewSchema = roleAssignmentSelectSchema.extend({
   scopeLabel: z.string(),
 });
 export type RoleAssignmentView = z.infer<typeof roleAssignmentViewSchema>;
+
+/** One active assignment, flattened to "who holds what" for the Roles area. */
+export const roleHolderSchema = z.object({
+  roleType: roleTypeSchema,
+  staffId: z.uuid(),
+  name: z.string(),
+  userId: z.string(),
+});
+export type RoleHolder = z.infer<typeof roleHolderSchema>;
