@@ -1,7 +1,8 @@
 "use client";
 
 import { Building2Icon, MoreHorizontalIcon, PlusIcon } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DataTable } from "@/components/data-table";
@@ -132,6 +133,7 @@ function RowActions({
 
 export default function BranchesPage() {
   const { has, schools } = useActiveContext();
+  const router = useRouter();
   const branches = useBranches();
   const { create, update, close } = useBranchMutations();
 
@@ -141,6 +143,24 @@ export default function BranchesPage() {
 
   const canUpdate = has("school:update");
   const canClose = has("school:delete");
+
+  /**
+   * Quick-action deep link (`/branches?create=1`): open the branch form once,
+   * then strip the param so refresh and Back do not re-open it. Auto-opens only
+   * when the same permission that gates the Add-branch button is held.
+   */
+  const canCreate = has("school:create");
+  const autoOpenHandled = useRef(false);
+  useEffect(() => {
+    if (autoOpenHandled.current) return;
+    if (!new URLSearchParams(window.location.search).has("create")) return;
+    autoOpenHandled.current = true;
+    router.replace("/branches", { scroll: false });
+    if (canCreate) {
+      setEditing(undefined);
+      setFormOpen(true);
+    }
+  }, [canCreate, router]);
 
   const onEdit = useCallback((branch: School) => {
     setEditing(branch);

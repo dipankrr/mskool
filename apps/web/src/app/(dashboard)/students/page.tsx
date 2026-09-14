@@ -2,7 +2,8 @@
 
 import { PlusIcon, SearchIcon, UsersIcon } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { DataTable } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
@@ -26,7 +27,7 @@ import {
 import { useActiveContext } from "@/features/session/active-context";
 import { copy } from "@/lib/copy";
 import { formatIsoDate } from "@/lib/format";
-import { createAppColumnHelper, type DataTableColumns } from "@/lib/table";
+import { createAppColumnHelper } from "@/lib/table";
 import type { Student } from "@/lib/trpc/types";
 
 /**
@@ -55,11 +56,33 @@ function fullName(row: Student): string {
 
 export default function StudentsPage() {
   const { has, writeScopeArgs } = useActiveContext();
+  const router = useRouter();
 
   const [formOpen, setFormOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [portalStudent, setPortalStudent] = useState<Student | null>(null);
+
+  // The branch the register will attribute an admission to. With no branch
+  // chosen (a trust with several, none selected) the admit button waits —
+  // asking which branch is the screen's job, not the server's guess.
+  const canAdmit = has("student:create") && Boolean(writeScopeArgs());
+
+  /**
+   * Quick-action deep link (`/students?create=1`, from the sidebar and the
+   * command palette): open the admit dialog once, then strip the param with
+   * router.replace so refresh and Back do not re-open it. Auto-opens only when
+   * the same permission that gates the Admit button is held; the param is
+   * stripped either way so it never lingers as a stale instruction.
+   */
+  const autoOpenHandled = useRef(false);
+  useEffect(() => {
+    if (autoOpenHandled.current) return;
+    if (!new URLSearchParams(window.location.search).has("create")) return;
+    autoOpenHandled.current = true;
+    router.replace("/students", { scroll: false });
+    if (canAdmit) setFormOpen(true);
+  }, [canAdmit, router]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search.trim()), SEARCH_DEBOUNCE_MS);
@@ -71,11 +94,6 @@ export default function StudentsPage() {
   const classes = useClasses();
   const sections = useSections();
   const { create } = useStudentMutations();
-
-  // The branch the register will attribute an admission to. With no branch
-  // chosen (a trust with several, none selected) the admit button waits —
-  // asking which branch is the screen's job, not the server's guess.
-  const canAdmit = has("student:create") && Boolean(writeScopeArgs());
 
   const classNameById = useMemo(() => {
     const map = new Map<string, string>();

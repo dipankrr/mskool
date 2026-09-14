@@ -2,7 +2,8 @@
 
 import { GraduationCapIcon, MoreHorizontalIcon, PlusIcon } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DataTable } from "@/components/data-table";
@@ -130,6 +131,7 @@ function RowActions({
 
 export default function ClassesPage() {
   const { has, needsBranchChoice } = useActiveContext();
+  const router = useRouter();
   const classes = useClasses();
   const { update, close } = useClassMutations();
 
@@ -139,6 +141,21 @@ export default function ClassesPage() {
 
   const canUpdate = has("class:update");
   const canClose = has("class:delete");
+
+  /**
+   * Quick-action deep link (`/classes?create=1`): open the ladder dialog once,
+   * then strip the param so refresh and Back do not re-open it. Auto-opens only
+   * when the same permission that gates the Add-classes button is held.
+   */
+  const canCreate = has("class:create");
+  const autoOpenHandled = useRef(false);
+  useEffect(() => {
+    if (autoOpenHandled.current) return;
+    if (!new URLSearchParams(window.location.search).has("create")) return;
+    autoOpenHandled.current = true;
+    router.replace("/classes", { scroll: false });
+    if (canCreate) setLadderOpen(true);
+  }, [canCreate, router]);
 
   const onEdit = useCallback((cls: Class) => setEditing(cls), []);
   const onClose = useCallback((cls: Class) => setClosing(cls), []);

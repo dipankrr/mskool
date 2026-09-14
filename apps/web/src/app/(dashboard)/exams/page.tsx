@@ -2,9 +2,10 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { PlusIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { createExamSchema, type CreateExamInput } from "@repo/contracts";
@@ -15,7 +16,6 @@ import { DataTable } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { FormDialog } from "@/components/form-dialog";
 import { PageHeader } from "@/components/page-header";
-import { PermissionGate } from "@/components/permission-gate";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -251,11 +251,28 @@ function ExamDialog({
 
 export default function ExamsPage() {
   const { academicYearId, has, writeScopeArgs } = useActiveContext();
+  const router = useRouter();
   const exams = useExams(academicYearId);
   const terms = useTerms(academicYearId);
   const { create } = useExamWorkflowMutations();
 
   const [formOpen, setFormOpen] = useState(false);
+
+  /**
+   * Quick-action deep link (`/exams?create=1`): open the exam dialog once, then
+   * strip the param so refresh and Back do not re-open it. The same condition
+   * that shows the Add-exam button gates the auto-open — a term must exist,
+   * because the exam's year derives from its term (ADR-032).
+   */
+  const canCreate = has("exam:create") && Boolean(academicYearId);
+  const autoOpenHandled = useRef(false);
+  useEffect(() => {
+    if (autoOpenHandled.current) return;
+    if (!new URLSearchParams(window.location.search).has("create")) return;
+    autoOpenHandled.current = true;
+    router.replace("/exams", { scroll: false });
+    if (canCreate) setFormOpen(true);
+  }, [canCreate, router]);
 
   const columns = useMemo<DataTableColumns<ExamRow>>(
     () =>

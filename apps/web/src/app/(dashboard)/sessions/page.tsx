@@ -1,7 +1,8 @@
 "use client";
 
 import { CalendarDaysIcon, MoreHorizontalIcon, PlusIcon } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DataTable } from "@/components/data-table";
@@ -121,6 +122,7 @@ function RowActions({
 
 export default function SessionsPage() {
   const { has, canSeeHistory, needsBranchChoice } = useActiveContext();
+  const router = useRouter();
   const sessions = useSessions();
   const { create, update, setCurrent } = useSessionMutations();
 
@@ -129,6 +131,24 @@ export default function SessionsPage() {
   const [promoting, setPromoting] = useState<AcademicYear | undefined>(undefined);
 
   const canUpdate = has("academic_year:update");
+
+  /**
+   * Quick-action deep link (`/sessions?create=1`): open the session form once,
+   * then strip the param so refresh and Back do not re-open it. Auto-opens only
+   * when the same permission that gates the Add-session button is held.
+   */
+  const canCreate = has("academic_year:create");
+  const autoOpenHandled = useRef(false);
+  useEffect(() => {
+    if (autoOpenHandled.current) return;
+    if (!new URLSearchParams(window.location.search).has("create")) return;
+    autoOpenHandled.current = true;
+    router.replace("/sessions", { scroll: false });
+    if (canCreate) {
+      setEditing(undefined);
+      setFormOpen(true);
+    }
+  }, [canCreate, router]);
 
   const onEdit = useCallback((session: AcademicYear) => {
     setEditing(session);
