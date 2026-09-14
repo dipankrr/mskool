@@ -1819,6 +1819,67 @@ async function main() {
       method: "query",
       expect: forbidden,
     },
+    // The permission editor (ADR-036): the catalog+defaults read is
+    // role-gated; the write is SENSITIVE and batched. The org_admin grants
+    // one permission to the accountant and then resets the role back —
+    // re-runnable by construction, and the reset's dataCheck pins that the
+    // diff-only logic saw exactly the one divergence.
+    {
+      role: "org_admin",
+      cookie: adminCookie,
+      path: "role.permissionDefaults",
+      input: { organizationId: orgId },
+      method: "query",
+      expect: OK,
+      dataCheck: (d) =>
+        Array.isArray(d?.catalog) &&
+        d.catalog.length > 0 &&
+        Array.isArray(d?.defaults) &&
+        d.defaults.length > 0,
+    },
+    {
+      role: "class_teacher",
+      cookie: teacherCookie,
+      path: "role.permissionDefaults",
+      input: { organizationId: orgId },
+      method: "query",
+      expect: forbidden,
+    },
+    {
+      role: "principal",
+      cookie: principalCookie,
+      path: "role.permissionUpdate",
+      input: { organizationId: orgId, roleType: "librarian", add: [], remove: [] },
+      method: "mutation",
+      expect: forbidden,
+    },
+    {
+      role: "org_admin",
+      cookie: adminCookie,
+      path: "role.permissionUpdate",
+      input: { organizationId: orgId, roleType: "accountant", add: ["student:create"], remove: [] },
+      method: "mutation",
+      expect: OK,
+      dataCheck: (d) => d?.added === 1 && d?.removed === 0,
+    },
+    {
+      role: "org_admin",
+      cookie: adminCookie,
+      path: "role.permissionReset",
+      input: { organizationId: orgId, roleType: "accountant" },
+      method: "mutation",
+      expect: OK,
+      dataCheck: (d) => d?.removed === 1,
+    },
+    // The bootstrap lock, over HTTP: nobody edits org_admin's matrix.
+    {
+      role: "org_admin",
+      cookie: adminCookie,
+      path: "role.permissionUpdate",
+      input: { organizationId: orgId, roleType: "org_admin", add: [], remove: [] },
+      method: "mutation",
+      expect: { kind: "code", code: "BAD_REQUEST" },
+    },
   );
 
   for (const row of rows) {
@@ -1852,15 +1913,27 @@ async function main() {
 
   if (!principalUser) throw new Error("Principal user missing.");
 
-  await db
-    .update(roleAssignments)
-    .set({ revokedAt: new Date() })
+  // Capture EXACTLY the rows this experiment revokes. The restore used to
+  // un-revoke EVERY historical row of the user, which resurrected grants
+  // from earlier runs (a librarian grant left revoked by a previous run
+  // came back alive and made the next run's duplicate check CONFLICT).
+  const previouslyActive = await db
+    .select({ id: roleAssignments.id })
+    .from(roleAssignments)
     .where(
       and(
         eq(roleAssignments.userId, principalUser.id),
         isNull(roleAssignments.revokedAt),
       ),
     );
+  const previouslyActiveIds = previouslyActive.map((r) => r.id);
+
+  if (previouslyActiveIds.length > 0) {
+    await db
+      .update(roleAssignments)
+      .set({ revokedAt: new Date() })
+      .where(inArray(roleAssignments.id, previouslyActiveIds));
+  }
   await invalidateUserAuthCache(principalUser.id);
 
   const afterRevoke = await query(principalCookie, "school.list", {
@@ -1872,15 +1945,17 @@ async function main() {
     afterRevoke.ok ? "STILL AUTHORIZED after revoke" : `code ${afterRevoke.code}`,
   );
 
-  // The experiment ends HERE — restore immediately. It used to stay
-  // revoked until the portal section, which silently made every later
-  // principal call run under revoked grants (the old "principal is
-  // FORBIDDEN on the autosave" check passed for the wrong reason; the
-  // amendment's positive check exposed it).
-  await db
-    .update(roleAssignments)
-    .set({ revokedAt: null })
-    .where(eq(roleAssignments.userId, principalUser.id));
+  // The experiment ends HERE — restore immediately, and only what was
+  // actually revoked above. It used to stay revoked until the portal
+  // section, which silently made every later principal call run under
+  // revoked grants (the old "principal is FORBIDDEN on the autosave" check
+  // passed for the wrong reason; the amendment's positive check exposed it).
+  if (previouslyActiveIds.length > 0) {
+    await db
+      .update(roleAssignments)
+      .set({ revokedAt: null, revokedBy: null })
+      .where(inArray(roleAssignments.id, previouslyActiveIds));
+  }
   await invalidateUserAuthCache(principalUser.id);
 
   // --- Staff & roles: grant → duplicate → revoke → audit (ADR-035) -----------
@@ -1897,6 +1972,20 @@ async function main() {
     roleType: "librarian" as const,
     scopeType: "school" as const,
   };
+  // Defensive: a live librarian grant left over from an interrupted earlier
+  // run would make the grant below CONFLICT through no fault of this code.
+  await db
+    .update(roleAssignments)
+    .set({ revokedAt: new Date(), revokedBy: principalUser.id })
+    .where(
+      and(
+        eq(roleAssignments.userId, principalUser.id),
+        eq(roleAssignments.roleType, "librarian"),
+        isNull(roleAssignments.revokedAt),
+      ),
+    );
+  await invalidateUserAuthCache(principalUser.id);
+
   const grant = await mutate(principalCookie, "role.assign", grantInput);
   report(
     "principal grants librarian @ own school",

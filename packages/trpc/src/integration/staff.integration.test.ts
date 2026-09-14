@@ -368,4 +368,103 @@ describe("staff & roles (ADR-035)", () => {
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.every((r) => r.organizationId === orgAId)).toBe(true);
   });
+
+  describe("permission editor (ADR-036)", () => {
+    it("serves the grouped catalog and the shipped defaults as data", () => {
+      const { catalog, defaults } = roleService.permissionDefaults();
+
+      expect(catalog.length).toBeGreaterThan(0);
+      const academic = catalog.find((c) => c.category === "Academic");
+      expect(academic?.resources.some((r) => r.resource === "student")).toBe(true);
+      expect(defaults.some((d) => d.roleType === "principal")).toBe(true);
+    });
+
+    it("applies a batched diff, audits each changed permission, and resets by diff", async () => {
+      const actor = adminAId; // org_admin: editable target, holds no librarian role
+
+      const result = await roleService.updatePermissions(orgAId, actor, ["org_admin"], {
+        roleType: "librarian",
+        add: ["student:export"],
+        remove: [],
+      });
+      expect(result).toMatchObject({ added: 1, removed: 0 });
+
+      const [addedAudit] = await db
+        .select()
+        .from(authzAuditLog)
+        .where(
+          and(
+            eq(authzAuditLog.organizationId, orgAId),
+            eq(authzAuditLog.action, "permission_added"),
+            eq(authzAuditLog.permission, "student:export"),
+          ),
+        )
+        .limit(1);
+      expect(addedAudit).toBeTruthy();
+
+      // A no-op save writes nothing (unchanged permissions are not audited).
+      const noop = await roleService.updatePermissions(orgAId, actor, ["org_admin"], {
+        roleType: "librarian",
+        add: ["student:export"],
+        remove: [],
+      });
+      expect(noop).toMatchObject({ added: 0, removed: 0 });
+
+      // Reset is diff-only: exactly the one diverging permission is withdrawn.
+      const reset = await roleService.resetPermissions(orgAId, actor, ["org_admin"], "librarian");
+      expect(reset).toMatchObject({ added: 0, removed: 1 });
+
+      const [removedAudit] = await db
+        .select()
+        .from(authzAuditLog)
+        .where(
+          and(
+            eq(authzAuditLog.organizationId, orgAId),
+            eq(authzAuditLog.action, "permission_removed"),
+            eq(authzAuditLog.permission, "student:export"),
+          ),
+        )
+        .limit(1);
+      expect(removedAudit).toBeTruthy();
+    });
+
+    it("never edits the bootstrap role", async () => {
+      await expect(
+        roleService.updatePermissions(orgAId, adminAId, ["org_admin"], {
+          roleType: "org_admin",
+          add: [],
+          remove: ["fees:collect"],
+        }),
+      ).rejects.toThrow(/bootstrap role/i);
+    });
+
+    it("never lets a caller edit a role they hold", async () => {
+      await expect(
+        roleService.updatePermissions(orgAId, adminAId, ["librarian"], {
+          roleType: "librarian",
+          add: ["student:export"],
+          remove: [],
+        }),
+      ).rejects.toThrow(/hold this role yourself/i);
+    });
+
+    it("refuses permissions the system does not know, and self-contradictory diffs", async () => {
+      await expect(
+        roleService.updatePermissions(orgAId, adminAId, ["org_admin"], {
+          roleType: "librarian",
+          add: ["not_a_permission"],
+          remove: [],
+        }),
+      ).rejects.toThrow(/not a permission this system knows/i);
+
+      await expect(
+        roleService.updatePermissions(orgAId, adminAId, ["org_admin"], {
+          roleType: "librarian",
+          add: ["student:read"],
+          remove: ["student:read"],
+        }),
+      ).rejects.toThrow(/both added and removed/i);
+    });
+  });
 });
+
