@@ -6,6 +6,34 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
+**THE ROLES AREA — its own screens (2026-09-14, on `feature/staff-management`). The permission editor moved out of the staff detail page.**
+
+The owner called the IA: the matrix is an ORG-level configuration object and
+was buried at the bottom of every staff page — unreachable for a role with
+no holders. Now: **`/roles`** lists all eight roles ALWAYS (name, holder
+names, permission count, Modified badge, the org_admin bootstrap lock) and
+**`/roles/[roleType]`** is the role's home — the editor (same dialog
+component) plus **`role.holders`**, the new who-has-this-power read
+(contract → service → router, smoke-pinned both ways). The staff detail
+page keeps only the person's own assignments (each now links to its role
+page) and the login card; `RoleMatrixCard` is deleted. Nav entry "Roles"
+gated `role_permission:read`, in the Administration group. Verified in the
+browser (list, accountant detail, org_admin locked) — screenshots reviewed,
+zero console errors. Gates: check-types 8/8, lint 0 errors, smoke 220/220
+(+holders rows), e2e 15/15 (2 re-verified after the seed re-arm — the
+family-login one-shot).
+
+**⚠️ THE COMMAND PALETTE — the owner's WIP, partially swept into c348f85,
+file set completed in its own commit after it.** My roles-area commit
+staged the whole `app-shell.tsx`, which contained the owner's in-progress
+palette wiring (Cmd+K + CommandDialog + the NAV_GROUPS restructure);
+`cmdk`, `command.tsx`, and the five `?create=1` deep-link hubs were still
+uncommitted — HEAD briefly referenced a component not in the repo. They
+now land as one labelled wip commit so the branch typechecks standalone.
+**The owner should review/reword/split that commit in their pass** — it is
+their feature, unfinished by their hand. The seven ngrok/CORS files remain
+untouched and unstaged, as always.
+
 **PERMISSION EDITOR COMPLETE (2026-09-14) — on `feature/staff-management`, 3 more commits on top of the staff slice. ADR-036.**
 
 The matrix is editable now, with two hard locks: **never the `org_admin`
