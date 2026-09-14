@@ -6,6 +6,40 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
+**PERMISSION EDITOR COMPLETE (2026-09-14) — on `feature/staff-management`, 3 more commits on top of the staff slice. ADR-036.**
+
+The matrix is editable now, with two hard locks: **never the `org_admin`
+role** (the bootstrap role — an org that can strip it can brick itself) and
+**never a role you personally hold** (the owner's own rule — no
+self-lockout; resolved from the caller's auth cache in the router,
+expiry-filtered). Editing is BATCHED: `role.permissionUpdate` takes
+`{ roleType, add[], remove[] }` — the UI collects checkbox toggles behind a
+dirty bar and saves once, behind one blast-radius confirm. Every changed
+permission writes its own audit row; a no-op save writes nothing; the
+change ends with `invalidateOrgAuthCache` (per-user is not enough — every
+holder is affected). `role.permissionReset` restores one role to the
+defaults by DIFF only; `role.permissionDefaults` serves the grouped catalog
+(resource → actions, by category) + shipped defaults as DATA — the web
+never imports @repo/authz runtime code. UI: the matrix card gains Edit per
+role (org_admin renders locked with the reason), "Modified" badges vs the
+shipped defaults, a searchable grouped checkbox dialog with a dirty bar,
+and Reset with its own confirm. Verified end-to-end in the browser (grant →
+confirm → DB + audit row → reset → defaults restored, screenshots
+reviewed). Gates: check-types 8/8, lint 0 errors, integration 175/175 (5
+new editor proofs), smoke 218/218 (all editor rows + locks over HTTP), e2e
+15/15.
+
+One latent smoke bug found and fixed en route: the revocation experiment's
+restore un-revoked EVERY historical grant of the principal, resurrecting
+grants from earlier runs (a librarian grant left revoked came back alive
+and made the next run's duplicate check CONFLICT). It now restores exactly
+the row ids it revoked.
+
+Known deferred (do not silently absorb): the self-role lock's UI is the
+server's worded refusal (the client does not know the caller's roles —
+exposing roleTypes on the active context would fix that if ever wanted);
+permission history has no read UI (the audit table is the record).
+
 **STAFF & ROLE MANAGEMENT COMPLETE (2026-09-14) — on `feature/staff-management`, stacked on `feature/phase5-exams` (exams still UNMERGED; at merge time: staff → exams → main, the nested fees precedent). The platform gap is closed: ADR-035.**
 
 The slice shipped in 8 commits (b5636e8..a3d8c45):
