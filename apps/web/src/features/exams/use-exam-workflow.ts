@@ -176,7 +176,16 @@ export function usePublicationActions(examId: string) {
   });
   const publishExam = trpc.exam.publication.publishExam.useMutation({
     onSuccess: async (data) => {
-      toast.success(copy.exams.workflow.examPublished(data.publishedClasses));
+      if (data.failedClassIds.length > 0) {
+        toast.error(
+          copy.exams.workflow.examPublishedPartial(
+            data.publishedClasses,
+            data.failedClassIds.length,
+          ),
+        );
+      } else {
+        toast.success(copy.exams.workflow.examPublished(data.publishedClasses));
+      }
       await refreshAll();
     },
     onError: (error) => toast.error(errorMessage(error)),

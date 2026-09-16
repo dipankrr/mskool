@@ -1521,12 +1521,21 @@ export class ExamResultsService {
         enteredCount: rows.length,
       };
     });
+    // Hundredths end to end like the subject stats above: Number() + `/`
+    // + toFixed(2) is the one place float touched marks, and it can sit a
+    // hundredth off a mean the aggregates would state exactly.
     const percentages = termResults
-      .map((r) => (r.percentage != null ? Number(r.percentage) : null))
-      .filter((p): p is number => p != null);
+      .map((r) => (r.percentage != null ? toHundredths(r.percentage) : null))
+      .filter((p): p is bigint => p != null);
     const classAverage =
       percentages.length > 0
-        ? (percentages.reduce((a, b) => a + b, 0) / percentages.length).toFixed(2)
+        ? fromHundredths(
+            mulDivHalfUp(
+              percentages.reduce((a, b) => a + b, 0n),
+              1n,
+              BigInt(percentages.length),
+            ),
+          )
         : null;
 
     return {
@@ -1615,6 +1624,13 @@ export class ExamResultsService {
   }
 
   /** One-click whole-exam publish: loops the classes that have schedules. */
+  /**
+   * Publishes every scheduled class, each in its own transaction: one
+   * class's incomplete entry must not roll back its siblings' publications.
+   * The count answers what actually published — a mid-loop throw used to
+   * leave partial state behind a full count. Failures ride along per class
+   * so the UI can point at readiness instead of claiming success.
+   */
   async publishExam(scope: DataScope, userId: string, examId: string) {
     const schoolId = requireSchoolId(scope);
     const classIds = (
@@ -1623,10 +1639,17 @@ export class ExamResultsService {
         .from(examSubjectSchedules)
         .where(and(eq(examSubjectSchedules.examId, examId), eq(examSubjectSchedules.schoolId, schoolId)))
     ).map((r) => r.classId);
+    let publishedClasses = 0;
+    const failedClassIds: string[] = [];
     for (const classId of classIds) {
-      await this.publishClass(scope, userId, examId, classId);
+      try {
+        await this.publishClass(scope, userId, examId, classId);
+        publishedClasses += 1;
+      } catch {
+        failedClassIds.push(classId);
+      }
     }
-    return { publishedClasses: classIds.length };
+    return { publishedClasses, failedClassIds };
   }
 
   // -------------------------------------------------------------------------

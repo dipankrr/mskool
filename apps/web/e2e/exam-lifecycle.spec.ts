@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Browser, type Page } from "@playwright/test";
 
 /**
  * THE PRINCIPAL'S JOURNEY (Phase 6a's regression gate) — the test whose
@@ -38,51 +38,84 @@ test.describe("exam lifecycle (principal through the browser)", () => {
   }) => {
     test.setTimeout(300_000);
     const examName = EXAM_NAME();
-    // Wire truth for the principal's mutating steps (publish especially —
-    // its refusals toast once and vanish).
-    page.on("response", async (res) => {
-      if (/exam\.(publication|exam\.transition|results\.compute)/.test(res.url())) {
-        const body = await res.text().catch(() => "");
-        if (res.status() !== 200 || body.includes("error")) {
-          console.log(`[principal wire] ${res.status()} ${res.url().split("/").pop()} ${body.slice(0, 200)}`);
-        }
-      }
-    });
+    await createExam(page, { name: examName, term: "Term 1", type: "Mock" });
+    await walkDetailToPublished(page, browser);
+  });
 
-    // ── 1. The hub: create through the real dialog ──────────────────────
-    await page.goto("/exams");
-    await page.getByRole("button", { name: "Add exam" }).click();
-    // The dialog resets its form when the terms query resolves — fill only
-    // after that reset lands, or it wipes what was typed (learned here).
-    await expect(
-      page.getByRole("dialog", { name: "Add exam" }).locator("#exam-term"),
-    ).toBeVisible();
-    await page.waitForTimeout(500);
-    await page.locator("#exam-name").fill(examName);
-    // Term picker (Base UI select — option lookup at page level).
-    await page.locator("#exam-term").click();
-    await page.getByRole("option", { name: "Term 1" }).click();
-    // Type: mock (non-counting — the seeded exam owns the term's 100).
-    await page.locator("#exam-type").click();
-    await page.getByRole("option", { name: "Mock" }).click();
+  // No counting journey: a counting exam permanently consumes its term's
+  // weight budget (the invariant correctly refused a second one mid-build),
+  // and terms cannot be deleted — every run would litter a term and brick
+  // the next. Counting publish is covered at service level (the multi-exam
+  // integration flow) and router level (conformance); the browser walk
+  // stays Mock, which exercises the identical components.
+
+  // Silence the unused lint while keeping the type import for future flows.
+  void FAMILY;
+});
+
+/**
+ * The hub: create through the real dialog. Counting types show the
+ * weightage the mocks hide.
+ */
+async function createExam(
+  page: Page,
+  opts: { name: string; term: string; type: "Mock" | "Regular"; weightage?: string },
+) {
+  await page.goto("/exams");
+  await page.getByRole("button", { name: "Add exam" }).click();
+  // The dialog resets its form when the terms query resolves — fill only
+  // after that reset lands, or it wipes what was typed (learned here).
+  await expect(
+    page.getByRole("dialog", { name: "Add exam" }).locator("#exam-term"),
+  ).toBeVisible();
+  await page.waitForTimeout(500);
+  await page.locator("#exam-name").fill(opts.name);
+  // Term picker (Base UI select — option lookup at page level).
+  await page.locator("#exam-term").click();
+  await page.getByRole("option", { name: opts.term }).click();
+  // Type: mock (non-counting — the seeded exam owns Term 1's 100).
+  await page.locator("#exam-type").click();
+  await page.getByRole("option", { name: opts.type }).click();
+  if (opts.type === "Mock") {
     // Mocks hide the weightage (they never count) and say so — the honest
     // state, pinned here because hiding fields is where BUG-1 was born.
     await expect(
       page.getByText("Mock and test papers always run but never count toward the term."),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Create" }).click();
-    await expect(page.getByRole("cell", { name: examName })).toBeVisible({
-      timeout: 15_000,
-    });
+  } else if (opts.weightage) {
+    await page.locator("#exam-weightage").fill(opts.weightage);
+  }
+  await page.getByRole("button", { name: "Create" }).click();
+  await expect(page.getByRole("cell", { name: opts.name })).toBeVisible({
+    timeout: 15_000,
+  });
+  await page.getByRole("link", { name: opts.name }).click();
+  await page.waitForURL(/\/exams\/[0-9a-f-]{36}/);
+}
+
+/**
+ * Everything after the hub: prefilled papers, the components split, the
+ * lifecycle, teacher entry, verification, publish. Identical for Mock and
+ * Regular — the type only changes what the numbers mean downstream.
+ */
+async function walkDetailToPublished(page: Page, browser: Browser) {
+  // Wire truth for the principal's mutating steps (publish especially —
+  // its refusals toast once and vanish).
+  page.on("response", async (res) => {
+    if (/exam\.(publication|exam\.transition|results\.compute)/.test(res.url())) {
+      const body = await res.text().catch(() => "");
+      if (res.status() !== 200 || body.includes("error")) {
+        console.log(`[principal wire] ${res.status()} ${res.url().split("/").pop()} ${body.slice(0, 200)}`);
+      }
+    }
+  });
 
     // ── 2. The detail page: "Add classes" pre-fills the papers ──────────
-    // The redesigned flow: the principal picks classes; every mapped
-    // subject becomes a prefilled paper (working-day dates, 09:30, one
-    // full-mark Theory part). Class 6 maps exactly Mathematics + Physics.
-    await page.getByRole("link", { name: examName }).click();
-    await page.waitForURL(/\/exams\/[0-9a-f-]{36}/);
-    // The URL carries the id every later step needs (the teacher context
-    // and the post-entry return both navigate by it).
+    // createExam already opened it. The URL carries the id every later
+    // step needs (the teacher context and the post-entry return navigate
+    // by it). The redesigned flow: the principal picks classes; every
+    // mapped subject becomes a prefilled paper (working-day dates, 09:30,
+    // one full-mark Theory part). Class 6 maps exactly Mathematics + Physics.
     const examId = page.url().split("/").pop()!;
     // A fresh exam shows TWO "Add classes" affordances — the section
     // toolbar and the empty state. Both open the same dialog.
@@ -250,8 +283,4 @@ test.describe("exam lifecycle (principal through the browser)", () => {
     await expect(
       page.getByRole("link", { name: "View results" }),
     ).toBeVisible({ timeout: 60_000 });
-  });
-
-  // Silence the unused lint while keeping the type import for future flows.
-  void FAMILY;
-});
+}

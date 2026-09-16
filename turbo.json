@@ -19,12 +19,15 @@
       ],
       "env": [
         "DATABASE_URL",
+        "DIRECT_DATABASE_URL",
         "BETTER_AUTH_SECRET",
         "BETTER_AUTH_URL",
         "CORS_ORIGIN",
         "PORT",
         "NEXT_PUBLIC_API_URL",
-        "REDIS_URL"
+        "REDIS_URL",
+        "FEE_WEBHOOK_SECRET",
+        "DISABLE_RATE_LIMIT"
       ]
     },
     "dev": {
@@ -32,12 +35,15 @@
       "persistent": true,
       "env": [
         "DATABASE_URL",
+        "DIRECT_DATABASE_URL",
         "BETTER_AUTH_SECRET",
         "BETTER_AUTH_URL",
         "CORS_ORIGIN",
         "PORT",
         "NEXT_PUBLIC_API_URL",
-        "REDIS_URL"
+        "REDIS_URL",
+        "FEE_WEBHOOK_SECRET",
+        "DISABLE_RATE_LIMIT"
       ]
     },
     "lint": {

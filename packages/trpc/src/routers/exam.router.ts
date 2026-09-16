@@ -485,7 +485,12 @@ export const examRouter = router({
     publishExam: staffProcedure("exam:publish", { resolveOwner: resolveExamOwner })
       .meta({ openapi: { method: "POST", path: "/exams/{id}/publish", tags: ["publication"], summary: "Publish every class of the exam", protect: true } })
       .input(publishExamInput)
-      .output(z.object({ publishedClasses: z.number().int() }))
+      .output(
+        z.object({
+          publishedClasses: z.number().int(),
+          failedClassIds: z.array(z.uuid()),
+        }),
+      )
       .mutation(({ ctx, input }) => examResultsService.publishExam(ctx.scope, ctx.userId, input.id)),
 
     openRevisionWindow: staffProcedure("marks:publish", { resolveOwner: resolveExamOwner })

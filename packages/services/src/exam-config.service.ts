@@ -1188,12 +1188,8 @@ export class ExamConfigService {
         0n,
       );
       if (weightSum !== 10000n) {
-        const shown = input.components.reduce(
-          (acc, c) => acc + Number(c.weightagePercentage),
-          0,
-        );
         throw new Error(
-          `Component weightages must sum to exactly 100 (currently ${shown}).`,
+          `Component weightages must sum to exactly 100 (currently ${fromHundredths(weightSum)}).`,
         );
       }
 
