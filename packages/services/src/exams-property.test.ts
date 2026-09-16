@@ -13,6 +13,7 @@ import {
   percentageOf,
   termAggregate,
   toHundredths,
+  weightedAverage,
   weightedComponentRollup,
   type GradeBand,
 } from "./exams-maths";
@@ -497,6 +498,59 @@ describe("exams property: pass/fail and the exam-weighted subject score", () => 
         },
       ),
     );
+  });
+
+  it("weightedAverage weights every vote: (10.00@60, 8.00@40) is 9.20", () => {
+    expect(
+      weightedAverage([
+        { value: 1000n, weightage: 6000n },
+        { value: 800n, weightage: 4000n },
+      ]),
+    ).toBe(920n);
+  });
+
+  it("weightedAverage of one vote is the vote; of no weight is zero", () => {
+    expect(weightedAverage([{ value: 800n, weightage: 4000n }])).toBe(800n);
+    expect(weightedAverage([])).toBe(0n);
+    expect(
+      weightedAverage([
+        { value: 800n, weightage: 0n },
+        { value: 1000n, weightage: 0n },
+      ]),
+    ).toBe(0n);
+  });
+
+  it("weightedAverage stays within the votes' range and rounds half-up", () => {
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.record({
+            value: arbHundredths(0n, 10000n),
+            weightage: arbHundredths(0n, 10000n),
+          }),
+          { minLength: 1, maxLength: 6 },
+        ),
+        (entries) => {
+          const avg = weightedAverage(entries);
+          const values = entries.map((e) => e.value);
+          const min = values.reduce((a, b) => (a < b ? a : b));
+          const max = values.reduce((a, b) => (a > b ? a : b));
+          if (entries.every((e) => e.weightage === 0n)) {
+            expect(avg).toBe(0n);
+          } else {
+            expect(avg).toBeGreaterThanOrEqual(min);
+            expect(avg).toBeLessThanOrEqual(max);
+          }
+        },
+      ),
+    );
+    // (1@1, 0@1): exact 0.5 rounds up, never banker's.
+    expect(
+      weightedAverage([
+        { value: 1n, weightage: 1n },
+        { value: 0n, weightage: 1n },
+      ]),
+    ).toBe(1n);
   });
 
   it("the exam-weighted subject score is 100 at full marks (renormalized)", () => {

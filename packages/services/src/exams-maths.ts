@@ -330,6 +330,22 @@ export function gpaAggregate(gradePoints: bigint[]): bigint {
   return mulDivHalfUp(sum, 1n, BigInt(gradePoints.length));
 }
 
+/**
+ * The weighted mean of same-scale values (grade points across a term's
+ * exams): Σ(valueᵢ × weightᵢ) / Σ(weightᵢ), half-up. Missing votes never
+ * reach here — the caller filters them, so absence cannot drag the mean.
+ */
+export function weightedAverage(entries: { value: bigint; weightage: bigint }[]): bigint {
+  let total = 0n;
+  let weightSum = 0n;
+  for (const e of entries) {
+    weightSum += e.weightage;
+    total += e.value * e.weightage;
+  }
+  if (weightSum === 0n) return 0n;
+  return mulDivHalfUp(total, 1n, weightSum);
+}
+
 // ---------------------------------------------------------------------------
 // Ranks — competition ranking, computed explicitly, ties share
 // ---------------------------------------------------------------------------

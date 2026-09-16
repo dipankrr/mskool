@@ -46,6 +46,7 @@ import {
   percentageOf,
   termAggregate,
   toHundredths,
+  weightedAverage,
   weightedComponentRollup,
 } from "./exams-maths";
 
@@ -261,6 +262,9 @@ export class ExamResultsService {
             .filter((id): id is string => id != null),
         ),
       ];
+      // Highest floor first: shared-endpoint contiguous bands grade
+      // upper-wins, mirroring gradeFor's descending-min first match — the
+      // query order must not decide boundary percentages.
       const overrideBands = overrideScaleIds.length
         ? await tx
             .select({
@@ -271,6 +275,7 @@ export class ExamResultsService {
             })
             .from(gradingScaleBands)
             .where(inArray(gradingScaleBands.gradingScaleId, overrideScaleIds))
+            .orderBy(desc(gradingScaleBands.minMarks))
         : [];
 
       const processed: { studentId: string }[] = [];
@@ -307,7 +312,9 @@ export class ExamResultsService {
             if (!component?.gradingScaleId) continue;
             const max = toHundredths(component.maxMarks);
             if (max === 0n) continue;
-            const pct = (toHundredths(row.marksObtained) * 10000n) / max;
+            // Half-up (away from zero), never truncation: a 49.995% must not
+            // grade below its band, and negative marks round symmetrically.
+            const pct = mulDivHalfUp(toHundredths(row.marksObtained), 10000n, max);
             const band = overrideBands.find(
               (b) =>
                 b.scaleId === component.gradingScaleId &&
@@ -568,7 +575,21 @@ export class ExamResultsService {
             }),
           );
       const isPassed = gradedOnly ? true : votes.every((v) => v.isPassed);
-      const gradePoint = votes[0]?.gradePoint ? toHundredths(votes[0].gradePoint) : null;
+      // Every counting exam's grade point counts, weighted by its term
+      // weightage exactly like the marks — the first vote is just the
+      // first row the query happened to return, never the answer.
+      const gpVotes = votes.filter((v) => v.gradePoint != null);
+      const gradePoint =
+        gpVotes.length > 0
+          ? weightedAverage(
+              gpVotes.map((v) => ({
+                value: toHundredths(v.gradePoint!),
+                weightage: toHundredths(
+                  termExams.find((e) => e.id === v.examId)?.weightageInTerm ?? "0.00",
+                ),
+              })),
+            )
+          : null;
       scores.push({
         subjectId: setType.subjectId,
         termScore: score,
@@ -1086,11 +1107,16 @@ export class ExamResultsService {
           return (aRows[0]?.subjectName ?? "").localeCompare(bRows[0]?.subjectName ?? "");
         })
         .map(([subjectId, rows]) => {
-        const score = rows[0]!.isExempted
+        // An exemption in ANY exam excuses the subject on the card — the
+        // first row is just query order, never the term's answer.
+        const exempted = rows.some((r) => r.isExempted);
+        const score = exempted
           ? null
           : examWeightedSubjectScore(
               rows.map((r) => ({
-                marks: r.marksObtained ? toHundredths(r.marksObtained) : 0n,
+                // Absent is null, never a folded zero: the helper skips
+                // nulls exactly like the compute path does.
+                marks: r.marksObtained ? toHundredths(r.marksObtained) : null,
                 maxMarks: 10000n,
                 weightage: toHundredths(r.weightage),
               })),
@@ -1106,12 +1132,14 @@ export class ExamResultsService {
           widgetSequence: type?.sequence ?? null,
           marksObtained: score === null || (score === 0n && rows.every((r) => r.isAbsent)) ? null : fromHundredths(score),
           maxMarks: "100.00",
-          grade: termGrade?.gradeLabel ?? rows[0]!.grade,
+          grade: termGrade?.gradeLabel ?? rows.find((r) => r.grade != null)?.grade ?? null,
           gradePoint:
-            termGrade?.gradePoint != null ? fromHundredths(termGrade.gradePoint) : rows[0]!.gradePoint,
+            termGrade?.gradePoint != null
+              ? fromHundredths(termGrade.gradePoint)
+              : (rows.find((r) => r.gradePoint != null)?.gradePoint ?? null),
           isAbsent: rows.some((r) => r.isAbsent),
-          isExempted: rows.some((r) => r.isExempted),
-          countsTowardResult: rows[0]!.countsTowardResult,
+          isExempted: exempted,
+          countsTowardResult: rows.some((r) => r.countsTowardResult),
         };
       }),
       totals: {

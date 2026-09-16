@@ -903,4 +903,312 @@ describe("exams integration: results integrity (B1 snapshot, B2 published guard)
   });
 });
 
+describe("exams integration: multi-exam term (M4 GPA, M5 boundary, M6 card flags)", () => {
+  it("weights every exam's grade point, grades boundaries upper-wins, and honours exemptions on the card", async () => {
+    const scope = scopeOf(world);
+
+    // Term weights 60/40 across the two counting exams.
+    await db
+      .update(exams)
+      .set({ weightageInTerm: "60.00" })
+      .where(eq(exams.id, world.examId));
+    const [second] = await db
+      .insert(exams)
+      .values({
+        organizationId: world.organizationId,
+        schoolId: world.schoolId,
+        academicYearId: world.academicYearId,
+        termId: world.termId,
+        name: "ITG Term 1 Second",
+        countsTowardTermResult: true,
+        weightageInTerm: "40.00",
+        createdBy: PRINCIPAL,
+      })
+      .returning();
+
+    const [physics] = await db
+      .select()
+      .from(subjects)
+      .where(
+        and(eq(subjects.schoolId, world.schoolId), eq(subjects.name, "ITG Physics")),
+      );
+    const [overrideScale] = await db
+      .select()
+      .from(gradingScales)
+      .where(
+        and(eq(gradingScales.schoolId, world.schoolId), eq(gradingScales.name, "Override Scale")),
+      );
+
+    const [mathsPaper] = await db
+      .insert(examSubjectSchedules)
+      .values({
+        organizationId: world.organizationId,
+        schoolId: world.schoolId,
+        examId: second!.id,
+        classId: world.classId,
+        subjectId: world.subjectId,
+        examDate: "2031-10-05",
+        startTime: "09:00:00",
+        durationMinutes: 180,
+        passMarks: "33.00",
+      })
+      .returning();
+    const [physicsPaper] = await db
+      .insert(examSubjectSchedules)
+      .values({
+        organizationId: world.organizationId,
+        schoolId: world.schoolId,
+        examId: second!.id,
+        classId: world.classId,
+        subjectId: physics!.id,
+        examDate: "2031-10-06",
+        startTime: "09:00:00",
+        durationMinutes: 120,
+      })
+      .returning();
+    const [mathsPart] = await db
+      .insert(examComponents)
+      .values({
+        organizationId: world.organizationId,
+        schoolId: world.schoolId,
+        scheduleId: mathsPaper!.id,
+        name: "Theory",
+        maxMarks: "100.00",
+        passMarks: "33.00",
+        weightagePercentage: "100.00",
+      })
+      .returning();
+    const [physicsPart] = await db
+      .insert(examComponents)
+      .values({
+        organizationId: world.organizationId,
+        schoolId: world.schoolId,
+        scheduleId: physicsPaper!.id,
+        name: "Theory",
+        maxMarks: "50.00",
+        passMarks: "15.00",
+        weightagePercentage: "100.00",
+        gradingScaleId: overrideScale!.id,
+      })
+      .returning();
+
+    await examConfigService.transition(scope, { id: second!.id, target: "scheduled" });
+    await examConfigService.transition(scope, { id: second!.id, target: "ongoing" });
+    await examConfigService.transition(scope, { id: second!.id, target: "marks_entry" });
+
+    const cell = {
+      examId: second!.id,
+      sectionId: world.sectionId,
+      isAbsent: false,
+      isExempted: false,
+    };
+    // A: maths 35 (B band @8.00), physics 20/50 (40%, Pass on the override).
+    await examMarksService.saveComponentResult(scope, PRINCIPAL, {
+      ...cell,
+      scheduleId: mathsPaper!.id,
+      componentId: mathsPart!.id,
+      subjectId: world.subjectId,
+      studentId: world.studentA,
+      marks: "35",
+    });
+    await examMarksService.saveComponentResult(scope, PRINCIPAL, {
+      ...cell,
+      scheduleId: physicsPaper!.id,
+      componentId: physicsPart!.id,
+      subjectId: physics!.id,
+      studentId: world.studentA,
+      marks: "20",
+    });
+    // B: maths exempted (no mark), physics exactly on the 50% boundary.
+    await examMarksService.saveComponentResult(scope, PRINCIPAL, {
+      ...cell,
+      scheduleId: mathsPaper!.id,
+      componentId: mathsPart!.id,
+      subjectId: world.subjectId,
+      studentId: world.studentB,
+      isExempted: true,
+      exemptionType: "medical",
+    });
+    await examMarksService.saveComponentResult(scope, PRINCIPAL, {
+      ...cell,
+      scheduleId: physicsPaper!.id,
+      componentId: physicsPart!.id,
+      subjectId: physics!.id,
+      studentId: world.studentB,
+      marks: "25",
+    });
+
+    await examConfigService.transition(scope, { id: second!.id, target: "under_verification" });
+
+    // C sits in class 9, so 8-A's cohort is still exactly A and B.
+    const computed = await examResultsService.computeClassResults(scope, second!.id, world.classId);
+    expect(computed).toHaveLength(2);
+
+    // M5: 40% grades Pass; exactly-50% grades Star (upper-wins), deterministically.
+    const stamped = await db
+      .select()
+      .from(studentComponentResults)
+      .where(eq(studentComponentResults.componentId, physicsPart!.id));
+    expect(stamped.find((r) => r.studentId === world.studentA)?.gradeObtained).toBe("Pass");
+    expect(stamped.find((r) => r.studentId === world.studentB)?.gradeObtained).toBe("Star");
+
+    // The term aggregates both exams by pure maths, independent of bands.
+    // A's first-exam mark is 80, not 75 — the window test re-evaluated it —
+    // so (80×60 + 35×40)/100 = 62.00 maths, (40×100)/100 = 40.00 physics,
+    // term percentage (62 + 40)/2 = 51.00, everything passing.
+    const [termA] = await db
+      .select()
+      .from(studentTermResults)
+      .where(
+        and(
+          eq(studentTermResults.studentId, world.studentA),
+          eq(studentTermResults.termId, world.termId),
+        ),
+      );
+    expect(termA?.percentage).toBe("51.00");
+    expect(termA?.isPassed).toBe(true);
+
+    // M6 on the frozen card: maths carries both exams (62.00);
+    // B's maths is exempted in the second exam, so the card excuses it.
+    // Version +1 from whatever the revision tests left: earlier cases
+    // re-issued these cards, so no absolute number is asserted.
+    const aBefore = await examResultsService.listOwnedCards([world.studentA], world.academicYearId);
+    const aWas = aBefore.find((c) => c.isCurrent)!;
+    await examResultsService.publishClass(scope, PRINCIPAL, second!.id, world.classId);
+    const aCards = await examResultsService.listOwnedCards([world.studentA], world.academicYearId);
+    const aCurrent = aCards.find((c) => c.isCurrent)!;
+    expect(aCurrent.version).toBe(aWas.version + 1);
+    const aMaths = (aCurrent.snapshotData as any).subjects.find(
+      (s: any) => s.subjectId === world.subjectId,
+    );
+    expect(aMaths.marksObtained).toBe("62.00");
+    expect(aMaths.isExempted).toBe(false);
+
+    const bCards = await examResultsService.listOwnedCards([world.studentB], world.academicYearId);
+    const bCurrent = bCards.find((c) => c.isCurrent)!;
+    const bMaths = (bCurrent.snapshotData as any).subjects.find(
+      (s: any) => s.subjectId === world.subjectId,
+    );
+    expect(bMaths.isExempted).toBe(true);
+    expect(bMaths.marksObtained).toBeNull();
+    // Slow on a loaded DB by design: three transitions + four entries +
+    // compute + publish + card reads brush the 30s default, so this test
+    // carries its own budget (the windows-test precedent).
+  }, 120_000);
+
+  it("M4: a graded-only term weights every exam's grade point, not the first vote", async () => {
+    // A third student in their OWN class taking ONLY a graded-only counted
+    // subject: the term aggregate runs the GPA branch, where each subject's
+    // grade point must combine its exam votes. The separate class keeps C
+    // out of 8-A's cohort (compute counts, publish completeness gate) and
+    // keeps 8-A's subjects out of C's subject set. Votes are arranged
+    // directly — no writer in the product produces multi-exam graded votes
+    // yet, which is exactly why the first-vote shortcut survived unnoticed.
+    // Own order: classes are unique per (school, numeric_order).
+    const [classB] = await db
+      .insert(classes)
+      .values({
+        organizationId: world.organizationId,
+        schoolId: world.schoolId,
+        name: "ITG Class 9",
+        numericOrder: 9,
+      })
+      .returning();
+    const [studentC] = await db
+      .insert(students)
+      .values({
+        organizationId: world.organizationId,
+        schoolId: world.schoolId,
+        admissionNumber: `${RUN}-C`,
+        firstName: "Student",
+        lastName: "C",
+        dateOfBirth: "2012-08-17",
+        gender: "female",
+      })
+      .returning();
+    await db.insert(studentEnrollments).values({
+      organizationId: world.organizationId,
+      schoolId: world.schoolId,
+      studentId: studentC!.id,
+      academicYearId: world.academicYearId,
+      classId: classB!.id,
+      sectionId: null,
+    });
+    const [artType] = await db
+      .insert(subjectTypes)
+      .values({
+        organizationId: world.organizationId,
+        schoolId: world.schoolId,
+        name: "ITG Graded Art",
+        countsTowardResult: true,
+        isGradedOnly: true,
+      })
+      .returning();
+    const [art] = await db
+      .insert(subjects)
+      .values({ organizationId: world.organizationId, schoolId: world.schoolId, name: "ITG Art" })
+      .returning();
+    await db.insert(classSubjectMappings).values({
+      organizationId: world.organizationId,
+      schoolId: world.schoolId,
+      academicYearId: world.academicYearId,
+      classId: classB!.id,
+      subjectId: art!.id,
+      subjectTypeId: artType!.id,
+    });
+
+    const vote = (examId: string, gradePoint: string) => ({
+      organizationId: world.organizationId,
+      schoolId: world.schoolId,
+      studentId: studentC!.id,
+      examId,
+      subjectId: art!.id,
+      maxMarks: "100.00",
+      passMarks: "0.00",
+      finalMarks: "80.00",
+      isPassed: true,
+      grade: "A",
+      gradePoint,
+      countsTowardResult: true,
+      isGradedOnly: true,
+    });
+    // Scoped to this run's org: rows accumulate across runs by design, and
+    // an unscoped name lookup can return a previous run's exam (whose id no
+    // term query in this run will ever match — a silent zero-weight vote).
+    const [second] = await db
+      .select()
+      .from(exams)
+      .where(
+        and(
+          eq(exams.organizationId, world.organizationId),
+          eq(exams.name, "ITG Term 1 Second"),
+        ),
+      );
+    await db.insert(studentSubjectResults).values([
+      vote(world.examId, "10.00"),
+      vote(second!.id, "8.00"),
+    ]);
+
+    await examResultsService.computeTermResult(
+      db,
+      studentC!.id,
+      world.termId,
+      world.schoolId,
+      world.organizationId,
+    );
+    const [termC] = await db
+      .select()
+      .from(studentTermResults)
+      .where(
+        and(
+          eq(studentTermResults.studentId, studentC!.id),
+          eq(studentTermResults.termId, world.termId),
+        ),
+      );
+    // (10.00×60 + 8.00×40)/100 = 9.20 — the first vote's 10.00 would prove
+    // the shortcut survived.
+    expect(termC?.gradePoint).toBe("9.20");
+  });
+});
+
 // -- drizzle table imports (used by the fixture and the assertions) ----------
