@@ -43,7 +43,7 @@ export function useStudentEntries(examId: string, studentId: string | undefined)
 export function useCardVersions(studentId: string | undefined) {
   const { scopeArgs } = useActiveContext();
   return trpc.exam.cards.versions.useQuery(
-    { ...scopeArgs(), studentId: studentId ?? "" },
+    { ...scopeArgs(), id: studentId ?? "" },
     { enabled: Boolean(studentId) },
   );
 }

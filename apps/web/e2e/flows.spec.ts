@@ -92,6 +92,21 @@ test.describe("admission flow (principal)", () => {
     await expect(page).toHaveURL(/\/students\/[0-9a-f-]{36}$/);
     await expect(page.getByRole("heading", { name: `Zara ${lastName}` })).toBeVisible();
     await expect(page.getByText(DETAIL_SUBTITLE)).toBeVisible();
+
+    // Self-cleanup: the admitted row deactivates again (soft delete — hard
+    // rule 2, even for test data), so exact-count suites (smoke's
+    // student.list pins) keep seeing a pristine register. The confirm is an
+    // alertdialog, not a dialog (ConfirmDialog).
+    await page.getByRole("button", { name: "Deactivate", exact: true }).click();
+    const confirm = page.getByRole("alertdialog");
+    await expect(
+      confirm.getByText("Deactivate this student's record?"),
+    ).toBeVisible();
+    await confirm.getByRole("button", { name: "Deactivate", exact: true }).click();
+    // The toast proves the server applied it (the UI navigates without
+    // awaiting the mutation).
+    await expect(page.getByText("Student deactivated.")).toBeVisible();
+    await expect(page).toHaveURL(/\/students$/);
   });
 });
 

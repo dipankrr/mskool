@@ -1,6 +1,7 @@
 import {
   can,
   dataScopeFromNode,
+  escapeLike,
   getDataScopes,
   getOwnedStudentIds,
   getUserAuthCache,
@@ -739,7 +740,8 @@ export const healthRouter = router({
       db
         .select({ slug: organizations.slug, name: organizations.name })
         .from(organizations)
-        .where(ilike(organizations.name, `${input.prefix}%`))
+        // Escape first: prefix:"%" must suggest nothing, not ten orgs.
+        .where(ilike(organizations.name, `${escapeLike(input.prefix)}%`))
         .orderBy(asc(organizations.name))
         .limit(10),
     ),

@@ -1740,6 +1740,8 @@ export const copy = {
       classPublished: "Class results published.",
       examPublished: (count: number) =>
         count === 1 ? "1 class published." : `${count} classes published.`,
+      examPublishedPartial: (published: number, failed: number) =>
+        `${published} ${published === 1 ? "class" : "classes"} published, ${failed} could not — check readiness for the remaining ${failed === 1 ? "class" : "classes"}.`,
       windowOpened: "Correction window opened.",
       windowClosed: (reIssued: number) =>
         reIssued === 1

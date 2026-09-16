@@ -27,6 +27,7 @@ import {
   students,
   subjectTypes,
   termAssessments,
+  terms,
 } from "@repo/db/schema";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 
@@ -58,6 +59,9 @@ const COMPONENT_RESULT_SCOPE_COLUMNS = {
   organizationId: studentComponentResults.organizationId,
   schoolId: studentComponentResults.schoolId,
 } as const;
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type DbLike = Tx | typeof db;
 
 export interface SavedComponentResult {
   id: string;
@@ -523,6 +527,111 @@ export class ExamMarksService {
    * applied. Published/locked rows belong to the revision ledger now and
    * can never be re-verified into it.
    */
+  /**
+   * The verification batch binding both verify and unverify answer: same
+   * school rows, one paper, the stated subject + section, enrolled students.
+   * A foreign batch misses or throws before any row moves — neither direction
+   * can wander papers or touch strangers.
+   */
+  private async bindVerificationBatch(
+    tx: DbLike,
+    schoolId: string,
+    input: VerifyComponentResultsInput,
+  ) {
+    const rows = await tx
+      .select()
+      .from(studentComponentResults)
+      .where(inArray(studentComponentResults.id, input.componentResultIds));
+    const inScope = rows.filter((r) => r.schoolId === schoolId);
+    if (inScope.length !== input.componentResultIds.length) {
+      throw new Error("Some entries do not exist in this school.");
+    }
+    const papers = new Set(
+      inScope.map((r) => `${r.examId}|${r.scheduleId}`),
+    );
+    if (papers.size !== 1) {
+      throw new Error(
+        "A verification batch covers one paper — split mixed batches by paper.",
+      );
+    }
+    const [schedule] = await tx
+      .select({
+        sectionId: examSubjectSchedules.sectionId,
+        subjectId: examSubjectSchedules.subjectId,
+        classId: examSubjectSchedules.classId,
+        academicYearId: exams.academicYearId,
+      })
+      .from(examSubjectSchedules)
+      .innerJoin(exams, eq(examSubjectSchedules.examId, exams.id))
+      .where(
+        and(
+          eq(examSubjectSchedules.id, inScope[0]!.scheduleId),
+          eq(examSubjectSchedules.schoolId, schoolId),
+        ),
+      );
+    if (!schedule) {
+      throw new Error("The paper no longer exists in this school.");
+    }
+    if (input.subjectId !== schedule.subjectId) {
+      throw new Error("These entries do not belong to the stated subject.");
+    }
+    if (schedule.sectionId) {
+      if (input.sectionId !== schedule.sectionId) {
+        throw new Error("These entries do not belong to the stated section.");
+      }
+    } else {
+      const [section] = await tx
+        .select({ id: sections.id })
+        .from(sections)
+        .where(
+          and(
+            eq(sections.id, input.sectionId),
+            eq(sections.classId, schedule.classId),
+            eq(sections.schoolId, schoolId),
+          ),
+        );
+      if (!section) {
+        throw new Error("These entries do not belong to the stated section.");
+      }
+    }
+    const enrollments = await tx
+      .select({
+        studentId: studentEnrollments.studentId,
+        sectionId: studentEnrollments.sectionId,
+      })
+      .from(studentEnrollments)
+      .where(
+        and(
+          inArray(
+            studentEnrollments.studentId,
+            [...new Set(inScope.map((r) => r.studentId))],
+          ),
+          eq(studentEnrollments.academicYearId, schedule.academicYearId),
+          eq(studentEnrollments.schoolId, schoolId),
+          inArray(studentEnrollments.enrollmentStatus, [
+            "active",
+            "admitted",
+            "section_assigned",
+          ]),
+        ),
+      );
+    const byStudent = new Map(enrollments.map((e) => [e.studentId, e]));
+    const outsider = inScope.find((r) => {
+      const enrollment = byStudent.get(r.studentId);
+      if (!enrollment) return true;
+      if (enrollment.sectionId === input.sectionId) return false;
+      // Same sectionless-classmate allowance as the save: class-wide
+      // papers only, never section papers.
+      return !(
+        enrollment.sectionId === null && schedule.sectionId === null
+      );
+    });
+    if (outsider) {
+      throw new Error("Some entries are outside the stated section.");
+    }
+    return inScope;
+  }
+
   async verifyComponentResults(
     scope: DataScope,
     userId: string,
@@ -530,97 +639,7 @@ export class ExamMarksService {
   ) {
     const schoolId = requireSchoolId(scope);
     return db.transaction(async (tx) => {
-      const rows = await tx
-        .select()
-        .from(studentComponentResults)
-        .where(inArray(studentComponentResults.id, input.componentResultIds));
-      const inScope = rows.filter((r) => r.schoolId === schoolId);
-      if (inScope.length !== input.componentResultIds.length) {
-        throw new Error("Some entries do not exist in this school.");
-      }
-      const papers = new Set(
-        inScope.map((r) => `${r.examId}|${r.scheduleId}`),
-      );
-      if (papers.size !== 1) {
-        throw new Error(
-          "A verification batch covers one paper — split mixed batches by paper.",
-        );
-      }
-      const [schedule] = await tx
-        .select({
-          sectionId: examSubjectSchedules.sectionId,
-          subjectId: examSubjectSchedules.subjectId,
-          classId: examSubjectSchedules.classId,
-          academicYearId: exams.academicYearId,
-        })
-        .from(examSubjectSchedules)
-        .innerJoin(exams, eq(examSubjectSchedules.examId, exams.id))
-        .where(
-          and(
-            eq(examSubjectSchedules.id, inScope[0]!.scheduleId),
-            eq(examSubjectSchedules.schoolId, schoolId),
-          ),
-        );
-      if (!schedule) {
-        throw new Error("The paper no longer exists in this school.");
-      }
-      if (input.subjectId !== schedule.subjectId) {
-        throw new Error("These entries do not belong to the stated subject.");
-      }
-      if (schedule.sectionId) {
-        if (input.sectionId !== schedule.sectionId) {
-          throw new Error("These entries do not belong to the stated section.");
-        }
-      } else {
-        const [section] = await tx
-          .select({ id: sections.id })
-          .from(sections)
-          .where(
-            and(
-              eq(sections.id, input.sectionId),
-              eq(sections.classId, schedule.classId),
-              eq(sections.schoolId, schoolId),
-            ),
-          );
-        if (!section) {
-          throw new Error("These entries do not belong to the stated section.");
-        }
-      }
-      const enrollments = await tx
-        .select({
-          studentId: studentEnrollments.studentId,
-          sectionId: studentEnrollments.sectionId,
-        })
-        .from(studentEnrollments)
-        .where(
-          and(
-            inArray(
-              studentEnrollments.studentId,
-              [...new Set(inScope.map((r) => r.studentId))],
-            ),
-            eq(studentEnrollments.academicYearId, schedule.academicYearId),
-            eq(studentEnrollments.schoolId, schoolId),
-            inArray(studentEnrollments.enrollmentStatus, [
-              "active",
-              "admitted",
-              "section_assigned",
-            ]),
-          ),
-        );
-      const byStudent = new Map(enrollments.map((e) => [e.studentId, e]));
-      const outsider = inScope.find((r) => {
-        const enrollment = byStudent.get(r.studentId);
-        if (!enrollment) return true;
-        if (enrollment.sectionId === input.sectionId) return false;
-        // Same sectionless-classmate allowance as the save: class-wide
-        // papers only, never section papers.
-        return !(
-          enrollment.sectionId === null && schedule.sectionId === null
-        );
-      });
-      if (outsider) {
-        throw new Error("Some entries are outside the stated section.");
-      }
+      const inScope = await this.bindVerificationBatch(tx, schoolId, input);
       const sealed = inScope.find((r) =>
         ["published", "locked"].includes(r.resultStatus),
       );
@@ -641,6 +660,51 @@ export class ExamMarksService {
           .update(studentComponentResults)
           .set({ resultStatus: "verified", verifiedBy: userId, verifiedAt: new Date() })
           .where(inArray(studentComponentResults.id, enteredIds));
+      }
+      return tx
+        .select()
+        .from(studentComponentResults)
+        .where(inArray(studentComponentResults.id, inScope.map((r) => r.id)));
+    });
+  }
+
+  /**
+   * Reopens verified entries back to entered (M3): the correction path for
+   * verified-but-unpublished rows, which the grid refuses and no revision
+   * window can reach (windows need a publication). Same holders as verify
+   * (`marks:verify`) and the same batch binding — reviewers own both
+   * directions, and a foreign batch misses before anything moves.
+   * Published/locked rows refuse: those belong to the revision ledger.
+   * Rows that are not verified are left alone (idempotent).
+   *
+   * No audit row, by symmetry with verify: the reopen is visible on the row
+   * itself (verifiedBy/verifiedAt cleared, updatedAt moves). A future
+   * migration can add a result_unverified action if the trail needs it.
+   */
+  async unverifyComponentResults(
+    scope: DataScope,
+    userId: string,
+    input: VerifyComponentResultsInput,
+  ) {
+    const schoolId = requireSchoolId(scope);
+    return db.transaction(async (tx) => {
+      const inScope = await this.bindVerificationBatch(tx, schoolId, input);
+      const sealed = inScope.find((r) =>
+        ["published", "locked"].includes(r.resultStatus),
+      );
+      if (sealed) {
+        throw new Error(
+          "A published result cannot be reopened — corrections go through the revision ledger.",
+        );
+      }
+      const verifiedIds = inScope
+        .filter((r) => r.resultStatus === "verified")
+        .map((r) => r.id);
+      if (verifiedIds.length > 0) {
+        await tx
+          .update(studentComponentResults)
+          .set({ resultStatus: "entered", verifiedBy: null, verifiedAt: null })
+          .where(inArray(studentComponentResults.id, verifiedIds));
       }
       return tx
         .select()
@@ -1011,19 +1075,69 @@ export class ExamMarksService {
   async saveTermAssessment(scope: DataScope, userId: string, input: SaveTermAssessmentInput) {
     const schoolId = requireSchoolId(scope);
     return db.transaction(async (tx) => {
-      // The mapping's type must be term_grade — exam-mode subjects cannot be
-      // assessed here even by a direct call.
+      // The mapping, bound to THIS school — a foreign mapping id is a miss,
+      // the same four-way binding saveComponentResult answers (M1).
       const [mapping] = await tx
-        .select({ mode: subjectTypes.assessmentMode, name: subjectTypes.name })
+        .select({
+          mode: subjectTypes.assessmentMode,
+          name: subjectTypes.name,
+          classId: classSubjectMappings.classId,
+          subjectId: classSubjectMappings.subjectId,
+        })
         .from(classSubjectMappings)
         .innerJoin(subjectTypes, eq(classSubjectMappings.subjectTypeId, subjectTypes.id))
-        .where(eq(classSubjectMappings.id, input.mappingId));
+        .where(
+          and(
+            eq(classSubjectMappings.id, input.mappingId),
+            eq(classSubjectMappings.schoolId, schoolId),
+            eq(classSubjectMappings.organizationId, scope.organizationId),
+          ),
+        );
       if (!mapping) return null;
+      // The mapping's type must be term_grade — exam-mode subjects cannot be
+      // assessed here even by a direct call.
       if (mapping.mode !== "term_grade") {
         throw new Error(
           `"${mapping.name}" is an exam-assessed subject — its grades come from marks, not term-end entry.`,
         );
       }
+      // The router's gate pair must name THIS mapping: a sectionId/subjectId
+      // from another paper never writes here.
+      if (input.subjectId !== mapping.subjectId) return null;
+      const [section] = await tx
+        .select({ id: sections.id })
+        .from(sections)
+        .where(
+          and(
+            eq(sections.id, input.sectionId),
+            eq(sections.classId, mapping.classId),
+            eq(sections.schoolId, schoolId),
+          ),
+        );
+      if (!section) return null;
+      // The term belongs to this school...
+      const [term] = await tx
+        .select({ academicYearId: terms.academicYearId })
+        .from(terms)
+        .where(and(eq(terms.id, input.termId), eq(terms.schoolId, schoolId)));
+      if (!term) return null;
+      // ...and the student is enrolled in it this year at this school.
+      const [enrollment] = await tx
+        .select({ id: studentEnrollments.id })
+        .from(studentEnrollments)
+        .where(
+          and(
+            eq(studentEnrollments.studentId, input.studentId),
+            eq(studentEnrollments.academicYearId, term.academicYearId),
+            eq(studentEnrollments.schoolId, schoolId),
+            inArray(studentEnrollments.enrollmentStatus, [
+              "active",
+              "admitted",
+              "section_assigned",
+            ]),
+          ),
+        );
+      if (!enrollment) return null;
 
       const [row] = await tx
         .insert(termAssessments)

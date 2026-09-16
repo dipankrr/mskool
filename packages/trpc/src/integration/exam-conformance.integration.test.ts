@@ -514,8 +514,15 @@ describe("exam router conformance — UI-shaped payloads through the real router
     expect(published?.published).toBe(true);
 
     // The card reads the S4/S5 surfaces make: versions + class set.
-    const versions = await call("exam.cards.versions", { ...scopeArgs(organizationId, schoolId), studentId });
+    // versions is owner-resolved like student.byId: a foreign id is NOT_FOUND.
+    const versions = await call("exam.cards.versions", { ...scopeArgs(organizationId, schoolId), id: studentId });
     expect(versions.length).toBeGreaterThan(0);
+    await expect(
+      call("exam.cards.versions", {
+        ...scopeArgs(organizationId, schoolId),
+        id: "00000000-0000-4000-8000-000000000000",
+      }),
+    ).rejects.toThrow(/Student not found/);
     const classSet = await call("exam.cards.classSet", { ...scopeArgs(organizationId, schoolId), id: exam!.id, classId });
     expect(classSet?.cards?.length).toBe(1);
   });
@@ -570,6 +577,36 @@ describe("exam router conformance — UI-shaped payloads through the real router
       id: created!.id,
     });
     expect(ended?.id).toBe(created!.id);
+
+    // A mapping whose subject has exam papers refuses — ending it would
+    // strand entered marks outside every pipeline (M2).
+    const [mathMapping] = await db
+      .select()
+      .from(classSubjectMappings)
+      .where(
+        and(
+          eq(classSubjectMappings.schoolId, schoolId),
+          eq(classSubjectMappings.subjectId, subjectId),
+        ),
+      );
+    await expect(
+      call("assignment.subjectMapping.end", {
+        ...scopeArgs(organizationId, schoolId),
+        id: mathMapping!.id,
+      }),
+    ).rejects.toThrow(/exam papers/);
+
+    // Unverify shares verify's input shape: unknown ids miss (NOT_FOUND
+    // wording) before any row moves — this pins the route wiring, behavior
+    // lives in the service suite.
+    await expect(
+      call("exam.marks.unverify", {
+        ...scopeArgs(organizationId, schoolId),
+        componentResultIds: ["00000000-0000-4000-8000-000000000000"],
+        sectionId,
+        subjectId,
+      }),
+    ).rejects.toThrow(/not in this branch/);
   });
 
   it("termGrades.save / list — the term-grade entry screen's payloads through the gate", async () => {

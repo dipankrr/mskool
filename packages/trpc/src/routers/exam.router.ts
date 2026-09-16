@@ -44,6 +44,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
   evaluateSubjectGate,
+  resolveStudentOwner,
   router,
   staffListProcedure,
   staffProcedure,
@@ -108,6 +109,12 @@ const resolveScheduleOwner: OwnerResolver = async (organizationId, id) => {
 const resolveComponentResultOwner: OwnerResolver = async (organizationId, id) => {
   const schoolId = await examMarksService.getComponentResultOwnerId(organizationId, id);
   if (!schoolId) throw new TRPCError({ code: "NOT_FOUND", message: "Entry not found." });
+  return { type: "school", id: schoolId };
+};
+
+const resolvePassCriteriaOwner: OwnerResolver = async (organizationId, id) => {
+  const schoolId = await examConfigService.getPassCriteriaOwnerId(organizationId, id);
+  if (!schoolId) throw new TRPCError({ code: "NOT_FOUND", message: "Pass criteria not found." });
   return { type: "school", id: schoolId };
 };
 
@@ -196,7 +203,7 @@ export const examRouter = router({
         examConfigService.createPassCriteria(ctx.scope, input.academicYearId, input.data),
       ),
 
-    update: staffProcedure("exam:update")
+    update: staffProcedure("exam:update", { resolveOwner: resolvePassCriteriaOwner })
       .meta({ openapi: { method: "PATCH", path: "/exam/pass-criteria/{id}", tags: ["exams"], summary: "Edit pass criteria", protect: true } })
       .input(z.object({ id: z.uuid(), data: updatePassCriteriaSchema }))
       .output(passCriteriaSelectSchema.nullable())
@@ -291,6 +298,10 @@ export const examRouter = router({
       .output(z.array(z.object({ studentId: z.uuid(), isEligible: z.boolean() })).nullable())
       .mutation(({ ctx, input }) => examMarksService.recomputeEligibility(ctx.scope, input.id)),
 
+    // No resolveOwner: the input names (examId, studentId), not one row id,
+    // and reshaping it would break the dialog's payload. The service binds
+    // the student to the exam's own cohort in its school — a foreign pair
+    // is a miss, never an override.
     override: staffProcedure("exam:update")
       .meta({ openapi: { method: "POST", path: "/exams/eligibility/override", tags: ["exams"], summary: "Allow a below-bar student, with a reason", protect: true } })
       .input(overrideEligibilityInput)
@@ -397,6 +408,20 @@ export const examRouter = router({
         examMarksService.saveComponentResult(ctx.scope, ctx.userId, input),
       ),
 
+    // No resolveOwner by design: the batch carries result ids, not one row,
+    // and the verifiers hold no teaching assignment for a subjectGate fact.
+    // Containment is the service's (single-paper batch, same-school rows,
+    // stated subject/section, enrolled students) — a foreign batch is
+    // refused or misses, never verified. Unverify shares the permission
+    // and the binding: reviewers own both directions of the review.
+    unverify: staffProcedure("marks:verify")
+      .meta({ openapi: { method: "POST", path: "/exam/marks/unverify", tags: ["marks"], summary: "Reopen verified entries for correction", protect: true } })
+      .input(verifyComponentResultsInput)
+      .output(z.array(componentResultSelectSchema))
+      .mutation(({ ctx, input }) =>
+        examMarksService.unverifyComponentResults(ctx.scope, ctx.userId, input),
+      ),
+
     verify: staffProcedure("marks:verify")
       .meta({ openapi: { method: "POST", path: "/exam/marks/verify", tags: ["marks"], summary: "Verify a batch of entries", protect: true } })
       .input(verifyComponentResultsInput)
@@ -423,6 +448,10 @@ export const examRouter = router({
         examResultsService.computeClassResults(ctx.scope, input.id, input.classId),
       ),
 
+    // No resolveOwner: a term/year is not a scope node and the builder only
+    // reads input.id. Tenancy lives in the services (both filter term/year
+    // rows by the caller's school), so a foreign id computes nothing and
+    // returns empty — never another branch's rows.
     computeTermRanks: staffProcedure("exam:update")
       .meta({ openapi: { method: "POST", path: "/exam/terms/{termId}/ranks", tags: ["results"], summary: "Compute one term's ranks", protect: true } })
       .input(z.object({ termId: z.uuid() }))
@@ -456,7 +485,12 @@ export const examRouter = router({
     publishExam: staffProcedure("exam:publish", { resolveOwner: resolveExamOwner })
       .meta({ openapi: { method: "POST", path: "/exams/{id}/publish", tags: ["publication"], summary: "Publish every class of the exam", protect: true } })
       .input(publishExamInput)
-      .output(z.object({ publishedClasses: z.number().int() }))
+      .output(
+        z.object({
+          publishedClasses: z.number().int(),
+          failedClassIds: z.array(z.uuid()),
+        }),
+      )
       .mutation(({ ctx, input }) => examResultsService.publishExam(ctx.scope, ctx.userId, input.id)),
 
     openRevisionWindow: staffProcedure("marks:publish", { resolveOwner: resolveExamOwner })
@@ -485,11 +519,17 @@ export const examRouter = router({
   }),
 
   cards: router({
-    versions: staffProcedure("report_card:read")
-      .meta({ openapi: { method: "GET", path: "/exam/students/{studentId}/cards", tags: ["publication"], summary: "A student's report card versions", protect: true } })
-      .input(z.object({ studentId: z.uuid() }))
+    // B6 like student.byId: a student is not a scope node, so the owning
+    // branch comes from the resolver and the gate asks overlap (ADR-028).
+    // A cross-tenant id and a nonexistent one are the same NOT_FOUND.
+    versions: staffProcedure("report_card:read", {
+      resolveOwner: resolveStudentOwner,
+      gate: "overlap",
+    })
+      .meta({ openapi: { method: "GET", path: "/exam/students/{id}/cards", tags: ["publication"], summary: "A student's report card versions", protect: true } })
+      .input(z.object({ id: z.uuid() }))
       .output(z.array(publishedReportCardSelectSchema))
-      .query(({ ctx, input }) => examResultsService.listCardVersions(ctx.scope, input.studentId)),
+      .query(({ ctx, input }) => examResultsService.listCardVersions(ctx.scope, input.id)),
 
     classSet: staffProcedure("report_card:read", { resolveOwner: resolveExamOwner, gate: "overlap" })
       .meta({ openapi: { method: "GET", path: "/exams/{id}/cards/{classId}", tags: ["publication"], summary: "The class's current cards for the exam's term (id = exam id)", protect: true } })

@@ -2,7 +2,7 @@ import {
   atSchoolLevel,
   requireSchoolId,
 } from "./academic.service";
-import { scopeWhere, type DataScope, type ScopeColumns } from "@repo/authz";
+import { escapeLike, scopeWhere, type DataScope, type ScopeColumns } from "@repo/authz";
 import type {
   CreateStudentInput,
   UpdateStudentInput,
@@ -90,12 +90,17 @@ export class StudentService {
           scopeWhere(scopes.map(atSchoolLevel), STUDENT_SCOPE_COLUMNS),
           eq(students.status, "active"),
           q
-            ? or(
-                ilike(students.firstName, `%${q}%`),
-                ilike(students.middleName, `%${q}%`),
-                ilike(students.lastName, `%${q}%`),
-                ilike(students.admissionNumber, `%${q}%`),
-              )
+            ? (() => {
+                // Escape wildcards first: q:"%" must match nothing, not the
+                // whole register.
+                const pattern = `%${escapeLike(q)}%`;
+                return or(
+                  ilike(students.firstName, pattern),
+                  ilike(students.middleName, pattern),
+                  ilike(students.lastName, pattern),
+                  ilike(students.admissionNumber, pattern),
+                );
+              })()
             : undefined,
         ),
       )

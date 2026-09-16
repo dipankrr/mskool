@@ -46,6 +46,7 @@ import {
   percentageOf,
   termAggregate,
   toHundredths,
+  weightedAverage,
   weightedComponentRollup,
 } from "./exams-maths";
 
@@ -65,10 +66,12 @@ import {
  * class. When `student_subject_enrollments` lands, only this function
  * changes.
  *
- * PUBLISHED ROWS GET REFRESHED, not rewritten: a recompute after
- * publication updates the live aggregates (the card carries the frozen
- * truth; the window close re-photographs it). This is what makes the
- * window's re-version pass able to diff against what was issued.
+ * PUBLISHED ROWS GET REFRESHED, not rewritten — and only inside the
+ * ledger-owning flows: `computeClassResults` refuses published/locked exams
+ * unless called with `{ allowPublished: true }`, which only the window close
+ * and the revision apply pass (both re-version every card they move; the
+ * card carries the frozen truth). Ad-hoc `results.compute` on a published
+ * exam is refused with a worded error.
  */
 
 const CARD_SCOPE_COLUMNS = {
@@ -186,16 +189,28 @@ export class ExamResultsService {
    * caller passes its open transaction instead of letting this method open
    * an independent (separately-committing) one.
    */
-  async computeClassResults(scope: DataScope, examId: string, classId: string, tx?: Tx) {
-    if (tx) return this.computeClassResultsTx(tx, scope, examId, classId);
-    return db.transaction((inner) => this.computeClassResultsTx(inner, scope, examId, classId));
+  async computeClassResults(
+    scope: DataScope,
+    examId: string,
+    classId: string,
+    tx?: Tx,
+    opts?: { allowPublished?: boolean },
+  ) {
+    if (tx) return this.computeClassResultsTx(tx, scope, examId, classId, opts);
+    return db.transaction((inner) => this.computeClassResultsTx(inner, scope, examId, classId, opts));
   }
 
   // NOTE: the engine body below sits in a bare block on purpose — it is the
   // old transaction callback verbatim, so `git blame` still points at the
   // original authorship instead of a reindent. Do not "clean" it without
   // keeping the body identical.
-  private async computeClassResultsTx(tx: Tx, scope: DataScope, examId: string, classId: string) {
+  private async computeClassResultsTx(
+    tx: Tx,
+    scope: DataScope,
+    examId: string,
+    classId: string,
+    opts?: { allowPublished?: boolean },
+  ) {
     const schoolId = requireSchoolId(scope);
     {
       const [exam] = await tx
@@ -203,6 +218,13 @@ export class ExamResultsService {
         .from(exams)
         .where(and(eq(exams.id, examId), eq(exams.schoolId, schoolId)));
       if (!exam) return null;
+      // Published/locked exams are frozen: ad-hoc recompute would rewrite
+      // rows the cards already photographed (hard rule 7). Only the
+      // ledger-owning flows (window close, revision apply) may recompute —
+      // they re-version every card they move.
+      if ((exam.status === "published" || exam.status === "locked") && !opts?.allowPublished) {
+        throw new Error("This exam is published — recompute is closed. Correct through a revision window.");
+      }
 
       const schedules = await tx
         .select()
@@ -240,6 +262,9 @@ export class ExamResultsService {
             .filter((id): id is string => id != null),
         ),
       ];
+      // Highest floor first: shared-endpoint contiguous bands grade
+      // upper-wins, mirroring gradeFor's descending-min first match — the
+      // query order must not decide boundary percentages.
       const overrideBands = overrideScaleIds.length
         ? await tx
             .select({
@@ -250,6 +275,7 @@ export class ExamResultsService {
             })
             .from(gradingScaleBands)
             .where(inArray(gradingScaleBands.gradingScaleId, overrideScaleIds))
+            .orderBy(desc(gradingScaleBands.minMarks))
         : [];
 
       const processed: { studentId: string }[] = [];
@@ -286,7 +312,9 @@ export class ExamResultsService {
             if (!component?.gradingScaleId) continue;
             const max = toHundredths(component.maxMarks);
             if (max === 0n) continue;
-            const pct = (toHundredths(row.marksObtained) * 10000n) / max;
+            // Half-up (away from zero), never truncation: a 49.995% must not
+            // grade below its band, and negative marks round symmetrically.
+            const pct = mulDivHalfUp(toHundredths(row.marksObtained), 10000n, max);
             const band = overrideBands.find(
               (b) =>
                 b.scaleId === component.gradingScaleId &&
@@ -547,7 +575,21 @@ export class ExamResultsService {
             }),
           );
       const isPassed = gradedOnly ? true : votes.every((v) => v.isPassed);
-      const gradePoint = votes[0]?.gradePoint ? toHundredths(votes[0].gradePoint) : null;
+      // Every counting exam's grade point counts, weighted by its term
+      // weightage exactly like the marks — the first vote is just the
+      // first row the query happened to return, never the answer.
+      const gpVotes = votes.filter((v) => v.gradePoint != null);
+      const gradePoint =
+        gpVotes.length > 0
+          ? weightedAverage(
+              gpVotes.map((v) => ({
+                value: toHundredths(v.gradePoint!),
+                weightage: toHundredths(
+                  termExams.find((e) => e.id === v.examId)?.weightageInTerm ?? "0.00",
+                ),
+              })),
+            )
+          : null;
       scores.push({
         subjectId: setType.subjectId,
         termScore: score,
@@ -1065,11 +1107,16 @@ export class ExamResultsService {
           return (aRows[0]?.subjectName ?? "").localeCompare(bRows[0]?.subjectName ?? "");
         })
         .map(([subjectId, rows]) => {
-        const score = rows[0]!.isExempted
+        // An exemption in ANY exam excuses the subject on the card — the
+        // first row is just query order, never the term's answer.
+        const exempted = rows.some((r) => r.isExempted);
+        const score = exempted
           ? null
           : examWeightedSubjectScore(
               rows.map((r) => ({
-                marks: r.marksObtained ? toHundredths(r.marksObtained) : 0n,
+                // Absent is null, never a folded zero: the helper skips
+                // nulls exactly like the compute path does.
+                marks: r.marksObtained ? toHundredths(r.marksObtained) : null,
                 maxMarks: 10000n,
                 weightage: toHundredths(r.weightage),
               })),
@@ -1085,12 +1132,14 @@ export class ExamResultsService {
           widgetSequence: type?.sequence ?? null,
           marksObtained: score === null || (score === 0n && rows.every((r) => r.isAbsent)) ? null : fromHundredths(score),
           maxMarks: "100.00",
-          grade: termGrade?.gradeLabel ?? rows[0]!.grade,
+          grade: termGrade?.gradeLabel ?? rows.find((r) => r.grade != null)?.grade ?? null,
           gradePoint:
-            termGrade?.gradePoint != null ? fromHundredths(termGrade.gradePoint) : rows[0]!.gradePoint,
+            termGrade?.gradePoint != null
+              ? fromHundredths(termGrade.gradePoint)
+              : (rows.find((r) => r.gradePoint != null)?.gradePoint ?? null),
           isAbsent: rows.some((r) => r.isAbsent),
-          isExempted: rows.some((r) => r.isExempted),
-          countsTowardResult: rows[0]!.countsTowardResult,
+          isExempted: exempted,
+          countsTowardResult: rows.some((r) => r.countsTowardResult),
         };
       }),
       totals: {
@@ -1472,12 +1521,21 @@ export class ExamResultsService {
         enteredCount: rows.length,
       };
     });
+    // Hundredths end to end like the subject stats above: Number() + `/`
+    // + toFixed(2) is the one place float touched marks, and it can sit a
+    // hundredth off a mean the aggregates would state exactly.
     const percentages = termResults
-      .map((r) => (r.percentage != null ? Number(r.percentage) : null))
-      .filter((p): p is number => p != null);
+      .map((r) => (r.percentage != null ? toHundredths(r.percentage) : null))
+      .filter((p): p is bigint => p != null);
     const classAverage =
       percentages.length > 0
-        ? (percentages.reduce((a, b) => a + b, 0) / percentages.length).toFixed(2)
+        ? fromHundredths(
+            mulDivHalfUp(
+              percentages.reduce((a, b) => a + b, 0n),
+              1n,
+              BigInt(percentages.length),
+            ),
+          )
         : null;
 
     return {
@@ -1566,6 +1624,13 @@ export class ExamResultsService {
   }
 
   /** One-click whole-exam publish: loops the classes that have schedules. */
+  /**
+   * Publishes every scheduled class, each in its own transaction: one
+   * class's incomplete entry must not roll back its siblings' publications.
+   * The count answers what actually published — a mid-loop throw used to
+   * leave partial state behind a full count. Failures ride along per class
+   * so the UI can point at readiness instead of claiming success.
+   */
   async publishExam(scope: DataScope, userId: string, examId: string) {
     const schoolId = requireSchoolId(scope);
     const classIds = (
@@ -1574,10 +1639,17 @@ export class ExamResultsService {
         .from(examSubjectSchedules)
         .where(and(eq(examSubjectSchedules.examId, examId), eq(examSubjectSchedules.schoolId, schoolId)))
     ).map((r) => r.classId);
+    let publishedClasses = 0;
+    const failedClassIds: string[] = [];
     for (const classId of classIds) {
-      await this.publishClass(scope, userId, examId, classId);
+      try {
+        await this.publishClass(scope, userId, examId, classId);
+        publishedClasses += 1;
+      } catch {
+        failedClassIds.push(classId);
+      }
     }
-    return { publishedClasses: classIds.length };
+    return { publishedClasses, failedClassIds };
   }
 
   // -------------------------------------------------------------------------
@@ -1640,7 +1712,7 @@ export class ExamResultsService {
       // One engine pass: computeClassResults already folds each student's
       // term result (no second per-student loop — it doubles the term
       // compute on large cohorts for identical rows).
-      await this.computeClassResults(scope, examId, classId, tx);
+      await this.computeClassResults(scope, examId, classId, tx, { allowPublished: true });
       await this.computeTermRanks(scope, exam.termId, tx);
 
       const currentCards = await tx
@@ -1738,7 +1810,8 @@ export class ExamResultsService {
   /**
    * Applies a post-publication correction: the ledger row FIRST (hard rule
    * 7), then the mark, then the recompute, then the re-photograph of every
-   * affected card — one transaction.
+   * affected card — ONE transaction, so a crash can never leave a ledgered
+   * mark with stale aggregates or stale cards.
    *
    * Window enforcement: with an open window for the paper's class the edit
    * only ledgers + updates the mark (the close recomputes once for all of
@@ -1751,9 +1824,8 @@ export class ExamResultsService {
   async applyRevision(scope: DataScope, userId: string, input: SubmitRevisionInput) {
     const schoolId = requireSchoolId(scope);
 
-    // STEP 1 — the ledger row FIRST, then the mark (hard rule 7). One small
-    // transaction holding only this row's lock.
-    const step1 = await db.transaction(async (tx) => {
+    return db.transaction(async (tx) => {
+      // STEP 1 — the ledger row FIRST, then the mark (hard rule 7).
       const [result] = await tx
         .select()
         .from(studentComponentResults)
@@ -1811,14 +1883,18 @@ export class ExamResultsService {
       });
 
       // Window check: with an open window the close owns the recompute —
-      // this step ledgers + updates the mark and stops. A locked exam
-      // refuses everything, window or not.
+      // ledger + mark commit here and stop. A locked exam refuses
+      // everything, window or not.
       const [schedule] = await tx
         .select({ classId: examSubjectSchedules.classId })
         .from(examSubjectSchedules)
         .where(eq(examSubjectSchedules.id, result.scheduleId));
       const [exam] = await tx
-        .select({ status: exams.status })
+        .select({
+          status: exams.status,
+          termId: exams.termId,
+          academicYearId: exams.academicYearId,
+        })
         .from(exams)
         .where(eq(exams.id, result.examId));
       if (!schedule || !exam) {
@@ -1837,69 +1913,58 @@ export class ExamResultsService {
             eq(examClassPublication.schoolId, schoolId),
           ),
         );
-      return { id: result.id, deferred: publication?.state === "revision_open" };
-    });
-    if (step1 === null) return null;
-    const { id: componentResultId, deferred } = step1;
-    if (deferred) return { componentResultId, applied: true };
+      if (publication?.state === "revision_open") {
+        return { componentResultId: result.id, applied: true };
+      }
 
-    // STEP 2 — recompute on FRESH connections. The step-1 locks are released,
-    // so the engine's own transactions cannot deadlock against them.
-    const [resultRow] = await db
-      .select()
-      .from(studentComponentResults)
-      .where(eq(studentComponentResults.id, componentResultId));
-    const [schedule] = await db
-      .select({ classId: examSubjectSchedules.classId })
-      .from(examSubjectSchedules)
-      .where(eq(examSubjectSchedules.id, resultRow!.scheduleId));
-    const [exam] = await db.select().from(exams).where(eq(exams.id, resultRow!.examId));
-    if (schedule && exam) {
-      await this.computeClassResults(scope, resultRow!.examId, schedule.classId);
-      await this.computeTermResult(db, resultRow!.studentId, exam.termId, schoolId, scope.organizationId);
-      await this.computeTermRanks(scope, exam.termId);
+      // STEP 2 — recompute inside the SAME transaction (never separate ones:
+      // a crash between ledger and aggregates was the split-brain this merge
+      // closes). The engine accepts the open tx throughout.
+      await this.computeClassResults(scope, result.examId, schedule.classId, tx, {
+        allowPublished: true,
+      });
+      await this.computeTermResult(tx, result.studentId, exam.termId, schoolId, scope.organizationId);
+      await this.computeTermRanks(scope, exam.termId, tx);
 
       // STEP 3 — re-photograph every current card of the class whose frozen
       // data moved. Idempotent: unchanged cards keep their version.
-      await db.transaction(async (tx) => {
-        const cohort = await this.cohortOf(tx, schedule.classId, exam.academicYearId, null);
-        const currentCards = await tx
-          .select()
-          .from(publishedReportCards)
-          .where(
-            and(
-              eq(publishedReportCards.termId, exam.termId),
-              eq(publishedReportCards.isCurrent, true),
-              inArray(
-                publishedReportCards.studentId,
-                cohort.map((c) => c.studentId),
-              ),
+      const cohort = await this.cohortOf(tx, schedule.classId, exam.academicYearId, null);
+      const currentCards = await tx
+        .select()
+        .from(publishedReportCards)
+        .where(
+          and(
+            eq(publishedReportCards.termId, exam.termId),
+            eq(publishedReportCards.isCurrent, true),
+            inArray(
+              publishedReportCards.studentId,
+              cohort.map((c) => c.studentId),
             ),
-          );
-        for (const card of currentCards) {
-          const fresh = await this.assembleSnapshot(tx, card.studentId, exam.termId);
-          if (sameSnapshot(fresh, card.snapshotData)) continue;
-          await tx
-            .update(publishedReportCards)
-            .set({ isCurrent: false })
-            .where(eq(publishedReportCards.id, card.id));
-          await tx.insert(publishedReportCards).values({
-            organizationId: card.organizationId,
-            schoolId: card.schoolId,
-            studentId: card.studentId,
-            academicYearId: card.academicYearId,
-            termId: card.termId,
-            version: card.version + 1,
-            replacesVersion: card.version,
-            snapshotData: fresh,
-            templateId: card.templateId,
-            revisionReason: `correction: ${input.reason}`,
-            publishedBy: userId,
-          });
-        }
-      });
-    }
-    return { componentResultId, applied: true };
+          ),
+        );
+      for (const card of currentCards) {
+        const fresh = await this.assembleSnapshot(tx, card.studentId, exam.termId);
+        if (sameSnapshot(fresh, card.snapshotData)) continue;
+        await tx
+          .update(publishedReportCards)
+          .set({ isCurrent: false })
+          .where(eq(publishedReportCards.id, card.id));
+        await tx.insert(publishedReportCards).values({
+          organizationId: card.organizationId,
+          schoolId: card.schoolId,
+          studentId: card.studentId,
+          academicYearId: card.academicYearId,
+          termId: card.termId,
+          version: card.version + 1,
+          replacesVersion: card.version,
+          snapshotData: fresh,
+          templateId: card.templateId,
+          revisionReason: `correction: ${input.reason}`,
+          publishedBy: userId,
+        });
+      }
+      return { componentResultId: result.id, applied: true };
+    });
   }
 }
 
