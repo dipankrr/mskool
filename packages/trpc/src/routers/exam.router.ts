@@ -412,7 +412,16 @@ export const examRouter = router({
     // and the verifiers hold no teaching assignment for a subjectGate fact.
     // Containment is the service's (single-paper batch, same-school rows,
     // stated subject/section, enrolled students) — a foreign batch is
-    // refused or misses, never verified.
+    // refused or misses, never verified. Unverify shares the permission
+    // and the binding: reviewers own both directions of the review.
+    unverify: staffProcedure("marks:verify")
+      .meta({ openapi: { method: "POST", path: "/exam/marks/unverify", tags: ["marks"], summary: "Reopen verified entries for correction", protect: true } })
+      .input(verifyComponentResultsInput)
+      .output(z.array(componentResultSelectSchema))
+      .mutation(({ ctx, input }) =>
+        examMarksService.unverifyComponentResults(ctx.scope, ctx.userId, input),
+      ),
+
     verify: staffProcedure("marks:verify")
       .meta({ openapi: { method: "POST", path: "/exam/marks/verify", tags: ["marks"], summary: "Verify a batch of entries", protect: true } })
       .input(verifyComponentResultsInput)

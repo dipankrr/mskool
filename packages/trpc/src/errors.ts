@@ -607,7 +607,14 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
     match: /term-grade entries/i,
     code: "CONFLICT",
     message:
-      "This subject has term-grade entries for the class — the entries must be removed before the mapping can be.",
+      "This subject has term-grade entries for the class - the entries must be removed before the mapping can be.",
+  },
+  {
+    // Ending a mapping whose subject has exam papers would strand them (M2).
+    match: /has exam papers in this school/i,
+    code: "CONFLICT",
+    message:
+      "This subject still has exam papers in this branch — end the papers before removing the mapping.",
   },
   {
     // Term-grade entry aimed at an exam-mode subject — the wrong screen.
@@ -678,6 +685,13 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
       "The correction window decides when marks can change after publication — open it first.",
   },
   {
+    // Miss shapes from the marks batch binding (verify/unverify/save): a
+    // foreign id and a typo are the same NOT_FOUND, never a leak or a 500.
+    match: /do not exist in this school|no longer exists in this school/i,
+    code: "NOT_FOUND",
+    message: "Those entries are not in this branch.",
+  },
+  {
     match: /class has already been published/i,
     code: "CONFLICT",
     message: "This class's results are already published.",
@@ -695,6 +709,20 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
     code: "CONFLICT",
     message:
       "This exam already has marks — its weight in the term can no longer change.",
+  },
+  {
+    // Negative-marking floor lock once marks exist.
+    match: /negative marking can no longer be toggled/i,
+    code: "CONFLICT",
+    message:
+      "This exam already has marks — negative marking can no longer be switched on or off.",
+  },
+  {
+    // Ad-hoc recompute on a published exam (B2): correct through a window.
+    match: /recompute is closed/i,
+    code: "CONFLICT",
+    message:
+      "This exam is published — recompute is closed. Correct it through a revision window instead.",
   },
   {
     // Grading-scale lifecycle guards.

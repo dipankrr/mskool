@@ -736,19 +736,33 @@ export class ExamConfigService {
       // path, not this). The lock keys on the RESULTING counting state, not
       // the stored one: flipping a non-counting exam to counting with a new
       // weight restates history exactly as badly as editing a counting one.
+      // Dropping OUT of the term restates the aggregate by renormalization,
+      // so the counting flip is frozen in both directions. The
+      // negative-marking floor is frozen independently of counting: moving
+      // it restates every existing mark, mock or not.
       const willCount =
         input.countsTowardTermResult ?? exam.countsTowardTermResult;
-      if (
-        (input.weightageInTerm !== undefined ||
-          input.countsTowardTermResult !== undefined) &&
-        willCount
-      ) {
+      const touchesWeight =
+        input.weightageInTerm !== undefined ||
+        input.countsTowardTermResult !== undefined;
+      const dropsOutOfTerm =
+        exam.countsTowardTermResult === true &&
+        input.countsTowardTermResult === false;
+      const togglesNegativeFloor =
+        input.allowsNegativeMarking !== undefined &&
+        input.allowsNegativeMarking !== exam.allowsNegativeMarking;
+      if ((touchesWeight && willCount) || dropsOutOfTerm || togglesNegativeFloor) {
         const [anyResult] = await tx
           .select({ id: studentComponentResults.id })
           .from(studentComponentResults)
           .where(eq(studentComponentResults.examId, examId))
           .limit(1);
         if (anyResult) {
+          if (togglesNegativeFloor && !touchesWeight && !dropsOutOfTerm) {
+            throw new Error(
+              "This exam already has marks — negative marking can no longer be toggled.",
+            );
+          }
           throw new Error(
             "This exam already has marks — its weight in the term can no longer change.",
           );

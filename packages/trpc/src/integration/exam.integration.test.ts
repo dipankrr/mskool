@@ -454,6 +454,70 @@ describe("exams integration: the autosave cell", () => {
     ).rejects.toThrow(/stated subject/);
   });
 
+  it("verified rows reopen through unverify, then autosave again", async () => {
+    const scope = scopeOf(world);
+    const pair = { sectionId: world.sectionId, subjectId: world.subjectId };
+    const cell = {
+      examId: world.examId,
+      scheduleId: world.scheduleId,
+      componentId: world.componentId,
+    };
+    const [row] = await db
+      .select()
+      .from(studentComponentResults)
+      .where(
+        and(
+          eq(studentComponentResults.studentId, world.studentA),
+          eq(studentComponentResults.componentId, world.componentId),
+        ),
+      );
+    // Verified by the pair-binding case above.
+    expect(row?.resultStatus).toBe("verified");
+
+    // The way back answers the same binding: a foreign pair is refused.
+    await expect(
+      examMarksService.unverifyComponentResults(scope, PRINCIPAL, {
+        componentResultIds: [row!.id],
+        sectionId: world.sectionId,
+        subjectId: crypto.randomUUID(),
+      }),
+    ).rejects.toThrow(/stated subject/);
+
+    const reopened = await examMarksService.unverifyComponentResults(scope, PRINCIPAL, {
+      componentResultIds: [row!.id],
+      ...pair,
+    });
+    expect(reopened.find((r) => r.id === row!.id)?.resultStatus).toBe("entered");
+
+    // Idempotent: reopening an entered row leaves it alone.
+    const again = await examMarksService.unverifyComponentResults(scope, PRINCIPAL, {
+      componentResultIds: [row!.id],
+      ...pair,
+    });
+    expect(again.find((r) => r.id === row!.id)?.resultStatus).toBe("entered");
+
+    // Autosave works again. The mark is restored afterwards — later cases
+    // compute on 75.
+    const saved = await examMarksService.saveComponentResult(scope, PRINCIPAL, {
+      ...cell,
+      ...pair,
+      studentId: world.studentA,
+      marks: "82",
+      isAbsent: false,
+      isExempted: false,
+    });
+    expect(saved?.marksObtained).toBe("82.00");
+    const restored = await examMarksService.saveComponentResult(scope, PRINCIPAL, {
+      ...cell,
+      ...pair,
+      studentId: world.studentA,
+      marks: "75",
+      isAbsent: false,
+      isExempted: false,
+    });
+    expect(restored?.marksObtained).toBe("75.00");
+  });
+
   it("the entry grid returns the roster and the entries in one read; a foreign scope sees nothing", async () => {
     const grid = await examMarksService.entryGrid(
       scopeOf(world),
@@ -1208,6 +1272,31 @@ describe("exams integration: multi-exam term (M4 GPA, M5 boundary, M6 card flags
     // (10.00×60 + 8.00×40)/100 = 9.20 — the first vote's 10.00 would prove
     // the shortcut survived.
     expect(termC?.gradePoint).toBe("9.20");
+  });
+});
+
+describe("exams integration: exam-edit guards (counting flip, negative floor)", () => {
+  it("freezes the term weight in both directions and the negative floor once marks exist", async () => {
+    const scope = scopeOf(world);
+    const [exam] = await db.select().from(exams).where(eq(exams.id, world.examId));
+
+    // The name still edits — the freeze is scoped to history-restating fields.
+    const renamed = await examConfigService.updateExam(scope, world.examId, {
+      name: `${exam!.name} (guard probe)`.slice(0, 100),
+    });
+    expect(renamed?.id).toBe(world.examId);
+
+    // Counting → non-counting restates the aggregate by renormalization.
+    await expect(
+      examConfigService.updateExam(scope, world.examId, { countsTowardTermResult: false }),
+    ).rejects.toThrow(/weight in the term/);
+
+    // Toggling the negative-marking floor moves it under existing marks.
+    await expect(
+      examConfigService.updateExam(scope, world.examId, {
+        allowsNegativeMarking: !exam!.allowsNegativeMarking,
+      }),
+    ).rejects.toThrow(/negative marking/);
   });
 });
 

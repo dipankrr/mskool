@@ -9,6 +9,7 @@ import {
   academicYears,
   classSubjectMappings,
   classes,
+  examSubjectSchedules,
   sectionTeacherAssignments,
   sections,
   staff as staffTable,
@@ -227,17 +228,19 @@ export class AssignmentService {
    * END a mapping: remove the class's (year, subject) pair. The old stance —
    * "no DELETE, ever" — is superseded (ADR-033): a wrongly mapped subject in
    * the UI's pickers is worse than an honest removal, and the mapping is
-   * template data, not the ledger. The ONE guard that matters: term-grade
-   * entries hang off the mapping (they FK it directly), so a mapping with
-   * assessment data refuses — that data is the record, not the template.
-   * Papers and assignments reference the SUBJECT, not the mapping, and
-   * survive.
+   * template data, not the ledger. TWO guards matter: term-grade entries
+   * hang off the mapping (they FK it directly), and exam papers hang off
+   * the SUBJECT — ending the mapping while papers exist leaves entered
+   * marks no pipeline can publish or compute (M2). Both refuse with the
+   * reason; that data is the record, not the template.
    */
   async endClassSubjectMapping(scope: DataScope, mappingId: string) {
     return db.transaction(async (tx) => {
       const [mapping] = await tx
         .select({
           id: classSubjectMappings.id,
+          subjectId: classSubjectMappings.subjectId,
+          schoolId: classSubjectMappings.schoolId,
           subjectName: subjects.name,
         })
         .from(classSubjectMappings)
@@ -258,6 +261,22 @@ export class AssignmentService {
       if (entry) {
         throw new Error(
           `"${mapping.subjectName}" has term-grade entries for this class — removing the mapping would orphan them. End its entries first.`,
+        );
+      }
+
+      const [paper] = await tx
+        .select({ id: examSubjectSchedules.id })
+        .from(examSubjectSchedules)
+        .where(
+          and(
+            eq(examSubjectSchedules.subjectId, mapping.subjectId),
+            eq(examSubjectSchedules.schoolId, mapping.schoolId),
+          ),
+        )
+        .limit(1);
+      if (paper) {
+        throw new Error(
+          `"${mapping.subjectName}" has exam papers in this school — removing the mapping would strand them outside every exam pipeline. End the papers first.`,
         );
       }
 
