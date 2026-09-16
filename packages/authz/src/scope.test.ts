@@ -3,6 +3,7 @@ import { PgDialect, pgTable, uuid } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 import {
   dataScopeFromNode,
+  escapeLike,
   intersectScopes,
   isAssignmentExpired,
   orgScopeNode,
@@ -375,5 +376,21 @@ describe("scopeWhere", () => {
         { organizationId: enrollmentsTable.organizationId, schoolId: enrollmentsTable.schoolId, classId: enrollmentsTable.classId },
       ),
     ).toThrow(/sectionId/);
+  });
+});
+
+describe("escapeLike", () => {
+  it("escapes %, _, and the escape character itself", () => {
+    expect(escapeLike("plain")).toBe("plain");
+    expect(escapeLike("100%")).toBe("100\\%");
+    expect(escapeLike("a_b")).toBe("a\\_b");
+    expect(escapeLike("back\\slash")).toBe("back\\\\slash");
+    expect(escapeLike("%_%")).toBe("\\%\\_\\%");
+  });
+
+  it("leaves every other character — including quotes — untouched", () => {
+    // Quoting is the driver's job (parameters, never interpolation); the
+    // escaper owns wildcards only.
+    expect(escapeLike("O'Brien-42.")).toBe("O'Brien-42.");
   });
 });

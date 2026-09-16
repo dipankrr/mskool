@@ -16,6 +16,12 @@ import { staffProcedure } from "../trpc";
  * kills every session, and the phone change moves the login itself. All
  * three write audit rows and revoke sessions where a session could
  * outlive the change — the service owns the sequencing.
+ *
+ * No resolveOwner by the same reasoning as eligibility.override: the input
+ * names a studentId, not one row id, and the permissions are SENSITIVE, so
+ * the gate re-reads assignments fresh on every call. Tenancy is the
+ * service's school check (accessForStudent) — a foreign studentId returns
+ * null, never a credential.
  */
 export const portalAccessRouter = {
   activate: staffProcedure("portal_access:activate")

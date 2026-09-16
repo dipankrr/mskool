@@ -74,6 +74,7 @@ export { can, getDataScopes, permissionsInOrg } from "./can";
 // remains its only caller).
 export {
   dataScopeFromNode,
+  escapeLike,
   isAssignmentExpired,
   orgScopeNode,
   scopeCovers,

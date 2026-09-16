@@ -514,8 +514,15 @@ describe("exam router conformance — UI-shaped payloads through the real router
     expect(published?.published).toBe(true);
 
     // The card reads the S4/S5 surfaces make: versions + class set.
-    const versions = await call("exam.cards.versions", { ...scopeArgs(organizationId, schoolId), studentId });
+    // versions is owner-resolved like student.byId: a foreign id is NOT_FOUND.
+    const versions = await call("exam.cards.versions", { ...scopeArgs(organizationId, schoolId), id: studentId });
     expect(versions.length).toBeGreaterThan(0);
+    await expect(
+      call("exam.cards.versions", {
+        ...scopeArgs(organizationId, schoolId),
+        id: "00000000-0000-4000-8000-000000000000",
+      }),
+    ).rejects.toThrow(/Student not found/);
     const classSet = await call("exam.cards.classSet", { ...scopeArgs(organizationId, schoolId), id: exam!.id, classId });
     expect(classSet?.cards?.length).toBe(1);
   });

@@ -27,6 +27,7 @@ import {
   students,
   subjectTypes,
   termAssessments,
+  terms,
 } from "@repo/db/schema";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 
@@ -1011,19 +1012,69 @@ export class ExamMarksService {
   async saveTermAssessment(scope: DataScope, userId: string, input: SaveTermAssessmentInput) {
     const schoolId = requireSchoolId(scope);
     return db.transaction(async (tx) => {
-      // The mapping's type must be term_grade — exam-mode subjects cannot be
-      // assessed here even by a direct call.
+      // The mapping, bound to THIS school — a foreign mapping id is a miss,
+      // the same four-way binding saveComponentResult answers (M1).
       const [mapping] = await tx
-        .select({ mode: subjectTypes.assessmentMode, name: subjectTypes.name })
+        .select({
+          mode: subjectTypes.assessmentMode,
+          name: subjectTypes.name,
+          classId: classSubjectMappings.classId,
+          subjectId: classSubjectMappings.subjectId,
+        })
         .from(classSubjectMappings)
         .innerJoin(subjectTypes, eq(classSubjectMappings.subjectTypeId, subjectTypes.id))
-        .where(eq(classSubjectMappings.id, input.mappingId));
+        .where(
+          and(
+            eq(classSubjectMappings.id, input.mappingId),
+            eq(classSubjectMappings.schoolId, schoolId),
+            eq(classSubjectMappings.organizationId, scope.organizationId),
+          ),
+        );
       if (!mapping) return null;
+      // The mapping's type must be term_grade — exam-mode subjects cannot be
+      // assessed here even by a direct call.
       if (mapping.mode !== "term_grade") {
         throw new Error(
           `"${mapping.name}" is an exam-assessed subject — its grades come from marks, not term-end entry.`,
         );
       }
+      // The router's gate pair must name THIS mapping: a sectionId/subjectId
+      // from another paper never writes here.
+      if (input.subjectId !== mapping.subjectId) return null;
+      const [section] = await tx
+        .select({ id: sections.id })
+        .from(sections)
+        .where(
+          and(
+            eq(sections.id, input.sectionId),
+            eq(sections.classId, mapping.classId),
+            eq(sections.schoolId, schoolId),
+          ),
+        );
+      if (!section) return null;
+      // The term belongs to this school...
+      const [term] = await tx
+        .select({ academicYearId: terms.academicYearId })
+        .from(terms)
+        .where(and(eq(terms.id, input.termId), eq(terms.schoolId, schoolId)));
+      if (!term) return null;
+      // ...and the student is enrolled in it this year at this school.
+      const [enrollment] = await tx
+        .select({ id: studentEnrollments.id })
+        .from(studentEnrollments)
+        .where(
+          and(
+            eq(studentEnrollments.studentId, input.studentId),
+            eq(studentEnrollments.academicYearId, term.academicYearId),
+            eq(studentEnrollments.schoolId, schoolId),
+            inArray(studentEnrollments.enrollmentStatus, [
+              "active",
+              "admitted",
+              "section_assigned",
+            ]),
+          ),
+        );
+      if (!enrollment) return null;
 
       const [row] = await tx
         .insert(termAssessments)

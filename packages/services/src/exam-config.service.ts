@@ -1244,6 +1244,14 @@ export class ExamConfigService {
     return row?.schoolId ?? null;
   }
 
+  async getPassCriteriaOwnerId(organizationId: string, id: string): Promise<string | null> {
+    const [row] = await db
+      .select({ schoolId: passCriteria.schoolId })
+      .from(passCriteria)
+      .where(and(eq(passCriteria.id, id), eq(passCriteria.organizationId, organizationId)));
+    return row?.schoolId ?? null;
+  }
+
   async getSubjectTypeOwnerId(organizationId: string, id: string): Promise<string | null> {
     const [row] = await db
       .select({ schoolId: subjectTypes.schoolId })

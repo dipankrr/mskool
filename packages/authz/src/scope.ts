@@ -210,6 +210,19 @@ export function scopeWhere(
   return conditions.length === 1 ? conditions[0]! : or(...conditions)!;
 }
 
+/**
+ * Escapes user text for ILIKE patterns: `%`, `_`, and `\` are wildcards or
+ * the escape character itself. Every `ilike(col, `%${q}%`)` call site must
+ * pass the input through here first — an unescaped `q:"%"` matches the
+ * whole table (the register search, the org picker), widening the answer
+ * beyond what the caller asked for. The scope filter still applies, so this
+ * is a correctness fix, not a leak — but a search that matches everything
+ * is a broken search.
+ */
+export function escapeLike(q: string): string {
+  return q.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
 function scopeCondition(scope: DataScope, columns: ScopeColumns): SQL {
   const parts: SQL[] = [eq(columns.organizationId, scope.organizationId)];
 

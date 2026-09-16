@@ -1211,4 +1211,81 @@ describe("exams integration: multi-exam term (M4 GPA, M5 boundary, M6 card flags
   });
 });
 
+describe("exams integration: term-grade binding (M1)", () => {
+  it("writes through the bound mapping; misses and mismatches write nothing", async () => {
+    const scope = scopeOf(world);
+
+    const [gradeType] = await db
+      .select()
+      .from(subjectTypes)
+      .where(
+        and(
+          eq(subjectTypes.schoolId, world.schoolId),
+          eq(subjectTypes.assessmentMode, "term_grade"),
+        ),
+      );
+    const [music] = await db
+      .insert(subjects)
+      .values({ organizationId: world.organizationId, schoolId: world.schoolId, name: "ITG Music" })
+      .returning();
+    await db.insert(classSubjectMappings).values({
+      organizationId: world.organizationId,
+      schoolId: world.schoolId,
+      academicYearId: world.academicYearId,
+      classId: world.classId,
+      subjectId: music!.id,
+      subjectTypeId: gradeType!.id,
+    });
+    const [mapping] = await db
+      .select()
+      .from(classSubjectMappings)
+      .where(
+        and(
+          eq(classSubjectMappings.classId, world.classId),
+          eq(classSubjectMappings.subjectId, music!.id),
+        ),
+      );
+
+    const base = {
+      mappingId: mapping!.id,
+      termId: world.termId,
+      sectionId: world.sectionId,
+      subjectId: music!.id,
+      studentId: world.studentA,
+      grade: "A",
+      descriptor: "Steady across the term",
+    };
+
+    // Happy path: mapping, pair, term, and student all bound to this school.
+    const saved = await examMarksService.saveTermAssessment(scope, PRINCIPAL, {
+      ...base,
+      studentId: world.studentA,
+    });
+    expect(saved?.grade).toBe("A");
+
+    // A subjectId from another paper never writes here (previously ignored).
+    const crossed = await examMarksService.saveTermAssessment(scope, PRINCIPAL, {
+      ...base,
+      studentId: world.studentA,
+      subjectId: world.subjectId,
+    });
+    expect(crossed).toBeNull();
+
+    // A student no enrollment covers never writes here (previously written
+    // under the caller's school stamp).
+    const outsider = await examMarksService.saveTermAssessment(scope, PRINCIPAL, {
+      ...base,
+      studentId: crypto.randomUUID(),
+    });
+    expect(outsider).toBeNull();
+
+    // A mapping id from nowhere never writes here.
+    const ghost = await examMarksService.saveTermAssessment(scope, PRINCIPAL, {
+      ...base,
+      mappingId: crypto.randomUUID(),
+    });
+    expect(ghost).toBeNull();
+  });
+});
+
 // -- drizzle table imports (used by the fixture and the assertions) ----------

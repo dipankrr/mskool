@@ -159,12 +159,23 @@ export const SENSITIVE_PERMISSIONS = new Set<Permission>([
   "marks:publish",
   "marks:delete",
   "report_card:publish",
+  // Publishing an exam freezes cards — irreversible like the publishes above.
+  "exam:publish",
   "student:delete",
   "role_permission:update",
   "role_assignment:assign",
   "role_assignment:revoke",
   "portal_access:grant",
   "portal_access:revoke",
+  // The takeover-shaped acts: activation mints the credential, a reset kills
+  // every session, and the phone change moves the login itself. The listed
+  // grant/revoke pair has no router consumers — THESE are the live ones.
+  "portal_access:activate",
+  "portal_access:reset_password",
+  "portal_access:change_phone",
+  // Staff logins ride on staff:update (ADR-035): provisioning and resets mint
+  // and re-issue credentials, so a revoked grant must bite immediately here.
+  "staff:update",
 ]);
 
 /**
