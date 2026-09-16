@@ -814,4 +814,93 @@ describe("exams integration: tenancy", () => {
   });
 });
 
+describe("exams integration: results integrity (B1 snapshot, B2 published guard)", () => {
+  it("snapshots the weighted default pass mark on component save; an explicit override survives", async () => {
+    const scope = scopeOf(world);
+
+    const [worldMapping] = await db
+      .select()
+      .from(classSubjectMappings)
+      .where(
+        and(
+          eq(classSubjectMappings.classId, world.classId),
+          eq(classSubjectMappings.subjectId, world.subjectId),
+        ),
+      );
+    const [physics] = await db
+      .insert(subjects)
+      .values({ organizationId: world.organizationId, schoolId: world.schoolId, name: "ITG Physics" })
+      .returning();
+    await db.insert(classSubjectMappings).values({
+      organizationId: world.organizationId,
+      schoolId: world.schoolId,
+      academicYearId: world.academicYearId,
+      classId: world.classId,
+      subjectId: physics!.id,
+      subjectTypeId: worldMapping!.subjectTypeId,
+    });
+    const [paper] = await db
+      .insert(examSubjectSchedules)
+      .values({
+        organizationId: world.organizationId,
+        schoolId: world.schoolId,
+        examId: world.examId,
+        classId: world.classId,
+        subjectId: physics!.id,
+        examDate: "2031-09-11",
+        startTime: "09:00:00",
+        durationMinutes: 180,
+      })
+      .returning();
+    expect(paper?.passMarks).toBe("0.00");
+
+    // 30% of (21/70) + 70% of (9/30) = 9.00 + 21.00 = 30.00.
+    const saved = await examConfigService.saveComponents(scope, {
+      id: paper!.id,
+      components: [
+        { name: "Theory", maxMarks: "70", passMarks: "21", weightagePercentage: "30" },
+        { name: "Practical", maxMarks: "30", passMarks: "9", weightagePercentage: "70" },
+      ],
+    });
+    expect(saved).toHaveLength(2);
+
+    const [snapshotted] = await db
+      .select()
+      .from(examSubjectSchedules)
+      .where(eq(examSubjectSchedules.id, paper!.id));
+    expect(snapshotted?.passMarks).toBe("30.00");
+
+    // The school overrides ("at least 40 total") — arranged directly, since
+    // the schedule save freezes once entry opens. The unit under test is the
+    // component save's preservation: restructuring the parts afterwards must
+    // not recompute the school's word away.
+    await db
+      .update(examSubjectSchedules)
+      .set({ passMarks: "40.00" })
+      .where(eq(examSubjectSchedules.id, paper!.id));
+    await examConfigService.saveComponents(scope, {
+      id: paper!.id,
+      components: [
+        { name: "Theory", maxMarks: "70", passMarks: "21", weightagePercentage: "30" },
+        { name: "Practical", maxMarks: "30", passMarks: "9", weightagePercentage: "70" },
+      ],
+    });
+    const [kept] = await db
+      .select()
+      .from(examSubjectSchedules)
+      .where(eq(examSubjectSchedules.id, paper!.id));
+    expect(kept?.passMarks).toBe("40.00");
+  });
+
+  it("refuses ad-hoc recompute on a published exam (the window close and revisions still run)", async () => {
+    const scope = scopeOf(world);
+    const [exam] = await db.select().from(exams).where(eq(exams.id, world.examId));
+    expect(exam?.status).toBe("published");
+
+    await expect(
+      examResultsService.computeClassResults(scope, world.examId, world.classId),
+    ).rejects.toThrow(/published/);
+  });
+});
+
 // -- drizzle table imports (used by the fixture and the assertions) ----------

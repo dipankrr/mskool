@@ -65,10 +65,12 @@ import {
  * class. When `student_subject_enrollments` lands, only this function
  * changes.
  *
- * PUBLISHED ROWS GET REFRESHED, not rewritten: a recompute after
- * publication updates the live aggregates (the card carries the frozen
- * truth; the window close re-photographs it). This is what makes the
- * window's re-version pass able to diff against what was issued.
+ * PUBLISHED ROWS GET REFRESHED, not rewritten — and only inside the
+ * ledger-owning flows: `computeClassResults` refuses published/locked exams
+ * unless called with `{ allowPublished: true }`, which only the window close
+ * and the revision apply pass (both re-version every card they move; the
+ * card carries the frozen truth). Ad-hoc `results.compute` on a published
+ * exam is refused with a worded error.
  */
 
 const CARD_SCOPE_COLUMNS = {
@@ -186,16 +188,28 @@ export class ExamResultsService {
    * caller passes its open transaction instead of letting this method open
    * an independent (separately-committing) one.
    */
-  async computeClassResults(scope: DataScope, examId: string, classId: string, tx?: Tx) {
-    if (tx) return this.computeClassResultsTx(tx, scope, examId, classId);
-    return db.transaction((inner) => this.computeClassResultsTx(inner, scope, examId, classId));
+  async computeClassResults(
+    scope: DataScope,
+    examId: string,
+    classId: string,
+    tx?: Tx,
+    opts?: { allowPublished?: boolean },
+  ) {
+    if (tx) return this.computeClassResultsTx(tx, scope, examId, classId, opts);
+    return db.transaction((inner) => this.computeClassResultsTx(inner, scope, examId, classId, opts));
   }
 
   // NOTE: the engine body below sits in a bare block on purpose — it is the
   // old transaction callback verbatim, so `git blame` still points at the
   // original authorship instead of a reindent. Do not "clean" it without
   // keeping the body identical.
-  private async computeClassResultsTx(tx: Tx, scope: DataScope, examId: string, classId: string) {
+  private async computeClassResultsTx(
+    tx: Tx,
+    scope: DataScope,
+    examId: string,
+    classId: string,
+    opts?: { allowPublished?: boolean },
+  ) {
     const schoolId = requireSchoolId(scope);
     {
       const [exam] = await tx
@@ -203,6 +217,13 @@ export class ExamResultsService {
         .from(exams)
         .where(and(eq(exams.id, examId), eq(exams.schoolId, schoolId)));
       if (!exam) return null;
+      // Published/locked exams are frozen: ad-hoc recompute would rewrite
+      // rows the cards already photographed (hard rule 7). Only the
+      // ledger-owning flows (window close, revision apply) may recompute —
+      // they re-version every card they move.
+      if ((exam.status === "published" || exam.status === "locked") && !opts?.allowPublished) {
+        throw new Error("This exam is published — recompute is closed. Correct through a revision window.");
+      }
 
       const schedules = await tx
         .select()
@@ -1640,7 +1661,7 @@ export class ExamResultsService {
       // One engine pass: computeClassResults already folds each student's
       // term result (no second per-student loop — it doubles the term
       // compute on large cohorts for identical rows).
-      await this.computeClassResults(scope, examId, classId, tx);
+      await this.computeClassResults(scope, examId, classId, tx, { allowPublished: true });
       await this.computeTermRanks(scope, exam.termId, tx);
 
       const currentCards = await tx
@@ -1738,7 +1759,8 @@ export class ExamResultsService {
   /**
    * Applies a post-publication correction: the ledger row FIRST (hard rule
    * 7), then the mark, then the recompute, then the re-photograph of every
-   * affected card — one transaction.
+   * affected card — ONE transaction, so a crash can never leave a ledgered
+   * mark with stale aggregates or stale cards.
    *
    * Window enforcement: with an open window for the paper's class the edit
    * only ledgers + updates the mark (the close recomputes once for all of
@@ -1751,9 +1773,8 @@ export class ExamResultsService {
   async applyRevision(scope: DataScope, userId: string, input: SubmitRevisionInput) {
     const schoolId = requireSchoolId(scope);
 
-    // STEP 1 — the ledger row FIRST, then the mark (hard rule 7). One small
-    // transaction holding only this row's lock.
-    const step1 = await db.transaction(async (tx) => {
+    return db.transaction(async (tx) => {
+      // STEP 1 — the ledger row FIRST, then the mark (hard rule 7).
       const [result] = await tx
         .select()
         .from(studentComponentResults)
@@ -1811,14 +1832,18 @@ export class ExamResultsService {
       });
 
       // Window check: with an open window the close owns the recompute —
-      // this step ledgers + updates the mark and stops. A locked exam
-      // refuses everything, window or not.
+      // ledger + mark commit here and stop. A locked exam refuses
+      // everything, window or not.
       const [schedule] = await tx
         .select({ classId: examSubjectSchedules.classId })
         .from(examSubjectSchedules)
         .where(eq(examSubjectSchedules.id, result.scheduleId));
       const [exam] = await tx
-        .select({ status: exams.status })
+        .select({
+          status: exams.status,
+          termId: exams.termId,
+          academicYearId: exams.academicYearId,
+        })
         .from(exams)
         .where(eq(exams.id, result.examId));
       if (!schedule || !exam) {
@@ -1837,69 +1862,58 @@ export class ExamResultsService {
             eq(examClassPublication.schoolId, schoolId),
           ),
         );
-      return { id: result.id, deferred: publication?.state === "revision_open" };
-    });
-    if (step1 === null) return null;
-    const { id: componentResultId, deferred } = step1;
-    if (deferred) return { componentResultId, applied: true };
+      if (publication?.state === "revision_open") {
+        return { componentResultId: result.id, applied: true };
+      }
 
-    // STEP 2 — recompute on FRESH connections. The step-1 locks are released,
-    // so the engine's own transactions cannot deadlock against them.
-    const [resultRow] = await db
-      .select()
-      .from(studentComponentResults)
-      .where(eq(studentComponentResults.id, componentResultId));
-    const [schedule] = await db
-      .select({ classId: examSubjectSchedules.classId })
-      .from(examSubjectSchedules)
-      .where(eq(examSubjectSchedules.id, resultRow!.scheduleId));
-    const [exam] = await db.select().from(exams).where(eq(exams.id, resultRow!.examId));
-    if (schedule && exam) {
-      await this.computeClassResults(scope, resultRow!.examId, schedule.classId);
-      await this.computeTermResult(db, resultRow!.studentId, exam.termId, schoolId, scope.organizationId);
-      await this.computeTermRanks(scope, exam.termId);
+      // STEP 2 — recompute inside the SAME transaction (never separate ones:
+      // a crash between ledger and aggregates was the split-brain this merge
+      // closes). The engine accepts the open tx throughout.
+      await this.computeClassResults(scope, result.examId, schedule.classId, tx, {
+        allowPublished: true,
+      });
+      await this.computeTermResult(tx, result.studentId, exam.termId, schoolId, scope.organizationId);
+      await this.computeTermRanks(scope, exam.termId, tx);
 
       // STEP 3 — re-photograph every current card of the class whose frozen
       // data moved. Idempotent: unchanged cards keep their version.
-      await db.transaction(async (tx) => {
-        const cohort = await this.cohortOf(tx, schedule.classId, exam.academicYearId, null);
-        const currentCards = await tx
-          .select()
-          .from(publishedReportCards)
-          .where(
-            and(
-              eq(publishedReportCards.termId, exam.termId),
-              eq(publishedReportCards.isCurrent, true),
-              inArray(
-                publishedReportCards.studentId,
-                cohort.map((c) => c.studentId),
-              ),
+      const cohort = await this.cohortOf(tx, schedule.classId, exam.academicYearId, null);
+      const currentCards = await tx
+        .select()
+        .from(publishedReportCards)
+        .where(
+          and(
+            eq(publishedReportCards.termId, exam.termId),
+            eq(publishedReportCards.isCurrent, true),
+            inArray(
+              publishedReportCards.studentId,
+              cohort.map((c) => c.studentId),
             ),
-          );
-        for (const card of currentCards) {
-          const fresh = await this.assembleSnapshot(tx, card.studentId, exam.termId);
-          if (sameSnapshot(fresh, card.snapshotData)) continue;
-          await tx
-            .update(publishedReportCards)
-            .set({ isCurrent: false })
-            .where(eq(publishedReportCards.id, card.id));
-          await tx.insert(publishedReportCards).values({
-            organizationId: card.organizationId,
-            schoolId: card.schoolId,
-            studentId: card.studentId,
-            academicYearId: card.academicYearId,
-            termId: card.termId,
-            version: card.version + 1,
-            replacesVersion: card.version,
-            snapshotData: fresh,
-            templateId: card.templateId,
-            revisionReason: `correction: ${input.reason}`,
-            publishedBy: userId,
-          });
-        }
-      });
-    }
-    return { componentResultId, applied: true };
+          ),
+        );
+      for (const card of currentCards) {
+        const fresh = await this.assembleSnapshot(tx, card.studentId, exam.termId);
+        if (sameSnapshot(fresh, card.snapshotData)) continue;
+        await tx
+          .update(publishedReportCards)
+          .set({ isCurrent: false })
+          .where(eq(publishedReportCards.id, card.id));
+        await tx.insert(publishedReportCards).values({
+          organizationId: card.organizationId,
+          schoolId: card.schoolId,
+          studentId: card.studentId,
+          academicYearId: card.academicYearId,
+          termId: card.termId,
+          version: card.version + 1,
+          replacesVersion: card.version,
+          snapshotData: fresh,
+          templateId: card.templateId,
+          revisionReason: `correction: ${input.reason}`,
+          publishedBy: userId,
+        });
+      }
+      return { componentResultId: result.id, applied: true };
+    });
   }
 }
 

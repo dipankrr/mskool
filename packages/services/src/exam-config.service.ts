@@ -5,7 +5,8 @@ import {
 } from "./academic.service";
 import { examMarksService } from "./exam-marks.service";
 import { scopeWhere, type DataScope } from "@repo/authz";
-import { fromHundredths, toHundredths } from "./exams-maths";import type {
+import { fromHundredths, toHundredths, weightedDefaultPassMark } from "./exams-maths";
+import type {
   CreateExamInput,
   CreateGradingScaleInput,
   CreatePassCriteriaInput,
@@ -1203,11 +1204,31 @@ export class ExamConfigService {
       );
       // Same as saveSchedules: read back through tx, not db — the borrowed
       // second connection cannot see uncommitted rows.
-      return tx
+      const rows = await tx
         .select()
         .from(examComponents)
         .where(eq(examComponents.scheduleId, input.id))
         .orderBy(asc(examComponents.sequenceNumber));
+      // Snapshot the subject-level default pass mark (the schema's contract:
+      // default = Σ(passᵢ/maxᵢ × weightᵢ)) — but ONLY while the schedule still
+      // carries the not-yet-snapshotted default. An explicit school override
+      // is the school's word and is never recomputed behind its back.
+      if (schedule.passMarks === "0.00") {
+        const snapshot = fromHundredths(
+          weightedDefaultPassMark(
+            rows.map((c) => ({
+              marks: toHundredths(c.passMarks),
+              maxMarks: toHundredths(c.maxMarks),
+              weightagePercentage: toHundredths(c.weightagePercentage),
+            })),
+          ),
+        );
+        await tx
+          .update(examSubjectSchedules)
+          .set({ passMarks: snapshot })
+          .where(eq(examSubjectSchedules.id, input.id));
+      }
+      return rows;
     });
   }
 
