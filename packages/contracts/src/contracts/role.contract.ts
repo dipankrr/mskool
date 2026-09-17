@@ -17,9 +17,8 @@ import { z } from "zod";
  * `revokedAt`/`revokedBy` are the audit.
  *
  * The permission matrix (`org_role_permissions`) is DATA, not code
- * (ADR-011) — this slice reads it only. Editing it
- * (`role_permission:update`) is deliberately deferred (ADR-035): orgs run
- * on the seeded defaults until a real tenant asks.
+ * (ADR-011) — served as grouped catalog + shipped defaults for the editor
+ * (ADR-036), which batches diffs with the org_admin and self-role locks.
  */
 
 export const roleTypeSchema = z.enum(roleTypeEnum.enumValues);
@@ -47,8 +46,17 @@ export const assignRoleSchema = z.object({
   userId: z.string().min(1),
   roleType: roleTypeSchema,
   scopeType: scopeTypeSchema,
-  /** Temporary delegation — "cover this class while she is on leave". */
-  expiresAt: z.iso.datetime({ offset: true }).nullish(),
+  /**
+   * Temporary delegation — "cover this class while she is on leave".
+   * Future-dated only: an already-expired grant is a no-op that still
+   * writes audit rows and invalidates caches.
+   */
+  expiresAt: z.iso
+    .datetime({ offset: true })
+    .refine((v) => v == null || new Date(v).getTime() > Date.now(), {
+      message: "Expiry must be in the future.",
+    })
+    .nullish(),
 });
 export type AssignRoleInput = z.infer<typeof assignRoleSchema>;
 

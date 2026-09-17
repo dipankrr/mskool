@@ -799,6 +799,16 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
     message: "This staff member has no login yet. Create one first.",
   },
   {
+    match: /Nothing to update — send at least one field/i,
+    code: "BAD_REQUEST",
+    message: "Nothing to update — change at least one field.",
+  },
+  {
+    match: /staff record is already active/i,
+    code: "CONFLICT",
+    message: "This staff record is already active.",
+  },
+  {
     // Role assignments (ADR-005): the grant's own facts, worded by the service.
     match: /granted at the organisation itself/i,
     code: "BAD_REQUEST",

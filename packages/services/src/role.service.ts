@@ -280,11 +280,21 @@ export class RoleService {
         roleType: roleAssignments.roleType,
         staffId: staff.id,
         firstName: staff.firstName,
+        middleName: staff.middleName,
         lastName: staff.lastName,
         userId: roleAssignments.userId,
       })
       .from(roleAssignments)
-      .innerJoin(staff, eq(staff.userId, roleAssignments.userId))
+      // Both sides of the join are org-filtered: a user with staff rows in
+      // two orgs must resolve to THIS org's record (M8) — otherwise org A
+      // shows org B's staffId (a 404) and name.
+      .innerJoin(
+        staff,
+        and(
+          eq(staff.userId, roleAssignments.userId),
+          eq(staff.organizationId, organizationId),
+        ),
+      )
       .where(
         and(
           eq(roleAssignments.organizationId, organizationId),
@@ -296,7 +306,7 @@ export class RoleService {
     return rows.map((row) => ({
       roleType: row.roleType,
       staffId: row.staffId,
-      name: [row.firstName, row.lastName].filter(Boolean).join(" "),
+      name: [row.firstName, row.middleName, row.lastName].filter(Boolean).join(" "),
       userId: row.userId,
     }));
   }

@@ -1,8 +1,8 @@
 "use client";
 
-import { PencilIcon, PlusIcon, ShieldCheckIcon } from "lucide-react";
+import { PlusIcon } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { FormDialog } from "@/components/form-dialog";
 import {
@@ -11,7 +11,6 @@ import {
   FieldError,
   FieldLabel,
 } from "@/components/ui/field";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -34,7 +33,6 @@ import {
   useRoleMutations,
   useStaffRoles,
 } from "@/features/staff/use-staff";
-import { PermissionEditorDialog } from "@/features/staff/permission-editor-dialog";
 import { useActiveContext } from "@/features/session/active-context";
 import { copy } from "@/lib/copy";
 import { formatIsoDate } from "@/lib/format";
@@ -69,9 +67,15 @@ export const ROLE_TYPES = [
 
 type ScopeChoice = "org" | "school";
 
-export function StaffRolesCard({ userId }: { userId: string }) {
+export function StaffRolesCard({
+  userId,
+  hasLogin,
+}: {
+  userId: string;
+  hasLogin: boolean;
+}) {
   const { has } = useActiveContext();
-  const roles = useStaffRoles(userId);
+  const roles = useStaffRoles(hasLogin ? userId : undefined);
   const { assign, revoke } = useRoleMutations();
 
   const [assignOpen, setAssignOpen] = useState(false);
@@ -88,9 +92,11 @@ export function StaffRolesCard({ userId }: { userId: string }) {
         <div className="flex items-start justify-between gap-3">
           <div>
             <CardTitle>{copy.staff.rolesTitle}</CardTitle>
-            <CardDescription>{copy.staff.roleAssignHelp}</CardDescription>
+            <CardDescription>
+              {hasLogin ? copy.staff.roleAssignHelp : copy.staff.rolesLoginFirst}
+            </CardDescription>
           </div>
-          {canAssign ? (
+          {canAssign && hasLogin ? (
             <Button variant="outline" size="sm" onClick={() => setAssignOpen(true)}>
               <PlusIcon data-icon="inline-start" />
               {copy.staff.roleAssign}
@@ -99,7 +105,9 @@ export function StaffRolesCard({ userId }: { userId: string }) {
         </div>
       </CardHeader>
       <CardContent>
-        {assignments.length === 0 ? (
+        {!hasLogin ? (
+          <p className="text-muted-foreground text-sm">{copy.staff.rolesLoginFirst}</p>
+        ) : assignments.length === 0 ? (
           <p className="text-muted-foreground text-sm">{copy.staff.rolesEmpty}</p>
         ) : (
           <ul className="flex flex-col gap-2">
@@ -118,7 +126,9 @@ export function StaffRolesCard({ userId }: { userId: string }) {
                   <span className="text-muted-foreground truncate text-xs">
                     {assignment.scopeLabel}
                     {assignment.expiresAt
-                      ? ` · ${formatIsoDate(assignment.expiresAt)}`
+                      ? ` · ${formatIsoDate(
+                          new Date(assignment.expiresAt).toISOString().slice(0, 10),
+                        )}`
                       : ""}
                   </span>
                 </div>

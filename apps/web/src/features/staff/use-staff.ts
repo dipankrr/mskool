@@ -74,7 +74,7 @@ export function useStaffRoles(userId?: string) {
   );
 }
 
-/** The org's role → permission matrix, read-only (ADR-035 defers editing). */
+/** The org's role → permission matrix (ADR-036 made it editable in place). */
 export function useRolePermissions(enabled: boolean) {
   const { scopeArgs } = useActiveContext();
 
@@ -122,6 +122,14 @@ export function useStaffMutations() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  const reactivate = trpc.staff.reactivate.useMutation({
+    onSuccess: async () => {
+      toast.success(copy.staff.reactivated);
+      await refresh();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   const createLogin = trpc.staff.createLogin.useMutation({
     onSuccess: async () => {
       toast.success(copy.staff.loginCreated);
@@ -157,6 +165,10 @@ export function useStaffMutations() {
       ...deactivate,
       submit: (id: string, data: DeactivateStaffInput) =>
         deactivate.mutateAsync({ ...scopeArgs(), id, data }),
+    },
+    reactivate: {
+      ...reactivate,
+      submit: (id: string) => reactivate.mutateAsync({ ...scopeArgs(), id }),
     },
     createLogin: {
       ...createLogin,

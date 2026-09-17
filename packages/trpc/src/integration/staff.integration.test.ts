@@ -131,14 +131,32 @@ describe("staff & roles (ADR-035)", () => {
     expect(out?.dateOfLeaving).toBeNull();
   });
 
+  it("reactivation restores the record; an active record refuses it", async () => {
+    // T2 was suspended two cases ago: the way back clears the status and
+    // any leaving date (none here — suspensions never stamp one).
+    const suspended = await staffService.listStaff([scopeA1], code("T2"));
+    expect(suspended).toHaveLength(0); // suspended rows are history, not listed
+    const [t2row] = await db
+      .select()
+      .from(staffTable)
+      .where(eq(staffTable.employeeCode, code("T2")));
+    const revived = await staffService.reactivateStaff(scopeA1, t2row!.id);
+    expect(revived?.status).toBe("active");
+    expect(revived?.dateOfLeaving).toBeNull();
+
+    await expect(
+      staffService.reactivateStaff(scopeA1, t2row!.id),
+    ).rejects.toThrow(/already active/i);
+    await expect(
+      staffService.reactivateStaff(scopeA1, crypto.randomUUID()),
+    ).resolves.toBeNull();
+  });
+
   it("provisions the first login: user row + forced change + audit (ADR-035)", async () => {
     // Re-activate the record first — logins are for active staff only.
-    // Direct write: the activation path of the register is the admin's
-    // act, and drizzle refuses a .set({}).
-    await db
-      .update(staffTable)
-      .set({ status: "active", dateOfLeaving: null })
-      .where(eq(staffTable.id, loginlessStaffId));
+    const revived = await staffService.reactivateStaff(scopeA1, loginlessStaffId);
+    expect(revived?.status).toBe("active");
+    expect(revived?.dateOfLeaving).toBeNull();
 
     const actor = adminAId;
     const [org] = await db
@@ -215,6 +233,76 @@ describe("staff & roles (ADR-035)", () => {
     await expect(
       staffService.createLogin(scopeB1, adminBId, loginlessStaffId, "Integration123!"),
     ).resolves.toBeNull();
+  });
+
+  it("deactivation strands nothing permanently: reset works inactive, reactivate restores", async () => {
+    // A resignation with a live login: the credential stays usable until
+    // someone resets it (ADR-035 defers deprovisioning automation), so the
+    // reset path must stay open for inactive records.
+    await staffService.deactivateStaff(scopeA1, loginlessStaffId, {
+      status: "resigned",
+    });
+    await staffService.resetLogin(scopeA1, adminAId, loginlessStaffId, "AfterLeaving123!");
+    const [user] = await db
+      .select()
+      .from(userTable)
+      .where(eq(userTable.id, provisionedUserId));
+    expect(user!.mustChangePassword).toBe(true);
+
+    const back = await staffService.reactivateStaff(scopeA1, loginlessStaffId);
+    expect(back?.status).toBe("active");
+    expect(back?.dateOfLeaving).toBeNull();
+  });
+
+  it("an empty patch is refused with words, not a driver 500", async () => {
+    await expect(staffService.updateStaff(scopeA1, loginlessStaffId, {})).rejects.toThrow(
+      /Nothing to update/i,
+    );
+  });
+
+  it("adopts a login stranded by a crashed provisioning instead of stranding the record", async () => {
+    const t3 = await staffService.createStaff(scopeA1, {
+      employeeCode: code("T3"),
+      firstName: "Integration",
+      lastName: "Orphan",
+    });
+    const [org] = await db
+      .select({ slug: organizations.slug })
+      .from(organizations)
+      .where(eq(organizations.id, orgAId));
+    const username = `${org!.slug}-${code("T3")}`.toLowerCase();
+
+    // The footprint of the old crash: the user row landed, the link did not.
+    const [orphan] = await db
+      .insert(userTable)
+      .values({
+        id: crypto.randomUUID(),
+        name: "Integration Orphan",
+        username,
+        displayUsername: username,
+      })
+      .returning();
+
+    const row = await staffService.createLogin(scopeA1, adminAId, t3.id, "Adopted123!");
+    expect(row?.userId).toBe(orphan!.id);
+
+    const [adoptedUser] = await db
+      .select()
+      .from(userTable)
+      .where(eq(userTable.id, orphan!.id));
+    expect(adoptedUser!.mustChangePassword).toBe(true);
+
+    const [audit] = await db
+      .select()
+      .from(authzAuditLog)
+      .where(
+        and(
+          eq(authzAuditLog.organizationId, orgAId),
+          eq(authzAuditLog.action, "staff_login_created"),
+          eq(authzAuditLog.targetUserId, orphan!.id),
+        ),
+      );
+    expect(audit?.details).toMatchObject({ adopted: true });
   });
 
   describe("role assignments (ADR-005)", () => {
@@ -361,12 +449,84 @@ describe("staff & roles (ADR-035)", () => {
       expect(matrix.length).toBeGreaterThan(0);
       expect(matrix.some((r) => r.roleType === "principal")).toBe(true);
     });
+
+    it("holders resolve to this org's staff record, never another org's (M8)", async () => {
+      // principalA1 holds a staff row in orgA (P1, above). Give the SAME
+      // login a staff row in orgB: the join must still resolve orgA's row.
+      const [foreignRow] = await db
+        .insert(staffTable)
+        .values({
+          organizationId: orgBId,
+          schoolId: schoolB1Id,
+          userId: principalA1Id,
+          employeeCode: code("PX"),
+          firstName: "Foreign",
+          lastName: "Twin",
+        })
+        .returning();
+
+      // A live grant from a previous run must not stand (rows accumulate;
+      // the duplicate guard would otherwise point at history).
+      await db
+        .update(roleAssignments)
+        .set({ revokedAt: new Date(), revokedBy: adminAId })
+        .where(
+          and(
+            eq(roleAssignments.organizationId, orgAId),
+            eq(roleAssignments.userId, principalA1Id),
+            eq(roleAssignments.roleType, "accountant"),
+            isNull(roleAssignments.revokedAt),
+          ),
+        );
+
+      const grant = await roleService.assign(orgAId, adminAId, {
+        userId: principalA1Id,
+        roleType: "accountant",
+        scopeType: "school",
+        scopeId: schoolA1Id,
+      });
+
+      const holders = await roleService.listHolders(orgAId);
+      const mine = holders.filter(
+        (h) => h.userId === principalA1Id && h.roleType === "accountant",
+      );
+      // Rows accumulate across runs by design, so several orgA staff rows
+      // may resolve — but every one must be orgA's. Pre-fix the join also
+      // returned the orgB twin (a 404 staffId and a foreign name).
+      expect(mine.length).toBeGreaterThan(0);
+      const orgAStaffIds = new Set(
+        (
+          await db
+            .select({ id: staffTable.id })
+            .from(staffTable)
+            .where(
+              and(
+                eq(staffTable.userId, principalA1Id),
+                eq(staffTable.organizationId, orgAId),
+              ),
+            )
+        ).map((r) => r.id),
+      );
+      expect(mine.every((h) => orgAStaffIds.has(h.staffId))).toBe(true);
+      expect(mine.some((h) => h.staffId === foreignRow!.id)).toBe(false);
+
+      await roleService.revoke(orgAId, adminAId, grant.id, {
+        reason: "Integration proof — the grant was a test",
+      });
+    });
   });
 
   it("register reads never leak across the org boundary", async () => {
     const rows = await staffService.listStaff([scopeA1], "Integration");
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.every((r) => r.organizationId === orgAId)).toBe(true);
+  });
+
+  it("search escapes wildcards: % and _ match nothing by themselves (M12)", async () => {
+    expect(await staffService.listStaff([scopeA1], "%")).toHaveLength(0);
+    expect(await staffService.listStaff([scopeA1], "_")).toHaveLength(0);
+    // And ordinary search still works through the same path.
+    expect((await staffService.listStaff([scopeA1], code("T1"))).length).toBeGreaterThan(0);
   });
 
   describe("permission editor (ADR-036)", () => {

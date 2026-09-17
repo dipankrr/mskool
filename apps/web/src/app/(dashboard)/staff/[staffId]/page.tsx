@@ -3,6 +3,7 @@
 import {
   KeyRoundIcon,
   PencilIcon,
+  RotateCcwIcon,
   UserRoundXIcon,
   UsersIcon,
 } from "lucide-react";
@@ -10,6 +11,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import {
@@ -51,10 +53,12 @@ export default function StaffDetailPage() {
 
   const { has } = useActiveContext();
   const staff = useStaff(staffId);
-  const { update, deactivate, createLogin, resetLogin } = useStaffMutations();
+  const { update, deactivate, reactivate, createLogin, resetLogin } =
+    useStaffMutations();
 
   const [editOpen, setEditOpen] = useState(false);
   const [deactivateOpen, setDeactivateOpen] = useState(false);
+  const [reactivateOpen, setReactivateOpen] = useState(false);
   const [loginMode, setLoginMode] = useState<"create" | "reset" | null>(null);
 
   const canUpdate = has("staff:update");
@@ -124,6 +128,12 @@ export default function StaffDetailPage() {
                 {copy.staff.deactivateLabel}
               </Button>
             ) : null}
+            {canDeactivate && !isActive ? (
+              <Button variant="outline" onClick={() => setReactivateOpen(true)}>
+                <RotateCcwIcon data-icon="inline-start" />
+                {copy.staff.reactivateLabel}
+              </Button>
+            ) : null}
           </>
         }
       />
@@ -177,7 +187,7 @@ export default function StaffDetailPage() {
             </CardContent>
           </Card>
 
-          <StaffRolesCard userId={member.userId ?? ""} />
+          <StaffRolesCard userId={member.userId ?? ""} hasLogin={hasLogin} />
         </div>
 
         <div className="flex w-full flex-col gap-6 lg:w-80">
@@ -188,17 +198,31 @@ export default function StaffDetailPage() {
                 {copy.staff.loginTitle}
               </CardTitle>
               <CardDescription>
-                {hasLogin ? copy.staff.loginActive : copy.staff.loginNone}
+                {!isActive && hasLogin
+                  ? copy.staff.loginInactiveSessions
+                  : hasLogin
+                    ? copy.staff.loginActive
+                    : copy.staff.loginNone}
               </CardDescription>
             </CardHeader>
-            {canUpdate && isActive ? (
+            {canUpdate && (isActive || hasLogin) ? (
               <CardContent>
-                <Button
-                  variant={hasLogin ? "outline" : "default"}
-                  onClick={() => setLoginMode(hasLogin ? "reset" : "create")}
-                >
-                  {hasLogin ? copy.staff.loginReset : copy.staff.loginCreate}
-                </Button>
+                {isActive && !hasLogin ? (
+                  <Button
+                    variant="default"
+                    onClick={() => setLoginMode("create")}
+                  >
+                    {copy.staff.loginCreate}
+                  </Button>
+                ) : null}
+                {hasLogin ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => setLoginMode("reset")}
+                  >
+                    {copy.staff.loginReset}
+                  </Button>
+                ) : null}
               </CardContent>
             ) : null}
           </Card>
@@ -231,6 +255,23 @@ export default function StaffDetailPage() {
           } catch {
             // The error toast is shown by the hook; the form stays.
           }
+        }}
+      />
+
+      <ConfirmDialog
+        open={reactivateOpen}
+        onOpenChange={setReactivateOpen}
+        title={copy.staff.reactivateTitle}
+        consequence={copy.staff.reactivateBody}
+        confirmLabel={copy.staff.reactivateLabel}
+        pending={reactivate.isPending}
+        onConfirm={() => {
+          reactivate
+            .submit(member.id)
+            .then(() => setReactivateOpen(false))
+            .catch(() => {
+              // The error toast is shown by the hook; the dialog stays.
+            });
         }}
       />
 

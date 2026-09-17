@@ -166,6 +166,37 @@ export const staffRouter = router({
     }),
 
   /**
+   * The way back from a deactivation (M7): suspension ends, a resignation
+   * is withdrawn, a mistake is undone. Gated `staff:delete` like the
+   * deactivation it reverses. Assignments and sessions are deliberately
+   * untouched (ADR-035 defers deprovisioning automation) — the login card
+   * says so where the credential lives.
+   */
+  reactivate: staffProcedure("staff:delete", {
+    resolveOwner: resolveStaffOwner,
+  })
+    .meta({
+      openapi: {
+        method: "POST",
+        path: "/staff/{id}/reactivate",
+        tags: ["staff"],
+        summary: "Reactivate a staff member",
+        protect: true,
+      },
+    })
+    .input(z.object({ id: z.uuid() }))
+    .output(staffSelectSchema)
+    .mutation(async ({ ctx, input }) => {
+      const row = await staffService.reactivateStaff(ctx.scope, input.id);
+
+      if (!row) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Staff member not found." });
+      }
+
+      return row;
+    }),
+
+  /**
    * ADR-035: first credential. The initial password is a hand-off secret;
    * the service forces a change at first sign-in and audits the issue.
    * Gated on `staff:update` — see the file comment for why it is not its

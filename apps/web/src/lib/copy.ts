@@ -1263,6 +1263,11 @@ export const copy = {
     deactivateBody:
       "The record is not deleted — it stays as history, and past attendance and marks keep pointing here. Role assignments are not removed automatically; revoke them separately if the person must lose access.",
     deactivateLabel: "Deactivate",
+    reactivateLabel: "Reactivate",
+    reactivateTitle: "Bring this employment back?",
+    reactivateBody:
+      "The record returns to active and the leaving date clears. Role assignments and sessions are untouched — revoke roles and reset the password separately if access must change.",
+    reactivated: "Employment reactivated.",
     leavingStatus: "How does the employment end?",
     leavingStatusHelp:
       "A suspension is temporary, so no leaving date is recorded. The others stamp today as the date of leaving.",
@@ -1271,6 +1276,10 @@ export const copy = {
       "No login yet. Creating one issues an initial password you hand over in person — the staff member must change it at first sign-in.",
     loginActive:
       "Login active. The staff member manages their own password; you can reset it if it is lost.",
+    loginInactiveSessions:
+      "Employment is not active, but this login still works — roles and sessions survive a deactivation. Revoke the roles and reset the password to actually cut access.",
+    rolesLoginFirst:
+      "Create the console login first — roles attach to the login, not the employment record.",
     loginCreate: "Create login",
     loginReset: "Reset password",
     loginCreateTitle: "Create the console login",

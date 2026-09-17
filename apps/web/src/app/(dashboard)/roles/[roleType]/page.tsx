@@ -109,7 +109,12 @@ export default function RoleDetailPage() {
       permissions.some((p) => !defaultsForRole.has(p)));
 
   const isBootstrap = roleType === "org_admin";
-  const canEdit = has("role_permission:update") && !isBootstrap;
+  // The matrix must be LOADED to edit: opening the editor on an empty truth
+  // drafts an empty set, and saving it strips the role (B4). No truth (still
+  // loading, or the read failed) means no Edit button at all.
+  const matrixReady =
+    !matrix.isLoading && !matrix.isError && matrix.data !== undefined;
+  const canEdit = has("role_permission:update") && !isBootstrap && matrixReady;
 
   return (
     <>
@@ -174,7 +179,9 @@ export default function RoleDetailPage() {
               <KeyRoundIcon className="size-4" />
               {copy.staff.holdersTitle}
             </CardTitle>
+            {roleHolders.length === 0 ? (
             <CardDescription>{copy.staff.holdersEmpty}</CardDescription>
+          ) : null}
           </CardHeader>
           <CardContent>
             {roleHolders.length === 0 ? (
@@ -208,6 +215,7 @@ export default function RoleDetailPage() {
           roleType={roleType}
           roleLabel={roleLabel}
           currentPermissions={permissions}
+          loading={matrix.isLoading}
         />
       ) : null}
 

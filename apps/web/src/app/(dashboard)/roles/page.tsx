@@ -63,13 +63,27 @@ export default function RolesPage() {
       set.add(row.permission);
       byRoleDefaults.set(row.roleType, set);
     }
+    // Set difference, not count difference: a swap at equal size still
+    // drifts from the shipped defaults (mirrors the detail page's check).
+    const currentByRole = new Map<string, Set<string>>();
+    for (const row of matrix.data ?? []) {
+      const set = currentByRole.get(row.roleType) ?? new Set<string>();
+      set.add(row.permission);
+      currentByRole.set(row.roleType, set);
+    }
     const modified = new Set<string>();
-    for (const [roleType, count] of byRole) {
+    for (const [roleType, current] of currentByRole) {
       const roleDefaults = byRoleDefaults.get(roleType);
-      if (roleDefaults && roleDefaults.size !== count) modified.add(roleType);
+      if (
+        roleDefaults &&
+        (roleDefaults.size !== current.size ||
+          [...current].some((p) => !roleDefaults.has(p)))
+      ) {
+        modified.add(roleType);
+      }
     }
     return modified;
-  }, [defaultsQuery.data, byRole]);
+  }, [defaultsQuery.data, matrix.data]);
 
   if (!canRead) {
     return (

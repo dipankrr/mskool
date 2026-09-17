@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -52,6 +52,7 @@ export function PermissionEditorDialog({
   roleType,
   roleLabel,
   currentPermissions,
+  loading,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -59,14 +60,29 @@ export function PermissionEditorDialog({
   roleLabel: string;
   /** The role's CURRENT matrix rows — the truth this editor drafts against. */
   currentPermissions: string[];
+  /** The matrix read is still in flight — the truth is not known yet. */
+  loading: boolean;
 }) {
   const defaultsQuery = usePermissionDefaults(open);
   const { update, reset } = usePermissionMutations();
 
-  const [draft, setDraft] = useState<Set<string>>(new Set(currentPermissions));
+  // The draft starts EMPTY (not from props): it syncs from the truth on
+  // first load. Initializing from `currentPermissions` directly mounts an
+  // empty draft when the dialog opens before the matrix arrives — the dirty
+  // bar then offers to withdraw the whole role (B4).
+  const [draft, setDraft] = useState<Set<string> | null>(null);
   const [search, setSearch] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
+
+  useEffect(() => {
+    if (open && draft === null && !loading) {
+      setDraft(new Set(currentPermissions));
+    }
+    if (!open && draft !== null) {
+      setDraft(null);
+    }
+  }, [open, draft, loading, currentPermissions]);
 
   const catalog = useMemo(() => defaultsQuery.data?.catalog ?? [], [defaultsQuery.data]);
   const defaultsForRole = useMemo(() => {
@@ -78,9 +94,14 @@ export function PermissionEditorDialog({
 
   const current = useMemo(() => new Set(currentPermissions), [currentPermissions]);
 
-  const added = [...draft].filter((p) => !current.has(p));
-  const removed = [...current].filter((p) => !draft.has(p));
-  const dirty = added.length > 0 || removed.length > 0;
+  // Save needs the WHOLE truth: the matrix, the catalog, and a draft synced
+  // from it. Anything less and the diff is a guess — the button stays off.
+  const ready =
+    draft !== null && !loading && !defaultsQuery.isLoading && !defaultsQuery.isError;
+  const effective = draft ?? current;
+  const added = [...effective].filter((p) => !current.has(p));
+  const removed = [...current].filter((p) => !effective.has(p));
+  const dirty = ready && (added.length > 0 || removed.length > 0);
 
   const differsFromDefaults =
     defaultsForRole.size > 0 &&
@@ -112,6 +133,7 @@ export function PermissionEditorDialog({
 
   const toggle = (permission: string, checked: boolean) => {
     setDraft((prev) => {
+      if (prev === null) return prev;
       const next = new Set(prev);
       if (checked) next.add(permission);
       else next.delete(permission);
@@ -167,7 +189,7 @@ export function PermissionEditorDialog({
           </div>
 
           <div className="-mx-1 flex-1 overflow-y-auto px-1">
-            {defaultsQuery.isLoading ? (
+            {defaultsQuery.isLoading || draft === null ? (
               <div className="text-muted-foreground flex items-center gap-2 p-4 text-sm">
                 <Spinner data-icon="inline-start" />
                 {copy.common.loading}
@@ -198,7 +220,7 @@ export function PermissionEditorDialog({
                         <div className="flex flex-wrap gap-x-5 gap-y-2">
                           {resource.actions.map((action) => {
                             const permission = `${resource.resource}:${action}`;
-                            const checked = draft.has(permission);
+                            const checked = draft?.has(permission) ?? current.has(permission);
                             const wasCurrent = current.has(permission);
                             return (
                               <label
