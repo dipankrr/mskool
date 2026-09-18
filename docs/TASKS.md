@@ -6,6 +6,38 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
+**MERGED TO MAIN (2026-09-16) — exams + staff review fixes, 6 commits, full green on a clean DB.**
+
+A full-branch review found 4 blockers + 13 majors across `feature/phase5-exams`
+(37 commits) and `feature/staff-management` (stacked, +19). Fixed in 6
+one-concern commits on top, then collapsed staff → phase5 → main (all
+fast-forwards, HEAD `4e68c81`):
+
+1. `68b2aef` results integrity: pass-mark snapshot, published-recompute guard,
+   atomic `applyRevision` (+2 integration proofs).
+2. `43d18f8` results maths: weighted term grade points, upper-wins boundaries,
+   multi-exam card flags (+property tests + second-exam flow).
+3. `b5cfa1a` security: term-grade binding, SENSITIVE gaps, LIKE escaping,
+   passCriteria/cards resolvers.
+4. `6c42213` lifecycle: mapping-end guard, exam-edit freeze, `marks.unverify`
+   (option A), error wording.
+5. `d0b4977` infra: honest publish counts, hundredth-exact averages, turbo env
+   passthrough, e2e admission self-cleanup.
+6. `4e68c81` staff batch (on `fix/staff-batch`, merged): reactivate, login
+   adoption, editor wipe guard, holders tenancy (+26 staff proofs).
+
+Clean-DB proof on `main` after `reset:demo` + `db:seed`: check-types 8/8,
+lint 0 errors, integration 187/187, **smoke 220/220**, **e2e 15/15**.
+
+Known deferred (not silent): eligibility N+1 (demo-scale fine); employment
+audit trail (deactivate/reactivate unaudited — needs enum migration); e2e
+counting journey dropped (term budget is single-use; integration covers it);
+fresh-migrate `ADD VALUE` needs psql outside a txn (noted in `0020` header);
+the 7 dirty ngrok/CORS/rate-limit files stay local-only, never commit them.
+The rate-limit hatch they contain is dead under `pnpm dev` (turbo strips the
+var) — `turbo.json` now passes it through for when the hatch itself lands.
+Full issue list: `review-staff-exams.md` (temp dir, not in repo).
+
 **THE ROLES AREA — its own screens (2026-09-14, on `feature/staff-management`). The permission editor moved out of the staff detail page.**
 
 The owner called the IA: the matrix is an ORG-level configuration object and
