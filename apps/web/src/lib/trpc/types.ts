@@ -1,4 +1,4 @@
-import type { inferRouterOutputs } from "@trpc/server";
+import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 // Type-only, and it must stay that way: this is the whole mechanism that keeps
 // apps/web from bundling express, drizzle and postgres (AGENTS.md's type chain).
 import type { AppRouter } from "@repo/trpc";
@@ -21,6 +21,7 @@ import type { AppRouter } from "@repo/trpc";
  * Everything is still derived from `AppRouter`, so a column change remains a
  * compile error in this app rather than a runtime surprise.
  */
+type RouterInputs = inferRouterInputs<AppRouter>;
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 
 export type Me = RouterOutputs["me"]["get"];
@@ -61,6 +62,20 @@ export type FeePayment = RouterOutputs["fees"]["payment"]["list"][number];
 export type PaymentDetail = RouterOutputs["fees"]["payment"]["detail"];
 export type LedgerTransaction = RouterOutputs["fees"]["ledger"]["list"][number];
 export type OpeningBalance = RouterOutputs["fees"]["ledger"]["listOpeningBalances"][number];
+export type FeeMatrixListInput = Omit<
+  RouterInputs["fees"]["matrix"]["list"],
+  "organizationId" | "schoolId"
+>;
+export type FeeMatrixCellInput = Omit<
+  RouterInputs["fees"]["matrix"]["cell"],
+  "organizationId" | "schoolId"
+>;
+export type FeeMatrixList = RouterOutputs["fees"]["matrix"]["list"];
+export type FeeMatrixRow = FeeMatrixList["rows"][number];
+export type FeeMatrixCell = FeeMatrixRow["cells"][number];
+export type FeeMatrixMonth = FeeMatrixList["months"][number];
+export type FeeMatrixMonthSummary = FeeMatrixList["monthSummaries"][number];
+export type FeeMatrixCellDetail = NonNullable<RouterOutputs["fees"]["matrix"]["cell"]>;
 
 // Exams — Phase 5 (ADR-032). Wire shapes the browser receives.
 export type SubjectType = RouterOutputs["exam"]["subjectTypes"]["list"][number];

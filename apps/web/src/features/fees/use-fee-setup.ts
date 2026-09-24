@@ -50,7 +50,11 @@ export function useFeeHeadMutations() {
   const utils = trpc.useUtils();
 
   const refreshHeads = async () => {
-    await utils.fees.head.list.invalidate();
+    await Promise.all([
+      utils.fees.head.list.invalidate(),
+      utils.fees.matrix.list.invalidate(),
+      utils.fees.matrix.cell.invalidate(),
+    ]);
   };
 
   const create = trpc.fees.head.create.useMutation({
@@ -151,6 +155,8 @@ export function useFeeStructureMutations() {
       utils.fees.structure.list.invalidate(),
       utils.fees.structure.listLines.invalidate(),
       utils.fees.structure.listLateFeeRules.invalidate(),
+      utils.fees.matrix.list.invalidate(),
+      utils.fees.matrix.cell.invalidate(),
     ]);
   };
 
@@ -276,6 +282,8 @@ export function useSubscriptionMutations() {
     await Promise.all([
       utils.fees.subscription.list.invalidate(),
       utils.fees.installment.dues.invalidate(),
+      utils.fees.matrix.list.invalidate(),
+      utils.fees.matrix.cell.invalidate(),
     ]);
   };
 

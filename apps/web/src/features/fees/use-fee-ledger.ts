@@ -61,6 +61,8 @@ export function useOpeningBalanceMutations() {
       await Promise.all([
         utils.fees.ledger.listOpeningBalances.invalidate(),
         utils.fees.ledger.list.invalidate(),
+        utils.fees.matrix.list.invalidate(),
+        utils.fees.matrix.cell.invalidate(),
       ]);
     },
     onError: (error) => toast.error(errorMessage(error)),

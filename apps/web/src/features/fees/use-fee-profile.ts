@@ -55,6 +55,8 @@ export function useFeeProfileMutations() {
     await Promise.all([
       utils.fees.assignment.byStudent.invalidate(),
       utils.fees.installment.dues.invalidate(),
+      utils.fees.matrix.list.invalidate(),
+      utils.fees.matrix.cell.invalidate(),
     ]);
   };
 

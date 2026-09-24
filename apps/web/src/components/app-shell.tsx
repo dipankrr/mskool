@@ -18,6 +18,7 @@ import {
   SearchIcon,
   Settings2Icon,
   ShieldCheckIcon,
+  TablePropertiesIcon,
   UserIcon,
   UsersIcon,
 } from "lucide-react";
@@ -250,6 +251,12 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
               "fee_payment:read",
               "fee_report:read",
             ] as const satisfies readonly Permission[],
+          },
+          {
+            href: "/fees/matrix",
+            label: copy.fees.tabs.statusMatrix,
+            icon: TablePropertiesIcon,
+            permission: "fee_report:read",
           },
           {
             href: "/fees/collect",

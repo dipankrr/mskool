@@ -6,6 +6,11 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
+**STUDENT FEE STATUS MATRIX UI (2026-09-24) — web/navigation pass.**
+- Added `/fees/matrix` with the dense desktop matrix, responsive student cards, accessible month detail Sheet, server filters/search/pagination, and truthful opening/generation/payment/timing states.
+- Registered Status matrix immediately after Overview in both fee navigation surfaces; matrix data reads use `fee_report:read` and all fee money/setup refresh sets invalidate matrix list and cell reads without optimistic updates.
+- Verification: web `check-types` passed; web unit tests 93/93 passed; web lint 0 errors with 25 pre-existing warnings. Playwright walked the authenticated desktop matrix, server search, monthly fee-head Sheet, and 390px mobile matrix/Sheet with zero console errors.
+
 **MERGED TO MAIN (2026-09-16) — exams + staff review fixes, 6 commits, full green on a clean DB.**
 
 A full-branch review found 4 blockers + 13 majors across `feature/phase5-exams`

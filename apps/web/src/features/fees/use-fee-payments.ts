@@ -62,6 +62,8 @@ export function usePaymentMutations() {
       utils.fees.payment.detail.invalidate(),
       utils.fees.installment.dues.invalidate(),
       utils.fees.ledger.list.invalidate(),
+      utils.fees.matrix.list.invalidate(),
+      utils.fees.matrix.cell.invalidate(),
     ]);
   };
 

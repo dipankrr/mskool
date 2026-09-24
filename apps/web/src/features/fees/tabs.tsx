@@ -21,6 +21,7 @@ const TABS: ReadonlyArray<{
   label: string;
   permission: Permission;
 }> = [
+  { href: "/fees/matrix", label: copy.fees.tabs.statusMatrix, permission: "fee_report:read" },
   { href: "/fees/collect", label: copy.fees.tabs.collect, permission: "fee_payment:create" },
   { href: "/fees/outstanding", label: copy.fees.tabs.outstanding, permission: "student_fee_assignment:read" },
   { href: "/fees/payments", label: copy.fees.tabs.payments, permission: "fee_payment:read" },

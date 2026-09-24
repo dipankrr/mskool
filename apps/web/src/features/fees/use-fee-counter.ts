@@ -35,6 +35,8 @@ export function useCounterMutations() {
       utils.fees.payment.detail.invalidate(),
       utils.fees.ledger.list.invalidate(),
       utils.fees.assignment.byStudent.invalidate(),
+      utils.fees.matrix.list.invalidate(),
+      utils.fees.matrix.cell.invalidate(),
     ]);
   };
 

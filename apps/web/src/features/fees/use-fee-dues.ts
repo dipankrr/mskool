@@ -53,6 +53,8 @@ export function useWaiveMutation() {
       await Promise.all([
         utils.fees.installment.dues.invalidate(),
         utils.fees.assignment.byStudent.invalidate(),
+        utils.fees.matrix.list.invalidate(),
+        utils.fees.matrix.cell.invalidate(),
       ]);
     },
     onError: (error) => toast.error(errorMessage(error)),
