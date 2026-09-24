@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 /**
  * FEES — the money-safety proofs, against REAL Postgres. The unit suite
@@ -26,7 +26,14 @@ import { beforeAll, describe, expect, it } from "vitest";
  * deleted); the volume is a handful of rows per run.
  */
 
-import { recordPaymentSchema } from "@repo/contracts";
+import {
+  feeMatrixCellOutputSchema,
+  feeMatrixInputSchema,
+  feeMatrixOutputSchema,
+  recordPaymentSchema,
+  type FeeMatrixCellInput,
+  type FeeMatrixInput,
+} from "@repo/contracts";
 import { db } from "@repo/db";
 import {
   academicYears,
@@ -84,6 +91,25 @@ interface FeeWorld {
 }
 
 let w: FeeWorld;
+
+interface MatrixWorld {
+  classId: string;
+  sectionId: string;
+  closedYearId: string;
+  multiStudentId: string;
+  midStudentId: string;
+  unassignedStudentId: string;
+  ungeneratedStudentId: string;
+  partialStudentId: string;
+  paidStudentId: string;
+  concededStudentId: string;
+  waivedStudentId: string;
+  waivedOnlyStudentId: string;
+  cancelledStudentId: string;
+  openingStudentId: string;
+}
+
+let matrix: MatrixWorld;
 
 async function freshStudent(tag: string) {
   const [student] = await db
@@ -1905,5 +1931,586 @@ describe("fees: S3 the cross-tenant IDOR matrix", () => {
         annualAmount: "12000.00",
       }),
     ).toBeNull();
+  });
+});
+
+describe("fees: student fee status matrix", () => {
+  const query = (overrides: Partial<FeeMatrixInput> = {}) =>
+    feeMatrixInputSchema.parse({
+      academicYearId: w.yearAId,
+      classId: matrix.classId,
+      page: 1,
+      pageSize: 100,
+      ...overrides,
+    });
+
+  const cellInput = (
+    studentId: string,
+    month: string,
+    academicYearId = w.yearAId,
+  ): FeeMatrixCellInput => ({ academicYearId, studentId, month });
+
+  beforeAll(async () => {
+    const klass = await academicService.createClass(w.scopeA, {
+      name: `Fee Matrix ${RUN}`,
+      numericOrder: 99,
+    });
+    const section = await academicService.createSection(w.scopeA, {
+      academicYearId: w.yearAId,
+      classId: klass.id,
+      name: "MX-A",
+    });
+    const structure = await feesService.createFeeStructure(
+      w.scopeA,
+      {
+        academicYearId: w.yearAId,
+        classId: klass.id,
+        name: `Fee Matrix Structure ${RUN}`,
+        installmentMode: "monthly",
+      },
+      w.adminId,
+    );
+    await db.insert(feeStructureLines).values([
+      {
+        organizationId: w.orgAId,
+        schoolId: w.schoolAId,
+        feeStructureId: structure.id,
+        feeHeadId: w.tuitionHeadId,
+        annualAmount: "12000.00",
+        installmentFrequency: "monthly",
+      },
+      {
+        organizationId: w.orgAId,
+        schoolId: w.schoolAId,
+        feeStructureId: structure.id,
+        feeHeadId: w.labHeadId,
+        annualAmount: "2400.00",
+        installmentFrequency: "term_wise",
+      },
+    ]);
+
+    const createMatrixStudent = async (tag: string) => freshStudent(`MX-${tag}`);
+    const enrollMatrix = async (studentId: string) =>
+      enrollmentService.createEnrollment(w.scopeA, {
+        studentId,
+        academicYearId: w.yearAId,
+        classId: klass.id,
+        sectionId: section.id,
+        enrollmentDate: "2025-04-01",
+      });
+    const generateMatrix = async (tag: string, effectiveFrom?: string) => {
+      const student = await createMatrixStudent(tag);
+      const enrollment = await enrollMatrix(student.id);
+      const assignment = await feesBillingService.assignFeeStructure(
+        w.scopeA,
+        {
+          enrollmentId: enrollment.id,
+          ...(effectiveFrom ? { feeEffectiveFrom: effectiveFrom } : {}),
+        },
+        w.adminId,
+      );
+      await feesBillingService.generateInstallments(w.scopeA, assignment.id);
+      return { student, assignment };
+    };
+
+    const multi = await generateMatrix("MULTI");
+    const mid = await generateMatrix("MID", "2025-10-01");
+
+    const unassignedStudent = await createMatrixStudent("UNASSIGNED");
+    await enrollMatrix(unassignedStudent.id);
+
+    const ungeneratedStudent = await createMatrixStudent("UNGENERATED");
+    const ungeneratedEnrollment = await enrollMatrix(ungeneratedStudent.id);
+    await feesBillingService.assignFeeStructure(
+      w.scopeA,
+      { enrollmentId: ungeneratedEnrollment.id },
+      w.adminId,
+    );
+
+    const partial = await generateMatrix("PARTIAL");
+    const partialRows = await installmentsOf(partial.assignment.id);
+    const partialTarget = partialRows.find((row) => row.feeHeadId === w.tuitionHeadId);
+    if (!partialTarget) throw new Error("Matrix partial target missing.");
+    await feesCollectionService.recordPayment(
+      w.scopeA,
+      {
+        studentId: partial.student.id,
+        academicYearId: w.yearAId,
+        paymentDate: "2025-04-05",
+        paymentMode: "cash",
+        allocations: [{ installmentId: partialTarget.id, amount: "100.00" }],
+      },
+      w.adminId,
+    );
+
+    const paid = await generateMatrix("PAID");
+    for (const row of await installmentsOf(paid.assignment.id)) {
+      await db
+        .update(feeInstallments)
+        .set({ paidAmount: row.netAmount, paymentStatus: "paid" })
+        .where(eq(feeInstallments.id, row.id));
+    }
+
+    const conceded = await generateMatrix("CONCEDED");
+    await feesService.createConcession(
+      w.scopeA,
+      conceded.assignment.id,
+      {
+        concessionType: "management_discount",
+        calculationType: "percentage",
+        value: "100",
+        validFrom: "2025-04-01",
+      },
+      w.adminId,
+    );
+    await feesBillingService.recomputeAssignmentConcessions(w.scopeA, conceded.assignment.id);
+
+    const waived = await generateMatrix("WAIVED");
+    const waivedRows = await installmentsOf(waived.assignment.id);
+    for (const row of waivedRows.filter((candidate) => candidate.feeHeadId === w.tuitionHeadId)) {
+      await feesCollectionService.waiveInstallment(w.scopeA, row.id, w.adminId);
+    }
+    for (const row of waivedRows.filter((candidate) => candidate.feeHeadId === w.labHeadId)) {
+      await db
+        .update(feeInstallments)
+        .set({ paidAmount: row.netAmount, paymentStatus: "paid" })
+        .where(eq(feeInstallments.id, row.id));
+    }
+
+    const waivedOnly = await generateMatrix("WAIVED_ONLY");
+    for (const row of await installmentsOf(waivedOnly.assignment.id)) {
+      await feesCollectionService.waiveInstallment(w.scopeA, row.id, w.adminId);
+    }
+
+    const cancelled = await generateMatrix("CANCELLED");
+    await db
+      .update(feeInstallments)
+      .set({ paymentStatus: "cancelled" })
+      .where(
+        and(
+          eq(feeInstallments.studentFeeAssignmentId, cancelled.assignment.id),
+          eq(feeInstallments.feeHeadId, w.labHeadId),
+          eq(feeInstallments.dueDate, "2025-04-01"),
+        ),
+      );
+
+    const openingStudent = await createMatrixStudent("OPENING");
+    await enrollMatrix(openingStudent.id);
+    const [priorOne] = await db
+      .insert(academicYears)
+      .values({
+        organizationId: w.orgAId,
+        schoolId: w.schoolAId,
+        name: "2022-23",
+        startDate: "2022-04-01",
+        endDate: "2023-03-31",
+        originalEndDate: "2023-03-31",
+        isCurrent: false,
+      })
+      .returning();
+    const [priorTwo] = await db
+      .insert(academicYears)
+      .values({
+        organizationId: w.orgAId,
+        schoolId: w.schoolAId,
+        name: "2023-24",
+        startDate: "2023-04-01",
+        endDate: "2024-03-31",
+        originalEndDate: "2024-03-31",
+        isCurrent: false,
+      })
+      .returning();
+    if (!priorOne || !priorTwo) throw new Error("Matrix opening years missing.");
+    await feesBillingService.createOpeningBalance(
+      w.scopeA,
+      {
+        studentId: openingStudent.id,
+        academicYearId: w.yearAId,
+        originAcademicYearId: priorOne.id,
+        amount: "100.00",
+      },
+      w.adminId,
+    );
+    await feesBillingService.createOpeningBalance(
+      w.scopeA,
+      {
+        studentId: openingStudent.id,
+        academicYearId: w.yearAId,
+        originAcademicYearId: priorTwo.id,
+        amount: "50.00",
+      },
+      w.adminId,
+    );
+
+    matrix = {
+      classId: klass.id,
+      sectionId: section.id,
+      closedYearId: priorOne.id,
+      multiStudentId: multi.student.id,
+      midStudentId: mid.student.id,
+      unassignedStudentId: unassignedStudent.id,
+      ungeneratedStudentId: ungeneratedStudent.id,
+      partialStudentId: partial.student.id,
+      paidStudentId: paid.student.id,
+      concededStudentId: conceded.student.id,
+      waivedStudentId: waived.student.id,
+      waivedOnlyStudentId: waivedOnly.student.id,
+      cancelledStudentId: cancelled.student.id,
+      openingStudentId: openingStudent.id,
+    };
+  }, 300_000);
+
+  it("keeps unassigned, ungenerated, mid-year, and section-scoped students visible", async () => {
+    const result = await feesCollectionService.listMatrix([w.scopeA], query(), true);
+    expect(result).not.toBeNull();
+    expect(feeMatrixOutputSchema.safeParse(result).success).toBe(true);
+    const rows = result!.rows;
+    const byId = new Map(rows.map((row) => [row.studentId, row]));
+    expect(result!.months).toHaveLength(12);
+    expect(byId.get(matrix.unassignedStudentId)?.assignmentState).toBe("unassigned");
+    expect(byId.get(matrix.unassignedStudentId)?.generationState).toBe("not_assigned");
+    expect(byId.get(matrix.ungeneratedStudentId)?.generationState).toBe("not_generated");
+    expect(byId.get(matrix.multiStudentId)?.sectionName).toBe("MX-A");
+    expect(byId.get(matrix.midStudentId)?.cells[0]).toMatchObject({
+      assessedAmount: "0.00",
+      feeHeadCount: 0,
+      paymentState: "no_fee",
+      timingState: "none",
+    });
+    const october = byId
+      .get(matrix.midStudentId)
+      ?.cells.find((cell) => cell.month === "2025-10");
+    expect(october).toMatchObject({
+      assessedAmount: "4400.00",
+      feeHeadCount: 2,
+      month: "2025-10",
+    });
+    expect(byId.get(matrix.multiStudentId)?.cells[0]).toMatchObject({
+      assessedAmount: "2440.00",
+      concessionAmount: "0.00",
+      netAmount: "2440.00",
+      feeHeadCount: 2,
+    });
+  });
+
+  it("aggregates heads, preserves exact strings, and separates paid, partial, conceded, and overdue states", async () => {
+    const result = await feesCollectionService.listMatrix([w.scopeA], query(), true);
+    const rows = result!.rows;
+    const byId = new Map(rows.map((row) => [row.studentId, row]));
+    expect(byId.get(matrix.partialStudentId)?.cells[0]).toMatchObject({
+      assessedAmount: "2440.00",
+      paidAmount: "100.00",
+      balanceAmount: "2340.00",
+      paymentState: "partial",
+      timingState: "overdue",
+    });
+    expect(byId.get(matrix.paidStudentId)?.totals).toMatchObject({
+      balanceAmount: "0.00",
+      paymentState: "paid",
+      timingState: "none",
+    });
+    expect(byId.get(matrix.concededStudentId)?.totals).toMatchObject({
+      assessedAmount: "14400.00",
+      concessionAmount: "14400.00",
+      netAmount: "0.00",
+      balanceAmount: "0.00",
+      paymentState: "conceded",
+    });
+    expect(byId.get(matrix.multiStudentId)?.oldestDueDate).toBe("2025-04-01");
+  });
+
+  it("excludes cancelled installments and removes waived amounts from outstanding totals", async () => {
+    const result = await feesCollectionService.listMatrix([w.scopeA], query(), true);
+    const byId = new Map(result!.rows.map((row) => [row.studentId, row]));
+    expect(byId.get(matrix.cancelledStudentId)?.cells[0]).toMatchObject({
+      assessedAmount: "1000.00",
+      feeHeadCount: 1,
+      balanceAmount: "1000.00",
+    });
+    expect(byId.get(matrix.waivedStudentId)?.cells[0]).toMatchObject({
+      assessedAmount: "2440.00",
+      feeHeadCount: 2,
+      balanceAmount: "0.00",
+      paymentState: "paid",
+    });
+    expect(byId.get(matrix.waivedOnlyStudentId)?.totals).toMatchObject({
+      balanceAmount: "0.00",
+      paymentState: "conceded",
+      timingState: "none",
+    });
+  });
+
+  it("keeps opening balances outside month cells and aggregates their origins", async () => {
+    const result = await feesCollectionService.listMatrix([w.scopeA], query(), true);
+    const row = result!.rows.find((candidate) => candidate.studentId === matrix.openingStudentId);
+    expect(row?.totals.assessedAmount).toBe("0.00");
+    expect(row?.cells.every((cell) => cell.assessedAmount === "0.00")).toBe(true);
+    expect(row?.openingBalance).toEqual({
+      amount: "150.00",
+      paid: "0.00",
+      balance: "150.00",
+      status: "unpaid",
+      originCount: 2,
+    });
+  });
+
+  it("returns the aggregate and only actual due-month installments for a cell", async () => {
+    const april = await feesCollectionService.getMatrixCell(
+      [w.scopeA],
+      cellInput(matrix.midStudentId, "2025-04"),
+      true,
+    );
+    expect(april).not.toBeNull();
+    expect(feeMatrixCellOutputSchema.safeParse(april).success).toBe(true);
+    expect(april).toMatchObject({
+      studentId: matrix.midStudentId,
+      month: "2025-04",
+      assessedAmount: "0.00",
+      feeHeadCount: 0,
+      paymentState: "no_fee",
+      timingState: "none",
+    });
+    expect(april!.installments).toHaveLength(0);
+
+    const october = await feesCollectionService.getMatrixCell(
+      [w.scopeA],
+      cellInput(matrix.midStudentId, "2025-10"),
+      true,
+    );
+    expect(october).toMatchObject({
+      studentId: matrix.midStudentId,
+      month: "2025-10",
+      assessedAmount: "4400.00",
+      balanceAmount: "4400.00",
+      feeHeadCount: 2,
+      paymentState: "unpaid",
+    });
+    expect(october!.installments).toHaveLength(2);
+    expect(october!.installments.every((installment) => installment.dueDate === "2025-10-01")).toBe(
+      true,
+    );
+    expect(october!.installments).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          feeHeadId: w.tuitionHeadId,
+          feeHeadName: "Tuition Fee",
+          amount: "2000.00",
+          balanceAmount: "2000.00",
+          paymentStatus: "unpaid",
+        }),
+        expect.objectContaining({
+          feeHeadId: w.labHeadId,
+          feeHeadName: "Lab Fee",
+          amount: "2400.00",
+          balanceAmount: "2400.00",
+          paymentStatus: "unpaid",
+        }),
+      ]),
+    );
+  });
+
+  it("keeps paid and waived installments visible and returns a valid unassigned cell", async () => {
+    const paid = await feesCollectionService.getMatrixCell(
+      [w.scopeA],
+      cellInput(matrix.paidStudentId, "2025-04"),
+      true,
+    );
+    expect(paid).toMatchObject({
+      assessedAmount: "2440.00",
+      balanceAmount: "0.00",
+      paymentState: "paid",
+    });
+    expect(paid!.installments).toHaveLength(2);
+    expect(paid!.installments.every((installment) => installment.paymentStatus === "paid")).toBe(true);
+    expect(paid!.installments.every((installment) => installment.balanceAmount === "0.00")).toBe(
+      true,
+    );
+
+    const waived = await feesCollectionService.getMatrixCell(
+      [w.scopeA],
+      cellInput(matrix.waivedStudentId, "2025-04"),
+      true,
+    );
+    expect(waived).toMatchObject({
+      assessedAmount: "2440.00",
+      balanceAmount: "0.00",
+      paymentState: "paid",
+    });
+    expect(waived!.installments).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ paymentStatus: "waived", balanceAmount: "0.00" }),
+        expect.objectContaining({ paymentStatus: "paid", balanceAmount: "0.00" }),
+      ]),
+    );
+
+    const unassigned = await feesCollectionService.getMatrixCell(
+      [w.scopeA],
+      cellInput(matrix.unassignedStudentId, "2025-04"),
+      true,
+    );
+    expect(unassigned).toMatchObject({
+      studentId: matrix.unassignedStudentId,
+      month: "2025-04",
+      assessedAmount: "0.00",
+      paymentState: "no_fee",
+      timingState: "none",
+    });
+    expect(unassigned!.installments).toHaveLength(0);
+  });
+
+  it("returns null for an inaccessible student or academic year", async () => {
+    expect(
+      await feesCollectionService.getMatrixCell(
+        [w.scopeB],
+        cellInput(matrix.multiStudentId, "2025-04"),
+        true,
+      ),
+    ).toBeNull();
+    expect(
+      await feesCollectionService.getMatrixCell(
+        [w.scopeA],
+        cellInput(matrix.multiStudentId, "2025-04"),
+        false,
+      ),
+    ).not.toBeNull();
+    expect(
+      await feesCollectionService.getMatrixCell(
+        [w.scopeA],
+        cellInput(matrix.multiStudentId, "2025-04", matrix.closedYearId),
+        false,
+      ),
+    ).toBeNull();
+  });
+
+  it("filters by view, search, class, section, sort, and pagination", async () => {
+    const unpaid = await feesCollectionService.listMatrix(
+      [w.scopeA],
+      query({ view: "unpaid" }),
+      true,
+    );
+    expect(unpaid!.rows.map((row) => row.studentId)).toEqual(
+      expect.arrayContaining([matrix.multiStudentId, matrix.midStudentId]),
+    );
+    expect(unpaid!.rows.some((row) => row.studentId === matrix.partialStudentId)).toBe(false);
+
+    const partial = await feesCollectionService.listMatrix(
+      [w.scopeA],
+      query({ view: "partial" }),
+      true,
+    );
+    expect(partial!.rows.map((row) => row.studentId)).toEqual([matrix.partialStudentId]);
+
+    const paid = await feesCollectionService.listMatrix([w.scopeA], query({ view: "paid" }), true);
+    expect(paid!.rows.map((row) => row.studentId)).toEqual(
+      expect.arrayContaining([
+        matrix.paidStudentId,
+        matrix.concededStudentId,
+        matrix.waivedStudentId,
+      ]),
+    );
+
+    const notGenerated = await feesCollectionService.listMatrix(
+      [w.scopeA],
+      query({ view: "notGenerated" }),
+      true,
+    );
+    expect(notGenerated!.rows.map((row) => row.studentId)).toEqual(
+      expect.arrayContaining([matrix.unassignedStudentId, matrix.ungeneratedStudentId]),
+    );
+    expect(notGenerated!.rows.some((row) => row.studentId === matrix.cancelledStudentId)).toBe(
+      false,
+    );
+
+    const attention = await feesCollectionService.listMatrix(
+      [w.scopeA],
+      query({ view: "attention" }),
+      true,
+    );
+    expect(attention!.rows.map((row) => row.studentId)).toEqual(
+      expect.arrayContaining([
+        matrix.unassignedStudentId,
+        matrix.ungeneratedStudentId,
+        matrix.openingStudentId,
+        matrix.multiStudentId,
+      ]),
+    );
+    expect(attention!.rows.some((row) => row.studentId === matrix.paidStudentId)).toBe(false);
+
+    const searched = await feesCollectionService.listMatrix(
+      [w.scopeA],
+      query({ search: "MX-PARTIAL" }),
+      true,
+    );
+    expect(searched!.rows.map((row) => row.studentId)).toEqual([matrix.partialStudentId]);
+    const wildcard = await feesCollectionService.listMatrix(
+      [w.scopeA],
+      query({ search: "%" }),
+      true,
+    );
+    expect(wildcard!.rows).toHaveLength(0);
+
+    const sectionFiltered = await feesCollectionService.listMatrix(
+      [w.scopeA],
+      query({ sectionId: matrix.sectionId }),
+      true,
+    );
+    expect(sectionFiltered!.rows.length).toBeGreaterThan(0);
+    expect(sectionFiltered!.rows.every((row) => row.sectionId === matrix.sectionId)).toBe(true);
+
+    const byBalance = await feesCollectionService.listMatrix(
+      [w.scopeA],
+      query({ sort: "balance" }),
+      true,
+    );
+    const balanceOrder = byBalance!.rows.map((row) => row.studentId);
+    const cancelledIndex = balanceOrder.indexOf(matrix.cancelledStudentId);
+    const openingIndex = balanceOrder.indexOf(matrix.openingStudentId);
+    const paidIndex = balanceOrder.indexOf(matrix.paidStudentId);
+    expect(cancelledIndex).toBeLessThan(openingIndex);
+    expect(openingIndex).toBeLessThan(paidIndex);
+    expect(byBalance!.cohortTotals.outstandingStudentCount).toBe(5);
+
+    const firstPage = await feesCollectionService.listMatrix(
+      [w.scopeA],
+      query({ page: 1, pageSize: 2, sort: "student" }),
+      true,
+    );
+    const secondPage = await feesCollectionService.listMatrix(
+      [w.scopeA],
+      query({ page: 2, pageSize: 2, sort: "student" }),
+      true,
+    );
+    expect(firstPage!.pageInfo.total).toBe(secondPage!.pageInfo.total);
+    expect(firstPage!.rows).toHaveLength(2);
+    expect(secondPage!.rows).toHaveLength(2);
+    expect(
+      firstPage!.rows.some((left) =>
+        secondPage!.rows.some((right) => left.studentId === right.studentId),
+      ),
+    ).toBe(false);
+  }, 120_000);
+
+  it("uses the IST calendar date for due and overdue timing", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2025-09-30T18:30:00.000Z"));
+    try {
+      const result = await feesCollectionService.listMatrix([w.scopeA], query(), true);
+      const byId = new Map(result!.rows.map((row) => [row.studentId, row]));
+      expect(byId.get(matrix.multiStudentId)?.timingState).toBe("overdue");
+      expect(byId.get(matrix.midStudentId)?.timingState).toBe("due");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("enforces academic-year history visibility", async () => {
+    const closed = query({ academicYearId: matrix.closedYearId });
+    expect(await feesCollectionService.listMatrix([w.scopeA], closed, false)).toBeNull();
+    expect(await feesCollectionService.listMatrix([w.scopeA], closed, true)).not.toBeNull();
+  });
+
+  it("isolates a foreign scope from the matrix cohort", async () => {
+    const result = await feesCollectionService.listMatrix([w.scopeB], query(), true);
+    expect(result).toBeNull();
   });
 });

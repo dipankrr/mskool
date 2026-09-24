@@ -9,6 +9,10 @@ import {
   duesListSchema,
   assignFeeStructureSchema,
   feeHeadSelectSchema,
+  feeMatrixCellInputSchema,
+  feeMatrixCellOutputSchema,
+  feeMatrixInputSchema,
+  feeMatrixOutputSchema,
   feeInstallmentSelectSchema,
   feePaymentSelectSchema,
   feeRefundSelectSchema,
@@ -63,6 +67,8 @@ import { router, staffListProcedure, staffProcedure } from "../trpc";
 
 const notFound = () =>
   new TRPCError({ code: "NOT_FOUND", message: "Resource not found." });
+
+const READ_HISTORY = "academic_year:read_history" as const;
 
 /** Required school parent (B5): overrides the builder's optional schoolId. */
 const schoolParent = z.object({ schoolId: z.uuid() });
@@ -498,6 +504,50 @@ export const feesRouter = router({
         feesService
           .createConcession(ctx.scope, input.id, input.data, ctx.userId)
           .then((c) => ({ concessionAmount: c.concessionAmount })),
+      ),
+  }),
+
+  matrix: router({
+    list: staffListProcedure("fee_report:read")
+      .meta({
+        openapi: {
+          method: "GET",
+          path: "/fee-matrix",
+          tags: ["fees"],
+          summary: "List the student fee status matrix",
+          protect: true,
+        },
+      })
+      .input(feeMatrixInputSchema)
+      .output(feeMatrixOutputSchema)
+      .query(async ({ ctx, input }) => {
+        const result = await feesCollectionService.listMatrix(
+          ctx.scopes,
+          input,
+          ctx.canWithin(READ_HISTORY),
+        );
+        if (!result) throw notFound();
+        return result;
+      }),
+
+    cell: staffListProcedure("fee_report:read")
+      .meta({
+        openapi: {
+          method: "GET",
+          path: "/fee-matrix/cell",
+          tags: ["fees"],
+          summary: "Get one student fee matrix cell breakdown",
+          protect: true,
+        },
+      })
+      .input(feeMatrixCellInputSchema)
+      .output(feeMatrixCellOutputSchema.nullable())
+      .query(({ ctx, input }) =>
+        feesCollectionService.getMatrixCell(
+          ctx.scopes,
+          input,
+          ctx.canWithin(READ_HISTORY),
+        ),
       ),
   }),
 

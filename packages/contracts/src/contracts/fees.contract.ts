@@ -513,3 +513,200 @@ export const gatewayPaymentSchema = z.object({
   paymentDate: isoDate,
 });
 export type GatewayPaymentInput = z.infer<typeof gatewayPaymentSchema>;
+
+export const feeMatrixSortSchema = z.enum(["student", "balance", "oldestDue"]);
+export type FeeMatrixSort = z.infer<typeof feeMatrixSortSchema>;
+
+export const feeMatrixViewSchema = z.enum([
+  "all",
+  "attention",
+  "unpaid",
+  "partial",
+  "overdue",
+  "paid",
+  "notGenerated",
+]);
+export type FeeMatrixView = z.infer<typeof feeMatrixViewSchema>;
+
+export const feeMatrixInputSchema = z.object({
+  academicYearId: z.uuid(),
+  classId: z.uuid().optional(),
+  sectionId: z.uuid().optional(),
+  search: z.string().trim().max(150).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(200).default(50),
+  sort: feeMatrixSortSchema.default("student"),
+  view: feeMatrixViewSchema.default("all"),
+});
+export type FeeMatrixInput = z.infer<typeof feeMatrixInputSchema>;
+
+export const feeMatrixCellInputSchema = z.object({
+  academicYearId: z.uuid(),
+  studentId: z.uuid(),
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+});
+export type FeeMatrixCellInput = z.infer<typeof feeMatrixCellInputSchema>;
+
+export const feeMatrixPaymentStateSchema = z.enum([
+  "no_fee",
+  "unpaid",
+  "partial",
+  "paid",
+  "conceded",
+]);
+export type FeeMatrixPaymentState = z.infer<typeof feeMatrixPaymentStateSchema>;
+
+export const feeMatrixTimingStateSchema = z.enum(["none", "upcoming", "due", "overdue"]);
+export type FeeMatrixTimingState = z.infer<typeof feeMatrixTimingStateSchema>;
+
+export const feeMatrixAssignmentStateSchema = z.enum([
+  "unassigned",
+  "active",
+  "suspended",
+  "cancelled",
+]);
+export type FeeMatrixAssignmentState = z.infer<typeof feeMatrixAssignmentStateSchema>;
+
+export const feeMatrixGenerationStateSchema = z.enum([
+  "not_assigned",
+  "not_generated",
+  "generated",
+]);
+export type FeeMatrixGenerationState = z.infer<typeof feeMatrixGenerationStateSchema>;
+
+export const feeMatrixOpeningBalanceStatusSchema = z.enum([
+  "none",
+  "unpaid",
+  "partial",
+  "paid",
+  "waived",
+]);
+export type FeeMatrixOpeningBalanceStatus = z.infer<typeof feeMatrixOpeningBalanceStatusSchema>;
+
+export const feeMatrixAmountsSchema = z.object({
+  assessedAmount: money,
+  concessionAmount: money,
+  netAmount: money,
+  paidAmount: money,
+  balanceAmount: money,
+  feeHeadCount: z.number().int().nonnegative(),
+  oldestDueDate: isoDate.nullable(),
+  paymentState: feeMatrixPaymentStateSchema,
+  timingState: feeMatrixTimingStateSchema,
+});
+export type FeeMatrixAmounts = z.infer<typeof feeMatrixAmountsSchema>;
+
+export const feeMatrixMonthSchema = z.object({
+  key: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+  year: z.number().int(),
+  month: z.number().int().min(1).max(12),
+  label: z.string(),
+  startDate: isoDate,
+  endDate: isoDate,
+});
+export type FeeMatrixMonth = z.infer<typeof feeMatrixMonthSchema>;
+
+export const feeMatrixCellSchema = feeMatrixAmountsSchema.extend({
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+});
+export type FeeMatrixCell = z.infer<typeof feeMatrixCellSchema>;
+
+export const feeMatrixCellInstallmentSchema = z.object({
+  id: z.uuid(),
+  description: z.string().nullable(),
+  feeHeadId: z.uuid(),
+  feeHeadName: z.string(),
+  dueDate: isoDate,
+  amount: money,
+  concessionAmount: money,
+  netAmount: money,
+  paidAmount: money,
+  balanceAmount: money,
+  paymentStatus: z.enum(["unpaid", "partial", "paid", "waived"]),
+});
+export type FeeMatrixCellInstallment = z.infer<typeof feeMatrixCellInstallmentSchema>;
+
+export const feeMatrixCellOutputSchema = feeMatrixCellSchema.extend({
+  studentId: z.uuid(),
+  installments: z.array(feeMatrixCellInstallmentSchema),
+});
+export type FeeMatrixCellOutput = z.infer<typeof feeMatrixCellOutputSchema>;
+
+export const feeMatrixOpeningBalanceSchema = z.object({
+  amount: money,
+  paid: money,
+  balance: money,
+  status: feeMatrixOpeningBalanceStatusSchema,
+  originCount: z.number().int().nonnegative(),
+});
+export type FeeMatrixOpeningBalance = z.infer<typeof feeMatrixOpeningBalanceSchema>;
+
+export const feeMatrixRowSchema = z.object({
+  studentId: z.uuid(),
+  admissionNumber: z.string(),
+  studentName: z.string(),
+  classId: z.uuid(),
+  className: z.string(),
+  sectionId: z.uuid().nullable(),
+  sectionName: z.string().nullable(),
+  rollNumber: z.string().nullable(),
+  assignmentId: z.uuid().nullable(),
+  assignmentState: feeMatrixAssignmentStateSchema,
+  generationState: feeMatrixGenerationStateSchema,
+  generatedInstallmentCount: z.number().int().nonnegative(),
+  cells: z.array(feeMatrixCellSchema),
+  totals: feeMatrixAmountsSchema,
+  openingBalance: feeMatrixOpeningBalanceSchema,
+  paymentState: feeMatrixPaymentStateSchema,
+  timingState: feeMatrixTimingStateSchema,
+  oldestDueDate: isoDate.nullable(),
+});
+export type FeeMatrixRow = z.infer<typeof feeMatrixRowSchema>;
+
+export const feeMatrixMonthSummarySchema = z.object({
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+  studentCount: z.number().int().nonnegative(),
+  outstandingStudentCount: z.number().int().nonnegative(),
+  assessedAmount: money,
+  concessionAmount: money,
+  netAmount: money,
+  paidAmount: money,
+  balanceAmount: money,
+  feeHeadCount: z.number().int().nonnegative(),
+  oldestDueDate: isoDate.nullable(),
+});
+export type FeeMatrixMonthSummary = z.infer<typeof feeMatrixMonthSummarySchema>;
+
+export const feeMatrixCohortTotalsSchema = feeMatrixAmountsSchema.extend({
+  studentCount: z.number().int().nonnegative(),
+  assignedCount: z.number().int().nonnegative(),
+  notGeneratedCount: z.number().int().nonnegative(),
+  outstandingStudentCount: z.number().int().nonnegative(),
+  openingBalance: feeMatrixOpeningBalanceSchema,
+});
+export type FeeMatrixCohortTotals = z.infer<typeof feeMatrixCohortTotalsSchema>;
+
+export const feeMatrixPageInfoSchema = z.object({
+  page: z.number().int().positive(),
+  pageSize: z.number().int().positive(),
+  total: z.number().int().nonnegative(),
+  totalPages: z.number().int().nonnegative(),
+  hasPreviousPage: z.boolean(),
+  hasNextPage: z.boolean(),
+});
+export type FeeMatrixPageInfo = z.infer<typeof feeMatrixPageInfoSchema>;
+
+export const feeMatrixOutputSchema = z.object({
+  academicYear: z.object({
+    id: z.uuid(),
+    name: z.string(),
+    startDate: isoDate,
+    endDate: isoDate,
+  }),
+  months: z.array(feeMatrixMonthSchema),
+  rows: z.array(feeMatrixRowSchema),
+  cohortTotals: feeMatrixCohortTotalsSchema,
+  monthSummaries: z.array(feeMatrixMonthSummarySchema),
+  pageInfo: feeMatrixPageInfoSchema,
+});
+export type FeeMatrixOutput = z.infer<typeof feeMatrixOutputSchema>;

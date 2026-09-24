@@ -1,8 +1,20 @@
-import { atSchoolLevel, requireSchoolId } from "./academic.service";
-import { allocateOldestFirst, computeLateFee, fromCents, toCents } from "./fees-maths";
+import { atSchoolLevel, requireSchoolId, yearVisibilityWhere } from "./academic.service";
+import {
+  allocateOldestFirst,
+  computeLateFee,
+  daysInMonth,
+  fromCents,
+  isoOf,
+  monthsBetween,
+  toCents,
+} from "./fees-maths";
 import { feesService } from "./fees.service";
-import { scopeWhere, type DataScope, type ScopeColumns } from "@repo/authz";
+import { escapeLike, scopeWhere, type DataScope, type ScopeColumns } from "@repo/authz";
 import type {
+  FeeMatrixCellInput,
+  FeeMatrixCellOutput,
+  FeeMatrixInput,
+  FeeMatrixOutput,
   GatewayPaymentInput,
   PaymentTransitionInput,
   RecordPaymentInput,
@@ -11,16 +23,21 @@ import type {
 import { db } from "@repo/db";
 import {
   academicYears,
+  classes,
+  feeHeads,
   feeInstallments,
   feePayments,
   feeRefunds,
   financialTransactions,
+  openingBalances,
   paymentAllocations,
   receiptNumberSequences,
+  sections,
+  studentEnrollments,
   studentFeeAssignments,
   students,
 } from "@repo/db/schema";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 
 /**
  * FEES — collection and the ledger. Phase 4, chunk F5.
@@ -69,9 +86,293 @@ const LEDGER_SCOPE: ScopeColumns = {
   organizationId: financialTransactions.organizationId,
   schoolId: financialTransactions.schoolId,
 };
+const MATRIX_ENROLLMENT_SCOPE: ScopeColumns = {
+  organizationId: studentEnrollments.organizationId,
+  schoolId: studentEnrollments.schoolId,
+  classId: studentEnrollments.classId,
+  sectionId: studentEnrollments.sectionId,
+};
+const MATRIX_STUDENT_SCOPE: ScopeColumns = {
+  organizationId: students.organizationId,
+  schoolId: students.schoolId,
+};
+const MATRIX_YEAR_SCOPE: ScopeColumns = {
+  organizationId: academicYears.organizationId,
+  schoolId: academicYears.schoolId,
+};
+const MATRIX_OPENING_BALANCE_SCOPE: ScopeColumns = {
+  organizationId: openingBalances.organizationId,
+  schoolId: openingBalances.schoolId,
+};
 
 /** The modes that confirm money at the desk; everything else enters `pending`. */
 const IMMEDIATE_MODES = new Set(["cash"]);
+const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
+
+type MatrixInstallment = {
+  studentId: string;
+  feeHeadId: string;
+  amount: string;
+  concessionAmount: string;
+  netAmount: string;
+  paidAmount: string;
+  dueDate: string;
+  paymentStatus: "unpaid" | "partial" | "paid" | "waived" | "cancelled";
+};
+
+type MatrixAccumulator = {
+  assessedCents: bigint;
+  concessionCents: bigint;
+  netCents: bigint;
+  paidCents: bigint;
+  balanceCents: bigint;
+  feeHeadIds: Set<string>;
+  activeInstallmentCount: number;
+  waivedInstallmentCount: number;
+  outstandingDueDates: string[];
+  oldestDueDate: string | null;
+};
+
+type MatrixOpeningBalanceRow = {
+  amount: string;
+  paidAmount: string;
+  status: "unpaid" | "partial" | "paid" | "waived";
+  originAcademicYearId: string;
+};
+
+type MatrixOpeningBalanceAccumulator = {
+  amountCents: bigint;
+  paidCents: bigint;
+  balanceCents: bigint;
+  originAcademicYearIds: Set<string>;
+  rowCount: number;
+  waivedCount: number;
+};
+
+function emptyMatrixAccumulator(): MatrixAccumulator {
+  return {
+    assessedCents: 0n,
+    concessionCents: 0n,
+    netCents: 0n,
+    paidCents: 0n,
+    balanceCents: 0n,
+    feeHeadIds: new Set<string>(),
+    activeInstallmentCount: 0,
+    waivedInstallmentCount: 0,
+    outstandingDueDates: [],
+    oldestDueDate: null,
+  };
+}
+
+function matrixInstallmentBalance(
+  installment: Pick<MatrixInstallment, "netAmount" | "paidAmount" | "paymentStatus">,
+) {
+  const netCents = toCents(installment.netAmount);
+  const paidCents = toCents(installment.paidAmount);
+  return installment.paymentStatus === "waived" || netCents <= paidCents ? 0n : netCents - paidCents;
+}
+
+function addMatrixInstallment(accumulator: MatrixAccumulator, installment: MatrixInstallment) {
+  if (installment.paymentStatus === "cancelled") return;
+
+  const netCents = toCents(installment.netAmount);
+  const paidCents = toCents(installment.paidAmount);
+  const balanceCents = matrixInstallmentBalance(installment);
+
+  accumulator.assessedCents += toCents(installment.amount);
+  accumulator.concessionCents += toCents(installment.concessionAmount);
+  accumulator.netCents += netCents;
+  accumulator.paidCents += paidCents;
+  accumulator.balanceCents += balanceCents;
+  accumulator.feeHeadIds.add(installment.feeHeadId);
+  accumulator.activeInstallmentCount += 1;
+  if (installment.paymentStatus === "waived") {
+    accumulator.waivedInstallmentCount += 1;
+  }
+  if (balanceCents > 0n) {
+    accumulator.outstandingDueDates.push(installment.dueDate);
+    if (accumulator.oldestDueDate === null || installment.dueDate < accumulator.oldestDueDate) {
+      accumulator.oldestDueDate = installment.dueDate;
+    }
+  }
+}
+
+function mergeMatrixAccumulator(target: MatrixAccumulator, source: MatrixAccumulator) {
+  target.assessedCents += source.assessedCents;
+  target.concessionCents += source.concessionCents;
+  target.netCents += source.netCents;
+  target.paidCents += source.paidCents;
+  target.balanceCents += source.balanceCents;
+  for (const feeHeadId of source.feeHeadIds) target.feeHeadIds.add(feeHeadId);
+  target.activeInstallmentCount += source.activeInstallmentCount;
+  target.waivedInstallmentCount += source.waivedInstallmentCount;
+  target.outstandingDueDates.push(...source.outstandingDueDates);
+  if (
+    source.oldestDueDate !== null &&
+    (target.oldestDueDate === null || source.oldestDueDate < target.oldestDueDate)
+  ) {
+    target.oldestDueDate = source.oldestDueDate;
+  }
+}
+
+function matrixStates(accumulator: MatrixAccumulator, asOf: string) {
+  let paymentState: "no_fee" | "unpaid" | "partial" | "paid" | "conceded";
+  if (accumulator.activeInstallmentCount === 0 || accumulator.assessedCents === 0n) {
+    paymentState = "no_fee";
+  } else if (accumulator.netCents === 0n) {
+    paymentState = "conceded";
+  } else if (accumulator.balanceCents > 0n) {
+    paymentState = accumulator.paidCents > 0n ? "partial" : "unpaid";
+  } else if (accumulator.waivedInstallmentCount === accumulator.activeInstallmentCount) {
+    paymentState = "conceded";
+  } else {
+    paymentState = "paid";
+  }
+
+  let timingState: "none" | "upcoming" | "due" | "overdue" = "none";
+  if (accumulator.outstandingDueDates.length > 0) {
+    if (accumulator.outstandingDueDates.some((dueDate) => dueDate < asOf)) {
+      timingState = "overdue";
+    } else if (accumulator.outstandingDueDates.some((dueDate) => dueDate === asOf)) {
+      timingState = "due";
+    } else {
+      timingState = "upcoming";
+    }
+  }
+
+  return {
+    paymentState,
+    timingState,
+    oldestDueDate: accumulator.oldestDueDate,
+  };
+}
+
+function matrixAmounts(accumulator: MatrixAccumulator, asOf: string) {
+  return {
+    assessedAmount: fromCents(accumulator.assessedCents),
+    concessionAmount: fromCents(accumulator.concessionCents),
+    netAmount: fromCents(accumulator.netCents),
+    paidAmount: fromCents(accumulator.paidCents),
+    balanceAmount: fromCents(accumulator.balanceCents),
+    feeHeadCount: accumulator.feeHeadIds.size,
+    ...matrixStates(accumulator, asOf),
+  };
+}
+
+function emptyOpeningBalanceAccumulator(): MatrixOpeningBalanceAccumulator {
+  return {
+    amountCents: 0n,
+    paidCents: 0n,
+    balanceCents: 0n,
+    originAcademicYearIds: new Set<string>(),
+    rowCount: 0,
+    waivedCount: 0,
+  };
+}
+
+function addOpeningBalance(
+  accumulator: MatrixOpeningBalanceAccumulator,
+  row: MatrixOpeningBalanceRow,
+) {
+  const amountCents = toCents(row.amount);
+  const paidCents = toCents(row.paidAmount);
+  const balanceCents =
+    row.status === "waived" || amountCents <= paidCents ? 0n : amountCents - paidCents;
+
+  accumulator.amountCents += amountCents;
+  accumulator.paidCents += paidCents;
+  accumulator.balanceCents += balanceCents;
+  accumulator.originAcademicYearIds.add(row.originAcademicYearId);
+  accumulator.rowCount += 1;
+  if (row.status === "waived") accumulator.waivedCount += 1;
+}
+
+function mergeOpeningBalance(
+  target: MatrixOpeningBalanceAccumulator,
+  source: MatrixOpeningBalanceAccumulator,
+) {
+  target.amountCents += source.amountCents;
+  target.paidCents += source.paidCents;
+  target.balanceCents += source.balanceCents;
+  for (const originId of source.originAcademicYearIds) {
+    target.originAcademicYearIds.add(originId);
+  }
+  target.rowCount += source.rowCount;
+  target.waivedCount += source.waivedCount;
+}
+
+function openingBalanceSummary(accumulator: MatrixOpeningBalanceAccumulator) {
+  let status: "none" | "unpaid" | "partial" | "paid" | "waived" = "none";
+  if (accumulator.rowCount > 0) {
+    if (accumulator.waivedCount === accumulator.rowCount) {
+      status = "waived";
+    } else if (accumulator.balanceCents === 0n) {
+      status = "paid";
+    } else if (accumulator.paidCents > 0n) {
+      status = "partial";
+    } else {
+      status = "unpaid";
+    }
+  }
+
+  return {
+    amount: fromCents(accumulator.amountCents),
+    paid: fromCents(accumulator.paidCents),
+    balance: fromCents(accumulator.balanceCents),
+    status,
+    originCount: accumulator.originAcademicYearIds.size,
+  };
+}
+
+function matrixRowBalance(row: FeeMatrixOutput["rows"][number]) {
+  return toCents(row.totals.balanceAmount) + toCents(row.openingBalance.balance);
+}
+
+function matrixRowMatchesView(row: FeeMatrixOutput["rows"][number], view: FeeMatrixInput["view"]) {
+  switch (view) {
+    case "all":
+      return true;
+    case "attention":
+      return (
+        row.generationState !== "generated" ||
+        toCents(row.openingBalance.balance) > 0n ||
+        (toCents(row.totals.balanceAmount) > 0n && row.timingState !== "upcoming")
+      );
+    case "unpaid":
+      return row.paymentState === "unpaid";
+    case "partial":
+      return row.paymentState === "partial";
+    case "overdue":
+      return row.timingState === "overdue";
+    case "paid":
+      return ["paid", "conceded"].includes(row.paymentState);
+    case "notGenerated":
+      return row.generationState !== "generated";
+  }
+}
+
+function matrixRowSort(
+  left: FeeMatrixOutput["rows"][number],
+  right: FeeMatrixOutput["rows"][number],
+  sort: FeeMatrixInput["sort"],
+) {
+  if (sort === "balance") {
+    const leftBalance = matrixRowBalance(left);
+    const rightBalance = matrixRowBalance(right);
+    if (leftBalance !== rightBalance) return leftBalance > rightBalance ? -1 : 1;
+  }
+  if (sort === "oldestDue") {
+    if (left.oldestDueDate === null) return right.oldestDueDate === null ? 0 : 1;
+    if (right.oldestDueDate === null) return -1;
+    if (left.oldestDueDate !== right.oldestDueDate) {
+      return left.oldestDueDate < right.oldestDueDate ? -1 : 1;
+    }
+  }
+  const nameOrder = left.studentName.localeCompare(right.studentName);
+  if (nameOrder !== 0) return nameOrder;
+  const admissionOrder = left.admissionNumber.localeCompare(right.admissionNumber);
+  return admissionOrder !== 0 ? admissionOrder : left.studentId.localeCompare(right.studentId);
+}
 
 export class FeesCollectionService {
   /**
@@ -810,6 +1111,457 @@ export class FeesCollectionService {
         and(eq(students.id, studentId), eq(students.organizationId, organizationId)),
       );
     return row?.schoolId ?? null;
+  }
+
+  async listMatrix(
+    scopes: DataScope[],
+    input: FeeMatrixInput,
+    includeHistory: boolean,
+  ): Promise<FeeMatrixOutput | null> {
+    const [year] = await db
+      .select({
+        id: academicYears.id,
+        name: academicYears.name,
+        startDate: academicYears.startDate,
+        endDate: academicYears.endDate,
+      })
+      .from(academicYears)
+      .where(
+        and(
+          eq(academicYears.id, input.academicYearId),
+          scopeWhere(scopes.map(atSchoolLevel), MATRIX_YEAR_SCOPE),
+          yearVisibilityWhere(includeHistory),
+        ),
+      );
+
+    if (!year) return null;
+
+    const search = input.search?.trim();
+    const searchWhere = search
+      ? or(
+          ilike(students.firstName, `%${escapeLike(search)}%`),
+          ilike(students.middleName, `%${escapeLike(search)}%`),
+          ilike(students.lastName, `%${escapeLike(search)}%`),
+          ilike(students.admissionNumber, `%${escapeLike(search)}%`),
+        )
+      : undefined;
+
+    const cohort = await db
+      .select({
+        enrollmentId: studentEnrollments.id,
+        studentId: students.id,
+        admissionNumber: students.admissionNumber,
+        firstName: students.firstName,
+        middleName: students.middleName,
+        lastName: students.lastName,
+        classId: studentEnrollments.classId,
+        className: classes.name,
+        sectionId: studentEnrollments.sectionId,
+        sectionName: sections.name,
+        rollNumber: studentEnrollments.rollNumber,
+        assignmentId: studentFeeAssignments.id,
+        assignmentStatus: studentFeeAssignments.status,
+      })
+      .from(studentEnrollments)
+      .innerJoin(
+        academicYears,
+        and(
+          eq(academicYears.id, studentEnrollments.academicYearId),
+          eq(academicYears.organizationId, studentEnrollments.organizationId),
+          eq(academicYears.schoolId, studentEnrollments.schoolId),
+        ),
+      )
+      .innerJoin(
+        students,
+        and(
+          eq(students.id, studentEnrollments.studentId),
+          eq(students.organizationId, studentEnrollments.organizationId),
+          eq(students.schoolId, studentEnrollments.schoolId),
+        ),
+      )
+      .innerJoin(
+        classes,
+        and(
+          eq(classes.id, studentEnrollments.classId),
+          eq(classes.organizationId, studentEnrollments.organizationId),
+          eq(classes.schoolId, studentEnrollments.schoolId),
+        ),
+      )
+      .leftJoin(
+        sections,
+        and(
+          eq(sections.id, studentEnrollments.sectionId),
+          eq(sections.organizationId, studentEnrollments.organizationId),
+          eq(sections.schoolId, studentEnrollments.schoolId),
+          eq(sections.classId, studentEnrollments.classId),
+          eq(sections.academicYearId, year.id),
+        ),
+      )
+      .leftJoin(
+        studentFeeAssignments,
+        and(
+          eq(studentFeeAssignments.enrollmentId, studentEnrollments.id),
+          eq(studentFeeAssignments.studentId, studentEnrollments.studentId),
+          eq(studentFeeAssignments.academicYearId, year.id),
+          eq(studentFeeAssignments.organizationId, studentEnrollments.organizationId),
+          eq(studentFeeAssignments.schoolId, studentEnrollments.schoolId),
+        ),
+      )
+      .where(
+        and(
+          eq(studentEnrollments.academicYearId, year.id),
+          input.classId ? eq(studentEnrollments.classId, input.classId) : undefined,
+          input.sectionId ? eq(studentEnrollments.sectionId, input.sectionId) : undefined,
+          searchWhere,
+          scopeWhere(scopes, MATRIX_ENROLLMENT_SCOPE),
+          scopeWhere(scopes.map(atSchoolLevel), MATRIX_STUDENT_SCOPE),
+          yearVisibilityWhere(includeHistory),
+        ),
+      )
+      .orderBy(asc(students.lastName), asc(students.firstName), asc(students.id));
+
+    const studentIds = cohort.map((row) => row.studentId);
+    const installmentRows = studentIds.length
+      ? await db
+          .select({
+            studentId: feeInstallments.studentId,
+            feeHeadId: feeInstallments.feeHeadId,
+            amount: feeInstallments.amount,
+            concessionAmount: feeInstallments.concessionAmount,
+            netAmount: feeInstallments.netAmount,
+            paidAmount: feeInstallments.paidAmount,
+            dueDate: feeInstallments.dueDate,
+            paymentStatus: feeInstallments.paymentStatus,
+          })
+          .from(feeInstallments)
+          .where(
+            and(
+              eq(feeInstallments.academicYearId, year.id),
+              inArray(feeInstallments.studentId, studentIds),
+              scopeWhere(scopes.map(atSchoolLevel), INSTALLMENT_SCOPE),
+            ),
+          )
+          .orderBy(asc(feeInstallments.dueDate), asc(feeInstallments.id))
+      : [];
+
+    const openingRows = studentIds.length
+      ? await db
+          .select({
+            studentId: openingBalances.studentId,
+            amount: openingBalances.amount,
+            paidAmount: openingBalances.paidAmount,
+            status: openingBalances.status,
+            originAcademicYearId: openingBalances.originAcademicYearId,
+          })
+          .from(openingBalances)
+          .where(
+            and(
+              eq(openingBalances.academicYearId, year.id),
+              inArray(openingBalances.studentId, studentIds),
+              scopeWhere(scopes.map(atSchoolLevel), MATRIX_OPENING_BALANCE_SCOPE),
+            ),
+          )
+          .orderBy(asc(openingBalances.createdAt))
+      : [];
+
+    const installmentsByStudent = new Map<string, MatrixInstallment[]>();
+    for (const installment of installmentRows) {
+      const rows = installmentsByStudent.get(installment.studentId) ?? [];
+      rows.push(installment);
+      installmentsByStudent.set(installment.studentId, rows);
+    }
+
+    const openingByStudent = new Map<string, MatrixOpeningBalanceRow[]>();
+    for (const row of openingRows) {
+      const rows = openingByStudent.get(row.studentId) ?? [];
+      rows.push(row);
+      openingByStudent.set(row.studentId, rows);
+    }
+
+    const monthNames = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+    const months = monthsBetween(year.startDate, year.endDate).map((month) => {
+      const firstDate = isoOf(month.year, month.month, 1);
+      const lastDate = isoOf(month.year, month.month, daysInMonth(month.year, month.month));
+      return {
+        key: `${month.year}-${String(month.month).padStart(2, "0")}`,
+        year: month.year,
+        month: month.month,
+        label: `${monthNames[month.month - 1]} ${month.year}`,
+        startDate: firstDate < year.startDate ? year.startDate : firstDate,
+        endDate: lastDate > year.endDate ? year.endDate : lastDate,
+      };
+    });
+    const monthAccumulators = new Map<string, MatrixAccumulator>(
+      months.map((month) => [month.key, emptyMatrixAccumulator()]),
+      );
+    const monthStudentCounts = new Map<string, number>();
+    const monthOutstandingCounts = new Map<string, number>();
+    const asOf = new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
+    const cohortAccumulator = emptyMatrixAccumulator();
+    const cohortOpeningAccumulator = emptyOpeningBalanceAccumulator();
+    const computedRows: FeeMatrixOutput["rows"] = [];
+
+    for (const cohortRow of cohort) {
+      const studentInstallments = installmentsByStudent.get(cohortRow.studentId) ?? [];
+      const rowAccumulator = emptyMatrixAccumulator();
+      const cellAccumulators = new Map<string, MatrixAccumulator>(
+        months.map((month) => [month.key, emptyMatrixAccumulator()]),
+      );
+
+      for (const installment of studentInstallments) {
+        addMatrixInstallment(rowAccumulator, installment);
+        const month = installment.dueDate.slice(0, 7);
+        const cellAccumulator = cellAccumulators.get(month);
+        if (cellAccumulator) addMatrixInstallment(cellAccumulator, installment);
+      }
+
+      const rowOpeningAccumulator = emptyOpeningBalanceAccumulator();
+      for (const openingRow of openingByStudent.get(cohortRow.studentId) ?? []) {
+        addOpeningBalance(rowOpeningAccumulator, openingRow);
+      }
+
+      const totals = matrixAmounts(rowAccumulator, asOf);
+      const assignmentState: FeeMatrixOutput["rows"][number]["assignmentState"] =
+        cohortRow.assignmentId === null ? "unassigned" : (cohortRow.assignmentStatus ?? "active");
+      const generationState: FeeMatrixOutput["rows"][number]["generationState"] =
+        cohortRow.assignmentId === null
+          ? "not_assigned"
+          : studentInstallments.length === 0
+            ? "not_generated"
+            : "generated";
+      const row: FeeMatrixOutput["rows"][number] = {
+        studentId: cohortRow.studentId,
+        admissionNumber: cohortRow.admissionNumber,
+        studentName: [cohortRow.firstName, cohortRow.middleName, cohortRow.lastName]
+          .filter((part): part is string => Boolean(part))
+          .join(" "),
+        classId: cohortRow.classId,
+        className: cohortRow.className,
+        sectionId: cohortRow.sectionId,
+        sectionName: cohortRow.sectionName,
+        rollNumber: cohortRow.rollNumber,
+        assignmentId: cohortRow.assignmentId,
+        assignmentState,
+        generationState,
+        generatedInstallmentCount: studentInstallments.length,
+        cells: months.map((month) => {
+          const cell = matrixAmounts(
+            cellAccumulators.get(month.key) ?? emptyMatrixAccumulator(),
+            asOf,
+          );
+          return { ...cell, month: month.key };
+        }),
+        totals,
+        openingBalance: openingBalanceSummary(rowOpeningAccumulator),
+        paymentState: totals.paymentState,
+        timingState: totals.timingState,
+        oldestDueDate: totals.oldestDueDate,
+      };
+
+      computedRows.push(row);
+      mergeMatrixAccumulator(cohortAccumulator, rowAccumulator);
+      mergeOpeningBalance(cohortOpeningAccumulator, rowOpeningAccumulator);
+      for (const month of months) {
+        const cellAccumulator = cellAccumulators.get(month.key);
+        if (!cellAccumulator || cellAccumulator.activeInstallmentCount === 0) continue;
+        const cohortMonth = monthAccumulators.get(month.key);
+        if (!cohortMonth) continue;
+        mergeMatrixAccumulator(cohortMonth, cellAccumulator);
+        monthStudentCounts.set(month.key, (monthStudentCounts.get(month.key) ?? 0) + 1);
+        if (cellAccumulator.balanceCents > 0n) {
+          monthOutstandingCounts.set(month.key, (monthOutstandingCounts.get(month.key) ?? 0) + 1);
+        }
+      }
+    }
+
+    const cohortAmounts = matrixAmounts(cohortAccumulator, asOf);
+    const cohortTotals = {
+      ...cohortAmounts,
+      studentCount: computedRows.length,
+      assignedCount: computedRows.filter((row) => row.assignmentId !== null).length,
+      notGeneratedCount: computedRows.filter((row) => row.generationState !== "generated").length,
+      outstandingStudentCount: computedRows.filter((row) => matrixRowBalance(row) > 0n).length,
+      openingBalance: openingBalanceSummary(cohortOpeningAccumulator),
+    };
+    const monthSummaries = months.map((month) => {
+      const accumulator = monthAccumulators.get(month.key) ?? emptyMatrixAccumulator();
+      const amounts = matrixAmounts(accumulator, asOf);
+      return {
+        month: month.key,
+        studentCount: monthStudentCounts.get(month.key) ?? 0,
+        outstandingStudentCount: monthOutstandingCounts.get(month.key) ?? 0,
+        assessedAmount: amounts.assessedAmount,
+        concessionAmount: amounts.concessionAmount,
+        netAmount: amounts.netAmount,
+        paidAmount: amounts.paidAmount,
+        balanceAmount: amounts.balanceAmount,
+        feeHeadCount: amounts.feeHeadCount,
+        oldestDueDate: amounts.oldestDueDate,
+      };
+    });
+
+    const view = input.view ?? "all";
+    const filteredRows = computedRows.filter((row) => matrixRowMatchesView(row, view));
+    filteredRows.sort((left, right) => matrixRowSort(left, right, input.sort ?? "student"));
+    const page = input.page ?? 1;
+    const pageSize = input.pageSize ?? 50;
+    const total = filteredRows.length;
+    const totalPages = total === 0 ? 0 : Math.ceil(total / pageSize);
+    const start = (page - 1) * pageSize;
+    const pageInfo = {
+      page,
+      pageSize,
+      total,
+      totalPages,
+      hasPreviousPage: page > 1 && total > 0,
+      hasNextPage: start + pageSize < total,
+    };
+
+    return {
+      academicYear: {
+        id: year.id,
+        name: year.name,
+        startDate: year.startDate,
+        endDate: year.endDate,
+      },
+      months,
+      rows: filteredRows.slice(start, start + pageSize),
+      cohortTotals,
+      monthSummaries,
+      pageInfo,
+    };
+  }
+
+  async getMatrixCell(
+    scopes: DataScope[],
+    input: FeeMatrixCellInput,
+    includeHistory: boolean,
+  ): Promise<FeeMatrixCellOutput | null> {
+    const [year] = await db
+      .select({ id: academicYears.id })
+      .from(academicYears)
+      .where(
+        and(
+          eq(academicYears.id, input.academicYearId),
+          scopeWhere(scopes.map(atSchoolLevel), MATRIX_YEAR_SCOPE),
+          yearVisibilityWhere(includeHistory),
+        ),
+      );
+
+    if (!year) return null;
+
+    const [enrollment] = await db
+      .select({ studentId: studentEnrollments.studentId })
+      .from(studentEnrollments)
+      .innerJoin(
+        academicYears,
+        and(
+          eq(academicYears.id, studentEnrollments.academicYearId),
+          eq(academicYears.organizationId, studentEnrollments.organizationId),
+          eq(academicYears.schoolId, studentEnrollments.schoolId),
+        ),
+      )
+      .innerJoin(
+        students,
+        and(
+          eq(students.id, studentEnrollments.studentId),
+          eq(students.organizationId, studentEnrollments.organizationId),
+          eq(students.schoolId, studentEnrollments.schoolId),
+        ),
+      )
+      .where(
+        and(
+          eq(studentEnrollments.academicYearId, input.academicYearId),
+          eq(studentEnrollments.studentId, input.studentId),
+          scopeWhere(scopes, MATRIX_ENROLLMENT_SCOPE),
+          scopeWhere(scopes.map(atSchoolLevel), MATRIX_STUDENT_SCOPE),
+          yearVisibilityWhere(includeHistory),
+        ),
+      );
+
+    if (!enrollment) return null;
+
+    const monthStart = `${input.month}-01`;
+    const yearNumber = Number.parseInt(input.month.slice(0, 4), 10);
+    const monthNumber = Number.parseInt(input.month.slice(5, 7), 10);
+    const nextMonth =
+      monthNumber === 12 ? isoOf(yearNumber + 1, 1, 1) : isoOf(yearNumber, monthNumber + 1, 1);
+    const installmentRows = await db
+      .select({
+        id: feeInstallments.id,
+        studentId: feeInstallments.studentId,
+        description: feeInstallments.description,
+        feeHeadId: feeInstallments.feeHeadId,
+        feeHeadName: feeHeads.name,
+        dueDate: feeInstallments.dueDate,
+        amount: feeInstallments.amount,
+        concessionAmount: feeInstallments.concessionAmount,
+        netAmount: feeInstallments.netAmount,
+        paidAmount: feeInstallments.paidAmount,
+        paymentStatus: feeInstallments.paymentStatus,
+      })
+      .from(feeInstallments)
+      .innerJoin(
+        feeHeads,
+        and(
+          eq(feeHeads.id, feeInstallments.feeHeadId),
+          eq(feeHeads.organizationId, feeInstallments.organizationId),
+          eq(feeHeads.schoolId, feeInstallments.schoolId),
+        ),
+      )
+      .where(
+        and(
+          eq(feeInstallments.academicYearId, input.academicYearId),
+          eq(feeInstallments.studentId, input.studentId),
+          sql`${feeInstallments.dueDate} >= ${monthStart}`,
+          sql`${feeInstallments.dueDate} < ${nextMonth}`,
+          inArray(feeInstallments.paymentStatus, ["unpaid", "partial", "paid", "waived"]),
+          scopeWhere(scopes.map(atSchoolLevel), INSTALLMENT_SCOPE),
+        ),
+      )
+      .orderBy(asc(feeInstallments.dueDate), asc(feeInstallments.id));
+
+    const accumulator = emptyMatrixAccumulator();
+    const installments = installmentRows.flatMap((installment) => {
+      if (installment.paymentStatus === "cancelled") return [];
+      addMatrixInstallment(accumulator, installment);
+      return [
+        {
+          id: installment.id,
+          description: installment.description,
+          feeHeadId: installment.feeHeadId,
+          feeHeadName: installment.feeHeadName,
+          dueDate: installment.dueDate,
+          amount: fromCents(toCents(installment.amount)),
+          concessionAmount: fromCents(toCents(installment.concessionAmount)),
+          netAmount: fromCents(toCents(installment.netAmount)),
+          paidAmount: fromCents(toCents(installment.paidAmount)),
+          balanceAmount: fromCents(matrixInstallmentBalance(installment)),
+          paymentStatus: installment.paymentStatus,
+        },
+      ];
+    });
+    const asOf = new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
+
+    return {
+      studentId: input.studentId,
+      month: input.month,
+      ...matrixAmounts(accumulator, asOf),
+      installments,
+    };
   }
 
   // -------------------------------------------------------------------------
