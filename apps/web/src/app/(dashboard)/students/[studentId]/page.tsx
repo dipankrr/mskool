@@ -37,6 +37,7 @@ import {
   useStudentEnrollments,
   useStudentMutations,
 } from "@/features/students/use-students";
+import { StudentPhotoCard } from "@/features/students/photo-card";
 import { useClasses } from "@/features/classes/use-classes";
 import { useSections } from "@/features/sections/use-sections";
 import { useActiveContext } from "@/features/session/active-context";
@@ -262,6 +263,9 @@ export default function StudentDetailPage() {
       </div>
 
       <FeeProfileCard studentId={studentId} />
+
+      {/* The ID-card photo (slice 2a): resize-before-upload, one per student. */}
+      <StudentPhotoCard studentId={studentId} />
 
       <StudentEditDialog
         open={editOpen}
