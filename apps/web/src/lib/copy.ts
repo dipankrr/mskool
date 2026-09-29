@@ -696,6 +696,11 @@ export const copy = {
       title: "Fee status matrix",
       subtitle:
         "See each student's fee position month by month, with opening balances kept separate from this session's charges.",
+      display: {
+        label: "Matrix view",
+        statusOnly: "Status only",
+        withAmounts: "With amounts",
+      },
       noSessionTitle: "Choose a session first",
       noSessionBody: "Pick a session in the branch and session controls above to load the fee matrix.",
       noStudentsTitle: "No enrolled students",
@@ -704,6 +709,7 @@ export const copy = {
       noMatchesBody: "Try a different search, class, section, or status view.",
       listFailedTitle: "Couldn't load the fee matrix",
       listFailedBody: "The matrix could not be loaded. Try again.",
+      studentCount: (count: number) => `${count} students`,
       cohortSummary: (
         students: number,
         assessed: string,
@@ -727,7 +733,7 @@ export const copy = {
           all: "All statuses",
           attention: "Needs attention",
           unpaid: "Unpaid",
-          partial: "Partly paid",
+          partial: "Partial",
           overdue: "Overdue",
           paid: "Paid or conceded",
           notGenerated: "Not generated",
@@ -772,7 +778,7 @@ export const copy = {
       paymentStates: {
         no_fee: "No fee",
         unpaid: "Unpaid",
-        partial: "Partly paid",
+        partial: "Partial",
         paid: "Paid",
         conceded: "Conceded",
       },
@@ -790,7 +796,7 @@ export const copy = {
       openingStates: {
         none: "No opening",
         unpaid: "Unpaid",
-        partial: "Partly paid",
+        partial: "Partial",
         paid: "Paid",
         waived: "Waived",
       },

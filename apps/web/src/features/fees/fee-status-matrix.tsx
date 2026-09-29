@@ -82,6 +82,7 @@ const ALL = "all";
 
 type MatrixView = NonNullable<FeeMatrixListInput["view"]>;
 type MatrixSort = NonNullable<FeeMatrixListInput["sort"]>;
+type MatrixDisplay = "status" | "amounts";
 
 type SelectedCell = {
   studentId: string;
@@ -180,7 +181,7 @@ function MatrixGenerationBadge({ state }: { state: FeeMatrixRow["generationState
   );
 }
 
-function MatrixOpening({ row }: { row: FeeMatrixRow }) {
+function MatrixOpening({ row, showAmount = true }: { row: FeeMatrixRow; showAmount?: boolean }) {
   if (row.openingBalance.status === "none") {
     return (
       <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
@@ -191,9 +192,11 @@ function MatrixOpening({ row }: { row: FeeMatrixRow }) {
   }
   return (
     <span className="flex flex-col items-end gap-1">
-      <span className={cn("text-sm font-medium", moneyCellClass)}>
-        {formatMoney(row.openingBalance.balance)}
-      </span>
+      {showAmount ? (
+        <span className={cn("text-sm font-medium", moneyCellClass)}>
+          {formatMoney(row.openingBalance.balance)}
+        </span>
+      ) : null}
       <FeeStatus kind="openingBalance" status={row.openingBalance.status} />
     </span>
   );
@@ -234,6 +237,7 @@ function MatrixCellButton({
   currentMonth,
   onOpen,
   compact = false,
+  statusOnly = false,
 }: {
   studentName: string;
   month: FeeMatrixMonth;
@@ -241,6 +245,7 @@ function MatrixCellButton({
   currentMonth: string;
   onOpen: () => void;
   compact?: boolean;
+  statusOnly?: boolean;
 }) {
   const noFee = cell.paymentState === "no_fee";
   const current = isCurrentMonth(month.key, currentMonth);
@@ -264,9 +269,12 @@ function MatrixCellButton({
       onClick={onOpen}
       aria-label={ariaLabel}
       className={cn(
-        "flex h-auto min-h-[88px] w-full min-w-0 shrink flex-col items-stretch justify-start gap-1 rounded-lg border border-transparent p-2 text-left whitespace-normal",
+        "flex h-auto w-full min-w-0 shrink flex-col rounded-lg border border-transparent text-left whitespace-normal",
         "hover:border-border hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring",
-        compact && "min-h-[76px]",
+        statusOnly
+          ? "min-h-12 items-center justify-center p-1.5"
+          : "min-h-[88px] items-stretch justify-start gap-1 p-2",
+        compact && !statusOnly && "min-h-[76px]",
         current && "bg-primary/5 ring-1 ring-primary/20",
         future && "bg-muted/20",
         cell.timingState === "overdue" && "bg-rose-50/50 dark:bg-rose-950/20",
@@ -278,34 +286,81 @@ function MatrixCellButton({
           {current ? ` · ${copy.fees.matrix.labels.current}` : ""}
         </span>
       ) : null}
-      <span
-        className={cn(
-          "text-sm font-semibold tabular-nums",
-          noFee ? "text-muted-foreground" : moneyCellClass,
-        )}
-      >
-        {noFee ? <span aria-hidden="true">—</span> : formatMoney(cell.netAmount)}
-      </span>
+      {!statusOnly ? (
+        <span
+          className={cn(
+            "text-sm font-semibold tabular-nums",
+            noFee ? "text-muted-foreground" : moneyCellClass,
+          )}
+        >
+          {noFee ? <span aria-hidden="true">—</span> : formatMoney(cell.netAmount)}
+        </span>
+      ) : null}
       <span className="flex min-w-0 flex-wrap items-center gap-1">
         {noFee ? (
           <span className="text-muted-foreground text-[10px] font-medium">
-            {copy.fees.matrix.paymentStates.no_fee}
+            — {copy.fees.matrix.paymentStates.no_fee}
           </span>
         ) : (
-          <MatrixPaymentBadge state={cell.paymentState} />
+          <MatrixPaymentBadge
+            state={cell.paymentState}
+            className={statusOnly ? "px-2 py-1 text-xs" : undefined}
+          />
         )}
         <MatrixTiming state={cell.timingState} />
       </span>
-      <span aria-hidden="true" className="mt-auto block h-[3px] w-full overflow-hidden rounded-full bg-muted">
+      {!statusOnly ? (
         <span
-          className={cn(
-            "block h-full rounded-full",
-            noFee ? "bg-muted-foreground/30" : "bg-primary",
-          )}
-          style={{ width: `${percent.toString()}%` }}
-        />
-      </span>
+          aria-hidden="true"
+          className="mt-auto block h-[3px] w-full overflow-hidden rounded-full bg-muted"
+        >
+          <span
+            className={cn(
+              "block h-full rounded-full",
+              noFee ? "bg-muted-foreground/30" : "bg-primary",
+            )}
+            style={{ width: `${percent.toString()}%` }}
+          />
+        </span>
+      ) : null}
     </Button>
+  );
+}
+
+function MatrixDisplayToggle({
+  value,
+  onChange,
+}: {
+  value: MatrixDisplay;
+  onChange: (value: MatrixDisplay) => void;
+}) {
+  return (
+    <div className="mb-4 flex justify-end">
+      <div
+        className="inline-flex rounded-lg border p-1"
+        role="group"
+        aria-label={copy.fees.matrix.display.label}
+      >
+        <Button
+          type="button"
+          size="sm"
+          variant={value === "status" ? "secondary" : "ghost"}
+          aria-pressed={value === "status"}
+          onClick={() => onChange("status")}
+        >
+          {copy.fees.matrix.display.statusOnly}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={value === "amounts" ? "secondary" : "ghost"}
+          aria-pressed={value === "amounts"}
+          onClick={() => onChange("amounts")}
+        >
+          {copy.fees.matrix.display.withAmounts}
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -526,6 +581,33 @@ function MatrixPagination({
   );
 }
 
+function MatrixCohortLine({
+  matrix,
+  display,
+}: {
+  matrix: FeeMatrixList;
+  display: MatrixDisplay;
+}) {
+  return (
+    <p className="text-muted-foreground mb-4 text-sm tabular-nums">
+      {display === "status"
+        ? copy.fees.matrix.studentCount(matrix.cohortTotals.studentCount)
+        : copy.fees.matrix.cohortSummary(
+            matrix.cohortTotals.studentCount,
+            formatMoney(matrix.cohortTotals.assessedAmount),
+            formatMoney(matrix.cohortTotals.paidAmount),
+            formatMoney(
+              addMoney(
+                matrix.cohortTotals.balanceAmount,
+                matrix.cohortTotals.openingBalance.balance,
+              ),
+            ),
+            matrix.cohortTotals.notGeneratedCount,
+          )}
+    </p>
+  );
+}
+
 function MatrixEmpty({
   hasEnrolledStudents,
   hasFilters,
@@ -563,10 +645,12 @@ function MatrixEmpty({
 function MatrixMobile({
   matrix,
   currentMonth,
+  display,
   onOpen,
 }: {
   matrix: FeeMatrixList;
   currentMonth: string;
+  display: MatrixDisplay;
   onOpen: (row: FeeMatrixRow, month: FeeMatrixMonth) => void;
 }) {
   return (
@@ -587,25 +671,31 @@ function MatrixMobile({
                   {row.admissionNumber} · {row.className}
                   {row.sectionName ? ` · ${row.sectionName}` : ""}
                 </p>
-                <MatrixGenerationBadge state={row.generationState} />
+                {display === "amounts" || row.generationState !== "generated" ? (
+                  <MatrixGenerationBadge state={row.generationState} />
+                ) : null}
               </div>
-              <div className="shrink-0 text-right">
-                <p className="text-muted-foreground text-[10px]">
-                  {copy.fees.matrix.labels.balanceIncludingOpening}
-                </p>
-                <p className="text-base font-semibold tabular-nums">
-                  {formatMoney(matrixRowBalance(row))}
-                </p>
+              {display === "amounts" ? (
+                <div className="shrink-0 text-right">
+                  <p className="text-muted-foreground text-[10px]">
+                    {copy.fees.matrix.labels.balanceIncludingOpening}
+                  </p>
+                  <p className="text-base font-semibold tabular-nums">
+                    {formatMoney(matrixRowBalance(row))}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+            {display === "amounts" ? (
+              <div className="mt-3 border-t pt-3">
+                <MatrixRowStatus row={row} includeOpening={false} />
               </div>
-            </div>
-            <div className="mt-3 border-t pt-3">
-              <MatrixRowStatus row={row} includeOpening={false} />
-            </div>
+            ) : null}
             <div className="mt-3 flex items-center justify-between gap-3 border-t pt-3">
               <span className="text-muted-foreground text-xs">
                 {copy.fees.matrix.labels.opening}
               </span>
-              <MatrixOpening row={row} />
+              <MatrixOpening row={row} showAmount={display === "amounts"} />
             </div>
             <div className="mt-3 border-t pt-3">
               <h3 className="mb-2 text-xs font-medium">{copy.fees.matrix.labels.month}</h3>
@@ -617,6 +707,7 @@ function MatrixMobile({
                     <li key={month.key}>
                       <MatrixCellButton
                         compact
+                        statusOnly={display === "status"}
                         studentName={row.studentName}
                         month={month}
                         cell={cell}
@@ -638,10 +729,12 @@ function MatrixMobile({
 function MatrixDesktop({
   matrix,
   currentMonth,
+  display,
   onOpen,
 }: {
   matrix: FeeMatrixList;
   currentMonth: string;
+  display: MatrixDisplay;
   onOpen: (row: FeeMatrixRow, month: FeeMatrixMonth) => void;
 }) {
   const summaryByMonth = useMemo(
@@ -652,23 +745,23 @@ function MatrixDesktop({
   return (
     <div className="hidden md:block [&_[data-slot=table-container]]:max-h-[70vh] [&_[data-slot=table-container]]:overflow-auto">
       <div className="rounded-xl border">
-        <Table className="min-w-[1500px]">
+        <Table className={display === "status" ? "min-w-[1150px]" : "min-w-[1500px]"}>
           <TableCaption className="sr-only">{copy.fees.matrix.title}</TableCaption>
           <TableHeader className="sticky top-0 z-30 bg-background">
             <TableRow>
               <TableHead
                 scope="col"
-                className="sticky left-0 z-40 w-56 min-w-56 bg-background"
+                className="sticky left-0 z-40 w-52 min-w-52 bg-background"
               >
                 {copy.fees.matrix.labels.student}
               </TableHead>
               <TableHead
                 scope="col"
-                className="sticky left-56 z-40 w-36 min-w-36 bg-background"
+                className={cn(
+                  "text-right",
+                  display === "status" ? "w-24 min-w-24" : "w-28 min-w-28",
+                )}
               >
-                {copy.fees.matrix.labels.class}
-              </TableHead>
-              <TableHead scope="col" className="w-28 min-w-28 text-right">
                 {copy.fees.matrix.labels.opening}
               </TableHead>
               {matrix.months.map((month) => {
@@ -686,39 +779,48 @@ function MatrixDesktop({
                     scope="col"
                     key={month.key}
                     className={cn(
-                      "h-auto min-w-32 p-2 text-left",
+                      "h-auto p-2 text-left",
+                      display === "status" ? "min-w-[72px]" : "min-w-32",
                       current && "bg-primary/5 text-foreground",
                       future && "text-muted-foreground",
                     )}
                   >
                     <span className="block font-medium">{month.label}</span>
-                    <span className="text-muted-foreground mt-0.5 block text-[10px] font-normal">
-                      {percent === null
-                        ? hasAssessed
-                          ? copy.fees.matrix.labels.fullyConceded
-                          : copy.fees.matrix.labels.noCollection
-                        : `${percent.toString()}% ${copy.fees.matrix.labels.collected}`}
-                    </span>
-                    {current ? (
-                      <Badge variant="secondary" className="mt-1 px-1.5 text-[10px]">
-                        {copy.fees.matrix.labels.current}
-                      </Badge>
+                    {display === "amounts" ? (
+                      <>
+                        <span className="text-muted-foreground mt-0.5 block text-[10px] font-normal">
+                          {percent === null
+                            ? hasAssessed
+                              ? copy.fees.matrix.labels.fullyConceded
+                              : copy.fees.matrix.labels.noCollection
+                            : `${percent.toString()}% ${copy.fees.matrix.labels.collected}`}
+                        </span>
+                        {current ? (
+                          <Badge variant="secondary" className="mt-1 px-1.5 text-[10px]">
+                            {copy.fees.matrix.labels.current}
+                          </Badge>
+                        ) : null}
+                      </>
                     ) : null}
                   </TableHead>
                 );
               })}
-              <TableHead
-                scope="col"
-                className="sticky right-36 z-40 w-36 min-w-36 bg-background text-right"
-              >
-                {copy.fees.matrix.labels.balance}
-              </TableHead>
-              <TableHead
-                scope="col"
-                className="sticky right-0 z-40 w-36 min-w-36 bg-background"
-              >
-                {copy.fees.matrix.labels.status}
-              </TableHead>
+              {display === "amounts" ? (
+                <>
+                  <TableHead
+                    scope="col"
+                    className="sticky right-36 z-40 w-36 min-w-36 bg-background text-right"
+                  >
+                    {copy.fees.matrix.labels.balance}
+                  </TableHead>
+                  <TableHead
+                    scope="col"
+                    className="sticky right-0 z-40 w-36 min-w-36 bg-background"
+                  >
+                    {copy.fees.matrix.labels.status}
+                  </TableHead>
+                </>
+              ) : null}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -728,7 +830,7 @@ function MatrixDesktop({
                 <TableRow key={row.studentId}>
                   <TableHead
                     scope="row"
-                    className="sticky left-0 z-20 h-auto w-56 min-w-56 bg-background p-3 font-normal"
+                    className="sticky left-0 z-20 h-auto w-52 min-w-52 bg-background p-2 font-normal"
                   >
                     <Link
                       href={`/students/${row.studentId}`}
@@ -737,25 +839,34 @@ function MatrixDesktop({
                       {row.studentName}
                     </Link>
                     <span className="text-muted-foreground mt-1 block truncate text-xs">
-                      {row.admissionNumber}
+                      {row.admissionNumber} · {row.className}
+                      {row.sectionName ? ` · ${row.sectionName}` : ""}
                     </span>
-                    <MatrixGenerationBadge state={row.generationState} />
+                    {display === "amounts" || row.generationState !== "generated" ? (
+                      <MatrixGenerationBadge state={row.generationState} />
+                    ) : null}
                   </TableHead>
-                  <TableCell className="sticky left-56 z-20 w-36 min-w-36 bg-background p-3">
-                    <span className="block truncate font-medium">{row.className}</span>
-                    <span className="text-muted-foreground mt-1 block truncate text-xs">
-                      {row.sectionName ?? copy.common.none}
-                    </span>
-                  </TableCell>
-                  <TableCell className="w-28 min-w-28 p-2 text-right">
-                    <MatrixOpening row={row} />
+                  <TableCell
+                    className={cn(
+                      "p-2 text-right",
+                      display === "status" ? "w-24 min-w-24" : "w-28 min-w-28",
+                    )}
+                  >
+                    <MatrixOpening row={row} showAmount={display === "amounts"} />
                   </TableCell>
                   {matrix.months.map((month) => {
                     const cell = cellsByMonth.get(month.key);
                     if (!cell) return null;
                     return (
-                      <TableCell key={month.key} className="w-32 min-w-32 p-1 align-top">
+                      <TableCell
+                        key={month.key}
+                        className={cn(
+                          "p-1 align-top",
+                          display === "status" ? "w-[72px] min-w-[72px]" : "w-32 min-w-32",
+                        )}
+                      >
                         <MatrixCellButton
+                          statusOnly={display === "status"}
                           studentName={row.studentName}
                           month={month}
                           cell={cell}
@@ -765,17 +876,21 @@ function MatrixDesktop({
                       </TableCell>
                     );
                   })}
-                  <TableCell className="sticky right-36 z-20 w-36 min-w-36 bg-background p-3 text-right">
-                    <span className="block text-sm font-semibold tabular-nums">
-                      {formatMoney(matrixRowBalance(row))}
-                    </span>
-                    <span className="text-muted-foreground mt-1 block text-[10px]">
-                      {copy.fees.matrix.labels.balanceIncludingOpening}
-                    </span>
-                  </TableCell>
-                  <TableCell className="sticky right-0 z-20 w-36 min-w-36 bg-background p-3">
-                    <MatrixRowStatus row={row} />
-                  </TableCell>
+                  {display === "amounts" ? (
+                    <>
+                      <TableCell className="sticky right-36 z-20 w-36 min-w-36 bg-background p-3 text-right">
+                        <span className="block text-sm font-semibold tabular-nums">
+                          {formatMoney(matrixRowBalance(row))}
+                        </span>
+                        <span className="text-muted-foreground mt-1 block text-[10px]">
+                          {copy.fees.matrix.labels.balanceIncludingOpening}
+                        </span>
+                      </TableCell>
+                      <TableCell className="sticky right-0 z-20 w-36 min-w-36 bg-background p-3">
+                        <MatrixRowStatus row={row} />
+                      </TableCell>
+                    </>
+                  ) : null}
                 </TableRow>
               );
             })}
@@ -1065,6 +1180,7 @@ export function FeeStatusMatrix() {
   const [sectionId, setSectionId] = useState<string | undefined>();
   const [view, setView] = useState<MatrixView>("all");
   const [sort, setSort] = useState<MatrixSort>("student");
+  const [display, setDisplay] = useState<MatrixDisplay>("status");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<SelectedCell | null>(null);
 
@@ -1142,6 +1258,7 @@ export function FeeStatusMatrix() {
 
   return (
     <>
+      <MatrixDisplayToggle value={display} onChange={setDisplay} />
       <MatrixFilters
         search={search}
         onSearchChange={setSearch}
@@ -1191,15 +1308,7 @@ export function FeeStatusMatrix() {
         />
       ) : matrix.rows.length === 0 ? (
         <>
-          <p className="text-muted-foreground mb-4 text-sm tabular-nums">
-            {copy.fees.matrix.cohortSummary(
-              matrix.cohortTotals.studentCount,
-              formatMoney(matrix.cohortTotals.assessedAmount),
-              formatMoney(matrix.cohortTotals.paidAmount),
-              formatMoney(addMoney(matrix.cohortTotals.balanceAmount, matrix.cohortTotals.openingBalance.balance)),
-              matrix.cohortTotals.notGeneratedCount,
-            )}
-          </p>
+          <MatrixCohortLine matrix={matrix} display={display} />
           <MatrixEmpty
             hasEnrolledStudents={matrix.cohortTotals.studentCount > 0}
             hasFilters={hasFilters}
@@ -1208,17 +1317,19 @@ export function FeeStatusMatrix() {
         </>
       ) : (
         <>
-          <p className="text-muted-foreground mb-4 text-sm tabular-nums">
-            {copy.fees.matrix.cohortSummary(
-              matrix.cohortTotals.studentCount,
-              formatMoney(matrix.cohortTotals.assessedAmount),
-              formatMoney(matrix.cohortTotals.paidAmount),
-              formatMoney(addMoney(matrix.cohortTotals.balanceAmount, matrix.cohortTotals.openingBalance.balance)),
-              matrix.cohortTotals.notGeneratedCount,
-            )}
-          </p>
-          <MatrixDesktop matrix={matrix} currentMonth={currentMonth} onOpen={openCell} />
-          <MatrixMobile matrix={matrix} currentMonth={currentMonth} onOpen={openCell} />
+          <MatrixCohortLine matrix={matrix} display={display} />
+          <MatrixDesktop
+            matrix={matrix}
+            currentMonth={currentMonth}
+            display={display}
+            onOpen={openCell}
+          />
+          <MatrixMobile
+            matrix={matrix}
+            currentMonth={currentMonth}
+            display={display}
+            onOpen={openCell}
+          />
           <MatrixPagination pageInfo={matrix.pageInfo} onPageChange={setPage} />
         </>
       )}
