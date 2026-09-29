@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 /**
  * FAMILY CLAIM (ADR-037) — the passwordless-provisioning proofs, against REAL
@@ -19,8 +19,14 @@ import { beforeAll, describe, expect, it } from "vitest";
  *     is invisible cross-tenant;
  *   - the `canAccessPortal` guardian gate actually bites.
  *
- * Fixtures are per-run (RUN-suffixed admission numbers and phones), so
- * re-runs accumulate rows by design and never collide.
+ * Fixtures are per-run and FULLY PRIVATE: the suite assembles its own orgs
+ * from the world helpers (RUN-suffixed slugs, emails, admission numbers and
+ * phones) instead of borrowing the authz world. The claim lifecycle needs
+ * its students ACTIVE, and vitest runs test files concurrently — students
+ * left active in the shared authz world would break its exact registry pin
+ * mid-run (the exam suite hit the same wall; isolation is structural, not
+ * sweep-based). Private orgs also mean re-runs accumulate rows by design
+ * and never collide.
  */
 
 import { db } from "@repo/db";
@@ -32,7 +38,13 @@ import {
   studentPortalAccess,
   user as userTable,
 } from "@repo/db/schema";
-import { buildWorld } from "./world";
+import {
+  findOrCreateAssignment,
+  findOrCreateOrganization,
+  findOrCreateSchool,
+  findOrCreateUser,
+  syncDefaultPermissions,
+} from "./world";
 import { portalAccessService } from "@repo/services";
 import { studentService } from "@repo/services";
 import { getOwnedStudentIds, type DataScope } from "@repo/authz";
@@ -43,6 +55,8 @@ const adm = (suffix: string) => `CLM-${RUN}-${suffix}`;
 /** Per-run 10-digit phones: no collision with any other run's users. */
 const PHONE = `9${String(RUN).slice(-9)}`;
 const PHONE_OTHER = `8${String(RUN).slice(-9)}`;
+const ORG_A_SLUG = `clm-itg-a-${RUN}`;
+const ORG_B_SLUG = `clm-itg-b-${RUN}`;
 const DOB_1 = "2015-04-02";
 const DOB_2 = "2017-09-11";
 
@@ -68,15 +82,43 @@ describe("family claim (ADR-037)", () => {
   let familyUserId: string;
 
   beforeAll(async () => {
-    const world = await buildWorld();
-    orgAId = world.orgAId;
-    orgBId = world.orgBId;
-    schoolA1Id = world.schoolA1Id;
-    schoolB1Id = world.schoolB1Id;
+    // A minimal PRIVATE world — the shared authz world is left untouched.
+    // Run-keyed orgs/users mean find-or-create never collides with a prior
+    // run or another suite running in parallel.
+    const [orgA, orgB] = await Promise.all([
+      findOrCreateOrganization(ORG_A_SLUG, "Claim ITG Trust A"),
+      findOrCreateOrganization(ORG_B_SLUG, "Claim ITG Trust B"),
+    ]);
+    await Promise.all([
+      syncDefaultPermissions(orgA.id),
+      syncDefaultPermissions(orgB.id),
+    ]);
+    const [schoolA1, schoolB1] = await Promise.all([
+      findOrCreateSchool(orgA.id, "CLM-A1", "Claim ITG School A1"),
+      findOrCreateSchool(orgB.id, "CLM-B1", "Claim ITG School B1"),
+    ]);
+    const [adminA, adminB] = await Promise.all([
+      findOrCreateUser(`clm-admin-a-${RUN}`),
+      findOrCreateUser(`clm-admin-b-${RUN}`),
+    ]);
+    await Promise.all([
+      findOrCreateAssignment({
+        userId: adminA.id, organizationId: orgA.id,
+        roleType: "org_admin", scopeType: "org", scopeId: orgA.id,
+      }),
+      findOrCreateAssignment({
+        userId: adminB.id, organizationId: orgB.id,
+        roleType: "org_admin", scopeType: "org", scopeId: orgB.id,
+      }),
+    ]);
+    orgAId = orgA.id;
+    orgBId = orgB.id;
+    schoolA1Id = schoolA1.id;
+    schoolB1Id = schoolB1.id;
     scopeA1 = schoolScope(orgAId, schoolA1Id);
     scopeB1 = schoolScope(orgBId, schoolB1Id);
-    adminAId = world.users.adminA;
-    adminBId = world.users.adminB;
+    adminAId = adminA.id;
+    adminBId = adminB.id;
   });
 
   it("admits two siblings in one school and one child in the foreign org", async () => {
