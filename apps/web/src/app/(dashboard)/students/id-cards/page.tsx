@@ -254,9 +254,11 @@ export default function IdCardsPage() {
               disabled={adopted.length === 0}
             >
               <SelectTrigger>
-                <SelectValue
-                  placeholder={choice?.name ?? copy.idCards.yourTemplatesEmpty}
-                />
+                <SelectValue>
+                  {(value: string | null) =>
+                    adopted.find((option) => option.key === value)?.name ??
+                    copy.idCards.yourTemplatesEmpty}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {adopted.map((option) => (
