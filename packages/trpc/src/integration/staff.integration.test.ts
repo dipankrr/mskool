@@ -78,6 +78,9 @@ describe("staff & roles (ADR-035)", () => {
       firstName: "Integration",
       lastName: "Teacher",
       designation: "Teacher",
+      // ADR-037: staff sign in with email — provisioning without one is
+      // refused, so the record carries it before the login act.
+      email: `itg-${RUN}-t1@itg.test`,
     });
 
     expect(row.userId).toBeNull();
@@ -180,7 +183,8 @@ describe("staff & roles (ADR-035)", () => {
       .where(eq(userTable.id, provisionedUserId));
     expect(user!).toBeTruthy();
     expect(user!.mustChangePassword).toBe(true);
-    expect(user!.email).toBeNull();
+    // ADR-037: the sign-in email is copied from the record at provisioning.
+    expect(user!.email).toBe(`itg-${RUN}-t1@itg.test`);
     // The username is {org_slug}-{employee_code}, lower-cased.
     expect(user!.username).toBe(
       `${org!.slug}-${code("T1")}`.toLowerCase(),
@@ -204,6 +208,18 @@ describe("staff & roles (ADR-035)", () => {
     await expect(
       staffService.createLogin(scopeA1, adminAId, loginlessStaffId, "Integration123!"),
     ).rejects.toThrow(/already has a login/i);
+  });
+
+  it("refuses provisioning without an email — the login would be unusable (ADR-037)", async () => {
+    const noEmail = await staffService.createStaff(scopeA1, {
+      employeeCode: code("T9"),
+      firstName: "Integration",
+      lastName: "NoEmail",
+    });
+    await expect(
+      staffService.createLogin(scopeA1, adminAId, noEmail.id, "Integration123!"),
+    ).rejects.toThrow(/email address/i);
+    expect(noEmail.userId).toBeNull();
   });
 
   it("reset re-arms the forced change and writes its audit row", async () => {
@@ -265,6 +281,7 @@ describe("staff & roles (ADR-035)", () => {
       employeeCode: code("T3"),
       firstName: "Integration",
       lastName: "Orphan",
+      email: `itg-${RUN}-t3@itg.test`,
     });
     const [org] = await db
       .select({ slug: organizations.slug })

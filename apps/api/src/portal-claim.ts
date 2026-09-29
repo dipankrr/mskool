@@ -1,6 +1,5 @@
 import rateLimit from "express-rate-limit";
-import { Router, type Express } from "express";
-import { z } from "zod";
+import { Router, type Express, type Request, type Response } from "express";
 import { claimPortalAccessInput } from "@repo/contracts";
 import { portalAccessService } from "@repo/services";
 import { env } from "./env";
@@ -27,12 +26,10 @@ const claimLimiter = rateLimit({
   message: { error: "Too many attempts. Try again later." },
 });
 
-const claimBody = claimPortalAccessInput;
-
 export const portalClaimRouter: Router = Router();
 
-async function handleClaim(req: any, res: any) {
-  const parsed = claimBody.safeParse(req.body);
+async function handleClaim(req: Request, res: Response) {
+  const parsed = claimPortalAccessInput.safeParse(req.body);
   if (!parsed.success) {
     // Validation shape failures get the uniform refusal too — a missing
     // field must not read differently from a wrong one.
