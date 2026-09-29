@@ -206,7 +206,25 @@ export default function StaffDetailPage() {
               </CardDescription>
             </CardHeader>
             {canUpdate && (isActive || hasLogin) ? (
-              <CardContent>
+              <CardContent className="flex flex-col gap-3">
+                {/*
+                  The sign-in identifier, stated out loud (ADR-037): staff
+                  sign in with the email on this record. A login minted
+                  without one can never be used — the service refuses it,
+                  and this text says so before the click, not after.
+                */}
+                {hasLogin ? (
+                  <p className="text-muted-foreground text-sm">
+                    {copy.staff.loginSignsInWith}{" "}
+                    <span className="text-foreground font-medium">
+                      {member.email ?? copy.common.none}
+                    </span>
+                  </p>
+                ) : !member.email ? (
+                  <p className="text-muted-foreground text-sm">
+                    {copy.staff.loginNeedsEmail}
+                  </p>
+                ) : null}
                 {isActive && !hasLogin ? (
                   <Button
                     variant="default"

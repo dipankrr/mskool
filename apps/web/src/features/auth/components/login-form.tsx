@@ -114,18 +114,31 @@ export function LoginForm({
     router.replace("/");
   });
 
+  /**
+   * Global phone identity first (ADR-037): the 10-digit number IS the
+   * username across schools and trusts, so no school choice is needed.
+   * Legacy `{slug}-{phone}` logins (pre-migration) fall back second — the
+   * school box stays only for them until the migration runbook runs.
+   */
   const onFamilySubmit = familyForm.handleSubmit(async (data) => {
-    if (!schoolSlug) {
-      toast.error(copy.errors.needsBranch ?? "Choose your school first.");
-      return;
+    const digits = data.phone.replace(/\D/g, "").slice(-10);
+    const attempt = async (username: string) =>
+      loginByPhone(username, data.password);
+
+    let result = await attempt(digits);
+    let usedSlug = false;
+    if (result.error && schoolSlug) {
+      const legacy = `${schoolSlug}-${digits}`.toLowerCase();
+      result = await attempt(legacy);
+      usedSlug = !result.error;
     }
-    const username = `${schoolSlug}-${data.phone}`;
-    const result = await loginByPhone(username, data.password);
     if (result.error) {
       toast.error(result.error.message || copy.errors.unknown);
       return;
     }
-    window.localStorage.setItem(FAMILY_SCHOOL_KEY, schoolName);
+    if (schoolName.trim() && (usedSlug || !schoolSlug)) {
+      window.localStorage.setItem(FAMILY_SCHOOL_KEY, schoolName);
+    }
     await clearSessionState();
     toast.success(copy.auth.signedIn);
     router.replace("/portal/results");
@@ -203,7 +216,6 @@ export function LoginForm({
                     list="family-schools"
                     value={schoolName}
                     onChange={(event) => setSchoolName(event.target.value)}
-                    required
                   />
                   <datalist id="family-schools">
                     {(orgs.data ?? []).map((org) => (
@@ -243,7 +255,7 @@ export function LoginForm({
                   />
                 </Field>
                 <Field>
-                  <Button type="submit" disabled={!schoolSlug}>
+                  <Button type="submit">
                     {familyForm.formState.isSubmitting ? copy.auth.signingIn : copy.auth.signIn}
                   </Button>
                   <Button

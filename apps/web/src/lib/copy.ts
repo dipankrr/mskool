@@ -174,7 +174,8 @@ export const copy = {
     familyTab: "Family",
     staffTab: "Staff",
     school: "School",
-    schoolHelp: "Pick the school, then type the phone number it has for you.",
+    schoolHelp:
+      "Only needed for older logins — new logins need just the phone number and password.",
     phone: "Phone number",
     phoneHelp: "The 10-digit number you registered with the school.",
     familySubtitle: "Sign in with the phone number linked to your child.",
@@ -1406,6 +1407,9 @@ export const copy = {
     loginTitle: "Console login",
     loginNone:
       "No login yet. Creating one issues an initial password you hand over in person — the staff member must change it at first sign-in.",
+    loginSignsInWith: "Signs in with",
+    loginNeedsEmail:
+      "Add an email address to this record before creating a login — staff sign in with email, and a login without one can never be used.",
     loginActive:
       "Login active. The staff member manages their own password; you can reset it if it is lost.",
     loginInactiveSessions:
