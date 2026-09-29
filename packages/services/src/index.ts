@@ -73,3 +73,11 @@ export * from "./staff.service";
 
 // Roles: granting, revoking, and reading role assignments (ADR-005, ADR-035).
 export * from "./role.service";
+
+// Storage: the ADR-038 object-store seam (postgres driver v1, R2 declared)
+// and the student photo pointer's read half. Slice 2a, ID cards.
+export * from "./storage.service";
+
+// ID cards: template CRUD, the starter-design adopt, and the card-data
+// resolver the print page renders against. Slice 2a.
+export * from "./idcard.service";
