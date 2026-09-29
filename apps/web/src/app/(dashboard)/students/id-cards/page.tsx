@@ -1,10 +1,13 @@
 "use client";
 
-import { PrinterIcon } from "lucide-react";
+import { PencilIcon, PrinterIcon } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { EmptyState } from "@/components/empty-state";
+import { FormDialog } from "@/components/form-dialog";
 import { PageHeader } from "@/components/page-header";
+import { PermissionGate } from "@/components/permission-gate";
 import type { IdCardStudentCard } from "@repo/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,6 +18,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -28,7 +32,11 @@ import { IdCardPreview } from "@/features/id-cards/id-card-preview";
 import { PREBUILT_TEMPLATES } from "@/features/id-cards/prebuilt-templates";
 import {
   useAdoptTemplate,
+  useCloneGalleryTemplate,
+  useCreateTemplate,
+  useGalleryTemplates,
   useIdCardTemplates,
+  usePublishTemplate,
   useSetDefaultTemplate,
   useStudentSelection,
   useTemplateChoices,
@@ -42,21 +50,27 @@ import { errorMessage } from "@/lib/errors";
 import { trpc } from "@/lib/trpc/client";
 
 /**
- * STUDENT ID CARDS (slice 2a) — pick a class/section and students, pick a
- * template (an adopted row or a starter design), preview, print.
+ * STUDENT ID CARDS (slice 2a; 2b adds the management + gallery surface) —
+ * pick a class/section and students, pick a template (an adopted row, a
+ * starter design, or a clone from the community gallery), preview, print.
  *
  * The template JSON is laid out by the shared renderer against
  * `idCard.cardData` — the server's payload, never client-invented facts. The
  * print sheet (`.idcard-print-sheet`, globals.css) renders the SAME cards at
  * physical CR80 size in an A4 grid with cut guides; `@media print` hides
- * every piece of chrome around it. 2b's designer edits the adopted rows this
- * page already renders — nothing here changes when it lands.
+ * every piece of chrome around it.
+ *
+ * 2b's additions, all gated `id_card:manage`: Edit (the designer), Publish/
+ * Unpublish, New template (build-from-blank), and the community gallery —
+ * published designs from EVERY org, clonable into the caller's school (the
+ * one deliberate platform-level read; see the router's gallery comment).
  */
 
 const THIRTY_SECONDS = 30 * 1000;
 
 export default function IdCardsPage() {
   const { organizationId, schoolId, activeSession } = useActiveContext();
+  const router = useRouter();
 
   const templates = useIdCardTemplates();
   const classes = useClasses();
@@ -78,8 +92,22 @@ export default function IdCardsPage() {
   const adopted = useTemplateChoices(templates.data);
   const adopt = useAdoptTemplate();
   const setDefault = useSetDefaultTemplate();
+  const publish = usePublishTemplate();
+  const createTemplate = useCreateTemplate();
+  const cloneTemplate = useCloneGalleryTemplate();
+  const gallery = useGalleryTemplates();
 
   const [choice, setChoice] = useState<TemplateChoice | null>(null);
+  const [newOpen, setNewOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newOrientation, setNewOrientation] = useState<"landscape" | "portrait">(
+    "landscape",
+  );
+  const [cloneTarget, setCloneTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [cloneName, setCloneName] = useState("");
 
   // First paint: pre-select the school's default template, else the first.
   useEffect(() => {
@@ -339,10 +367,23 @@ export default function IdCardsPage() {
           </div>
         )}
 
-        {/* ── Templates: your rows + the starter gallery ── */}
+        {/* ── Templates: your rows + the starter gallery + the community gallery ── */}
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>{copy.idCards.yourTemplates}</CardTitle>
+            <PermissionGate permission="id_card:manage">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setNewName("");
+                  setNewOrientation("landscape");
+                  setNewOpen(true);
+                }}
+              >
+                {copy.idCards.newTemplate.action}
+              </Button>
+            </PermissionGate>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {adopted.length === 0 ? (
@@ -358,7 +399,7 @@ export default function IdCardsPage() {
                   return (
                     <li
                       key={option.key}
-                      className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
+                      className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm"
                     >
                       <button
                         type="button"
@@ -372,21 +413,58 @@ export default function IdCardsPage() {
                           {copy.idCards.defaultBadge}
                         </Badge>
                       ) : null}
+                      {row?.isPublished ? (
+                        <Badge variant="outline">
+                          {copy.idCards.gallery.publishedBadge}
+                        </Badge>
+                      ) : null}
                       <span className="text-muted-foreground ml-auto text-xs">
                         {option.data.orientation === "portrait"
                           ? copy.idCards.orientationPortrait
                           : copy.idCards.orientationLandscape}
                       </span>
-                      {!row?.isDefault ? (
+                      <PermissionGate permission="id_card:manage">
+                        {/* Management: designer, publish switch, default.
+                            No delete — hard rule 2 (templates close, never
+                            vanish) and 2a shipped no destructive procedure. */}
                         <Button
                           variant="ghost"
                           size="sm"
-                          disabled={setDefault.isPending}
-                          onClick={() => void setDefault.submit(option.key)}
+                          onClick={() =>
+                            router.push(
+                              `/students/id-cards/${option.key}/design`,
+                            )
+                          }
                         >
-                          {copy.idCards.makeDefault}
+                          <PencilIcon data-slot="icon" />
+                          {copy.idCards.designer.edit}
                         </Button>
-                      ) : null}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={publish.isPending}
+                          onClick={() =>
+                            void publish.submit(
+                              option.key,
+                              !(row?.isPublished ?? false),
+                            )
+                          }
+                        >
+                          {row?.isPublished
+                            ? copy.idCards.gallery.unpublish
+                            : copy.idCards.gallery.publish}
+                        </Button>
+                        {!row?.isDefault ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={setDefault.isPending}
+                            onClick={() => void setDefault.submit(option.key)}
+                          >
+                            {copy.idCards.makeDefault}
+                          </Button>
+                        ) : null}
+                      </PermissionGate>
                     </li>
                   );
                 })}
@@ -441,11 +519,153 @@ export default function IdCardsPage() {
                 ))}
               </ul>
             </div>
+
+            {/* ── The community gallery (2b): every org's published designs ── */}
+            <PermissionGate permission="id_card:manage">
+              <div className="flex flex-col gap-2">
+                <h3 className="text-sm font-medium">
+                  {copy.idCards.gallery.heading}
+                </h3>
+                <p className="text-muted-foreground text-xs">
+                  {copy.idCards.gallery.hint}
+                </p>
+                {gallery.isLoading ? (
+                  <Spinner className="mt-2" />
+                ) : gallery.isError ? (
+                  <p className="text-destructive text-sm" role="alert">
+                    {copy.idCards.loadFailed} {errorMessage(gallery.error)}
+                  </p>
+                ) : (gallery.data ?? []).length === 0 ? (
+                  <p className="text-muted-foreground text-sm">
+                    {copy.idCards.gallery.empty}
+                  </p>
+                ) : (
+                  <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {(gallery.data ?? []).map((design) => (
+                      <li key={design.id} className="flex flex-col gap-2">
+                        <IdCardPreview
+                          template={design}
+                          card={null}
+                          scale={0.8}
+                        />
+                        <span className="text-sm font-medium">{design.name}</span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={cloneTemplate.isPending}
+                          onClick={() => {
+                            setCloneName(design.name);
+                            setCloneTarget({ id: design.id, name: design.name });
+                          }}
+                        >
+                          {copy.idCards.gallery.clone}
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </PermissionGate>
           </CardContent>
         </Card>
 
         <p className="text-muted-foreground text-xs">{copy.idCards.printHint}</p>
       </div>
+
+      {/* ── Build-from-blank (2b) ── */}
+      <FormDialog
+        open={newOpen}
+        onOpenChange={setNewOpen}
+        title={copy.idCards.newTemplate.title}
+        description={copy.idCards.newTemplate.hint}
+        submitLabel={copy.idCards.newTemplate.create}
+        pending={createTemplate.isPending}
+        disabled={!newName.trim()}
+        onSubmit={(event) => {
+          event.preventDefault();
+          const name = newName.trim();
+          if (!name) return;
+          void createTemplate
+            .submit(name, newOrientation)
+            .then((row) => {
+              setNewOpen(false);
+              router.push(`/students/id-cards/${row.id}/design`);
+            })
+            .catch(() => {
+              // The mutation hook toasts the worded refusal.
+            });
+        }}
+      >
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="new-template-name">
+              {copy.idCards.newTemplate.name}
+            </Label>
+            <Input
+              id="new-template-name"
+              value={newName}
+              maxLength={150}
+              onChange={(event) => setNewName(event.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>{copy.idCards.newTemplate.orientation}</Label>
+            <Select
+              value={newOrientation}
+              onValueChange={(value) =>
+                setNewOrientation(value as "landscape" | "portrait")
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="landscape">
+                  {copy.idCards.orientationLandscape}
+                </SelectItem>
+                <SelectItem value="portrait">
+                  {copy.idCards.orientationPortrait}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </FormDialog>
+
+      {/* ── Gallery clone (2b): rename on the way in to dodge the name index ── */}
+      <FormDialog
+        open={cloneTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setCloneTarget(null);
+        }}
+        title={copy.idCards.gallery.clone}
+        description={copy.idCards.gallery.hint}
+        submitLabel={copy.idCards.gallery.clone}
+        pending={cloneTemplate.isPending}
+        disabled={!cloneName.trim()}
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!cloneTarget) return;
+          void cloneTemplate
+            .submit(cloneTarget.id, cloneName.trim())
+            .then(() => setCloneTarget(null))
+            .catch(() => {
+              // The mutation hook toasts the worded refusal.
+            });
+        }}
+      >
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="clone-template-name">
+            {copy.idCards.newTemplate.name}
+          </Label>
+          <Input
+            id="clone-template-name"
+            value={cloneName}
+            maxLength={150}
+            onChange={(event) => setCloneName(event.target.value)}
+          />
+        </div>
+      </FormDialog>
 
       {/* ── The print sheet (print-only; chrome hides via globals.css) ── */}
       <div className="idcard-print-sheet" aria-hidden>

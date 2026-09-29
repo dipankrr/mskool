@@ -3,7 +3,6 @@ import {
   type IdCardElementInput,
   type IdCardStudentCard,
   type IdCardTemplateData,
-  type IdCardTemplateDataInput,
 } from "@repo/contracts";
 
 /**

@@ -1,0 +1,225 @@
+"use client";
+
+import { ArrowLeftIcon } from "lucide-react";
+import Link from "next/link";
+import { useCallback, useState } from "react";
+
+import { EmptyState } from "@/components/empty-state";
+import { PageHeader } from "@/components/page-header";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
+import { useActiveContext } from "@/features/session/active-context";
+import { copy } from "@/lib/copy";
+import { fileToTemplateAssetBase64, useUploadTemplateAsset } from "./use-id-cards";
+
+import { CanvasSettings, ElementProperties, FieldPalette } from "./designer-properties";
+import { DesignerCanvas } from "./designer-canvas";
+import { useTemplateDesigner } from "./use-template-designer";
+
+/**
+ * THE TEMPLATE DESIGNER (slice 2b) — edits an adopted template's design
+ * document at `/students/id-cards/[templateId]/design`.
+ *
+ * Layout: the scaled card (rendered by the SAME shared surface the print
+ * preview uses, so what is designed is what prints) with the field palette
+ * beneath it, and the canvas settings + the selected element's properties on
+ * the right. The dirty bar sits in the header: Save posts the whole document
+ * through `idCard.template.update` (refusals surface worded, via
+ * lib/errors.ts); Discard rewinds to the loaded row.
+ *
+ * THE SAMPLE CARD: the canvas renders against design-time sample data, not a
+ * real student — the designer is a layout tool, and pulling a child's actual
+ * record into a design session (and into its screenshots) buys nothing. The
+ * print page renders the same template against the server-resolved card
+ * data, which is where truth lives; the print path still invents nothing.
+ */
+
+/** Design-time placeholder — never sent anywhere, never real student data. */
+const SAMPLE_CARD = {
+  studentId: "sample-card",
+  name: "Aarav Sharma",
+  admissionNumber: "ADM-2026-014",
+  rollNumber: "12",
+  className: "Class 6",
+  sectionName: "A",
+  academicYear: "2026-27",
+  dateOfBirth: "2013-04-12",
+  bloodGroup: "B+",
+  address: "12, Rose Villa, MG Road, Pune 411001",
+  guardianName: "Rakesh Sharma",
+  motherName: "Nisha Sharma",
+  validTill: "2027-03-31",
+  photoObjectId: null,
+  schoolName: "Sunrise Public School",
+};
+
+export function TemplateDesigner({ templateId }: { templateId: string }) {
+  const { has } = useActiveContext();
+  const designer = useTemplateDesigner(templateId);
+  const uploadAsset = useUploadTemplateAsset();
+  const [uploading, setUploading] = useState(false);
+
+  /** Upload through the storage seam, then let the caller re-point a ref. */
+  const handleUpload = useCallback(
+    async (file: File): Promise<string | null> => {
+      setUploading(true);
+      try {
+        const dataBase64 = await fileToTemplateAssetBase64(file);
+        if (!dataBase64) return null;
+        return await uploadAsset.submit({ dataBase64 });
+      } catch {
+        return null;
+      } finally {
+        setUploading(false);
+      }
+    },
+    [uploadAsset],
+  );
+
+  // Every hook above this line; the gates below only shape the render.
+
+  if (!has("id_card:manage")) {
+    return (
+      <EmptyState
+        title={copy.idCards.designer.title}
+        description={copy.idCards.designer.noManage}
+      />
+    );
+  }
+
+  if (designer.row.isError) {
+    return (
+      <EmptyState
+        title={copy.idCards.designer.loadFailed}
+        description={copy.idCards.designer.loadFailedBody}
+      />
+    );
+  }
+
+  if (!designer.draft) {
+    return (
+      <>
+        <PageHeader
+          title={copy.idCards.designer.title}
+          description={copy.idCards.designer.subtitle}
+        />
+        {designer.row.isLoading ? (
+          <Spinner className="mt-8" />
+        ) : (
+          // A row that arrived but will not parse — saved by a different
+          // contract version. Honest refusal, never a broken card.
+          <EmptyState
+            title={copy.idCards.designer.parseErrorTitle}
+            description={copy.idCards.designer.parseErrorBody}
+          />
+        )}
+      </>
+    );
+  }
+
+  const draft = designer.draft;
+  const selected = draft.elements.find(
+    (element) => element.id === designer.selectedId,
+  );
+  const d = copy.idCards.designer;
+
+  return (
+    <>
+      <PageHeader
+        title={draft.name || d.title}
+        description={d.subtitle}
+        actions={
+          <div className="idcard-screen-only flex items-center gap-2">
+            <Link
+              href="/students/id-cards"
+              className={buttonVariants({ variant: "ghost", size: "sm" })}
+            >
+              <ArrowLeftIcon data-slot="icon" />
+              {d.back}
+            </Link>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!designer.dirty || designer.saving}
+              onClick={() => designer.discard()}
+            >
+              {d.discard}
+            </Button>
+            <Button
+              size="sm"
+              disabled={!designer.dirty || designer.saving}
+              onClick={() => void designer.save()}
+            >
+              {designer.saving ? d.saving : d.save}
+            </Button>
+          </div>
+        }
+      />
+
+      <div className="idcard-screen-only grid gap-6 lg:grid-cols-[auto_1fr]">
+        {/* ── The card + palette ── */}
+        <div className="flex flex-col items-start gap-4">
+          <DesignerCanvas
+            template={draft}
+            sampleCard={SAMPLE_CARD}
+            selectedId={designer.selectedId}
+            onSelect={designer.selectElement}
+            onGeometry={designer.setGeometry}
+          />
+          <p className="text-muted-foreground max-w-md text-xs">
+            {d.canvasHint}
+          </p>
+          <FieldPalette onAdd={designer.addElement} />
+        </div>
+
+        {/* ── Settings + properties ── */}
+        <div className="flex min-w-0 flex-col gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>{d.settingsHeading}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CanvasSettings
+                draft={draft}
+                onName={designer.setName}
+                onOrientation={designer.setOrientation}
+                onBackground={designer.setBackground}
+                onUploadAsset={handleUpload}
+                uploading={uploading}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                {selected ? d.propertiesHeading : d.noSelection}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {selected ? (
+                <ElementProperties
+                  element={selected}
+                  onReplace={designer.replaceElement}
+                  onDelete={() => designer.removeElement(selected.id)}
+                  onUploadAsset={handleUpload}
+                  uploading={uploading}
+                />
+              ) : (
+                <p className="text-muted-foreground text-sm">
+                  {d.noSelectionBody}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </>
+  );
+}
