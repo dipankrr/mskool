@@ -11,9 +11,12 @@ import { appRouter } from "@repo/trpc";
 import { createContext } from "@repo/trpc";
 import { openApiDocument } from "./openapi";
 import { feesWebhookRouter } from "./fees-webhook";
+import { mountPortalClaim } from "./portal-claim";
 import { env } from "./env";
 
 type Server = import("express").Application;
+
+const corsOrigins = env.CORS_ORIGIN.split(",").map((origin) => origin.trim());
 
 /**
  * Every better-auth email/password signup route. `sign-up/email` is the only
@@ -52,7 +55,7 @@ const generalLimiter = rateLimit({
 });
 
 
-export function createServer() : Server {
+export function createServer(): Server {
   const app = express();
 
   /**
@@ -85,11 +88,27 @@ export function createServer() : Server {
   app.use("/docs", docsHeaders);
   app.use("/openapi.json", docsHeaders);
 
-  app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
+  app.use(
+    cors({
+      origin: (requestOrigin, callback) => {
+        if (!requestOrigin || corsOrigins.includes(requestOrigin)) {
+          callback(null, true);
+          return;
+        }
+        callback(null, false);
+      },
+      credentials: true,
+    }),
+  );
 
   // Rate limits sit above everything stateful, including better-auth: a
   // flooded endpoint must never reach session verification at all.
-  app.use(generalLimiter);
+  // Gated by DISABLE_RATE_LIMIT for local test runs (smoke/integration/e2e
+  // burst sign-ins and requests); production keeps the default "false".
+  const rateLimitDisabled = env.DISABLE_RATE_LIMIT === "true";
+  if (!rateLimitDisabled) {
+    app.use(generalLimiter);
+  }
 
   /**
    * Mounted as a PREDICATE, deliberately. Express 4 silently skips
@@ -98,13 +117,15 @@ export function createServer() : Server {
    * warned. The same path test that works for the sign-up block below,
    * applied as an ordinary middleware that always executes.
    */
-  app.use((req, res, next) => {
-    if (SIGN_IN_PATH.test(req.originalUrl)) {
-      signInLimiter(req, res, next);
-      return;
-    }
-    next();
-  });
+  if (!rateLimitDisabled) {
+    app.use((req, res, next) => {
+      if (SIGN_IN_PATH.test(req.originalUrl)) {
+        signInLimiter(req, res, next);
+        return;
+      }
+      next();
+    });
+  }
 
   /**
    * Self-registration is closed (ADR-021).
@@ -160,6 +181,11 @@ export function createServer() : Server {
   // definition today (no file uploads yet), and an unbounded body parser is
   // a memory-exhaustion vector.
   app.use(express.json({ limit: "1mb" }));
+
+  // Public family claim (ADR-037): phone + admission-no + DOB → sets (or
+  // re-sets) the password. Mounted here, not in tRPC, because routers/ must
+  // stay gated (check-builders). Own hourly limiter; uniform refusals.
+  mountPortalClaim(app);
 
   // Native tRPC endpoint — this is what apps/web's httpBatchLink talks
   // to (full type inference, batched calls, no REST/JSON-schema layer
