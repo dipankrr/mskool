@@ -6,6 +6,54 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
+**ID CARDS — SLICE 2A COMPLETE ON `feature/id-cards` (2026-09-29, ADR-038). 10 commits, all gates green.**
+
+The backend + print surface for per-school customizable student ID cards. What landed, bottom-up:
+
+1. **ADR-038 + storage seam** — `packages/services/storage.service.ts` with a
+   driver interface (`put/get/delete`); driver A is `postgres` (bytes in
+   `storage_objects.data` bytea), driver B (`r2`) is declared-not-built and
+   fails loudly until the owner's Cloudflare account exists. **Object URLs are
+   stable app routes** (`GET /api/storage/:id`, session-authenticated,
+   membership-checked via `getForUser`) — the R2 swap is copy-bytes + env
+   flip, never URL churn. Uploads ride tRPC as base64 (2MB cap, image
+   allowlist); the web client is the only place bytes are resized
+   (~300×400 JPEG).
+2. **Schema 0024** — `storage_objects` (org-owned), `student_photos` (one per
+   student; replace upserts the pointer and deletes the replaced bytes),
+   `id_card_templates` (school-scoped, `orientation` + canvas/elements jsonb,
+   one-default partial unique index, `isPublished` flag awaiting 2b's gallery).
+3. **Templates as data** — a template is canvas (orientation, optional
+   background asset) + positioned elements (text with a card-data binding,
+   photo, QR of the studentId, logo), percent-geometry so any arrangement is
+   representable. Four prebuilt starters ship as web constants; "adopt"
+   clones one into an owned row (per-school name unique).
+4. **Procedures** — `idCard.template.*` (reads `id_card:print`, writes
+   `id_card:manage`), `idCard.cardData` (tenancy-filtered, no-widening),
+   `student.photo/uploadPhoto/removePhoto` (riding `student:read` /
+   `student:update`). Web: `/students/id-cards` (pickers, multi-select,
+   template gallery, preview, A4 print CSS with cut guides, client QR) +
+   photo card on the student detail page. Nav entry gated `id_card:print`.
+5. **Proofs** — new `idcard.integration` 9/9 (tenancy incl. sibling-branch
+   invisibility, one-default invariant, adopt-clone, cardData no-widening,
+   storage round-trip, serving-route membership); **fixed en route: the
+   portal-claim suite now builds a PRIVATE RUN-KEYED WORLD** (the exam
+   suite's pattern) — it previously left ACTIVE students in the shared authz
+   world, so its claims raced the authz suite's exact registry pin whenever
+   vitest ran files concurrently. `world.ts` exports the find-or-create
+   helpers for exactly this.
+6. **Gates:** check-types 8/8 (incl. the re-run the login-overhaul entry
+   asks for), lint 0 errors, unit green, integration 218/218 (the one
+   registry failure was the race above), check:builders + check:openapi
+   clean. The owner-local ngrok/CORS files remain uncommitted as always.
+
+**NEXT — SLICE 2B (the designer):** edit an adopted template in-browser
+(drag elements, property panel, field palette), publish-to-gallery +
+clone-across-schools, build-from-blank, template picker management UI. The
+render model (`features/id-cards/template.ts` `parseTemplateData`) and the
+`idCard.template.update` procedure are the seam 2b builds on — no backend
+work expected.
+
 **LOGIN OVERHAUL — GLOBAL PHONE IDENTITY, COMMITTED 7x (2026-09-29, ADR-037).**
 Owner-approved plan, on `feature/id-cards` for review (unpushed):
 
