@@ -1611,3 +1611,58 @@ Migration runbook (follow-up, not this slice): normalize legacy
 rows, backfill `guardianId` by digits), force one claim-reset, revoke all
 sessions once, audit. Until run, old and new usernames coexist — login tries
 phone-first, slug second.
+
+---
+
+## ADR-038 — Object storage behind a driver seam; URLs are stable app routes
+
+**Status:** accepted (2026-09-29). First consumers: student photos and ID-card
+backgrounds/logos (slice 2a).
+
+**Context.** ID cards need full-card background images, school logos, and a
+per-student photo; nothing in the stack stores binary objects yet. The owner is
+getting an R2 (Cloudflare) account soon, but v1 must ship before that. Whichever
+place the bytes live in, every consumer — an `<img>` tag, the print page, the
+future designer — wants a URL that does not change when the backend does.
+
+**Decision.**
+
+1. **One storage service, two seams.** `packages/services/storage.service.ts`
+   owns objects; its driver interface is `put / get / delete (+meta)`. Driver A
+   (v1) is `postgres`: bytes live in `storage_objects.data` (`bytea`). Driver B
+   (`r2`) is *declared, not built*: `STORAGE_DRIVER=r2` fails loudly with a
+   named error until the R2 driver lands. The swap is a config flip plus a
+   copy-the-bytes migration — no call-site changes, because nothing outside the
+   driver knows where bytes live.
+
+2. **Object URLs are stable app routes, never driver URLs.** Objects are served
+   at `GET /api/storage/:id` from apps/api — session-authenticated, tenancy
+   checked against the object's owning organization via the caller's active
+   (non-revoked, unexpired) role assignments. Because every reference
+   (`student_photos.object_id`, template `backgroundAssetId`, logo `assetId`)
+   stores the *object id*, not a location, migrating to R2 later means copying
+   bytes and flipping `STORAGE_DRIVER` — zero URL churn, zero data migration on
+   the referencing tables. The route answers `image/*` only and marks responses
+   `Cache-Control: private, max-age=31536000, immutable` — object ids are
+   uuids, replacement writes a NEW id, so an id's bytes never change.
+
+3. **Uploads are tRPC mutations carrying base64, capped hard.** No multipart
+   infrastructure exists and none is needed at photo scale: the client resizes
+   (~300×400 JPEG) before upload, the contract caps the base64 at
+   ~512 KB of decoded bytes with an `image/jpeg | image/png | image/webp`
+   allowlist, and the service re-checks the decoded size. The cap is
+   deliberately inside the API's existing 1 MB JSON body limit, so no body-parser
+   change rides on this feature. Larger media (PDFs, video) would want real
+   object-store direct uploads — an R2-era concern, out of scope.
+
+4. **Photos are one-per-student.** `student_photos` has a unique
+   `student_id`; a re-upload upserts and the replaced object's bytes are
+   deleted. Storage rows themselves are NOT under hard rule 2 (they are not
+   user/student/payment/attendance/result records), and a dead bytes row behind
+   a live pointer is worse than a hard delete: `deleteObject` is a real DELETE,
+   and only ever called on objects nothing references any more.
+
+**Non-goals / deferrals:** the R2 driver itself (seam only, per §1), public or
+signed object URLs (everything is session-authenticated), the school logo
+upload surface (the `logo` element accepts an `assetId`; the screen that
+uploads a school logo is a 2b+ concern), and any quota/usage accounting.
