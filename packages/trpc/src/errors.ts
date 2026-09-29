@@ -799,6 +799,36 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
     message: "This staff member has no login yet. Create one first.",
   },
   {
+    // createLogin without a staff email would mint user.email=null, which no
+    // sign-in can match (ADR-037). Refused with the fix named.
+    match: /Add an email address to this staff record/i,
+    code: "BAD_REQUEST",
+    message:
+      "Add an email address to this staff record first — staff sign in with email.",
+  },
+  {
+    // The claim/verify uniform refusal (ADR-037): phone unknown, no link,
+    // wrong admission number, wrong DOB — one message and one code, so no
+    // response tells which half missed.
+    match: /Those details do not match our records/i,
+    code: "BAD_REQUEST",
+    message:
+      "Those details do not match our records. Check the phone number, admission number, and date of birth.",
+  },
+  {
+    // ensureLink's guardian gate (people.ts canAccessPortal, enforced).
+    match: /That guardian is not linked to this student/i,
+    code: "BAD_REQUEST",
+    message:
+      "That guardian is not linked to this student. Link the guardian first.",
+  },
+  {
+    match: /Portal access is switched off for this guardian/i,
+    code: "BAD_REQUEST",
+    message:
+      "Portal access is switched off for this guardian. Switch it on before linking a login.",
+  },
+  {
     match: /Nothing to update — send at least one field/i,
     code: "BAD_REQUEST",
     message: "Nothing to update — change at least one field.",

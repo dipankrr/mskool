@@ -258,6 +258,15 @@ export class StaffService {
       );
     }
 
+    // Staff sign in with email: provisioning without one mints a login that
+    // can never be used (user.email=null matches no sign-in). Refuse with
+    // the fix named instead of stranding the record.
+    if (!row.email) {
+      throw new Error(
+        "Add an email address to this staff record first — staff sign in with email.",
+      );
+    }
+
     const [org] = await db
       .select({ slug: organizations.slug })
       .from(organizations)
