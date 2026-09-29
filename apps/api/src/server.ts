@@ -12,6 +12,7 @@ import { createContext } from "@repo/trpc";
 import { openApiDocument } from "./openapi";
 import { feesWebhookRouter } from "./fees-webhook";
 import { mountPortalClaim } from "./portal-claim";
+import { mountStorageRoute } from "./storage";
 import { env } from "./env";
 
 type Server = import("express").Application;
@@ -186,6 +187,11 @@ export function createServer(): Server {
   // re-sets) the password. Mounted here, not in tRPC, because routers/ must
   // stay gated (check-builders). Own hourly limiter; uniform refusals.
   mountPortalClaim(app);
+
+  // Object storage (ADR-038): GET /api/storage/:id — session-authenticated,
+  // tenancy-checked against the object's owning org. Mounted before the
+  // OpenAPI middleware so the static segment can never be shadowed.
+  mountStorageRoute(app);
 
   // Native tRPC endpoint — this is what apps/web's httpBatchLink talks
   // to (full type inference, batched calls, no REST/JSON-schema layer
