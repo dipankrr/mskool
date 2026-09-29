@@ -6,13 +6,13 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
-**LOGIN OVERHAUL — GLOBAL PHONE IDENTITY, UNCOMMITTED (2026-09-29, ADR-037).**
-Owner-approved 5-commit plan, working tree holds all of it for review:
+**LOGIN OVERHAUL — GLOBAL PHONE IDENTITY, COMMITTED 7x (2026-09-29, ADR-037).**
+Owner-approved plan, on `feature/id-cards` for review (unpushed):
 
 1. **Identity + schema** — ADR-037 (global 10-digit `user.username`, claim-not-handoff, pending links, rate-limit only, no OTP/blocklist/fee-step-up; future `name+digits` shares the column, no prefix) + claim/verify/ensure/revoke/status contracts.
 2. **Services + authz** — `ensureLink` (staff links phone, pending, guardian-gated via `canAccessPortal`), `claim` (first-claim sets password + activates trio matches; forgot re-sets + revokes, uniform refusal), `verifyLink` (nth-kid, no password touch), `revokeLink` (flag + `role_revoked` audit until a dedicated action migrates), `linkStatus`; staff `createLogin` refuses email-less records; new error wordings. No authz change needed (ownership already spans orgs; pending hidden by `isActive`).
 3. **API surface** — public `POST /api/portal/claim` (Express, own hourly limiter, uniform 400s; lives outside tRPC so routers/ stays gated per check-builders) + `portalAccess.ensureLink/status/verifyLink/revokeLink` with OpenAPI meta.
-4. **Web** — staff login card states the sign-in email + email-less guard text; family login tries phone-first, legacy `slug-phone` second; school box optional.
+4. **Web** — staff login card states the sign-in email + email-less guard text; family login tries phone-first, legacy `slug-phone` second; school box optional. Family dialog reworked: Links tab (live status with pending/active + credential badges, link-a-phone, revoke behind consequence confirm); legacy password tabs retained for pre-migration slug rows.
 5. **Proofs deferred, deliberately:** seed/smoke/e2e fixtures untouched (existing slug-login suites keep passing); migration runbook in ADR-037 (normalize → merge → backfill `guardianId` → one claim-reset) is a follow-up with staging dry-run. Dedicated `portal_access:revoke` permission/action + guardian-contact CRUD + app claim screens also follow-ups, recorded not silent.
 Gates run: `check-types` 8/8 green at commit time, `lint` 0 errors, `check:builders` + `check:openapi` clean (4 new routes listed), unit green.
 Proofs: new `portal-claim.integration` 10/10 (uniform refusal incl. byte-identical oracle, sibling pending, cross-org merge, forgot kills sessions + audits, revoke + tenancy, guardian gate, idempotent re-link); `staff.integration` 27/27 (fixtures moved to email-carrying records + new email-less refusal pin); `authz.integration` 93/93, `fees.integration` 53/53, exam files green in the full run (192 passed, only the staff file failed pre-fix).

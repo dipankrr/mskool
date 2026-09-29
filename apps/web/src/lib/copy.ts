@@ -75,6 +75,7 @@ export const copy = {
     /** Sub-actions under the sidebar's expandable items. */
     allStudents: "All students",
     admitStudent: "Admit student",
+    idCards: "ID cards",
     attendanceCalendar: "Calendar",
     attendanceMark: "Mark",
     attendancePolicy: "Policy",
@@ -191,6 +192,23 @@ export const copy = {
   },
   portalAccess: {
     title: "Family login",
+    links: "Logins",
+    linkPhone: "Link a phone number",
+    linkPhoneHelp:
+      "No password to hand over. The family sets its own from home: sign-in screen → first time → phone number + admission number + date of birth.",
+    linkCreated:
+      "Phone linked. Tell the family to set their password from home — phone number + admission number + date of birth.",
+    linkPending: "Awaiting claim",
+    linkActive: "Active",
+    linkCredentialSet: "Password set",
+    linkCredentialPending: "No password yet",
+    linkRevoke: "Revoke",
+    linkRevoked: "Family login revoked for this student.",
+    linkRevokeConsequence:
+      "This login stops seeing this student at once. Other children on the same login are unaffected. This is recorded with your name.",
+    linkEmpty: "No family logins linked yet. Link the guardian's phone number below.",
+    legacyNote:
+      "Older logins (with a school prefix) are managed below — new links never need passwords.",
     activate: "Activate family login",
     activated: "Family login activated. The family signs in with this phone number.",
     phone: "Phone number",
@@ -1959,6 +1977,61 @@ export const copy = {
         exemptRenormalizeShort: "Exempt excluded",
         exemptZeroShort: "Exempt scores zero",
       },
+    },
+  },
+
+  /**
+   * ID CARDS (slice 2a) — the print pass. The design vocabulary ("template",
+   * "adopt", "starter design") is 2b's designer's too, so the words live here
+   * from the start.
+   */
+  idCards: {
+    subtitle:
+      "Design student ID cards from starter templates, then print a class set on CR80 card.",
+    print: "Print",
+    chooseBranchBody: "Choose a branch and session to print ID cards.",
+    chooseTemplate: "Template",
+    chooseClass: "Class",
+    chooseSection: "Section",
+    allSections: "All sections",
+    studentsHeading: "Students",
+    selectAll: "Select all",
+    clearAll: "Clear",
+    selectedCount: (n: number) => `${n} selected`,
+    emptyRosterTitle: "No students here",
+    emptyRosterBody:
+      "This class and session has no enrolled students to print cards for.",
+    previewHeading: "Preview",
+    previewHint:
+      "Photos come from each student's record — upload one from the student's page.",
+    noPhoto: "No photo",
+    starterGallery: "Starter designs",
+    starterGalleryHint:
+      "Adopt a starter to make an editable copy for your branch. Adopting again under the same name is refused — rename it first.",
+    adopt: "Adopt",
+    adopted: "Adopted — find it under Templates.",
+    yourTemplates: "Your templates",
+    yourTemplatesEmpty:
+      "No templates yet. Adopt a starter design below to begin.",
+    defaultBadge: "Default",
+    makeDefault: "Make default",
+    madeDefault: "This template is now the default.",
+    orientationLandscape: "Landscape",
+    orientationPortrait: "Portrait",
+    printHint:
+      "Prints one CR80 card per selected student on A4, with cut guides. Use thick card stock.",
+    loadFailed: "Couldn't load the cards.",
+    // The student detail page's photo card.
+    photo: {
+      title: "Photo",
+      empty: "No photo yet",
+      hint: "A passport photo prints on the ID card. It is resized to 300×400 before upload.",
+      upload: "Upload photo",
+      replace: "Replace",
+      remove: "Remove photo",
+      uploaded: "Photo uploaded.",
+      removed: "Photo removed.",
+      tooLarge: "That image is too large after resize — choose a smaller photo.",
     },
   },
 } as const;
