@@ -1554,3 +1554,60 @@ matrix makes it DIVERGE from the defaults deliberately, and the "modified"
 badge plus reset is how an admin sees and undoes that divergence. Only
 org-level roles are editable as data; nobody edits a scope-specific
 matrix because there is no such table.
+
+---
+
+## ADR-037 — Global phone identity for family logins (claim, not hand-off)
+
+**Accepted.** Supersedes ADR-007's `{org_slug}-{phone}` username shape for all
+*new* family logins (legacy slug usernames keep working until the migration
+runbook below is executed — no silent break).
+
+Context from the login review: per-student staff-typed passwords plus a
+school-name picker fail on every axis — O(students) admin typing, paper/whisper
+hand-off, exact-match picker, one login per org so cross-trust siblings need
+two accounts, and `guardians`/`canAccessPortal`/`guardianId` all dead (nothing
+reads them).
+
+Decision:
+
+1. **Identity is the 10-digit guardian phone, globally unique**
+   (`user.username`, plain `^\d{10}$`). One phone = one `user` across schools
+   and trusts. Schools create *links*, never accounts: first sight of digits
+   creates the user (locked, no credential), every later sighting attaches
+   another `(user → student)` link row. `guardianId` is written on each link
+   so father/mother stay distinguishable; shared household digits dedupe to
+   one login by the `(userId, studentId)` unique index.
+2. **Parents set their own passwords via claim, staff type none.** Pending
+   link + `phone + admission-no + DOB` (all already known at home) → sets the
+   password. Same trio re-sets it when forgotten (sessions revoked, audit
+   row). A second kid is link-only: signed-in parent proves *that* kid's pair
+   (`verifyLink`), the password is never touched again. Claim/verify answer
+   every mismatch with one uniform refusal (no field hints); abuse control is
+   rate-limit only (per phone + per IP, lockout counts) — no breach-list, no
+   OTP (cost), no fee-payment step-up (owner call, audit + receipts carry it).
+3. **No school picker.** Phone lookup is global, so login is phone +
+   password on web and the future app alike — same routers, no subdomain, no
+   remembered school name.
+4. **Staff lose credential buttons.** `activate/reset with password` and
+   `changePhone` stay for legacy rows only; the supported acts are link
+   status (pending/active), re-open claim (after ID check) and revoke link
+   (`isActive=false` + `revokedAt`, never delete). A global rename by one
+   org's staff would hijack other orgs' access, so no staff endpoint touches
+   `user.username` at all — phone corrections edit the *guardian* contact and
+   re-verify. `canAccessPortal=false` (or student deactivation) hides/revokes
+   the link.
+5. **Future student self-login** (`name+digits`) shares the same
+   `user.username` column (all-digits vs contains-letters are disjoint, no
+   prefix, no second column) — reserved, not built.
+
+Non-goals: OTP/passwordless (SMS bill), per-student usernames now, portal web
+screens (mobile-only per ADR-034 — the web stopgap only shrinks to phone-only
+login), guardian-contact CRUD (no API exists; office verification stays
+procedural until it does).
+
+Migration runbook (follow-up, not this slice): normalize legacy
+`slug-phone` → phone, merge dupes per digits (earliest user wins, move access
+rows, backfill `guardianId` by digits), force one claim-reset, revoke all
+sessions once, audit. Until run, old and new usernames coexist — login tries
+phone-first, slug second.
