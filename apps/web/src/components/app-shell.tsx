@@ -67,6 +67,8 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
   SidebarProvider,
+  SidebarRail,
+  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -100,10 +102,10 @@ import { cn } from "@/lib/utils";
  * would make the server render one navigation and the client another, and React
  * would throw the whole tree away on hydration.
  *
- * `Sidebar` is used with `collapsible="none"`, which is what makes this possible:
- * in that mode it renders a plain flex column and never consults `useIsMobile`,
- * whose 768px breakpoint would otherwise fight the 1024px one and turn the sidebar
- * into a second, competing drawer between 768 and 1023px.
+ * `Sidebar` uses `collapsible="icon"`, so `Ctrl/Cmd+B` (see `SidebarProvider`)
+ * collapses it to an icon strip on desktop. The 1024px switch itself stays CSS
+ * (`hidden lg:flex` / `lg:hidden`): below `lg` the sidebar is hidden and the
+ * bottom tabs + More sheet own navigation.
  *
  * **The shell renders in every state, including the failures.** It reads
  * `useActiveContextState()` rather than the resolved context, so a cold database
@@ -686,17 +688,17 @@ export function AppShell({ children }: { children: ReactNode }) {
     <TooltipProvider>
       <SidebarProvider>
         <Sidebar
-          collapsible="none"
-          className="sticky top-0 hidden h-svh border-r lg:flex"
+          collapsible="icon"
+          className="border-r md:hidden lg:flex"
         >
           <SidebarHeader className="gap-2">
-            <span className="font-heading px-2 text-lg font-semibold tracking-tight">
+            <span className="font-heading px-2 text-lg font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
               {copy.app.name}
             </span>
             {ready ? (
-              <OrgSwitcher className="px-2" />
+              <OrgSwitcher className="px-2 group-data-[collapsible=icon]:hidden" />
             ) : (
-              <Skeleton className="mx-2 h-5 w-32" />
+              <Skeleton className="mx-2 h-5 w-32 group-data-[collapsible=icon]:hidden" />
             )}
             <button
               type="button"
@@ -705,8 +707,10 @@ export function AppShell({ children }: { children: ReactNode }) {
               className={paletteTriggerClass}
             >
               <SearchIcon data-icon="inline-start" />
-              {copy.nav.searchPlaceholder}
-              <kbd className="bg-muted border-border ml-auto rounded border px-1.5 font-mono text-[10px] tracking-widest">
+              <span className="truncate group-data-[collapsible=icon]:hidden">
+                {copy.nav.searchPlaceholder}
+              </span>
+              <kbd className="bg-muted border-border ml-auto rounded border px-1.5 font-mono text-[10px] tracking-widest group-data-[collapsible=icon]:hidden">
                 {copy.nav.searchKbdHint}
               </kbd>
             </button>
@@ -719,6 +723,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       isActive={isActiveHref(pathname, homeItem.href)}
+                      tooltip={homeItem.label}
                       render={<Link href={homeItem.href} />}
                     >
                       <homeItem.icon data-icon="inline-start" />
@@ -775,6 +780,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                               */}
                               <SidebarMenuButton
                                 isActive={isActiveHref(pathname, item.href)}
+                                tooltip={item.label}
                                 render={<Link href={item.href} />}
                               >
                                 <item.icon data-icon="inline-start" />
@@ -820,10 +826,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           <SidebarFooter>
             {ready ? (
               <div className="flex flex-col gap-1 px-2 pb-1">
-                <span className="truncate text-sm font-medium">
+                <span className="truncate text-sm font-medium group-data-[collapsible=icon]:hidden">
                   {state.value.me.user.name}
                 </span>
-                <span className="text-muted-foreground truncate text-xs">
+                <span className="text-muted-foreground truncate text-xs group-data-[collapsible=icon]:hidden">
                   {state.value.me.user.email ?? copy.common.none}
                 </span>
                 <Link
@@ -831,20 +837,25 @@ export function AppShell({ children }: { children: ReactNode }) {
                   className={cn(
                     "text-muted-foreground hover:text-foreground mt-1 flex items-center gap-2 text-xs",
                     "focus-visible:outline-2 focus-visible:-outline-offset-2",
+                    "group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0",
                   )}
                 >
                   <UserIcon data-icon="inline-start" />
-                  {copy.nav.profile}
+                  <span className="truncate group-data-[collapsible=icon]:hidden">
+                    {copy.nav.profile}
+                  </span>
                 </Link>
               </div>
             ) : (
-              <Skeleton className="mx-2 mb-1 h-8 w-40" />
+              <Skeleton className="mx-2 mb-1 h-8 w-40 group-data-[collapsible=icon]:hidden" />
             )}
           </SidebarFooter>
+          <SidebarRail />
         </Sidebar>
 
         <div className="flex min-h-svh w-full min-w-0 flex-col">
           <header className="bg-background sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b px-3 md:px-6">
+            <SidebarTrigger className="hidden lg:flex" />
             {/*
               Mobile: one control that both states the current context and opens the
               ONE mobile menu — navigation and the branch/session controls together.
@@ -886,7 +897,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             invisible on a desktop.
           */}
           <main className="flex-1 pb-24 lg:pb-10">
-            <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 md:p-6">
+            <div className="flex w-full flex-col gap-6 p-4 md:p-6">
               <ActiveContextGate>{children}</ActiveContextGate>
             </div>
           </main>
