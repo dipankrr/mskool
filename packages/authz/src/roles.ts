@@ -114,6 +114,9 @@ export const RESOURCE_MIN_SCOPE: Record<Resource, ScopeType> = {
   // academic_year below; see DEFAULT_ROLE_PERMISSIONS before "fixing" this
   // entry.
   enrollment: "school",
+  // Templates hang off a school (they are not scope nodes) and the print run
+  // is a school act — the editor default, not a cap, like enrollment.
+  id_card: "school",
   subject_mapping: "school",
   teacher_assignment: "section",
   timetable: "class",

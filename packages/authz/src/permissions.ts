@@ -56,6 +56,11 @@ export const RESOURCE_ACTIONS = {
   teacher_assignment: ["create", "read", "update"],
   exam: ["create", "read", "update", "delete", "publish"],
   enrollment: ["create", "read", "update", "delete"],
+  // Student ID cards (slice 2a): `manage` owns the template CRUD + adopting
+  // starter designs; `print` is the broader read-and-render act — resolving
+  // card data and printing. The print page reads templates under `print`,
+  // writes stay under `manage`.
+  id_card: ["manage", "print"],
 
   // ── Config ────────────────────────────────────────────────────────────────
   school_settings: ["read", "update"],
@@ -122,6 +127,7 @@ export const RESOURCE_CATEGORIES: Record<string, Resource[]> = {
     "timetable",
     "syllabus",
     "enrollment",
+    "id_card",
   ],
   Finance: [
     "fee_head",
