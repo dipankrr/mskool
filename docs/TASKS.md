@@ -6,6 +6,16 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
+**LOGIN OVERHAUL — GLOBAL PHONE IDENTITY, UNCOMMITTED (2026-09-29, ADR-037).**
+Owner-approved 5-commit plan, working tree holds all of it for review:
+
+1. **Identity + schema** — ADR-037 (global 10-digit `user.username`, claim-not-handoff, pending links, rate-limit only, no OTP/blocklist/fee-step-up; future `name+digits` shares the column, no prefix) + claim/verify/ensure/revoke/status contracts.
+2. **Services + authz** — `ensureLink` (staff links phone, pending, guardian-gated via `canAccessPortal`), `claim` (first-claim sets password + activates trio matches; forgot re-sets + revokes, uniform refusal), `verifyLink` (nth-kid, no password touch), `revokeLink` (flag + `role_revoked` audit until a dedicated action migrates), `linkStatus`; staff `createLogin` refuses email-less records; new error wordings. No authz change needed (ownership already spans orgs; pending hidden by `isActive`).
+3. **API surface** — public `POST /api/portal/claim` (Express, own hourly limiter, uniform 400s; lives outside tRPC so routers/ stays gated per check-builders) + `portalAccess.ensureLink/status/verifyLink/revokeLink` with OpenAPI meta.
+4. **Web** — staff login card states the sign-in email + email-less guard text; family login tries phone-first, legacy `slug-phone` second; school box optional.
+5. **Proofs deferred, deliberately:** seed/smoke/e2e fixtures untouched (existing slug-login suites keep passing); migration runbook in ADR-037 (normalize → merge → backfill `guardianId` → one claim-reset) is a follow-up with staging dry-run. Dedicated `portal_access:revoke` permission/action + guardian-contact CRUD + app claim screens also follow-ups, recorded not silent.
+Gates to run before commit: `pnpm check-types` (must be 8/8 green), `pnpm lint`, `check:builders`, `check:openapi`.
+
 **STUDENT FEE STATUS MATRIX UI (2026-09-24) — web/navigation pass.**
 - Added `/fees/matrix` with a simple Status-only matrix as the default, an optional detailed amount view, shared filters/sort, a compact sticky student identity column, a dedicated opening-balance column, responsive student cards, accessible month detail Sheet, and truthful payment/timing states.
 - Registered Status matrix immediately after Overview in both fee navigation surfaces; matrix data reads use `fee_report:read` and all fee money/setup refresh sets invalidate matrix list and cell reads without optimistic updates.
