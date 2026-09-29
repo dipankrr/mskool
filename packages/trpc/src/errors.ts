@@ -339,6 +339,17 @@ const CONSTRAINT_TRANSLATIONS: Record<string, ConstraintTranslation> = {
     },
   },
 
+  // id_card_templates ------------------------------------------------------
+  id_card_templates_school_name_uq: {
+    code: "CONFLICT",
+    message: (error) => {
+      const name = keyValue(error, "name");
+      return name
+        ? `This branch already has a template named ${name}. Pick a different name.`
+        : "This branch already has a template with that name. Pick a different name.";
+    },
+  },
+
   // terms ----------------------------------------------------------------
   // A trigger, not a constraint — a CHECK cannot reference another table —
   // but it reports itself with this name via USING CONSTRAINT, so the same
@@ -888,6 +899,26 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
     code: "BAD_REQUEST",
     message:
       "That permission is both added and removed in the same save — refresh the editor and re-apply the change.",
+  },
+
+  // Storage (ADR-038): the service-side backstops to the contract's cap.
+  {
+    match: /The file is larger than/i,
+    code: "BAD_REQUEST",
+    message:
+      "That file is too large. Resize or compress it first — the app resizes photos before upload.",
+  },
+  {
+    match: /The file is empty/i,
+    code: "BAD_REQUEST",
+    message: "That file is empty — choose a photo and try again.",
+  },
+  {
+    // cardData's school guard: the addressed branch is not this org's.
+    match: /^School not found in this organisation/i,
+    code: "BAD_REQUEST",
+    message:
+      "That branch is not in your organisation. Choose a branch you work in.",
   },
 ];
 

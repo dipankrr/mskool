@@ -7,6 +7,7 @@ import { attendanceRouter } from "./routers/attendance.router";
 import { enrollmentRouter, portalRouter } from "./routers/enrollment.router";
 import { examRouter, portalExamRouter } from "./routers/exam.router";
 import { feesRouter } from "./routers/fees.router";
+import { idCardRouter } from "./routers/id_card.router";
 import { meRouter } from "./routers/me.router";
 import { portalAccessRouter } from "./routers/portal-access.router";
 import { roleRouter } from "./routers/role.router";
@@ -64,6 +65,11 @@ export const appRouter = router({
   // Role assignments: grant at the addressed scope, revoke with a reason,
   // and the read-only permission matrix (ADR-005, ADR-035).
   role: roleRouter,
+  // ID cards (slice 2a): idCard.template.* (list/get/create/update/adopt/
+  // setDefault, gated id_card:manage on writes / id_card:print on reads) and
+  // idCard.cardData — the server-resolved payload the print page renders
+  // against, gated id_card:print. Photos ride the student router.
+  idCard: idCardRouter,
 });
 
 

@@ -2,8 +2,9 @@ import {
   createStudentSchema,
   studentSelectSchema,
   updateStudentSchema,
+  uploadStudentPhotoInput,
 } from "@repo/contracts";
-import { studentService } from "@repo/services";
+import { idCardService, storageService, studentService } from "@repo/services";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -172,5 +173,75 @@ export const studentRouter = router({
       }
 
       return student;
+    }),
+
+  // ── The student's photo (slice 2a, ADR-038) ─────────────────────────────
+  // Gated on `student:update` / `student:read` — a photo is part of the
+  // student's record, not its own permission surface. The upload is base64
+  // through tRPC (no multipart), capped and content-type-allowlisted by the
+  // contract; the client resizes before upload.
+
+  /** The current photo's storage object id — the detail page and print pass. */
+  photo: staffProcedure("student:read", {
+    resolveOwner: resolveStudentOwner,
+    gate: "overlap",
+  })
+    .input(z.object({ id: z.uuid() }))
+    .output(z.object({ objectId: z.string().uuid().nullable() }))
+    .query(({ ctx, input }) =>
+      storageService
+        .getStudentPhotoObjectId(ctx.scope, input.id)
+        .then((objectId) => ({ objectId })),
+    ),
+
+  uploadPhoto: staffProcedure("student:update", {
+    resolveOwner: resolveStudentOwner,
+  })
+    .meta({
+      openapi: {
+        method: "POST",
+        path: "/students/{id}/photo",
+        tags: ["students"],
+        summary: "Upload (or replace) the student's photo",
+        protect: true,
+      },
+    })
+    .input(z.object({ id: z.uuid(), data: uploadStudentPhotoInput }))
+    .output(z.object({ objectId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const bytes = Buffer.from(input.data.dataBase64, "base64");
+
+      // A payload that fails to decode round-trips as an empty buffer — the
+      // service's empty/oversize guards turn that into wording, not a 500.
+      const meta = await storageService.putObject({
+        organizationId: ctx.scope.organizationId,
+        contentType: input.data.contentType,
+        bytes,
+        createdBy: ctx.userId,
+      });
+
+      // Upserts the pointer and deletes the replaced object's bytes in one
+      // transaction (one live photo per student — ADR-038).
+      await idCardService.setStudentPhoto(
+        ctx.scope,
+        input.id,
+        meta.id,
+        ctx.userId,
+      );
+
+      return { objectId: meta.id };
+    }),
+
+  removePhoto: staffProcedure("student:update", {
+    resolveOwner: resolveStudentOwner,
+  })
+    .input(z.object({ id: z.uuid() }))
+    .output(z.object({ removed: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const removed = await idCardService.removeStudentPhoto(
+        ctx.scope,
+        input.id,
+      );
+      return { removed };
     }),
 });
