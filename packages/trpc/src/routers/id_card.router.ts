@@ -1,9 +1,13 @@
 import {
+  cloneIdCardTemplateInput,
   createIdCardTemplateInput,
   idCardDataRequestShape,
   idCardStudentCardSchema,
   idCardTemplateSelectSchema,
+  publishedIdCardTemplateSchema,
   updateIdCardTemplateInput,
+  uploadStudentPhotoInput,
+  uploadedTemplateAssetSchema,
 } from "@repo/contracts";
 import { idCardService } from "@repo/services";
 import { db } from "@repo/db";
@@ -169,6 +173,97 @@ export const idCardRouter = router({
       .output(idCardTemplateSelectSchema)
       .mutation(async ({ ctx, input }) => {
         const row = await idCardService.setDefault(ctx.scope, input.id);
+        if (!row) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Template not found.",
+          });
+        }
+        return row;
+      }),
+
+    /**
+     * Stores a template asset (card background, school logo) and returns the
+     * object id — the designer re-points `canvas.backgroundAssetId` / a logo
+     * element at it with an ordinary update. Same cap and allowlist as the
+     * photo upload; the contract note records why removing a reference does
+     * not delete the bytes.
+     */
+    uploadAsset: staffProcedure("id_card:manage")
+      .meta({
+        openapi: {
+          method: "POST",
+          path: "/id-cards/templates/asset",
+          tags: ["id_cards"],
+          summary: "Upload an ID card template asset (background or logo)",
+          protect: true,
+        },
+      })
+      // The photo shape, reused verbatim — same ceiling, same allowlist.
+      .input(uploadStudentPhotoInput)
+      .output(uploadedTemplateAssetSchema)
+      .mutation(({ ctx, input }) =>
+        idCardService
+          .uploadTemplateAsset(ctx.scope, input, ctx.userId)
+          .then((objectId) => ({ objectId })),
+      ),
+  }),
+
+  /**
+   * THE COMMUNITY GALLERY (slice 2b) — cross-school template sharing.
+   *
+   * ⚠️ THE DELIBERATE TENANCY EXCEPTION, stated where a reviewer will look
+   * for a missing filter: `gallery.list` reads PUBLISHED templates from EVERY
+   * org with no scope filter. This is the one place the hard rule bends, and
+   * it bends on purpose — a published design is tenant-agnostic data (name,
+   * orientation, canvas, elements; the service's payload provably carries no
+   * org identity and no student data), and sharing it is the owner's explicit
+   * act (`isPublished` + the publishedAt stamp). The permission gate is still
+   * `id_card:manage`, the output schema still strips to the design fields,
+   * and nothing here weakens the serving route: a listed design's asset ids
+   * answer bytes only to members of the OWNING org — `gallery.clone` byte-
+   * copies assets into the cloner's org instead of ever exposing them.
+   * Documented in the TASKS 2b entry as well, so it cannot look forgotten.
+   */
+  gallery: router({
+    list: staffListProcedure("id_card:manage")
+      .meta({
+        openapi: {
+          method: "GET",
+          path: "/id-cards/gallery",
+          tags: ["id_cards"],
+          summary: "List every org's published ID card designs",
+          protect: true,
+        },
+      })
+      .output(z.array(publishedIdCardTemplateSchema))
+      .query(() => idCardService.listPublishedTemplates()),
+
+    /**
+     * Clones a PUBLISHED design (any org's) into the caller's school as a new
+     * owned, PRIVATE row — the adopt flow's cross-org sibling. The branch is
+     * named in the input (B5); an unpublished or foreign-PRIVATE source id is
+     * the same NOT_FOUND as a made-up one, so the endpoint never reveals
+     * which private ids exist.
+     */
+    clone: staffProcedure("id_card:manage")
+      .meta({
+        openapi: {
+          method: "POST",
+          path: "/id-cards/gallery/clone",
+          tags: ["id_cards"],
+          summary: "Clone a published ID card design into the branch",
+          protect: true,
+        },
+      })
+      .input(cloneIdCardTemplateInput)
+      .output(idCardTemplateSelectSchema)
+      .mutation(async ({ ctx, input }) => {
+        const row = await idCardService.clonePublishedTemplate(
+          ctx.scope,
+          input,
+          ctx.userId,
+        );
         if (!row) {
           throw new TRPCError({
             code: "NOT_FOUND",

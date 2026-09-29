@@ -1,7 +1,14 @@
 import type {
+  CloneIdCardTemplateInput,
   CreateIdCardTemplateInput,
   IdCardStudentCard,
+  IdCardTemplateData,
+  PublishedIdCardTemplate,
   UpdateIdCardTemplateInput,
+} from "@repo/contracts";
+import {
+  idCardCanvasSchema,
+  idCardTemplateDataSchema,
 } from "@repo/contracts";
 import type { DataScope, ScopeColumns } from "@repo/authz";
 import { atSchoolLevel, requireSchoolId } from "./academic.service";
@@ -21,6 +28,7 @@ import {
   students,
 } from "@repo/db/schema";
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { storageService } from "./storage.service";
 
 /**
  * ID CARDS — template CRUD, the starter-design adopt, and the card-data
@@ -132,9 +140,12 @@ export class IdCardService {
   }
 
   /**
-   * Design edits and the default flag. Same default-clearing transaction as
-   * create; a null return is the router's NOT_FOUND (a foreign-branch id and
-   * a made-up one are the same miss).
+   * Design edits, the default flag, and (2b) the publish switch. Same
+   * default-clearing transaction as create; a null return is the router's
+   * NOT_FOUND (a foreign-branch id and a made-up one are the same miss).
+   * `isPublished` is the caller's INTENT — the publishedAt stamp is owned
+   * here: setting true stamps now, clearing nulls the stamp, and there is no
+   * input that can forge or erase the timestamp directly.
    */
   async updateTemplate(
     scope: DataScope,
@@ -167,6 +178,12 @@ export class IdCardService {
           ...(input.elements !== undefined ? { elements: input.elements } : {}),
           ...(input.isDefault !== undefined
             ? { isDefault: input.isDefault }
+            : {}),
+          ...(input.isPublished !== undefined
+            ? {
+                isPublished: input.isPublished,
+                publishedAt: input.isPublished ? new Date() : null,
+              }
             : {}),
         })
         .where(
@@ -220,6 +237,176 @@ export class IdCardService {
         .returning();
 
       return row ?? null;
+    });
+  }
+
+  // ── The community gallery (slice 2b) ────────────────────────────────────
+
+  /**
+   * Stores a template asset (a card background, a school logo) and returns
+   * the object id for the designer to reference. Objects are org-owned
+   * (storage.service); the router's school gate decides who may mint one.
+   * The reference is set by a separate template update — the upload never
+   * mutates a design itself, so a failed design edit cannot orphan a ref.
+   */
+  async uploadTemplateAsset(
+    scope: DataScope,
+    input: { contentType: string; dataBase64: string },
+    userId: string,
+  ): Promise<string> {
+    requireSchoolId(scope);
+
+    const bytes = Buffer.from(input.dataBase64, "base64");
+    const meta = await storageService.putObject({
+      organizationId: scope.organizationId,
+      contentType: input.contentType,
+      bytes,
+      createdBy: userId,
+    });
+    return meta.id;
+  }
+
+
+  /**
+   * THE DELIBERATE PLATFORM-LEVEL READ — the one query in this domain with
+   * NO tenancy filter, and it is correct there, not forgotten. A published
+   * template's design is tenant-agnostic by construction: the payload below
+   * carries only name, orientation, canvas and elements — no organizationId,
+   * no schoolId, no audit columns, no student data (a template CANNOT hold
+   * student data; every card fact is resolved per-caller by `cardData`).
+   * Publishing is a separate, explicit act (`isPublished` + stamp), so
+   * nothing reaches another org unless its owner sent it. Asset ids inside
+   * the design leak nothing — see the contract note on
+   * `publishedIdCardTemplateSchema` and `clonePublishedTemplate` for how the
+   * bytes stay behind the serving route's membership rule.
+   */
+  async listPublishedTemplates(): Promise<PublishedIdCardTemplate[]> {
+    const rows = await db
+      .select({
+        id: idCardTemplates.id,
+        name: idCardTemplates.name,
+        orientation: idCardTemplates.orientation,
+        canvas: idCardTemplates.canvas,
+        elements: idCardTemplates.elements,
+        publishedAt: idCardTemplates.publishedAt,
+      })
+      .from(idCardTemplates)
+      .where(
+        and(
+          eq(idCardTemplates.isPublished, true),
+          eq(idCardTemplates.status, "active"),
+        ),
+      )
+      .orderBy(desc(idCardTemplates.publishedAt));
+
+    // A row saved before the current contract may fail the design parse —
+    // skipped, never surfaced half-broken (parseTemplateData's principle).
+    return rows.flatMap((row) => {
+      const parsed = idCardTemplateDataSchema.safeParse({
+        orientation: row.orientation,
+        canvas: row.canvas,
+        elements: row.elements,
+      });
+      if (!parsed.success) return [];
+      return [
+        {
+          id: row.id,
+          name: row.name,
+          orientation: parsed.data.orientation,
+          canvas: parsed.data.canvas,
+          elements: parsed.data.elements,
+          publishedAt: row.publishedAt?.toISOString() ?? "",
+        },
+      ];
+    });
+  }
+
+  /**
+   * Clones a PUBLISHED template from ANY org into the caller's school as a
+   * new owned row. The source row is the one deliberate unfiltered read in
+   * this service — allowed only after the `isPublished` check passes, with
+   * the same probe-never-answers property as everywhere else: an unpublished
+   * or foreign-PRIVATE row returns null, indistinguishable from a bad id.
+   *
+   * Uploaded assets (a background, a logo) are BYTE-COPIED into the cloner's
+   * org via `storageService.copyObjectToOrg` and the clone references the
+   * COPIES — the coherent option given ADR-038's serving route is
+   * membership-gated per org: stripping refs would silently degrade the
+   * design, and making the source objects readable cross-org would punch a
+   * hole in the route's tenancy rule. Copies commit BEFORE the row, so a
+   * mid-flow failure leaves at worst an orphan object, never a dangling ref.
+   */
+  async clonePublishedTemplate(
+    scope: DataScope,
+    input: CloneIdCardTemplateInput,
+    userId: string,
+  ) {
+    const schoolId = requireSchoolId(scope);
+
+    const [source] = await db
+      .select()
+      .from(idCardTemplates)
+      .where(eq(idCardTemplates.id, input.templateId));
+
+    if (!source || !source.isPublished || source.status !== "active") {
+      return null;
+    }
+
+    const parsed = idCardTemplateDataSchema.safeParse({
+      orientation: source.orientation,
+      canvas: source.canvas,
+      elements: source.elements,
+    });
+    if (!parsed.success) return null;
+
+    const design = parsed.data;
+
+    // Copy every referenced asset into the cloner's org and record the
+    // rewrites. Missing/foreign assets fail LOUDLY here (the copy's own
+    // wording) rather than saving a silently degraded design — and the
+    // rewriters below refuse any referenced id without a mapping, so the
+    // saved row can never point back at the source org's private object.
+    const assetRewrites = new Map<string, string>();
+    for (const assetId of collectTemplateAssetIds(design)) {
+      const copy = await storageService.copyObjectToOrg({
+        sourceObjectId: assetId,
+        targetOrganizationId: scope.organizationId,
+        createdBy: userId,
+      });
+      assetRewrites.set(assetId, copy.id);
+    }
+
+    const canvas = rewriteCanvasAssets(design.canvas, assetRewrites);
+    const elements = design.elements.map((element) =>
+      element.type === "logo" && element.assetId
+        ? {
+            ...element,
+            assetId: requireAssetRewrite(element.assetId, assetRewrites),
+          }
+        : element,
+    );
+
+    return db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(idCardTemplates)
+        .values({
+          organizationId: scope.organizationId,
+          schoolId,
+          name: input.name ?? source.name,
+          orientation: design.orientation,
+          canvas,
+          elements,
+          isDefault: false,
+          // A clone starts PRIVATE — the cloner decides whether to share it
+          // onward, and the publishedAt stamp belongs to the origin only.
+          isPublished: false,
+          publishedAt: null,
+          createdBy: userId,
+        })
+        .returning();
+
+      if (!row) throw new Error("Failed to create the template.");
+      return row;
     });
   }
 
@@ -486,3 +673,44 @@ export class IdCardService {
 }
 
 export const idCardService = new IdCardService();
+
+// ── Design-document asset helpers (the clone flow) ────────────────────────
+
+/**
+ * Every storage object id a template design references — the canvas
+ * background and each logo element's asset. Deduped: one copy per id, no
+ * matter how many elements point at it.
+ */
+function collectTemplateAssetIds(design: IdCardTemplateData): string[] {
+  const ids = new Set<string>();
+  const canvas = idCardCanvasSchema.safeParse(design.canvas);
+  if (canvas.success && canvas.data.backgroundAssetId) {
+    ids.add(canvas.data.backgroundAssetId);
+  }
+  for (const element of design.elements) {
+    if (element.type === "logo" && element.assetId) ids.add(element.assetId);
+  }
+  return [...ids];
+}
+
+function requireAssetRewrite(
+  assetId: string,
+  rewrites: Map<string, string>,
+): string {
+  const mapped = rewrites.get(assetId);
+  if (!mapped) {
+    throw new Error("The cloned design references an image that was not copied.");
+  }
+  return mapped;
+}
+
+function rewriteCanvasAssets(
+  canvas: IdCardTemplateData["canvas"],
+  rewrites: Map<string, string>,
+): IdCardTemplateData["canvas"] {
+  return {
+    backgroundAssetId: canvas.backgroundAssetId
+      ? requireAssetRewrite(canvas.backgroundAssetId, rewrites)
+      : null,
+  };
+}

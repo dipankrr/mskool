@@ -139,9 +139,53 @@ export const createIdCardTemplateInput = z.object({
 });
 export type CreateIdCardTemplateInput = z.infer<typeof createIdCardTemplateInput>;
 
-/** Labels and the design document are editable; tenancy and status are not. */
-export const updateIdCardTemplateInput = createIdCardTemplateInput.partial();
+/**
+ * Labels and the design document are editable; tenancy and status are not.
+ * `isPublished` (2b) is the publish-to-gallery switch: setting it stamps
+ * `publishedAt`, clearing it nulls the stamp — the service owns both, the
+ * caller sends only the intent.
+ */
+export const updateIdCardTemplateInput = createIdCardTemplateInput
+  .partial()
+  .extend({ isPublished: z.boolean().optional() });
 export type UpdateIdCardTemplateInput = z.infer<typeof updateIdCardTemplateInput>;
+
+// ---------------------------------------------------------------------------
+// The community gallery (slice 2b)
+// ---------------------------------------------------------------------------
+
+/**
+ * ONE row of the cross-school gallery. This is the DELIBERATE platform-level
+ * read (the tenancy exception of the whole id-card surface): a published
+ * template's design is tenant-agnostic — name, orientation, canvas, elements
+ * — and the payload carries NO org identity (no organizationId, no schoolId,
+ * no audit columns) and NO student data. Asset ids inside the design (a
+ * background, a logo) are uuids only: the serving route answers bytes to
+ * members of the OWNING org, so a listed id leaks nothing to another org —
+ * and `gallery.clone` byte-copies any referenced asset into the cloner's org
+ * rather than ever pointing a cross-org reader at them.
+ */
+export const publishedIdCardTemplateSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  orientation: idCardOrientationSchema,
+  canvas: idCardCanvasSchema,
+  elements: z.array(idCardElementSchema).max(60),
+  publishedAt: z.string(),
+});
+export type PublishedIdCardTemplate = z.infer<typeof publishedIdCardTemplateSchema>;
+
+/**
+ * Clones a PUBLISHED template (any org's) into the caller's school as a new
+ * owned row. The name is optional — defaulting to the source's — so a school
+ * that already adopted a design under the same name can rename on the way in
+ * instead of being refused by the per-school unique index.
+ */
+export const cloneIdCardTemplateInput = z.object({
+  templateId: z.uuid(),
+  name: z.string().min(1).max(150).optional(),
+});
+export type CloneIdCardTemplateInput = z.infer<typeof cloneIdCardTemplateInput>;
 
 // ---------------------------------------------------------------------------
 // Card data — the payload text elements bind into
@@ -215,3 +259,21 @@ export const uploadStudentPhotoInput = z.object({
     .regex(base64Shape, "The photo data is not valid base64."),
 });
 export type UploadStudentPhotoInput = z.infer<typeof uploadStudentPhotoInput>;
+
+/**
+ * THE TEMPLATE'S OWN ASSETS (slice 2b) — a card background, a school logo.
+ * Same cap and allowlist as the photo (they share the 512 KB ceiling and the
+ * API's 1 MB body), and the client is again the only place bytes are
+ * resized. The designer re-points `canvas.backgroundAssetId` / a logo
+ * element's `assetId` at the returned object id; removing the reference
+ * deliberately does NOT delete the bytes (reference-checking every other
+ * template's jsonb before a delete is not worth it — orphan objects are an
+ * accepted cost, ADR-038 §4's tolerance).
+ */
+export const uploadTemplateAssetInput = uploadStudentPhotoInput;
+export type UploadTemplateAssetInput = z.infer<typeof uploadTemplateAssetInput>;
+
+export const uploadedTemplateAssetSchema = z.object({
+  objectId: z.uuid(),
+});
+export type UploadedTemplateAsset = z.infer<typeof uploadedTemplateAssetSchema>;

@@ -229,6 +229,66 @@ export class StorageService {
     return { contentType: row.contentType, data: row.data };
   }
 
+  /**
+   * THE CLONE FLOW'S READ — a deliberate cross-org byte copy for the
+   * community gallery (slice 2b). The one unfiltered SELECT in this class
+   * besides `getForUser`, and it is justified the same way: the CALLER has
+   * already been verified one level up. `IdCardService.clonePublishedTemplate`
+   * loads the source template unfiltered ONLY after proving it is PUBLISHED,
+   * and only then may call this — publishing a design is the owner's act of
+   * making its imagery copyable, so the bytes move into the cloner's org as a
+   * NEW object (a new id) and the cloned design references the copy. The
+   * serving route's membership rule is never relaxed: org B still cannot read
+   * org A's original object, before or after the clone.
+   *
+   * Runs OUTSIDE any transaction deliberately: the copy commits first, the
+   * template row second — a failure between the two leaves an orphan object
+   * in the cloner's org (the same tolerance ADR-038 §4 grants the photo
+   * flow), never a template row referencing bytes that are not there.
+   */
+  async copyObjectToOrg(input: {
+    sourceObjectId: string;
+    targetOrganizationId: string;
+    createdBy?: string;
+  }): Promise<StorageObjectMeta> {
+    this.requireDriver();
+
+    const [source] = await db
+      .select({
+        contentType: storageObjects.contentType,
+        sizeBytes: storageObjects.sizeBytes,
+        sha256: storageObjects.sha256,
+        data: storageObjects.data,
+      })
+      .from(storageObjects)
+      .where(eq(storageObjects.id, input.sourceObjectId));
+
+    if (!source) {
+      throw new Error("The image this design references no longer exists.");
+    }
+
+    const [row] = await db
+      .insert(storageObjects)
+      .values({
+        organizationId: input.targetOrganizationId,
+        contentType: source.contentType,
+        sizeBytes: source.sizeBytes,
+        sha256: source.sha256,
+        data: source.data,
+        createdBy: input.createdBy ?? null,
+      })
+      .returning({
+        id: storageObjects.id,
+        organizationId: storageObjects.organizationId,
+        contentType: storageObjects.contentType,
+        sizeBytes: storageObjects.sizeBytes,
+        sha256: storageObjects.sha256,
+      });
+
+    if (!row) throw new Error("Failed to copy the image into your organisation.");
+    return row;
+  }
+
   // ── The student photo (one live row per student) ────────────────────────
 
   /**

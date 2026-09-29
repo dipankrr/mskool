@@ -339,4 +339,98 @@ describe("id cards & storage (slice 2a)", () => {
       await idCardService.removeStudentPhoto(scopeA1, world.section6bStudentId),
     ).toBe(false);
   });
+
+  // ── Slice 2b: the community gallery ─────────────────────────────────────
+
+  it("gallery list returns ONLY published rows, including other orgs', with a design-only payload", async () => {
+    // A1's template gets published through the ordinary update path — the
+    // stamp is the service's, not the caller's input.
+    const published = await idCardService.updateTemplate(scopeA1, defaultTemplateId, {
+      isPublished: true,
+    });
+    expect(published?.isPublished).toBe(true);
+    expect(published?.publishedAt).toBeInstanceOf(Date);
+
+    const list = await idCardService.listPublishedTemplates();
+    const ids = list.map((row) => row.id);
+    // Another org's published row IS listed — the deliberate platform read.
+    expect(ids).toContain(defaultTemplateId);
+    // Unpublished rows are invisible, in the caller's own org and out of it.
+    expect(ids).not.toContain(secondTemplateId);
+    expect(ids).not.toContain(templateBId);
+
+    // The payload is design-only: no organizationId, no schoolId, no audit
+    // columns — a published template's JSON is tenant-agnostic.
+    const row = list.find((candidate) => candidate.id === defaultTemplateId);
+    expect(row).toBeDefined();
+    expect(Object.keys(row ?? {}).sort()).toEqual([
+      "canvas",
+      "elements",
+      "id",
+      "name",
+      "orientation",
+      "publishedAt",
+    ]);
+  });
+
+  it("gallery clone produces an OWNED row in the caller's school and byte-copies its assets", async () => {
+    const world = await buildWorld();
+
+    // The published A1 design references a background asset owned by org A.
+    const asset = await storageService.putObject({
+      organizationId: orgAId,
+      contentType: "image/png",
+      bytes: Buffer.from(`gallery-bg-${RUN}`),
+      createdBy: adminAId,
+    });
+    await idCardService.updateTemplate(scopeA1, defaultTemplateId, {
+      canvas: { backgroundAssetId: asset.id },
+    });
+
+    // Org B clones it, renaming on the way in.
+    const renamed = templateName("cloned");
+    const clone = await idCardService.clonePublishedTemplate(
+      scopeB1,
+      { templateId: defaultTemplateId, name: renamed },
+      world.users.adminB,
+    );
+    expect(clone).not.toBeNull();
+    expect(clone?.organizationId).toBe(orgBId);
+    expect(clone?.schoolId).toBe(schoolB1Id);
+    expect(clone?.name).toBe(renamed);
+    // A clone starts private and never default — the cloner decides both.
+    expect(clone?.isPublished).toBe(false);
+    expect(clone?.isDefault).toBe(false);
+    expect(clone?.elements).toHaveLength(3);
+
+    // The background is a NEW object owned by org B, byte-identical.
+    const newAssetId = (clone?.canvas as { backgroundAssetId: string })
+      .backgroundAssetId;
+    expect(newAssetId).toBeDefined();
+    expect(newAssetId).not.toBe(asset.id);
+    const copied = await storageService.getBytes(orgBId, newAssetId);
+    expect(copied?.data.toString()).toBe(`gallery-bg-${RUN}`);
+
+    // The serving route's rule is untouched: org B still cannot read org A's
+    // original object — the clone carries the COPY, never a cross-org ref.
+    expect(await storageService.getBytes(orgBId, asset.id)).toBeNull();
+    expect(await storageService.getForUser(world.users.adminB, asset.id)).toBeNull();
+
+    // An UNPUBLISHED row and a made-up id are the same null — the endpoint
+    // never reveals which private template ids exist.
+    expect(
+      await idCardService.clonePublishedTemplate(
+        scopeB1,
+        { templateId: secondTemplateId },
+        world.users.adminB,
+      ),
+    ).toBeNull();
+    expect(
+      await idCardService.clonePublishedTemplate(
+        scopeB1,
+        { templateId: "00000000-0000-4000-8000-000000000000" },
+        world.users.adminB,
+      ),
+    ).toBeNull();
+  });
 });
