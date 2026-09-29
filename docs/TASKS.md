@@ -6,6 +6,34 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
+**ID CARDS — SLICE 2B (DESIGNER) COMPLETE ON `feature/id-cards` (2026-09-29). 2 commits, all gates green. The feature is functionally whole.**
+
+1. **The designer** — `/students/id-cards/[templateId]/design`: scaled canvas
+   sharing `card-canvas.tsx` with the print page (design ≡ print, one
+   renderer), pointer-drag move + resize + arrow-key nudges, per-element
+   property panel (data binding, literal text, font, alignment, visibility),
+   field palette, canvas settings with background/logo upload through the
+   ADR-038 seam (`idCard.template.uploadAsset`, manage-gated). Dirty-bar
+   saves through `template.update`; `use-template-designer.ts` owns the
+   interaction state.
+2. **The community gallery** — `gallery.list` is the domain's ONE deliberate
+   platform-level read (published designs only: name/orientation/canvas/
+   elements — no org ids, no student data; unparseable rows skipped);
+   `gallery.clone` copies a published design into the caller's school as a
+   PRIVATE row and **byte-copies every referenced asset into the cloner's
+   org, rewriting all refs** — so the serving route's per-org membership
+   rule never opens. Publish/Unpublish on own templates; Gallery tab in the
+   picker with clone; build-from-blank flow (orientation choice → empty
+   canvas → designer). Integration proofs +2 tests: gallery visibility,
+   clone ownership + asset-rewrite guarantees. **220/220 integration,
+   check-types 8/8, lint 0 errors, builders + openapi clean** (REST:
+   `GET /id-cards/gallery`, `POST /id-cards/gallery/clone`).
+3. **Ops note (hit in live testing):** a NEW permission is invisible to an
+   org seeded before it existed — run `pnpm db:seed` (A-025 backfill) AND
+   invalidate the org's Redis auth cache (5-min TTL) or wait it out. The
+   seed's backfill reported `+6 permissions` for demo-trust when id_card
+   landed.
+
 **ID CARDS — SLICE 2A COMPLETE ON `feature/id-cards` (2026-09-29, ADR-038). 10 commits, all gates green.**
 
 The backend + print surface for per-school customizable student ID cards. What landed, bottom-up:
