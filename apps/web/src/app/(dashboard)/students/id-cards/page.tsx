@@ -30,6 +30,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { IdCardPreview } from "@/features/id-cards/id-card-preview";
 import { PREBUILT_TEMPLATES } from "@/features/id-cards/prebuilt-templates";
+import { cardSizeMm } from "@/features/id-cards/template";
 import {
   useAdoptTemplate,
   useCloneGalleryTemplate,
@@ -166,9 +167,14 @@ export default function IdCardsPage() {
     );
   }
 
-  const orientation = choice?.data.orientation ?? "landscape";
-  // CR80 on A4: 2 × 4 landscape (8) or 3 × 3 portrait (9), cut guides between.
-  const perPage = orientation === "portrait" ? 9 : 8;
+  // The print grid follows the CHOSEN TEMPLATE's physical size (custom
+  // canvas dims or CR80): A4's 190×277mm printable area minus a 2mm spacing
+  // buffer per cell. For CR80 this lands exactly on the old 2×4 landscape /
+  // 3×3 portrait sheets.
+  const printSize = choice ? cardSizeMm(choice.data) : { widthMm: 86, heightMm: 54 };
+  const printColumns = Math.max(1, Math.floor(190 / (printSize.widthMm + 2)));
+  const printRows = Math.max(1, Math.floor(277 / (printSize.heightMm + 2)));
+  const perPage = printColumns * printRows;
   const printableCards = selectedPairs
     .map((pair) => cardByStudentId.get(pair.student.id))
     .filter((card): card is IdCardStudentCard => card !== undefined);
@@ -676,10 +682,7 @@ export default function IdCardsPage() {
             <div
               className="idcard-print-grid"
               style={{
-                gridTemplateColumns:
-                  orientation === "portrait"
-                    ? "repeat(3, 54mm)"
-                    : "repeat(2, 86mm)",
+                gridTemplateColumns: `repeat(${printColumns}, ${printSize.widthMm}mm)`,
               }}
             >
               {pageCards.map((card) =>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type {
   IdCardStudentCard,
@@ -9,15 +9,26 @@ import type {
 
 import { copy } from "@/lib/copy";
 
-import { ElementContent } from "./card-canvas";
+import { CardBackground, ElementContent } from "./card-canvas";
 import { cardSizeMm, MM_PX } from "./template";
 
 /**
  * THE INTERACTIVE CANVAS (slice 2b) — the card surface with pointers on it.
- * Rendering comes from the shared `ElementContent` (the print pathway), so a
- * drag moves exactly the thing that prints. Geometry stays in
- * percent-of-card: the pointer delta is converted with the card's rendered
- * pixel size, and the designer state clamps the result.
+ * Rendering comes from the shared `ElementContent` + `CardBackground` (the
+ * print pathway), so a drag moves exactly the thing that prints — including
+ * the background image. Geometry stays in percent-of-card: the pointer delta
+ * is converted with the card's rendered pixel size, and the designer state
+ * clamps the result.
+ *
+ * THE CANVAS IS SCALE-TO-FIT: the card's base size is physical mm at 96dpi,
+ * which overflows any normal viewport, so the stage measures itself with a
+ * ResizeObserver and scales the card to the space it actually has (capped —
+ * a huge monitor must not blow a 54mm card up to poster size). Pointer and
+ * handle math divide by the SCALED pixel size, so dragging stays 1:1 with
+ * the cursor at every zoom.
+ *
+ * The stage's checkerboard is not decoration: a white card on a white page
+ * is invisible in light mode, and the operator needs the card's true edge.
  *
  * Accessibility: the canvas is focusable and answers the arrow keys — each
  * press nudges the selected element by 1% (Shift = 5%) — and Escape clears
@@ -29,6 +40,10 @@ import { cardSizeMm, MM_PX } from "./template";
 type Corner = "nw" | "ne" | "sw" | "se";
 type DragMode = "move" | Corner;
 type Geometry = { x: number; y: number; width: number; height: number };
+
+/** Never render the card larger than this multiple of its physical size. */
+const MAX_SCALE = 2.5;
+const MIN_SCALE = 0.2;
 
 const CLAMP = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
@@ -91,7 +106,6 @@ export function DesignerCanvas({
   selectedId,
   onSelect,
   onGeometry,
-  scale = 4,
 }: {
   template: IdCardTemplateData;
   /** Design-time sample data — see template-designer.tsx for why. */
@@ -99,11 +113,33 @@ export function DesignerCanvas({
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onGeometry: (id: string, patch: Partial<Geometry>) => void;
-  scale?: number;
 }) {
-  const { widthMm, heightMm } = cardSizeMm(template.orientation);
-  const pxWidth = widthMm * MM_PX * scale;
-  const pxHeight = heightMm * MM_PX * scale;
+  const { widthMm, heightMm } = cardSizeMm(template);
+  const basePxWidth = widthMm * MM_PX;
+  const basePxHeight = heightMm * MM_PX;
+
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+
+  // Scale-to-fit: the stage's own width decides the card's rendered size.
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const fit = (available: number) => {
+      if (available > 0) {
+        setScale(CLAMP(available / basePxWidth, MIN_SCALE, MAX_SCALE));
+      }
+    };
+    const observer = new ResizeObserver((entries) =>
+      fit(entries[0]?.contentRect.width ?? 0),
+    );
+    observer.observe(stage);
+    fit(stage.clientWidth);
+    return () => observer.disconnect();
+  }, [basePxWidth]);
+
+  const pxWidth = basePxWidth * scale;
+  const pxHeight = basePxHeight * scale;
 
   const drag = useRef<{
     mode: DragMode;
@@ -174,40 +210,60 @@ export function DesignerCanvas({
 
   return (
     <div
-      role="group"
-      aria-label={copy.idCards.designer.canvasAria}
-      tabIndex={0}
-      onKeyDown={onKeyDown}
-      className="idcard-designer-canvas focus-visible:outline-ring relative rounded-md outline-2 outline-offset-2 focus-visible:outline-solid"
-      style={{ width: pxWidth, height: pxHeight, touchAction: "none" }}
-      onPointerMove={onPointerMove}
-      onPointerUp={endDrag}
-      onPointerCancel={endDrag}
-      onPointerDown={(event) => {
-        // A click on the bare card clears the selection.
-        if (event.target === event.currentTarget) onSelect(null);
+      ref={stageRef}
+      className="idcard-designer-stage w-full overflow-hidden rounded-lg"
+      style={{
+        // The checkerboard keeps a white card's true edge visible in BOTH
+        // color schemes — the print stock is white, the page may be too.
+        backgroundImage:
+          "linear-gradient(45deg, rgba(128,128,128,0.16) 25%, transparent 25%, transparent 75%, rgba(128,128,128,0.16) 75%), linear-gradient(45deg, rgba(128,128,128,0.16) 25%, transparent 25%, transparent 75%, rgba(128,128,128,0.16) 75%)",
+        backgroundSize: "16px 16px",
+        backgroundPosition: "0 0, 8px 8px",
+        padding: 16,
       }}
     >
       <div
+        role="group"
+        aria-label={copy.idCards.designer.canvasAria}
+        tabIndex={0}
+        onKeyDown={onKeyDown}
+        className="idcard-designer-canvas focus-visible:outline-ring relative rounded-md outline-2 outline-offset-2 ring-1 ring-border focus-visible:outline-solid"
         style={{
-          width: `${widthMm}mm`,
-          height: `${heightMm}mm`,
-          transform: `scale(${scale})`,
-          transformOrigin: "top left",
-          position: "absolute",
-          top: 0,
-          left: 0,
-          overflow: "hidden",
-          background: "#ffffff",
-          color: "#111827",
-          fontFamily: "var(--font-sans, sans-serif)",
+          width: pxWidth,
+          height: pxHeight,
+          margin: "0 auto",
+          boxShadow: "0 1px 6px rgba(0,0,0,0.25)",
+          touchAction: "none",
+        }}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onPointerDown={(event) => {
+          // A click on the bare card clears the selection.
+          if (event.target === event.currentTarget) onSelect(null);
         }}
       >
-        {template.elements.length === 0 ? (
-          <div className="flex h-full w-full items-center justify-center text-center text-[8pt] text-gray-400">
-            {copy.idCards.designer.emptyCanvas}
-          </div>
-        ) : null}
+        <div
+          style={{
+            width: `${widthMm}mm`,
+            height: `${heightMm}mm`,
+            transform: `scale(${scale})`,
+            transformOrigin: "top left",
+            position: "absolute",
+            top: 0,
+            left: 0,
+            overflow: "hidden",
+            background: "#ffffff",
+            color: "#111827",
+            fontFamily: "var(--font-sans, sans-serif)",
+          }}
+        >
+          <CardBackground template={template} />
+          {template.elements.length === 0 ? (
+            <div className="flex h-full w-full items-center justify-center text-center text-[8pt] text-gray-400">
+              {copy.idCards.designer.emptyCanvas}
+            </div>
+          ) : null}
 
         {template.elements.map((element) => {
           const selected = element.id === selectedId;
@@ -263,6 +319,7 @@ export function DesignerCanvas({
             </div>
           );
         })}
+        </div>
       </div>
     </div>
   );

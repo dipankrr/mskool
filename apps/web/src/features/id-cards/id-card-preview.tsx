@@ -36,7 +36,7 @@ export function IdCardPreview({
   cutGuide?: boolean;
   className?: string;
 }) {
-  const { widthMm, heightMm } = cardSizeMm(template.orientation);
+  const { widthMm, heightMm } = cardSizeMm(template);
 
   return (
     <div

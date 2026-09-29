@@ -228,17 +228,70 @@ export function useTemplateDesigner(templateId: string) {
    * Orientation change RE-ANCHORS rather than resets: percent coordinates
    * stay meaningful across the axis swap (they are shares of the card), so
    * elements keep their relative positions and the operator rearranges from
-   * there. The settings panel states that consequence next to the control.
+   * there. Custom canvas dims swap WITH the orientation — a 90×60 landscape
+   * card becomes a 60×90 portrait one, not a 90×60 portrait one. The
+   * settings panel states that consequence next to the control.
    */
   const setOrientation = useCallback(
     (orientation: IdCardTemplateData["orientation"]) =>
-      update((current) => ({ ...current, orientation })),
+      update((current) => {
+        const { widthMm, heightMm } = current.canvas;
+        const canvas =
+          widthMm && heightMm
+            ? { ...current.canvas, widthMm: heightMm, heightMm: widthMm }
+            : current.canvas;
+        return { ...current, orientation, canvas };
+      }),
     [update],
   );
 
   const setBackground = useCallback(
     (backgroundAssetId: string | null) =>
-      update((current) => ({ ...current, canvas: { backgroundAssetId } })),
+      update((current) => ({
+        ...current,
+        canvas: { ...current.canvas, backgroundAssetId },
+      })),
+    [update],
+  );
+
+  /** Hand-set card size (mm) — the settings panel's width/height inputs. */
+  const setCanvasSize = useCallback(
+    (widthMm: number, heightMm: number) =>
+      update((current) => ({
+        ...current,
+        canvas: {
+          ...current.canvas,
+          widthMm: clamp(r2(widthMm), 20, 300),
+          heightMm: clamp(r2(heightMm), 20, 300),
+        },
+      })),
+    [update],
+  );
+
+  /**
+   * FIT TO BACKGROUND: a new background image sets the card's physical size
+   * from the image's aspect — the whole point of a pre-printed sheet is that
+   * the card IS the image. The long side lands on CR80's 86mm (the standard
+   * card stock), the short side follows the image; the operator refines with
+   * the width/height inputs after. Percent geometry means the existing
+   * elements keep their relative places through the resize.
+   */
+  const fitBackground = useCallback(
+    (backgroundAssetId: string, imageWidthPx: number, imageHeightPx: number) =>
+      update((current) => {
+        const scaleMm = 86 / Math.max(imageWidthPx, imageHeightPx);
+        return {
+          ...current,
+          orientation:
+            imageWidthPx >= imageHeightPx ? "landscape" : "portrait",
+          canvas: {
+            ...current.canvas,
+            backgroundAssetId,
+            widthMm: clamp(r2(imageWidthPx * scaleMm), 20, 300),
+            heightMm: clamp(r2(imageHeightPx * scaleMm), 20, 300),
+          },
+        };
+      }),
     [update],
   );
 
@@ -298,6 +351,8 @@ export function useTemplateDesigner(templateId: string) {
     setName,
     setOrientation,
     setBackground,
+    setCanvasSize,
+    fitBackground,
     discard,
     save,
   };

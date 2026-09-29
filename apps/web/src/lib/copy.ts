@@ -2091,7 +2091,12 @@ export const copy = {
       uploadBackground: "Upload background",
       removeBackground: "Remove",
       backgroundHint:
-        "Prints full-bleed behind every element. Resized to fit the card before upload.",
+        "Prints full-bleed behind every element. The card adopts the image's size when uploaded.",
+      canvasSize: "Card size (mm)",
+      canvasWidth: "Card width (mm)",
+      canvasHeight: "Card height (mm)",
+      canvasSizeHint:
+        "Defaults to a CR80 card. Uploading a background sets this from the image's shape — adjust freely; elements sit in % of the card, so they keep their place.",
       propertiesHeading: "Element",
       noSelection: "No element selected",
       noSelectionBody:

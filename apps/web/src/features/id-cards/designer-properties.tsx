@@ -22,6 +22,7 @@ import { Switch } from "@/components/ui/switch";
 import { copy } from "@/lib/copy";
 
 import type { NewElementType, DesignerDraft } from "./use-template-designer";
+import { cardSizeMm } from "./template";
 
 /**
  * THE DESIGNER'S PANELS (slice 2b) — the field palette (what to add), the
@@ -87,6 +88,8 @@ export function CanvasSettings({
   onName,
   onOrientation,
   onBackground,
+  onCanvasSize,
+  onBackgroundFit,
   onUploadAsset,
   uploading,
 }: {
@@ -94,12 +97,24 @@ export function CanvasSettings({
   onName: (name: string) => void;
   onOrientation: (orientation: IdCardTemplateData["orientation"]) => void;
   onBackground: (assetId: string | null) => void;
+  /** Hand-sets the card's physical size (mm). */
+  onCanvasSize: (widthMm: number, heightMm: number) => void;
+  /**
+   * Background upload with FIT: the card adopts the image's aspect ratio as
+   * its physical size (the reason a school uploads a designed sheet).
+   */
+  onBackgroundFit: (
+    assetId: string,
+    imageWidthPx: number,
+    imageHeightPx: number,
+  ) => void;
   /** Uploads through the storage seam; resolves the new object id. */
   onUploadAsset: (file: File) => Promise<string | null>;
   uploading: boolean;
 }) {
   const d = copy.idCards.designer;
   const fileInput = useRef<HTMLInputElement>(null);
+  const size = cardSizeMm(draft);
 
   return (
     <div className="flex flex-col gap-3">
@@ -133,6 +148,35 @@ export function CanvasSettings({
       </div>
 
       <div className="flex flex-col gap-1.5">
+        <Label>{d.canvasSize}</Label>
+        <div className="grid grid-cols-2 gap-2">
+          <Input
+            aria-label={d.canvasWidth}
+            type="number"
+            min={20}
+            max={300}
+            step={0.5}
+            value={size.widthMm}
+            onChange={(event) =>
+              onCanvasSize(Number(event.target.value), size.heightMm)
+            }
+          />
+          <Input
+            aria-label={d.canvasHeight}
+            type="number"
+            min={20}
+            max={300}
+            step={0.5}
+            value={size.heightMm}
+            onChange={(event) =>
+              onCanvasSize(size.widthMm, Number(event.target.value))
+            }
+          />
+        </div>
+        <p className="text-muted-foreground text-xs">{d.canvasSizeHint}</p>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
         <Label>{d.background}</Label>
         {draft.canvas.backgroundAssetId ? (
           <div className="flex items-center gap-3">
@@ -161,9 +205,16 @@ export function CanvasSettings({
                 const file = event.target.files?.[0];
                 event.target.value = "";
                 if (file) {
-                  void onUploadAsset(file).then((objectId) => {
-                    if (objectId) onBackground(objectId);
-                  });
+                  void (async () => {
+                    // Read the image's natural size client-side FIRST — it
+                    // decides the card's physical size (fit-to-background).
+                    const bitmap = await createImageBitmap(file);
+                    const widthPx = bitmap.width;
+                    const heightPx = bitmap.height;
+                    bitmap.close();
+                    const objectId = await onUploadAsset(file);
+                    if (objectId) onBackgroundFit(objectId, widthPx, heightPx);
+                  })();
                 }
               }}
             />

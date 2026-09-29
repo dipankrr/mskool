@@ -190,6 +190,8 @@ export function TemplateDesigner({ templateId }: { templateId: string }) {
                 onName={designer.setName}
                 onOrientation={designer.setOrientation}
                 onBackground={designer.setBackground}
+                onCanvasSize={designer.setCanvasSize}
+                onBackgroundFit={designer.fitBackground}
                 onUploadAsset={handleUpload}
                 uploading={uploading}
               />

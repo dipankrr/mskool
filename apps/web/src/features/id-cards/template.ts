@@ -52,9 +52,19 @@ export function parseTemplateData(row: {
 /** CR80 in CSS px at 96dpi — the print sheet itself stays in physical mm. */
 export const MM_PX = 96 / 25.4;
 
-export function cardSizeMm(orientation: IdCardTemplateData["orientation"]) {
-  // CR80: 86 × 54mm. Portrait swaps the axes.
-  return orientation === "landscape"
+/**
+ * The card's physical mm size: the template's own custom canvas dims when it
+ * carries them, else the CR80 default for the orientation (86 × 54mm;
+ * portrait swaps the axes).
+ */
+export function cardSizeMm(design: {
+  orientation: IdCardTemplateData["orientation"];
+  canvas: { widthMm?: number; heightMm?: number };
+}) {
+  if (design.canvas.widthMm && design.canvas.heightMm) {
+    return { widthMm: design.canvas.widthMm, heightMm: design.canvas.heightMm };
+  }
+  return design.orientation === "landscape"
     ? { widthMm: 86, heightMm: 54 }
     : { widthMm: 54, heightMm: 86 };
 }
