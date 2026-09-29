@@ -8,6 +8,18 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 **ID CARDS — SLICE 2B (DESIGNER) COMPLETE ON `feature/id-cards` (2026-09-29). 2 commits, all gates green. The feature is functionally whole.**
 
+**Owner-feedback usability pass (same day, `4562252` + `457c06a`):** the
+canvas is now SCALE-TO-FIT (ResizeObserver, capped 2.5× — the fixed 4×
+overflowed every viewport and the owner had to zoom to 50%), the stage has a
+checkerboard + ring/shadow so a white card is visible in light mode, the
+designer renders CardBackground (the background printed but was invisible
+while editing), the canvas schema gained optional `widthMm`/`heightMm` (absent
+= CR80; jsonb, no migration), the settings panel has Card size inputs, and
+uploading a background FITS the card to the image's aspect (long side 86mm;
+`setBackground` preserves dims, orientation swaps them, the print grid derives
+its columns/rows from the template's real size). Browser-verified in light
+mode with a seeded gradient background; size save round-trip proven in the DB.
+
 1. **The designer** — `/students/id-cards/[templateId]/design`: scaled canvas
    sharing `card-canvas.tsx` with the print page (design ≡ print, one
    renderer), pointer-drag move + resize + arrow-key nudges, per-element
