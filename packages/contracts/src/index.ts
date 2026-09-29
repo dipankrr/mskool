@@ -60,3 +60,7 @@ export * from "./contracts/staff.contract";
 
 // Roles: role assignments and the read-only permission matrix (ADR-005).
 export * from "./contracts/role.contract";
+
+// ID cards: the template document vocabulary (percent-geometry elements) and
+// the card-data payload it binds into. Slice 2a.
+export * from "./contracts/id_card.contract";
