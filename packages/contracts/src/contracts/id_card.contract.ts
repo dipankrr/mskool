@@ -27,9 +27,19 @@ import { z } from "zod";
 export const idCardOrientationSchema = z.enum(["landscape", "portrait"]);
 export type IdCardOrientation = z.infer<typeof idCardOrientationSchema>;
 
-/** Full-card background image — a storage object id, served by /api/storage. */
+/**
+ * Full-card background image — a storage object id, served by /api/storage.
+ *
+ * `widthMm`/`heightMm` are the CARD's physical size when the school departs
+ * from CR80 (an ID card built around a pre-printed background sheet, say).
+ * Absent = the CR80 default for the orientation, so rows saved before this
+ * field existed parse unchanged — jsonb needs no migration. Elements are
+ * positioned in percent-of-card, so a resize never orphans their geometry.
+ */
 export const idCardCanvasSchema = z.object({
   backgroundAssetId: z.uuid().nullish(),
+  widthMm: z.number().positive().max(300).optional(),
+  heightMm: z.number().positive().max(300).optional(),
 });
 export type IdCardCanvas = z.infer<typeof idCardCanvasSchema>;
 
