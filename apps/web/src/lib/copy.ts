@@ -1982,49 +1982,74 @@ export const copy = {
   },
 
   /**
-   * ID CARDS (slice 2a) — the print pass. The design vocabulary ("template",
-   * "adopt", "starter design") is 2b's designer's too, so the words live here
-   * from the start.
+   * BULK PHOTO UPLOAD — the students-surface workbench. The photo belongs to
+   * the student record (ID cards are just its first consumer), so both
+   * matching modes land on the same review grid and the same uploadPhoto
+   * seam.
    */
   // Bulk photo upload (the students-surface workbench).
   bulkPhotos: {
     title: "Photo upload",
     subtitle:
       "Upload a whole class's photos in one pass. Nothing is saved until you confirm the matches.",
+    howItWorks: {
+      heading: "How it works",
+      step1: {
+        title: "Choose how photos are identified",
+        body: "By roll number for one section, or by admission number across the school.",
+      },
+      step2: {
+        title: "Add the photos",
+        body: "Drag them in, browse, or pick a folder — up to 500 at a time.",
+      },
+      step3: {
+        title: "Check the matches, then upload",
+        body: "Each photo sits beside the student it will be saved to. Nothing is written until you confirm.",
+      },
+    },
     mode: "How are the photos identified?",
-    sectionMode: "By roll number (one section)",
+    sectionMode: "By roll number — one section",
     sectionModeHint:
-      "Pick a class and section, drop the photos in — they map to the roster in roll order. No renaming needed.",
-    registerMode: "By admission number (whole register)",
+      "Pick the class and section, then add the photos in any order. You arrange them to match the roll, or let capture order do it.",
+    registerMode: "By admission number — the whole register",
     registerModeHint:
-      "Name each file by admission number, e.g. DEMO-0001.jpg, and match across the whole school.",
-    sourceHeading: "Photos",
-    chooseImages: "Choose images",
-    chooseZip: "Choose a zip",
+      "Name each file by admission number (e.g. DEMO-0001.jpg). We match them across every class in the school.",
+    sourceHeading: "Add photos",
+    dropHere: "Drop photos or a zip here",
+    dropHint: "or browse — images, a folder, or a zip, up to 500 photos",
+    chooseImages: "Images",
+    chooseFolder: "Folder",
+    chooseZip: "Zip",
+    pickSectionFirst:
+      "Choose a class and section first — adding photos unlocks once the roster is loaded.",
     sectionSourceHint:
-      "Multi-select the photos, or a zip — order comes from when each photo was taken.",
+      "Order comes from when each photo was taken; drag to rearrange, or sort by file name.",
     registerSourceHint:
-      "File names must be the admission number (extension ignored). A zip works too.",
+      "The file name (extension ignored) is matched to the admission number.",
     sortHeading: "Order:",
     sortCapture: "Capture order",
     sortName: "File name",
+    clearAll: "Remove all",
+    removePhoto: "Remove",
     heicHint:
       "Some photos are in a format this browser cannot open (commonly iPhone HEIC). Set the camera to “Most Compatible” (JPEG) and re-upload those files.",
     reviewHeading: "Check the matches",
+    matchedSummary: (matched: number, total: number) =>
+      `${matched} of ${total} photos matched to a student.`,
     pickSection: "Pick a class and section to load the roster.",
     noRoll: "no roll no.",
     rollLabel: "Roll",
     emptySlot: "empty",
     badImage: "unopenable",
+    noStudent: "no match",
     matchNow: "Match admission numbers",
     registerUnmatched: (n: number) =>
       n === 1
         ? "1 file did not match any admission number and will be skipped."
         : `${n} files did not match any admission number and will be skipped.`,
     nothingToUpload: "Nothing is matched yet.",
-    confirm: "Upload matched photos",
-    uploading: (done: number, total: number) =>
-      `Uploading ${done} of ${total}…`,
+    confirm: (n: number) => (n === 1 ? "Upload 1 photo" : `Upload ${n} photos`),
+    uploading: (done: number, total: number) => `Uploading ${done} of ${total}…`,
     retryFailed: (n: number) =>
       n === 1 ? "Retry 1 failed upload" : `Retry ${n} failed uploads`,
     ok: "done",
@@ -2035,11 +2060,18 @@ export const copy = {
     nonImageSkipped: (n: number) =>
       n === 1 ? "1 non-image file ignored." : `${n} non-image files ignored.`,
     tooMany: (cap: number) => `Only the first ${cap} photos were taken.`,
-    zipTooBig: "That zip is over 200 MB — split it by class and upload in parts.",
+    zipTooBig:
+      "That zip is over 200 MB — split it by class and upload in parts.",
     zipBroken: "That file is not a readable zip.",
     resizeFailed: "The photo could not be processed.",
     noPermission: "You need student update rights to upload photos.",
   },
+
+  /**
+   * ID CARDS (slice 2a) — the print pass. The design vocabulary ("template",
+   * "adopt", "starter design") is 2b's designer's too, so the words live here
+   * from the start.
+   */
   idCards: {
     subtitle:
       "Design student ID cards from starter templates, then print a class set on CR80 card.",
