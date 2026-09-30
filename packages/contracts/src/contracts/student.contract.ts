@@ -78,3 +78,17 @@ export const updateStudentSchema = createInsertSchema(students, {
   })
   .partial();
 export type UpdateStudentInput = z.infer<typeof updateStudentSchema>;
+
+/**
+ * BULK PHOTO MATCHER (the review grid's read): active students whose
+ * admission number is in the uploaded set. The zip itself never reaches the
+ * server — the browser matches filenames against this read, and each
+ * confirmed photo goes through the ordinary `uploadPhoto` mutation. Capped
+ * at 500 names per call; a bigger zip is matched in pages.
+ */
+export const studentsByAdmissionsInput = z.object({
+  admissions: z.array(z.string().min(1).max(40)).min(1).max(500),
+});
+export const studentsByAdmissionsOutput = z.array(studentSelectSchema);
+export type StudentsByAdmissionsInput = z.infer<typeof studentsByAdmissionsInput>;
+export type StudentsByAdmissionsOutput = z.infer<typeof studentsByAdmissionsOutput>;
