@@ -40,6 +40,8 @@ export const idCardCanvasSchema = z.object({
   backgroundAssetId: z.uuid().nullish(),
   widthMm: z.number().positive().max(300).optional(),
   heightMm: z.number().positive().max(300).optional(),
+  /** The printed card's corner rounding, in mm (0 = square stock). */
+  cornerRadiusMm: z.number().min(0).max(20).optional(),
 });
 export type IdCardCanvas = z.infer<typeof idCardCanvasSchema>;
 
@@ -78,6 +80,11 @@ const elementBase = {
   width: z.number().min(0).max(100),
   height: z.number().min(0).max(100),
   visible: z.boolean().default(true),
+  /**
+   * Element corner rounding as a percent of the element's box — 50 makes a
+   * photo/logo a circle or pill. Absent = square corners.
+   */
+  borderRadius: z.number().min(0).max(50).optional(),
 };
 
 /**
