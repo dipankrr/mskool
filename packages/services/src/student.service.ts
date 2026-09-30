@@ -9,7 +9,7 @@ import type {
 } from "@repo/contracts";
 import { db } from "@repo/db";
 import { students } from "@repo/db/schema";
-import { and, asc, eq, ilike, or } from "drizzle-orm";
+import { and, asc, eq, ilike, inArray, or } from "drizzle-orm";
 
 /**
  * STUDENTS — the identity registry. Written once at admission; a student's
@@ -105,6 +105,28 @@ export class StudentService {
         ),
       )
       .orderBy(asc(students.lastName), asc(students.firstName));
+  }
+
+  /**
+   * The bulk-photo matcher's read: active students whose admission number is
+   * in the uploaded set. School-level clipped exactly like the register list
+   * — a foreign branch's admission number is indistinguishable from a name
+   * nobody uploaded. Bounded by the contract's 500-name cap; the review grid
+   * is the UI, not the query.
+   */
+  async listByAdmissions(scope: DataScope, admissions: string[]) {
+    if (admissions.length === 0) return [];
+    return db
+      .select()
+      .from(students)
+      .where(
+        and(
+          scopeWhere(atSchoolLevel(scope), STUDENT_SCOPE_COLUMNS),
+          eq(students.status, "active"),
+          inArray(students.admissionNumber, admissions),
+        ),
+      )
+      .orderBy(asc(students.admissionNumber));
   }
 
   /**
