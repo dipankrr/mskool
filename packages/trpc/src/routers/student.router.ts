@@ -79,7 +79,11 @@ export const studentRouter = router({
     .input(studentsByAdmissionsInput)
     .output(studentsByAdmissionsOutput)
     .mutation(async ({ ctx, input }) => {
-      return studentService.listByAdmissions(ctx.scope, input.admissions);
+      return studentService.listByAdmissions(
+        ctx.scope,
+        input.academicYearId,
+        input.admissions,
+      );
     }),
 
   // B6: not a scope node, so the owning branch comes from the resolver and

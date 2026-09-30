@@ -8,7 +8,12 @@ import type {
   UpdateStudentInput,
 } from "@repo/contracts";
 import { db } from "@repo/db";
-import { students } from "@repo/db/schema";
+import {
+  classes,
+  sections,
+  studentEnrollments,
+  students,
+} from "@repo/db/schema";
 import { and, asc, eq, ilike, inArray, or } from "drizzle-orm";
 
 /**
@@ -109,16 +114,37 @@ export class StudentService {
 
   /**
    * The bulk-photo matcher's read: active students whose admission number is
-   * in the uploaded set. School-level clipped exactly like the register list
-   * — a foreign branch's admission number is indistinguishable from a name
-   * nobody uploaded. Bounded by the contract's 500-name cap; the review grid
-   * is the UI, not the query.
+   * in the uploaded set, with the CURRENT YEAR's enrollment facts (class,
+   * section, roll) so the review grid shows who each file is about. LEFT
+   * joins throughout — a student admitted but not yet enrolled/sectioned in
+   * the anchor year still matches (her card facts render empty, the same
+   * honesty as the print path). School-level clipped exactly like the
+   * register list — a foreign branch's admission number is indistinguishable
+   * from a name nobody uploaded. Bounded by the contract's 500-name cap.
    */
-  async listByAdmissions(scope: DataScope, admissions: string[]) {
+  async listByAdmissions(
+    scope: DataScope,
+    academicYearId: string,
+    admissions: string[],
+  ) {
     if (admissions.length === 0) return [];
     return db
-      .select()
+      .select({
+        student: students,
+        rollNumber: studentEnrollments.rollNumber,
+        className: classes.name,
+        sectionName: sections.name,
+      })
       .from(students)
+      .leftJoin(
+        studentEnrollments,
+        and(
+          eq(studentEnrollments.studentId, students.id),
+          eq(studentEnrollments.academicYearId, academicYearId),
+        ),
+      )
+      .leftJoin(classes, eq(studentEnrollments.classId, classes.id))
+      .leftJoin(sections, eq(studentEnrollments.sectionId, sections.id))
       .where(
         and(
           scopeWhere(atSchoolLevel(scope), STUDENT_SCOPE_COLUMNS),

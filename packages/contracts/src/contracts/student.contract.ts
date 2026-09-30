@@ -81,14 +81,24 @@ export type UpdateStudentInput = z.infer<typeof updateStudentSchema>;
 
 /**
  * BULK PHOTO MATCHER (the review grid's read): active students whose
- * admission number is in the uploaded set. The zip itself never reaches the
- * server — the browser matches filenames against this read, and each
- * confirmed photo goes through the ordinary `uploadPhoto` mutation. Capped
- * at 500 names per call; a bigger zip is matched in pages.
+ * admission number is in the uploaded set, WITH their current enrollment
+ * facts (class, section, roll) so the review grid can show who each file
+ * is about. The zip itself never reaches the server — the browser matches
+ * filenames against this read, and each confirmed photo goes through the
+ * ordinary `uploadPhoto` mutation. Capped at 500 names per call; a bigger
+ * zip is matched in pages.
  */
 export const studentsByAdmissionsInput = z.object({
+  academicYearId: z.uuid(),
   admissions: z.array(z.string().min(1).max(40)).min(1).max(500),
 });
-export const studentsByAdmissionsOutput = z.array(studentSelectSchema);
+export const studentsByAdmissionsRow = z.object({
+  student: studentSelectSchema,
+  rollNumber: z.string().nullable(),
+  className: z.string().nullable(),
+  sectionName: z.string().nullable(),
+});
+export const studentsByAdmissionsOutput = z.array(studentsByAdmissionsRow);
 export type StudentsByAdmissionsInput = z.infer<typeof studentsByAdmissionsInput>;
+export type StudentsByAdmissionsRow = z.infer<typeof studentsByAdmissionsRow>;
 export type StudentsByAdmissionsOutput = z.infer<typeof studentsByAdmissionsOutput>;
