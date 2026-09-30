@@ -89,6 +89,10 @@ export function BulkPhotos() {
   const [classId, setClassId] = useState("");
   const [sectionId, setSectionId] = useState("");
   const [photos, setPhotos] = useState<LoadedPhoto[]>([]);
+  /** capture | name = which sort is active; custom = the operator dragged. */
+  const [orderState, setOrderState] = useState<"capture" | "name" | "custom">(
+    "capture",
+  );
   const [assignments, setAssignments] = useState<Record<string, SlotAssignment>>({});
   const [results, setResults] = useState<UploadResult[]>([]);
   const [running, setRunning] = useState(false);
@@ -140,31 +144,37 @@ export function BulkPhotos() {
     { photoId: string; studentId: string; admission: string; fullName: string; facts: string }[]
   >([]);
 
-  const addFiles = useCallback((incoming: File[]) => {
-    const images = incoming.filter((f) => IMAGE_RE.test(f.name));
-    const skipped = incoming.length - images.length;
-    if (skipped > 0) toast.message(copy.bulkPhotos.nonImageSkipped(skipped));
-    if (images.length === 0) return;
-    setPhotos((current) => {
-      const merged = [...current];
-      let added = 0;
-      for (const file of images) {
-        if (merged.length >= MAX_PHOTOS) {
-          toast.error(copy.bulkPhotos.tooMany(MAX_PHOTOS));
-          break;
+  const addFiles = useCallback(
+    (incoming: File[]) => {
+      const images = incoming.filter((f) => IMAGE_RE.test(f.name));
+      const skipped = incoming.length - images.length;
+      if (skipped > 0) toast.message(copy.bulkPhotos.nonImageSkipped(skipped));
+      if (images.length === 0) return;
+      setPhotos((current) => {
+        const merged = [...current];
+        for (const file of images) {
+          if (merged.length >= MAX_PHOTOS) {
+            toast.error(copy.bulkPhotos.tooMany(MAX_PHOTOS));
+            break;
+          }
+          merged.push({
+            id: `${file.name}-${file.lastModified}-${merged.length}`,
+            file,
+            name: file.name,
+            url: URL.createObjectURL(file),
+            decodable: null,
+          });
         }
-        merged.push({
-          id: `${file.name}-${file.lastModified}-${merged.length}`,
-          file,
-          name: file.name,
-          url: URL.createObjectURL(file),
-          decodable: null,
-        });
-        added += 1;
-      }
-      return merged;
-    });
-  }, []);
+        // The default order is capture time — a fresh batch sorts itself so
+        // the strip matches the control's "Capture order" state.
+        if (orderState === "capture") {
+          merged.sort((a, b) => a.file.lastModified - b.file.lastModified);
+        }
+        return merged;
+      });
+    },
+    [orderState],
+  );
 
   const loadZip = useCallback(
     async (file: File) => {
@@ -228,11 +238,14 @@ export function BulkPhotos() {
 
   /**
    * The strip's ORDER IS THE ARRAY ORDER — the one source of truth. The
-   * sort buttons apply a one-time sort to the array (capture time, then
-   * file name), and drag-to-reorder mutates it. A derived re-sorted memo
-   * would fight the drag and silently undo every move — the original bug.
+   * segmented control applies a one-time sort to the array (capture time,
+   * then file name), and drag-to-reorder mutates it — putting the control
+   * into a CUSTOM state, because after a drag neither sort describes the
+   * order. A derived re-sorted memo would fight the drag and silently undo
+   * every move — the original bug.
    */
   const sortPhotos = useCallback((by: "capture" | "name") => {
+    setOrderState(by);
     setPhotos((current) => {
       const sorted = [...current];
       if (by === "capture") {
@@ -248,6 +261,7 @@ export function BulkPhotos() {
 
   // Drag-to-reorder the strip (section mode only — order IS the assignment).
   const reorderPhoto = useCallback((from: number, to: number) => {
+    setOrderState("custom");
     setPhotos((current) => {
       const next = [...current];
       const [moved] = next.splice(from, 1);
@@ -660,21 +674,44 @@ export function BulkPhotos() {
                   <span className="text-muted-foreground text-xs">
                     {copy.bulkPhotos.sortHeading}
                   </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => sortPhotos("capture")}
+                  {/* A segmented control, not two buttons: the highlighted
+                      segment IS the current order, and after a manual drag
+                      neither segment is lit — the order is custom. */}
+                  <div
+                    role="group"
+                    aria-label={copy.bulkPhotos.sortHeading}
+                    className="bg-muted inline-flex items-center rounded-4xl p-[3px]"
                   >
-                    <ListOrderedIcon data-slot="icon" />
-                    {copy.bulkPhotos.sortCapture}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => sortPhotos("name")}
-                  >
-                    {copy.bulkPhotos.sortName}
-                  </Button>
+                    <button
+                      type="button"
+                      aria-pressed={orderState === "capture"}
+                      className={`h-8 rounded-full px-3 text-sm font-medium transition-colors ${
+                        orderState === "capture"
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                      onClick={() => sortPhotos("capture")}
+                    >
+                      {copy.bulkPhotos.sortCapture}
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={orderState === "name"}
+                      className={`h-8 rounded-full px-3 text-sm font-medium transition-colors ${
+                        orderState === "name"
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                      onClick={() => sortPhotos("name")}
+                    >
+                      {copy.bulkPhotos.sortName}
+                    </button>
+                    {orderState === "custom" ? (
+                      <span className="text-muted-foreground inline-flex h-8 items-center rounded-full px-3 text-sm">
+                        {copy.bulkPhotos.sortCustom}
+                      </span>
+                    ) : null}
+                  </div>
                 </>
               ) : null}
               <Button

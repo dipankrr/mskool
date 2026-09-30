@@ -2029,6 +2029,7 @@ export const copy = {
     sortHeading: "Order:",
     sortCapture: "Capture order",
     sortName: "File name",
+    sortCustom: "Custom",
     clearAll: "Remove all",
     removePhoto: "Remove",
     heicHint:
