@@ -12,6 +12,7 @@ import {
   GraduationCapIcon,
   HomeIcon,
   IdCardIcon,
+  ImagePlusIcon,
   LandmarkIcon,
   MenuIcon,
   NotebookPenIcon,
@@ -179,6 +180,12 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
             label: copy.nav.admitStudent,
             icon: PlusIcon,
             permission: "student:create",
+          },
+          {
+            href: "/students/photos",
+            label: copy.nav.bulkPhotos,
+            icon: ImagePlusIcon,
+            permission: "student:update",
           },
           {
             href: "/students/id-cards",

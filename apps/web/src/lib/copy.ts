@@ -75,6 +75,7 @@ export const copy = {
     /** Sub-actions under the sidebar's expandable items. */
     allStudents: "All students",
     admitStudent: "Admit student",
+    bulkPhotos: "Photo upload",
     idCards: "ID cards",
     attendanceCalendar: "Calendar",
     attendanceMark: "Mark",
@@ -1985,6 +1986,60 @@ export const copy = {
    * "adopt", "starter design") is 2b's designer's too, so the words live here
    * from the start.
    */
+  // Bulk photo upload (the students-surface workbench).
+  bulkPhotos: {
+    title: "Photo upload",
+    subtitle:
+      "Upload a whole class's photos in one pass. Nothing is saved until you confirm the matches.",
+    mode: "How are the photos identified?",
+    sectionMode: "By roll number (one section)",
+    sectionModeHint:
+      "Pick a class and section, drop the photos in — they map to the roster in roll order. No renaming needed.",
+    registerMode: "By admission number (whole register)",
+    registerModeHint:
+      "Name each file by admission number, e.g. DEMO-0001.jpg, and match across the whole school.",
+    sourceHeading: "Photos",
+    chooseImages: "Choose images",
+    chooseZip: "Choose a zip",
+    sectionSourceHint:
+      "Multi-select the photos, or a zip — order comes from when each photo was taken.",
+    registerSourceHint:
+      "File names must be the admission number (extension ignored). A zip works too.",
+    sortHeading: "Order:",
+    sortCapture: "Capture order",
+    sortName: "File name",
+    heicHint:
+      "Some photos are in a format this browser cannot open (commonly iPhone HEIC). Set the camera to “Most Compatible” (JPEG) and re-upload those files.",
+    reviewHeading: "Check the matches",
+    pickSection: "Pick a class and section to load the roster.",
+    noRoll: "no roll no.",
+    rollLabel: "Roll",
+    emptySlot: "empty",
+    badImage: "unopenable",
+    matchNow: "Match admission numbers",
+    registerUnmatched: (n: number) =>
+      n === 1
+        ? "1 file did not match any admission number and will be skipped."
+        : `${n} files did not match any admission number and will be skipped.`,
+    nothingToUpload: "Nothing is matched yet.",
+    confirm: "Upload matched photos",
+    uploading: (done: number, total: number) =>
+      `Uploading ${done} of ${total}…`,
+    retryFailed: (n: number) =>
+      n === 1 ? "Retry 1 failed upload" : `Retry ${n} failed uploads`,
+    ok: "done",
+    allUploaded: (n: number) =>
+      n === 1 ? "1 photo uploaded." : `${n} photos uploaded.`,
+    someFailed: (failed: number, total: number) =>
+      `${total - failed} of ${total} uploaded — ${failed} failed. Retry below.`,
+    nonImageSkipped: (n: number) =>
+      n === 1 ? "1 non-image file ignored." : `${n} non-image files ignored.`,
+    tooMany: (cap: number) => `Only the first ${cap} photos were taken.`,
+    zipTooBig: "That zip is over 200 MB — split it by class and upload in parts.",
+    zipBroken: "That file is not a readable zip.",
+    resizeFailed: "The photo could not be processed.",
+    noPermission: "You need student update rights to upload photos.",
+  },
   idCards: {
     subtitle:
       "Design student ID cards from starter templates, then print a class set on CR80 card.",

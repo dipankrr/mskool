@@ -24,7 +24,8 @@ import { trpc } from "@/lib/trpc/client";
 const TARGET_W = 300;
 const TARGET_H = 400;
 
-async function fileToResizedBase64(file: File): Promise<string | null> {
+/** Shared with the bulk-photo workbench — the ONE place bytes are resized. */
+export async function fileToResizedBase64(file: File): Promise<string | null> {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(TARGET_W / bitmap.width, TARGET_H / bitmap.height, 1);
   const canvas = document.createElement("canvas");
