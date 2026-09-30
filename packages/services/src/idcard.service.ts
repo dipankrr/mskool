@@ -480,7 +480,11 @@ export class IdCardService {
       .from(studentEnrollments)
       .innerJoin(students, eq(studentEnrollments.studentId, students.id))
       .innerJoin(classes, eq(studentEnrollments.classId, classes.id))
-      .innerJoin(sections, eq(studentEnrollments.sectionId, sections.id))
+      // LEFT join: a student enrolled but NOT YET sectioned (the admit flow
+      // assigns the first section later) must still print — their card just
+      // leaves the section line empty. The roster shows them; dropping them
+      // here made them unprintable with no worded reason.
+      .leftJoin(sections, eq(studentEnrollments.sectionId, sections.id))
       .leftJoin(studentPhotos, eq(studentPhotos.studentId, students.id))
       .where(
         and(
