@@ -28,8 +28,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import { IdCardPreview } from "@/features/id-cards/id-card-preview";
 import { PREBUILT_TEMPLATES } from "@/features/id-cards/prebuilt-templates";
+import { A4Sheets } from "@/features/id-cards/print-preview";
 import { cardSizeMm } from "@/features/id-cards/template";
 import {
   useAdoptTemplate,
@@ -99,6 +106,9 @@ export default function IdCardsPage() {
   const gallery = useGalleryTemplates();
 
   const [choice, setChoice] = useState<TemplateChoice | null>(null);
+  /** Spacing between the printed cards, in mm — the operator's cutting
+   * tolerance. 0 = edge-to-edge (guillotine a stack in one pass). */
+  const [printGapMm, setPrintGapMm] = useState(4);
   const [newOpen, setNewOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [newOrientation, setNewOrientation] = useState<"landscape" | "portrait">(
@@ -168,12 +178,21 @@ export default function IdCardsPage() {
   }
 
   // The print grid follows the CHOSEN TEMPLATE's physical size (custom
-  // canvas dims or CR80): A4's 190×277mm printable area minus a 2mm spacing
-  // buffer per cell. For CR80 this lands exactly on the old 2×4 landscape /
-  // 3×3 portrait sheets.
+  // canvas dims or CR80). The sheet's CSS gap is 4mm (globals.css), so N
+  // columns need N*width + (N-1)*4 ≤ the printable area — i.e.
+  // N ≤ (printable + gap) / (size + gap). A4 210×297 minus 10mm margins
+  // each side = 190×277mm. For CR80 this lands exactly on the old 2×4
+  // landscape / 3×3 portrait sheets.
+  const PRINT_GAP_MM = Math.max(0, Math.min(20, printGapMm || 0));
   const printSize = choice ? cardSizeMm(choice.data) : { widthMm: 86, heightMm: 54 };
-  const printColumns = Math.max(1, Math.floor(190 / (printSize.widthMm + 2)));
-  const printRows = Math.max(1, Math.floor(277 / (printSize.heightMm + 2)));
+  const printColumns = Math.max(
+    1,
+    Math.floor((190 + PRINT_GAP_MM) / (printSize.widthMm + PRINT_GAP_MM)),
+  );
+  const printRows = Math.max(
+    1,
+    Math.floor((277 + PRINT_GAP_MM) / (printSize.heightMm + PRINT_GAP_MM)),
+  );
   const perPage = printColumns * printRows;
   const printableCards = selectedPairs
     .map((pair) => cardByStudentId.get(pair.student.id))
@@ -200,181 +219,261 @@ export default function IdCardsPage() {
         }
       />
 
-      <div className="idcard-screen-only flex flex-col gap-6">
-        {/* ── Pickers ── */}
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div className="flex flex-col gap-1.5">
-            <Label>{copy.idCards.chooseClass}</Label>
-            <Select
-              value={classId}
-              onValueChange={(value) => {
-                setClassId(!value || value === ALL ? "" : value);
-                setSectionId("");
-              }}
+      {/* Two tabs, because one page was doing two jobs: the PRINT RUN
+          (pick, preview, print — what the office does every June) and the
+          TEMPLATE WORKSHOP (manage, starters, community gallery — rare,
+          admin work). Mixing them is why the page felt cluttered. */}
+      <div className="idcard-screen-only flex flex-col gap-4">
+        <Tabs defaultValue="print">
+          <TabsList className="h-10 self-start p-1">
+            <TabsTrigger
+              value="print"
+              className="h-full px-8 text-sm font-semibold"
             >
-              <SelectTrigger>
-                <SelectValue placeholder={copy.terms.class} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>{copy.terms.classes}</SelectItem>
-                {(classes.data ?? []).map((cls) => (
-                  <SelectItem key={cls.id} value={cls.id}>
-                    {cls.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              {copy.idCards.tabPrint}
+            </TabsTrigger>
+            <TabsTrigger
+              value="templates"
+              className="h-full px-8 text-sm font-semibold"
+            >
+              {copy.idCards.tabTemplates}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="print" className="mt-6">
+      {/* Students LEFT, the paper RIGHT: pick students on the left, watch
+          the sheets re-flow on the right. The list is the only thing that
+          scrolls; the preview never leaves the eye. */}
+      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
+        {/* ── LEFT: the students ── */}
+        <div className="flex min-w-0 flex-col gap-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label>{copy.idCards.chooseClass}</Label>
+              <Select
+                value={classId}
+                onValueChange={(value) => {
+                  setClassId(!value || value === ALL ? "" : value);
+                  setSectionId("");
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue>
+                    {(value: string | null) =>
+                      value === ALL
+                        ? copy.terms.classes
+                        : (classes.data ?? []).find((cls) => cls.id === value)
+                            ?.name ?? copy.terms.class}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>{copy.terms.classes}</SelectItem>
+                  {(classes.data ?? []).map((cls) => (
+                    <SelectItem key={cls.id} value={cls.id}>
+                      {cls.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label>{copy.idCards.chooseSection}</Label>
+              <Select
+                value={sectionId}
+                onValueChange={(value) =>
+                  setSectionId(!value || value === ALL ? "" : value)
+                }
+                disabled={!classId}
+              >
+                <SelectTrigger>
+                  <SelectValue>
+                    {(value: string | null) =>
+                      !value || value === ALL
+                        ? copy.idCards.allSections
+                        : (sections.data ?? []).find((section) => section.id === value)
+                            ?.name ?? copy.terms.section}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>{copy.idCards.allSections}</SelectItem>
+                  {(sections.data ?? []).map((section) => (
+                    <SelectItem key={section.id} value={section.id}>
+                      {section.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label>{copy.idCards.chooseSection}</Label>
-            <Select
-              value={sectionId}
-              onValueChange={(value) =>
-                setSectionId(!value || value === ALL ? "" : value)
-              }
-              disabled={!classId}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={copy.terms.section} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>{copy.idCards.allSections}</SelectItem>
-                {(sections.data ?? []).map((section) => (
-                  <SelectItem key={section.id} value={section.id}>
-                    {section.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label>{copy.idCards.chooseTemplate}</Label>
-            <Select
-              value={choice?.rowId ?? ""}
-              onValueChange={(value) => {
-                const next = adopted.find((option) => option.key === value);
-                if (next) setChoice(next);
-              }}
-              disabled={adopted.length === 0}
-            >
-              <SelectTrigger>
-                <SelectValue>
-                  {(value: string | null) =>
-                    adopted.find((option) => option.key === value)?.name ??
-                    copy.idCards.yourTemplatesEmpty}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {adopted.map((option) => (
-                  <SelectItem key={option.key} value={option.key}>
-                    {option.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <Card className="overflow-hidden">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
+              <CardTitle className="text-base">
+                {copy.idCards.studentsHeading}{" "}
+                <span className="text-muted-foreground text-sm font-normal">
+                  · {copy.idCards.selectedCount(selection.selected.size)}
+                </span>
+              </CardTitle>
+              <div className="flex shrink-0 gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    selection.selectMany(
+                      (roster.data ?? []).map((pair) => pair.student.id),
+                    )
+                  }
+                  disabled={(roster.data ?? []).length === 0}
+                >
+                  {copy.idCards.selectAll}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={selection.clear}
+                  disabled={selection.selected.size === 0}
+                >
+                  {copy.idCards.clearAll}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-1.5 pt-0">
+              {roster.isLoading ? (
+                <Spinner className="m-4" />
+              ) : (roster.data ?? []).length === 0 ? (
+                <p className="text-muted-foreground px-3 py-4 text-sm">
+                  {copy.idCards.emptyRosterBody}
+                </p>
+              ) : (
+                <ul className="max-h-[65vh] overflow-y-auto">
+                  {(roster.data ?? []).map((pair) => {
+                    const picked = selection.selected.has(pair.student.id);
+                    const sectionName = (sections.data ?? []).find(
+                      (section) => section.id === pair.enrollment.sectionId,
+                    )?.name;
+                    const meta =
+                      (sectionName ? `${sectionName} · ` : "") +
+                      (pair.enrollment.rollNumber ??
+                        pair.student.admissionNumber);
+                    return (
+                      <li key={pair.enrollment.id}>
+                        <label
+                          className={`flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-muted/60 ${
+                            picked ? "bg-primary/10" : ""
+                          }`}
+                        >
+                          <Checkbox
+                            checked={picked}
+                            onCheckedChange={() =>
+                              selection.toggle(pair.student.id)
+                            }
+                          />
+                          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                            {(
+                              (pair.student.firstName[0] ?? "") +
+                              (pair.student.lastName?.[0] ?? "")
+                            ).toUpperCase()}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium">
+                              {pair.student.firstName} {pair.student.lastName}
+                            </span>
+                            <span className="text-muted-foreground block truncate text-xs">
+                              {meta}
+                            </span>
+                          </span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
-        {/* ── Students ── */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>
-              {copy.idCards.studentsHeading} ·{" "}
-              {copy.idCards.selectedCount(selection.selected.size)}
-            </CardTitle>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  selection.selectMany(
-                    (roster.data ?? []).map((pair) => pair.student.id),
-                  )
-                }
-                disabled={(roster.data ?? []).length === 0}
-              >
-                {copy.idCards.selectAll}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={selection.clear}
-                disabled={selection.selected.size === 0}
-              >
-                {copy.idCards.clearAll}
-              </Button>
+        {/* ── RIGHT: the paper ── */}
+        <div className="flex min-w-0 flex-col gap-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="print-gap">{copy.idCards.printGap}</Label>
+              <Input
+                id="print-gap"
+                type="number"
+                min={0}
+                max={20}
+                step={0.5}
+                className="w-28"
+                value={printGapMm}
+                onChange={(event) => setPrintGapMm(Number(event.target.value))}
+              />
             </div>
-          </CardHeader>
-          <CardContent>
-            {roster.isLoading ? (
-              <Spinner className="mt-4" />
-            ) : (roster.data ?? []).length === 0 ? (
-              <p className="text-muted-foreground text-sm">
-                {copy.idCards.emptyRosterBody}
-              </p>
-            ) : (
-              <ul className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
-                {(roster.data ?? []).map((pair) => (
-                  <li key={pair.enrollment.id}>
-                    <label className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50">
-                      <Checkbox
-                        checked={selection.selected.has(pair.student.id)}
-                        onCheckedChange={() =>
-                          selection.toggle(pair.student.id)
-                        }
-                      />
-                      <span className="truncate">
-                        {pair.student.firstName} {pair.student.lastName}
-                      </span>
-                      <span className="text-muted-foreground ml-auto shrink-0 text-xs">
-                        {pair.enrollment.rollNumber ?? pair.student.admissionNumber}
-                      </span>
-                    </label>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* ── Preview ── */}
-        {cards.isLoading && selection.selected.size > 0 ? (
-          <Spinner className="mt-2" />
-        ) : cards.error ? (
-          <p className="text-destructive text-sm" role="alert">
-            {copy.idCards.loadFailed} {errorMessage(cards.error)}
-          </p>
-        ) : selectedPairs.length === 0 ? (
-          <EmptyState
-            title={copy.idCards.previewHeading}
-            description={copy.idCards.previewHint}
-          />
-        ) : (
-          <div className="flex flex-col gap-2">
-            <h2 className="text-sm font-medium">{copy.idCards.previewHeading}</h2>
-            <div className="flex flex-wrap gap-4">
-              {selectedPairs.map((pair) => {
-                const card = cardByStudentId.get(pair.student.id);
-                if (!card || !choice) return null;
-                return (
-                  <div key={pair.student.id} className="flex flex-col gap-1">
-                    <IdCardPreview
-                      template={choice.data}
-                      card={card}
-                      scale={1.4}
-                    />
-                    <span className="text-muted-foreground text-xs">
-                      {card.name}
-                    </span>
-                  </div>
-                );
-              })}
+            <div className="flex min-w-56 flex-1 flex-col gap-1.5 sm:max-w-xs">
+              <Label>{copy.idCards.chooseTemplate}</Label>
+              <Select
+                value={choice?.rowId ?? ""}
+                onValueChange={(value) => {
+                  const next = adopted.find((option) => option.key === value);
+                  if (next) setChoice(next);
+                }}
+                disabled={adopted.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue>
+                    {(value: string | null) =>
+                      adopted.find((option) => option.key === value)?.name ??
+                      copy.idCards.yourTemplatesEmpty}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {adopted.map((option) => (
+                    <SelectItem key={option.key} value={option.key}>
+                      {option.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
+            {printPages.length > 0 ? (
+              <span className="text-muted-foreground pb-2.5 text-sm">
+                {copy.idCards.pdfPreview.sheetSummary(
+                  printPages.length,
+                  printableCards.length,
+                )}
+              </span>
+            ) : null}
           </div>
-        )}
 
+          {cards.isLoading && selection.selected.size > 0 ? (
+            <Spinner className="mt-2" />
+          ) : cards.error ? (
+            <p className="text-destructive text-sm" role="alert">
+              {copy.idCards.loadFailed} {errorMessage(cards.error)}
+            </p>
+          ) : !choice || printPages.length === 0 ? (
+            <EmptyState
+              title={copy.idCards.previewHeading}
+              description={copy.idCards.previewHint}
+            />
+          ) : (
+            <A4Sheets
+              pages={printPages}
+              template={choice.data}
+              columns={printColumns}
+              cardWidthMm={printSize.widthMm}
+              gapMm={PRINT_GAP_MM}
+            />
+          )}
+
+          <p className="text-muted-foreground text-xs">
+            {copy.idCards.printHint}
+          </p>
+        </div>
+      </div>
+        </TabsContent>
+
+        <TabsContent value="templates" className="mt-4">
         {/* ── Templates: your rows + the starter gallery + the community gallery ── */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
@@ -399,79 +498,89 @@ export default function IdCardsPage() {
                 {copy.idCards.yourTemplatesEmpty}
               </p>
             ) : (
-              <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {adopted.map((option) => {
                   const row = (templates.data ?? []).find(
                     (candidate) => candidate.id === option.key,
                   );
                   return (
-                    <li
-                      key={option.key}
-                      className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm"
-                    >
+                    <li key={option.key} className="flex flex-col gap-2">
                       <button
                         type="button"
-                        className="truncate text-left underline-offset-2 hover:underline"
+                        title={copy.idCards.chooseTemplate}
+                        className="rounded-md border p-2 text-left transition-colors hover:border-primary"
                         onClick={() => setChoice(option)}
                       >
-                        {option.name}
+                        <IdCardPreview
+                          template={option.data}
+                          card={null}
+                          scale={0.8}
+                        />
+                        <span className="mt-2 block truncate text-sm font-medium">
+                          {option.name}
+                        </span>
+                        <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                          {row?.isDefault ? (
+                            <Badge variant="secondary">
+                              {copy.idCards.defaultBadge}
+                            </Badge>
+                          ) : null}
+                          {row?.isPublished ? (
+                            <Badge variant="outline">
+                              {copy.idCards.gallery.publishedBadge}
+                            </Badge>
+                          ) : null}
+                          <span className="text-muted-foreground text-xs">
+                            {option.data.orientation === "portrait"
+                              ? copy.idCards.orientationPortrait
+                              : copy.idCards.orientationLandscape}
+                          </span>
+                        </span>
                       </button>
-                      {row?.isDefault ? (
-                        <Badge variant="secondary">
-                          {copy.idCards.defaultBadge}
-                        </Badge>
-                      ) : null}
-                      {row?.isPublished ? (
-                        <Badge variant="outline">
-                          {copy.idCards.gallery.publishedBadge}
-                        </Badge>
-                      ) : null}
-                      <span className="text-muted-foreground ml-auto text-xs">
-                        {option.data.orientation === "portrait"
-                          ? copy.idCards.orientationPortrait
-                          : copy.idCards.orientationLandscape}
-                      </span>
                       <PermissionGate permission="id_card:manage">
                         {/* Management: designer, publish switch, default.
                             No delete — hard rule 2 (templates close, never
                             vanish) and 2a shipped no destructive procedure. */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            router.push(
-                              `/students/id-cards/${option.key}/design`,
-                            )
-                          }
-                        >
-                          <PencilIcon data-slot="icon" />
-                          {copy.idCards.designer.edit}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={publish.isPending}
-                          onClick={() =>
-                            void publish.submit(
-                              option.key,
-                              !(row?.isPublished ?? false),
-                            )
-                          }
-                        >
-                          {row?.isPublished
-                            ? copy.idCards.gallery.unpublish
-                            : copy.idCards.gallery.publish}
-                        </Button>
-                        {!row?.isDefault ? (
+                        <div className="flex flex-wrap gap-2">
                           <Button
-                            variant="ghost"
+                            variant="outline"
                             size="sm"
-                            disabled={setDefault.isPending}
-                            onClick={() => void setDefault.submit(option.key)}
+                            className="flex-1"
+                            onClick={() =>
+                              router.push(
+                                `/students/id-cards/${option.key}/design`,
+                              )
+                            }
                           >
-                            {copy.idCards.makeDefault}
+                            <PencilIcon data-slot="icon" />
+                            {copy.idCards.designer.edit}
                           </Button>
-                        ) : null}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={publish.isPending}
+                            onClick={() =>
+                              void publish.submit(
+                                option.key,
+                                !(row?.isPublished ?? false),
+                              )
+                            }
+                          >
+                            {row?.isPublished
+                              ? copy.idCards.gallery.unpublish
+                              : copy.idCards.gallery.publish}
+                          </Button>
+                          {!row?.isDefault ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={setDefault.isPending}
+                              onClick={() => void setDefault.submit(option.key)}
+                            >
+                              {copy.idCards.makeDefault}
+                            </Button>
+                          ) : null}
+                        </div>
                       </PermissionGate>
                     </li>
                   );
@@ -576,8 +685,8 @@ export default function IdCardsPage() {
             </PermissionGate>
           </CardContent>
         </Card>
-
-        <p className="text-muted-foreground text-xs">{copy.idCards.printHint}</p>
+        </TabsContent>
+      </Tabs>
       </div>
 
       {/* ── Build-from-blank (2b) ── */}
@@ -683,6 +792,7 @@ export default function IdCardsPage() {
               className="idcard-print-grid"
               style={{
                 gridTemplateColumns: `repeat(${printColumns}, ${printSize.widthMm}mm)`,
+                gap: `${PRINT_GAP_MM}mm`,
               }}
             >
               {pageCards.map((card) =>

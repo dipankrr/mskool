@@ -163,6 +163,18 @@
 }
 
 @media print {
+  /* The PDF is the physical sheet, never the app's theme: with dark mode on,
+     the browser paints the ROOT CANVAS from `color-scheme` / body background
+     even though every element here is visibility-hidden — printing came out
+     dark. Force the print stock's colors at the root. */
+  :root,
+  html,
+  body {
+    background: #ffffff !important;
+    color: #111827 !important;
+    color-scheme: light !important;
+  }
+
   body * {
     visibility: hidden !important;
   }
@@ -189,6 +201,8 @@
     width: 210mm;
     min-height: 297mm;
     padding: 10mm;
+    background: #ffffff;
+    color: #111827;
     break-after: page;
     page-break-after: always;
     box-sizing: border-box;
