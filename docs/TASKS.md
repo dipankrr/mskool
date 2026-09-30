@@ -6,6 +6,46 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
+**ID CARDS — LIVE SESSION PASS COMPLETE ON `feature/id-cards` (2026-09-29). 4 commits, browser-verified. The branch is 24 commits, unpushed.**
+
+The owner click-tested the feature live; this pass fixes what they hit and
+rebuilds the print surface around their feedback:
+
+1. **`349e5ab` — THE NAME BUG + QR + designer pass.** The binding catalog
+   said `studentName`; the card payload's field is `name` — **every card
+   printed an empty name line** (including all prebuilts). `resolveBinding`
+   translates, and now exists ONCE (card-canvas had a private copy). The QR
+   encodes `{origin}/students/{id}`. Designer: scale-to-fit on BOTH axes
+   (a portrait card fits by height — width-only fit made the owner zoom to
+   50%), the canvas column is STICKY (properties scroll, card doesn't), the
+   selected element's editor jumps above Card settings, Card size (mm)
+   inputs + corner-radius (card, mm) and per-element border radius (%).
+2. **`9cde1d6`** — the contract fields for that rounding (jsonb, backward
+   compatible).
+3. **`b95f150` — the sectionless-student fix the owner's testing caught:**
+   cardData inner-joined sections, so a student enrolled but not yet
+   sectioned appeared in the roster yet produced NO card. Left join.
+4. **`5c22f4f` — the print-run workbench.** The page is two tabs (Print run
+   / Templates, a proper top switcher). Print run: students LEFT (real list:
+   initials avatar, name, section · roll meta, selected-row highlight,
+   65vh scroll), live FULL-A4 preview RIGHT with the same grid math and
+   gap as the print sheet; Gap is operator-editable (0 = edge-to-edge) and
+   the columns/rows math uses the exact gap. Pickers show names, not
+   uuids (Base UI SelectValue needs a label resolver — three times now).
+   Templates tab: own templates render preview thumbnails like the
+   starters/gallery. Dark mode no longer prints a dark PDF (print media
+   forces white stock at the root).
+5. **Gates:** check-types 8/8, lint 0 errors, idcard integration 11/11
+   (full suite was 220/220 pre-pass; nothing since touches other domains).
+
+**NEXT (owner-agreed priorities):** bulk photo upload (zip → match by
+admission number → review grid → batch through the existing
+`student.uploadPhoto` — the #1 adoption blocker), print-entire-class
+one-click, template soft-delete, persist the print gap, designer undo.
+Storage note for bulk photos: ADR-038's DB-backed driver holds everything
+in `storage_objects` (bytea) until the owner's R2 account lands; the
+upload path is the same seam.
+
 **ID CARDS — SLICE 2B (DESIGNER) COMPLETE ON `feature/id-cards` (2026-09-29). 2 commits, all gates green. The feature is functionally whole.**
 
 **Owner-feedback usability pass (same day, `4562252` + `457c06a`):** the
