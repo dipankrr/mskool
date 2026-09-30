@@ -89,7 +89,6 @@ export function BulkPhotos() {
   const [classId, setClassId] = useState("");
   const [sectionId, setSectionId] = useState("");
   const [photos, setPhotos] = useState<LoadedPhoto[]>([]);
-  const [sortMode, setSortMode] = useState<"capture" | "name">("capture");
   const [assignments, setAssignments] = useState<Record<string, SlotAssignment>>({});
   const [results, setResults] = useState<UploadResult[]>([]);
   const [running, setRunning] = useState(false);
@@ -227,15 +226,25 @@ export function BulkPhotos() {
     }
   }, []);
 
-  const orderedPhotos = useMemo(() => {
-    const sorted = [...photos];
-    if (sortMode === "capture") {
-      sorted.sort((a, b) => a.file.lastModified - b.file.lastModified);
-    } else {
-      sorted.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-    }
-    return sorted;
-  }, [photos, sortMode]);
+  /**
+   * The strip's ORDER IS THE ARRAY ORDER — the one source of truth. The
+   * sort buttons apply a one-time sort to the array (capture time, then
+   * file name), and drag-to-reorder mutates it. A derived re-sorted memo
+   * would fight the drag and silently undo every move — the original bug.
+   */
+  const sortPhotos = useCallback((by: "capture" | "name") => {
+    setPhotos((current) => {
+      const sorted = [...current];
+      if (by === "capture") {
+        sorted.sort((a, b) => a.file.lastModified - b.file.lastModified);
+      } else {
+        sorted.sort((a, b) =>
+          a.name.localeCompare(b.name, undefined, { numeric: true }),
+        );
+      }
+      return sorted;
+    });
+  }, []);
 
   // Drag-to-reorder the strip (section mode only — order IS the assignment).
   const reorderPhoto = useCallback((from: number, to: number) => {
@@ -263,12 +272,12 @@ export function BulkPhotos() {
       const next: Record<string, SlotAssignment> = {};
       slots.forEach((slot, index) => {
         next[slot.student.id] = {
-          photoId: orderedPhotos[index]?.id ?? null,
+          photoId: photos[index]?.id ?? null,
         };
       });
       return next;
     });
-  }, [mode, slots, orderedPhotos]);
+  }, [mode, slots, photos]);
 
   // REGISTER match: basename → admission number, with the year's roster
   // facts for the review rows.
@@ -652,17 +661,17 @@ export function BulkPhotos() {
                     {copy.bulkPhotos.sortHeading}
                   </span>
                   <Button
-                    variant={sortMode === "capture" ? "default" : "outline"}
+                    variant="outline"
                     size="sm"
-                    onClick={() => setSortMode("capture")}
+                    onClick={() => sortPhotos("capture")}
                   >
                     <ListOrderedIcon data-slot="icon" />
                     {copy.bulkPhotos.sortCapture}
                   </Button>
                   <Button
-                    variant={sortMode === "name" ? "default" : "outline"}
+                    variant="outline"
                     size="sm"
-                    onClick={() => setSortMode("name")}
+                    onClick={() => sortPhotos("name")}
                   >
                     {copy.bulkPhotos.sortName}
                   </Button>
@@ -678,11 +687,13 @@ export function BulkPhotos() {
               </Button>
             </div>
             <ul className="flex flex-wrap gap-2">
-              {orderedPhotos.map((photo, index) => (
+              {photos.map((photo, index) => (
                 <li
                   key={photo.id}
                   draggable={mode === "section"}
-                  onDragStart={() => {
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("text/plain", photo.id);
                     dragIndex.current = index;
                   }}
                   onDragOver={(event) => {
@@ -706,6 +717,7 @@ export function BulkPhotos() {
                   <img
                     src={photo.url}
                     alt={photo.name}
+                    draggable={false}
                     className="h-24 w-full object-cover"
                   />
                   <button
@@ -717,7 +729,7 @@ export function BulkPhotos() {
                     <XIcon className="size-3.5" />
                   </button>
                   <span className="block truncate px-1.5 py-1 text-[10px] text-muted-foreground">
-                    {mode === "section" && sortMode === "capture"
+                    {mode === "section"
                       ? `${index + 1}. ${photo.name}`
                       : photo.name}
                   </span>
