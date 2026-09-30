@@ -1,6 +1,8 @@
 import {
   createStudentSchema,
   studentSelectSchema,
+  studentsByAdmissionsInput,
+  studentsByAdmissionsOutput,
   updateStudentSchema,
   uploadStudentPhotoInput,
 } from "@repo/contracts";
@@ -58,6 +60,26 @@ export const studentRouter = router({
     .output(z.array(studentSelectSchema))
     .query(async ({ ctx, input }) => {
       return studentService.listStudents(ctx.scopes, input.q);
+    }),
+
+  // The bulk-photo matcher's read: strict cover (the caller addresses the
+  // branch whose register the zip claims to match), active students only,
+  // school-level clipped. The zip never uploads — the browser matches
+  // filenames against this, and each confirmed photo rides uploadPhoto.
+  byAdmissions: staffProcedure("student:read")
+    .meta({
+      openapi: {
+        method: "POST",
+        path: "/students/by-admissions",
+        tags: ["students"],
+        summary: "Active students by admission number (bulk photo matcher)",
+        protect: true,
+      },
+    })
+    .input(studentsByAdmissionsInput)
+    .output(studentsByAdmissionsOutput)
+    .mutation(async ({ ctx, input }) => {
+      return studentService.listByAdmissions(ctx.scope, input.admissions);
     }),
 
   // B6: not a scope node, so the owning branch comes from the resolver and
