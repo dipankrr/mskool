@@ -121,22 +121,33 @@ export function DesignerCanvas({
   const stageRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
 
-  // Scale-to-fit: the stage's own width decides the card's rendered size.
+  // Scale-to-fit on BOTH axes: the stage is a deterministic "light table"
+  // (its width comes from the grid column, its height from the viewport via
+  // CSS), so the observed box never depends on the card's own size — no
+  // feedback loop. Portrait cards fit by HEIGHT, landscape by width; the
+  // smaller constraint wins, so neither axis can overflow.
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
-    const fit = (available: number) => {
-      if (available > 0) {
-        setScale(CLAMP(available / basePxWidth, MIN_SCALE, MAX_SCALE));
+    const fit = (width: number, height: number) => {
+      if (width > 0 && height > 0) {
+        setScale(
+          CLAMP(
+            Math.min(width / basePxWidth, height / basePxHeight),
+            MIN_SCALE,
+            MAX_SCALE,
+          ),
+        );
       }
     };
-    const observer = new ResizeObserver((entries) =>
-      fit(entries[0]?.contentRect.width ?? 0),
-    );
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (rect) fit(rect.width, rect.height);
+    });
     observer.observe(stage);
-    fit(stage.clientWidth);
+    fit(stage.clientWidth, stage.clientHeight);
     return () => observer.disconnect();
-  }, [basePxWidth]);
+  }, [basePxWidth, basePxHeight]);
 
   const pxWidth = basePxWidth * scale;
   const pxHeight = basePxHeight * scale;
@@ -211,8 +222,13 @@ export function DesignerCanvas({
   return (
     <div
       ref={stageRef}
-      className="idcard-designer-stage w-full overflow-hidden rounded-lg"
+      className="idcard-designer-stage flex w-full items-center justify-center overflow-hidden rounded-lg"
       style={{
+        // Deterministic stage size — see the fit() comment above. The height
+        // budget leaves room for the header, the page padding, and the
+        // palette beneath, so the whole card is on screen without scrolling.
+        height: "calc(100vh - 16rem)",
+        minHeight: 320,
         // The checkerboard keeps a white card's true edge visible in BOTH
         // color schemes — the print stock is white, the page may be too.
         backgroundImage:
@@ -231,7 +247,6 @@ export function DesignerCanvas({
         style={{
           width: pxWidth,
           height: pxHeight,
-          margin: "0 auto",
           boxShadow: "0 1px 6px rgba(0,0,0,0.25)",
           touchAction: "none",
         }}
@@ -255,6 +270,9 @@ export function DesignerCanvas({
             overflow: "hidden",
             background: "#ffffff",
             color: "#111827",
+            borderRadius: template.canvas.cornerRadiusMm
+              ? `${template.canvas.cornerRadiusMm}mm`
+              : undefined,
             fontFamily: "var(--font-sans, sans-serif)",
           }}
         >
@@ -280,6 +298,9 @@ export function DesignerCanvas({
                 width: `${element.width}%`,
                 height: `${element.height}%`,
                 overflow: "hidden",
+                borderRadius: element.borderRadius
+                  ? `${element.borderRadius}%`
+                  : undefined,
                 cursor: "move",
                 touchAction: "none",
                 outline: selected

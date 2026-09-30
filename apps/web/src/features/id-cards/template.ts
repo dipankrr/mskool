@@ -21,13 +21,19 @@ import {
  * client-invented.
  */
 
-/** Resolves one text binding against the server-resolved card payload. */
+/**
+ * Resolves one text binding against the server-resolved card payload.
+ * The binding catalog says `studentName`; the payload's field is `name`
+ * (the registry's own word) — this is the ONE translation between the two
+ * vocabularies, and every renderer goes through it.
+ */
 export function resolveBinding(
   element: Extract<IdCardElementInput, { type: "text" }>,
   card: IdCardStudentCard,
 ): string {
   if (element.binding === "custom") return element.customText ?? "";
-  const value: unknown = card[element.binding as keyof IdCardStudentCard];
+  const key = element.binding === "studentName" ? "name" : element.binding;
+  const value: unknown = card[key as keyof IdCardStudentCard];
   return value === null || value === undefined ? "" : String(value);
 }
 

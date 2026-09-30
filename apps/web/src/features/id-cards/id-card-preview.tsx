@@ -56,6 +56,9 @@ export function IdCardPreview({
           overflow: "hidden",
           background: "#ffffff",
           color: "#111827",
+          borderRadius: template.canvas.cornerRadiusMm
+            ? `${template.canvas.cornerRadiusMm}mm`
+            : undefined,
           outline: cutGuide ? "0.2mm dashed #9ca3af" : undefined,
           outlineOffset: cutGuide ? "0.5mm" : undefined,
           fontFamily: "var(--font-sans, sans-serif)",

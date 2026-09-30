@@ -9,6 +9,8 @@ import type {
   IdCardTemplateDataInput,
 } from "@repo/contracts";
 
+import { resolveBinding } from "./template";
+
 /**
  * THE CARD SURFACE (extracted in slice 2b) — everything INSIDE the card,
  * shared by the print preview and the designer so what is designed is what
@@ -84,7 +86,7 @@ export function ElementContent({
   }
 
   if (element.type === "qr") {
-    return <QrImage value={card?.studentId ?? null} />;
+    return <QrImage value={card ? studentPageUrl(card.studentId) : null} />;
   }
 
   // logo — renders only if a logo asset was uploaded; a missing asset is an
@@ -120,6 +122,9 @@ export function ElementBox({
         width: `${element.width}%`,
         height: `${element.height}%`,
         overflow: "hidden",
+        borderRadius: element.borderRadius
+          ? `${element.borderRadius}%`
+          : undefined,
       }}
     >
       {children}
@@ -173,14 +178,16 @@ export function CardLayer({
   );
 }
 
-/** resolveBinding's text logic, without importing the render-model internals. */
-function resolveBinding(
-  element: Extract<IdCardElementInput, { type: "text" }>,
-  card: IdCardStudentCard,
-): string {
-  if (element.binding === "custom") return element.customText ?? "";
-  const value: unknown = card[element.binding as keyof IdCardStudentCard];
-  return value === null || value === undefined ? "" : String(value);
+/** resolveBinding lives in template.ts (the render model) — one copy only. */
+
+/**
+ * The QR encodes a link to the student's OWN PAGE on the branch that
+ * printed the card — staff scan it and land on the record. Absolute URL:
+ * a QR on paper is scanned by a phone that has no idea of this origin.
+ */
+function studentPageUrl(studentId: string): string {
+  if (typeof window === "undefined") return `/students/${studentId}`;
+  return `${window.location.origin}/students/${studentId}`;
 }
 
 /** QR of the studentId, rendered async — the print page's exact behavior. */

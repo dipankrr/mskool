@@ -1992,6 +1992,17 @@ export const copy = {
     chooseBranchBody: "Choose a branch and session to print ID cards.",
     chooseTemplate: "Template",
     chooseClass: "Class",
+    printGap: "Gap between cards (mm)",
+    tabPrint: "Print run",
+    tabTemplates: "Templates",
+    pdfPreview: {
+      action: "Preview PDF",
+      title: "Print preview",
+      sheetSummary: (sheets: number, cards: number) =>
+        `${cards} card${cards === 1 ? "" : "s"} on ${sheets} A4 sheet${sheets === 1 ? "" : "s"}`,
+      sheetLabel: (page: number, total: number) =>
+        `Sheet ${page} of ${total}`,
+    },
     chooseSection: "Section",
     allSections: "All sections",
     studentsHeading: "Students",
@@ -2097,6 +2108,12 @@ export const copy = {
       canvasHeight: "Card height (mm)",
       canvasSizeHint:
         "Defaults to a CR80 card. Uploading a background sets this from the image's shape — adjust freely; elements sit in % of the card, so they keep their place.",
+      cornerRadius: "Corner radius (mm)",
+      cornerRadiusHint:
+        "Rounds the printed card's corners — 3mm is a typical card stock. 0 keeps them square.",
+      borderRadius: "Border radius (%)",
+      borderRadiusHint:
+        "Rounds this element's corners — 50 makes a photo or logo a perfect circle.",
       propertiesHeading: "Element",
       noSelection: "No element selected",
       noSelectionBody:

@@ -162,9 +162,16 @@ export function TemplateDesigner({ templateId }: { templateId: string }) {
         }
       />
 
-      <div className="idcard-screen-only grid gap-6 lg:grid-cols-[auto_1fr]">
+      {/* The canvas column is 1fr and the panel fixed-width: the stage's
+          width must come from the LAYOUT, never from the card itself, or
+          scale-to-fit chases its own tail. */}
+      <div className="idcard-screen-only grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_28rem]">
         {/* ── The card + palette ── */}
-        <div className="flex flex-col items-start gap-4">
+        {/* Sticky from lg up: the properties panel is long, and the operator
+            must see the card WHILE editing an element — scrolling the panel
+            must never scroll the card out of view. items-start + sticky keep
+            the measured stage width stable, so scale-to-fit is unaffected. */}
+        <div className="flex flex-col items-start gap-4 self-start lg:sticky lg:top-16">
           <DesignerCanvas
             template={draft}
             sampleCard={SAMPLE_CARD}
@@ -179,7 +186,27 @@ export function TemplateDesigner({ templateId }: { templateId: string }) {
         </div>
 
         {/* ── Settings + properties ── */}
+        {/* The selected element's editor JUMPS ABOVE Card settings: the
+            click that selects is what the operator wants to edit next, and
+            with the canvas sticky beside it there is nothing to scroll to. */}
         <div className="flex min-w-0 flex-col gap-6">
+          {selected ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>{d.propertiesHeading}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ElementProperties
+                  element={selected}
+                  onReplace={designer.replaceElement}
+                  onDelete={() => designer.removeElement(selected.id)}
+                  onUploadAsset={handleUpload}
+                  uploading={uploading}
+                />
+              </CardContent>
+            </Card>
+          ) : null}
+
           <Card>
             <CardHeader>
               <CardTitle>{d.settingsHeading}</CardTitle>
@@ -191,6 +218,7 @@ export function TemplateDesigner({ templateId }: { templateId: string }) {
                 onOrientation={designer.setOrientation}
                 onBackground={designer.setBackground}
                 onCanvasSize={designer.setCanvasSize}
+                onCornerRadius={designer.setCornerRadius}
                 onBackgroundFit={designer.fitBackground}
                 onUploadAsset={handleUpload}
                 uploading={uploading}
@@ -198,28 +226,18 @@ export function TemplateDesigner({ templateId }: { templateId: string }) {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                {selected ? d.propertiesHeading : d.noSelection}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {selected ? (
-                <ElementProperties
-                  element={selected}
-                  onReplace={designer.replaceElement}
-                  onDelete={() => designer.removeElement(selected.id)}
-                  onUploadAsset={handleUpload}
-                  uploading={uploading}
-                />
-              ) : (
+          {!selected ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>{d.noSelection}</CardTitle>
+              </CardHeader>
+              <CardContent>
                 <p className="text-muted-foreground text-sm">
                   {d.noSelectionBody}
                 </p>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
       </div>
     </>

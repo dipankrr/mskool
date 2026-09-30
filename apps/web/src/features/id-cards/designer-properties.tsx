@@ -89,6 +89,7 @@ export function CanvasSettings({
   onOrientation,
   onBackground,
   onCanvasSize,
+  onCornerRadius,
   onBackgroundFit,
   onUploadAsset,
   uploading,
@@ -99,6 +100,8 @@ export function CanvasSettings({
   onBackground: (assetId: string | null) => void;
   /** Hand-sets the card's physical size (mm). */
   onCanvasSize: (widthMm: number, heightMm: number) => void;
+  /** Hand-sets the printed card's corner rounding (mm). */
+  onCornerRadius: (cornerRadiusMm: number) => void;
   /**
    * Background upload with FIT: the card adopts the image's aspect ratio as
    * its physical size (the reason a school uploads a designed sheet).
@@ -174,6 +177,23 @@ export function CanvasSettings({
           />
         </div>
         <p className="text-muted-foreground text-xs">{d.canvasSizeHint}</p>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="idcard-corner-radius">{d.cornerRadius}</Label>
+        <Input
+          id="idcard-corner-radius"
+          type="number"
+          min={0}
+          max={20}
+          step={0.5}
+          value={draft.canvas.cornerRadiusMm ?? 0}
+          onChange={(event) => {
+            const parsed = Number(event.target.value);
+            if (Number.isFinite(parsed)) onCornerRadius(parsed);
+          }}
+        />
+        <p className="text-muted-foreground text-xs">{d.cornerRadiusHint}</p>
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -373,6 +393,24 @@ export function ElementProperties({
         onUploadAsset={onUploadAsset}
         uploading={uploading}
       /> : null}
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="idcard-element-radius">{d.borderRadius}</Label>
+        <Input
+          id="idcard-element-radius"
+          type="number"
+          min={0}
+          max={50}
+          value={element.borderRadius ?? 0}
+          onChange={(event) => {
+            const parsed = Number(event.target.value);
+            if (!Number.isFinite(parsed)) return;
+            const borderRadius = Math.min(50, Math.max(0, parsed));
+            onReplace({ ...element, borderRadius: borderRadius || undefined });
+          }}
+        />
+        <p className="text-muted-foreground text-xs">{d.borderRadiusHint}</p>
+      </div>
 
       <div className="flex flex-col gap-1.5">
         <Label>{d.positionHeading}</Label>

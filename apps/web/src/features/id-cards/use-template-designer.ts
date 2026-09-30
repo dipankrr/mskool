@@ -268,6 +268,19 @@ export function useTemplateDesigner(templateId: string) {
     [update],
   );
 
+  /** The printed card's corner rounding (mm) — 0 is square stock. */
+  const setCornerRadius = useCallback(
+    (cornerRadiusMm: number) =>
+      update((current) => ({
+        ...current,
+        canvas: {
+          ...current.canvas,
+          cornerRadiusMm: clamp(cornerRadiusMm, 0, 20) || undefined,
+        },
+      })),
+    [update],
+  );
+
   /**
    * FIT TO BACKGROUND: a new background image sets the card's physical size
    * from the image's aspect — the whole point of a pre-printed sheet is that
@@ -352,6 +365,7 @@ export function useTemplateDesigner(templateId: string) {
     setOrientation,
     setBackground,
     setCanvasSize,
+    setCornerRadius,
     fitBackground,
     discard,
     save,
