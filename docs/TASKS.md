@@ -6,6 +6,28 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
+**BULK PHOTO UPLOAD — COMPLETE ON `feature/id-cards` (2026-09-29). 4 commits, gates green.**
+
+`/students/photos` (nav "Photo upload", gated `student:update`): a workbench
+that uploads a whole class's photos in one pass. Two modes over one review
+grid — **SECTION**: order-based (drop the photographer's folder in; photos
+sort by capture time or filename and map to the roster in roll order, no
+renaming) and **REGISTER**: filenames are admission numbers, matched via the
+new `student.byAdmissions` read (strict cover, school-clipped, active only —
+proofs: in-org match, foreign-org admission invisible, empty in/out).
+Nothing uploads until the operator confirms the matches; uploads run
+SEQUENTIALLY through the ordinary `uploadPhoto` mutation (same 512KB cap,
+same allowlist, same replace-cleanup) with per-photo results and
+retry-failed-only. Zips unzip client-side via fflate (200MB cap, image
+extensions only, nested folders flattened to basename). HEIC files are
+detected at decode and flagged with the camera-setting fix, never silently
+dropped. Storage note: everything lands in ADR-038's `storage_objects`
+until the R2 driver lands; the owner confirmed pointer-not-URL (no table
+rewrites on provider switch) and asked for NO bulk-audit row.
+
+**NEXT:** print-entire-class one-click, template soft-delete, persist the
+print gap, designer undo. The id-cards feature is owner-demoed and stable.
+
 **ID CARDS — LIVE SESSION PASS COMPLETE ON `feature/id-cards` (2026-09-29). 4 commits, browser-verified. The branch is 24 commits, unpushed.**
 
 The owner click-tested the feature live; this pass fixes what they hit and
