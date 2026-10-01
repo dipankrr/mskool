@@ -2080,7 +2080,8 @@ export const copy = {
     chooseBranchBody: "Choose a branch and session to print ID cards.",
     chooseTemplate: "Template",
     chooseClass: "Class",
-    printGap: "Gap between cards (mm)",
+    printColumnGap: "Gap between columns (mm)",
+    printRowGap: "Gap between rows (mm)",
     tabPrint: "Print run",
     tabTemplates: "Templates",
     pdfPreview: {

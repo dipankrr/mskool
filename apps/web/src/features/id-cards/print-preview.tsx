@@ -18,7 +18,8 @@ export function A4Sheets({
   template,
   columns,
   cardWidthMm,
-  gapMm,
+  columnGapMm,
+  rowGapMm,
   scale = 0.55,
 }: {
   pages: IdCardStudentCard[][];
@@ -26,7 +27,10 @@ export function A4Sheets({
   /** Columns per sheet — the same value the print sheet computes. */
   columns: number;
   cardWidthMm: number;
-  gapMm: number;
+  /** Horizontal spacing between cards (mm). */
+  columnGapMm: number;
+  /** Vertical spacing between card rows (mm). */
+  rowGapMm: number;
   /** On-screen reduction — the sheet itself stays in physical mm. */
   scale?: number;
 }) {
@@ -63,7 +67,7 @@ export function A4Sheets({
                   // gridTemplateColumns — the preview is the contract.
                   display: "grid",
                   gridTemplateColumns: `repeat(${columns}, ${cardWidthMm}mm)`,
-                  gap: `${gapMm}mm`,
+                  gap: `${rowGapMm}mm ${columnGapMm}mm`,
                 }}
               >
                 {pageCards.map((card) => (

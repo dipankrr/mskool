@@ -123,24 +123,42 @@ export default function IdCardsPage() {
 
   const [choice, setChoice] = useState<TemplateChoice | null>(null);
   /** Spacing between the printed cards, in mm — the operator's cutting
-   * tolerance. 0 = edge-to-edge (guillotine a stack in one pass). */
-  const [printGapMm, setPrintGapMm] = useState(4);
-  // The gap is the office's cutting preference — remember it across visits.
+   * tolerance. Column gap = horizontal, row gap = vertical. 0 = edge-to-edge
+   * (guillotine a stack in one pass). Persisted per browser; the old single
+   * gap key seeds both. */
+  const [columnGapMm, setColumnGapMm] = useState(4);
+  const [rowGapMm, setRowGapMm] = useState(4);
   useEffect(() => {
     try {
-      const saved = Number(window.localStorage.getItem(PRINT_GAP_KEY));
-      if (Number.isFinite(saved) && saved >= 0 && saved <= 20) {
-        setPrintGapMm(saved);
+      const gaps = JSON.parse(
+        window.localStorage.getItem(PRINT_GAPS_KEY) ??
+          window.localStorage.getItem(PRINT_GAP_KEY) ??
+          "null",
+      ) as { column?: number; row?: number } | number | null;
+      const column = typeof gaps === "number" ? gaps : (gaps?.column ?? 4);
+      const row = typeof gaps === "number" ? gaps : (gaps?.row ?? 4);
+      if (Number.isFinite(column) && column >= 0 && column <= 20) {
+        setColumnGapMm(column);
+      }
+      if (Number.isFinite(row) && row >= 0 && row <= 20) {
+        setRowGapMm(row);
       }
     } catch {
       // No storage: the default 4mm stands.
     }
   }, []);
-  const changeGap = (value: number) => {
+  const changeGap = (axis: "column" | "row", value: number) => {
     const clamped = Math.max(0, Math.min(20, Number.isFinite(value) ? value : 4));
-    setPrintGapMm(clamped);
+    if (axis === "column") setColumnGapMm(clamped);
+    else setRowGapMm(clamped);
     try {
-      window.localStorage.setItem(PRINT_GAP_KEY, String(clamped));
+      window.localStorage.setItem(
+        PRINT_GAPS_KEY,
+        JSON.stringify({
+          column: axis === "column" ? clamped : columnGapMm,
+          row: axis === "row" ? clamped : rowGapMm,
+        }),
+      );
     } catch {
       // No storage: the choice lives for this visit only.
     }
@@ -258,15 +276,16 @@ export default function IdCardsPage() {
   // N ≤ (printable + gap) / (size + gap). A4 210×297 minus 10mm margins
   // each side = 190×277mm. For CR80 this lands exactly on the old 2×4
   // landscape / 3×3 portrait sheets.
-  const PRINT_GAP_MM = Math.max(0, Math.min(20, printGapMm || 0));
+  const COLUMN_GAP_MM = Math.max(0, Math.min(20, columnGapMm || 0));
+  const ROW_GAP_MM = Math.max(0, Math.min(20, rowGapMm || 0));
   const printSize = choice ? cardSizeMm(choice.data) : { widthMm: 86, heightMm: 54 };
   const printColumns = Math.max(
     1,
-    Math.floor((190 + PRINT_GAP_MM) / (printSize.widthMm + PRINT_GAP_MM)),
+    Math.floor((190 + COLUMN_GAP_MM) / (printSize.widthMm + COLUMN_GAP_MM)),
   );
   const printRows = Math.max(
     1,
-    Math.floor((277 + PRINT_GAP_MM) / (printSize.heightMm + PRINT_GAP_MM)),
+    Math.floor((277 + ROW_GAP_MM) / (printSize.heightMm + ROW_GAP_MM)),
   );
   const perPage = printColumns * printRows;
   const printableCards = selectedPairs
@@ -495,16 +514,29 @@ export default function IdCardsPage() {
         <div className="flex min-w-0 flex-col gap-4">
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="print-gap">{copy.idCards.printGap}</Label>
+              <Label htmlFor="print-gap-column">{copy.idCards.printColumnGap}</Label>
               <Input
-                id="print-gap"
+                id="print-gap-column"
                 type="number"
                 min={0}
                 max={20}
                 step={0.5}
                 className="w-28"
-                value={printGapMm}
-                onChange={(event) => changeGap(Number(event.target.value))}
+                value={columnGapMm}
+                onChange={(event) => changeGap("column", Number(event.target.value))}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="print-gap-row">{copy.idCards.printRowGap}</Label>
+              <Input
+                id="print-gap-row"
+                type="number"
+                min={0}
+                max={20}
+                step={0.5}
+                className="w-28"
+                value={rowGapMm}
+                onChange={(event) => changeGap("row", Number(event.target.value))}
               />
             </div>
             <div className="flex min-w-56 flex-1 flex-col gap-1.5 sm:max-w-xs">
@@ -560,7 +592,8 @@ export default function IdCardsPage() {
               template={choice.data}
               columns={printColumns}
               cardWidthMm={printSize.widthMm}
-              gapMm={PRINT_GAP_MM}
+              columnGapMm={COLUMN_GAP_MM}
+              rowGapMm={ROW_GAP_MM}
             />
           )}
 
@@ -931,7 +964,7 @@ export default function IdCardsPage() {
               className="idcard-print-grid"
               style={{
                 gridTemplateColumns: `repeat(${printColumns}, ${printSize.widthMm}mm)`,
-                gap: `${PRINT_GAP_MM}mm`,
+                gap: `${ROW_GAP_MM}mm ${COLUMN_GAP_MM}mm`,
               }}
             >
               {pageCards.map((card) =>
@@ -954,4 +987,5 @@ export default function IdCardsPage() {
 
 const ALL = "__all__";
 const PRINT_RUN_KEY = "mskool.print-run.v1";
+const PRINT_GAPS_KEY = "mskool.print-gaps.v2";
 const PRINT_GAP_KEY = "mskool.print-gap.v1";
