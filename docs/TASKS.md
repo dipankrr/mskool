@@ -6,15 +6,167 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
-**LOGIN OVERHAUL — GLOBAL PHONE IDENTITY, UNCOMMITTED (2026-09-29, ADR-037).**
-Owner-approved 5-commit plan, working tree holds all of it for review:
+**BULK PHOTO UPLOAD — COMPLETE ON `feature/id-cards` (2026-09-29). 4 commits, gates green.**
+
+`/students/photos` (nav "Photo upload", gated `student:update`): a workbench
+that uploads a whole class's photos in one pass. Two modes over one review
+grid — **SECTION**: order-based (drop the photographer's folder in; photos
+sort by capture time or filename and map to the roster in roll order, no
+renaming) and **REGISTER**: filenames are admission numbers, matched via the
+new `student.byAdmissions` read (strict cover, school-clipped, active only —
+proofs: in-org match, foreign-org admission invisible, empty in/out).
+Nothing uploads until the operator confirms the matches; uploads run
+SEQUENTIALLY through the ordinary `uploadPhoto` mutation (same 512KB cap,
+same allowlist, same replace-cleanup) with per-photo results and
+retry-failed-only. Zips unzip client-side via fflate (200MB cap, image
+extensions only, nested folders flattened to basename). HEIC files are
+detected at decode and flagged with the camera-setting fix, never silently
+dropped. Storage note: everything lands in ADR-038's `storage_objects`
+until the R2 driver lands; the owner confirmed pointer-not-URL (no table
+rewrites on provider switch) and asked for NO bulk-audit row.
+
+**NEXT:** print-entire-class one-click, template soft-delete, persist the
+print gap, designer undo. The id-cards feature is owner-demoed and stable.
+
+**ID CARDS — LIVE SESSION PASS COMPLETE ON `feature/id-cards` (2026-09-29). 4 commits, browser-verified. The branch is 24 commits, unpushed.**
+
+The owner click-tested the feature live; this pass fixes what they hit and
+rebuilds the print surface around their feedback:
+
+1. **`349e5ab` — THE NAME BUG + QR + designer pass.** The binding catalog
+   said `studentName`; the card payload's field is `name` — **every card
+   printed an empty name line** (including all prebuilts). `resolveBinding`
+   translates, and now exists ONCE (card-canvas had a private copy). The QR
+   encodes `{origin}/students/{id}`. Designer: scale-to-fit on BOTH axes
+   (a portrait card fits by height — width-only fit made the owner zoom to
+   50%), the canvas column is STICKY (properties scroll, card doesn't), the
+   selected element's editor jumps above Card settings, Card size (mm)
+   inputs + corner-radius (card, mm) and per-element border radius (%).
+2. **`9cde1d6`** — the contract fields for that rounding (jsonb, backward
+   compatible).
+3. **`b95f150` — the sectionless-student fix the owner's testing caught:**
+   cardData inner-joined sections, so a student enrolled but not yet
+   sectioned appeared in the roster yet produced NO card. Left join.
+4. **`5c22f4f` — the print-run workbench.** The page is two tabs (Print run
+   / Templates, a proper top switcher). Print run: students LEFT (real list:
+   initials avatar, name, section · roll meta, selected-row highlight,
+   65vh scroll), live FULL-A4 preview RIGHT with the same grid math and
+   gap as the print sheet; Gap is operator-editable (0 = edge-to-edge) and
+   the columns/rows math uses the exact gap. Pickers show names, not
+   uuids (Base UI SelectValue needs a label resolver — three times now).
+   Templates tab: own templates render preview thumbnails like the
+   starters/gallery. Dark mode no longer prints a dark PDF (print media
+   forces white stock at the root).
+5. **Gates:** check-types 8/8, lint 0 errors, idcard integration 11/11
+   (full suite was 220/220 pre-pass; nothing since touches other domains).
+
+**NEXT (owner-agreed priorities):** bulk photo upload (zip → match by
+admission number → review grid → batch through the existing
+`student.uploadPhoto` — the #1 adoption blocker), print-entire-class
+one-click, template soft-delete, persist the print gap, designer undo.
+Storage note for bulk photos: ADR-038's DB-backed driver holds everything
+in `storage_objects` (bytea) until the owner's R2 account lands; the
+upload path is the same seam.
+
+**ID CARDS — SLICE 2B (DESIGNER) COMPLETE ON `feature/id-cards` (2026-09-29). 2 commits, all gates green. The feature is functionally whole.**
+
+**Owner-feedback usability pass (same day, `4562252` + `457c06a`):** the
+canvas is now SCALE-TO-FIT (ResizeObserver, capped 2.5× — the fixed 4×
+overflowed every viewport and the owner had to zoom to 50%), the stage has a
+checkerboard + ring/shadow so a white card is visible in light mode, the
+designer renders CardBackground (the background printed but was invisible
+while editing), the canvas schema gained optional `widthMm`/`heightMm` (absent
+= CR80; jsonb, no migration), the settings panel has Card size inputs, and
+uploading a background FITS the card to the image's aspect (long side 86mm;
+`setBackground` preserves dims, orientation swaps them, the print grid derives
+its columns/rows from the template's real size). Browser-verified in light
+mode with a seeded gradient background; size save round-trip proven in the DB.
+
+1. **The designer** — `/students/id-cards/[templateId]/design`: scaled canvas
+   sharing `card-canvas.tsx` with the print page (design ≡ print, one
+   renderer), pointer-drag move + resize + arrow-key nudges, per-element
+   property panel (data binding, literal text, font, alignment, visibility),
+   field palette, canvas settings with background/logo upload through the
+   ADR-038 seam (`idCard.template.uploadAsset`, manage-gated). Dirty-bar
+   saves through `template.update`; `use-template-designer.ts` owns the
+   interaction state.
+2. **The community gallery** — `gallery.list` is the domain's ONE deliberate
+   platform-level read (published designs only: name/orientation/canvas/
+   elements — no org ids, no student data; unparseable rows skipped);
+   `gallery.clone` copies a published design into the caller's school as a
+   PRIVATE row and **byte-copies every referenced asset into the cloner's
+   org, rewriting all refs** — so the serving route's per-org membership
+   rule never opens. Publish/Unpublish on own templates; Gallery tab in the
+   picker with clone; build-from-blank flow (orientation choice → empty
+   canvas → designer). Integration proofs +2 tests: gallery visibility,
+   clone ownership + asset-rewrite guarantees. **220/220 integration,
+   check-types 8/8, lint 0 errors, builders + openapi clean** (REST:
+   `GET /id-cards/gallery`, `POST /id-cards/gallery/clone`).
+3. **Ops note (hit in live testing):** a NEW permission is invisible to an
+   org seeded before it existed — run `pnpm db:seed` (A-025 backfill) AND
+   invalidate the org's Redis auth cache (5-min TTL) or wait it out. The
+   seed's backfill reported `+6 permissions` for demo-trust when id_card
+   landed.
+
+**ID CARDS — SLICE 2A COMPLETE ON `feature/id-cards` (2026-09-29, ADR-038). 10 commits, all gates green.**
+
+The backend + print surface for per-school customizable student ID cards. What landed, bottom-up:
+
+1. **ADR-038 + storage seam** — `packages/services/storage.service.ts` with a
+   driver interface (`put/get/delete`); driver A is `postgres` (bytes in
+   `storage_objects.data` bytea), driver B (`r2`) is declared-not-built and
+   fails loudly until the owner's Cloudflare account exists. **Object URLs are
+   stable app routes** (`GET /api/storage/:id`, session-authenticated,
+   membership-checked via `getForUser`) — the R2 swap is copy-bytes + env
+   flip, never URL churn. Uploads ride tRPC as base64 (2MB cap, image
+   allowlist); the web client is the only place bytes are resized
+   (~300×400 JPEG).
+2. **Schema 0024** — `storage_objects` (org-owned), `student_photos` (one per
+   student; replace upserts the pointer and deletes the replaced bytes),
+   `id_card_templates` (school-scoped, `orientation` + canvas/elements jsonb,
+   one-default partial unique index, `isPublished` flag awaiting 2b's gallery).
+3. **Templates as data** — a template is canvas (orientation, optional
+   background asset) + positioned elements (text with a card-data binding,
+   photo, QR of the studentId, logo), percent-geometry so any arrangement is
+   representable. Four prebuilt starters ship as web constants; "adopt"
+   clones one into an owned row (per-school name unique).
+4. **Procedures** — `idCard.template.*` (reads `id_card:print`, writes
+   `id_card:manage`), `idCard.cardData` (tenancy-filtered, no-widening),
+   `student.photo/uploadPhoto/removePhoto` (riding `student:read` /
+   `student:update`). Web: `/students/id-cards` (pickers, multi-select,
+   template gallery, preview, A4 print CSS with cut guides, client QR) +
+   photo card on the student detail page. Nav entry gated `id_card:print`.
+5. **Proofs** — new `idcard.integration` 9/9 (tenancy incl. sibling-branch
+   invisibility, one-default invariant, adopt-clone, cardData no-widening,
+   storage round-trip, serving-route membership); **fixed en route: the
+   portal-claim suite now builds a PRIVATE RUN-KEYED WORLD** (the exam
+   suite's pattern) — it previously left ACTIVE students in the shared authz
+   world, so its claims raced the authz suite's exact registry pin whenever
+   vitest ran files concurrently. `world.ts` exports the find-or-create
+   helpers for exactly this.
+6. **Gates:** check-types 8/8 (incl. the re-run the login-overhaul entry
+   asks for), lint 0 errors, unit green, integration 218/218 (the one
+   registry failure was the race above), check:builders + check:openapi
+   clean. The owner-local ngrok/CORS files remain uncommitted as always.
+
+**NEXT — SLICE 2B (the designer):** edit an adopted template in-browser
+(drag elements, property panel, field palette), publish-to-gallery +
+clone-across-schools, build-from-blank, template picker management UI. The
+render model (`features/id-cards/template.ts` `parseTemplateData`) and the
+`idCard.template.update` procedure are the seam 2b builds on — no backend
+work expected.
+
+**LOGIN OVERHAUL — GLOBAL PHONE IDENTITY, COMMITTED 7x (2026-09-29, ADR-037).**
+Owner-approved plan, on `feature/id-cards` for review (unpushed):
 
 1. **Identity + schema** — ADR-037 (global 10-digit `user.username`, claim-not-handoff, pending links, rate-limit only, no OTP/blocklist/fee-step-up; future `name+digits` shares the column, no prefix) + claim/verify/ensure/revoke/status contracts.
 2. **Services + authz** — `ensureLink` (staff links phone, pending, guardian-gated via `canAccessPortal`), `claim` (first-claim sets password + activates trio matches; forgot re-sets + revokes, uniform refusal), `verifyLink` (nth-kid, no password touch), `revokeLink` (flag + `role_revoked` audit until a dedicated action migrates), `linkStatus`; staff `createLogin` refuses email-less records; new error wordings. No authz change needed (ownership already spans orgs; pending hidden by `isActive`).
 3. **API surface** — public `POST /api/portal/claim` (Express, own hourly limiter, uniform 400s; lives outside tRPC so routers/ stays gated per check-builders) + `portalAccess.ensureLink/status/verifyLink/revokeLink` with OpenAPI meta.
-4. **Web** — staff login card states the sign-in email + email-less guard text; family login tries phone-first, legacy `slug-phone` second; school box optional.
+4. **Web** — staff login card states the sign-in email + email-less guard text; family login tries phone-first, legacy `slug-phone` second; school box optional. Family dialog reworked: Links tab (live status with pending/active + credential badges, link-a-phone, revoke behind consequence confirm); legacy password tabs retained for pre-migration slug rows.
 5. **Proofs deferred, deliberately:** seed/smoke/e2e fixtures untouched (existing slug-login suites keep passing); migration runbook in ADR-037 (normalize → merge → backfill `guardianId` → one claim-reset) is a follow-up with staging dry-run. Dedicated `portal_access:revoke` permission/action + guardian-contact CRUD + app claim screens also follow-ups, recorded not silent.
-Gates to run before commit: `pnpm check-types` (must be 8/8 green), `pnpm lint`, `check:builders`, `check:openapi`.
+Gates run: `check-types` 8/8 green at commit time, `lint` 0 errors, `check:builders` + `check:openapi` clean (4 new routes listed), unit green.
+Proofs: new `portal-claim.integration` 10/10 (uniform refusal incl. byte-identical oracle, sibling pending, cross-org merge, forgot kills sessions + audits, revoke + tenancy, guardian gate, idempotent re-link); `staff.integration` 27/27 (fixtures moved to email-carrying records + new email-less refusal pin); `authz.integration` 93/93, `fees.integration` 53/53, exam files green in the full run (192 passed, only the staff file failed pre-fix); family e2e green live (caught + fixed a real race: ungated submit beat the slug resolver — submit now awaits it, spec pins slug-visible first).
+⚠️ Tree went red mid-session under an unrelated concurrent edit (ID-card slice: untracked `trpc/id_card.router.ts`, `api/storage.ts`, dirty `authz/permissions.ts|defaultPermissions.ts`, `trpc/student.router.ts` photo hunks — `check-types` fails only there). None of this commit's files carry errors; re-run the gate once that slice compiles.
 
 **STUDENT FEE STATUS MATRIX UI (2026-09-24) — web/navigation pass.**
 - Added `/fees/matrix` with a simple Status-only matrix as the default, an optional detailed amount view, shared filters/sort, a compact sticky student identity column, a dedicated opening-balance column, responsive student cards, accessible month detail Sheet, and truthful payment/timing states.

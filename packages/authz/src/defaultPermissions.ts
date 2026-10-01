@@ -79,6 +79,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "report_card:read",
     "report_card:publish",
     "report_card:export",
+    // Student ID cards (slice 2a): the principal runs the school's printing —
+    // designs AND the print run.
+    "id_card:manage",
+    "id_card:print",
     "exam:create",
     "exam:read",
     "exam:update",
@@ -170,6 +174,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "marks:export",
     "report_card:read",
     "report_card:export",
+    // Deputises on the ID-card pass: prints, and may adjust designs (the
+    // principal's grant minus nothing — both, mirroring the marks pairing).
+    "id_card:manage",
+    "id_card:print",
     "exam:create",
     "exam:read",
     "exam:update",

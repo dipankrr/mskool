@@ -75,6 +75,8 @@ export const copy = {
     /** Sub-actions under the sidebar's expandable items. */
     allStudents: "All students",
     admitStudent: "Admit student",
+    bulkPhotos: "Photo upload",
+    idCards: "ID cards",
     attendanceCalendar: "Calendar",
     attendanceMark: "Mark",
     attendancePolicy: "Policy",
@@ -191,6 +193,23 @@ export const copy = {
   },
   portalAccess: {
     title: "Family login",
+    links: "Logins",
+    linkPhone: "Link a phone number",
+    linkPhoneHelp:
+      "No password to hand over. The family sets its own from home: sign-in screen → first time → phone number + admission number + date of birth.",
+    linkCreated:
+      "Phone linked. Tell the family to set their password from home — phone number + admission number + date of birth.",
+    linkPending: "Awaiting claim",
+    linkActive: "Active",
+    linkCredentialSet: "Password set",
+    linkCredentialPending: "No password yet",
+    linkRevoke: "Revoke",
+    linkRevoked: "Family login revoked for this student.",
+    linkRevokeConsequence:
+      "This login stops seeing this student at once. Other children on the same login are unaffected. This is recorded with your name.",
+    linkEmpty: "No family logins linked yet. Link the guardian's phone number below.",
+    legacyNote:
+      "Older logins (with a school prefix) are managed below — new links never need passwords.",
     activate: "Activate family login",
     activated: "Family login activated. The family signs in with this phone number.",
     phone: "Phone number",
@@ -1959,6 +1978,286 @@ export const copy = {
         exemptRenormalizeShort: "Exempt excluded",
         exemptZeroShort: "Exempt scores zero",
       },
+    },
+  },
+
+  /**
+   * BULK PHOTO UPLOAD — the students-surface workbench. The photo belongs to
+   * the student record (ID cards are just its first consumer), so both
+   * matching modes land on the same review grid and the same uploadPhoto
+   * seam.
+   */
+  // Bulk photo upload (the students-surface workbench).
+  bulkPhotos: {
+    title: "Photo upload",
+    subtitle:
+      "Upload a whole class's photos in one pass. Nothing is saved until you confirm the matches.",
+    howItWorks: {
+      heading: "How it works",
+      step1: {
+        title: "Choose how photos are identified",
+        body: "By roll number for one section, or by admission number across the school.",
+      },
+      step2: {
+        title: "Add the photos",
+        body: "Drag them in, browse, or pick a folder — up to 500 at a time.",
+      },
+      step3: {
+        title: "Check the matches, then upload",
+        body: "Each photo sits beside the student it will be saved to. Nothing is written until you confirm.",
+      },
+    },
+    mode: "How are the photos identified?",
+    sectionMode: "By roll number — one section",
+    sectionModeHint:
+      "Pick the class and section, then add the photos in any order. You arrange them to match the roll, or let capture order do it.",
+    registerMode: "By admission number — the whole register",
+    registerModeHint:
+      "Name each file by admission number (e.g. DEMO-0001.jpg). We match them across every class in the school.",
+    sourceHeading: "Add photos",
+    dropHere: "Drop photos or a zip here",
+    dropHint: "or browse — images, a folder, or a zip, up to 500 photos",
+    chooseImages: "Images",
+    chooseFolder: "Folder",
+    chooseZip: "Zip",
+    pickSectionFirst:
+      "Choose a class and section first — adding photos unlocks once the roster is loaded.",
+    sectionSourceHint:
+      "Order comes from when each photo was taken; drag to rearrange, or sort by file name.",
+    registerSourceHint:
+      "The file name (extension ignored) is matched to the admission number.",
+    sortHeading: "Order:",
+    sortCapture: "Capture order",
+    sortName: "File name",
+    sortCustom: "Custom",
+    clearAll: "Remove all",
+    removePhoto: "Remove",
+    heicHint:
+      "Some photos are in a format this browser cannot open (commonly iPhone HEIC). Set the camera to “Most Compatible” (JPEG) and re-upload those files.",
+    reviewHeading: "Check the matches",
+    matchedSummary: (matched: number, total: number) =>
+      `${matched} of ${total} photos matched to a student.`,
+    pickSection: "Pick a class and section to load the roster.",
+    noRoll: "no roll no.",
+    rollLabel: "Roll",
+    emptySlot: "empty",
+    badImage: "unopenable",
+    noStudent: "no match",
+    matchNow: "Match admission numbers",
+    registerUnmatched: (n: number) =>
+      n === 1
+        ? "1 file did not match any admission number and will be skipped."
+        : `${n} files did not match any admission number and will be skipped.`,
+    nothingToUpload: "Nothing is matched yet.",
+    confirm: (n: number) => (n === 1 ? "Upload 1 photo" : `Upload ${n} photos`),
+    uploading: (done: number, total: number) => `Uploading ${done} of ${total}…`,
+    retryFailed: (n: number) =>
+      n === 1 ? "Retry 1 failed upload" : `Retry ${n} failed uploads`,
+    ok: "done",
+    allUploaded: (n: number) =>
+      n === 1 ? "1 photo uploaded." : `${n} photos uploaded.`,
+    someFailed: (failed: number, total: number) =>
+      `${total - failed} of ${total} uploaded — ${failed} failed. Retry below.`,
+    nonImageSkipped: (n: number) =>
+      n === 1 ? "1 non-image file ignored." : `${n} non-image files ignored.`,
+    tooMany: (cap: number) => `Only the first ${cap} photos were taken.`,
+    zipTooBig:
+      "That zip is over 200 MB — split it by class and upload in parts.",
+    zipBroken: "That file is not a readable zip.",
+    resizeFailed: "The photo could not be processed.",
+    noPermission: "You need student update rights to upload photos.",
+  },
+
+  /**
+   * ID CARDS (slice 2a) — the print pass. The design vocabulary ("template",
+   * "adopt", "starter design") is 2b's designer's too, so the words live here
+   * from the start.
+   */
+  idCards: {
+    subtitle:
+      "Design student ID cards from starter templates, then print a class set on CR80 card.",
+    print: "Print",
+    chooseBranchBody: "Choose a branch and session to print ID cards.",
+    chooseTemplate: "Template",
+    chooseClass: "Class",
+    printGap: "Gap between cards (mm)",
+    tabPrint: "Print run",
+    tabTemplates: "Templates",
+    pdfPreview: {
+      action: "Preview PDF",
+      title: "Print preview",
+      sheetSummary: (sheets: number, cards: number) =>
+        `${cards} card${cards === 1 ? "" : "s"} on ${sheets} A4 sheet${sheets === 1 ? "" : "s"}`,
+      sheetLabel: (page: number, total: number) =>
+        `Sheet ${page} of ${total}`,
+    },
+    chooseSection: "Section",
+    allSections: "All sections",
+    studentsHeading: "Students",
+    selectAll: "Select all",
+    clearAll: "Clear",
+    selectedCount: (n: number) => `${n} selected`,
+    emptyRosterTitle: "No students here",
+    emptyRosterBody:
+      "This class and session has no enrolled students to print cards for.",
+    previewHeading: "Preview",
+    previewHint:
+      "Photos come from each student's record — upload one from the student's page.",
+    noPhoto: "No photo",
+    starterGallery: "Starter designs",
+    starterGalleryHint:
+      "Adopt a starter to make an editable copy for your branch. Adopting again under the same name is refused — rename it first.",
+    adopt: "Adopt",
+    adopted: "Adopted — find it under Templates.",
+    yourTemplates: "Your templates",
+    yourTemplatesEmpty:
+      "No templates yet. Adopt a starter design below to begin.",
+    defaultBadge: "Default",
+    makeDefault: "Make default",
+    madeDefault: "This template is now the default.",
+    orientationLandscape: "Landscape",
+    orientationPortrait: "Portrait",
+    printHint:
+      "Prints one CR80 card per selected student on A4, with cut guides. Use thick card stock.",
+    loadFailed: "Couldn't load the cards.",
+    // The student detail page's photo card.
+    photo: {
+      title: "Photo",
+      empty: "No photo yet",
+      hint: "A passport photo prints on the ID card. It is resized to 300×400 before upload.",
+      upload: "Upload photo",
+      replace: "Replace",
+      remove: "Remove photo",
+      uploaded: "Photo uploaded.",
+      removed: "Photo removed.",
+      tooLarge: "That image is too large after resize — choose a smaller photo.",
+    },
+    // The card-data catalog — what a text element can bind to. The binding
+    // list IS the payload's public surface; these labels are its names.
+    binding: {
+      studentName: "Student name",
+      admissionNumber: "Admission no.",
+      rollNumber: "Roll no.",
+      className: "Class",
+      sectionName: "Section",
+      academicYear: "Academic year",
+      dateOfBirth: "Date of birth",
+      bloodGroup: "Blood group",
+      address: "Address",
+      guardianName: "Guardian",
+      motherName: "Mother",
+      validTill: "Valid till",
+      schoolName: "School name",
+      custom: "Custom text",
+    },
+    // The designer (slice 2b).
+    designer: {
+      title: "Template designer",
+      subtitle:
+        "Drag elements on the card, set their properties, and save. The card prints exactly as shown here.",
+      back: "Back to ID cards",
+      edit: "Edit",
+      save: "Save changes",
+      saving: "Saving…",
+      saved: "Template saved.",
+      discard: "Discard",
+      saveNeedsBranch: "Choose a branch before saving.",
+      noManage: "You need ID card management rights to design templates.",
+      loadFailed: "Couldn't load the template.",
+      loadFailedBody:
+        "It may have been closed, or you may not have access to this branch's templates.",
+      parseErrorTitle: "This template uses a different design format",
+      parseErrorBody:
+        "It was saved by another version of the designer and cannot be edited here. It still prints.",
+      canvasAria:
+        "Card design canvas. Click an element to select it, drag to move, drag a corner to resize, or use the arrow keys to nudge the selected element (hold Shift for bigger steps).",
+      canvasHint:
+        "Click to select, drag to move, drag a corner handle to resize. Arrow keys nudge the selected element — Shift+arrow moves 5% at a time.",
+      emptyCanvas:
+        "An empty card. Add elements from the palette below, or switch the orientation in Settings.",
+      paletteHeading: "Add:",
+      addText: "Text",
+      addPhoto: "Photo",
+      addQr: "QR code",
+      addLogo: "Logo",
+      newText: "New text",
+      settingsHeading: "Card settings",
+      name: "Template name",
+      orientation: "Orientation",
+      orientationConsequence:
+        "Switching keeps every element at its current position on the card — you will likely want to rearrange them after.",
+      background: "Background image",
+      uploadBackground: "Upload background",
+      removeBackground: "Remove",
+      backgroundHint:
+        "Prints full-bleed behind every element. The card adopts the image's size when uploaded.",
+      canvasSize: "Card size (mm)",
+      canvasWidth: "Card width (mm)",
+      canvasHeight: "Card height (mm)",
+      canvasSizeHint:
+        "Defaults to a CR80 card. Uploading a background sets this from the image's shape — adjust freely; elements sit in % of the card, so they keep their place.",
+      cornerRadius: "Corner radius (mm)",
+      cornerRadiusHint:
+        "Rounds the printed card's corners — 3mm is a typical card stock. 0 keeps them square.",
+      borderRadius: "Border radius (%)",
+      borderRadiusHint:
+        "Rounds this element's corners — 50 makes a photo or logo a perfect circle.",
+      propertiesHeading: "Element",
+      noSelection: "No element selected",
+      noSelectionBody:
+        "Click an element on the card to edit its position, size, and content.",
+      binding: "Bound field",
+      customText: "Text",
+      fontSize: "Font size (pt)",
+      fontWeight: "Weight",
+      weightNormal: "Normal",
+      weightBold: "Bold",
+      color: "Color",
+      align: "Align",
+      alignLeft: "Left",
+      alignCenter: "Center",
+      alignRight: "Right",
+      positionHeading: "Position and size (% of card)",
+      posX: "X",
+      posY: "Y",
+      posWidth: "W",
+      posHeight: "H",
+      visible: "Show on card",
+      delete: "Remove element",
+      elementText: "Text element",
+      elementPhoto: "Photo element",
+      elementQr: "QR code element",
+      elementLogo: "Logo element",
+      logoAsset: "Logo image",
+      uploadLogo: "Upload logo",
+      clearLogo: "Remove",
+      logoHint:
+        "A logo with no image prints as an empty slot. Upload a PNG with transparency for best results.",
+    },
+    // Publish-to-gallery + the cross-school gallery (slice 2b).
+    gallery: {
+      heading: "Community gallery",
+      hint: "Published designs from every school on mskool. Clone one to make an editable, private copy for your branch — its images are copied too, and the original school's files stay theirs.",
+      clone: "Clone",
+      cloned: "Cloned — find it under Your templates.",
+      empty: "No published designs yet. Publish one of yours to start the gallery.",
+      publish: "Publish",
+      unpublish: "Unpublish",
+      published: "Published to the community gallery.",
+      unpublished: "Removed from the community gallery.",
+      publishedBadge: "Published",
+      publishConsequence:
+        "Every school on mskool will be able to see this design and clone it for their own use. Your students' data is never part of a template.",
+    },
+    // Build-from-blank (slice 2b).
+    newTemplate: {
+      action: "New template",
+      title: "New ID card template",
+      name: "Template name",
+      orientation: "Orientation",
+      create: "Create and design",
+      created: "Template created — design it now.",
+      hint: "Starts with a small skeleton — school name, photo, student name and a QR code — that you can rearrange or empty out.",
     },
   },
 } as const;

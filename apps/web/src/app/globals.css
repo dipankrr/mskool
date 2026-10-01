@@ -150,3 +150,72 @@
     scroll-behavior: auto !important;
   }
 }
+/*
+ * ID-CARD PRINT SHEET (slice 2a). The screen shows pickers and scaled
+ * previews; print shows ONLY the sheet — the visibility trick hides the
+ * shell without unmounting it, and the sheet itself is pulled out of flow to
+ * the document's top-left so hidden chrome cannot push cards onto a second
+ * page. Cards carry their own CR80 mm dimensions; the A4 grid below is what
+ * the school feeds into the printer.
+ */
+.idcard-print-sheet {
+  display: none;
+}
+
+@media print {
+  /* The PDF is the physical sheet, never the app's theme: with dark mode on,
+     the browser paints the ROOT CANVAS from `color-scheme` / body background
+     even though every element here is visibility-hidden — printing came out
+     dark. Force the print stock's colors at the root. */
+  :root,
+  html,
+  body {
+    background: #ffffff !important;
+    color: #111827 !important;
+    color-scheme: light !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .idcard-print-sheet,
+  .idcard-print-sheet * {
+    visibility: visible !important;
+  }
+
+  .idcard-print-sheet {
+    display: block;
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+  }
+
+  .idcard-screen-only {
+    display: none !important;
+  }
+
+  /* Each A4 page is its own box so the browser's page breaks fall between
+     sheets, never through a card. */
+  .idcard-print-page {
+    width: 210mm;
+    min-height: 297mm;
+    padding: 10mm;
+    background: #ffffff;
+    color: #111827;
+    break-after: page;
+    page-break-after: always;
+    box-sizing: border-box;
+  }
+
+  .idcard-print-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  .idcard-print-grid {
+    display: grid;
+    gap: 4mm;
+    break-inside: avoid;
+  }
+}

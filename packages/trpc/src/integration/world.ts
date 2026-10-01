@@ -64,7 +64,7 @@ const email = (persona: string) => `${persona}@authz-itg.test`;
 
 type SchoolScope = DataScope & { schoolId: string };
 
-async function findOrCreateOrganization(slug: string, name: string) {
+export async function findOrCreateOrganization(slug: string, name: string) {
   const [existing] = await db
     .select()
     .from(organizations)
@@ -84,7 +84,7 @@ async function findOrCreateOrganization(slug: string, name: string) {
  * defaults once, but a fixture org created before a permission existed must
  * still exercise CURRENT code.
  */
-async function syncDefaultPermissions(organizationId: string) {
+export async function syncDefaultPermissions(organizationId: string) {
   const rows = ROLE_TYPES.flatMap((roleType) =>
     DEFAULT_ROLE_PERMISSIONS[roleType].map((permission) => ({
       organizationId,
@@ -95,7 +95,7 @@ async function syncDefaultPermissions(organizationId: string) {
   await db.insert(orgRolePermissions).values(rows).onConflictDoNothing();
 }
 
-async function findOrCreateSchool(
+export async function findOrCreateSchool(
   organizationId: string,
   code: string,
   name: string,
@@ -115,8 +115,15 @@ async function findOrCreateSchool(
   });
 }
 
-/** better-auth owns credentials (hard rule 9) — never insert into `user` directly. */
-async function findOrCreateUser(persona: string) {
+/**
+ * better-auth owns credentials (hard rule 9) — never insert into `user` directly.
+ *
+ * Exported on purpose: a suite that creates org-scoped rows which would
+ * otherwise pollute the SHARED authz world's registry (the portal-claim
+ * suite's lesson — the exam suite hit the same wall and built its own org)
+ * assembles a minimal private world from these find-or-create helpers.
+ */
+export async function findOrCreateUser(persona: string) {
   const mail = email(persona);
   const [existing] = await db.select().from(user).where(eq(user.email, mail));
   if (existing) return existing;
@@ -129,7 +136,7 @@ async function findOrCreateUser(persona: string) {
   return created;
 }
 
-interface GrantSpec {
+export interface GrantSpec {
   userId: string;
   organizationId: string;
   roleType: RoleType;
@@ -139,7 +146,7 @@ interface GrantSpec {
   revokedAt?: Date;
 }
 
-async function findOrCreateAssignment(spec: GrantSpec) {
+export async function findOrCreateAssignment(spec: GrantSpec) {
   const [existing] = await db
     .select()
     .from(roleAssignments)

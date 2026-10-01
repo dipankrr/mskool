@@ -115,3 +115,9 @@ export type Staff = RouterOutputs["staff"]["list"][number];
 export type RoleAssignmentView = RouterOutputs["role"]["assignments"][number];
 export type RolePermissionRow = RouterOutputs["role"]["permissions"][number];
 
+// ID cards (slice 2a). The template row's canvas/elements are jsonb
+// `unknown` on the wire — `parseTemplateData` (features/id-cards/template.ts)
+// is what turns a row into the render model.
+export type IdCardTemplateRow = RouterOutputs["idCard"]["template"]["list"][number];
+export type IdCardStudentCard = RouterOutputs["idCard"]["cardData"][number];
+

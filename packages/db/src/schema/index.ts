@@ -28,3 +28,10 @@ export * from "./fees";
 // Exams: subject types -> exams -> components; the marks pipeline; the
 // computed chain; published cards. Phase 5 (ADR-032).
 export * from "./exam";
+
+// Storage: binary objects (the ADR-038 driver seam) and the student photo
+// that points at one. Slice 2a, ID cards.
+export * from "./storage";
+
+// ID cards: per-school student ID card templates. Slice 2a.
+export * from "./idcard";

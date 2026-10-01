@@ -169,6 +169,13 @@
       "when": 1789327229066,
       "tag": "0023_awesome_mephisto",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790681848219,
+      "tag": "0024_lumpy_mattie_franklin",
+      "breakpoints": true
     }
   ]
 }

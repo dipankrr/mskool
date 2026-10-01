@@ -1384,6 +1384,10 @@ async function main() {
       firstName: "Demo",
       lastName: "Assistant",
       designation: "Office Assistant",
+      // ADR-037: staff sign in with email — the provisioning demo needs one
+      // on the record or createLogin refuses (existing DBs keep whatever
+      // they have; this only shapes fresh seeds).
+      email: "assistant@demo-trust.test",
     });
     console.log("  + staff DEMO-007 (no login — the provisioning demo)");
   } else {
