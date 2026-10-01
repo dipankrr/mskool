@@ -1,0 +1,17 @@
+# Normalize line endings repo-wide: LF in the repository and on checkout,
+# regardless of each machine's core.autocrlf. This file outranks local
+# config, so tooling, editors, and agents can never reintroduce the churn.
+* text=auto eol=lf
+
+# The one format that genuinely wants CRLF.
+*.ps1 text eol=crlf
+
+# Binaries Git's auto-detection should never second-guess.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.zip binary
