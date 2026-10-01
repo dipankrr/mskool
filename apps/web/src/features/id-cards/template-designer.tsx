@@ -130,7 +130,12 @@ export function TemplateDesigner({ templateId }: { templateId: string }) {
   }
 
   const draft = designer.draft;
-  const selected = draft.elements.find(
+  // The selected element lives on the ACTIVE side — back-side elements were
+  // selectable but invisible to the property panel when this read the front
+  // array only.
+  const activeElements =
+    designer.side === "back" && draft.back ? draft.back.elements : draft.elements;
+  const selected = activeElements.find(
     (element) => element.id === designer.selectedId,
   );
   const d = copy.idCards.designer;
