@@ -14,4 +14,11 @@ export const env = createEnv({
    * provider's job to match.
    */
   FEE_WEBHOOK_SECRET: z.string().min(16).default("dev-fee-webhook-secret"),
+  /**
+   * Testing escape hatch for the express-rate-limit middlewares in server.ts.
+   * Default keeps production protected; set DISABLE_RATE_LIMIT=true in the
+   * root .env (plus a restart) to turn both limiters off locally while
+   * running smoke/integration/e2e suites that sign in and burst requests.
+   */
+  DISABLE_RATE_LIMIT: z.enum(["true", "false"]).default("false"),
 });
