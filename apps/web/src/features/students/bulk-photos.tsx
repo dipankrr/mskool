@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  ALargeSmallIcon,
+  GripVerticalIcon,
   HashIcon,
   ImagePlusIcon,
   ImagesIcon,
@@ -81,6 +83,67 @@ type SlotAssignment = { photoId: string | null };
 
 const stepBadge =
   "flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground";
+
+type OrderState = "capture" | "name" | "custom";
+
+/**
+ * THE ORDER SEGMENTED CONTROL — built, not assembled from a Button soup,
+ * because the state is three-valued and the active segment must be
+ * unmissable: the current order fills with primary color while the others
+ * stay quiet. "Custom" appears as a lit segment only after a manual drag
+ * (neither sort describes a hand-arranged order) and clicking either sort
+ * re-sorts out of it. A single container border keeps the group reading as
+ * ONE control, not two buttons.
+ */
+function OrderSegments({
+  value,
+  onChange,
+}: {
+  value: OrderState;
+  onChange: (next: "capture" | "name") => void;
+}) {
+  const segments: { key: OrderState; label: string; clickable: boolean }[] = [
+    { key: "capture", label: copy.bulkPhotos.sortCapture, clickable: true },
+    { key: "name", label: copy.bulkPhotos.sortName, clickable: true },
+    ...(value === "custom"
+      ? [{ key: "custom" as const, label: copy.bulkPhotos.sortCustom, clickable: false }]
+      : []),
+  ];
+  return (
+    <div
+      role="group"
+      aria-label={copy.bulkPhotos.sortHeading}
+      className="border-border bg-background inline-flex items-center gap-0.5 rounded-lg border p-1 shadow-xs"
+    >
+      {segments.map((segment) => {
+        const active = value === segment.key;
+        return (
+          <button
+            key={segment.key}
+            type="button"
+            aria-pressed={active}
+            disabled={!segment.clickable}
+            onClick={() => segment.clickable && onChange(segment.key as "capture" | "name")}
+            className={`flex h-8 items-center gap-1.5 rounded-md px-3.5 text-sm font-medium transition-colors ${
+              active
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            } ${segment.clickable ? "cursor-pointer" : "cursor-default"}`}
+          >
+            {segment.key === "capture" ? (
+              <ListOrderedIcon className="size-4" />
+            ) : segment.key === "name" ? (
+              <ALargeSmallIcon className="size-4" />
+            ) : (
+              <GripVerticalIcon className="size-4" />
+            )}
+            {segment.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export function BulkPhotos() {
   const { organizationId, schoolId, activeSession, has } = useActiveContext();
@@ -674,44 +737,10 @@ export function BulkPhotos() {
                   <span className="text-muted-foreground text-xs">
                     {copy.bulkPhotos.sortHeading}
                   </span>
-                  {/* A segmented control, not two buttons: the highlighted
-                      segment IS the current order, and after a manual drag
-                      neither segment is lit — the order is custom. */}
-                  <div
-                    role="group"
-                    aria-label={copy.bulkPhotos.sortHeading}
-                    className="bg-muted inline-flex items-center rounded-4xl p-[3px]"
-                  >
-                    <button
-                      type="button"
-                      aria-pressed={orderState === "capture"}
-                      className={`h-8 rounded-full px-3 text-sm font-medium transition-colors ${
-                        orderState === "capture"
-                          ? "bg-background text-foreground shadow-sm"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                      onClick={() => sortPhotos("capture")}
-                    >
-                      {copy.bulkPhotos.sortCapture}
-                    </button>
-                    <button
-                      type="button"
-                      aria-pressed={orderState === "name"}
-                      className={`h-8 rounded-full px-3 text-sm font-medium transition-colors ${
-                        orderState === "name"
-                          ? "bg-background text-foreground shadow-sm"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                      onClick={() => sortPhotos("name")}
-                    >
-                      {copy.bulkPhotos.sortName}
-                    </button>
-                    {orderState === "custom" ? (
-                      <span className="text-muted-foreground inline-flex h-8 items-center rounded-full px-3 text-sm">
-                        {copy.bulkPhotos.sortCustom}
-                      </span>
-                    ) : null}
-                  </div>
+                  <OrderSegments
+                    value={orderState}
+                    onChange={(next) => sortPhotos(next)}
+                  />
                 </>
               ) : null}
               <Button
