@@ -364,6 +364,10 @@ test.describe("family login flow (portal)", () => {
     // datalist only suggests. A wrong name leaves the slug unresolved and
     // the submit disabled, so reaching the next step proves it worked.
     await page.locator("#school").fill(FAMILY_SCHOOL);
+    // The slug must resolve BEFORE submit: the legacy fallback reads it at
+    // click time, and paste-and-submit otherwise beats the resolver round
+    // trip (the regression this assertion pins).
+    await expect(page.getByText("demo-trust", { exact: false })).toBeVisible();
     await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeEnabled();
     await page.locator("#phone").fill("9800000001");
     await page.locator("#family-password").fill(FAMILY_PASSWORD);

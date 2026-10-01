@@ -125,10 +125,22 @@ export function LoginForm({
     const attempt = async (username: string) =>
       loginByPhone(username, data.password);
 
+    // A typed school name whose slug has not resolved yet (paste-and-submit
+    // beats the resolver round trip) must not silently skip the legacy
+    // fallback: wait for the in-flight query and re-derive the slug first.
+    // An EMPTY school box resolves to nothing on purpose — global phone
+    // identity needs no school at all.
+    let slug = schoolSlug;
+    if (schoolName.trim() && !slug) {
+      const fresh = await orgs.refetch();
+      const match = (fresh.data ?? []).find((org) => org.name === schoolName.trim());
+      slug = match?.slug ?? null;
+    }
+
     let result = await attempt(digits);
     let usedSlug = false;
-    if (result.error && schoolSlug) {
-      const legacy = `${schoolSlug}-${digits}`.toLowerCase();
+    if (result.error && slug) {
+      const legacy = `${slug}-${digits}`.toLowerCase();
       result = await attempt(legacy);
       usedSlug = !result.error;
     }
@@ -255,7 +267,12 @@ export function LoginForm({
                   />
                 </Field>
                 <Field>
-                  <Button type="submit">
+                  <Button
+                    type="submit"
+                    disabled={
+                      Boolean(schoolName.trim()) && !schoolSlug && orgs.isFetching
+                    }
+                  >
                     {familyForm.formState.isSubmitting ? copy.auth.signingIn : copy.auth.signIn}
                   </Button>
                   <Button
