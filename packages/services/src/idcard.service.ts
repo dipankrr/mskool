@@ -73,7 +73,12 @@ export class IdCardService {
       .select()
       .from(idCardTemplates)
       .where(
-        scopeWhere(scopes.map(atSchoolLevel), TEMPLATE_SCOPE_COLUMNS),
+        and(
+          scopeWhere(scopes.map(atSchoolLevel), TEMPLATE_SCOPE_COLUMNS),
+          // Closed templates leave every list and picker (hard rule 2 keeps
+          // the row — printed cards may outlive the design).
+          eq(idCardTemplates.status, "active"),
+        ),
       )
       .orderBy(desc(idCardTemplates.isDefault), asc(idCardTemplates.name));
   }
@@ -197,6 +202,43 @@ export class IdCardService {
 
       return row ?? null;
     });
+  }
+
+  /**
+   * Soft-close (hard rule 2): status "inactive" — the template leaves every
+   * list and picker, but the row and anything already printed from it are
+   * history, not trash. The school's DEFAULT is refused with wording: every
+   * school keeps one live default to print from; close something else (or
+   * move the default) first. Foreign ids are the same null as bad ones.
+   */
+  async closeTemplate(scope: DataScope, templateId: string) {
+    const schoolId = requireSchoolId(scope);
+    const [row] = await db
+      .select({
+        id: idCardTemplates.id,
+        isDefault: idCardTemplates.isDefault,
+      })
+      .from(idCardTemplates)
+      .where(
+        and(
+          eq(idCardTemplates.id, templateId),
+          eq(idCardTemplates.schoolId, schoolId),
+          eq(idCardTemplates.organizationId, scope.organizationId),
+          eq(idCardTemplates.status, "active"),
+        ),
+      );
+    if (!row) return null;
+    if (row.isDefault) {
+      throw new Error(
+        "This template is the school's default — set another template as the default before closing it.",
+      );
+    }
+    const [closed] = await db
+      .update(idCardTemplates)
+      .set({ status: "inactive" })
+      .where(eq(idCardTemplates.id, templateId))
+      .returning();
+    return closed ?? null;
   }
 
   /**

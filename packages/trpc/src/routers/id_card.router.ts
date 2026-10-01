@@ -5,6 +5,7 @@ import {
   idCardStudentCardSchema,
   idCardTemplateSelectSchema,
   publishedIdCardTemplateSchema,
+  closeIdCardTemplateInput,
   updateIdCardTemplateInput,
   uploadStudentPhotoInput,
   uploadedTemplateAssetSchema,
@@ -117,6 +118,34 @@ export const idCardRouter = router({
           input.id,
           input.data,
         );
+        if (!row) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Template not found.",
+          });
+        }
+        return row;
+      }),
+
+    // Soft-close (hard rule 2): status inactive, never a delete. The
+    // service refuses a school's default with wording — every school keeps
+    // one live default to print from.
+    close: staffProcedure("id_card:manage", {
+      resolveOwner: resolveTemplateOwner,
+    })
+      .meta({
+        openapi: {
+          method: "POST",
+          path: "/id-cards/templates/{id}/close",
+          tags: ["id_cards"],
+          summary: "Close (soft-delete) an ID card template",
+          protect: true,
+        },
+      })
+      .input(closeIdCardTemplateInput)
+      .output(idCardTemplateSelectSchema)
+      .mutation(async ({ ctx, input }) => {
+        const row = await idCardService.closeTemplate(ctx.scope, input.id);
         if (!row) {
           throw new TRPCError({
             code: "NOT_FOUND",

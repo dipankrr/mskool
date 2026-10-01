@@ -167,6 +167,14 @@ export const updateIdCardTemplateInput = createIdCardTemplateInput
   .extend({ isPublished: z.boolean().optional() });
 export type UpdateIdCardTemplateInput = z.infer<typeof updateIdCardTemplateInput>;
 
+/**
+ * Soft-close (hard rule 2): the template leaves every list and picker but
+ * keeps its row — already-printed cards outlive the design. The service
+ * refuses to close a school's default (every school keeps one live default).
+ */
+export const closeIdCardTemplateInput = z.object({ id: z.uuid() });
+export type CloseIdCardTemplateInput = z.infer<typeof closeIdCardTemplateInput>;
+
 // ---------------------------------------------------------------------------
 // The community gallery (slice 2b)
 // ---------------------------------------------------------------------------
