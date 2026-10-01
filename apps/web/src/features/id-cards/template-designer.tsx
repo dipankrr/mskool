@@ -1,6 +1,10 @@
 "use client";
 
-import { ArrowLeftIcon } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  Redo2Icon,
+  Undo2Icon,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
@@ -154,6 +158,26 @@ export function TemplateDesigner({ templateId }: { templateId: string }) {
               {d.discard}
             </Button>
             <Button
+              variant="outline"
+              size="sm"
+              aria-label={d.undo}
+              title={d.undo}
+              disabled={!designer.canUndo || designer.saving}
+              onClick={designer.undo}
+            >
+              <Undo2Icon data-slot="icon" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label={d.redo}
+              title={d.redo}
+              disabled={!designer.canRedo || designer.saving}
+              onClick={designer.redo}
+            >
+              <Redo2Icon data-slot="icon" />
+            </Button>
+            <Button
               size="sm"
               disabled={!designer.dirty || designer.saving}
               onClick={() => void designer.save()}
@@ -190,6 +214,8 @@ export function TemplateDesigner({ templateId }: { templateId: string }) {
             selectedId={designer.selectedId}
             onSelect={designer.selectElement}
             onGeometry={designer.setGeometry}
+            onUndo={designer.undo}
+            onRedo={designer.redo}
           />
           <p className="text-muted-foreground max-w-md text-xs">
             {d.canvasHint}

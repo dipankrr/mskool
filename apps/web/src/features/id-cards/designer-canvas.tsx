@@ -106,6 +106,8 @@ export function DesignerCanvas({
   selectedId,
   onSelect,
   onGeometry,
+  onUndo,
+  onRedo,
 }: {
   template: IdCardTemplateData;
   /** Design-time sample data — see template-designer.tsx for why. */
@@ -113,6 +115,8 @@ export function DesignerCanvas({
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onGeometry: (id: string, patch: Partial<Geometry>) => void;
+  onUndo: () => void;
+  onRedo: () => void;
 }) {
   const { widthMm, heightMm } = cardSizeMm(template);
   const basePxWidth = widthMm * MM_PX;
@@ -193,6 +197,14 @@ export function DesignerCanvas({
   }
 
   function onKeyDown(event: React.KeyboardEvent) {
+    // Undo/redo ride the standard browser chord and work regardless of what
+    // inside the canvas has focus — an edit is an edit wherever you are.
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+      event.preventDefault();
+      if (event.shiftKey) onRedo();
+      else onUndo();
+      return;
+    }
     if (!selectedId) return;
     const step = event.shiftKey ? 5 : 1;
     const moves: Record<string, [number, number]> = {

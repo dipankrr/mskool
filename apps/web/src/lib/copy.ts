@@ -2170,6 +2170,8 @@ export const copy = {
       saving: "Saving…",
       saved: "Template saved.",
       discard: "Discard",
+      undo: "Undo",
+      redo: "Redo",
       saveNeedsBranch: "Choose a branch before saving.",
       noManage: "You need ID card management rights to design templates.",
       loadFailed: "Couldn't load the template.",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import type { IdCardTemplateData } from "@repo/contracts";
@@ -81,6 +81,8 @@ export function useTemplateDesigner(templateId: string) {
 
   const [baseline, setBaseline] = useState<DesignerDraft | null>(null);
   const [draft, setDraft] = useState<DesignerDraft | null>(null);
+  const draftRef = useRef<DesignerDraft | null>(null);
+  draftRef.current = draft;
 
   useEffect(() => {
     if (!parsed) return;
@@ -88,28 +90,95 @@ export function useTemplateDesigner(templateId: string) {
     setDraft((current) => current ?? structuredClone(parsed));
   }, [parsed]);
 
+  /**
+   * UNDO/REDO — a snapshot stack with drag coalescing. Every mutation
+   * pushes the PREVIOUS draft before applying; consecutive mutations of the
+   * same kind within 600ms (a drag's pointermove stream, a held arrow key)
+   * coalesce into ONE history entry, so undo steps are meaningful actions,
+   * not frames. Stacks live in a ref (not state — updates are computed from
+   * the ref, immune to StrictMode's double-invoked updaters) with depth
+   * mirrored into state purely for the buttons' disabled flags.
+   */
+  const historyRef = useRef<{
+    stack: DesignerDraft[];
+    future: DesignerDraft[];
+    lastKind: string | null;
+    lastAt: number;
+  }>({ stack: [], future: [], lastKind: null, lastAt: 0 });
+  const [historyDepth, setHistoryDepth] = useState(0);
+  const [futureDepth, setFutureDepth] = useState(0);
+
   const dirty =
     draft !== null &&
     baseline !== null &&
     JSON.stringify(draft) !== JSON.stringify(baseline);
 
-  const update = useCallback(
-    (mutate: (current: DesignerDraft) => DesignerDraft) => {
-      setDraft((current) => (current ? mutate(current) : current));
-    },
-    [],
-  );
+  const update = useCallback((mutate: (current: DesignerDraft) => DesignerDraft, kind?: string) => {
+    const current = draftRef.current;
+    if (!current) return;
+    const next = mutate(current);
+    if (next === current) return;
+    const history = historyRef.current;
+    const now = Date.now();
+    const coalesce = kind !== undefined && history.lastKind === kind && now - history.lastAt < 600;
+    if (!coalesce) {
+      history.stack.push(current);
+      if (history.stack.length > 60) history.stack.shift();
+      history.future = [];
+      setFutureDepth(0);
+    }
+    history.lastKind = kind ?? null;
+    history.lastAt = now;
+    setHistoryDepth(history.stack.length);
+    draftRef.current = next;
+    setDraft(next);
+  }, []);
+
+  const undo = useCallback(() => {
+    const history = historyRef.current;
+    const current = draftRef.current;
+    const previous = history.stack.pop();
+    if (!previous || !current) {
+      setHistoryDepth(history.stack.length);
+      return;
+    }
+    history.future.push(current);
+    history.lastKind = null;
+    draftRef.current = previous;
+    setDraft(previous);
+    setHistoryDepth(history.stack.length);
+    setFutureDepth(history.future.length);
+  }, []);
+
+  const redo = useCallback(() => {
+    const history = historyRef.current;
+    const current = draftRef.current;
+    const next = history.future.pop();
+    if (!next || !current) {
+      setFutureDepth(history.future.length);
+      return;
+    }
+    history.stack.push(current);
+    history.lastKind = null;
+    draftRef.current = next;
+    setDraft(next);
+    setHistoryDepth(history.stack.length);
+    setFutureDepth(history.future.length);
+  }, []);
 
   const setGeometry = useCallback(
     (id: string, patch: GeometryPatch) => {
-      update((current) => ({
-        ...current,
-        elements: current.elements.map((element) =>
-          element.id === id
-            ? { ...element, ...clampGeometry(element, patch) }
-            : element,
-        ),
-      }));
+      update(
+        (current) => ({
+          ...current,
+          elements: current.elements.map((element) =>
+            element.id === id
+              ? { ...element, ...clampGeometry(element, patch) }
+              : element,
+          ),
+        }),
+        `geometry:${id}`,
+      );
     },
     [update],
   );
@@ -117,17 +186,20 @@ export function useTemplateDesigner(templateId: string) {
   /** Arrow-key nudging — the same clamp as a drag, one percent at a time. */
   const nudge = useCallback(
     (id: string, dx: number, dy: number) => {
-      update((current) => ({
-        ...current,
-        elements: current.elements.map((element) =>
-          element.id === id
-            ? {
-                ...element,
-                ...clampGeometry(element, { x: element.x + dx, y: element.y + dy }),
-              }
-            : element,
-        ),
-      }));
+      update(
+        (current) => ({
+          ...current,
+          elements: current.elements.map((element) =>
+            element.id === id
+              ? {
+                  ...element,
+                  ...clampGeometry(element, { x: element.x + dx, y: element.y + dy }),
+                }
+              : element,
+          ),
+        }),
+        `geometry:${id}`,
+      );
     },
     [update],
   );
@@ -135,7 +207,8 @@ export function useTemplateDesigner(templateId: string) {
   /**
    * Replaces one element wholesale. The element union is discriminated, so
    * property edits compute the next element with full typing rather than
-   * merging an untyped patch.
+   * merging an untyped patch. Kind is per element AND per keystroke — every
+   * property edit is its own undo step (no coalescing: undefined kind).
    */
   const replaceElement = useCallback(
     (next: IdCardTemplateData["elements"][number]) => {
@@ -309,6 +382,10 @@ export function useTemplateDesigner(templateId: string) {
   );
 
   const discard = useCallback(() => {
+    // A discard is a hard rewind: both history stacks die with it.
+    historyRef.current = { stack: [], future: [], lastKind: null, lastAt: 0 };
+    setHistoryDepth(0);
+    setFutureDepth(0);
     setDraft(baseline ? structuredClone(baseline) : null);
     setSelectedId(null);
   }, [baseline]);
@@ -357,6 +434,10 @@ export function useTemplateDesigner(templateId: string) {
     baseline,
     saving: saveMutation.isPending,
     dirty,
+    canUndo: historyDepth > 0,
+    canRedo: futureDepth > 0,
+    undo,
+    redo,
     selectedId,
     selectElement: setSelectedId,
     setGeometry,
