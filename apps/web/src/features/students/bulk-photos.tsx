@@ -263,21 +263,50 @@ export function BulkPhotos() {
     [addFiles],
   );
 
+  /**
+   * Recursively flattens dropped FOLDERS into plain files. A folder dropped
+   * on a dropzone never appears in `dataTransfer.files` (its entry carries
+   * no bytes) — without traversal it is silently dropped, which is exactly
+   * the report "folder upload is not working". The entries must be captured
+   * synchronously in the event handler before any await: after that the
+   * DataTransferItemList is dead.
+   */
   const onDrop = useCallback(
-    (event: React.DragEvent) => {
+    async (event: React.DragEvent) => {
       event.preventDefault();
       setDragActive(false);
-      const files: File[] = [];
-      let sawZip = false;
-      for (const item of event.dataTransfer.files) {
-        if (/\.zip$/i.test(item.name)) sawZip = true;
-        else files.push(item);
-      }
-      if (sawZip) {
-        const zip = event.dataTransfer.files[0];
-        if (zip) void loadZip(zip);
-      }
-      if (files.length > 0) addFiles(files);
+      const entries = Array.from(event.dataTransfer.items)
+        .map((item) => item.webkitGetAsEntry?.())
+        .filter((entry): entry is FileSystemEntry => Boolean(entry));
+      const directFiles = Array.from(event.dataTransfer.files);
+
+      const flattened: File[] = [];
+      const walk = async (entry: FileSystemEntry): Promise<void> => {
+        if (entry.isFile) {
+          const file = await new Promise<File | null>((resolve) =>
+            (entry as FileSystemFileEntry).file(resolve, () => resolve(null)),
+          );
+          if (file) flattened.push(file);
+          return;
+        }
+        if (!entry.isDirectory) return;
+        const reader = (entry as FileSystemDirectoryEntry).createReader();
+        // readEntries returns in ≤100-entry batches until it returns empty.
+        for (;;) {
+          const batch = await new Promise<FileSystemEntry[]>((resolve) =>
+            reader.readEntries(resolve, () => resolve([])),
+          );
+          if (batch.length === 0) return;
+          for (const child of batch) await walk(child);
+        }
+      };
+      for (const root of entries) await walk(root);
+
+      const allFiles = [...directFiles, ...flattened];
+      const zips = allFiles.filter((f) => /\.zip$/i.test(f.name));
+      const images = allFiles.filter((f) => IMAGE_RE.test(f.name));
+      for (const zip of zips) await loadZip(zip);
+      if (images.length > 0) addFiles(images);
     },
     [addFiles, loadZip],
   );
@@ -671,6 +700,10 @@ export function BulkPhotos() {
               type="file"
               multiple
               className="hidden"
+              onChange={(event) => {
+                addFiles(Array.from(event.target.files ?? []));
+                event.target.value = "";
+              }}
             />
             <input
               ref={zipInput}
