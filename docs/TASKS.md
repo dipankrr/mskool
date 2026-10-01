@@ -6,6 +6,20 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
+**ID CARDS — OFFICE-POLISH PASS ON `main` (2026-10-01). 2 commits, gates green.**
+
+`a9edb72` + `562333d`: **Print class set** (one click: filtered roster →
+default template → print sheet, via flushSync so the sheet renders the new
+selection before the dialog), **persisted print gap** (localStorage,
+clamped 0–20), **print-run session restore** (template + selection survive
+navigations via sessionStorage — the designer's new **Save & close** lands
+the operator back on their workbench), and **template soft-close**
+(`idCard.template.close`, manage-gated: status inactive, refused with
+wording for a school's default; `listTemplates` filters active — hard
+rule 2, printed cards outlive the design). Also answered for the owner:
+the single gap field is deliberate (both gaps are the same cutting
+tolerance; split only if a school asks).
+
 **BULK PHOTO UPLOAD — COMPLETE ON `feature/id-cards` (2026-09-29). 4 commits, gates green.**
 
 `/students/photos` (nav "Photo upload", gated `student:update`): a workbench
