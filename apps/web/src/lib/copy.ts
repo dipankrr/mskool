@@ -2115,6 +2115,13 @@ export const copy = {
     defaultBadge: "Default",
     makeDefault: "Make default",
     madeDefault: "This template is now the default.",
+    closeTemplate: "Close",
+    closeTemplateTitle: "Close this template?",
+    closeTemplateBody:
+      "It disappears from every list and the print run, and can no longer be edited. Cards already printed from it are unaffected. This cannot be undone here.",
+    closeTemplateAction: "Close template",
+    closedTemplate: "Template closed.",
+    printClassSet: "Print class set",
     orientationLandscape: "Landscape",
     orientationPortrait: "Portrait",
     printHint:
@@ -2158,6 +2165,7 @@ export const copy = {
       back: "Back to ID cards",
       edit: "Edit",
       save: "Save changes",
+      saveAndClose: "Save & close",
       saving: "Saving…",
       saved: "Template saved.",
       discard: "Discard",

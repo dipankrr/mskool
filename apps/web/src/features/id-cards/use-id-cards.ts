@@ -112,6 +112,25 @@ export function useSetDefaultTemplate() {
   };
 }
 
+/** Soft-close a template (hard rule 2): status inactive, never a delete. */
+export function useCloseTemplate() {
+  const { scopeArgs } = useActiveContext();
+  const utils = trpc.useUtils();
+
+  const mutation = trpc.idCard.template.close.useMutation({
+    onSuccess: async () => {
+      toast.success(copy.idCards.closedTemplate);
+      await utils.idCard.template.list.invalidate();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  return {
+    ...mutation,
+    submit: (id: string) => mutation.mutateAsync({ ...scopeArgs(), id }),
+  };
+}
+
 /** The selected student-id set with toggles — plain state, no server round-trip. */
 export function useStudentSelection() {
   const [selected, setSelected] = useState<Set<string>>(new Set());

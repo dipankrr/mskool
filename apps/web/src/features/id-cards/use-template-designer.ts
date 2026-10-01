@@ -321,11 +321,12 @@ export function useTemplateDesigner(templateId: string) {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  const save = useCallback(async () => {
+  /** Returns whether the draft actually saved — callers navigate on true. */
+  const save = useCallback(async (): Promise<boolean> => {
     const scope = writeScopeArgs();
     if (!scope || !draft || !row.data) {
       toast.error(copy.idCards.designer.saveNeedsBranch);
-      return;
+      return false;
     }
     const saved: DesignerDraft = structuredClone(draft);
     try {
@@ -343,8 +344,10 @@ export function useTemplateDesigner(templateId: string) {
       // but must not re-base the draft mid-session (the ?? in the effect).
       setBaseline(saved);
       setDraft(saved);
+      return true;
     } catch {
       // The mutation hook toasts the worded refusal.
+      return false;
     }
   }, [draft, row.data, saveMutation, utils, writeScopeArgs]);
 

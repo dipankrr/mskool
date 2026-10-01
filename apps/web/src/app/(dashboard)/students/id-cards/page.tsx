@@ -2,12 +2,23 @@
 
 import { PencilIcon, PrinterIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { flushSync } from "react-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { EmptyState } from "@/components/empty-state";
 import { FormDialog } from "@/components/form-dialog";
 import { PageHeader } from "@/components/page-header";
 import { PermissionGate } from "@/components/permission-gate";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { IdCardStudentCard } from "@repo/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,6 +52,7 @@ import { cardSizeMm } from "@/features/id-cards/template";
 import {
   useAdoptTemplate,
   useCloneGalleryTemplate,
+  useCloseTemplate,
   useCreateTemplate,
   useGalleryTemplates,
   useIdCardTemplates,
@@ -100,15 +112,39 @@ export default function IdCardsPage() {
   const adopted = useTemplateChoices(templates.data);
   const adopt = useAdoptTemplate();
   const setDefault = useSetDefaultTemplate();
+  const closeTemplate = useCloseTemplate();
   const publish = usePublishTemplate();
   const createTemplate = useCreateTemplate();
   const cloneTemplate = useCloneGalleryTemplate();
   const gallery = useGalleryTemplates();
+  const [closeTarget, setCloseTarget] = useState<{ id: string; name: string } | null>(
+    null,
+  );
 
   const [choice, setChoice] = useState<TemplateChoice | null>(null);
   /** Spacing between the printed cards, in mm — the operator's cutting
    * tolerance. 0 = edge-to-edge (guillotine a stack in one pass). */
   const [printGapMm, setPrintGapMm] = useState(4);
+  // The gap is the office's cutting preference — remember it across visits.
+  useEffect(() => {
+    try {
+      const saved = Number(window.localStorage.getItem(PRINT_GAP_KEY));
+      if (Number.isFinite(saved) && saved >= 0 && saved <= 20) {
+        setPrintGapMm(saved);
+      }
+    } catch {
+      // No storage: the default 4mm stands.
+    }
+  }, []);
+  const changeGap = (value: number) => {
+    const clamped = Math.max(0, Math.min(20, Number.isFinite(value) ? value : 4));
+    setPrintGapMm(clamped);
+    try {
+      window.localStorage.setItem(PRINT_GAP_KEY, String(clamped));
+    } catch {
+      // No storage: the choice lives for this visit only.
+    }
+  };
   const [newOpen, setNewOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [newOrientation, setNewOrientation] = useState<"landscape" | "portrait">(
@@ -120,14 +156,53 @@ export default function IdCardsPage() {
   } | null>(null);
   const [cloneName, setCloneName] = useState("");
 
-  // First paint: pre-select the school's default template, else the first.
+  // First paint: restore the last session's template choice (the designer's
+  // "Save & close" lands the operator back exactly where they left off),
+  // else pre-select the school's default template, else the first.
+  const printRunRef = useRef<{ studentIds?: string[]; choiceRowId?: string } | null>(
+    null,
+  );
+  if (printRunRef.current === null && typeof window !== "undefined") {
+    try {
+      printRunRef.current = JSON.parse(
+        window.sessionStorage.getItem(PRINT_RUN_KEY) ?? "null",
+      );
+    } catch {
+      printRunRef.current = {};
+    }
+  }
   useEffect(() => {
     if (choice || adopted.length === 0) return;
+    const savedChoice = printRunRef.current?.choiceRowId
+      ? adopted.find((option) => option.key === printRunRef.current?.choiceRowId)
+      : undefined;
     const defaultRow = (templates.data ?? []).find((row) => row.isDefault);
     const fallback =
-      adopted.find((option) => option.key === defaultRow?.id) ?? adopted[0];
+      savedChoice ??
+      adopted.find((option) => option.key === defaultRow?.id) ??
+      adopted[0];
     if (fallback) setChoice(fallback);
   }, [adopted, choice, templates.data]);
+
+  // The saved selection restores once the roster can give it meaning.
+  useEffect(() => {
+    const saved = printRunRef.current?.studentIds;
+    if (saved?.length) selection.selectMany(saved);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(
+        PRINT_RUN_KEY,
+        JSON.stringify({
+          studentIds: [...selection.selected],
+          choiceRowId: choice?.rowId ?? null,
+        }),
+      );
+    } catch {
+      // No storage: the workbench just starts fresh next time.
+    }
+  }, [choice, selection.selected]);
 
   // The payload — fetched for the SELECTION exactly as picked. Enabled only
   // when a branch and session are real, because both are required inputs.
@@ -208,14 +283,37 @@ export default function IdCardsPage() {
         title={copy.nav.idCards}
         description={copy.idCards.subtitle}
         actions={
-          <Button
-            onClick={() => window.print()}
-            disabled={printableCards.length === 0 || !choice}
-            className="idcard-screen-only"
-          >
-            <PrinterIcon data-slot="icon" />
-            {copy.idCards.print} ({printableCards.length})
-          </Button>
+          <div className="idcard-screen-only flex items-center gap-2">
+            {/* The office's 90% flow: everyone in the filtered roster, the
+                default template, straight to the print sheet. flushSync
+                forces the print sheet to render THIS selection before the
+                dialog opens — a plain setState would print the stale one. */}
+            <Button
+              variant="outline"
+              onClick={() => {
+                flushSync(() => {
+                  selection.selectMany(
+                    (roster.data ?? []).map((pair) => pair.student.id),
+                  );
+                });
+                window.print();
+              }}
+              disabled={
+                (roster.data ?? []).length === 0 || !choice || roster.isLoading
+              }
+              className="idcard-screen-only"
+            >
+              {copy.idCards.printClassSet}
+            </Button>
+            <Button
+              onClick={() => window.print()}
+              disabled={printableCards.length === 0 || !choice}
+              className="idcard-screen-only"
+            >
+              <PrinterIcon data-slot="icon" />
+              {copy.idCards.print} ({printableCards.length})
+            </Button>
+          </div>
         }
       />
 
@@ -406,7 +504,7 @@ export default function IdCardsPage() {
                 step={0.5}
                 className="w-28"
                 value={printGapMm}
-                onChange={(event) => setPrintGapMm(Number(event.target.value))}
+                onChange={(event) => changeGap(Number(event.target.value))}
               />
             </div>
             <div className="flex min-w-56 flex-1 flex-col gap-1.5 sm:max-w-xs">
@@ -571,14 +669,26 @@ export default function IdCardsPage() {
                               : copy.idCards.gallery.publish}
                           </Button>
                           {!row?.isDefault ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={setDefault.isPending}
-                              onClick={() => void setDefault.submit(option.key)}
-                            >
-                              {copy.idCards.makeDefault}
-                            </Button>
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={setDefault.isPending}
+                                onClick={() => void setDefault.submit(option.key)}
+                              >
+                                {copy.idCards.makeDefault}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                onClick={() =>
+                                  setCloseTarget({ id: option.key, name: option.name })
+                                }
+                              >
+                                {copy.idCards.closeTemplate}
+                              </Button>
+                            </>
                           ) : null}
                         </div>
                       </PermissionGate>
@@ -688,6 +798,35 @@ export default function IdCardsPage() {
         </TabsContent>
       </Tabs>
       </div>
+
+      {/* ── Soft-close confirm (hard rule 2): consequence stated, then
+          status "inactive" — the row survives, the lists forget it. ── */}
+      <AlertDialog
+        open={closeTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setCloseTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{copy.idCards.closeTemplateTitle}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {closeTarget?.name}. {copy.idCards.closeTemplateBody}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{copy.common.cancel}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (closeTarget) void closeTemplate.submit(closeTarget.id);
+                setCloseTarget(null);
+              }}
+            >
+              {copy.idCards.closeTemplateAction}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* ── Build-from-blank (2b) ── */}
       <FormDialog
@@ -814,3 +953,5 @@ export default function IdCardsPage() {
 }
 
 const ALL = "__all__";
+const PRINT_RUN_KEY = "mskool.print-run.v1";
+const PRINT_GAP_KEY = "mskool.print-gap.v1";

@@ -2,6 +2,7 @@
 
 import { ArrowLeftIcon } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 
 import { EmptyState } from "@/components/empty-state";
@@ -61,6 +62,7 @@ const SAMPLE_CARD = {
 
 export function TemplateDesigner({ templateId }: { templateId: string }) {
   const { has } = useActiveContext();
+  const router = useRouter();
   const designer = useTemplateDesigner(templateId);
   const uploadAsset = useUploadTemplateAsset();
   const [uploading, setUploading] = useState(false);
@@ -157,6 +159,16 @@ export function TemplateDesigner({ templateId }: { templateId: string }) {
               onClick={() => void designer.save()}
             >
               {designer.saving ? d.saving : d.save}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!designer.dirty || designer.saving}
+              onClick={() => void designer.save().then((ok) => {
+                if (ok) router.push("/students/id-cards");
+              })}
+            >
+              {d.saveAndClose}
             </Button>
           </div>
         }
