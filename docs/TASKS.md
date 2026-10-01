@@ -6,6 +6,25 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
+**ID CARDS — TWO-SIDED CARDS ON `main` (2026-10-01). `fae1321`, gates green, designer round-trip browser-verified.**
+
+The template row gains nullable `backCanvas`/`backElements` (migration
+0025; absent = single-sided, nothing breaks). The design doc's `back` has
+the SAME shape as the front — data-driven backs (back QRs bind the
+student). Designer: Front/Back switch, Add/Remove back side, per-side
+backgrounds, element mutators route to the active side, stock properties
+(size/orientation/radius) write to BOTH sides. Print: back pages on the
+reverse of each front sheet with the duplex math — long-edge mirrors
+COLUMNS (r,c)→(r,C-1-c), short-edge mirrors ROWS (r,c)→(R-1-r,c) — empty
+slots keep grid positions as cut-guide cells; live preview shows back
+sheets with a Long/Short flip selector; the copy DEMANDS a one-sheet
+alignment test before a full batch (every printer feeds differently — a
+wrong back pass is real money). Gallery publish/clone carry the back;
+clone byte-copies back assets like the front's. **Verified: add → save →
+reload (persists) → remove → save → front-only restored.** The user must
+physically test duplex alignment on their printer before trusting a
+full batch.
+
 **ID CARDS — OFFICE-POLISH PASS ON `main` (2026-10-01). 2 commits, gates green.**
 
 `a9edb72` + `562333d`: **Print class set** (one click: filtered roster →
