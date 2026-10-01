@@ -751,11 +751,36 @@ export default function IdCardsPage() {
                         className="rounded-md border p-2 text-left transition-colors hover:border-primary"
                         onClick={() => setChoice(option)}
                       >
-                        <IdCardPreview
-                          template={option.data}
-                          card={null}
-                          scale={0.8}
-                        />
+                        {option.data.back ? (
+                          <div className="flex flex-col gap-1">
+                            <span className="text-muted-foreground text-[10px] uppercase tracking-wide">
+                              {copy.idCards.designer.sideFront}
+                            </span>
+                            <IdCardPreview
+                              template={option.data}
+                              card={null}
+                              scale={0.8}
+                            />
+                            <span className="text-muted-foreground mt-1 text-[10px] uppercase tracking-wide">
+                              {copy.idCards.designer.sideBack}
+                            </span>
+                            <IdCardPreview
+                              template={{
+                                orientation: option.data.orientation,
+                                canvas: option.data.back.canvas,
+                                elements: option.data.back.elements,
+                              }}
+                              card={null}
+                              scale={0.8}
+                            />
+                          </div>
+                        ) : (
+                          <IdCardPreview
+                            template={option.data}
+                            card={null}
+                            scale={0.8}
+                          />
+                        )}
                         <span className="mt-2 block truncate text-sm font-medium">
                           {option.name}
                         </span>
@@ -917,6 +942,17 @@ export default function IdCardsPage() {
                           card={null}
                           scale={0.8}
                         />
+                        {design.back ? (
+                          <IdCardPreview
+                            template={{
+                              orientation: design.orientation,
+                              canvas: design.back.canvas,
+                              elements: design.back.elements,
+                            }}
+                            card={null}
+                            scale={0.8}
+                          />
+                        ) : null}
                         <span className="text-sm font-medium">{design.name}</span>
                         <Button
                           variant="outline"
@@ -1108,13 +1144,13 @@ export default function IdCardsPage() {
                         cutGuide
                       />
                     ) : (
+                      // Truly blank: no card, no marks. A dashed outline here
+                      // PRINTS as an imaginary card on real stock.
                       <div
                         key={`empty-${slotIndex}`}
                         style={{
                           width: `${printSize.widthMm}mm`,
                           height: `${printSize.heightMm}mm`,
-                          outline: "0.2mm dashed #9ca3af",
-                          outlineOffset: "0.5mm",
                         }}
                       />
                     ),

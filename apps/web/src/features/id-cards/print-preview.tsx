@@ -83,16 +83,14 @@ export function A4Sheets({
                       cutGuide
                     />
                   ) : (
-                    // An empty slot keeps its grid position — duplex backs
-                    // align against the fronts by POSITION, not by content.
+                    // Blank in the preview too — an empty slot prints as
+                    // bare stock, so the preview must not draw one.
                     <div
                       key={`empty-${index}`}
                       aria-hidden
                       style={{
                         width: `${cardWidthMm}mm`,
                         height: `${cardHeightMm}mm`,
-                        outline: "0.2mm dashed #9ca3af",
-                        outlineOffset: "0.5mm",
                       }}
                     />
                   ),
