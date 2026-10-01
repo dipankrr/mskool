@@ -85,16 +85,20 @@ export function FieldPalette({
 
 export function CanvasSettings({
   draft,
+  side,
   onName,
   onOrientation,
   onBackground,
   onCanvasSize,
   onCornerRadius,
   onBackgroundFit,
+  onRemoveBack,
   onUploadAsset,
   uploading,
 }: {
   draft: DesignerDraft;
+  /** Which side's settings these are — the background writes here. */
+  side: "front" | "back";
   onName: (name: string) => void;
   onOrientation: (orientation: IdCardTemplateData["orientation"]) => void;
   onBackground: (assetId: string | null) => void;
@@ -102,6 +106,8 @@ export function CanvasSettings({
   onCanvasSize: (widthMm: number, heightMm: number) => void;
   /** Hand-sets the printed card's corner rounding (mm). */
   onCornerRadius: (cornerRadiusMm: number) => void;
+  /** Removes the back side entirely (the front is unaffected). */
+  onRemoveBack: () => void;
   /**
    * Background upload with FIT: the card adopts the image's aspect ratio as
    * its physical size (the reason a school uploads a designed sheet).
@@ -118,6 +124,9 @@ export function CanvasSettings({
   const d = copy.idCards.designer;
   const fileInput = useRef<HTMLInputElement>(null);
   const size = cardSizeMm(draft);
+  // The background is PER SIDE — each side carries its own image.
+  const activeCanvas =
+    side === "back" && draft.back ? draft.back.canvas : draft.canvas;
 
   return (
     <div className="flex flex-col gap-3">
@@ -179,6 +188,17 @@ export function CanvasSettings({
         <p className="text-muted-foreground text-xs">{d.canvasSizeHint}</p>
       </div>
 
+      {side === "back" ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-destructive hover:bg-destructive/10 hover:text-destructive self-start"
+          onClick={onRemoveBack}
+        >
+          {d.removeBackSide}
+        </Button>
+      ) : null}
+
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="idcard-corner-radius">{d.cornerRadius}</Label>
         <Input
@@ -198,10 +218,10 @@ export function CanvasSettings({
 
       <div className="flex flex-col gap-1.5">
         <Label>{d.background}</Label>
-        {draft.canvas.backgroundAssetId ? (
+        {activeCanvas.backgroundAssetId ? (
           <div className="flex items-center gap-3">
             <img
-              src={`/api/storage/${draft.canvas.backgroundAssetId}`}
+              src={`/api/storage/${activeCanvas.backgroundAssetId}`}
               alt=""
               className="h-10 w-16 rounded border object-cover"
             />

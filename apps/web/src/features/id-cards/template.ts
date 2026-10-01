@@ -40,17 +40,28 @@ export function resolveBinding(
 /**
  * Parses a template ROW's jsonb into the render model. Null on a shape the
  * current contract refuses (a template saved by a newer/older designer) —
- * the caller skips the row rather than rendering a broken card.
+ * the caller skips the row rather than rendering a broken card. The back
+ * side is optional: rows saved before two-sided printing parse unchanged.
  */
 export function parseTemplateData(row: {
   orientation: string;
   canvas: unknown;
   elements: unknown;
+  backCanvas?: unknown;
+  backElements?: unknown;
 }): IdCardTemplateData | null {
   const parsed = idCardTemplateDataSchema.safeParse({
     orientation: row.orientation,
     canvas: row.canvas,
     elements: row.elements,
+    ...(row.backCanvas != null && row.backElements != null
+      ? {
+          back: {
+            canvas: row.backCanvas,
+            elements: row.backElements,
+          },
+        }
+      : {}),
   });
   return parsed.success ? parsed.data : null;
 }

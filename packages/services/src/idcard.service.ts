@@ -181,6 +181,15 @@ export class IdCardService {
             : {}),
           ...(input.canvas !== undefined ? { canvas: input.canvas } : {}),
           ...(input.elements !== undefined ? { elements: input.elements } : {}),
+          // The back side rides the same write: null clears it (single-sided
+          // again), a design sets it. Validity is the contract's element
+          // union, same as the front.
+          ...(input.backCanvas !== undefined || input.backElements !== undefined
+            ? {
+                backCanvas: input.backCanvas ?? null,
+                backElements: input.backElements ?? null,
+              }
+            : {}),
           ...(input.isDefault !== undefined
             ? { isDefault: input.isDefault }
             : {}),
@@ -330,6 +339,8 @@ export class IdCardService {
         orientation: idCardTemplates.orientation,
         canvas: idCardTemplates.canvas,
         elements: idCardTemplates.elements,
+        backCanvas: idCardTemplates.backCanvas,
+        backElements: idCardTemplates.backElements,
         publishedAt: idCardTemplates.publishedAt,
       })
       .from(idCardTemplates)
@@ -348,6 +359,9 @@ export class IdCardService {
         orientation: row.orientation,
         canvas: row.canvas,
         elements: row.elements,
+        ...(row.backCanvas != null && row.backElements != null
+          ? { back: { canvas: row.backCanvas, elements: row.backElements } }
+          : {}),
       });
       if (!parsed.success) return [];
       return [
@@ -357,6 +371,7 @@ export class IdCardService {
           orientation: parsed.data.orientation,
           canvas: parsed.data.canvas,
           elements: parsed.data.elements,
+          ...(parsed.data.back ? { back: parsed.data.back } : {}),
           publishedAt: row.publishedAt?.toISOString() ?? "",
         },
       ];
@@ -398,6 +413,9 @@ export class IdCardService {
       orientation: source.orientation,
       canvas: source.canvas,
       elements: source.elements,
+      ...(source.backCanvas != null && source.backElements != null
+        ? { back: { canvas: source.backCanvas, elements: source.backElements } }
+        : {}),
     });
     if (!parsed.success) return null;
 
@@ -427,6 +445,21 @@ export class IdCardService {
           }
         : element,
     );
+    // The back side clones with the front — its background and logos are
+    // byte-copied and rewritten exactly like the front's.
+    const backCanvas = design.back
+      ? rewriteCanvasAssets(design.back.canvas, assetRewrites)
+      : null;
+    const backElements = design.back
+      ? design.back.elements.map((element) =>
+          element.type === "logo" && element.assetId
+            ? {
+                ...element,
+                assetId: requireAssetRewrite(element.assetId, assetRewrites),
+              }
+            : element,
+        )
+      : null;
 
     return db.transaction(async (tx) => {
       const [row] = await tx
@@ -438,6 +471,9 @@ export class IdCardService {
           orientation: design.orientation,
           canvas,
           elements,
+          ...(design.back
+            ? { backCanvas, backElements }
+            : { backCanvas: null, backElements: null }),
           isDefault: false,
           // A clone starts PRIVATE — the cloner decides whether to share it
           // onward, and the publishedAt stamp belongs to the origin only.
@@ -735,6 +771,16 @@ function collectTemplateAssetIds(design: IdCardTemplateData): string[] {
   }
   for (const element of design.elements) {
     if (element.type === "logo" && element.assetId) ids.add(element.assetId);
+  }
+  // The back side's assets clone with the front's.
+  if (design.back) {
+    const backCanvas = idCardCanvasSchema.safeParse(design.back.canvas);
+    if (backCanvas.success && backCanvas.data.backgroundAssetId) {
+      ids.add(backCanvas.data.backgroundAssetId);
+    }
+    for (const element of design.back.elements) {
+      if (element.type === "logo" && element.assetId) ids.add(element.assetId);
+    }
   }
   return [...ids];
 }

@@ -208,8 +208,55 @@ export function TemplateDesigner({ templateId }: { templateId: string }) {
             must never scroll the card out of view. items-start + sticky keep
             the measured stage width stable, so scale-to-fit is unaffected. */}
         <div className="flex flex-col items-start gap-4 self-start lg:sticky lg:top-16">
+          {/* The side switch: Front is always there; Back exists once added.
+              Element ids are unique across both sides, and the undo stack
+              snapshots the whole document — switching sides never loses
+              history. */}
+          <div className="flex items-center gap-2">
+            <div className="bg-muted inline-flex items-center rounded-4xl p-[3px]">
+              <button
+                type="button"
+                aria-pressed={designer.side === "front"}
+                className={`h-8 rounded-full px-4 text-sm font-medium transition-colors ${
+                  designer.side === "front"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => designer.setSide("front")}
+              >
+                {d.sideFront}
+              </button>
+              {draft.back ? (
+                <button
+                  type="button"
+                  aria-pressed={designer.side === "back"}
+                  className={`h-8 rounded-full px-4 text-sm font-medium transition-colors ${
+                    designer.side === "back"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => designer.setSide("back")}
+                >
+                  {d.sideBack}
+                </button>
+              ) : null}
+            </div>
+            {!draft.back ? (
+              <Button variant="outline" size="sm" onClick={designer.addBackSide}>
+                {d.addBackSide}
+              </Button>
+            ) : null}
+          </div>
           <DesignerCanvas
-            template={draft}
+            template={
+              designer.side === "back" && draft.back
+                ? {
+                    orientation: draft.orientation,
+                    canvas: draft.back.canvas,
+                    elements: draft.back.elements,
+                  }
+                : draft
+            }
             sampleCard={SAMPLE_CARD}
             selectedId={designer.selectedId}
             onSelect={designer.selectElement}
@@ -252,12 +299,14 @@ export function TemplateDesigner({ templateId }: { templateId: string }) {
             <CardContent>
               <CanvasSettings
                 draft={draft}
+                side={designer.side}
                 onName={designer.setName}
                 onOrientation={designer.setOrientation}
                 onBackground={designer.setBackground}
                 onCanvasSize={designer.setCanvasSize}
                 onCornerRadius={designer.setCornerRadius}
                 onBackgroundFit={designer.fitBackground}
+                onRemoveBack={designer.removeBackSide}
                 onUploadAsset={handleUpload}
                 uploading={uploading}
               />

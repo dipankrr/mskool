@@ -176,6 +176,13 @@
       "when": 1790681848219,
       "tag": "0024_lumpy_mattie_franklin",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790874624488,
+      "tag": "0025_strong_tigra",
+      "breakpoints": true
     }
   ]
 }

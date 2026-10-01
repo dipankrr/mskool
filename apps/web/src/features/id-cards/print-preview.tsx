@@ -18,15 +18,19 @@ export function A4Sheets({
   template,
   columns,
   cardWidthMm,
+  cardHeightMm,
   columnGapMm,
   rowGapMm,
   scale = 0.55,
 }: {
-  pages: IdCardStudentCard[][];
+  /** One page per entry; null = an empty card slot (backs of a partial
+   * final row still occupy their grid position for duplex alignment). */
+  pages: (IdCardStudentCard | null)[][];
   template: IdCardTemplateDataInput;
   /** Columns per sheet — the same value the print sheet computes. */
   columns: number;
   cardWidthMm: number;
+  cardHeightMm: number;
   /** Horizontal spacing between cards (mm). */
   columnGapMm: number;
   /** Vertical spacing between card rows (mm). */
@@ -70,14 +74,29 @@ export function A4Sheets({
                   gap: `${rowGapMm}mm ${columnGapMm}mm`,
                 }}
               >
-                {pageCards.map((card) => (
-                  <IdCardPreview
-                    key={card.studentId}
-                    template={template}
-                    card={card}
-                    cutGuide
-                  />
-                ))}
+                {pageCards.map((card, index) =>
+                  card ? (
+                    <IdCardPreview
+                      key={card.studentId}
+                      template={template}
+                      card={card}
+                      cutGuide
+                    />
+                  ) : (
+                    // An empty slot keeps its grid position — duplex backs
+                    // align against the fronts by POSITION, not by content.
+                    <div
+                      key={`empty-${index}`}
+                      aria-hidden
+                      style={{
+                        width: `${cardWidthMm}mm`,
+                        height: `${cardHeightMm}mm`,
+                        outline: "0.2mm dashed #9ca3af",
+                        outlineOffset: "0.5mm",
+                      }}
+                    />
+                  ),
+                )}
               </div>
             </div>
           </div>

@@ -127,8 +127,24 @@ export const idCardTemplateDataSchema = z.object({
   orientation: idCardOrientationSchema,
   canvas: idCardCanvasSchema,
   elements: z.array(idCardElementSchema).max(60),
+  /**
+   * The card's BACK side — same shape as the front, fully data-driven (the
+   * same binding catalog applies; a back QR binds `studentId` like any
+   * front element). Absent/null = single-sided, which keeps every row saved
+   * before two-sided printing existed parsing unchanged. Backs share the
+   * front's orientation and card size by definition — a card is one piece
+   * of stock.
+   */
+  back: z
+    .object({
+      canvas: idCardCanvasSchema,
+      elements: z.array(idCardElementSchema).max(60),
+    })
+    .nullish(),
 });
 export type IdCardTemplateData = z.infer<typeof idCardTemplateDataSchema>;
+/** The back side's own design document (canvas + elements only). */
+export type IdCardBackSide = NonNullable<IdCardTemplateData["back"]>;
 /** The WRITE shape — fields with defaults (`fontWeight`, `color`, `align`, `visible`) are optional. */
 export type IdCardTemplateDataInput = z.input<typeof idCardTemplateDataSchema>;
 /** One element in the write shape — the renderer's element type. */
@@ -152,6 +168,11 @@ export const createIdCardTemplateInput = z.object({
   orientation: idCardOrientationSchema,
   canvas: idCardCanvasSchema,
   elements: z.array(idCardElementSchema).max(60),
+  // The back side arrives FLAT (canvas + elements) to match the row's
+  // columns; absent = single-sided. A null backCanvas with non-null
+  // backElements is refused below so the pair is always coherent.
+  backCanvas: idCardCanvasSchema.nullish(),
+  backElements: z.array(idCardElementSchema).max(60).nullish(),
   isDefault: z.boolean().default(false),
 });
 export type CreateIdCardTemplateInput = z.infer<typeof createIdCardTemplateInput>;
@@ -164,7 +185,20 @@ export type CreateIdCardTemplateInput = z.infer<typeof createIdCardTemplateInput
  */
 export const updateIdCardTemplateInput = createIdCardTemplateInput
   .partial()
-  .extend({ isPublished: z.boolean().optional() });
+  .extend({ isPublished: z.boolean().optional() })
+  .superRefine((value, ctx) => {
+    // The back side is a PAIR — canvas without elements (or the reverse)
+    // would render a half-defined side.
+    if (
+      (value.backCanvas === undefined) !== (value.backElements === undefined)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "backCanvas and backElements are written together.",
+        path: ["backCanvas"],
+      });
+    }
+  });
 export type UpdateIdCardTemplateInput = z.infer<typeof updateIdCardTemplateInput>;
 
 /**
@@ -196,6 +230,14 @@ export const publishedIdCardTemplateSchema = z.object({
   orientation: idCardOrientationSchema,
   canvas: idCardCanvasSchema,
   elements: z.array(idCardElementSchema).max(60),
+  // A published back side is design-only like the front — no org identity,
+  // no student data.
+  back: z
+    .object({
+      canvas: idCardCanvasSchema,
+      elements: z.array(idCardElementSchema).max(60),
+    })
+    .nullish(),
   publishedAt: z.string(),
 });
 export type PublishedIdCardTemplate = z.infer<typeof publishedIdCardTemplateSchema>;

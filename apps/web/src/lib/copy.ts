@@ -2082,6 +2082,12 @@ export const copy = {
     chooseClass: "Class",
     printColumnGap: "Gap between columns (mm)",
     printRowGap: "Gap between rows (mm)",
+    backsHeading: "Backs",
+    flipHeading: "Flip:",
+    flipLong: "Long edge",
+    flipShort: "Short edge",
+    backsHint:
+      "Prints the back designs on the REVERSE of the front sheets. Print ONE sheet as a test and check the alignment before the full batch — every printer flips differently.",
     tabPrint: "Print run",
     tabTemplates: "Templates",
     pdfPreview: {
@@ -2169,6 +2175,10 @@ export const copy = {
       saveAndClose: "Save & close",
       saving: "Saving…",
       saved: "Template saved.",
+      sideFront: "Front",
+      sideBack: "Back",
+      addBackSide: "Add back side",
+      removeBackSide: "Remove back side",
       discard: "Discard",
       undo: "Undo",
       redo: "Redo",

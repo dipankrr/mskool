@@ -120,6 +120,8 @@ export default function IdCardsPage() {
   const [closeTarget, setCloseTarget] = useState<{ id: string; name: string } | null>(
     null,
   );
+  /** How the stack flips between the two print passes (backs only). */
+  const [flipMode, setFlipMode] = useState<"long" | "short">("long");
 
   const [choice, setChoice] = useState<TemplateChoice | null>(null);
   /** Spacing between the printed cards, in mm — the operator's cutting
@@ -295,6 +297,60 @@ export default function IdCardsPage() {
   for (let i = 0; i < printableCards.length; i += perPage) {
     printPages.push(printableCards.slice(i, i + perPage));
   }
+
+  // The back design rendered as its own standalone template input — same
+  // orientation and size as the front (one piece of stock).
+  const backDesign = choice?.data.back
+    ? {
+        orientation: choice.data.orientation,
+        canvas: choice.data.back.canvas,
+        elements: choice.data.back.elements,
+      }
+    : null;
+
+  /**
+   * THE DUPLEX MATH — the one place where a mistake costs real card stock.
+   * Backs print on the REVERSE of the front sheets, so back-page k belongs
+   * to front sheet k, laid out on the same grid. Which slot a card's back
+   * occupies depends on how the stack gets flipped between passes:
+   *
+   *   - LONG edge (the page turns left-right, like a book): a card at
+   *     (row r, column c) has its back at (r, C-1-c) — rows unchanged,
+   *     columns mirrored.
+   *   - SHORT edge (the page turns top-bottom, like a notepad): (r, c) →
+   *     (R-1-r, c) — columns unchanged, rows mirrored.
+   *
+   * Empty trailing slots stay null so both passes align by POSITION. Every
+   * printer feeds differently — the UI demands a one-sheet test first.
+   */
+  const hasBackSide = Boolean(choice?.data.back);
+  // NOT a useMemo — this sits below the branch gate, and a new hook after a
+  // conditional return is a hooks-order crash. The re-shuffle is cheap.
+  const backPages: (IdCardStudentCard | null)[][] = (() => {
+    if (!hasBackSide) return [];
+    return printPages.map((pageCards) => {
+      const slots: (IdCardStudentCard | null)[] = new Array(
+        printRows * printColumns,
+      ).fill(null);
+      pageCards.forEach((card, index) => {
+        slots[index] = card;
+      });
+      const backs: (IdCardStudentCard | null)[] = new Array(slots.length).fill(
+        null,
+      );
+      for (let r = 0; r < printRows; r++) {
+        for (let c = 0; c < printColumns; c++) {
+          const source = r * printColumns + c;
+          const target =
+            flipMode === "long"
+              ? r * printColumns + (printColumns - 1 - c)
+              : (printRows - 1 - r) * printColumns + c;
+          backs[target] = slots[source] ?? null;
+        }
+      }
+      return backs;
+    });
+  })();
 
   return (
     <>
@@ -587,14 +643,67 @@ export default function IdCardsPage() {
               description={copy.idCards.previewHint}
             />
           ) : (
-            <A4Sheets
-              pages={printPages}
-              template={choice.data}
-              columns={printColumns}
-              cardWidthMm={printSize.widthMm}
-              columnGapMm={COLUMN_GAP_MM}
-              rowGapMm={ROW_GAP_MM}
-            />
+            <>
+              <A4Sheets
+                pages={printPages}
+                template={choice.data}
+                columns={printColumns}
+                cardWidthMm={printSize.widthMm}
+                cardHeightMm={printSize.heightMm}
+                columnGapMm={COLUMN_GAP_MM}
+                rowGapMm={ROW_GAP_MM}
+              />
+              {backDesign && backPages.length > 0 ? (
+                <div className="mt-2 flex flex-col gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm font-semibold">
+                      {copy.idCards.backsHeading}
+                    </h3>
+                    <span className="text-muted-foreground text-xs">
+                      {copy.idCards.flipHeading}
+                    </span>
+                    <div className="bg-muted inline-flex items-center rounded-4xl p-[3px]">
+                      <button
+                        type="button"
+                        aria-pressed={flipMode === "long"}
+                        className={`h-8 rounded-full px-3 text-sm font-medium transition-colors ${
+                          flipMode === "long"
+                            ? "bg-background text-foreground shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                        onClick={() => setFlipMode("long")}
+                      >
+                        {copy.idCards.flipLong}
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={flipMode === "short"}
+                        className={`h-8 rounded-full px-3 text-sm font-medium transition-colors ${
+                          flipMode === "short"
+                            ? "bg-background text-foreground shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                        onClick={() => setFlipMode("short")}
+                      >
+                        {copy.idCards.flipShort}
+                      </button>
+                    </div>
+                  </div>
+                  <A4Sheets
+                    pages={backPages}
+                    template={backDesign}
+                    columns={printColumns}
+                    cardWidthMm={printSize.widthMm}
+                    cardHeightMm={printSize.heightMm}
+                    columnGapMm={COLUMN_GAP_MM}
+                    rowGapMm={ROW_GAP_MM}
+                  />
+                  <p className="text-destructive text-xs">
+                    {copy.idCards.backsHint}
+                  </p>
+                </div>
+              ) : null}
+            </>
           )}
 
           <p className="text-muted-foreground text-xs">
@@ -980,6 +1089,40 @@ export default function IdCardsPage() {
             </div>
           </div>
         ))}
+        {backDesign
+          ? backPages.map((pageCards, pageIndex) => (
+              <div key={`back-${pageIndex}`} className="idcard-print-page">
+                <div
+                  className="idcard-print-grid"
+                  style={{
+                    gridTemplateColumns: `repeat(${printColumns}, ${printSize.widthMm}mm)`,
+                    gap: `${ROW_GAP_MM}mm ${COLUMN_GAP_MM}mm`,
+                  }}
+                >
+                  {pageCards.map((card, slotIndex) =>
+                    card && choice ? (
+                      <IdCardPreview
+                        key={card.studentId}
+                        template={backDesign}
+                        card={card}
+                        cutGuide
+                      />
+                    ) : (
+                      <div
+                        key={`empty-${slotIndex}`}
+                        style={{
+                          width: `${printSize.widthMm}mm`,
+                          height: `${printSize.heightMm}mm`,
+                          outline: "0.2mm dashed #9ca3af",
+                          outlineOffset: "0.5mm",
+                        }}
+                      />
+                    ),
+                  )}
+                </div>
+              </div>
+            ))
+          : null}
       </div>
     </>
   );

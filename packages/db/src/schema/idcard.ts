@@ -67,6 +67,12 @@ export const idCardTemplates = pgTable(
     // `idCardElementSchema` at every write.
     elements: jsonb().notNull(),
 
+    // The card's BACK side (nullable = single-sided). Same jsonb contract
+    // validation as the front; the pair is written together and shares the
+    // front's orientation and card size — a card is one piece of stock.
+    backCanvas: jsonb(),
+    backElements: jsonb(),
+
     // One default per school (the partial unique index below): the picker's
     // pre-selected row.
     isDefault: boolean().notNull().default(false),

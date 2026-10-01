@@ -166,30 +166,55 @@ export function useTemplateDesigner(templateId: string) {
     setFutureDepth(history.future.length);
   }, []);
 
+  /** The side being edited. Element mutators route through it (read from a
+   * ref — mutators are cached callbacks and must not capture stale state). */
+  const [side, setSideState] = useState<"front" | "back">("front");
+  const sideRef = useRef(side);
+  sideRef.current = side;
+  const setSide = useCallback((next: "front" | "back") => {
+    setSideState(next);
+    setSelectedId(null);
+  }, []);
+
+  /** Routes an ELEMENTS mutation to the active side's array. Back mutators
+   * no-op when no back side exists (the designer's Add-back creates it). */
+  const updateElements = useCallback(
+    (mutate: (elements: IdCardTemplateData["elements"]) => IdCardTemplateData["elements"], kind?: string) => {
+      update((current) => {
+        if (sideRef.current === "back") {
+          if (!current.back) return current;
+          return {
+            ...current,
+            back: { ...current.back, elements: mutate(current.back.elements) },
+          };
+        }
+        return { ...current, elements: mutate(current.elements) };
+      }, kind);
+    },
+    [update],
+  );
+
   const setGeometry = useCallback(
     (id: string, patch: GeometryPatch) => {
-      update(
-        (current) => ({
-          ...current,
-          elements: current.elements.map((element) =>
+      updateElements(
+        (elements) =>
+          elements.map((element) =>
             element.id === id
               ? { ...element, ...clampGeometry(element, patch) }
               : element,
           ),
-        }),
-        `geometry:${id}`,
+        `geometry:${sideRef.current}:${id}`,
       );
     },
-    [update],
+    [updateElements],
   );
 
   /** Arrow-key nudging — the same clamp as a drag, one percent at a time. */
   const nudge = useCallback(
     (id: string, dx: number, dy: number) => {
-      update(
-        (current) => ({
-          ...current,
-          elements: current.elements.map((element) =>
+      updateElements(
+        (elements) =>
+          elements.map((element) =>
             element.id === id
               ? {
                   ...element,
@@ -197,11 +222,10 @@ export function useTemplateDesigner(templateId: string) {
                 }
               : element,
           ),
-        }),
-        `geometry:${id}`,
+        `geometry:${sideRef.current}:${id}`,
       );
     },
-    [update],
+    [updateElements],
   );
 
   /**
@@ -212,21 +236,19 @@ export function useTemplateDesigner(templateId: string) {
    */
   const replaceElement = useCallback(
     (next: IdCardTemplateData["elements"][number]) => {
-      update((current) => ({
-        ...current,
-        elements: current.elements.map((element) =>
-          element.id === next.id ? next : element,
-        ),
-      }));
+      updateElements(
+        (elements) =>
+          elements.map((element) => (element.id === next.id ? next : element)),
+      );
     },
-    [update],
+    [updateElements],
   );
 
   const addElement = useCallback(
     (type: NewElementType) => {
       const id = newElementId();
-      update((current) => {
-        const stagger = (current.elements.length % 4) * 2;
+      updateElements((currentElements) => {
+        const stagger = (currentElements.length % 4) * 2;
         const base = {
           id,
           x: 10,
@@ -274,22 +296,21 @@ export function useTemplateDesigner(templateId: string) {
                     height: 12,
                     assetId: null,
                   };
-        return { ...current, elements: [...current.elements, element] };
+        return [...currentElements, element];
       });
       setSelectedId(id);
     },
-    [update],
+    [updateElements],
   );
 
   const removeElement = useCallback(
     (id: string) => {
-      update((current) => ({
-        ...current,
-        elements: current.elements.filter((element) => element.id !== id),
-      }));
+      updateElements((elements) =>
+        elements.filter((element) => element.id !== id),
+      );
       setSelectedId((current) => (current === id ? null : current));
     },
-    [update],
+    [updateElements],
   );
 
   const setName = useCallback(
@@ -301,56 +322,83 @@ export function useTemplateDesigner(templateId: string) {
    * Orientation change RE-ANCHORS rather than resets: percent coordinates
    * stay meaningful across the axis swap (they are shares of the card), so
    * elements keep their relative positions and the operator rearranges from
-   * there. Custom canvas dims swap WITH the orientation — a 90×60 landscape
-   * card becomes a 60×90 portrait one, not a 90×60 portrait one. The
-   * settings panel states that consequence next to the control.
+   * there. Custom canvas dims swap WITH the orientation on BOTH sides — a
+   * 90×60 landscape card becomes a 60×90 portrait one, front and back alike
+   * (a card is one piece of stock). The settings panel states that
+   * consequence next to the control.
    */
   const setOrientation = useCallback(
     (orientation: IdCardTemplateData["orientation"]) =>
       update((current) => {
-        const { widthMm, heightMm } = current.canvas;
-        const canvas =
-          widthMm && heightMm
-            ? { ...current.canvas, widthMm: heightMm, heightMm: widthMm }
-            : current.canvas;
-        return { ...current, orientation, canvas };
+        const swap = (canvas: IdCardTemplateData["canvas"]) => {
+          const { widthMm, heightMm } = canvas;
+          return widthMm && heightMm
+            ? { ...canvas, widthMm: heightMm, heightMm: widthMm }
+            : canvas;
+        };
+        return {
+          ...current,
+          orientation,
+          canvas: swap(current.canvas),
+          ...(current.back ? { back: { ...current.back, canvas: swap(current.back.canvas) } } : {}),
+        };
       }),
     [update],
   );
 
+  // Background writes route to the ACTIVE side's canvas — each side carries
+  // its own background image.
   const setBackground = useCallback(
     (backgroundAssetId: string | null) =>
-      update((current) => ({
-        ...current,
-        canvas: { ...current.canvas, backgroundAssetId },
-      })),
+      update((current) => {
+        if (sideRef.current === "back") {
+          if (!current.back) return current;
+          return {
+            ...current,
+            back: { ...current.back, canvas: { ...current.back.canvas, backgroundAssetId } },
+          };
+        }
+        return { ...current, canvas: { ...current.canvas, backgroundAssetId } };
+      }),
     [update],
   );
 
-  /** Hand-set card size (mm) — the settings panel's width/height inputs. */
+  /**
+   * Hand-set card size (mm) — the settings panel's width/height inputs. The
+   * card is ONE piece of stock, so both sides take the same dims.
+   */
   const setCanvasSize = useCallback(
     (widthMm: number, heightMm: number) =>
-      update((current) => ({
-        ...current,
-        canvas: {
-          ...current.canvas,
+      update((current) => {
+        const dims = {
           widthMm: clamp(r2(widthMm), 20, 300),
           heightMm: clamp(r2(heightMm), 20, 300),
-        },
-      })),
+        };
+        return {
+          ...current,
+          canvas: { ...current.canvas, ...dims },
+          ...(current.back
+            ? { back: { ...current.back, canvas: { ...current.back.canvas, ...dims } } }
+            : {}),
+        };
+      }),
     [update],
   );
 
-  /** The printed card's corner rounding (mm) — 0 is square stock. */
+  /** The printed card's corner rounding (mm) — 0 is square stock. Shared by
+   * both sides: the stock's corners do not differ front to back. */
   const setCornerRadius = useCallback(
     (cornerRadiusMm: number) =>
-      update((current) => ({
-        ...current,
-        canvas: {
-          ...current.canvas,
-          cornerRadiusMm: clamp(cornerRadiusMm, 0, 20) || undefined,
-        },
-      })),
+      update((current) => {
+        const radius = { cornerRadiusMm: clamp(cornerRadiusMm, 0, 20) || undefined };
+        return {
+          ...current,
+          canvas: { ...current.canvas, ...radius },
+          ...(current.back
+            ? { back: { ...current.back, canvas: { ...current.back.canvas, ...radius } } }
+            : {}),
+        };
+      }),
     [update],
   );
 
@@ -382,13 +430,33 @@ export function useTemplateDesigner(templateId: string) {
   );
 
   const discard = useCallback(() => {
-    // A discard is a hard rewind: both history stacks die with it.
+    // A discard is a hard rewind: both history stacks die with it, and the
+    // designer returns to the front side.
     historyRef.current = { stack: [], future: [], lastKind: null, lastAt: 0 };
     setHistoryDepth(0);
     setFutureDepth(0);
     setDraft(baseline ? structuredClone(baseline) : null);
+    setSideState("front");
     setSelectedId(null);
   }, [baseline]);
+
+  /** Adds an empty back side and switches to it (own undo step). */
+  const addBackSide = useCallback(() => {
+    update((current) =>
+      current.back
+        ? current
+        : { ...current, back: { canvas: { backgroundAssetId: null }, elements: [] } },
+    );
+    setSideState("back");
+    setSelectedId(null);
+  }, [update]);
+
+  /** Removes the back side (own undo step — undo restores it). */
+  const removeBackSide = useCallback(() => {
+    update((current) => (current.back ? { ...current, back: null } : current));
+    setSideState("front");
+    setSelectedId(null);
+  }, [update]);
 
   const saveMutation = trpc.idCard.template.update.useMutation({
     onSuccess: async () => {
@@ -415,6 +483,11 @@ export function useTemplateDesigner(templateId: string) {
           orientation: saved.orientation,
           canvas: saved.canvas,
           elements: saved.elements,
+          // The back side rides the save as the flat column pair; an
+          // explicit null pair clears it (single-sided again).
+          ...(saved.back
+            ? { backCanvas: saved.back.canvas, backElements: saved.back.elements }
+            : { backCanvas: null, backElements: null }),
         },
       });
       // The save IS the new baseline; the byId refetch updates the row read
@@ -451,6 +524,10 @@ export function useTemplateDesigner(templateId: string) {
     setCanvasSize,
     setCornerRadius,
     fitBackground,
+    side,
+    setSide,
+    addBackSide,
+    removeBackSide,
     discard,
     save,
   };
