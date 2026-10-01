@@ -752,27 +752,31 @@ export default function IdCardsPage() {
                         onClick={() => setChoice(option)}
                       >
                         {option.data.back ? (
-                          <div className="flex flex-col gap-1">
-                            <span className="text-muted-foreground text-[10px] uppercase tracking-wide">
-                              {copy.idCards.designer.sideFront}
-                            </span>
-                            <IdCardPreview
-                              template={option.data}
-                              card={null}
-                              scale={0.8}
-                            />
-                            <span className="text-muted-foreground mt-1 text-[10px] uppercase tracking-wide">
-                              {copy.idCards.designer.sideBack}
-                            </span>
-                            <IdCardPreview
-                              template={{
-                                orientation: option.data.orientation,
-                                canvas: option.data.back.canvas,
-                                elements: option.data.back.elements,
-                              }}
-                              card={null}
-                              scale={0.8}
-                            />
+                          <div className="flex items-start gap-2">
+                            <div className="min-w-0 flex-1 overflow-hidden">
+                              <IdCardPreview
+                                template={option.data}
+                                card={null}
+                                scale={option.data.orientation === "portrait" ? 0.62 : 0.42}
+                              />
+                              <span className="text-muted-foreground mt-1 block text-center text-[9px] uppercase tracking-wide">
+                                {copy.idCards.designer.sideFront}
+                              </span>
+                            </div>
+                            <div className="min-w-0 flex-1 overflow-hidden">
+                              <IdCardPreview
+                                template={{
+                                  orientation: option.data.orientation,
+                                  canvas: option.data.back.canvas,
+                                  elements: option.data.back.elements,
+                                }}
+                                card={null}
+                                scale={option.data.orientation === "portrait" ? 0.62 : 0.42}
+                              />
+                              <span className="text-muted-foreground mt-1 block text-center text-[9px] uppercase tracking-wide">
+                                {copy.idCards.designer.sideBack}
+                              </span>
+                            </div>
                           </div>
                         ) : (
                           <IdCardPreview
@@ -937,22 +941,40 @@ export default function IdCardsPage() {
                   <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {(gallery.data ?? []).map((design) => (
                       <li key={design.id} className="flex flex-col gap-2">
-                        <IdCardPreview
-                          template={design}
-                          card={null}
-                          scale={0.8}
-                        />
                         {design.back ? (
+                          <div className="flex items-start gap-2">
+                            <div className="min-w-0 flex-1 overflow-hidden">
+                              <IdCardPreview
+                                template={design}
+                                card={null}
+                                scale={design.orientation === "portrait" ? 0.62 : 0.42}
+                              />
+                              <span className="text-muted-foreground mt-1 block text-center text-[9px] uppercase tracking-wide">
+                                {copy.idCards.designer.sideFront}
+                              </span>
+                            </div>
+                            <div className="min-w-0 flex-1 overflow-hidden">
+                              <IdCardPreview
+                                template={{
+                                  orientation: design.orientation,
+                                  canvas: design.back.canvas,
+                                  elements: design.back.elements,
+                                }}
+                                card={null}
+                                scale={design.orientation === "portrait" ? 0.62 : 0.42}
+                              />
+                              <span className="text-muted-foreground mt-1 block text-center text-[9px] uppercase tracking-wide">
+                                {copy.idCards.designer.sideBack}
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
                           <IdCardPreview
-                            template={{
-                              orientation: design.orientation,
-                              canvas: design.back.canvas,
-                              elements: design.back.elements,
-                            }}
+                            template={design}
                             card={null}
                             scale={0.8}
                           />
-                        ) : null}
+                        )}
                         <span className="text-sm font-medium">{design.name}</span>
                         <Button
                           variant="outline"
