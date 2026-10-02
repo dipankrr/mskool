@@ -2,11 +2,12 @@ import { requireSchoolId } from "./academic.service";
 import { portalAccessService } from "./portal-access.service";
 import { scopeWhere, type DataScope, type ScopeColumns } from "@repo/authz";
 import type {
-  AddGuardianInput,
-  DetachGuardianInput,
-  GuardianView,
-  UpdateGuardianInput,
+  addGuardianInput,
+  detachGuardianInput,
+  guardianViewSchema,
+  updateGuardianInput,
 } from "@repo/contracts";
+import type { z } from "zod";
 import { db } from "@repo/db";
 import {
   account,
@@ -17,6 +18,17 @@ import {
   user,
 } from "@repo/db/schema";
 import { and, desc, eq, isNull } from "drizzle-orm";
+
+/**
+ * `z.input`, not `z.infer`: the boolean flags carry contract defaults, so
+ * the OUTPUT type requires them while the INPUT does not. Direct callers
+ * (tests, the seed) omit the flags, and typing them as required would force
+ * every one of them to spell out what the schema already decides.
+ */
+type AddGuardianData = z.input<typeof addGuardianInput>;
+type UpdateGuardianData = z.input<typeof updateGuardianInput>;
+type DetachGuardianData = z.input<typeof detachGuardianInput>;
+type GuardianViewRow = z.infer<typeof guardianViewSchema>;
 
 /**
  * GUARDIANS — the parents' contact truth, and the death of the typed-digits
@@ -96,7 +108,7 @@ export class GuardianService {
    * the same digits are the same household, never a second guardian row.
    * A portal-enabled phone immediately gains the pending link.
    */
-  async addGuardian(scope: DataScope, actorUserId: string, input: AddGuardianInput) {
+  async addGuardian(scope: DataScope, actorUserId: string, input: AddGuardianData) {
     const schoolId = requireSchoolId(scope);
     const [student] = await db
       .select({ id: students.id, firstName: students.firstName, lastName: students.lastName })
@@ -219,7 +231,7 @@ export class GuardianService {
    * digits gain a pending link. Switching portal access off revokes that
    * guardian's links for the student; switching it on re-pends them.
    */
-  async updateGuardian(scope: DataScope, actorUserId: string, input: UpdateGuardianInput) {
+  async updateGuardian(scope: DataScope, actorUserId: string, input: UpdateGuardianData) {
     const schoolId = requireSchoolId(scope);
     const [student] = await db
       .select({ id: students.id })
@@ -345,7 +357,7 @@ export class GuardianService {
    * switches portal access off, and revokes that guardian's links unless
    * the digits are still genuinely shared. History, never delete.
    */
-  async detachGuardian(scope: DataScope, actorUserId: string, input: DetachGuardianInput) {
+  async detachGuardian(scope: DataScope, actorUserId: string, input: DetachGuardianData) {
     const schoolId = requireSchoolId(scope);
     const [student] = await db
       .select({ id: students.id })
@@ -403,7 +415,7 @@ export class GuardianService {
   }
 
   /** One student's guardians with each login state inline (profile read). */
-  async listForStudent(scope: DataScope, studentId: string): Promise<GuardianView[]> {
+  async listForStudent(scope: DataScope, studentId: string): Promise<GuardianViewRow[]> {
     const schoolId = requireSchoolId(scope);
     const [student] = await db
       .select({ id: students.id })
@@ -426,9 +438,13 @@ export class GuardianService {
       .innerJoin(guardians, eq(studentGuardians.guardianId, guardians.id))
       .where(eq(studentGuardians.studentId, studentId));
 
-    const views: GuardianView[] = [];
+    // The list cannot contain nulls: every row here is a relation that
+    // exists, which is exactly the row `viewFor` reads. The filter is the
+    // compiler's proof of it, not a runtime hope.
+    const views: GuardianViewRow[] = [];
     for (const row of rows) {
-      views.push(await this.viewFor(scope, studentId, row.guardian.id));
+      const view = await this.viewFor(scope, studentId, row.guardian.id);
+      if (view) views.push(view);
     }
     views.sort((a, b) => {
       if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
@@ -441,7 +457,7 @@ export class GuardianService {
     scope: DataScope,
     studentId: string,
     guardianId: string,
-  ): Promise<GuardianView | null> {
+  ): Promise<GuardianViewRow | null> {
     const [row] = await db
       .select({
         guardian: guardians,
