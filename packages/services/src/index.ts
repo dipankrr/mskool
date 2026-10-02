@@ -68,6 +68,9 @@ export * from "./exam-results.service";
 // activation, password reset, and the phone change (audit + revocation).
 export * from "./portal-access.service";
 
+// Guardians: parents' contact truth; family logins follow automatically.
+export * from "./guardian.service";
+
 // Staff: the employment register and its login provisioning (ADR-035).
 export * from "./staff.service";
 
