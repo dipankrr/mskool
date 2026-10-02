@@ -358,7 +358,11 @@ test.describe("family login flow (portal)", () => {
   }) => {
     await page.goto("/login");
     await page.getByRole("button", { name: "Family" }).click();
+    // Step 1 is digits only; the server routes a claimed login to the
+    // password step (a first-time number would route to admission-no + DOB
+    // instead — covered by integration, which owns the claim proofs).
     await page.locator("#phone").fill("9800000001");
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     await page.locator("#family-password").fill(FAMILY_PASSWORD);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
 

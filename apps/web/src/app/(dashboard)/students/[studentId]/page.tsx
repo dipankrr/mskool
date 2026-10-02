@@ -32,6 +32,7 @@ import {
 import { EnrollDialog } from "@/features/students/enroll-dialog";
 import { StudentEditDialog } from "@/features/students/student-edit-dialog";
 import { FeeProfileCard } from "@/features/fees/fee-profile-card";
+import { GuardianCard } from "@/features/students/guardian-card";
 import {
   useStudent,
   useStudentEnrollments,
@@ -263,6 +264,10 @@ export default function StudentDetailPage() {
       </div>
 
       <FeeProfileCard studentId={studentId} />
+
+      {/* The parents (ADR-037's follow-up): contact truth, and where every
+          family login now comes from. */}
+      <GuardianCard studentId={studentId} />
 
       {/* The ID-card photo (slice 2a): resize-before-upload, one per student. */}
       <StudentPhotoCard studentId={studentId} />

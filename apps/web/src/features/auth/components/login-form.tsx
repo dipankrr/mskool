@@ -58,13 +58,24 @@ export function LoginForm({
   const { login, loginByPhone } = useAuth();
 
   const [mode, setMode] = useState<"staff" | "family">("staff");
+  // The family's two steps (ADR-037 follow-up): digits first, then the
+  // server says which second step — password for a claimed login,
+  // admission-no + DOB + new password for a first claim.
+  const [familyStep, setFamilyStep] = useState<"phone" | "password" | "setup">("phone");
+  const [familyBusy, setFamilyBusy] = useState(false);
 
   const staffForm = useForm<LoginUserInputT>({
     resolver: zodResolver(LoginUserInput),
   });
 
-  const familyForm = useForm<{ phone: string; password: string }>({
-    defaultValues: { phone: "", password: "" },
+  const familyForm = useForm<{
+    phone: string;
+    password: string;
+    admissionNumber: string;
+    dateOfBirth: string;
+    newPassword: string;
+  }>({
+    defaultValues: { phone: "", password: "", admissionNumber: "", dateOfBirth: "", newPassword: "" },
   });
 
   const onStaffSubmit = staffForm.handleSubmit(async (data: LoginUserInputT) => {
@@ -81,22 +92,93 @@ export function LoginForm({
     router.replace("/");
   });
 
-  /**
-   * One attempt, one username. Usernames are globally unique (ADR-037), so
-   * the digits route to the one login that owns them — no school choice,
-   * no fallback, nothing to resolve before submitting.
-   */
-  const onFamilySubmit = familyForm.handleSubmit(async (data) => {
-    const digits = data.phone.replace(/\D/g, "").slice(-10);
-    const result = await loginByPhone(digits, data.password);
+  const digitsOf = (value: string) => value.replace(/\D/g, "").slice(-10);
+
+  /** Step 1 → 2: digits only; the server says password or first-claim. */
+  const onFamilyContinue = async () => {
+    const digits = digitsOf(familyForm.getValues("phone"));
+    if (!/^\d{10}$/.test(digits)) {
+      familyForm.setError("phone", { message: copy.auth.phoneError });
+      return;
+    }
+    setFamilyBusy(true);
+    try {
+      const res = await fetch("/api/portal/account-status", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ phone: digits }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { state?: string };
+      // Fail closed to the claim shape: it fails closed server-side too,
+      // so an outage degrades to the same uniform refusal, not a leak.
+      setFamilyStep(body.state === "password" ? "password" : "setup");
+    } catch {
+      toast.error(copy.errors.unknown);
+    } finally {
+      setFamilyBusy(false);
+    }
+  };
+
+  const signedIn = async () => {
+    await clearSessionState();
+    toast.success(copy.auth.signedIn);
+    router.replace("/portal/results");
+  };
+
+  /** Claimed login: digits + the password the family chose. */
+  const onFamilyPassword = familyForm.handleSubmit(async (data) => {
+    const result = await loginByPhone(digitsOf(data.phone), data.password);
     if (result.error) {
       toast.error(result.error.message || copy.errors.unknown);
       return;
     }
-    await clearSessionState();
-    toast.success(copy.auth.signedIn);
-    router.replace("/portal/results");
+    await signedIn();
   });
+
+  /** First claim: the trio sets the password, then signs straight in. */
+  const onFamilySetup = familyForm.handleSubmit(async (data) => {
+    const digits = digitsOf(data.phone);
+    if (
+      !data.admissionNumber.trim() ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(data.dateOfBirth) ||
+      data.newPassword.length < 8
+    ) {
+      toast.error(copy.auth.claimIncomplete);
+      return;
+    }
+    setFamilyBusy(true);
+    try {
+      const res = await fetch("/api/portal/claim", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          phone: digits,
+          admissionNumber: data.admissionNumber.trim(),
+          dateOfBirth: data.dateOfBirth,
+          password: data.newPassword,
+        }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(body.error || copy.errors.unknown);
+        return;
+      }
+      const result = await loginByPhone(digits, data.newPassword);
+      if (result.error) {
+        toast.error(result.error.message || copy.errors.unknown);
+        return;
+      }
+      await signedIn();
+    } finally {
+      setFamilyBusy(false);
+    }
+  });
+
+  const backToPhone = () => {
+    setFamilyStep("phone");
+    familyForm.setValue("password", "");
+    familyForm.setValue("newPassword", "");
+  };
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
@@ -151,15 +233,23 @@ export function LoginForm({
                     type="button"
                     variant="ghost"
                     className="w-full"
-                    onClick={() => setMode("family")}
+                    onClick={() => {
+                      setFamilyStep("phone");
+                      setMode("family");
+                    }}
                   >
                     {copy.auth.familyTab}
                   </Button>
                 </Field>
               </FieldGroup>
             </form>
-          ) : (
-            <form onSubmit={onFamilySubmit}>
+          ) : familyStep === "phone" ? (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void onFamilyContinue();
+              }}
+            >
               <FieldGroup>
                 <Field data-invalid={familyForm.formState.errors.phone ? true : undefined}>
                   <FieldLabel htmlFor="phone">{copy.auth.phone}</FieldLabel>
@@ -172,12 +262,40 @@ export function LoginForm({
                     required
                     aria-invalid={familyForm.formState.errors.phone ? true : undefined}
                     {...familyForm.register("phone", {
-                      pattern: { value: /^\d{10}$/, message: "10 digits." },
+                      pattern: { value: /^\d{10}$/, message: copy.auth.phoneError },
                     })}
                   />
                   <FieldDescription>{copy.auth.phoneHelp}</FieldDescription>
                   <FieldError>{familyForm.formState.errors.phone?.message}</FieldError>
                 </Field>
+                <Field>
+                  <Button type="submit" disabled={familyBusy}>
+                    {familyBusy ? copy.auth.signingIn : copy.auth.continue}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full"
+                    onClick={() => setMode("staff")}
+                  >
+                    {copy.auth.staffTab}
+                  </Button>
+                </Field>
+              </FieldGroup>
+            </form>
+          ) : familyStep === "password" ? (
+            <form onSubmit={onFamilyPassword}>
+              <FieldGroup>
+                <FieldDescription>
+                  {digitsOf(familyForm.getValues("phone"))} ·{" "}
+                  <button
+                    type="button"
+                    className="underline underline-offset-4"
+                    onClick={backToPhone}
+                  >
+                    {copy.auth.useDifferentNumber}
+                  </button>
+                </FieldDescription>
                 <Field>
                   <FieldLabel htmlFor="family-password">{copy.auth.password}</FieldLabel>
                   <Input
@@ -192,13 +310,59 @@ export function LoginForm({
                   <Button type="submit">
                     {familyForm.formState.isSubmitting ? copy.auth.signingIn : copy.auth.signIn}
                   </Button>
-                  <Button
+                </Field>
+              </FieldGroup>
+            </form>
+          ) : (
+            <form onSubmit={onFamilySetup}>
+              <FieldGroup>
+                <FieldDescription>
+                  {digitsOf(familyForm.getValues("phone"))} · {copy.auth.firstClaimHelp}{" "}
+                  <button
                     type="button"
-                    variant="ghost"
-                    className="w-full"
-                    onClick={() => setMode("staff")}
+                    className="underline underline-offset-4"
+                    onClick={backToPhone}
                   >
-                    {copy.auth.staffTab}
+                    {copy.auth.useDifferentNumber}
+                  </button>
+                </FieldDescription>
+                <Field>
+                  <FieldLabel htmlFor="family-admission">
+                    {copy.auth.admissionNumber}
+                  </FieldLabel>
+                  <Input
+                    id="family-admission"
+                    autoComplete="off"
+                    required
+                    {...familyForm.register("admissionNumber")}
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="family-dob">{copy.auth.dateOfBirth}</FieldLabel>
+                  <Input
+                    id="family-dob"
+                    type="date"
+                    required
+                    {...familyForm.register("dateOfBirth")}
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="family-new-password">
+                    {copy.auth.choosePassword}
+                  </FieldLabel>
+                  <Input
+                    id="family-new-password"
+                    type="password"
+                    autoComplete="new-password"
+                    required
+                    minLength={8}
+                    {...familyForm.register("newPassword")}
+                  />
+                  <FieldDescription>{copy.auth.choosePasswordHelp}</FieldDescription>
+                </Field>
+                <Field>
+                  <Button type="submit" disabled={familyBusy}>
+                    {familyBusy ? copy.auth.signingIn : copy.auth.claimAndSignIn}
                   </Button>
                 </Field>
               </FieldGroup>

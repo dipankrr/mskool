@@ -37,6 +37,11 @@ export type Student = RouterOutputs["student"]["list"][number];
 /** The enrollment list's `{ enrollment, student }` pair — the year anchor's read shape. */
 export type EnrollmentPair = RouterOutputs["enrollment"]["list"][number];
 
+/** A parent on the student's record, with the family login's state inline. */
+export type GuardianView = RouterOutputs["guardian"]["list"][number];
+/** One link row as the register's family-login dialog lists them. */
+export type PortalLinkStatus = RouterOutputs["portalAccess"]["status"][number];
+
 /** One calendar day — the marking gate's row. */
 export type CalendarDay = RouterOutputs["attendance"]["calendar"]["list"][number];
 
