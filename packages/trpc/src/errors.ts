@@ -766,19 +766,6 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
     message:
       "This subject type already has assessment data — its flags are locked. Assign a different type instead.",
   },
-  {
-    // Portal access (ADR-007).
-    match: /already belongs to another portal login|is already this login's phone/i,
-    code: "CONFLICT",
-    message: "That phone number is already in use by another family login.",
-  },
-  {
-    match: /more than one active portal login/i,
-    code: "BAD_REQUEST",
-    message:
-      "This student has more than one active family login — choose which login to change.",
-  },
-
   // Staff login provisioning (ADR-035).
   {
     match: /already has a login/i,

@@ -109,7 +109,22 @@ async function signIn(email: string): Promise<string> {
   return cookie;
 }
 
-/** The ADR-007 portal credential: username (org_slug-phone) + password. */
+/** The ADR-037 public claim: phone + admission-no + DOB sets the password. */
+async function claimPortal(
+  phone: string,
+  admissionNumber: string,
+  dateOfBirth: string,
+  password: string,
+): Promise<{ ok: boolean; status: number; body: any }> {
+  const res = await fetch(`${API}/api/portal/claim`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: WEB_ORIGIN },
+    body: JSON.stringify({ phone, admissionNumber, dateOfBirth, password }),
+  });
+  return { ok: res.ok, status: res.status, body: await res.json().catch(() => ({})) };
+}
+
+/** The family sign-in: global phone digits (ADR-037) + password. */
 async function signInUsername(
   username: string,
   password: string,
@@ -2620,9 +2635,8 @@ async function main() {
     principalSave.ok ? `entered ${principalSave.data?.marksObtained}` : `code ${principalSave.code}`,
   );
 
-  // --- Portal credentials: ADR-007's rider over the wire ----------------------
+  // --- Portal credentials: ADR-037's claim lifecycle over the wire --------
   //
-  // The phone IS the login credential, so the smoke walks the whole
   // The revocation experiment above left the principal's grants revoked
   // (restored only at the very end) — the portal checks need them live.
   const [principalUserForPortal] = await db
@@ -2635,126 +2649,167 @@ async function main() {
     .where(eq(roleAssignments.userId, principalUserForPortal!.id));
   await invalidateUserAuthCache(principalUserForPortal!.id);
 
-  // takeover-shaped lifecycle: activate → live session → phone change →
-  // that session is DEAD, the old username no longer signs in, the new one
-  // does, and the audit row records the change. Password reset follows the
-  // same shape. Phone numbers are per-run so re-running never collides with
-  // a previous run's credential.
+  // Claim lifecycle: ensureLink pends (no secret) → the public claim sets
+  // the password from the trio → the family signs in → revoke drops the
+  // link (the session itself stays valid but sees nothing — link-level, not
+  // credential-level) → re-link + verifyLink restore. A second claim is the
+  // forgot path (re-sets + revokes sessions). Phone numbers are per-run so
+  // re-running never collides with a previous run's credential.
   const runSuffix = String(Date.now()).slice(-5);
   const PORTAL_PHONE_1 = `98${runSuffix}001`;
-  const PORTAL_USERNAME_1 = `demo-trust-${PORTAL_PHONE_1}`;
-  const PORTAL_PHONE_2 = `98${runSuffix}002`;
-  const PORTAL_USERNAME_2 = `demo-trust-${PORTAL_PHONE_2}`;
 
-  const activatePortal = await mutate(principalCookie, "portalAccess.activate", {
+  const ensureLink = await mutate(principalCookie, "portalAccess.ensureLink", {
     organizationId: organization.id,
     schoolId: schoolA.id,
     studentId: student1.id,
     phone: PORTAL_PHONE_1,
-    password: SEED_PASSWORD,
   });
   report(
-    "principal activates the family login (portal_access:activate)",
-    activatePortal.ok && activatePortal.data?.isActive === true,
-    activatePortal.ok ? "access row active" : `code ${activatePortal.code}`,
+    "principal links the guardian phone (pending, no secret)",
+    ensureLink.ok && ensureLink.data?.isActive === false,
+    ensureLink.ok ? "link pending" : `code ${ensureLink.code}`,
   );
 
-  const portalLoginUserId = activatePortal.data?.userId as string | undefined;
+  const portalLoginUserId = ensureLink.data?.userId as string | undefined;
 
-  const portalSignIn = await signInUsername(PORTAL_USERNAME_1, SEED_PASSWORD);
+  const subjectTeacherLink = await mutate(subjectTeacherCookie, "portalAccess.ensureLink", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    studentId: student1.id,
+    phone: PORTAL_PHONE_1,
+  });
   report(
-    "the family signs in by phone (username plugin, must_change_password flagged)",
+    "subject_teacher is FORBIDDEN on the link (no portal_access:activate)",
+    !subjectTeacherLink.ok && subjectTeacherLink.code === "FORBIDDEN",
+    subjectTeacherLink.ok ? "AUTHORIZED — a leak" : `code ${subjectTeacherLink.code}`,
+  );
+
+  const claim = await claimPortal(
+    PORTAL_PHONE_1,
+    student1.admissionNumber,
+    student1.dateOfBirth,
+    SEED_PASSWORD,
+  );
+  report(
+    "the family claims from home (trio sets the password, link activates)",
+    claim.ok,
+    claim.ok ? "claimed" : `status ${claim.status}`,
+  );
+
+  const portalSignIn = await signInUsername(PORTAL_PHONE_1, SEED_PASSWORD);
+  report(
+    "the family signs in by phone (no forced change — they chose it)",
     portalSignIn.ok &&
-      portalSignIn.user?.username === PORTAL_USERNAME_1 &&
-      portalSignIn.user?.mustChangePassword === true,
-    portalSignIn.ok ? "signed in, flag set" : `status ${portalSignIn.status}`,
+      portalSignIn.user?.username === PORTAL_PHONE_1 &&
+      portalSignIn.user?.mustChangePassword === false,
+    portalSignIn.ok ? "signed in, no flag" : `status ${portalSignIn.status}`,
   );
 
   const portalCookie = portalSignIn.cookie!;
 
-  const subjectTeacherPhone = await mutate(subjectTeacherCookie, "portalAccess.changePhone", {
+  const subjectTeacherRevoke = await mutate(subjectTeacherCookie, "portalAccess.revokeLink", {
     organizationId: organization.id,
     schoolId: schoolA.id,
-    studentId: student1.id,
-    newPhone: PORTAL_PHONE_2,
-    reason: "hostile takeover attempt — must be refused",
-  });
-  report(
-    "subject_teacher is FORBIDDEN on the phone change (no portal_access:change_phone)",
-    !subjectTeacherPhone.ok && subjectTeacherPhone.code === "FORBIDDEN",
-    subjectTeacherPhone.ok ? "AUTHORIZED — a leak" : `code ${subjectTeacherPhone.code}`,
-  );
-
-  const phoneChange = await mutate(principalCookie, "portalAccess.changePhone", {
-    organizationId: organization.id,
-    schoolId: schoolA.id,
-    studentId: student1.id,
+    id: student1.id,
     userId: portalLoginUserId,
-    newPhone: PORTAL_PHONE_2,
-    reason: "family changed their number; verified at the office",
   });
   report(
-    "principal changes the phone credential (audit + revocation run)",
-    phoneChange.ok && phoneChange.data === true,
-    phoneChange.ok ? "changed" : `code ${phoneChange.code}`,
+    "subject_teacher is FORBIDDEN on the revoke (no portal_access:change_phone)",
+    !subjectTeacherRevoke.ok && subjectTeacherRevoke.code === "FORBIDDEN",
+    subjectTeacherRevoke.ok ? "AUTHORIZED — a leak" : `code ${subjectTeacherRevoke.code}`,
   );
 
-  const oldSessionAlive = await getSessionAlive(portalCookie);
+  const revokeLink = await mutate(principalCookie, "portalAccess.revokeLink", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+    id: student1.id,
+    userId: portalLoginUserId,
+    reason: "custody test — the smoke revokes what it linked",
+  });
   report(
-    "the pre-change session is DEAD after the phone change (the takeover path closed)",
-    !oldSessionAlive,
-    oldSessionAlive ? "session survived — a leak" : "revoked",
+    "principal revokes the link (flag, never delete)",
+    revokeLink.ok && revokeLink.data === true,
+    revokeLink.ok ? "revoked" : `code ${revokeLink.code}`,
   );
 
-  const oldUsernameSignIn = await signInUsername(PORTAL_USERNAME_1, SEED_PASSWORD);
+  const revokedMe = await query(portalCookie, "me.get", undefined);
   report(
-    "the OLD username no longer signs in",
-    !oldUsernameSignIn.ok,
-    oldUsernameSignIn.ok ? "signed in — a leak" : `status ${oldUsernameSignIn.status}`,
+    "the revoked login sees no children (ownership empty, session itself alive)",
+    revokedMe.ok &&
+      (revokedMe.data as any)?.portal === null &&
+      (await getSessionAlive(portalCookie)),
+    revokedMe.ok ? "portal null, session alive" : `code ${revokedMe.code}`,
   );
 
-  const newUsernameSignIn = await signInUsername(PORTAL_USERNAME_2, SEED_PASSWORD);
-  report(
-    "the NEW username signs in (with the same password — only the credential moved)",
-    newUsernameSignIn.ok && newUsernameSignIn.user?.username === PORTAL_USERNAME_2,
-    newUsernameSignIn.ok ? "signed in" : `status ${newUsernameSignIn.status}`,
-  );
-
-  const resetPortal = await mutate(principalCookie, "portalAccess.resetPassword", {
+  const relink = await mutate(principalCookie, "portalAccess.ensureLink", {
     organizationId: organization.id,
     schoolId: schoolA.id,
     studentId: student1.id,
-    userId: portalLoginUserId,
-    password: "Password456!",
+    phone: PORTAL_PHONE_1,
   });
-  const postResetSessionAlive = newUsernameSignIn.cookie
-    ? await getSessionAlive(newUsernameSignIn.cookie)
-    : false;
-  const resetSignIn = await signInUsername(PORTAL_USERNAME_2, "Password456!");
+  const verifyLink = await mutate(portalCookie, "portalAccess.verifyLink", {
+    studentId: student1.id,
+    admissionNumber: student1.admissionNumber,
+    dateOfBirth: student1.dateOfBirth,
+  });
   report(
-    "password reset kills the live session and the new password signs in",
-    resetPortal.ok === true &&
-      !postResetSessionAlive &&
-      resetSignIn.ok &&
-      resetSignIn.user?.mustChangePassword === true,
-    resetPortal.ok
-      ? `reset ok; post-reset session ${postResetSessionAlive ? "ALIVE — a leak" : "revoked"}; new password ${resetSignIn.ok ? "works" : "fails"}`
-      : `code ${resetPortal.code}`,
+    "re-link pends and the family re-verifies with that kid's pair (no password touch)",
+    relink.ok &&
+      relink.data?.isActive === false &&
+      verifyLink.ok &&
+      verifyLink.data === true,
+    verifyLink.ok ? "verified" : `code ${verifyLink.code}`,
   );
 
-  const [phoneAuditRow] = await db
+  const forgotClaim = await claimPortal(
+    PORTAL_PHONE_1,
+    student1.admissionNumber,
+    student1.dateOfBirth,
+    "Password456!",
+  );
+  const postForgotSessionAlive = await getSessionAlive(portalCookie);
+  const forgotSignIn = await signInUsername(PORTAL_PHONE_1, "Password456!");
+  report(
+    "a second claim re-sets the password, kills live sessions, signs in anew",
+    forgotClaim.ok &&
+      !postForgotSessionAlive &&
+      forgotSignIn.ok &&
+      forgotSignIn.user?.mustChangePassword === false,
+    forgotClaim.ok
+      ? `forgot ok; old session ${postForgotSessionAlive ? "ALIVE — a leak" : "revoked"}; new password ${forgotSignIn.ok ? "works" : "fails"}`
+      : `status ${forgotClaim.status}`,
+  );
+
+  const [linkAuditRow] = await db
     .select({ id: authzAuditLog.id })
     .from(authzAuditLog)
     .where(
       and(
         eq(authzAuditLog.organizationId, organization.id),
-        eq(authzAuditLog.action, "portal_phone_changed"),
+        eq(authzAuditLog.action, "portal_activated"),
+        eq(authzAuditLog.targetUserId, portalLoginUserId!),
       ),
     );
   report(
-    "the phone change left its audit row (action, actor, reason)",
-    Boolean(phoneAuditRow),
-    phoneAuditRow ? "recorded" : "MISSING",
+    "the link lifecycle left its audit rows (activation)",
+    Boolean(linkAuditRow),
+    linkAuditRow ? "recorded" : "MISSING",
+  );
+
+  const [revokeAuditRow] = await db
+    .select({ id: authzAuditLog.id })
+    .from(authzAuditLog)
+    .where(
+      and(
+        eq(authzAuditLog.organizationId, organization.id),
+        eq(authzAuditLog.action, "role_revoked"),
+        eq(authzAuditLog.targetUserId, portalLoginUserId!),
+      ),
+    );
+  report(
+    "the revoke left its audit row (who, which login, which student)",
+    Boolean(revokeAuditRow),
+    revokeAuditRow ? "recorded" : "MISSING",
   );
 
   // Put the seed back the way we found it, so the script stays re-runnable.

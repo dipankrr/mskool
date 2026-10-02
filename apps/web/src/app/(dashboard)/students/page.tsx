@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { useClasses } from "@/features/classes/use-classes";
 import { useSections } from "@/features/sections/use-sections";
 import { AdmitStudentDialog } from "@/features/students/admit-dialog";
+import { useGuardianAddAtAdmission } from "@/features/students/use-guardians";
 import {
   PortalAccessDialog,
   PortalAccessRowAction,
@@ -94,6 +95,7 @@ export default function StudentsPage() {
   const classes = useClasses();
   const sections = useSections();
   const { create } = useStudentMutations();
+  const guardianAdd = useGuardianAddAtAdmission();
 
   const classNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -266,7 +268,17 @@ export default function StudentsPage() {
           // Close on success only: a refused admission keeps the form up
           // with the toast's wording beside it.
           try {
-            await create.submit(data);
+            const row = await create.submit(data);
+            // The parents go through the guardian endpoint (the phone IS
+            // the credential, ADR-037): one call per recorded parent. A
+            // failure here is a toast, not a failed admission — the child
+            // is already on the register and the parents card can finish
+            // the job from the student's page.
+            for (const guardian of data.guardians) {
+              await guardianAdd
+                .submit({ ...guardian, studentId: row.id })
+                .catch(() => undefined);
+            }
             setFormOpen(false);
           } catch {
             // The error toast is shown by the hook; the form stays.

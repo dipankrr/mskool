@@ -1,10 +1,7 @@
 import {
-  activatePortalAccessInput,
-  changePortalPhoneInput,
   ensurePortalLinkInput,
   portalAccessSelectSchema,
   portalLinkStatusSchema,
-  resetPortalPasswordInput,
   revokePortalLinkInput,
   verifyPortalLinkInput,
 } from "@repo/contracts";
@@ -14,74 +11,17 @@ import { portalAccessService } from "@repo/services";
 import { protectedProcedure, staffProcedure } from "../trpc";
 
 /**
- * PORTAL ACCESS — staff administration of the family login's credential
- * (ADR-007). Each action is its OWN permission, because each is a
- * takeover-shaped act: activation mints the credential, a password reset
- * kills every session, and the phone change moves the login itself. All
- * three write audit rows and revoke sessions where a session could
- * outlive the change — the service owns the sequencing.
- *
- * No resolveOwner by the same reasoning as eligibility.override: the input
- * names a studentId, not one row id, and the permissions are SENSITIVE, so
- * the gate re-reads assignments fresh on every call. Tenancy is the
- * service's school check (accessForStudent) — a foreign studentId returns
- * null, never a credential.
+ * PORTAL ACCESS — the family login's links (ADR-007 + ADR-008, global
+ * identity per ADR-037). One phone is one login across schools and trusts;
+ * which kids it sees is one link row per child. Staff link phones (no
+ * secrets — parents set their own passwords from home via the public
+ * claim endpoint); the link lifecycle is pending → active → revoked.
  */
 export const portalAccessRouter = {
-  activate: staffProcedure("portal_access:activate")
-    .meta({
-      openapi: {
-        method: "POST",
-        path: "/portal-access/activate",
-        tags: ["portal"],
-        summary: "Set a student's family login (phone + initial password)",
-        protect: true,
-      },
-    })
-    .input(activatePortalAccessInput)
-    .output(portalAccessSelectSchema.nullable())
-    .mutation(({ ctx, input }) =>
-      portalAccessService.activate(ctx.scope, ctx.userId, input),
-    ),
-
-  resetPassword: staffProcedure("portal_access:reset_password")
-    .meta({
-      openapi: {
-        method: "POST",
-        path: "/portal-access/reset-password",
-        tags: ["portal"],
-        summary: "Re-issue a family login's password (revokes sessions)",
-        protect: true,
-      },
-    })
-    .input(resetPortalPasswordInput)
-    .output(z.boolean().nullable())
-    .mutation(({ ctx, input }) =>
-      portalAccessService.resetPassword(ctx.scope, ctx.userId, input),
-    ),
-
-  changePhone: staffProcedure("portal_access:change_phone")
-    .meta({
-      openapi: {
-        method: "POST",
-        path: "/portal-access/change-phone",
-        tags: ["portal"],
-        summary:
-          "Change a family login's phone credential (audit + session revocation)",
-        protect: true,
-      },
-    })
-    .input(changePortalPhoneInput)
-    .output(z.boolean().nullable())
-    .mutation(({ ctx, input }) =>
-      portalAccessService.changePhone(ctx.scope, ctx.userId, input),
-    ),
-
   /**
-   * GLOBAL IDENTITY (ADR-037) — staff links a guardian phone, no secret.
-   * The link starts pending; the parent activates it from home via the
-   * public claim endpoint. Legacy activate/reset/changePhone above stay for
-   * existing slug-username rows until the migration runbook runs.
+   * Staff links a guardian phone: the global user on first sight, a PENDING
+   * link otherwise. The parent activates it from home via the public claim
+   * endpoint — no secret is ever typed or handed over here.
    */
   ensureLink: staffProcedure("portal_access:activate")
     .meta({

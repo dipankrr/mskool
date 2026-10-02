@@ -73,31 +73,3 @@ export async function revokeUserSessions(userId: string): Promise<void> {
   const ctx = await authContext();
   await ctx.internalAdapter.deleteUserSessions(userId);
 }
-
-/**
- * Update the user's login username (and its display echo). Uniqueness is
- * the database's — a duplicate surfaces as a constraint error the caller
- * must pre-check and word.
- */
-export async function updateUserUsername(
-  userId: string,
-  username: string,
-): Promise<void> {
-  const ctx = await authContext();
-  await ctx.internalAdapter.updateUser(userId, {
-    username,
-    displayUsername: username,
-  });
-}
-
-export async function getUserUsername(
-  userId: string,
-): Promise<string | null | undefined> {
-  const ctx = await authContext();
-  // The username plugin adds the field to the user model; the core
-  // `User` type doesn't know it, hence the record read.
-  const user = (await ctx.internalAdapter.findUserById(userId)) as
-    | (Record<string, unknown> & { username?: string | null })
-    | null;
-  return user?.username;
-}

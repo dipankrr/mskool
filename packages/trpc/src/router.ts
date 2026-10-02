@@ -7,6 +7,7 @@ import { attendanceRouter } from "./routers/attendance.router";
 import { enrollmentRouter, portalRouter } from "./routers/enrollment.router";
 import { examRouter, portalExamRouter } from "./routers/exam.router";
 import { feesRouter } from "./routers/fees.router";
+import { guardianRouter } from "./routers/guardian.router";
 import { idCardRouter } from "./routers/id_card.router";
 import { meRouter } from "./routers/me.router";
 import { portalAccessRouter } from "./routers/portal-access.router";
@@ -31,6 +32,10 @@ export const appRouter = router({
   // The identity registry: student.list/byId/create/update/deactivate. The
   // year anchor (rosters) lives on the enrollment router beside it.
   student: studentRouter,
+  // Parents' contact truth: guardian.list/add/update/detach. Family logins
+  // follow the contact record, so these writes move credentials with them
+  // (ADR-037's follow-up).
+  guardian: guardianRouter,
   // The teaching-assignment layer: assignment.subjectMapping.* (which subjects
   // a class takes in a year) and assignment.teacherAssignment.* (who teaches
   // what where, append-on-change).

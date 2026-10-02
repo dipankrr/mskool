@@ -1627,15 +1627,15 @@ async function main() {
   await findOrCreatePortalAccess(parentUser.id, student1.id, true);
   await findOrCreatePortalAccess(parentUser.id, student2.id, false);
 
-  // The family CREDENTIAL (ADR-007): the e2e family flow signs in by phone,
+  // The family CREDENTIAL (ADR-037): the e2e family flow signs in by phone,
   // so the seed activates one for the seeded parent user — the same
   // production flow the smoke proves, at a fixed number. Idempotent: the
-  // username is derived from the slug, so a re-run finds it and resets the
-  // password back to the known value with must_change_password RE-ARMED
-  // (the flow's final act sets it back itself).
+  // username IS the digits (global identity), so a re-run finds it and
+  // resets the password back to the known value with must_change_password
+  // RE-ARMED (the flow's final act sets it back itself).
   const PARENT_PHONE = "9800000001";
   {
-    const username = `demo-trust-${PARENT_PHONE}`;
+    const username = PARENT_PHONE;
     const [existing] = await db
       .select({ id: user.id })
       .from(user)

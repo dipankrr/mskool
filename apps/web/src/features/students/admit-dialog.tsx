@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { createStudentSchema, type CreateStudentInput } from "@repo/contracts";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
+import { z } from "zod";
 
 import { FormDialog } from "@/components/form-dialog";
 import {
@@ -22,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { copy } from "@/lib/copy";
 
 /**
@@ -42,6 +44,46 @@ const GENDERS = ["male", "female", "other"] as const;
 /** Blank means "not provided", which is not the same as an empty string. */
 const optional = { setValueAs: (value: unknown) => (value === "" ? undefined : value) };
 
+/** The phone rule, shared with the parents' card so both say the same. */
+const tenDigits = z
+  .string()
+  .regex(/^\d{10}$/, "A phone number is 10 digits.");
+
+/**
+ * ADMISSION + PARENTS, ONE FORM. Identity is required by the contract;
+ * contact details are optional because a school admits first and fills the
+ * rest when the family comes in.
+ *
+ * **The parent phones are the point.** A family signs in with the number
+ * the school verified here, so capturing it AT ADMISSION is what makes
+ * every later screen credential-free: the login links itself, the family
+ * sets its own password from home, and no one ever issues or hands over a
+ * secret (ADR-037). Leave both blank and the family is added on the
+ * student's record later — same flow, one step behind.
+ *
+ * **Empty optional fields become `undefined`, not `""`** (the
+ * branch-form-dialog rule): an untouched input yields an empty string, and
+ * an empty string is not a phone number. The date inputs are native
+ * `type="date"` — their value is already ISO `YYYY-MM-DD`, exactly what the
+ * contract wants, and never a localized display string.
+ */
+
+const admitForm = createStudentSchema.extend({
+  fatherName: z.string().trim().max(100).optional(),
+  fatherPhone: tenDigits.optional().or(z.literal("")),
+  motherName: z.string().trim().max(100).optional(),
+  motherPhone: tenDigits.optional().or(z.literal("")),
+});
+type AdmitForm = z.infer<typeof admitForm>;
+
+/** One parent to add once the student exists. */
+export type AdmittedGuardian = {
+  firstName: string;
+  phone: string;
+  relation: "father" | "mother";
+  isPrimary?: boolean;
+};
+
 export function AdmitStudentDialog({
   open,
   onOpenChange,
@@ -50,11 +92,11 @@ export function AdmitStudentDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (data: CreateStudentInput) => void;
+  onSubmit: (data: CreateStudentInput & { guardians: AdmittedGuardian[] }) => void;
   pending: boolean;
 }) {
-  const form = useForm<CreateStudentInput>({
-    resolver: zodResolver(createStudentSchema),
+  const form = useForm<AdmitForm>({
+    resolver: zodResolver(admitForm),
   });
 
   /** Reset on open: the dialog stays mounted between openings. */
@@ -73,7 +115,29 @@ export function AdmitStudentDialog({
       description={copy.students.addHelp}
       submitLabel={copy.students.add}
       pending={pending}
-      onSubmit={form.handleSubmit((data) => onSubmit(data))}
+      onSubmit={form.handleSubmit((data) => {
+        // The four parent fields are NOT part of the student contract —
+        // split them off here so `student.create` receives exactly its own
+        // shape, and the guardians go through the guardian endpoint.
+        const { fatherName, fatherPhone, motherName, motherPhone, ...student } = data;
+        const guardians: AdmittedGuardian[] = [];
+        if (fatherPhone) {
+          guardians.push({
+            firstName: (fatherName || copy.guardians.relations.father) as string,
+            phone: fatherPhone,
+            relation: "father",
+            isPrimary: true,
+          });
+        }
+        if (motherPhone) {
+          guardians.push({
+            firstName: (motherName || copy.guardians.relations.mother) as string,
+            phone: motherPhone,
+            relation: "mother",
+          });
+        }
+        onSubmit({ ...student, guardians });
+      })}
     >
       <FieldGroup>
         <Field data-invalid={errors.admissionNumber ? true : undefined}>
@@ -206,6 +270,80 @@ export function AdmitStudentDialog({
               {...form.register("email", optional)}
             />
             {errors.email ? <FieldError>{errors.email.message}</FieldError> : null}
+          </Field>
+        </div>
+
+        <Separator />
+
+        {/*
+          The parents. The number captured here is the family's sign-in, so
+          this is the one place it is verified: the office checks it against
+          what the family says, and the login follows automatically. Both
+          optional — a family that arrives later is added on the student's
+          record instead.
+        */}
+        <div>
+          <p className="text-sm font-medium">{copy.guardians.title}</p>
+          <p className="text-muted-foreground text-sm">{copy.guardians.subtitle}</p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field data-invalid={errors.fatherPhone ? true : undefined}>
+            <FieldLabel htmlFor="student-father-phone">
+              {copy.guardians.fields.phone} — {copy.guardians.relations.father}
+            </FieldLabel>
+            <Input
+              id="student-father-phone"
+              type="tel"
+              inputMode="numeric"
+              maxLength={10}
+              placeholder="9876543210"
+              aria-invalid={errors.fatherPhone ? true : undefined}
+              {...form.register("fatherPhone", optional)}
+            />
+            {errors.fatherPhone ? (
+              <FieldError>{errors.fatherPhone.message}</FieldError>
+            ) : null}
+          </Field>
+
+          <Field data-invalid={errors.fatherName ? true : undefined}>
+            <FieldLabel htmlFor="student-father-name">
+              {copy.guardians.fields.firstName}
+            </FieldLabel>
+            <Input
+              id="student-father-name"
+              aria-invalid={errors.fatherName ? true : undefined}
+              {...form.register("fatherName", optional)}
+            />
+          </Field>
+
+          <Field data-invalid={errors.motherPhone ? true : undefined}>
+            <FieldLabel htmlFor="student-mother-phone">
+              {copy.guardians.fields.phone} — {copy.guardians.relations.mother}
+            </FieldLabel>
+            <Input
+              id="student-mother-phone"
+              type="tel"
+              inputMode="numeric"
+              maxLength={10}
+              placeholder="9876543210"
+              aria-invalid={errors.motherPhone ? true : undefined}
+              {...form.register("motherPhone", optional)}
+            />
+            {errors.motherPhone ? (
+              <FieldError>{errors.motherPhone.message}</FieldError>
+            ) : null}
+          </Field>
+
+          <Field data-invalid={errors.motherName ? true : undefined}>
+            <FieldLabel htmlFor="student-mother-name">
+              {copy.guardians.fields.firstName}
+            </FieldLabel>
+            <Input
+              id="student-mother-name"
+              aria-invalid={errors.motherName ? true : undefined}
+              {...form.register("motherName", optional)}
+            />
           </Field>
         </div>
       </FieldGroup>
