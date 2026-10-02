@@ -935,3 +935,33 @@ export async function buildWorld(): Promise<IntegrationWorld> {
   };
   return cached;
 }
+
+/**
+ * The family-login suites' OWN orgs (ADR-037 follow-up). These suites admit
+ * scratch students by design (claim/verify/guardian flows need real
+ * children), and the authz suite pins the EXACT student set of its shared
+ * schools — admitting even one row there breaks its registry assertions,
+ * flakily under parallel files. So family tests never touch authz-itg
+ * schools: two throwaway orgs with one school each, same-branch siblings
+ * in the first, the cross-tenant child in the second. Idempotent
+ * find-or-create like everything else here; callers pass their own actor
+ * user id (services take it as a plain audit FK, no grants needed since
+ * these suites call services directly).
+ */
+export async function buildGuardianWorld(): Promise<{
+  orgCId: string;
+  orgDId: string;
+  schoolC1Id: string;
+  schoolD1Id: string;
+}> {
+  const orgC = await findOrCreateOrganization("guardian-itg-c", "Guardian ITG C");
+  const orgD = await findOrCreateOrganization("guardian-itg-d", "Guardian ITG D");
+  const schoolC1 = await findOrCreateSchool(orgC.id, "GUARD-C1", "Guardian School C1");
+  const schoolD1 = await findOrCreateSchool(orgD.id, "GUARD-D1", "Guardian School D1");
+  return {
+    orgCId: orgC.id,
+    orgDId: orgD.id,
+    schoolC1Id: schoolC1.id,
+    schoolD1Id: schoolD1.id,
+  };
+}

@@ -25,7 +25,7 @@ import {
   studentPortalAccess,
   user as userTable,
 } from "@repo/db/schema";
-import { buildWorld } from "./world";
+import { buildGuardianWorld, buildWorld } from "./world";
 import { guardianService, studentService } from "@repo/services";
 import { getOwnedStudentIds, type DataScope } from "@repo/authz";
 import { and, eq } from "drizzle-orm";
@@ -45,12 +45,12 @@ const schoolScope = (organizationId: string, schoolId: string): DataScope => ({
 });
 
 describe("guardians (parents' contact truth)", () => {
-  let orgAId: string;
-  let orgBId: string;
-  let schoolA1Id: string;
-  let schoolB1Id: string;
-  let scopeA1: DataScope;
-  let scopeB1: DataScope;
+  let orgCId: string;
+  let orgDId: string;
+  let schoolC1Id: string;
+  let schoolD1Id: string;
+  let scopeC1: DataScope;
+  let scopeD1: DataScope;
   let adminAId: string;
   let adminBId: string;
   let kid1Id: string;
@@ -60,17 +60,18 @@ describe("guardians (parents' contact truth)", () => {
 
   beforeAll(async () => {
     const world = await buildWorld();
-    orgAId = world.orgAId;
-    orgBId = world.orgBId;
-    schoolA1Id = world.schoolA1Id;
-    schoolB1Id = world.schoolB1Id;
-    scopeA1 = schoolScope(orgAId, schoolA1Id);
-    scopeB1 = schoolScope(orgBId, schoolB1Id);
+    const gworld = await buildGuardianWorld();
+    orgCId = gworld.orgCId;
+    orgDId = gworld.orgDId;
+    schoolC1Id = gworld.schoolC1Id;
+    schoolD1Id = gworld.schoolD1Id;
+    scopeC1 = schoolScope(orgCId, schoolC1Id);
+    scopeD1 = schoolScope(orgDId, schoolD1Id);
     adminAId = world.users.adminA;
     adminBId = world.users.adminB;
 
     kid1Id = (
-      await studentService.createStudent(scopeA1, {
+      await studentService.createStudent(scopeC1, {
         admissionNumber: adm("K1"),
         firstName: "Guardian",
         lastName: "One",
@@ -79,7 +80,7 @@ describe("guardians (parents' contact truth)", () => {
       })
     ).id;
     kid2Id = (
-      await studentService.createStudent(scopeA1, {
+      await studentService.createStudent(scopeC1, {
         admissionNumber: adm("K2"),
         firstName: "Guardian",
         lastName: "Two",
@@ -90,7 +91,7 @@ describe("guardians (parents' contact truth)", () => {
   });
 
   it("adds a guardian and gains the pending link with no credential", async () => {
-    const view = await guardianService.addGuardian(scopeA1, adminAId, {
+    const view = await guardianService.addGuardian(scopeC1, adminAId, {
       studentId: kid1Id,
       firstName: "Guardian",
       lastName: "Father",
@@ -115,7 +116,7 @@ describe("guardians (parents' contact truth)", () => {
   });
 
   it("mother gets her own login; the same father on a sibling shares his", async () => {
-    const mother = await guardianService.addGuardian(scopeA1, adminAId, {
+    const mother = await guardianService.addGuardian(scopeC1, adminAId, {
       studentId: kid1Id,
       firstName: "Guardian",
       lastName: "Mother",
@@ -124,7 +125,7 @@ describe("guardians (parents' contact truth)", () => {
     });
     expect(mother?.portal?.username).toBe(PHONE_MOTHER);
 
-    const sib = await guardianService.addGuardian(scopeA1, adminAId, {
+    const sib = await guardianService.addGuardian(scopeC1, adminAId, {
       studentId: kid2Id,
       firstName: "Guardian",
       lastName: "Father",
@@ -140,7 +141,7 @@ describe("guardians (parents' contact truth)", () => {
     expect(login!.id).toBe(fatherUserId);
 
     await expect(
-      guardianService.addGuardian(scopeA1, adminAId, {
+      guardianService.addGuardian(scopeC1, adminAId, {
         studentId: kid1Id,
         firstName: "Guardian",
         lastName: "Father",
@@ -151,7 +152,7 @@ describe("guardians (parents' contact truth)", () => {
   });
 
   it("lists guardians with inline login state, primary first", async () => {
-    const views = await guardianService.listForStudent(scopeA1, kid1Id);
+    const views = await guardianService.listForStudent(scopeC1, kid1Id);
     expect(views).toHaveLength(2);
     expect(views[0]!.isPrimary).toBe(true);
     expect(views.map((view) => view.phone).sort()).toEqual(
@@ -160,7 +161,7 @@ describe("guardians (parents' contact truth)", () => {
   });
 
   it("a phone correction moves the login: old revoked, new pending", async () => {
-    const updated = await guardianService.updateGuardian(scopeA1, adminAId, {
+    const updated = await guardianService.updateGuardian(scopeC1, adminAId, {
       studentId: kid1Id,
       guardianId: fatherGuardianId,
       phone: PHONE_NEW,
@@ -188,23 +189,23 @@ describe("guardians (parents' contact truth)", () => {
   });
 
   it("switching portal access off revokes, switching on re-pends", async () => {
-    await guardianService.updateGuardian(scopeA1, adminAId, {
+    await guardianService.updateGuardian(scopeC1, adminAId, {
       studentId: kid2Id,
       guardianId: fatherGuardianId,
       canAccessPortal: false,
     });
     // kid2's father link (shared user) is revoked; kid1's corrected login
     // is a different user and untouched.
-    const views = await guardianService.listForStudent(scopeA1, kid2Id);
+    const views = await guardianService.listForStudent(scopeC1, kid2Id);
     const father = views.find((view) => view.id === fatherGuardianId);
     expect(father?.canAccessPortal).toBe(false);
 
-    await guardianService.updateGuardian(scopeA1, adminAId, {
+    await guardianService.updateGuardian(scopeC1, adminAId, {
       studentId: kid2Id,
       guardianId: fatherGuardianId,
       canAccessPortal: true,
     });
-    const reopened = await guardianService.listForStudent(scopeA1, kid2Id);
+    const reopened = await guardianService.listForStudent(scopeC1, kid2Id);
     const fatherAgain = reopened.find((view) => view.id === fatherGuardianId);
     expect(fatherAgain?.canAccessPortal).toBe(true);
     expect(fatherAgain?.portal?.isActive).toBe(false);
@@ -212,9 +213,9 @@ describe("guardians (parents' contact truth)", () => {
 
   it("detach stamps history and revokes, shared digits survive", async () => {
     // Mother holds kid1 alone on her digits: detaching revokes her link.
-    const motherViews = await guardianService.listForStudent(scopeA1, kid1Id);
+    const motherViews = await guardianService.listForStudent(scopeC1, kid1Id);
     const mother = motherViews.find((view) => view.phone === PHONE_MOTHER)!;
-    const detached = await guardianService.detachGuardian(scopeA1, adminAId, {
+    const detached = await guardianService.detachGuardian(scopeC1, adminAId, {
       studentId: kid1Id,
       guardianId: mother.id,
       reason: "Integration proof — custody test",
@@ -240,7 +241,7 @@ describe("guardians (parents' contact truth)", () => {
 
   it("cross-tenant ids are invisible", async () => {
     await expect(
-      guardianService.addGuardian(scopeB1, adminBId, {
+      guardianService.addGuardian(scopeD1, adminBId, {
         studentId: kid1Id,
         firstName: "Foreign",
         lastName: "Probe",
@@ -248,10 +249,10 @@ describe("guardians (parents' contact truth)", () => {
         phone: PHONE_NEW,
       }),
     ).resolves.toBeNull();
-    expect(await guardianService.listForStudent(scopeB1, kid1Id)).toEqual([]);
+    expect(await guardianService.listForStudent(scopeD1, kid1Id)).toEqual([]);
     // And the foreign admin cannot touch the guardian row either.
     await expect(
-      guardianService.updateGuardian(scopeB1, adminBId, {
+      guardianService.updateGuardian(scopeD1, adminBId, {
         studentId: kid1Id,
         guardianId: fatherGuardianId,
         firstName: "Foreign",
@@ -264,7 +265,7 @@ describe("guardians (parents' contact truth)", () => {
       .select({ id: guardians.id })
       .from(guardians)
       .where(
-        and(eq(guardians.organizationId, orgAId), eq(guardians.phone, PHONE_NEW)),
+        and(eq(guardians.organizationId, orgCId), eq(guardians.phone, PHONE_NEW)),
       );
     const count = await db
       .select({ id: studentGuardians.id })
