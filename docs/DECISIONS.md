@@ -1606,11 +1606,12 @@ screens (mobile-only per ADR-034 — the web stopgap only shrinks to phone-only
 login), guardian-contact CRUD (no API exists; office verification stays
 procedural until it does).
 
-Migration runbook (follow-up, not this slice): normalize legacy
-`slug-phone` → phone, merge dupes per digits (earliest user wins, move access
-rows, backfill `guardianId` by digits), force one claim-reset, revoke all
-sessions once, audit. Until run, old and new usernames coexist — login tries
-phone-first, slug second.
+Migration runbook (EXECUTED on dev 2026-10-02 via
+`apps/api/scripts/migrate-phone-usernames.ts`: dry-run counts, merge dupes
+per digits with guardian backfill, strip to digits, revoke sessions once —
+password-preserving, nobody re-claimed; 10 strips, 0 merges). The legacy
+`activate/resetPassword/changePhone` stack, the slug fallback, and the
+school picker were deleted in the same cutover; no coexistence remains.
 
 ---
 

@@ -2,7 +2,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 
 import { useAuth } from "@/features/auth/hooks/use-auth";
 import { useSessionBoundary } from "@/lib/session-boundary";
@@ -31,25 +31,19 @@ import { Input } from "@/components/ui/input"
 import { LoginUserInput, type LoginUserInputT } from "@repo/contracts";
 
 import { copy } from "@/lib/copy";
-import { trpc } from "@/lib/trpc/client";
 
 import { toast } from "sonner";
 
 /**
- * Two doors, one card (ADR-007): staff sign in by email; families by the
- * 10-digit phone the school registered. The phone is the CREDENTIAL, but
- * the stored username is `{org_slug}-{phone}` (globally unique), so the
- * family tab first resolves the org — the subdomain carries it in
- * production; on a bare host the parent picks the school from the list
- * the public org resolver returns.
+ * Two doors, one card (ADR-007, global identity per ADR-037): staff sign in
+ * by email; families by the 10-digit phone the school verified. The phone
+ * IS the username across schools and trusts, so there is no school picker —
+ * the digits alone route to the one login that owns them.
  *
  * No "already signed in?" check here. That belongs to the route, not the
  * form: `(auth)/login/page.tsx` redirects on the server before this
  * renders.
  */
-
-const FAMILY_SCHOOL_KEY = "mskool.family-school";
-
 export function LoginForm({
   className,
   ...props
@@ -64,33 +58,6 @@ export function LoginForm({
   const { login, loginByPhone } = useAuth();
 
   const [mode, setMode] = useState<"staff" | "family">("staff");
-  const [schoolName, setSchoolName] = useState("");
-
-  // The remembered school: a returning family should not re-pick every
-  // time. localStorage (not a cookie) — it is a convenience, never a
-  // security input, and the server resolves the slug again on every login.
-  useEffect(() => {
-    const saved = window.localStorage.getItem(FAMILY_SCHOOL_KEY);
-    if (saved) setSchoolName(saved);
-  }, []);
-
-  const orgs = trpc.health.orgsByNamePrefix.useQuery(
-    { prefix: schoolName.trim() },
-    {
-      enabled: mode === "family" && schoolName.trim().length >= 1,
-      staleTime: 5 * 60 * 1000,
-    },
-  );
-
-  // Resolution follows the QUERY, not the keystroke: the per-keystroke
-  // onChange would read the previous response (the fetch for the shorter
-  // prefix) and miss the exact-name match a paste never fires an event
-  // for. The derived value also heals the localStorage-remembered case
-  // (the name loads before the first keystroke).
-  const schoolSlug = useMemo(() => {
-    const match = (orgs.data ?? []).find((org) => org.name === schoolName.trim());
-    return match?.slug ?? null;
-  }, [orgs.data, schoolName]);
 
   const staffForm = useForm<LoginUserInputT>({
     resolver: zodResolver(LoginUserInput),
@@ -115,41 +82,16 @@ export function LoginForm({
   });
 
   /**
-   * Global phone identity first (ADR-037): the 10-digit number IS the
-   * username across schools and trusts, so no school choice is needed.
-   * Legacy `{slug}-{phone}` logins (pre-migration) fall back second — the
-   * school box stays only for them until the migration runbook runs.
+   * One attempt, one username. Usernames are globally unique (ADR-037), so
+   * the digits route to the one login that owns them — no school choice,
+   * no fallback, nothing to resolve before submitting.
    */
   const onFamilySubmit = familyForm.handleSubmit(async (data) => {
     const digits = data.phone.replace(/\D/g, "").slice(-10);
-    const attempt = async (username: string) =>
-      loginByPhone(username, data.password);
-
-    // A typed school name whose slug has not resolved yet (paste-and-submit
-    // beats the resolver round trip) must not silently skip the legacy
-    // fallback: wait for the in-flight query and re-derive the slug first.
-    // An EMPTY school box resolves to nothing on purpose — global phone
-    // identity needs no school at all.
-    let slug = schoolSlug;
-    if (schoolName.trim() && !slug) {
-      const fresh = await orgs.refetch();
-      const match = (fresh.data ?? []).find((org) => org.name === schoolName.trim());
-      slug = match?.slug ?? null;
-    }
-
-    let result = await attempt(digits);
-    let usedSlug = false;
-    if (result.error && slug) {
-      const legacy = `${slug}-${digits}`.toLowerCase();
-      result = await attempt(legacy);
-      usedSlug = !result.error;
-    }
+    const result = await loginByPhone(digits, data.password);
     if (result.error) {
       toast.error(result.error.message || copy.errors.unknown);
       return;
-    }
-    if (schoolName.trim() && (usedSlug || !schoolSlug)) {
-      window.localStorage.setItem(FAMILY_SCHOOL_KEY, schoolName);
     }
     await clearSessionState();
     toast.success(copy.auth.signedIn);
@@ -219,26 +161,6 @@ export function LoginForm({
           ) : (
             <form onSubmit={onFamilySubmit}>
               <FieldGroup>
-                <Field>
-                  <FieldLabel htmlFor="school">{copy.auth.school}</FieldLabel>
-                  <Input
-                    id="school"
-                    autoComplete="organization"
-                    placeholder="Springfield Public School"
-                    list="family-schools"
-                    value={schoolName}
-                    onChange={(event) => setSchoolName(event.target.value)}
-                  />
-                  <datalist id="family-schools">
-                    {(orgs.data ?? []).map((org) => (
-                      <option key={org.slug} value={org.name} />
-                    ))}
-                  </datalist>
-                  <FieldDescription>
-                    {schoolSlug ? `${schoolSlug} · ` : ""}
-                    {copy.auth.schoolHelp}
-                  </FieldDescription>
-                </Field>
                 <Field data-invalid={familyForm.formState.errors.phone ? true : undefined}>
                   <FieldLabel htmlFor="phone">{copy.auth.phone}</FieldLabel>
                   <Input
@@ -267,12 +189,7 @@ export function LoginForm({
                   />
                 </Field>
                 <Field>
-                  <Button
-                    type="submit"
-                    disabled={
-                      Boolean(schoolName.trim()) && !schoolSlug && orgs.isFetching
-                    }
-                  >
+                  <Button type="submit">
                     {familyForm.formState.isSubmitting ? copy.auth.signingIn : copy.auth.signIn}
                   </Button>
                   <Button

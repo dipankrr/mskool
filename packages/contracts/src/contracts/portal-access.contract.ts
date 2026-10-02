@@ -19,38 +19,11 @@ export const portalPhone = z
   .string()
   .regex(/^\d{10}$/, "A phone number is 10 digits.");
 
-export const activatePortalAccessInput = z.object({
-  studentId: z.uuid(),
-  phone: portalPhone,
-  password: z.string().min(8, "At least 8 characters.").max(72),
-});
-export type ActivatePortalAccessInput = z.infer<typeof activatePortalAccessInput>;
-
-export const resetPortalPasswordInput = z.object({
-  studentId: z.uuid(),
-  /**
-   * The login to re-issue. A student may sit under several family logins
-   * (ADR-008); naming none is only accepted when exactly one is active.
-   */
-  userId: z.uuid().optional(),
-  password: z.string().min(8, "At least 8 characters.").max(72),
-});
-export type ResetPortalPasswordInput = z.infer<typeof resetPortalPasswordInput>;
-
-export const changePortalPhoneInput = z.object({
-  studentId: z.uuid(),
-  userId: z.uuid().optional(),
-  newPhone: portalPhone,
-  reason: z.string().min(3, "Say why — the reason is recorded.").max(500),
-});
-export type ChangePortalPhoneInput = z.infer<typeof changePortalPhoneInput>;
-
 /**
  * GLOBAL PHONE IDENTITY (ADR-037). The family login's username is the
  * 10-digit guardian phone itself — no org slug, no school picker, one login
  * across schools and trusts. `userId` is text everywhere below (better-auth
- * ids are not uuids — the `z.uuid()` on the legacy inputs above is kept for
- * compatibility, not copied).
+ * ids are not uuids).
  *
  * Flow: admission (or staff) links a phone → link `pending` (no secret) →
  * parent claims from home with phone + admission-no + DOB → sets own

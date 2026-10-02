@@ -304,16 +304,15 @@ test.describe("read-only day view (principal)", () => {
 });
 
 /**
- * THE FAMILY DOOR (ADR-007, completed) — the parent's actual journey, signed
- * in live because a family login has no saved storage state: pick the school
- * (the public org resolver), type the seeded phone, land on the FORCED
+ * THE FAMILY DOOR (ADR-037) — the parent's actual journey, signed in live
+ * because a family login has no saved storage state: type the seeded phone
+ * (the digits ARE the username, no school choice), land on the FORCED
  * change-password screen, choose a password, and arrive at the published
  * results card. The run changes the password back IN the session so a re-run
  * starts from the seeded state.
  *
  * Verbatim from lib/copy.ts.
  */
-const FAMILY_SCHOOL = "Demo Trust";
 const FAMILY_PASSWORD = "Password123!";
 const CHANGED_PASSWORD = "Password456!";
 
@@ -359,16 +358,6 @@ test.describe("family login flow (portal)", () => {
   }) => {
     await page.goto("/login");
     await page.getByRole("button", { name: "Family" }).click();
-    // The school picker is an input + datalist (not a Base UI Select):
-    // typing the org's exact name resolves the slug on change — the
-    // datalist only suggests. A wrong name leaves the slug unresolved and
-    // the submit disabled, so reaching the next step proves it worked.
-    await page.locator("#school").fill(FAMILY_SCHOOL);
-    // The slug must resolve BEFORE submit: the legacy fallback reads it at
-    // click time, and paste-and-submit otherwise beats the resolver round
-    // trip (the regression this assertion pins).
-    await expect(page.getByText("demo-trust", { exact: false })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeEnabled();
     await page.locator("#phone").fill("9800000001");
     await page.locator("#family-password").fill(FAMILY_PASSWORD);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();

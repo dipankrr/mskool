@@ -175,9 +175,6 @@ export const copy = {
     // The family tab (ADR-007): parents sign in by phone.
     familyTab: "Family",
     staffTab: "Staff",
-    school: "School",
-    schoolHelp:
-      "Only needed for older logins — new logins need just the phone number and password.",
     phone: "Phone number",
     phoneHelp: "The 10-digit number you registered with the school.",
     familySubtitle: "Sign in with the phone number linked to your child.",
@@ -191,14 +188,72 @@ export const copy = {
     submit: "Save password",
     saved: "Password saved.",
   },
+  /**
+   * GUARDIANS — the parents' card on the student record. This is where a
+   * family login comes from: the phone typed here IS the credential, and
+   * the family sets its own password from home (no hand-off secret).
+   */
+  guardians: {
+    title: "Parents & guardians",
+    subtitle:
+      "The phone number here is the family's sign-in. Save one and the family login is created automatically — nobody sets or hands over a password.",
+    emptyTitle: "No parents recorded yet",
+    emptyBody:
+      "Add a parent with the phone number the school has on file. The family signs in with that number and chooses their own password — you never issue one.",
+    add: "Add a parent",
+    addAnother: "Add another parent",
+    addTitle: "Add a parent or guardian",
+    addHelp:
+      "Record the phone number the school verified at admission. That number becomes the family's sign-in and links automatically.",
+    editTitle: "Correct this record",
+    editHelp:
+      "Changing the phone number moves the family login: the old number loses access to this student and the new number gets a fresh link.",
+    added: "Parent added. Their family login is linked.",
+    updated: "Parent record updated.",
+    detach: "End relation",
+    detachTitle: "End this guardian relation",
+    detachBody:
+      "The relation closes and is kept as history. The family's login stops seeing this student, unless the same number is still recorded against another parent here. This is recorded with your name.",
+    detachReason: "Corrected on the student record",
+    detached: "Guardian relation ended.",
+    endedNote:
+      "Earlier guardians are kept as history and no longer have access.",
+    primary: "Primary",
+    primaryHelp: "Main contact — the one the school calls first",
+    emergencyHelp: "May collect the child from school",
+    portalHelp: "May sign in to the family portal",
+    portalActive: "Portal access",
+    portalPending: "Awaiting first sign-in",
+    portalClaimed: "Password set",
+    portalNoPassword: "No password yet",
+    portalNone: "No login linked",
+    portalOff: "Portal access off",
+    fields: {
+      firstName: "First name",
+      lastName: "Last name",
+      relation: "Relation",
+      phone: "Phone number",
+      phoneHelp:
+        "10 digits, as verified at admission. The family signs in with this number and chooses their own password.",
+    },
+    relations: {
+      father: "Father",
+      mother: "Mother",
+      grandfather: "Grandfather",
+      grandmother: "Grandmother",
+      uncle: "Uncle",
+      aunt: "Aunt",
+      brother: "Brother",
+      sister: "Sister",
+      legal_guardian: "Legal guardian",
+      other: "Other",
+    } as Record<string, string>,
+  },
   portalAccess: {
     title: "Family login",
     links: "Logins",
-    linkPhone: "Link a phone number",
-    linkPhoneHelp:
-      "No password to hand over. The family sets its own from home: sign-in screen → first time → phone number + admission number + date of birth.",
-    linkCreated:
-      "Phone linked. Tell the family to set their password from home — phone number + admission number + date of birth.",
+    linkFromGuardians:
+      "Family logins come from the parents recorded on this student. Correct or add a parent there — the phone number there is the family's sign-in, and it links itself.",
     linkPending: "Awaiting claim",
     linkActive: "Active",
     linkCredentialSet: "Password set",
@@ -207,27 +262,8 @@ export const copy = {
     linkRevoked: "Family login revoked for this student.",
     linkRevokeConsequence:
       "This login stops seeing this student at once. Other children on the same login are unaffected. This is recorded with your name.",
-    linkEmpty: "No family logins linked yet. Link the guardian's phone number below.",
-    legacyNote:
-      "Older logins (with a school prefix) are managed below — new links never need passwords.",
-    activate: "Activate family login",
-    activated: "Family login activated. The family signs in with this phone number.",
-    phone: "Phone number",
-    phoneHelp: "The number the family will sign in with. They type the 10 digits; the school prefix is automatic.",
-    initialPassword: "Initial password",
-    initialPasswordHelp: "Temporary. The family must choose their own at first sign-in.",
-    resetPassword: "Reset password",
-    resetDone: "Password reset. Every open session was signed out; the family must change it at next sign-in.",
-    resetHelp: "Re-issues a temporary password. You cannot see the old one — nobody can.",
-    newPasswordLabel: "Temporary password",
-    changePhone: "Change phone number",
-    phoneChanged: "Phone number changed. Every open session was signed out.",
-    changePhoneHelp: "The phone is the login itself. Changing it signs out every open session.",
-    reason: "Reason",
-    reasonPlaceholder: "e.g. Parent changed their number; verified at the office",
-    reasonRequired: "Say why — the reason is recorded with your name.",
-    newPhone: "New phone number",
-    submit: "Save",
+    linkEmpty:
+      "No family logins linked yet. They appear here once a parent is recorded on this student.",
   },
   portal: {
     title: "Family portal",
