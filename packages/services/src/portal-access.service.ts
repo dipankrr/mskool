@@ -1,4 +1,5 @@
 import { requireSchoolId } from "./academic.service";
+import { normalizePhone } from "./phone";
 import {
   invalidateUserAuthCache,
   scopeWhere,
@@ -20,18 +21,6 @@ import {
 import { and, eq, inArray, isNull } from "drizzle-orm";
 
 /**
- * Digits only, last 10 (tolerates +91 / leading 0 / spaces / hyphens).
- * Returns null rather than throwing — the caller chooses the wording:
- * staff input gets the field error, the public claim gets the uniform
- * refusal (never say which field missed).
- */
-export function normalizePhone(raw: string): string | null {
-  const digits = raw.replace(/\D/g, "");
-  const tail = digits.length > 10 ? digits.slice(-10) : digits;
-  return /^\d{10}$/.test(tail) ? tail : null;
-}
-
-/**
  * The claim refusal, shared by every public trio check (ADR-037). One
  * message for unknown phone, no link, wrong admission number, wrong DOB,
  * inactive student — disambiguating any of them would let a caller probe
@@ -47,6 +36,24 @@ async function hasCredentialAccount(userId: string): Promise<boolean> {
     .where(and(eq(account.userId, userId), eq(account.providerId, "credential")))
     .limit(1);
   return Boolean(row);
+}
+
+/**
+ * Which second step the sign-in form shows (ADR-037 follow-up). Unknown or
+ * malformed digits answer `setup` — the claim fails closed for them, so the
+ * form shape reveals nothing an attacker can use beyond what the password
+ * prompt itself already says (that a login exists here).
+ */
+export async function portalCredentialState(rawPhone: string): Promise<"password" | "setup"> {
+  const digits = normalizePhone(rawPhone);
+  if (!digits) return "setup";
+  const [login] = await db
+    .select({ id: user.id })
+    .from(user)
+    .where(eq(user.username, digits))
+    .limit(1);
+  if (!login) return "setup";
+  return (await hasCredentialAccount(login.id)) ? "password" : "setup";
 }
 
 /**
@@ -246,6 +253,10 @@ export class PortalAccessService {
       .limit(1);
     if (!login) throw new Error(CLAIM_MISMATCH);
 
+    // Copy-paste from paper slips and PDFs trails whitespace; the number on
+    // file has none. Trim here (not in the contract) so a pasted trio never
+    // fails closed on an invisible space.
+    const admissionNumber = input.admissionNumber.trim();
     const candidates = await db
       .select({
         accessId: studentPortalAccess.id,
@@ -259,7 +270,7 @@ export class PortalAccessService {
       .where(
         and(
           eq(studentPortalAccess.userId, login.id),
-          eq(students.admissionNumber, input.admissionNumber),
+          eq(students.admissionNumber, admissionNumber),
           eq(students.dateOfBirth, input.dateOfBirth),
           eq(students.status, "active"),
         ),
@@ -327,6 +338,7 @@ export class PortalAccessService {
     callerUserId: string,
     input: { studentId: string; admissionNumber: string; dateOfBirth: string },
   ) {
+    const admissionNumber = input.admissionNumber.trim();
     const [match] = await db
       .select({
         accessId: studentPortalAccess.id,
@@ -340,7 +352,7 @@ export class PortalAccessService {
           eq(studentPortalAccess.studentId, input.studentId),
           eq(studentPortalAccess.isActive, false),
           isNull(studentPortalAccess.revokedAt),
-          eq(students.admissionNumber, input.admissionNumber),
+          eq(students.admissionNumber, admissionNumber),
           eq(students.dateOfBirth, input.dateOfBirth),
           eq(students.status, "active"),
         ),

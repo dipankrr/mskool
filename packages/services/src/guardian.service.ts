@@ -24,10 +24,14 @@ import { and, desc, eq, isNull } from "drizzle-orm";
  * the OUTPUT type requires them while the INPUT does not. Direct callers
  * (tests, the seed) omit the flags, and typing them as required would force
  * every one of them to spell out what the schema already decides.
+ *
+ * The service names the student `studentId` throughout — row-addressed
+ * routers name it `id` (the builder extends every such input with it) and
+ * map across at the call site.
  */
-type AddGuardianData = z.input<typeof addGuardianInput>;
-type UpdateGuardianData = z.input<typeof updateGuardianInput>;
-type DetachGuardianData = z.input<typeof detachGuardianInput>;
+type AddGuardianData = z.input<typeof addGuardianInput> & { studentId: string };
+type UpdateGuardianData = z.input<typeof updateGuardianInput> & { studentId: string };
+type DetachGuardianData = z.input<typeof detachGuardianInput> & { studentId: string };
 type GuardianViewRow = z.infer<typeof guardianViewSchema>;
 
 /**

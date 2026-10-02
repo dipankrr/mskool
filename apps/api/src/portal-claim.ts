@@ -1,7 +1,7 @@
 import rateLimit from "express-rate-limit";
 import { Router, type Express, type Request, type Response } from "express";
 import { claimPortalAccessInput } from "@repo/contracts";
-import { portalAccessService } from "@repo/services";
+import { portalAccessService, portalCredentialState } from "@repo/services";
 import { env } from "./env";
 
 /**
@@ -21,6 +21,19 @@ import { env } from "./env";
 const claimLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   limit: 20,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many attempts. Try again later." },
+});
+
+/**
+ * Reads are cheaper and every login attempt makes exactly one, so the
+ * status check gets its own roomier bucket. Same fail-closed contract as
+ * the claim: unknown digits read as `setup`, never as an error.
+ */
+const statusLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 60,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: { error: "Too many attempts. Try again later." },
@@ -57,8 +70,13 @@ async function handleClaim(req: Request, res: Response) {
 
 export function mountPortalClaim(app: Express) {
   if (env.DISABLE_RATE_LIMIT !== "true") {
-    portalClaimRouter.use(claimLimiter);
+    portalClaimRouter.use("/portal/claim", claimLimiter);
+    portalClaimRouter.use("/portal/account-status", statusLimiter);
   }
   portalClaimRouter.post("/portal/claim", handleClaim);
+  portalClaimRouter.post("/portal/account-status", async (req: Request, res: Response) => {
+    const phone = typeof req.body?.phone === "string" ? req.body.phone : "";
+    res.json({ state: await portalCredentialState(phone) });
+  });
   app.use("/api", portalClaimRouter);
 }

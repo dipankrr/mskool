@@ -30,7 +30,6 @@ export type GuardianRelation = z.infer<typeof guardianRelation>;
 
 /** One parent on the admission form / student profile. */
 export const addGuardianInput = z.object({
-  studentId: z.uuid(),
   firstName: z.string().trim().min(1, "Name is required").max(100),
   lastName: z.string().trim().max(100).nullish(),
   relation: guardianRelation,
@@ -42,9 +41,15 @@ export const addGuardianInput = z.object({
 });
 export type AddGuardianInput = z.infer<typeof addGuardianInput>;
 
-/** Corrections: identity is stable, contact is not. Phones move logins. */
+/**
+ * Corrections: identity is stable, contact is not. Phones move logins.
+ *
+ * NOTE the missing `studentId`: row-addressed routers name the student
+ * `id` (the builder extends every such input with it — see staff.update),
+ * so the contract carries only the guardian half and the router maps
+ * `input.id` to the service's `studentId`.
+ */
 export const updateGuardianInput = z.object({
-  studentId: z.uuid(),
   guardianId: z.uuid(),
   firstName: z.string().trim().min(1).max(100).optional(),
   lastName: z.string().trim().max(100).nullish(),
@@ -58,7 +63,6 @@ export type UpdateGuardianInput = z.infer<typeof updateGuardianInput>;
 
 /** Closing a relation (custody change, correction): history, not delete. */
 export const detachGuardianInput = z.object({
-  studentId: z.uuid(),
   guardianId: z.uuid(),
   reason: z.string().min(3, "Say why — the reason is recorded.").max(500).optional(),
 });

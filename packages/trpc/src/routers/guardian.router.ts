@@ -35,32 +35,36 @@ export const guardianRouter = router({
     .meta({
       openapi: {
         method: "GET",
-        path: "/students/{studentId}/guardians",
+        path: "/students/{id}/guardians",
         tags: ["guardians"],
         summary: "A student's guardians, with each family's login state",
         protect: true,
       },
     })
-    .input(z.object({ studentId: z.uuid() }))
+    .input(z.object({ id: z.uuid() }))
     .output(z.array(guardianViewSchema))
     .query(({ ctx, input }) =>
-      guardianService.listForStudent(ctx.scope, input.studentId),
+      guardianService.listForStudent(ctx.scope, input.id),
     ),
 
   add: staffProcedure("student:update", { resolveOwner: resolveStudentOwner })
     .meta({
       openapi: {
         method: "POST",
-        path: "/students/{studentId}/guardians",
+        path: "/students/{id}/guardians",
         tags: ["guardians"],
         summary: "Add a guardian (links their phone automatically)",
         protect: true,
       },
     })
-    .input(addGuardianInput)
+    .input(addGuardianInput.extend({ id: z.uuid() }))
     .output(guardianViewSchema.nullable())
     .mutation(async ({ ctx, input }) => {
-      const row = await guardianService.addGuardian(ctx.scope, ctx.userId, input);
+      const { id: studentId, ...data } = input;
+      const row = await guardianService.addGuardian(ctx.scope, ctx.userId, {
+        studentId,
+        ...data,
+      });
       if (!row) {
         throw new TRPCError({
           code: "NOT_FOUND",
@@ -74,16 +78,20 @@ export const guardianRouter = router({
     .meta({
       openapi: {
         method: "PATCH",
-        path: "/students/{studentId}/guardians/{guardianId}",
+        path: "/students/{id}/guardians/{guardianId}",
         tags: ["guardians"],
         summary: "Correct a guardian (phone moves the login)",
         protect: true,
       },
     })
-    .input(updateGuardianInput)
+    .input(updateGuardianInput.extend({ id: z.uuid() }))
     .output(guardianViewSchema.nullable())
     .mutation(async ({ ctx, input }) => {
-      const row = await guardianService.updateGuardian(ctx.scope, ctx.userId, input);
+      const { id: studentId, ...data } = input;
+      const row = await guardianService.updateGuardian(ctx.scope, ctx.userId, {
+        studentId,
+        ...data,
+      });
       if (!row) {
         throw new TRPCError({
           code: "NOT_FOUND",
@@ -103,16 +111,20 @@ export const guardianRouter = router({
     .meta({
       openapi: {
         method: "POST",
-        path: "/students/{studentId}/guardians/{guardianId}/detach",
+        path: "/students/{id}/guardians/{guardianId}/detach",
         tags: ["guardians"],
         summary: "End a guardian relation (revokes the family login for this student)",
         protect: true,
       },
     })
-    .input(detachGuardianInput)
+    .input(detachGuardianInput.extend({ id: z.uuid() }))
     .output(guardianViewSchema.nullable())
     .mutation(async ({ ctx, input }) => {
-      const row = await guardianService.detachGuardian(ctx.scope, ctx.userId, input);
+      const { id: studentId, ...data } = input;
+      const row = await guardianService.detachGuardian(ctx.scope, ctx.userId, {
+        studentId,
+        ...data,
+      });
       if (!row) {
         throw new TRPCError({
           code: "NOT_FOUND",
