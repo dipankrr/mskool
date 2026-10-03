@@ -1,5 +1,19 @@
 import {
   assignmentCommentSelectSchema,
+  assignmentQuestionStaffSchema,
+  attemptQuestionStudentSchema,
+  attemptResultSchema,
+  attemptStaffSchema,
+  bankItemDetailSchema,
+  bankItemSelectSchema,
+  createBankItemInput,
+  gradeAttemptAnswerInput,
+  listAttemptsInput,
+  listBankItemsInput,
+  saveAnswerInput,
+  setAssignmentQuestionsInput,
+  startAttemptInput,
+  submitAttemptInput,
   assignmentDetailSchema,
   assignmentSelectSchema,
   assignmentSettingsSelectSchema,
@@ -25,7 +39,7 @@ import {
   updateAssignmentInput,
   upsertAssignmentSettingsInput,
 } from "@repo/contracts";
-import { homeworkService } from "@repo/services";
+import { homeworkQuestionsService, homeworkService } from "@repo/services";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { router, staffListProcedure, staffProcedure, studentProcedure, type OwnerResolver } from "../trpc";
@@ -56,6 +70,12 @@ import { router, staffListProcedure, staffProcedure, studentProcedure, type Owne
 const resolveAssignmentOwner: OwnerResolver = async (organizationId, id) => {
   const schoolId = await homeworkService.getAssignmentOwnerId(organizationId, id);
   if (!schoolId) throw new TRPCError({ code: "NOT_FOUND", message: "Assignment not found." });
+  return { type: "school", id: schoolId };
+};
+
+const resolveAttemptOwner: OwnerResolver = async (organizationId, id) => {
+  const schoolId = await homeworkQuestionsService.getAttemptOwnerId(organizationId, id);
+  if (!schoolId) throw new TRPCError({ code: "NOT_FOUND", message: "Attempt not found." });
   return { type: "school", id: schoolId };
 };
 
@@ -178,6 +198,79 @@ export const homeworkRouter = router({
     .output(assignmentSelectSchema)
     .mutation(({ ctx, input }) => homeworkService.closeAssignment(ctx.scope, input.id)),
 
+  bank: router({
+    list: staffListProcedure("homework:read")
+      .meta({ openapi: { method: "GET", path: "/homework/bank", tags: ["homework"], summary: "The school's question bank", protect: true } })
+      .input(listBankItemsInput.partial())
+      .output(
+        z.array(
+          bankItemSelectSchema.extend({
+            options: z.array(
+              z.object({
+                id: z.uuid(),
+                questionId: z.uuid(),
+                optionText: z.string(),
+                imageObjectId: z.uuid().nullable(),
+                isCorrect: z.boolean(),
+                sortOrder: z.number().int(),
+              }),
+            ),
+          }),
+        ),
+      )
+      .query(({ ctx, input }) => homeworkQuestionsService.listBankItems(ctx.scopes, input)),
+
+    create: staffProcedure("homework:create", { subjectGate: true })
+      .meta({ openapi: { method: "POST", path: "/homework/bank", tags: ["homework"], summary: "Create a bank question (authored from a section's teaching)", protect: true } })
+      .input(
+        createBankItemInput.and(
+          z.object({ organizationId: z.uuid(), sectionId: z.uuid() }),
+        ),
+      )
+      .output(bankItemSelectSchema)
+      .mutation(({ ctx, input }) =>
+        homeworkQuestionsService.createBankItem(ctx.scope, ctx.userId, input),
+      ),
+
+    byId: staffProcedure("homework:read")
+      .meta({ openapi: { method: "GET", path: "/homework/bank/{itemId}", tags: ["homework"], summary: "One bank question with options + answer key", protect: true } })
+      .input(z.object({ itemId: z.uuid() }))
+      .output(bankItemDetailSchema.nullable())
+      .query(({ ctx, input }) => homeworkQuestionsService.getBankItem(ctx.scope, input.itemId)),
+
+    setActive: staffProcedure("school_settings:update")
+      .meta({ openapi: { method: "POST", path: "/homework/bank/{itemId}/active", tags: ["homework"], summary: "Retire or reactivate a bank question", protect: true } })
+      .input(z.object({ itemId: z.uuid(), isActive: z.boolean() }))
+      .output(bankItemSelectSchema.nullable())
+      .mutation(({ ctx, input }) =>
+        homeworkQuestionsService.setBankItemActive(ctx.scope, input.itemId, input.isActive),
+      ),
+  }),
+
+  questions: router({
+    set: staffProcedure("homework:update", {
+      subjectGate: true,
+      resolveOwner: resolveAssignmentOwner,
+    })
+      .meta({ openapi: { method: "PUT", path: "/homework/{id}/questions", tags: ["homework"], summary: "Attach / replace the snapshotted question set", protect: true } })
+      .input(setAssignmentQuestionsInput)
+      .output(z.array(assignmentQuestionStaffSchema))
+      .mutation(({ ctx, input }) =>
+        homeworkQuestionsService.setAssignmentQuestions(ctx.scope, ctx.userId, input),
+      ),
+
+    get: staffProcedure("homework:read", {
+      resolveOwner: resolveAssignmentOwner,
+      gate: "overlap",
+    })
+      .meta({ openapi: { method: "GET", path: "/homework/{id}/questions", tags: ["homework"], summary: "The snapshot with answer keys (teacher-facing)", protect: true } })
+      .input(z.object({ id: z.uuid() }))
+      .output(z.array(assignmentQuestionStaffSchema).nullable())
+      .query(({ ctx, input }) =>
+        homeworkQuestionsService.getAssignmentQuestions(ctx.scope, input.id),
+      ),
+  }),
+
   students: router({
     list: staffListProcedure("homework:read")
       .meta({ openapi: { method: "GET", path: "/homework/{id}/students", tags: ["homework"], summary: "The grading grid — resolved rows per student", protect: true } })
@@ -241,6 +334,47 @@ export const homeworkRouter = router({
         const sa = await homeworkService.excuseStudentAssignment(ctx.scope, ctx.userId, input);
         return { status: sa.status };
       }),
+
+    attempts: router({
+      list: staffProcedure("homework:read", {
+        resolveOwner: resolveStudentAssignmentOwner,
+        gate: "overlap",
+      })
+        .meta({ openapi: { method: "GET", path: "/homework/students/{id}/attempts", tags: ["homework"], summary: "A student's attempts with answers (grading view)", protect: true } })
+        .input(z.object({ id: z.uuid() }))
+        .output(z.array(attemptStaffSchema).nullable())
+        .query(({ ctx, input }) =>
+          homeworkQuestionsService.listAttempts([ctx.scope], input.id),
+        ),
+
+      gradeAnswer: staffProcedure("homework:grade", {
+        subjectGate: true,
+        resolveOwner: resolveAttemptOwner,
+      })
+        .meta({ openapi: { method: "POST", path: "/homework/students/attempts/{id}/grade-answer", tags: ["homework"], summary: "Grade one manual answer; finalizes when done", protect: true } })
+        .input(gradeAttemptAnswerInput)
+        .output(
+          z.object({
+            attemptId: z.uuid(),
+            status: z.string(),
+            totalScore: z.string(),
+            fullyGraded: z.boolean(),
+          }),
+        )
+        .mutation(async ({ ctx, input }) => {
+          const { attempt, fullyGraded } = await homeworkQuestionsService.gradeAttemptAnswer(
+            ctx.scope,
+            ctx.userId,
+            input,
+          );
+          return {
+            attemptId: attempt.id,
+            status: attempt.status,
+            totalScore: attempt.totalScore,
+            fullyGraded,
+          };
+        }),
+    }),
   }),
 
   comments: router({
@@ -331,6 +465,82 @@ export const portalHomeworkRouter = router({
       await homeworkService.portalAcknowledge(ctx.userId, ctx.studentIds, input.studentAssignmentId);
       return { studentAssignmentId: input.studentAssignmentId };
     }),
+
+  attempts: router({
+    start: studentProcedure
+      .meta({ openapi: { method: "POST", path: "/portal/homework/attempts/start", tags: ["portal"], summary: "Resume or open an attempt (locks the question set)", protect: true } })
+      .input(startAttemptInput)
+      .output(z.object({ attemptId: z.uuid(), attemptNo: z.number().int() }))
+      .mutation(async ({ ctx, input }) => {
+        const attempt = await homeworkQuestionsService.startAttempt(
+          ctx.userId,
+          ctx.studentIds,
+          input.studentAssignmentId,
+        );
+        return { attemptId: attempt.id, attemptNo: attempt.attemptNo };
+      }),
+
+    get: studentProcedure
+      .meta({ openapi: { method: "GET", path: "/portal/homework/attempts/{attemptId}", tags: ["portal"], summary: "The in-flight attempt (stripped questions + saved answers)", protect: true } })
+      .input(z.object({ attemptId: z.uuid() }))
+      .output(
+        z
+          .object({
+            attemptId: z.uuid(),
+            attemptNo: z.number().int(),
+            status: z.string(),
+            questionOrder: z.array(z.uuid()).nullable(),
+            maxScore: z.string(),
+            questions: z.array(attemptQuestionStudentSchema),
+          })
+          .partial({ questionOrder: true })
+          .nullable(),
+      )
+      .query(({ ctx, input }) =>
+        homeworkQuestionsService.getAttemptForStudent(ctx.studentIds, input.attemptId),
+      ),
+
+    saveAnswer: studentProcedure
+      .meta({ openapi: { method: "POST", path: "/portal/homework/attempts/save-answer", tags: ["portal"], summary: "Save one answer (autosave)", protect: true } })
+      .input(saveAnswerInput)
+      .output(z.object({ answerId: z.uuid() }))
+      .mutation(({ ctx, input }) =>
+        homeworkQuestionsService.saveAnswer(ctx.userId, ctx.studentIds, input),
+      ),
+
+    submit: studentProcedure
+      .meta({ openapi: { method: "POST", path: "/portal/homework/attempts/submit", tags: ["portal"], summary: "Submit — auto-grades everything decidable", protect: true } })
+      .input(submitAttemptInput)
+      .output(
+        z.object({
+          attemptId: z.uuid(),
+          status: z.string(),
+          totalScore: z.string(),
+          needsManualReview: z.boolean(),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { submitted, needsManualReview } = await homeworkQuestionsService.submitAttempt(
+          ctx.userId,
+          ctx.studentIds,
+          input.attemptId,
+        );
+        return {
+          attemptId: submitted.id,
+          status: submitted.status,
+          totalScore: submitted.totalScore,
+          needsManualReview,
+        };
+      }),
+
+    result: studentProcedure
+      .meta({ openapi: { method: "GET", path: "/portal/homework/attempts/{attemptId}/result", tags: ["portal"], summary: "The scored result, gated by the reveal policies", protect: true } })
+      .input(z.object({ attemptId: z.uuid() }))
+      .output(attemptResultSchema.nullable())
+      .query(({ ctx, input }) =>
+        homeworkQuestionsService.getAttemptResult(ctx.studentIds, input.attemptId),
+      ),
+  }),
 
   comments: router({
     list: studentProcedure

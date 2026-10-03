@@ -92,3 +92,7 @@ export * from "./idcard.service";
 // Homework/assignments: the daily homework-diary domain — settings, rubrics,
 // the assignment lifecycle, submissions, evaluations, the family door. ADR-039.
 export * from "./homework.service";
+
+// Homework questions (slice B): the bank, the per-assignment snapshot, the
+// attempt lifecycle and the auto-grading engine.
+export * from "./homework-questions.service";

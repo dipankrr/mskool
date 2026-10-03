@@ -407,3 +407,228 @@ export const portalSubmitAssignmentInput = z
 export type PortalSubmitAssignmentInput = z.infer<typeof portalSubmitAssignmentInput>;
 
 export const portalAcknowledgeInput = z.object({ studentAssignmentId: z.uuid() });
+
+// ---------------------------------------------------------------------------
+// SLICE B — QUESTIONS. Bank, the per-assignment snapshot, attempts, and the
+// auto-grading result model. The STUDENT-facing schemas below carry NO answer
+// key — options are served stripped (id + text only), and correctness/marks
+// appear only through the reveal-policy flags.
+// ---------------------------------------------------------------------------
+
+import { questionBankItems, questionOptions } from "@repo/db/schema";
+
+export const bankItemSelectSchema = createSelectSchema(questionBankItems);
+export const bankOptionSelectSchema = createSelectSchema(questionOptions);
+
+export const bankOptionInput = z.object({
+  optionText: z.string().min(1).max(2000),
+  imageObjectId: z.uuid().optional(),
+  isCorrect: z.boolean().default(false),
+  sortOrder: z.number().int().min(0).default(0),
+});
+
+export const createBankItemInput = z
+  .object({
+    subjectId: z.uuid(),
+    classId: z.uuid().optional(),
+    topic: z.string().max(250).optional(),
+    questionType: z.enum([
+      "mcq_single", "mcq_multi", "true_false", "fill_blank", "numeric",
+      "match", "short_answer", "long_answer", "file_upload",
+    ]),
+    body: z.string().min(1).max(10000),
+    imageObjectId: z.uuid().optional(),
+    correctAnswer: z.unknown().optional(),
+    explanation: z.string().max(5000).optional(),
+    difficulty: z.enum(["easy", "medium", "hard"]).default("medium"),
+    defaultMarks: marksSchema.default("1"),
+    visibility: z.enum(["private", "school"]).default("private"),
+    options: z.array(bankOptionInput).max(10).optional(),
+  })
+  .refine((i) => !["mcq_single", "mcq_multi"].includes(i.questionType) || (i.options?.length ?? 0) >= 2, {
+    message: "MCQ questions need at least two options",
+    path: ["options"],
+  });
+export type CreateBankItemInput = z.infer<typeof createBankItemInput>;
+
+export const bankItemDetailSchema = bankItemSelectSchema.extend({
+  options: z.array(bankOptionSelectSchema),
+});
+export type BankItemDetail = z.infer<typeof bankItemDetailSchema>;
+
+export const listBankItemsInput = z.object({
+  subjectId: z.uuid().optional(),
+  classId: z.uuid().optional(),
+  difficulty: z.enum(["easy", "medium", "hard"]).optional(),
+  questionType: z
+    .enum(["mcq_single", "mcq_multi", "true_false", "fill_blank", "numeric", "match", "short_answer", "long_answer", "file_upload"])
+    .optional(),
+});
+
+// --- the snapshot ----------------------------------------------------------
+
+/** One snapshot question. Options are snapshotted WITH 1-based ids. */
+export const snapshotQuestionInput = z.object({
+  sourceQuestionId: z.uuid().optional(),
+  position: z.number().int().min(1).max(200),
+  questionType: z.enum([
+    "mcq_single", "mcq_multi", "true_false", "fill_blank", "numeric",
+    "match", "short_answer", "long_answer", "file_upload",
+  ]),
+  body: z.string().min(1).max(10000),
+  imageObjectId: z.uuid().optional(),
+  // Server-built from the bank item's options; a fresh question may pass
+  // options directly (is_correct stripped on the student read model).
+  options: z.array(bankOptionInput).max(10).optional(),
+  correctAnswer: z.unknown().optional(),
+  explanation: z.string().max(5000).optional(),
+  marks: marksSchema.default("1"),
+});
+
+export const setAssignmentQuestionsInput = z.object({
+  id: z.uuid(), // assignment
+  sectionId: z.uuid(),
+  subjectId: z.uuid(),
+  questions: z.array(snapshotQuestionInput).max(200),
+  settings: z
+    .object({
+      shuffleQuestions: z.boolean().default(false),
+      shuffleOptions: z.boolean().default(false),
+      oneQuestionAtATime: z.boolean().default(false),
+      maxAttempts: z.number().int().min(1).max(10).default(1),
+      attemptScoring: z.enum(["best", "latest", "first"]).default("best"),
+      showScore: z.enum(["never", "after_submit", "after_close"]).default("after_submit"),
+      showAnswers: z.enum(["never", "after_submit", "after_close"]).default("after_close"),
+      showExplanations: z.boolean().default(true),
+    })
+    .optional(),
+});
+export type SetAssignmentQuestionsInput = z.infer<typeof setAssignmentQuestionsInput>;
+
+/** Staff read of the snapshot — WITH answer keys (teacher-facing). */
+export const assignmentQuestionStaffSchema = z.object({
+  id: z.uuid(),
+  position: z.number().int(),
+  sourceQuestionId: z.uuid().nullable(),
+  questionType: z.string(),
+  body: z.string(),
+  imageFileId: z.uuid().nullable(),
+  options: z.array(
+    z.object({
+      id: z.number().int(),
+      text: z.string(),
+      imageFileId: z.uuid().nullable(),
+      isCorrect: z.boolean(),
+    }),
+  ).nullable(),
+  correctAnswer: z.unknown().nullable(),
+  explanation: z.string().nullable(),
+  marks: z.string(),
+});
+
+// --- attempts (portal) ------------------------------------------------------
+
+export const startAttemptInput = z.object({ studentAssignmentId: z.uuid() });
+
+/** The student's read model: NO isCorrect, NO correctAnswer, NO explanation. */
+export const attemptQuestionStudentSchema = z.object({
+  id: z.uuid(),
+  position: z.number().int(),
+  questionType: z.string(),
+  body: z.string(),
+  imageFileId: z.uuid().nullable(),
+  options: z.array(
+    z.object({
+      id: z.number().int(),
+      text: z.string(),
+      imageFileId: z.uuid().nullable(),
+    }),
+  ).nullable(),
+  marks: z.string(),
+  savedAnswer: z.unknown().nullable(),
+  savedFileObjectIds: z.array(z.uuid()),
+});
+export type AttemptQuestionStudent = z.infer<typeof attemptQuestionStudentSchema>;
+
+export const saveAnswerInput = z.object({
+  attemptId: z.uuid(),
+  assignmentQuestionId: z.uuid(),
+  answer: z.unknown().optional(),
+  fileObjectIds: z.array(z.uuid()).max(5).optional(),
+});
+export type SaveAnswerInput = z.infer<typeof saveAnswerInput>;
+
+export const submitAttemptInput = z.object({ attemptId: z.uuid() });
+
+export const attemptAnswerResultSchema = z.object({
+  assignmentQuestionId: z.uuid(),
+  isCorrect: z.boolean().nullable(),
+  marksAwarded: z.string().nullable(),
+  feedback: z.string().nullable(),
+  /** Present only when the answer policy allows it. */
+  correctAnswer: z.unknown().optional(),
+  correctOptionIds: z.array(z.number().int()).optional(),
+  explanation: z.string().optional(),
+});
+export type AttemptAnswerResult = z.infer<typeof attemptAnswerResultSchema>;
+
+export const attemptResultSchema = z.object({
+  attemptId: z.uuid(),
+  attemptNo: z.number().int(),
+  status: z.string(),
+  submittedAt: z.date().nullable(),
+  isLate: z.boolean(),
+  scoreAuto: z.string(),
+  scoreManual: z.string(),
+  totalScore: z.string(),
+  maxScore: z.string(),
+  scoreVisible: z.boolean(),
+  answersVisible: z.boolean(),
+  explanationsVisible: z.boolean(),
+  answers: z.array(attemptAnswerResultSchema),
+});
+export type AttemptResult = z.infer<typeof attemptResultSchema>;
+
+// --- teacher manual grading --------------------------------------------------
+
+export const listAttemptsInput = z.object({ id: z.uuid() }); // studentAssignmentId
+
+export const attemptStaffSchema = z.object({
+  id: z.uuid(),
+  attemptNo: z.number().int(),
+  status: z.string(),
+  startedAt: z.date(),
+  submittedAt: z.date().nullable(),
+  isLate: z.boolean(),
+  scoreAuto: z.string(),
+  scoreManual: z.string(),
+  totalScore: z.string(),
+  maxScore: z.string(),
+  answers: z.array(
+    z.object({
+      id: z.uuid(),
+      assignmentQuestionId: z.uuid(),
+      position: z.number().int(),
+      questionType: z.string(),
+      body: z.string(),
+      answer: z.unknown().nullable(),
+      isCorrect: z.boolean().nullable(),
+      marksAwarded: z.string().nullable(),
+      needsManualReview: z.boolean(),
+      feedback: z.string().nullable(),
+      fileObjectIds: z.array(z.uuid()),
+    }),
+  ),
+});
+export type AttemptStaff = z.infer<typeof attemptStaffSchema>;
+
+export const gradeAttemptAnswerInput = z.object({
+  id: z.uuid(), // attempt
+  sectionId: z.uuid(),
+  subjectId: z.uuid(),
+  answerId: z.uuid(),
+  marksAwarded: marksSchema,
+  isCorrect: z.boolean().optional(),
+  feedback: z.string().max(2000).optional(),
+});
+export type GradeAttemptAnswerInput = z.infer<typeof gradeAttemptAnswerInput>;
