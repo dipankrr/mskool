@@ -301,21 +301,20 @@ describe("homework / assignments (slice A)", () => {
   let parentUserId: string;
   let studentSaId: string;
   let portalEnrollmentId: string;
-  /** Rows of the base assignment belonging to OTHER students (never submitted). */
-  let otherSaIds: string[] = [];
 
-  const resolveStudentSaId = async (): Promise<string> => {
+  const resolveSa = async (assignmentId: string): Promise<string> => {
     const [sa] = await db
       .select({ id: studentAssignments.id })
       .from(studentAssignments)
       .where(
         and(
-          eq(studentAssignments.assignmentId, baseAssignmentId),
+          eq(studentAssignments.assignmentId, assignmentId),
           eq(studentAssignments.studentEnrollmentId, portalEnrollmentId),
         ),
       );
     return sa!.id;
   };
+  const resolveStudentSaId = () => resolveSa(baseAssignmentId);
   it("submits on time as the student; resubmission versions; the old version is untouched", async () => {
     studentSaId = await resolveStudentSaId();
     const first = await homeworkService.portalSubmit(portalStudentUserId, [portalStudentId], {
@@ -436,23 +435,22 @@ describe("homework / assignments (slice A)", () => {
   // -------------------------------------------------------------------------
 
   it("grades with marks; a regrade flips is_current and moves the denormalised columns; over-max refuses", async () => {
-    // Any OTHER student's row — ours has submissions by now.
-    const otherRows = await db
-      .select({ id: studentAssignments.id })
-      .from(studentAssignments)
-      .where(
-        and(
-          eq(studentAssignments.assignmentId, baseAssignmentId),
-          ne(studentAssignments.studentEnrollmentId, portalEnrollmentId),
-        ),
-      )
-      .limit(3);
-    otherSaIds = otherRows.map((r) => r.id);
-    const saId = otherSaIds[0]!;
-    // That row's student never submitted — marks mode demands a submission.
+    // The roster is a ONE-STUDENT section by design (the authz suite pins it
+    // exactly), so every grading proof runs against OUR student's rows on
+    // fresh assignments.
+    const graded = await createDraft({
+      title: title("graded"),
+      submissionTypes: ["text"],
+      gradingMode: "marks",
+      maxMarks: "10",
+    });
+    await homeworkService.publishAssignment(scopeA1, adminAId, graded!.id);
+    const gradedSaId = await resolveSa(graded!.id);
+
+    // Marks mode with no submission is refused.
     await expect(
       homeworkService.evaluateStudentAssignment(scopeA1, adminAId, {
-        id: saId,
+        id: gradedSaId,
         sectionId: section6aId,
         subjectId: subjectMathId,
         outcome: "reviewed",
@@ -460,12 +458,16 @@ describe("homework / assignments (slice A)", () => {
       }),
     ).rejects.toThrow(/nothing to review yet/);
 
-    // Grade the submitting student.
+    await homeworkService.portalSubmit(portalStudentUserId, [portalStudentId], {
+      studentAssignmentId: gradedSaId,
+      bodyText: "My worked solutions.",
+    });
+
     const { evaluation } = await homeworkService.evaluateStudentAssignment(
       scopeA1,
       adminAId,
       {
-        id: studentSaId,
+        id: gradedSaId,
         sectionId: section6aId,
         subjectId: subjectMathId,
         outcome: "reviewed",
@@ -478,7 +480,7 @@ describe("homework / assignments (slice A)", () => {
     const [sa] = await db
       .select()
       .from(studentAssignments)
-      .where(eq(studentAssignments.id, studentSaId));
+      .where(eq(studentAssignments.id, gradedSaId));
     expect(sa!.status).toBe("reviewed");
     expect(sa!.currentMarks).toBe("8.50");
     expect(sa!.currentEvaluationId).toBe(evaluation.id);
@@ -488,7 +490,7 @@ describe("homework / assignments (slice A)", () => {
       scopeA1,
       adminAId,
       {
-        id: studentSaId,
+        id: gradedSaId,
         sectionId: section6aId,
         subjectId: subjectMathId,
         outcome: "reviewed",
@@ -498,14 +500,14 @@ describe("homework / assignments (slice A)", () => {
     const evals = await db
       .select()
       .from(assignmentEvaluations)
-      .where(eq(assignmentEvaluations.studentAssignmentId, studentSaId));
+      .where(eq(assignmentEvaluations.studentAssignmentId, gradedSaId));
     expect(evals).toHaveLength(2);
     expect(evals.filter((e) => e.isCurrent)).toHaveLength(1);
     expect(evals.find((e) => e.isCurrent)?.id).toBe(second.id);
 
     await expect(
       homeworkService.evaluateStudentAssignment(scopeA1, adminAId, {
-        id: studentSaId,
+        id: gradedSaId,
         sectionId: section6aId,
         subjectId: subjectMathId,
         outcome: "reviewed",
@@ -514,13 +516,16 @@ describe("homework / assignments (slice A)", () => {
     ).rejects.toThrow(/cannot exceed the maximum/);
   });
 
+  // OUR student's graded row on the base assignment: resubmit_requested must
+  // clear the marks, and a wrong gate pair must refuse.
   it("request-resubmit moves the status without marks; the gate pair must describe the row", async () => {
-    const saId = otherSaIds[0]!;
+    const targetId = studentSaId;
+
     const { studentAssignment } = await homeworkService.evaluateStudentAssignment(
       scopeA1,
       adminAId,
       {
-        id: saId,
+        id: targetId,
         sectionId: section6aId,
         subjectId: subjectMathId,
         outcome: "resubmit_requested",
@@ -532,7 +537,7 @@ describe("homework / assignments (slice A)", () => {
 
     await expect(
       homeworkService.evaluateStudentAssignment(scopeA1, adminAId, {
-        id: saId,
+        id: targetId,
         sectionId: section6aId,
         subjectId: crypto.randomUUID(),
         outcome: "reviewed",
@@ -542,6 +547,15 @@ describe("homework / assignments (slice A)", () => {
   });
 
   it("excuses before submission and refuses once work exists; extensions append and revive missing rows", async () => {
+    // Our student's base row HAS submissions — pin it reviewed, then the
+    // excuse must refuse: reviewed work is graded work, never excused.
+    await homeworkService.evaluateStudentAssignment(scopeA1, adminAId, {
+      id: studentSaId,
+      sectionId: section6aId,
+      subjectId: subjectMathId,
+      outcome: "reviewed",
+      marks: "7",
+    });
     await expect(
       homeworkService.excuseStudentAssignment(scopeA1, adminAId, {
         id: studentSaId,
@@ -549,16 +563,24 @@ describe("homework / assignments (slice A)", () => {
       }),
     ).rejects.toThrow(/work on record/);
 
-    const excuseTargetId = otherSaIds[1] ?? otherSaIds[0]!;
+    // A fresh completion-mode assignment gives a work-free row to excuse.
+    const scratch = await createDraft({
+      title: title("excuse-target"),
+      submissionTypes: ["tick"],
+      gradingMode: "completion",
+    });
+    await homeworkService.publishAssignment(scopeA1, adminAId, scratch!.id);
+    const scratchSaId = await resolveSa(scratch!.id);
+
     const excused = await homeworkService.excuseStudentAssignment(scopeA1, adminAId, {
-      id: excuseTargetId,
+      id: scratchSaId,
       reason: "Left school this month.",
     });
     expect(excused.status).toBe("excused");
 
     // Extension on the excused row still moves deadlines (append-only log).
     const extended = await homeworkService.grantExtension(scopeA1, adminAId, {
-      id: excuseTargetId,
+      id: scratchSaId,
       sectionId: section6aId,
       subjectId: subjectMathId,
       newDueAt: dueInDays(10),
@@ -569,10 +591,6 @@ describe("homework / assignments (slice A)", () => {
       extended.effectiveDueAt.getTime(),
     );
   });
-
-  // -------------------------------------------------------------------------
-  // Post-publish integrity + lifecycle
-  // -------------------------------------------------------------------------
 
   it("a material edit after publish snapshots a revision; cancel is a status, never a delete", async () => {
     const edited = await homeworkService.updateAssignment(scopeA1, adminAId, {
