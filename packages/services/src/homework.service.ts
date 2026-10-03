@@ -252,14 +252,14 @@ export class HomeworkService {
       );
 
     const schoolDefault = rows.find((r) => r.classId === null) ?? null;
-    const classOverride = classId
-      ? (rows.find((r) => r.classId === classId) ?? null)
-      : null;
+    // A class override row is a COMPLETE config row (the admin form saves it
+    // whole), so when one exists it wins entirely — no field-by-field merge,
+    // which would silently mix the override with stale default values.
+    const winner = (classId ? rows.find((r) => r.classId === classId) : null) ?? schoolDefault;
 
     const merged = {
       ...PLATFORM_DEFAULT_SETTINGS,
-      ...(schoolDefault ?? {}),
-      ...(classOverride ?? {}),
+      ...(winner ?? {}),
     };
     // These three are identity columns, not settings — drop whatever the
     // spread dragged in so the shape matches the contract's effective schema.
