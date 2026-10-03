@@ -13,7 +13,12 @@ export const RESOURCE_ACTIONS = {
   attendance: ["create", "read", "update", "delete", "export"],
   marks: ["create", "read", "update", "delete", "verify", "publish", "export"],
   report_card: ["read", "publish", "export"],
-  homework: ["create", "read", "update", "delete"],
+  // Homework/assignments (ADR-039). `grade` is its own action — evaluating a
+  // student's homework is a distinct act from authoring one — and `comment`
+  // covers the class Q&A / private threads (NOT subject-gated: conversation,
+  // not subject content). Settings and rubrics are school configuration and
+  // ride school_settings:*.
+  homework: ["create", "read", "update", "delete", "grade", "comment"],
   timetable: ["create", "read", "update", "delete"],
   syllabus: ["create", "read", "update", "delete"],
 
@@ -209,4 +214,6 @@ export const SUBJECT_GATED_WRITES: ReadonlySet<Permission> = new Set([
   "homework:create",
   "homework:update",
   "homework:delete",
+  // Grading answers a section+subject fact exactly like entering marks does.
+  "homework:grade",
 ] satisfies Permission[]);

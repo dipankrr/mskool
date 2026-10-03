@@ -26,6 +26,10 @@ export * from "./contracts/subject.contract";
 // who teaches what where — the fact checkSubjectAccess reads (ADR-012).
 export * from "./contracts/assignment.contract";
 
+// Homework/assignments: settings, rubrics, the assignment lifecycle,
+// submissions, evaluations, comments, and the portal's family door. ADR-039.
+export * from "./contracts/homework.contract";
+
 
 
 

@@ -907,6 +907,94 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
     message:
       "That branch is not in your organisation. Choose a branch you work in.",
   },
+
+  // -------------------------------------------------------------------------
+  // The homework/assignments domain (homework.service.ts, ADR-039). These are
+  // workflow refusals the parent/teacher acts on directly, so the wordings
+  // pass through deliberately close to the service's own sentences.
+  // -------------------------------------------------------------------------
+  {
+    match: /^The submission window closed/i,
+    code: "BAD_REQUEST",
+    message: "The submission window for this homework has closed.",
+  },
+  {
+    match: /^Late submissions are not allowed/i,
+    code: "BAD_REQUEST",
+    message: "This homework does not accept late submissions.",
+  },
+  {
+    match: /^This assignment does not accept resubmissions/i,
+    code: "BAD_REQUEST",
+    message: "This homework does not accept another submission.",
+  },
+  {
+    match: /^This assignment does not accept that submission type/i,
+    code: "BAD_REQUEST",
+    message:
+      "This homework does not accept that kind of response. Check what the teacher asked for.",
+  },
+  {
+    match: /^This assignment is not open for submissions/i,
+    code: "BAD_REQUEST",
+    message: "This homework is not open for submissions.",
+  },
+  {
+    match: /^This student was excused/i,
+    code: "BAD_REQUEST",
+    message: "This student was excused from the homework.",
+  },
+  {
+    match: /per-day limit/i,
+    code: "CONFLICT",
+    message:
+      "This class already has its limit of homework due that day. Move the due date.",
+  },
+  {
+    match: /^This school does not allow homework due on a weekend/i,
+    code: "BAD_REQUEST",
+    message: "This school does not set homework due on weekends. Pick a weekday.",
+  },
+  {
+    match: /^There is nothing to review yet/i,
+    code: "BAD_REQUEST",
+    message: "Nothing has been submitted to review yet.",
+  },
+  {
+    match: /^This student already has work on record/i,
+    code: "CONFLICT",
+    message: "This student already submitted work — grade it instead of excusing.",
+  },
+  {
+    match: /^An excused student is not graded/i,
+    code: "BAD_REQUEST",
+    message: "This student was excused — there is nothing to grade.",
+  },
+  {
+    match: /^The score cannot exceed the maximum/i,
+    code: "BAD_REQUEST",
+    message: "The score is above this homework's maximum.",
+  },
+  {
+    match: /^Only a published assignment can be graded/i,
+    code: "BAD_REQUEST",
+    message: "Publish the homework before grading it.",
+  },
+  {
+    match: /^The named section\/subject do not match/i,
+    code: "BAD_REQUEST",
+    message: "The section or subject named does not match this homework.",
+  },
+  {
+    match: /^Student assignment not found/i,
+    code: "NOT_FOUND",
+    message: "That student's homework could not be found.",
+  },
+  {
+    match: /^A (draft|scheduled|published|closed|cancelled) assignment/i,
+    code: "BAD_REQUEST",
+    message: "That homework is in a state where this action is not possible.",
+  },
 ];
 
 // ---------------------------------------------------------------------------

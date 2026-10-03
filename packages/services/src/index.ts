@@ -24,6 +24,10 @@ export * from "./subject.service";
 // who teaches what where — the fact checkSubjectAccess reads (ADR-012).
 export * from "./assignment.service";
 
+// Homework/assignments: the daily homework-diary domain — settings, rubrics,
+// the assignment lifecycle, submissions, evaluations, the family door. ADR-039.
+export * from "./homework.service";
+
 
 
 // Terms: the subdivisions of an academic year — the school-level time slices
@@ -84,3 +88,7 @@ export * from "./storage.service";
 // ID cards: template CRUD, the starter-design adopt, and the card-data
 // resolver the print page renders against. Slice 2a.
 export * from "./idcard.service";
+
+// Homework/assignments: the daily homework-diary domain — settings, rubrics,
+// the assignment lifecycle, submissions, evaluations, the family door. ADR-039.
+export * from "./homework.service";

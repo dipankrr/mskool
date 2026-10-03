@@ -8,6 +8,7 @@ import { enrollmentRouter, portalRouter } from "./routers/enrollment.router";
 import { examRouter, portalExamRouter } from "./routers/exam.router";
 import { feesRouter } from "./routers/fees.router";
 import { guardianRouter } from "./routers/guardian.router";
+import { homeworkRouter, portalHomeworkRouter } from "./routers/homework.router";
 import { idCardRouter } from "./routers/id_card.router";
 import { meRouter } from "./routers/me.router";
 import { portalAccessRouter } from "./routers/portal-access.router";
@@ -75,6 +76,13 @@ export const appRouter = router({
   // idCard.cardData — the server-resolved payload the print page renders
   // against, gated id_card:print. Photos ride the student router.
   idCard: idCardRouter,
+  // Homework/assignments (ADR-039): homework.settings/rubrics (school
+  // configuration), homework.create/update/publish/cancel/close,
+  // homework.students.* (the grading grid, evaluate/extend/excuse), and
+  // homework.comments — plus the family door, portalHomework.* (ownership
+  // only: list/get/submit/acknowledge/comments).
+  homework: homeworkRouter,
+  portalHomework: portalHomeworkRouter,
 });
 
 
