@@ -1667,3 +1667,78 @@ future designer — wants a URL that does not change when the backend does.
 signed object URLs (everything is session-authenticated), the school logo
 upload surface (the `logo` element accepts an `assetId`; the screen that
 uploads a school logo is a 2b+ concern), and any quota/usage accounting.
+
+## ADR-039 — The homework/assignments domain: resolution, snapshots, and the answer-key boundary
+
+Date: 2026-10-03. Status: accepted. Ported from `docs/reference/assignment/06+07`.
+
+The daily homework-diary domain lands as the `homework.*` tRPC namespace (the
+`assignment.*` namespace was already taken by the teaching-assignment layer of
+Phase 2 — subject mappings and teacher staffing are a DIFFERENT domain; the
+shared `homework:*` permission vocabulary predates both). Two slices: A
+(settings, rubrics, the assignment lifecycle, submissions, evaluations,
+comments, acknowledgements, the family door) and B (question bank, the
+per-assignment snapshot, attempts, auto-grading).
+
+**1. The resolution moment.** `assignments` (authored) never reaches a student
+directly. Publishing resolves the target sections' ACTIVE enrollments into
+`student_assignments` rows with deadlines snapshotted — and that table is THE
+authoritative per-student record; every other module (portal, future summary
+jobs) reads only it. Resolution happens once, at publish: late joiners do NOT
+get rows (the elective/backfill machinery of the reference's
+`student_subject_enrollments` does not exist yet — `is_backfilled` /
+`counts_toward_stats` are reserved in the schema). Publish-time caps
+(`max_assignments_per_day`, weekends) are checked against the class's
+EFFECTIVE settings (class override wins WHOLE over the school default — an
+override row is a complete config row, not a field patch; a field-by-field
+merge would mix the override with stale defaults).
+
+**2. The snapshot and the lock.** Question sets are FROZEN COPIES
+(`assignment_questions`), written when attached; editing the bank never
+changes a live assignment. The set locks (`assignments.is_locked`) on the
+FIRST attempt — after that, not even the author can swap questions. Material
+edits to a published assignment (title/body/dates/resources/question set)
+snapshot the pre-image into `assignment_revisions` first; drafts edit freely.
+
+**3. The answer-key boundary.** `correct_answer` and option `is_correct`
+never cross into a student session. Every family-facing read goes through an
+explicit stripping step (`getStudentQuestionSet`), and correctness/marks reach
+the family only through the attempt-result view, gated by the assignment's
+`show_score` / `show_answers` / `show_explanations` policies (column defaults
+are the policy when a school never saved a settings row). This is enforced by
+SHAPE, not by discipline: the student read model's schema has no key fields.
+
+**4. Grading.** Auto-grading covers mcq_single/mcq_multi, true_false, numeric
+(tolerance), fill_blank (accepted-answer list), match (order-insensitive
+pairs); short/long answers and file uploads always flag
+`needs_manual_review`. When nothing needs a human, the submitted attempt
+writes its own `is_auto` evaluation immediately (the family sees the score at
+once); otherwise the teacher's per-answer grades finalize the attempt, and
+the evaluation is written through the attempt-scoring policy's selection
+(best/latest/first). Evaluations are append-only with `is_current` flipping;
+the denormalised columns on `student_assignments` always mirror the current
+row. Scores here NEVER feed exams or report cards. Submissions (the
+free-form text/file/link channel) are versioned and immutable; the late rule
+is exactly two sentences: past `effective_close_at` is never submittable,
+past `effective_due_at` only when the policy allows.
+
+**5. Permissions.** `homework:create/update/delete` were already
+subject-gated (ADR-029) — the teaching role must hold the (section, subject)
+fact; admin roles pass on scope. Two actions joined the vocabulary:
+`homework:grade` (evaluating a student — subject-gated for the same reason)
+and `homework:comment` (the Q&A threads — conversation, NOT subject content,
+so not gated). Settings and rubrics are school configuration and ride the
+existing `school_settings:read/update`. Row-addressed subject-gated routes
+ALSO carry `sectionId`+`subjectId`, and the service verifies the pair
+describes the row — otherwise a teacher's legitimate gate fact on one pair
+could edit or grade a stranger's row on another.
+
+**6. Adaptations from the reference SQL** (deviations, all deliberate):
+uuid PKs; `organizationId` + `schoolId` on every table for `scopeWhere` (hard
+rule 1); file references point at `storage_objects` (ADR-038), not a `files`
+table; statuses are pgEnums in lowercase house style; v1 targeting is one
+section per assignment at the ROUTER (the `assignment_targets` table already
+supports multi-section and individual students); group projects, the
+`student_assignment_summary` aggregation job, the background worker (Missing
+sweeping, scheduled publishing, reminders), and recurring series remain
+schema-only deferrals.
