@@ -6,8 +6,6 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
-## ▶ Resume here
-
 **HOMEWORK / ASSIGNMENTS — BACKEND COMPLETE ON `feature/assignments` (2026-10-03, ADR-039). 6 commits, backend-only per owner instruction. The whole 26-table domain (06+07 reference SQL) is served: slice A (settings, rubrics, lifecycle, submissions, evaluations, comments, acknowledgements, family door) and slice B (question bank, snapshot, attempts, AUTO-GRADING with reveal policies, teacher manual grading).**
 
 Namespacing: the tRPC namespace is `homework.*` / `portalHomework.*` — `assignment.*` was already the teaching-assignment layer (a different domain). Authz: two new actions, `homework:grade` (subject-gated like marks:create) and `homework:comment` (NOT gated — conversation, not subject content); settings + rubrics ride `school_settings:read/update`. **Existing orgs need `pnpm db:seed` (the A-025 permission backfill) + a Redis auth-cache invalidation before the new routes answer for non-org_admin roles.** Migration 0026 (26 tables) — drizzle-kit emits uncast text[] defaults for enum arrays; 0026 carries the `::assignment_submission_type[]` casts, keep them if regenerated.
