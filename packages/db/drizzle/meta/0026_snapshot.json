@@ -16150,7 +16150,7 @@
           "typeSchema": "public",
           "primaryKey": false,
           "notNull": true,
-          "default": "ARRAY['none','tick','offline','text','file','link','questions']"
+          "default": "ARRAY['none','tick','offline','text','file','link','questions']::assignment_submission_type[]"
         },
         "students_can_submit": {
           "name": "students_can_submit",
@@ -16643,7 +16643,7 @@
           "typeSchema": "public",
           "primaryKey": false,
           "notNull": true,
-          "default": "ARRAY['none']"
+          "default": "ARRAY['none']::assignment_submission_type[]"
         },
         "grading_mode": {
           "name": "grading_mode",

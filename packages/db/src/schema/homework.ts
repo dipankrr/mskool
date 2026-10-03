@@ -211,7 +211,9 @@ export const assignmentSettings = pgTable(
     allowedSubmissionTypes: submissionTypeEnum()
       .array()
       .notNull()
-      .default(sql`ARRAY['none','tick','offline','text','file','link','questions']`),
+      .default(
+        sql`ARRAY['none','tick','offline','text','file','link','questions']::assignment_submission_type[]`,
+      ),
     studentsCanSubmit: boolean().notNull().default(true),
     parentsCanSubmit: boolean().notNull().default(true),
 
@@ -385,7 +387,7 @@ export const assignments = pgTable(
     submissionTypes: submissionTypeEnum()
       .array()
       .notNull()
-      .default(sql`ARRAY['none']`),
+      .default(sql`ARRAY['none']::assignment_submission_type[]`),
     gradingMode: assignmentGradingModeEnum().notNull().default("none"),
     maxMarks: numeric({ precision: 7, scale: 2 }),
     gradingScaleId: uuid().references(() => gradingScales.id),
