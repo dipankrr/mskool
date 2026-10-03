@@ -2819,7 +2819,376 @@ async function main() {
     .where(eq(roleAssignments.userId, principalUser.id));
   await invalidateUserAuthCache(principalUser.id);
 
-  console.log(
+    // -------------------------------------------------------------------------
+  // HOMEWORK / ASSIGNMENTS over the wire (ADR-039): the permission matrix,
+  // the subject-gate refusals, the family submit, and the answer-key
+  // boundary — all through real HTTP against the seeded demo trust.
+  // -------------------------------------------------------------------------
+  console.log("\n── Homework (ADR-039) ──\n");
+
+  const hwAdminCookie = await signIn(ADMIN_EMAIL);
+  const hwPrincipalCookie = await signIn(PRINCIPAL_EMAIL);
+  const hwSubjectTeacherCookie = await signIn(SUBJECT_TEACHER_EMAIL);
+
+  const [subjectMath] = await db
+    .select()
+    .from(subjects)
+    .where(and(eq(subjects.schoolId, schoolA.id), eq(subjects.name, "Mathematics")));
+  const [demoStudent] = await db
+    .select()
+    .from(students)
+    .where(eq(students.admissionNumber, "DEMO-0001"));
+  const [demoEnrollment] = await db
+    .select()
+    .from(studentEnrollments)
+    .where(
+      and(
+        eq(studentEnrollments.studentId, demoStudent!.id),
+        eq(studentEnrollments.academicYearId, currentYearA.id),
+      ),
+    );
+  if (!subjectMath || !demoStudent || !demoEnrollment?.sectionId) {
+    throw new Error("Homework smoke fixtures missing — run the seed first.");
+  }
+  const hwSectionId = demoEnrollment!.sectionId;
+  const hwStudentId = demoStudent!.id;
+
+  const dueIn = (hours: number) =>
+    new Date(Date.now() + hours * 3600_000).toISOString();
+
+  // The configuration surface rides school_settings (admin edits, a
+  // librarian without the permission is refused).
+  const settingsGet = await query(hwAdminCookie, "homework.settings.get", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+  });
+  report(
+    "homework.settings.get (org_admin)",
+    settingsGet.ok && typeof settingsGet.data?.maxFilesPerSubmission === "number",
+    settingsGet.ok ? "effective settings returned" : settingsGet.code,
+  );
+  const hwLibrarianCookie = await signIn(LIBRARIAN_EMAIL);
+  const settingsForbidden = await query(hwLibrarianCookie, "homework.settings.get", {
+    organizationId: organization.id,
+    schoolId: schoolA.id,
+  });
+  report(
+    "homework.settings.get (librarian) is FORBIDDEN",
+    !settingsForbidden.ok && settingsForbidden.code === "FORBIDDEN",
+    settingsForbidden.code ?? "unexpected success",
+  );
+
+  // The principal holds homework:read/grade/comment but NOT create —
+  // authoring homework is the teaching staff's act in the defaults.
+  const principalCreate = await mutate(hwPrincipalCookie, "homework.create", {
+    organizationId: organization.id,
+    sectionId: hwSectionId,
+    subjectId: subjectMath.id,
+    academicYearId: currentYearA.id,
+    title: "SMOKE principal must not author",
+    submissionTypes: ["text"],
+    gradingMode: "none",
+    dueAt: dueIn(48),
+  });
+  report(
+    "homework.create (principal) is FORBIDDEN",
+    !principalCreate.ok && principalCreate.code === "FORBIDDEN",
+    principalCreate.code ?? "unexpected success",
+  );
+
+  // The subject teacher authors for her OWN (section, subject) — the gate
+  // pair — and publishes; the audience resolves into student assignments.
+  const teacherCreate = await mutate(hwSubjectTeacherCookie, "homework.create", {
+    organizationId: organization.id,
+    sectionId: hwSectionId,
+    subjectId: subjectMath.id,
+    academicYearId: currentYearA.id,
+    title: "SMOKE math worksheet",
+    submissionTypes: ["text"],
+    gradingMode: "marks",
+    maxMarks: "10",
+    dueAt: dueIn(48),
+  });
+  report(
+    "homework.create (subject_teacher, own pair)",
+    teacherCreate.ok && teacherCreate.data?.status === "draft",
+    teacherCreate.ok ? teacherCreate.data?.id : teacherCreate.message,
+  );
+  const teacherAssignmentId = teacherCreate.data?.id as string | undefined;
+
+  // The same teacher pointing at a section she is not staffed for: the scope
+  // refusal, not a validation error.
+  const [otherSection] = await db
+    .select({ id: sections.id })
+    .from(sections)
+    .where(
+      and(
+        eq(sections.schoolId, schoolA.id),
+        ne(sections.id, hwSectionId),
+      ),
+    )
+    .limit(1);
+  if (otherSection) {
+    const foreignSectionCreate = await mutate(hwSubjectTeacherCookie, "homework.create", {
+      organizationId: organization.id,
+      sectionId: otherSection.id,
+      subjectId: subjectMath.id,
+      academicYearId: currentYearA.id,
+      title: "SMOKE must not reach other sections",
+      submissionTypes: ["text"],
+      gradingMode: "none",
+      dueAt: dueIn(48),
+    });
+    report(
+      "homework.create (subject_teacher, other section) is FORBIDDEN",
+      !foreignSectionCreate.ok && foreignSectionCreate.code === "FORBIDDEN",
+      foreignSectionCreate.code ?? "unexpected success",
+    );
+  }
+
+  const teacherPublish = await mutate(hwSubjectTeacherCookie, "homework.publish", {
+    organizationId: organization.id,
+    id: teacherAssignmentId,
+    sectionId: hwSectionId,
+    subjectId: subjectMath.id,
+  });
+  report(
+    "homework.publish (subject_teacher) resolves the audience",
+    teacherPublish.ok && teacherPublish.data?.status === "published",
+    teacherPublish.ok ? "published" : teacherPublish.message,
+  );
+
+  const studentsList = await query(hwSubjectTeacherCookie, "homework.students.list", {
+    organizationId: organization.id,
+    id: teacherAssignmentId,
+  });
+  report(
+    "homework.students.list shows the resolved rows",
+    studentsList.ok && Array.isArray(studentsList.data) && studentsList.data.length >= 1,
+    studentsList.ok ? `${studentsList.data?.length} row(s)` : studentsList.code,
+  );
+
+  // The admin builds a QUESTION-SET assignment for the demo student's class.
+  const quizCreate = await mutate(hwAdminCookie, "homework.create", {
+    organizationId: organization.id,
+    sectionId: hwSectionId,
+    subjectId: subjectMath.id,
+    academicYearId: currentYearA.id,
+    title: "SMOKE quiz",
+    submissionTypes: ["questions"],
+    gradingMode: "none",
+    dueAt: dueIn(72),
+  });
+  const quizId = quizCreate.data?.id as string | undefined;
+  const questionsSet = await mutate(hwAdminCookie, "homework.questions.set", {
+    organizationId: organization.id,
+    id: quizId,
+    sectionId: hwSectionId,
+    subjectId: subjectMath.id,
+    questions: [
+      {
+        position: 1,
+        questionType: "mcq_single",
+        body: "SMOKE: 2+2 = ?",
+        options: [
+          { optionText: "4", isCorrect: true, sortOrder: 0 },
+          { optionText: "5", isCorrect: false, sortOrder: 1 },
+        ],
+        marks: "2",
+      },
+      {
+        position: 2,
+        questionType: "short_answer",
+        body: "SMOKE: name one triangle type.",
+        marks: "3",
+      },
+    ],
+  });
+  report(
+    "homework.questions.set (org_admin)",
+    questionsSet.ok && Array.isArray(questionsSet.data) && questionsSet.data.length === 2,
+    questionsSet.ok ? "snapshot written" : questionsSet.message,
+  );
+  const quizPublish = await mutate(hwAdminCookie, "homework.publish", {
+    organizationId: organization.id,
+    id: quizId,
+    sectionId: hwSectionId,
+    subjectId: subjectMath.id,
+  });
+  report(
+    "homework.publish (quiz)",
+    quizPublish.ok && quizPublish.data?.status === "published",
+    quizPublish.ok ? "published" : quizPublish.message,
+  );
+
+  // THE FAMILY DOOR, over HTTP: the seeded family login (must_change_password
+  // set — the flag is a UI gate, never a tRPC one).
+  const { cookie: familyCookie } = await signInUsername("9800000001", SEED_PASSWORD);
+  if (!familyCookie) throw new Error("Family sign-in failed — has the seed armed the demo phone?");
+  const familyList = await query(familyCookie, "portalHomework.list", {
+    studentId: hwStudentId,
+  });
+  report(
+    "portalHomework.list (family login)",
+    familyList.ok && Array.isArray(familyList.data) && familyList.data.length >= 2,
+    familyList.ok ? `${familyList.data?.length} item(s)` : familyList.code,
+  );
+
+  // The family MUST NOT be able to address another child's homework: an
+  // invented studentAssignmentId answers NOT_FOUND.
+  const familyForeign = await query(familyCookie, "portalHomework.get", {
+    studentAssignmentId: "00000000-0000-4000-8000-000000000000",
+  });
+  report(
+    "portalHomework.get (foreign id) is empty",
+    familyForeign.ok && familyForeign.data === null,
+    familyForeign.ok ? "null" : familyForeign.code,
+  );
+
+  // Attempt lifecycle over the wire + THE ANSWER-KEY BOUNDARY at the
+  // transport layer: the in-flight view must not carry the key.
+  const familyQuizItem = (familyList.data as any[]).find(
+    (item) => item.assignmentId === quizId,
+  );
+  const attemptStart = await mutate(familyCookie, "portalHomework.attempts.start", {
+    studentAssignmentId: familyQuizItem?.studentAssignmentId,
+  });
+  report(
+    "portalHomework.attempts.start (family)",
+    attemptStart.ok && typeof attemptStart.data?.attemptNo === "number",
+    attemptStart.ok ? `attempt ${attemptStart.data?.attemptNo}` : attemptStart.message,
+  );
+  const attemptView = await query(
+    familyCookie,
+    "portalHomework.attempts.get",
+    { attemptId: attemptStart.data?.attemptId },
+  );
+  const attemptJson = JSON.stringify(attemptView.data ?? {});
+  report(
+    "the attempt view carries NO answer key over the wire",
+    attemptView.ok &&
+      !attemptJson.includes("isCorrect") &&
+      !attemptJson.includes("correctAnswer") &&
+      !attemptJson.includes("explanation"),
+    attemptView.ok ? "key absent" : attemptView.code,
+  );
+  const quizQuestionIds = ((questionsSet.data ?? []) as any[]).map((q) => q.id);
+  const saveMcq = await mutate(familyCookie, "portalHomework.attempts.saveAnswer", {
+    attemptId: attemptStart.data?.attemptId,
+    assignmentQuestionId: quizQuestionIds[0],
+    answer: { option_ids: [1] },
+  });
+  const saveShort = await mutate(familyCookie, "portalHomework.attempts.saveAnswer", {
+    attemptId: attemptStart.data?.attemptId,
+    assignmentQuestionId: quizQuestionIds[1],
+    answer: { text: "right-angled" },
+  });
+  report(
+    "portalHomework.attempts.saveAnswer (family)",
+    saveMcq.ok && saveShort.ok,
+    saveMcq.ok ? "both saved" : saveMcq.message ?? saveShort.message,
+  );
+  const attemptSubmit = await mutate(familyCookie, "portalHomework.attempts.submit", {
+    attemptId: attemptStart.data?.attemptId,
+  });
+  report(
+    "portalHomework.attempts.submit auto-grades the MCQ and flags the rest",
+    attemptSubmit.ok && attemptSubmit.data?.needsManualReview === true,
+    attemptSubmit.ok
+      ? `total ${attemptSubmit.data?.totalScore} / needsManualReview`
+      : attemptSubmit.message,
+  );
+  const resultView = await query(
+    familyCookie,
+    "portalHomework.attempts.result",
+    { attemptId: attemptStart.data?.attemptId },
+  );
+  report(
+    "the result reveals the score but withholds the key (after_close policy)",
+    resultView.ok &&
+      resultView.data?.scoreVisible === true &&
+      resultView.data?.answersVisible === false &&
+      !JSON.stringify(resultView.data).includes("correctOptionIds"),
+    resultView.ok ? "policy honoured" : resultView.code,
+  );
+
+  // The teacher's manual pass finalizes the attempt over the wire.
+  const staffAttempts = await query(hwAdminCookie, "homework.students.attempts.list", {
+    organizationId: organization.id,
+    id: familyQuizItem?.studentAssignmentId,
+  });
+  const manualAnswer = staffAttempts.data?.[0]?.answers?.find(
+    (a: any) => a.needsManualReview,
+  );
+  const gradeAnswer = await mutate(
+    hwAdminCookie,
+    "homework.students.attempts.gradeAnswer",
+    {
+      organizationId: organization.id,
+      id: attemptStart.data?.attemptId,
+      sectionId: hwSectionId,
+      subjectId: subjectMath.id,
+      answerId: manualAnswer?.id,
+      marksAwarded: "2.5",
+      feedback: "Good.",
+    },
+  );
+  report(
+    "homework.students.attempts.gradeAnswer finalizes the attempt",
+    gradeAnswer.ok && gradeAnswer.data?.fullyGraded === true,
+    gradeAnswer.ok ? `total ${gradeAnswer.data?.totalScore}` : gradeAnswer.message,
+  );
+
+  // The free-form family submit on the teacher's assignment, then the grade.
+  const familyMathItem = (familyList.data as any[]).find(
+    (item) => item.assignmentId === teacherAssignmentId,
+  );
+  const familySubmit = await mutate(familyCookie, "portalHomework.submit", {
+    studentAssignmentId: familyMathItem?.studentAssignmentId,
+    bodyText: "SMOKE: my homework, submitted over HTTP.",
+  });
+  report(
+    "portalHomework.submit (family login)",
+    familySubmit.ok && familySubmit.data?.versionNo === 1,
+    familySubmit.ok ? `version ${familySubmit.data?.versionNo}` : familySubmit.message,
+  );
+
+  // The teacher grades the submission over the wire — within the maximum.
+  const teacherEvaluate = await mutate(
+    hwSubjectTeacherCookie,
+    "homework.students.evaluate",
+    {
+      organizationId: organization.id,
+      id: familyMathItem?.studentAssignmentId,
+      sectionId: hwSectionId,
+      subjectId: subjectMath.id,
+      outcome: "reviewed",
+      marks: "8",
+      feedback: "SMOKE feedback",
+    },
+  );
+  report(
+    "homework.students.evaluate (subject_teacher)",
+    teacherEvaluate.ok && teacherEvaluate.data?.status === "reviewed",
+    teacherEvaluate.ok ? "reviewed" : teacherEvaluate.message,
+  );
+
+  // An over-maximum score is refused in words, not a 500.
+  const overMax = await mutate(hwSubjectTeacherCookie, "homework.students.evaluate", {
+    organizationId: organization.id,
+    id: familyMathItem?.studentAssignmentId,
+    sectionId: hwSectionId,
+    subjectId: subjectMath.id,
+    outcome: "reviewed",
+    marks: "11",
+  });
+  report(
+    "an over-maximum grade is BAD_REQUEST, never a 500",
+    !overMax.ok && overMax.code === "BAD_REQUEST",
+    overMax.code ?? "unexpected success",
+  );
+
+console.log(
     `\n${failures === 0 ? "All" : `${checks - failures}/${checks}`} checks passed${
       failures ? ` — ${failures} FAILED` : ""
     }.\n`,

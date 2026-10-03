@@ -162,7 +162,6 @@ export const homeworkRouter = router({
 
   update: staffProcedure("homework:update", {
     subjectGate: true,
-    resolveOwner: resolveAssignmentOwner,
   })
     .meta({ openapi: { method: "PATCH", path: "/homework/{id}", tags: ["homework"], summary: "Edit an assignment (revision-snapshotted after publish)", protect: true } })
     .input(updateAssignmentInput)
@@ -171,7 +170,6 @@ export const homeworkRouter = router({
 
   publish: staffProcedure("homework:update", {
     subjectGate: true,
-    resolveOwner: resolveAssignmentOwner,
   })
     .meta({ openapi: { method: "POST", path: "/homework/{id}/publish", tags: ["homework"], summary: "Publish — resolve the audience into student assignments", protect: true } })
     .input(z.object({ id: z.uuid(), sectionId: z.uuid(), subjectId: z.uuid() }))
@@ -180,7 +178,6 @@ export const homeworkRouter = router({
 
   cancel: staffProcedure("homework:update", {
     subjectGate: true,
-    resolveOwner: resolveAssignmentOwner,
   })
     .meta({ openapi: { method: "POST", path: "/homework/{id}/cancel", tags: ["homework"], summary: "Cancel an assignment", protect: true } })
     .input(cancelAssignmentInput)
@@ -191,7 +188,6 @@ export const homeworkRouter = router({
 
   close: staffProcedure("homework:update", {
     subjectGate: true,
-    resolveOwner: resolveAssignmentOwner,
   })
     .meta({ openapi: { method: "POST", path: "/homework/{id}/close", tags: ["homework"], summary: "Close submissions", protect: true } })
     .input(z.object({ id: z.uuid(), sectionId: z.uuid(), subjectId: z.uuid() }))
@@ -250,7 +246,6 @@ export const homeworkRouter = router({
   questions: router({
     set: staffProcedure("homework:update", {
       subjectGate: true,
-      resolveOwner: resolveAssignmentOwner,
     })
       .meta({ openapi: { method: "PUT", path: "/homework/{id}/questions", tags: ["homework"], summary: "Attach / replace the snapshotted question set", protect: true } })
       .input(setAssignmentQuestionsInput)
@@ -301,7 +296,6 @@ export const homeworkRouter = router({
 
     evaluate: staffProcedure("homework:grade", {
       subjectGate: true,
-      resolveOwner: resolveStudentAssignmentOwner,
     })
       .meta({ openapi: { method: "POST", path: "/homework/students/{id}/evaluate", tags: ["homework"], summary: "Grade / verify / request resubmit (append-only)", protect: true } })
       .input(evaluateStudentAssignmentInput)
@@ -313,7 +307,6 @@ export const homeworkRouter = router({
 
     extend: staffProcedure("homework:update", {
       subjectGate: true,
-      resolveOwner: resolveStudentAssignmentOwner,
     })
       .meta({ openapi: { method: "POST", path: "/homework/students/{id}/extend", tags: ["homework"], summary: "Grant a deadline extension (append-only)", protect: true } })
       .input(grantExtensionInput)
@@ -325,7 +318,6 @@ export const homeworkRouter = router({
 
     excuse: staffProcedure("homework:update", {
       subjectGate: true,
-      resolveOwner: resolveStudentAssignmentOwner,
     })
       .meta({ openapi: { method: "POST", path: "/homework/students/{id}/excuse", tags: ["homework"], summary: "Excuse a student from the assignment", protect: true } })
       .input(excuseStudentAssignmentInput)
@@ -349,7 +341,6 @@ export const homeworkRouter = router({
 
       gradeAnswer: staffProcedure("homework:grade", {
         subjectGate: true,
-        resolveOwner: resolveAttemptOwner,
       })
         .meta({ openapi: { method: "POST", path: "/homework/students/attempts/{id}/grade-answer", tags: ["homework"], summary: "Grade one manual answer; finalizes when done", protect: true } })
         .input(gradeAttemptAnswerInput)

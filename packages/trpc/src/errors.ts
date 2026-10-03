@@ -995,6 +995,28 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
     code: "BAD_REQUEST",
     message: "That homework is in a state where this action is not possible.",
   },
+  {
+    // The section-gated mutations resolve the row in the service now, so the
+    // not-found / wrong-state refusals arrive as these messages.
+    match: /^Assignment not found, or already closed\/cancelled/i,
+    code: "NOT_FOUND",
+    message: "That homework could not be found.",
+  },
+  {
+    match: /^Assignment not found, or not open for closing/i,
+    code: "NOT_FOUND",
+    message: "That homework could not be found.",
+  },
+  {
+    match: /^Attempt not found in this school/i,
+    code: "NOT_FOUND",
+    message: "That attempt could not be found.",
+  },
+  {
+    match: /^That answer is not part of this attempt/i,
+    code: "NOT_FOUND",
+    message: "That answer could not be found.",
+  },
 ];
 
 // ---------------------------------------------------------------------------
