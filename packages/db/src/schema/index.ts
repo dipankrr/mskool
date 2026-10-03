@@ -35,3 +35,8 @@ export * from "./storage";
 
 // ID cards: per-school student ID card templates. Slice 2a.
 export * from "./idcard";
+
+// Homework/assignments: settings + rubrics → assignments → targets →
+// student_assignments → submissions → evaluations; the question bank and
+// attempt layers. ADR-039.
+export * from "./homework";
