@@ -888,6 +888,34 @@ export class HomeworkService {
     });
   }
 
+  /**
+   * The SWEEPER's publish path (ADR-040): a scheduled assignment whose
+   * publish_at has arrived, published by the system rather than a caller.
+   * It resolves the row's own tenancy into a school-level scope and reuses
+   * publishAssignment unchanged — "publish at 8am by the clock" and
+   * "publish now by the teacher" are the same code. Returns null when the
+   * row is not in a publishable state (a race with a teacher who cancelled
+   * it first); refusals throw, and the worker catches them per assignment.
+   */
+  async publishScheduledAssignment(assignmentId: string) {
+    const [row] = await db
+      .select({
+        organizationId: assignments.organizationId,
+        schoolId: assignments.schoolId,
+        status: assignments.status,
+      })
+      .from(assignments)
+      .where(eq(assignments.id, assignmentId));
+    if (!row || row.status !== "scheduled") return null;
+    const scope: DataScope = {
+      organizationId: row.organizationId,
+      schoolId: row.schoolId,
+      classId: null,
+      sectionId: null,
+    };
+    return this.publishAssignment(scope, "system:homework-sweeper", assignmentId);
+  }
+
   /** Cancel — nothing is deleted; open rows keep their history. */
   async cancelAssignment(scope: DataScope, userId: string, assignmentId: string, reason: string) {
     const schoolId = requireSchoolId(scope);

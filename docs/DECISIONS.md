@@ -1742,3 +1742,53 @@ supports multi-section and individual students); group projects, the
 `student_assignment_summary` aggregation job, the background worker (Missing
 sweeping, scheduled publishing, reminders), and recurring series remain
 schema-only deferrals.
+
+## ADR-040 — The homework sweeper: time-driven transitions without a queue
+
+Date: 2026-10-03. Status: accepted. Amends ADR-039 (implements its recorded
+worker deferral).
+
+Three of the homework domain's state changes are TIME-driven, not
+event-driven: a `scheduled` assignment must publish when `publish_at`
+arrives; rows of a published/closed assignment past `effective_close_at`
+must become `missing`; (later) summaries must rebuild. No HTTP request
+exists to run them, so a sweeper runs on a fixed interval in the Express
+host (`setInterval`, default 60s, `HOMEWORK_WORKER_DISABLED` kill switch —
+disabled by default so test suites that build their own late rows and drive
+the sweeper function directly never race a live tick).
+
+**Design rules, each bought by a proof:**
+
+1. **The sweeper is domain logic in `@repo/services`**, driven by a dumb
+   host loop. The loop owns only the clock, the in-flight guard, and
+   graceful shutdown; every transition lives where the domain lives and is
+   integration-testable without waiting on a timer.
+2. **Idempotency replaces job bookkeeping.** Every transition is a
+   set-based `UPDATE ... WHERE state-and-time clause` (and scheduled
+   publish re-runs the exact `publishAssignment` service, so clock-publish
+   and button-publish are one behavior). Running twice, or after a week of
+   downtime, is correct by construction — the database is the queue.
+3. **The clock is the database's `now()`**, never the app's: the deadline
+   columns were written by Postgres, and N app instances must not disagree
+   about "past due".
+4. **Mutual exclusion is a REDIS LEASE** (`SET NX PX 4min`), not a Postgres
+   advisory lock — this deployment's Postgres sits behind a
+   transaction-pooling proxy where session state (advisory locks included)
+   is not per-client, which a probe proved before the design was chosen.
+   The lease is best-effort BY DESIGN: the sweep is safe to run twice, so a
+   Redis outage degrades to a harmless duplicate sweep, never a skipped
+   sweep. A dead instance's lease lapses; a slow sweep releases only its
+   own holder value.
+5. **Human decisions are inviolable.** The Missing sweep's WHERE touches
+   only `assigned`/`in_progress` rows of PUBLISHED **or CLOSED**
+   assignments (a cancelled assignment's rows are not missed work; a
+   teacher-closed window still is) and excludes `is_backfilled` view-only
+   rows. An extension that outlives the sweep moves `effective_close_at`
+   past the sweep's clock — and `grantExtension` revives a just-missed row
+   anyway.
+6. **Failures degrade.** A refused scheduled publish (per-day cap, vanished
+   section) is logged and retried next tick without poisoning its siblings
+   (each publishes in its own transaction, capped per tick). A failed tick
+   is logged and retried. `/health` carries the sweeper's heartbeat
+   (`lastSweepAt`) because a worker that silently stops is worse than no
+   worker.

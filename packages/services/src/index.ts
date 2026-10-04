@@ -96,3 +96,7 @@ export * from "./homework.service";
 // Homework questions (slice B): the bank, the per-assignment snapshot, the
 // attempt lifecycle and the auto-grading engine.
 export * from "./homework-questions.service";
+
+// Homework sweeper (ADR-040): the time-driven half — Missing after close,
+// scheduled publishing. Idempotent, advisory-locked, DB-clocked.
+export * from "./homework-worker.service";

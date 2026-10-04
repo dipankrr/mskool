@@ -13,6 +13,7 @@ import { openApiDocument } from "./openapi";
 import { feesWebhookRouter } from "./fees-webhook";
 import { mountPortalClaim } from "./portal-claim";
 import { mountStorageRoute } from "./storage";
+import { homeworkWorkerHealth } from "./homework-worker";
 import { env } from "./env";
 
 type Server = import("express").Application;
@@ -214,7 +215,20 @@ export function createServer(): Server {
     }),
   );
 
-  app.get("/health", (_req, res) => res.json({ ok: true }));
+  // Liveness + the sweeper's heartbeat (ADR-040): a worker that silently
+  // stops is worse than no worker, so /health carries when it last swept.
+  // The `ok` field is unchanged — existing consumers keep working.
+  app.get("/health", (_req, res) =>
+    res.json({
+      ok: true,
+      homeworkSweeper: {
+        enabled: env.HOMEWORK_WORKER_DISABLED !== "true",
+        startedAt: homeworkWorkerHealth.startedAt,
+        lastSweepAt: homeworkWorkerHealth.lastSweepAt,
+        lastSummary: homeworkWorkerHealth.lastSummary,
+      },
+    }),
+  );
 
   return app;
 }
