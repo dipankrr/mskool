@@ -1073,12 +1073,20 @@ export class HomeworkQuestionsService {
     const questions = await db
       .select()
       .from(assignmentQuestions)
-      .where(eq(assignmentQuestions.assignmentId, sa.assignmentId));
+      .where(eq(assignmentQuestions.assignmentId, sa.assignmentId))
+      .orderBy(asc(assignmentQuestions.position));
     const questionById = new Map(questions.map((q) => [q.id, q]));
     const answers = await db
       .select()
       .from(questionAttemptAnswers)
       .where(eq(questionAttemptAnswers.attemptId, attempt.id));
+    // Deterministic order: the question's position, never table order.
+    const positionOf = new Map(
+      questions.map((q) => [q.id, q.position] as const),
+    );
+    answers.sort(
+      (x, y) => (positionOf.get(x.assignmentQuestionId) ?? 0) - (positionOf.get(y.assignmentQuestionId) ?? 0),
+    );
 
     return {
       attemptId: attempt.id,
