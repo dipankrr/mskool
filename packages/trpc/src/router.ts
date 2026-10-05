@@ -10,6 +10,7 @@ import { feesRouter } from "./routers/fees.router";
 import { guardianRouter } from "./routers/guardian.router";
 import { homeworkRouter, portalHomeworkRouter } from "./routers/homework.router";
 import { idCardRouter } from "./routers/id_card.router";
+import { publicSiteRouter } from "./routers/public_site.router";
 import { meRouter } from "./routers/me.router";
 import { portalAccessRouter } from "./routers/portal-access.router";
 import { roleRouter } from "./routers/role.router";
@@ -83,6 +84,10 @@ export const appRouter = router({
   // only: list/get/submit/acknowledge/comments).
   homework: homeworkRouter,
   portalHomework: portalHomeworkRouter,
+  // Public sites (ADR-041): publicSite.bySlug is the anonymous door
+  // {slug}.mskool.in renders through (published snapshot only); the rest is
+  // the staff editor track, gated public_site:read/edit/publish.
+  publicSite: publicSiteRouter,
 });
 
 

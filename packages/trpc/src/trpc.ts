@@ -646,6 +646,31 @@ export const studentProcedure = t.procedure
 
 export type StaffDataScope = DataScope;
 
+/**
+ * The PUBLIC track (ADR-041). Anonymous by design: `{slug}.mskool.in` is
+ * read by visitors with no session, so `publicSite.bySlug` cannot sit
+ * behind protectedProcedure. The builder is deliberately narrow about what
+ * that license means:
+ *
+ *  - it carries NO authorization and NO identity — handlers must never
+ *    trust a caller, must never accept ids that select arbitrary rows, and
+ *    must return only payloads that are public by nature (the published
+ *    site snapshot);
+ *  - the service seam it calls (`PublicSiteService.getPublishedBySlug`)
+ *    answers unknown slug / unpublished / inactive with one null, so the
+ *    route cannot be used to probe which orgs have sites;
+ *  - it is NOT a license for future "just read a table" routes — a route
+ *    that wants ungated access to operational data is a leak, not a
+ *    convenience. New public routes join here only with an ADR.
+ *
+ * Named (not a bare `t.procedure` in a router) so `scripts/check:builders`
+ * keeps routers/ free of ad-hoc ungated re-creations.
+ */
+export const publicProcedure = t.procedure
+  // Same seam as the authed builders: the published read touches Postgres,
+  // and an outage must degrade, not leak a connection string.
+  .use(translateErrors);
+
 // ---------------------------------------------------------------------------
 // The health check
 // ---------------------------------------------------------------------------
