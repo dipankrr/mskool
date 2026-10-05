@@ -141,6 +141,11 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "teacher_assignment:create",
     "teacher_assignment:read",
     "teacher_assignment:update",
+    // The org's public website (ADR-041): the principal owns the school's
+    // face to the world — draft, publish, and the editor page.
+    "public_site:read",
+    "public_site:edit",
+    "public_site:publish",
   ],
 
   // Deputises for the principal on academics. No financial approvals and no

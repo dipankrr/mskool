@@ -67,6 +67,11 @@ export const RESOURCE_ACTIONS = {
   // writes stay under `manage`.
   id_card: ["manage", "print"],
 
+  // The org's public website (ADR-041): `edit` owns draft content, `publish`
+  // moves draft → the snapshot `{slug}.mskool.in` serves, `read` is the
+  // editor-page entry (the public site itself is anonymous, never gated).
+  public_site: ["read", "edit", "publish"],
+
   // ── Config ────────────────────────────────────────────────────────────────
   school_settings: ["read", "update"],
   org_settings: ["read", "update"],
@@ -151,6 +156,7 @@ export const RESOURCE_CATEGORIES: Record<string, Resource[]> = {
   ],
   Configuration: ["school_settings", "org_settings"],
   Auth: ["role_permission", "role_assignment", "portal_access"],
+  Website: ["public_site"],
 };
 
 /**

@@ -117,6 +117,9 @@ export const RESOURCE_MIN_SCOPE: Record<Resource, ScopeType> = {
   // Templates hang off a school (they are not scope nodes) and the print run
   // is a school act — the editor default, not a cap, like enrollment.
   id_card: "school",
+  // The public website is the org's face (ADR-041): one site per org, so it
+  // is meaningful only at org scope.
+  public_site: "org",
   subject_mapping: "school",
   teacher_assignment: "section",
   timetable: "class",
