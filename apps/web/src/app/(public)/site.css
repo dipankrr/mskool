@@ -1,0 +1,78 @@
+/*
+ * Public-site styles (ADR-041). Scoped under .site-root so nothing here can
+ * touch the dashboard/portal surfaces. Motion is CSS-only and collapses
+ * under prefers-reduced-motion (design skill 6.B).
+ */
+
+.site-root {
+  font-family: var(--site-font-body), system-ui, sans-serif;
+  background: var(--site-surface);
+  color: var(--site-ink);
+}
+
+.site-heading {
+  font-family: var(--site-font-display), var(--site-font-body), system-ui, sans-serif;
+  letter-spacing: -0.02em;
+  line-height: 1.08;
+  text-wrap: balance;
+}
+
+/* Entrance: elements marked .site-reveal fade-rise once, staggered by index.
+   CSS scroll-driven animation where supported; plain load animation fallback. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .site-reveal {
+      animation: site-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 55%;
+    }
+  }
+  @supports not (animation-timeline: view()) {
+    .site-reveal {
+      animation: site-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+  }
+  .site-float {
+    animation: site-float 5s ease-in-out infinite;
+  }
+  .site-float-slow {
+    animation: site-float 7.5s ease-in-out infinite;
+  }
+}
+
+@keyframes site-rise {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes site-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+/* Playful squiggle underline for accent words in headings */
+.site-squiggle {
+  position: relative;
+  white-space: nowrap;
+}
+.site-squiggle > svg {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.18em;
+  width: 100%;
+  height: 0.32em;
+}
+
+/* Gallery masonry via columns; items break-inside to avoid splits */
+.site-masonry {
+  columns: 1;
+  column-gap: 1rem;
+}
+@media (min-width: 640px) { .site-masonry { columns: 2; } }
+@media (min-width: 1024px) { .site-masonry { columns: 3; } }
+@media (min-width: 1440px) { .site-masonry { columns: 4; } }
+.site-masonry > * {
+  break-inside: avoid;
+  margin-bottom: 1rem;
+}
