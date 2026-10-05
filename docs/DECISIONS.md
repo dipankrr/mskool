@@ -1792,3 +1792,74 @@ the sweeper function directly never race a live tick).
    is logged and retried. `/health` carries the sweeper's heartbeat
    (`lastSweepAt`) because a worker that silently stops is worse than no
    worker.
+
+---
+
+## ADR-041 — The public site engine: section library over published snapshots at `{org-slug}.mskool.in`
+
+Date: 2026-10-05. Status: accepted. First tenant: Ujjwal Kids World
+(`ujjwalkidsworld.com` port; content inventory in
+`docs/reference/ujjwal-content-inventory.md`).
+
+**Context.** Orgs want a public website at `{org-slug}.mskool.in` without
+each becoming a bespoke build. Private-school sites in this market share one
+skeleton (hero, stats, programs, campuses, gallery, faculty, FAQ, contact)
+and differ in content and skin, not in structure.
+
+**Decision.**
+
+1. **A section library, not per-org sites.** The unit of composition is a
+   typed *section* (hero, stats, card-grid, gallery, faculty, faq, contact,
+   …) with a Zod content schema in `@repo/contracts` and a React renderer in
+   `apps/web/src/components/sites/`. A *preset* ("template") is data: a
+   default section order + theme token values. No per-org code is ever
+   written; bespoke demand ships as a new section variant or a new preset
+   (optionally org-exclusive via the preset's visibility). Section order is
+   an ordered array of section keys on the site row — an org drops,
+   reorders, or repeats a section without code; a truly new section type is
+   new code in the library.
+
+2. **Draft/published split; the public path reads the snapshot only.**
+   `org_public_sites` keeps `draft_content` (what the staff editor edits) and
+   `published_content` (what `{slug}.mskool.in` serves). Publishing copies
+   draft over published wholesale — the public side never reads a
+   half-edited state, mirroring hard rule 8's spirit. Unauthenticated
+   `publicSite.*` routes read `published_content` ONLY, and never join
+   toward staff/student/operational tables.
+
+3. **Faculty is content-copy in v1; opt-in live projection is the declared
+   upgrade.** The public router must not query `staff` (an unauthenticated
+   reader near operational tables is a leak by accretion). v1 renders
+   faculty from the published content list, curated in the editor. When the
+   staff module is populated for a tenant, a projection follow-up (a
+   whitelisted-column read of `is_public_profile` staff rows) may replace
+   the copy; the section's content shape does not change.
+
+4. **The tenant is the site owner (ADR-001).** The site hangs off
+   `organizations` (one row per org, slug-keyed), not off schools; a school
+   is content inside the site (e.g. the campuses section), which is why the
+   `scope_nodes` rule (hard rule 12) does not apply here — nothing here is
+   staff-authorizable.
+
+5. **Routing is a middleware rewrite, one Next.js app.** `apps/web/src/middleware.ts`
+   maps `{slug}.mskool.in` (and a `?org=slug` dev override) onto the
+   `(public)` route group. Wildcard DNS + wildcard TLS are deploy-time
+   prerequisites, not code. Unknown slugs render a branded not-found page.
+
+6. **Public media is static, not the ADR-038 store — for now.** ADR-038's
+   object route is session-authenticated by design, which an anonymous
+   visitor cannot present. v1 ships public-site images as static files under
+   `apps/web/public/sites/{slug}/` referenced by URL from the content JSON.
+   When ADR-038 grows a public-serving story (signed or public objects), the
+   URLs migrate and this clause is superseded — content shape is unaffected.
+
+7. **The staff editor is a `publicsite` domain.** Editing goes through
+   `staffProcedure('public_site:edit')`-gated tRPC routes calling
+   `PublicSiteService` in `@repo/services` (organizationId is a required
+   argument per hard rule 1). `public_site` joins `RESOURCE_ACTIONS`
+   (`read`, `edit`, `publish`) so grants stay fine-grained.
+
+**Non-goals / deferrals:** the admission enquiry form (CTA points at
+contact/tel until it exists; recorded as its own future domain), the
+drag-drop page builder, custom domains, per-branch sites, theme
+user-interfaces beyond token fields, and a canvas/free-layout block.

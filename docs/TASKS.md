@@ -1399,6 +1399,32 @@ advisory-only (never blocks); `Percentile_Rank` scales rejected in v1.
 
 ---
 
+## Phase 6 — Public sites (the org website engine) — FIRST SLICE DONE on `main`
+
+Design: **ADR-041**. Content inventory + parity checklist:
+`docs/reference/ujjwal-content-inventory.md` (first tenant: Ujjwal Kids World).
+
+Done: `org_public_sites` table + `staff.is_public_profile` flag (migration 0027) ·
+public_site contract (section library schemas, one generic card shape) ·
+`PublicSiteService` (draft/publish split, anonymous published-snapshot read) ·
+`publicSite.*` router (`bySlug` ungated via the new `publicProcedure` builder;
+staff editor routes gated `public_site:read/edit/publish`) · web `(public)` route
+group + `proxy.ts` tenant-host rewrite (`{slug}.mskool.in`, dev `?org=slug`) ·
+section renderers + ujjwal-kids preset (theme tokens, fonts Baloo 2/Nunito) ·
+seed `pnpm db:seed:site` (Ujjwal org + full ported content, published) · public
+images as static assets `apps/web/public/sites/ujjwal/` (ADR-041 §6) · visual QA
+done desktop+mobile. Gates green (check-types, lint, test).
+
+Next in this phase:
+- Staff editor UI (per-section forms in the dashboard) — routes exist, no screen yet
+- Faculty: replace seeded placeholders with real staff via the `is_public_profile`
+  projection when Ujjwal's staff are onboarded (ADR-041 §3)
+- Admission enquiry form (own domain; CTA slot already points at `#contact`)
+- Wildcard DNS/TLS for `*.mskool.in` at deploy; multi-page sites; presets beyond ujjwal-kids
+- ADR-038 follow-up: public/signed object URLs so site media can move off static assets
+
+---
+
 ## Later
 
 - **Homework** — `homework`, `homework_submissions` (ADR-014)
