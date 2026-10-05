@@ -100,3 +100,7 @@ export * from "./homework-questions.service";
 // Homework sweeper (ADR-040): the time-driven half — Missing after close,
 // scheduled publishing. Idempotent, advisory-locked, DB-clocked.
 export * from "./homework-worker.service";
+
+// Public sites: the org website engine — draft/publish split, the anonymous
+// published-snapshot read. ADR-041.
+export * from "./public-site.service";
