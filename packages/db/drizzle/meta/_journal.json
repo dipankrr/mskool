@@ -190,6 +190,13 @@
       "when": 1791031328402,
       "tag": "0026_clammy_pandemic",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791215195606,
+      "tag": "0027_concerned_the_enforcers",
+      "breakpoints": true
     }
   ]
 }

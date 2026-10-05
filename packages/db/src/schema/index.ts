@@ -36,6 +36,9 @@ export * from "./storage";
 // ID cards: per-school student ID card templates. Slice 2a.
 export * from "./idcard";
 
+// Public sites: the org's website at {slug}.mskool.in. ADR-041.
+export * from "./publicsite";
+
 // Homework/assignments: settings + rubrics → assignments → targets →
 // student_assignments → submissions → evaluations; the question bank and
 // attempt layers. ADR-039.

@@ -77,6 +77,11 @@ export const staff = pgTable(
     // resolve as the author of last year's attendance and marks.
     status: staffStatusEnum().notNull().default("active"),
 
+    // Opt-in public profile (ADR-041 §3): when true, a WHITELISTED projection
+    // of this row (name, designation, qualification, photoUrl only) may feed
+    // the org's public-site faculty section. Phone/email/address never do.
+    isPublicProfile: boolean().notNull().default(false),
+
     photoUrl: text(),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
