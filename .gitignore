@@ -26,3 +26,6 @@ playwright-report/
 # data were once swept into a feature branch and had to be filtered out of history.
 .agents/skills/
 .zcode/skills/
+
+# agent scratch (scrapes, screenshots, tmp scripts)
+.tmp/

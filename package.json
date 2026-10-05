@@ -1,6 +1,5 @@
 {
   "name": "mskool",
-
   "private": true,
   "version": "0.1.0",
   "packageManager": "pnpm@9.12.0",
@@ -15,13 +14,10 @@
     "test": "turbo run test",
     "test:integration": "pnpm --filter @repo/trpc test:integration",
     "test:e2e": "dotenv -e .env -- pnpm --filter @repo/web test:e2e",
-
     "clean": "turbo run clean && rm -rf node_modules",
     "db:check": "dotenv -e .env -- pnpm --filter @repo/db db:check",
     "db:verify": "dotenv -e .env -- pnpm --filter @repo/db db:verify",
-
     "db:generate": "dotenv -e .env -- pnpm --filter @repo/db db:generate",
-
     "db:migrate": "dotenv -e .env -- pnpm --filter @repo/db db:migrate",
     "db:push": "dotenv -e .env -- pnpm --filter @repo/db db:push",
     "db:studio": "dotenv -e .env -- pnpm --filter @repo/db db:studio",
@@ -31,7 +27,8 @@
     "smoke:authz": "dotenv -e .env -- pnpm --filter @repo/api smoke:authz",
     "check:openapi": "dotenv -e .env -- pnpm --filter @repo/api check:openapi",
     "check:builders": "pnpm --filter @repo/api check:builders",
-    "format": "prettier --write \"**/*.{ts,tsx,md,json}\""
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "db:seed:site": "dotenv -e .env -- pnpm --filter @repo/api db:seed:site"
   },
   "devDependencies": {
     "@types/node": "^22.8.6",
