@@ -71,3 +71,7 @@ export * from "./contracts/role.contract";
 // ID cards: the template document vocabulary (percent-geometry elements) and
 // the card-data payload it binds into. Slice 2a.
 export * from "./contracts/id_card.contract";
+
+// Public sites: the org website's content vocabulary — sections, cards,
+// theme. NOT drizzle-zod; org_public_sites stores this as jsonb (ADR-041).
+export * from "./contracts/public_site.contract";
