@@ -1415,8 +1415,10 @@ seed `pnpm db:seed:site` (Ujjwal org + full ported content, published) · public
 images as static assets `apps/web/public/sites/ujjwal/` (ADR-041 §6) · visual QA
 done desktop+mobile. Gates green (check-types, lint, test).
 
-Next in this phase:
-- Staff editor UI (per-section forms in the dashboard) — routes exist, no screen yet
+Tier A editor SHIPPED: /site in the dashboard (fields editor, reorder/add,
+save/publish — verified end-to-end). Next in this phase:
+- Image picker for the editor (upload via storage putObject, visibility public —
+  the ADR-042 route exists; the UI writes returned URLs into content)
 - Faculty: replace seeded placeholders with real staff via the `is_public_profile`
   projection when Ujjwal's staff are onboarded (ADR-041 §3)
 - Admission enquiry form (own domain; CTA slot already points at `#contact`)
