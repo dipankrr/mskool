@@ -1,13 +1,22 @@
 import type { FacultySection, FaqSection, GallerySection } from "@repo/contracts";
 import Image from "next/image";
+import { DoodleBlob, DoodleFace, DoodleSparkle } from "../decor";
 import { SectionHeader } from "./core-sections";
 import { GalleryGrid } from "./gallery-grid";
+
+/**
+ * info sections of the ujjwal-kids preset. Avatars sit on cycling colored
+ * blobs (the reference's organic-shape motif); FAQ rows get the sticker
+ * treatment when open.
+ */
+
+const BLOBS = ["#F5B301", "#2A9D8F", "#E8542F", "#155E4B"] as const;
 
 // ── Gallery ─────────────────────────────────────────────────────────────────
 
 export function GallerySectionView({ content }: { content: GallerySection }) {
   return (
-    <section className="bg-[var(--site-surface-alt)] px-4 py-20 sm:py-24">
+    <section className="bg-[var(--site-surface-alt)] px-4 py-24 sm:py-28">
       <div className="mx-auto max-w-6xl">
         <SectionHeader
           title={content.title}
@@ -24,35 +33,46 @@ export function GallerySectionView({ content }: { content: GallerySection }) {
 
 export function FacultySectionView({ content }: { content: FacultySection }) {
   return (
-    <section className="px-4 py-20 sm:py-24">
+    <section className="px-4 py-24 sm:py-28">
       <div className="mx-auto max-w-6xl">
         <SectionHeader
           title={content.title}
           subtitle={content.subtitle}
           accentWords={[content.title.split(" ").length - 1]}
         />
-        <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {content.members.map((m, i) => (
-            <article
-              key={m.name + String(i)}
-              className="site-reveal flex flex-col items-center rounded-2xl bg-white p-7 text-center shadow-[0_2px_14px_rgba(30,58,52,0.08)] transition-transform duration-300 hover:-translate-y-1"
-            >
-              <div className="relative size-24 overflow-hidden rounded-full border-4 border-[var(--site-surface-alt)] bg-[var(--site-surface-alt)]">
-                {m.imageUrl ? (
-                  <Image src={m.imageUrl} alt={m.name} width={160} height={160} className="h-full w-full object-cover" />
-                ) : (
-                  <span aria-hidden="true" className="site-heading grid h-full w-full place-items-center text-3xl text-[var(--site-primary)]/50">
-                    {m.name.split(" ").map((w) => w[0]).slice(0, 2).join("")}
-                  </span>
-                )}
-              </div>
-              <h3 className="site-heading mt-4 text-lg text-[var(--site-ink)]">{m.name}</h3>
-              <p className="mt-1 text-sm font-bold text-[var(--site-accent)]">{m.designation}</p>
-              {m.qualification ? (
-                <p className="mt-1.5 text-sm text-[var(--site-ink)]/65">{m.qualification}</p>
-              ) : null}
-            </article>
-          ))}
+        <div className="mt-14 grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
+          {content.members.map((m, i) => {
+            const blob = BLOBS[i % BLOBS.length];
+            return (
+              <article
+                key={m.name + String(i)}
+                className="site-reveal group flex flex-col items-center rounded-3xl bg-white p-8 text-center shadow-[0_10px_28px_rgba(30,58,52,0.09)] transition-transform duration-300 hover:-translate-y-1.5"
+              >
+                <div className="relative grid size-28 place-items-center">
+                  <DoodleBlob className="absolute inset-0 transition-transform duration-500 group-hover:rotate-12" color={blob} />
+                  <div className="relative size-20 overflow-hidden rounded-full border-4 border-white bg-white shadow-[0_4px_14px_rgba(30,58,52,0.2)]">
+                    {m.imageUrl ? (
+                      <Image src={m.imageUrl} alt={m.name} width={160} height={160} className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="grid h-full w-full place-items-center bg-[var(--site-surface)]">
+                        <DoodleFace className="size-10" color={blob} />
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <h3 className="site-heading mt-5 text-lg text-[var(--site-ink)]">{m.name}</h3>
+                <p
+                  className="mt-2 rounded-full px-3 py-1 text-xs font-extrabold text-white"
+                  style={{ background: blob }}
+                >
+                  {m.designation}
+                </p>
+                {m.qualification ? (
+                  <p className="mt-2.5 text-sm text-[var(--site-ink)]/60">{m.qualification}</p>
+                ) : null}
+              </article>
+            );
+          })}
         </div>
       </div>
     </section>
@@ -63,18 +83,18 @@ export function FacultySectionView({ content }: { content: FacultySection }) {
 
 export function FaqSectionView({ content }: { content: FaqSection }) {
   return (
-    <section className="bg-[var(--site-surface-alt)] px-4 py-20 sm:py-24">
+    <section className="bg-[var(--site-surface-alt)] px-4 py-24 sm:py-28">
       <div className="mx-auto max-w-3xl">
         <SectionHeader
           title={content.title}
           subtitle={content.subtitle}
           accentWords={[content.title.split(" ").length - 1]}
         />
-        <div className="mt-10 space-y-3.5">
+        <div className="mt-12 space-y-4">
           {content.items.map((item) => (
             <details
               key={item.question}
-              className="group rounded-2xl bg-white px-6 py-1 shadow-[0_2px_10px_rgba(30,58,52,0.06)] open:shadow-[0_4px_18px_rgba(30,58,52,0.10)]"
+              className="group rounded-2xl border-2 border-transparent bg-white px-6 py-1 shadow-[0_4px_16px_rgba(30,58,52,0.07)] open:border-[var(--site-primary)]/20 open:bg-white open:shadow-[0_10px_30px_rgba(30,58,52,0.12)]"
             >
               <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-left font-bold text-[var(--site-ink)] marker:hidden [&::-webkit-details-marker]:hidden">
                 {item.question}
@@ -89,6 +109,7 @@ export function FaqSectionView({ content }: { content: FaqSection }) {
             </details>
           ))}
         </div>
+        <DoodleSparkle className="mx-auto mt-10 block size-8 opacity-70" />
       </div>
     </section>
   );

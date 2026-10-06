@@ -2,6 +2,8 @@ import { Clock, Mail, MapPin, Phone } from "lucide-react";
 import type { ContactSection } from "@repo/contracts";
 import { SectionHeader } from "./core-sections";
 
+const FRAMES = ["#155E4B", "#E8542F", "#2A9D8F"] as const;
+
 /** Contact details + optional map embed. No form yet (ADR-041 non-goal). */
 export function ContactSectionView({ content }: { content: ContactSection }) {
   return (
@@ -15,7 +17,7 @@ export function ContactSectionView({ content }: { content: ContactSection }) {
 
         <div className="mx-auto mt-12 grid max-w-5xl grid-cols-1 gap-6 md:grid-cols-3">
           <div className="rounded-2xl bg-white p-7 shadow-[0_2px_14px_rgba(30,58,52,0.08)]">
-            <span className="grid size-11 place-items-center rounded-full bg-[var(--site-surface-alt)] text-[var(--site-accent)]">
+            <span className="grid size-12 place-items-center rounded-full text-white" style={{ background: FRAMES[0] }}>
               <MapPin className="size-5" strokeWidth={2} />
             </span>
             <h3 className="site-heading mt-4 text-lg">Visit Our Campus</h3>
@@ -23,7 +25,7 @@ export function ContactSectionView({ content }: { content: ContactSection }) {
           </div>
 
           <div className="rounded-2xl bg-white p-7 shadow-[0_2px_14px_rgba(30,58,52,0.08)]">
-            <span className="grid size-11 place-items-center rounded-full bg-[var(--site-surface-alt)] text-[var(--site-accent)]">
+            <span className="grid size-12 place-items-center rounded-full text-white" style={{ background: FRAMES[1] }}>
               <Phone className="size-5" strokeWidth={2} />
             </span>
             <h3 className="site-heading mt-4 text-lg">Call Us</h3>
@@ -42,7 +44,7 @@ export function ContactSectionView({ content }: { content: ContactSection }) {
           </div>
 
           <div className="rounded-2xl bg-white p-7 shadow-[0_2px_14px_rgba(30,58,52,0.08)]">
-            <span className="grid size-11 place-items-center rounded-full bg-[var(--site-surface-alt)] text-[var(--site-accent)]">
+            <span className="grid size-12 place-items-center rounded-full text-white" style={{ background: FRAMES[2] }}>
               <Clock className="size-5" strokeWidth={2} />
             </span>
             <h3 className="site-heading mt-4 text-lg">Office Hours</h3>
