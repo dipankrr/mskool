@@ -71,6 +71,7 @@ export const copy = {
     /** Sidebar section labels. */
     groupDaily: "Daily",
     groupAcademics: "Academics",
+    site: "Website",
     groupAdministration: "Administration",
     /** Sub-actions under the sidebar's expandable items. */
     allStudents: "All students",

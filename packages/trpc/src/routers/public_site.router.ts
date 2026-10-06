@@ -45,7 +45,6 @@ export const publicSiteRouter = router({
         protect: true,
       },
     })
-    .input(z.object({}))
     .output(
       z.object({
         id: z.uuid(),
@@ -112,7 +111,6 @@ export const publicSiteRouter = router({
         protect: true,
       },
     })
-    .input(z.object({}))
     .output(z.object({ ok: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
       try {
@@ -139,7 +137,6 @@ export const publicSiteRouter = router({
         protect: true,
       },
     })
-    .input(z.object({}))
     .output(z.object({ ok: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
       await publicSiteService.unpublish({
