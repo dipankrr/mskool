@@ -1863,3 +1863,41 @@ and differ in content and skin, not in structure.
 contact/tel until it exists; recorded as its own future domain), the
 drag-drop page builder, custom domains, per-branch sites, theme
 user-interfaces beyond token fields, and a canvas/free-layout block.
+
+---
+
+## ADR-042 — Object visibility: a public read path inside the ADR-038 store
+
+Date: 2026-10-05. Status: accepted. Amends ADR-038 (adds a public read path);
+supersedes ADR-041 §6 (public-site media no longer static files).
+
+**Context.** ADR-041 shipped landing-page media as static files under
+`apps/web/public/` because ADR-038's object route is session-authenticated and
+an anonymous visitor cannot present a session. That decision aged badly within
+a day: 150 binaries committed to the repo, and the future site editor has no
+upload/delete story, since its media would need the very store the public site
+cannot read from.
+
+**Decision.**
+
+1. **`storage_objects.visibility`** (`private` default / `public` enum column).
+   A row is never public by accident: the default is private and the flag
+   flips only through an explicit write at upload time.
+2. **`GET /api/public/storage/:id`** serves ONLY `public` rows, unauthenticated,
+   `Cache-Control: public, max-age=31536000, immutable` (ids are never
+   re-pointed; replacement mints a new id). A private object and a missing id
+   are the same 404 — the route cannot probe existence. Images only, own rate
+   limiter so anonymous scraping cannot consume the general limiter's budget.
+3. **Public-site media moves into the store.** Site content references URLs of
+   the form `/api/public/storage/{id}`; the seed (and later the editor's
+   upload flow) puts objects with `visibility: public` and writes the returned
+   id into the content JSON. `apps/web/public/sites/` is purged from the repo;
+   the files remain on disk only as seed input. ADR-041 §6's static-file
+   arrangement is dead.
+4. **R2 unchanged.** This is orthogonal to the driver seam: when the R2 driver
+   lands, public and private bytes migrate the same way (copy the bytes, flip
+   `STORAGE_DRIVER`), and the two routes keep answering.
+
+**Non-goals:** signed URLs with expiry (nothing needs time-boxed access yet),
+a public listing/discovery endpoint (never — enumeration is the leak),
+per-object ACLs beyond the binary flag.

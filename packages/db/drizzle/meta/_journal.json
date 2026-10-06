@@ -197,6 +197,13 @@
       "when": 1791215195606,
       "tag": "0027_concerned_the_enforcers",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1791285914073,
+      "tag": "0028_vengeful_doctor_strange",
+      "breakpoints": true
     }
   ]
 }

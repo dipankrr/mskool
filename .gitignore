@@ -29,3 +29,6 @@ playwright-report/
 
 # agent scratch (scrapes, screenshots, tmp scripts)
 .tmp/
+
+# site media lives in the object store (ADR-042); local copies are seed input only
+apps/web/public/sites/

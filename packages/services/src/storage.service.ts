@@ -35,6 +35,13 @@ interface PutObjectInput {
   contentType: string;
   bytes: Buffer;
   createdBy?: string;
+  /**
+   * `public` objects are additionally served unauthenticated from
+   * `/api/public/storage/:id` (ADR-038 amendment): landing-page media the
+   * org deliberately chose to expose. Defaults private — nothing is public
+   * by accident.
+   */
+  visibility?: "private" | "public";
 }
 
 export interface StorageObjectMeta {
@@ -97,6 +104,7 @@ export class StorageService {
         sha256,
         data: input.bytes,
         createdBy: input.createdBy ?? null,
+        visibility: input.visibility ?? "private",
       })
       .returning({
         id: storageObjects.id,
@@ -227,6 +235,32 @@ export class StorageService {
     if (!membership) return null;
 
     return { contentType: row.contentType, data: row.data };
+  }
+
+  /**
+   * THE PUBLIC READ (ADR-038 amendment) — the anonymous door for `public`
+   * visibility objects, backing `/api/public/storage/:id`. Answers null for
+   * a private object exactly as for a missing one: the route cannot be used
+   * to probe which ids exist. No tenancy argument — visibility IS the
+   * authorization here; the org column travels only for bookkeeping.
+   */
+  async getPublicObject(
+    objectId: string,
+  ): Promise<{ contentType: string; data: Buffer } | null> {
+    this.requireDriver();
+
+    const [row] = await db
+      .select({
+        contentType: storageObjects.contentType,
+        data: storageObjects.data,
+      })
+      .from(storageObjects)
+      .where(
+        and(eq(storageObjects.id, objectId), eq(storageObjects.visibility, "public")),
+      )
+      .limit(1);
+
+    return row ?? null;
   }
 
   /**

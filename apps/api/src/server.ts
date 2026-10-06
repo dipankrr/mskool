@@ -12,7 +12,7 @@ import { createContext } from "@repo/trpc";
 import { openApiDocument } from "./openapi";
 import { feesWebhookRouter } from "./fees-webhook";
 import { mountPortalClaim } from "./portal-claim";
-import { mountStorageRoute } from "./storage";
+import { mountPublicStorageRoute, mountStorageRoute } from "./storage";
 import { homeworkWorkerHealth } from "./homework-worker";
 import { env } from "./env";
 
@@ -193,6 +193,10 @@ export function createServer(): Server {
   // tenancy-checked against the object's owning org. Mounted before the
   // OpenAPI middleware so the static segment can never be shadowed.
   mountStorageRoute(app);
+
+  // Public object serving (ADR-038 amendment): only visibility=public rows,
+  // unauthenticated, own limiter. Landing-page media (ADR-041).
+  mountPublicStorageRoute(app);
 
   // Native tRPC endpoint — this is what apps/web's httpBatchLink talks
   // to (full type inference, batched calls, no REST/JSON-schema layer

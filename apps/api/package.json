@@ -20,7 +20,8 @@
     "reset:demo": "tsx scripts/reset-demo.ts",
     "smoke:authz": "tsx scripts/smoke-authz.ts",
     "check:openapi": "tsx scripts/check-openapi.ts",
-    "check:builders": "tsx scripts/check-builders.ts"
+    "check:builders": "tsx scripts/check-builders.ts",
+    "db:migrate:site-media": "tsx scripts/migrate-site-media.ts"
   },
   "dependencies": {
     "@repo/auth": "workspace:*",

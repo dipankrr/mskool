@@ -3,6 +3,7 @@ import {
   customType,
   index,
   integer,
+  pgEnum,
   pgTable,
   text,
   timestamp,
@@ -41,6 +42,16 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({
   },
 });
 
+/**
+ * Object visibility (ADR-038 amendment). `private` (default) objects are
+ * served only through the session-authenticated, tenancy-checked
+ * `/api/storage/:id`. `public` objects — landing-page media, by explicit
+ * upload choice — are additionally served, unauthenticated, from
+ * `/api/public/storage/:id`. A row is NEVER public by accident: the column
+ * defaults private and flips only through an explicit write.
+ */
+export const objectVisibilityEnum = pgEnum("object_visibility", ["private", "public"]);
+
 export const storageObjects = pgTable(
   "storage_objects",
   {
@@ -48,6 +59,8 @@ export const storageObjects = pgTable(
     organizationId: uuid()
       .notNull()
       .references(() => organizations.id),
+
+    visibility: objectVisibilityEnum().notNull().default("private"),
 
     // Allowlist lives in the contract; stored verbatim so the serving route
     // can answer with the exact type uploaded.

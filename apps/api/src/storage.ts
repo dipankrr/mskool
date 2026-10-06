@@ -1,4 +1,5 @@
 import type { Express, Request, Response } from "express";
+import rateLimit from "express-rate-limit";
 import { auth } from "@repo/auth";
 import { storageService } from "@repo/services";
 
@@ -65,4 +66,55 @@ export function mountStorageRoute(app: Express) {
       res.status(500).json({ error: "Something went wrong." });
     }
   });
+}
+
+/**
+ * THE PUBLIC OBJECT ROUTE (ADR-038 amendment) — `GET /api/public/storage/:id`.
+ *
+ * Serves ONLY objects explicitly uploaded with visibility `public` (landing
+ * page media, ADR-041). A private object and a nonexistent id are the same
+ * 404, so the route cannot probe which ids exist. No session by design —
+ * visibility is the authorization. Public + immutable caching: ids are never
+ * re-pointed, replacement mints a new id. Own limiter: this is the one
+ * endpoint an anonymous scraper can hammer, and the general limiter must not
+ * be consumed by it.
+ */
+const publicStorageLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 600,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many requests." },
+});
+
+export function mountPublicStorageRoute(app: Express) {
+  app.get(
+    "/api/public/storage/:id",
+    publicStorageLimiter,
+    async (req: Request, res: Response) => {
+      const id = String(req.params.id);
+      if (!id || !/^[0-9a-fA-F-]{36}$/.test(id)) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+
+      try {
+        const object = await storageService.getPublicObject(id);
+        if (!object || !object.contentType.startsWith("image/")) {
+          res.status(404).json({ error: "Not found" });
+          return;
+        }
+
+        res
+          .status(200)
+          .set("Content-Type", object.contentType)
+          .set("Content-Length", String(object.data.length))
+          .set("Cache-Control", "public, max-age=31536000, immutable")
+          .send(object.data);
+      } catch (error) {
+        console.error("[storage] serving public object failed:", error);
+        res.status(500).json({ error: "Something went wrong." });
+      }
+    },
+  );
 }
