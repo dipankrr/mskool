@@ -42,7 +42,10 @@ export function renderSection(section: SiteSection, index: number) {
     return null;
   }
   return (
-    <div key={`${section.key}-${section.id ?? index}`} id={section.id}>
+    // data-section-index: the live preview's click-to-select hook (the site
+    // editor postMessages the index back to the outline). Inert on the
+    // public site — it discloses nothing beyond DOM order.
+    <div key={`${section.key}-${section.id ?? index}`} id={section.id} data-section-index={index}>
       <Component content={section.content} />
     </div>
   );

@@ -1,7 +1,7 @@
 "use client";
 
-import { GlobeIcon, LayersIcon, PlusIcon, RocketIcon, SaveIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { GlobeIcon, LayersIcon, MonitorIcon, PlusIcon, RocketIcon, SaveIcon, SmartphoneIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/page-header";
@@ -102,6 +102,8 @@ function SiteEditor() {
   const [draft, setDraft] = useState<PublicSiteContent | null>(null);
   const [selection, setSelection] = useState<Selection>({ kind: "chrome" });
   const [addKey, setAddKey] = useState<SectionKey>("cardGrid");
+  const [previewWide, setPreviewWide] = useState(true);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Adopt the server draft into local state once; edits are local until saved.
   // (Cast: the wire type's `content` is inferred optional through the zod
@@ -112,6 +114,50 @@ function SiteEditor() {
     () => Boolean(draft && site?.draftContent && JSON.stringify(draft) !== JSON.stringify(site.draftContent)),
     [draft, site],
   );
+
+  // ── The live preview handshake (the on-screen editor) ─────────────────────
+  // The iframe renders the REAL site renderer fed the draft: post it on every
+  // edit (debounced — the payload includes the whole content tree), receive
+  // clicks back as section selections. Same-origin only, both directions.
+  const postDraft = useCallback(() => {
+    // Posts the EFFECTIVE content (the server draft until the first local
+    // edit), so the preview renders immediately — not only after an edit.
+    if (content && iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(
+        { type: "mskool:draft", content },
+        window.location.origin,
+      );
+    }
+  }, [content]);
+
+  useEffect(() => {
+    if (!content) return;
+    const t = setTimeout(postDraft, 350);
+    return () => clearTimeout(t);
+  }, [content, postDraft]);
+
+  useEffect(() => {
+    function onMessage(e: MessageEvent) {
+      if (e.origin !== window.location.origin) return;
+      if (e.data?.type === "mskool:preview-ready") {
+        postDraft();
+        return;
+      }
+      if (e.data?.type === "mskool:select" && Number.isFinite(e.data.index)) {
+        setSelection({ kind: "section", index: e.data.index });
+      }
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [postDraft]);
+
+  // Edits live in local state until saved — warn before losing them.
+  useEffect(() => {
+    if (!dirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [dirty]);
 
   const doSave = async (thenPublish: boolean) => {
     if (!draft) return;
@@ -229,7 +275,7 @@ function SiteEditor() {
         }
       />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[290px_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[290px_minmax(0,1fr)] xl:grid-cols-[270px_minmax(0,0.85fr)_minmax(0,1.15fr)]">
         {/* ── Outline ─────────────────────────────────────────────────────── */}
         <Card className="h-fit lg:sticky lg:top-6">
           <CardContent className="p-3">
@@ -383,6 +429,46 @@ function SiteEditor() {
               </p>
             ) : null}
             {editorForSelection()}
+          </CardContent>
+        </Card>
+
+        {/* ── Live preview: the real renderer, fed the draft ──────────────── */}
+        <Card className="h-fit xl:sticky xl:top-6">
+          <CardContent className="p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Live preview · click a section to edit it
+              </p>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant={previewWide ? "secondary" : "ghost"}
+                  size="icon"
+                  className="size-7"
+                  aria-label="Desktop width"
+                  onClick={() => setPreviewWide(true)}
+                >
+                  <MonitorIcon className="size-4" />
+                </Button>
+                <Button
+                  variant={!previewWide ? "secondary" : "ghost"}
+                  size="icon"
+                  className="size-7"
+                  aria-label="Mobile width"
+                  onClick={() => setPreviewWide(false)}
+                >
+                  <SmartphoneIcon className="size-4" />
+                </Button>
+              </div>
+            </div>
+            <div className={cn("mx-auto transition-all", previewWide ? "w-full" : "w-[390px] max-w-full")}>
+              <iframe
+                ref={iframeRef}
+                src="/sites/preview"
+                title="Live preview of your site"
+                onLoad={postDraft}
+                className="h-[72vh] w-full rounded-xl border bg-white shadow-sm"
+              />
+            </div>
           </CardContent>
         </Card>
       </div>
