@@ -479,11 +479,17 @@ function SiteEditor() {
                 </Button>
               </div>
             </div>
-            <div
-              ref={paneRef}
-              className="mx-auto overflow-hidden rounded-xl border bg-white shadow-sm"
-              style={{ width: Math.round(VIEWPORT_W * scale), height: Math.round(VIEWPORT_H * scale) }}
-            >
+            {/* The observed wrapper is FULL-WIDTH and independent of scale —
+                observing the scaled box itself would feed its own output back
+                into the ResizeObserver and shrink to nothing. */}
+            <div ref={paneRef} className="w-full">
+              <div
+                className="mx-auto overflow-hidden rounded-xl border bg-white shadow-sm"
+                style={{
+                  width: Math.round(VIEWPORT_W * scale),
+                  height: Math.round(VIEWPORT_H * scale),
+                }}
+              >
               {/* The iframe runs at a REAL desktop/mobile viewport and is
                   scaled to fit the pane — media queries respond to the true
                   width, so "desktop" shows the desktop layout, not a squeezed
@@ -501,6 +507,7 @@ function SiteEditor() {
                   transformOrigin: "top left",
                 }}
               />
+              </div>
             </div>
           </CardContent>
         </Card>
