@@ -260,3 +260,22 @@ export const publicSitePayloadSchema = z.object({
   publishedAt: z.iso.datetime().nullable(),
 });
 export type PublicSitePayload = z.infer<typeof publicSitePayloadSchema>;
+
+// ── Image upload ────────────────────────────────────────────────────────────
+// Same cap and allowlist as student photos (shared 512 KB ceiling inside the
+// API's 1 MB JSON body; the client resizes before upload). Site images are
+// stored as PUBLIC objects (ADR-042) and the editor receives the stable
+// /api/public/storage/{id} URL to write into content.
+
+import { PHOTO_MAX_BYTES } from "./id_card.contract";
+
+const base64Shape = /^[A-Za-z0-9+/]*={0,2}$/;
+
+export const uploadSiteImageInput = z.object({
+  contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+  dataBase64: z
+    .string()
+    .max(Math.ceil(PHOTO_MAX_BYTES / 3) * 4)
+    .regex(base64Shape, "The image data is not valid base64."),
+});
+export type UploadSiteImageInput = z.infer<typeof uploadSiteImageInput>;

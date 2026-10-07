@@ -1,9 +1,10 @@
 import {
   publicSitePayloadSchema,
   publicSiteContentInputSchema,
+  uploadSiteImageInput,
   type PublicSiteContentInput,
 } from "@repo/contracts";
-import { publicSiteService } from "@repo/services";
+import { publicSiteService, storageService } from "@repo/services";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { publicProcedure, router, staffProcedure } from "../trpc";
@@ -144,5 +145,36 @@ export const publicSiteRouter = router({
         organizationId: input.organizationId,
       });
       return { ok: true };
+    }),
+
+  /**
+   * THE EDITOR'S UPLOAD (ADR-042). Base64 through tRPC like every other
+   * upload (no multipart exists); the client resizes before sending. The
+   * object is born PUBLIC — landing-page media is exactly what this route
+   * exists to store — and the returned URL is what the editor writes into
+   * the content draft.
+   */
+  uploadImage: staffProcedure("public_site:edit")
+    .meta({
+      openapi: {
+        method: "POST",
+        path: "/public-site/images",
+        tags: ["public-site"],
+        summary: "Upload a public site image",
+        protect: true,
+      },
+    })
+    .input(z.object({ data: uploadSiteImageInput }))
+    .output(z.object({ url: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const bytes = Buffer.from(input.data.dataBase64, "base64");
+      const meta = await storageService.putObject({
+        organizationId: input.organizationId,
+        contentType: input.data.contentType,
+        bytes,
+        createdBy: ctx.userId,
+        visibility: "public",
+      });
+      return { url: `/api/public/storage/${meta.id}` };
     }),
 });

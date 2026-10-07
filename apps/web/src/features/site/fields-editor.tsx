@@ -1,11 +1,10 @@
 "use client";
 
-import { Image as ImageIcon } from "lucide-react";
-import Image from "next/image";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { ImageField } from "./image-field";
 
 /**
  * The editor's auto-form (ADR-041 Tier A): walks ANY section content object
@@ -39,9 +38,12 @@ function StringInput({
   onChange: (next: string) => void;
   autoFocusItem?: boolean;
 }) {
-  const long = value.length > 70;
   const isImage = isImageUrl(value);
+  if (isImage) {
+    return <ImageField value={value} onChange={onChange} />;
+  }
 
+  const long = value.length > 70;
   if (long) {
     return (
       <Textarea
@@ -49,17 +51,6 @@ function StringInput({
         rows={Math.min(6, Math.ceil(value.length / 70) + 1)}
         onChange={(e) => onChange(e.target.value)}
       />
-    );
-  }
-
-  if (isImage) {
-    return (
-      <div className="flex items-center gap-3">
-        <span className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-lg border bg-muted">
-          <Image src={value} alt="" width={44} height={44} className="h-full w-full object-cover" unoptimized />
-        </span>
-        <Input value={value} onChange={(e) => onChange(e.target.value)} className="font-mono text-xs" />
-      </div>
     );
   }
 
@@ -166,7 +157,7 @@ export function FieldsEditor({
     return (
       <div className="space-y-3">
         {value.map((item, i) => (
-          <div key={i} className="rounded-xl border bg-white p-4 shadow-sm">
+          <div key={i} className="rounded-xl border bg-card p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between">
               <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
                 {humanize(path[path.length - 1] ?? "item").replace(/s$/, "")} {i + 1}
