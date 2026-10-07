@@ -159,6 +159,25 @@ function SiteEditor() {
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [dirty]);
 
+  // ── Scaled viewport: the preview iframe runs at a REAL desktop (1280px) or
+  // mobile (390px) viewport and is scaled down to fit the pane. Media queries
+  // respond to the true width, so the desktop toggle shows the desktop
+  // layout — the previous version let the pane's ~400px width decide, which
+  // made "desktop" render mobile.
+  const VIEWPORT_W = previewWide ? 1280 : 390;
+  const VIEWPORT_H = 900;
+  const paneRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0.3);
+  useEffect(() => {
+    const el = paneRef.current;
+    if (!el) return;
+    const fit = () => setScale(Math.min(1, el.clientWidth / VIEWPORT_W));
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [VIEWPORT_W]);
+
   const doSave = async (thenPublish: boolean) => {
     if (!draft) return;
     const check = validate(draft);
@@ -460,13 +479,27 @@ function SiteEditor() {
                 </Button>
               </div>
             </div>
-            <div className={cn("mx-auto transition-all", previewWide ? "w-full" : "w-[390px] max-w-full")}>
+            <div
+              ref={paneRef}
+              className="mx-auto overflow-hidden rounded-xl border bg-white shadow-sm"
+              style={{ width: Math.round(VIEWPORT_W * scale), height: Math.round(VIEWPORT_H * scale) }}
+            >
+              {/* The iframe runs at a REAL desktop/mobile viewport and is
+                  scaled to fit the pane — media queries respond to the true
+                  width, so "desktop" shows the desktop layout, not a squeezed
+                  mobile one (the scaled-canvas trick every builder uses). */}
               <iframe
                 ref={iframeRef}
                 src="/sites/preview"
                 title="Live preview of your site"
                 onLoad={postDraft}
-                className="h-[72vh] w-full rounded-xl border bg-white shadow-sm"
+                className="border-0 bg-white"
+                style={{
+                  width: VIEWPORT_W,
+                  height: VIEWPORT_H,
+                  transform: `scale(${scale})`,
+                  transformOrigin: "top left",
+                }}
               />
             </div>
           </CardContent>
