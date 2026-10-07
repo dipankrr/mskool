@@ -103,13 +103,24 @@ function SiteEditor() {
   const [selection, setSelection] = useState<Selection>({ kind: "chrome" });
   const [addKey, setAddKey] = useState<SectionKey>("cardGrid");
   const [previewWide, setPreviewWide] = useState(true);
+  // The exact field clicked on the canvas (e.g. "cards.2.description") — the
+  // fields editor rings and scrolls to it. Cleared after a beat so the ring
+  // is a pointer, not a permanent state.
+  const [focusPath, setFocusPath] = useState<string | undefined>(undefined);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  // Content mirror for the postMessage handler (its closure would otherwise
+  // go stale between renders). Assigned below, after `content` exists.
+  const contentRef = useRef<PublicSiteContent | null>(null);
+  // Set when a canvas keystroke updates the draft: the next post effect skips
+  // one round so the iframe is never re-rendered mid-keystroke.
+  const canvasEditRef = useRef(false);
 
   // Adopt the server draft into local state once; edits are local until saved.
   // (Cast: the wire type's `content` is inferred optional through the zod
   // input side; the contract guarantees it present on any stored draft.)
   const content: PublicSiteContent | null =
     draft ?? ((site?.draftContent ?? null) as PublicSiteContent | null);
+  contentRef.current = content;
   const dirty = useMemo(
     () => Boolean(draft && site?.draftContent && JSON.stringify(draft) !== JSON.stringify(site.draftContent)),
     [draft, site],
@@ -132,6 +143,12 @@ function SiteEditor() {
 
   useEffect(() => {
     if (!content) return;
+    // Canvas-sourced changes skip the re-post: the iframe already shows the
+    // typed text, and re-rendering mid-keystroke would destroy the caret.
+    if (canvasEditRef.current) {
+      canvasEditRef.current = false;
+      return;
+    }
     const t = setTimeout(postDraft, 350);
     return () => clearTimeout(t);
   }, [content, postDraft]);
@@ -143,13 +160,49 @@ function SiteEditor() {
         postDraft();
         return;
       }
+      if (e.data?.type === "mskool:draft-edit") {
+        // A canvas keystroke: apply it into the draft WITHOUT re-posting to
+        // the iframe — re-rendering mid-keystroke would destroy the caret.
+        // The iframe already shows the typed text.
+        const index = Number(e.data.index);
+        const cpath = String(e.data.cpath ?? "");
+        const value = String(e.data.value ?? "");
+        if (!Number.isFinite(index) || !cpath) return;
+        canvasEditRef.current = true;
+        setDraft((current) => {
+          const base = structuredClone((current ?? contentRef.current)!);
+          const section = base.sections[index];
+          if (!section) return base;
+          const keys = cpath.split(".");
+          let cur: unknown = section.content;
+          for (let i = 0; i < keys.length - 1; i++) {
+            const k = keys[i]!;
+            cur = Array.isArray(cur) ? cur[Number(k)] : (cur as Record<string, unknown>)[k];
+            if (cur == null) return base;
+          }
+          const last = keys[keys.length - 1]!;
+          if (Array.isArray(cur)) cur[Number(last)] = value;
+          else (cur as Record<string, unknown>)[last] = value;
+          return base;
+        });
+        return;
+      }
       if (e.data?.type === "mskool:select" && Number.isFinite(e.data.index)) {
         setSelection({ kind: "section", index: e.data.index });
+        // The canvas resolved the click to a specific field — ring it.
+        setFocusPath(typeof e.data.cpath === "string" ? e.data.cpath : undefined);
       }
     }
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, [postDraft]);
+
+  // The ring is a pointer: fade it after a beat.
+  useEffect(() => {
+    if (!focusPath) return;
+    const t = setTimeout(() => setFocusPath(undefined), 4000);
+    return () => clearTimeout(t);
+  }, [focusPath]);
 
   // Edits live in local state until saved — warn before losing them.
   useEffect(() => {
@@ -245,6 +298,7 @@ function SiteEditor() {
           <FieldsEditor
             key={`${selectedSection.key}-${selection.index}`}
             value={selectedSection.content}
+            focusPath={focusPath}
             onChange={(next) =>
               mutateContent((c) => {
                 c.sections[selection.index] = { ...c.sections[selection.index]!, content: next };
@@ -272,7 +326,7 @@ function SiteEditor() {
   };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-6">
+    <div className="w-full space-y-6 px-6 py-6">
       <PageHeader
         title="Website"
         description="Edit your public site's draft, then publish it to the live page."

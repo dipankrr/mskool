@@ -1,10 +1,12 @@
 "use client";
 
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ImageField } from "./image-field";
+import { useEffect, useRef } from "react";
 
 /**
  * The editor's auto-form (ADR-041 Tier A): walks ANY section content object
@@ -60,12 +62,25 @@ function StringInput({
 function FieldRow({
   label,
   children,
+  active,
 }: {
   label: string;
   children: React.ReactNode;
+  /** The canvas clicked THIS exact field — ring it and bring it into view. */
+  active?: boolean;
 }) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (active) rowRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [active]);
   return (
-    <div>
+    <div
+      ref={rowRef}
+      className={cn(
+        "rounded-lg p-2 -m-2 transition-shadow",
+        active && "bg-primary/5 ring-2 ring-primary ring-offset-2 ring-offset-background",
+      )}
+    >
       <Label className="text-[13px] font-medium">{label}</Label>
       <div className="mt-1.5">{children}</div>
     </div>
@@ -76,10 +91,14 @@ export function FieldsEditor({
   value,
   onChange,
   path = [],
+  focusPath,
 }: {
   value: unknown;
   onChange: (next: unknown) => void;
   path?: string[];
+  /** Content path clicked on the canvas (e.g. "cards.2.description") — the
+   * matching field here rings and scrolls into view. */
+  focusPath?: string;
 }) {
   // ── Leaves ────────────────────────────────────────────────────────────────
   if (typeof value === "string") {
@@ -227,7 +246,7 @@ export function FieldsEditor({
           block.kind === "pair" ? (
             <div key={bi} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {block.items.map(([key, v]) => (
-                <FieldRow key={key} label={humanize(key)}>
+                <FieldRow key={key} label={humanize(key)} active={focusPath === [...path, key].join(".")}>
                   <FieldsEditor
                     value={v}
                     onChange={(next) => onChange({ ...(value as object), [key]: next })}
@@ -237,7 +256,7 @@ export function FieldsEditor({
               ))}
             </div>
           ) : (
-            <FieldRow key={block.key} label={humanize(block.key)}>
+            <FieldRow key={block.key} label={humanize(block.key)} active={focusPath === [...path, block.key].join(".")}>
               <FieldsEditor
                 value={block.v}
                 onChange={(next) => onChange({ ...(value as object), [block.key]: next })}

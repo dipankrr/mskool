@@ -40,6 +40,7 @@ export function GalleryGrid({ content }: { content: GallerySection }) {
           <button
             key={img.url + i}
             type="button"
+            data-cpath={`images.${i}.url`}
             onClick={() => setIndex(i)}
             className="group block w-full overflow-hidden rounded-2xl border-4 border-white shadow-[0_6px_18px_rgba(30,58,52,0.12)] transition-transform duration-300 hover:-rotate-1 hover:scale-[1.02]"
             aria-label={`Open photo ${i + 1} of ${content.images.length}`}

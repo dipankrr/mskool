@@ -21,7 +21,7 @@ export function ContactSectionView({ content }: { content: ContactSection }) {
               <MapPin className="size-5" strokeWidth={2} />
             </span>
             <h3 className="site-heading mt-4 text-lg">Visit Our Campus</h3>
-            <p className="mt-2 text-[15px] leading-relaxed text-[var(--site-ink)]/75">{content.address}</p>
+            <p data-cpath="address" className="mt-2 text-[15px] leading-relaxed text-[var(--site-ink)]/75">{content.address}</p>
           </div>
 
           <div className="rounded-2xl bg-white p-7 shadow-[0_2px_14px_rgba(30,58,52,0.08)]">
@@ -38,7 +38,7 @@ export function ContactSectionView({ content }: { content: ContactSection }) {
                 </li>
               ))}
             </ul>
-            <a href={`mailto:${content.email}`} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-[var(--site-accent)] hover:underline">
+            <a data-cpath="email" href={`mailto:${content.email}`} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-[var(--site-accent)] hover:underline">
               <Mail className="size-4" strokeWidth={2} /> {content.email}
             </a>
           </div>
@@ -48,7 +48,7 @@ export function ContactSectionView({ content }: { content: ContactSection }) {
               <Clock className="size-5" strokeWidth={2} />
             </span>
             <h3 className="site-heading mt-4 text-lg">Office Hours</h3>
-            <p className="mt-2 text-[15px] leading-relaxed text-[var(--site-ink)]/75">{content.hours}</p>
+            <p data-cpath="hours" className="mt-2 text-[15px] leading-relaxed text-[var(--site-ink)]/75">{content.hours}</p>
           </div>
         </div>
 

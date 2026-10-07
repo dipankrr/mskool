@@ -90,23 +90,24 @@ export function HeroSection({ content }: { content: HeroSection }) {
       <div className="relative mx-auto max-w-6xl px-4 md:px-6">
         <div className="mx-auto max-w-4xl text-center">
           {content.ribbon ? (
-            <p className="mx-auto mb-6 inline-block rounded-full bg-[var(--site-accent)] px-6 py-2 text-sm font-bold shadow-[0_6px_18px_rgba(232,84,47,0.5)] sm:text-base">
+            <p data-cpath="ribbon" className="mx-auto mb-6 inline-block rounded-full bg-[var(--site-accent)] px-6 py-2 text-sm font-bold shadow-[0_6px_18px_rgba(232,84,47,0.5)] sm:text-base">
               {content.ribbon}
             </p>
           ) : null}
-          <h1 className="site-heading text-[2.6rem] sm:text-6xl md:text-7xl">
+          <h1 data-cpath="title" className="site-heading text-[2.6rem] sm:text-6xl md:text-7xl">
             {content.title}
           </h1>
           {content.subtitle ? (
-            <p className="mx-auto mt-6 max-w-[60ch] text-base leading-relaxed text-[var(--site-on-primary)]/85 sm:text-lg">
+            <p data-cpath="subtitle" className="mx-auto mt-6 max-w-[60ch] text-base leading-relaxed text-[var(--site-on-primary)]/85 sm:text-lg">
               {content.subtitle}
             </p>
           ) : null}
           {content.ctas.length > 0 ? (
             <div className="relative mt-9 flex flex-wrap items-center justify-center gap-4">
-              {content.ctas.map((cta) => (
+              {content.ctas.map((cta, i) => (
                 <a
                   key={cta.href + cta.label}
+                  data-cpath={`ctas.${i}.label`}
                   href={cta.href}
                   className={
                     cta.style === "primary"
@@ -158,10 +159,10 @@ export function StatsSection({ content }: { content: StatsSection }) {
       <div className="mx-auto grid max-w-5xl grid-cols-2 gap-x-6 gap-y-10 rounded-[2rem] border-2 border-[var(--site-primary)]/10 bg-white px-6 py-10 shadow-[0_20px_50px_rgba(30,58,52,0.12)] sm:grid-cols-4 sm:px-10">
         {content.items.map((stat, i) => (
           <div key={stat.label} className="text-center">
-            <p className="site-heading text-4xl sm:text-5xl" style={{ color: FRAMES[i % FRAMES.length] }}>
+            <p data-cpath={`items.${i}.value`} className="site-heading text-4xl sm:text-5xl" style={{ color: FRAMES[i % FRAMES.length] }}>
               {stat.value}
             </p>
-            <p className="mt-2 text-xs font-bold uppercase tracking-[0.14em] text-[var(--site-ink)]/60 sm:text-sm">
+            <p data-cpath={`items.${i}.label`} className="mt-2 text-xs font-bold uppercase tracking-[0.14em] text-[var(--site-ink)]/60 sm:text-sm">
               {stat.label}
             </p>
           </div>
@@ -179,10 +180,10 @@ export function AboutSection({ content }: { content: AboutSection }) {
     <section className="px-4 py-24 sm:py-28">
       <div className="mx-auto grid max-w-6xl items-center gap-12 md:grid-cols-2 md:gap-16">
         <div>
-          <h2 className="site-heading text-3xl text-[var(--site-primary)] sm:text-4xl md:text-5xl">
+          <h2 data-cpath="title" className="site-heading text-3xl text-[var(--site-primary)] sm:text-4xl md:text-5xl">
             {content.title}
           </h2>
-          <p className="mt-5 max-w-[60ch] text-base leading-relaxed text-[var(--site-ink)]/75 sm:text-lg">
+          <p data-cpath="body" className="mt-5 max-w-[60ch] text-base leading-relaxed text-[var(--site-ink)]/75 sm:text-lg">
             {content.body}
           </p>
           {content.ctas.length > 0 ? (
@@ -257,14 +258,14 @@ function SiteCard({ card, index }: { card: CardGridSection["cards"][number]; ind
   return (
     <article className="site-reveal flex h-full flex-col">
       {card.videoId ? (
-        <div className="site-frame" style={style}>
+        <div className="site-frame" style={style} data-cpath={`cards.${index}.videoId`}>
           <CardVideo videoId={card.videoId} title={card.title} />
         </div>
       ) : card.imageUrl ? (
-        <div className="site-frame relative" style={style}>
+        <div className="site-frame relative" style={style} data-cpath={`cards.${index}.imageUrl`}>
           <Image src={card.imageUrl} alt={card.imageAlt ?? card.title} width={640} height={480} className="aspect-[4/3] w-full object-cover" />
           {card.badge ? (
-            <span className="site-sticker absolute -left-2 top-4 rounded-full bg-white px-3.5 py-1.5 text-xs font-extrabold" style={{ color: FRAMES[index % FRAMES.length] }}>
+            <span data-cpath={`cards.${index}.badge`} className="site-sticker absolute -left-2 top-4 rounded-full bg-white px-3.5 py-1.5 text-xs font-extrabold" style={{ color: FRAMES[index % FRAMES.length] }}>
               {card.badge}
             </span>
           ) : null}
@@ -278,14 +279,14 @@ function SiteCard({ card, index }: { card: CardGridSection["cards"][number]; ind
             {card.badge}
           </span>
         ) : null}
-        <h3 className="site-heading text-xl text-[var(--site-ink)]">{card.title}</h3>
+        <h3 data-cpath={`cards.${index}.title`} className="site-heading text-xl text-[var(--site-ink)]">{card.title}</h3>
         {card.description ? (
-          <p className="mt-2.5 text-[15px] leading-relaxed text-[var(--site-ink)]/70">{card.description}</p>
+          <p data-cpath={`cards.${index}.description`} className="mt-2.5 text-[15px] leading-relaxed text-[var(--site-ink)]/70">{card.description}</p>
         ) : null}
         {card.bullets && card.bullets.length > 0 ? (
           <ul className="mt-4 space-y-1.5">
-            {card.bullets.map((b) => (
-              <li key={b} className="flex gap-2 text-sm text-[var(--site-ink)]/80">
+            {card.bullets.map((b, bi) => (
+              <li key={b} data-cpath={`cards.${index}.bullets.${bi}`} className="flex gap-2 text-sm text-[var(--site-ink)]/80">
                 <span aria-hidden="true" className="mt-0.5 font-bold" style={{ color: FRAMES[index % FRAMES.length] }}>
                   ✓
                 </span>
@@ -349,9 +350,9 @@ export function CtaBannerSection({ content }: { content: CtaBannerSection }) {
           </div>
         ) : null}
         <div className="relative max-w-xl">
-          <h2 className="site-heading text-3xl sm:text-4xl md:text-5xl">{content.title}</h2>
+          <h2 data-cpath="title" className="site-heading text-3xl sm:text-4xl md:text-5xl">{content.title}</h2>
           {content.subtitle ? (
-            <p className="mt-4 max-w-[46ch] text-base leading-relaxed text-white/90 sm:text-lg">{content.subtitle}</p>
+            <p data-cpath="subtitle" className="mt-4 max-w-[46ch] text-base leading-relaxed text-white/90 sm:text-lg">{content.subtitle}</p>
           ) : null}
           {content.ctas.length > 0 ? (
             <div className="mt-9 flex flex-wrap gap-4">

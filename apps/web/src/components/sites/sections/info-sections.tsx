@@ -60,15 +60,16 @@ export function FacultySectionView({ content }: { content: FacultySection }) {
                     )}
                   </div>
                 </div>
-                <h3 className="site-heading mt-5 text-lg text-[var(--site-ink)]">{m.name}</h3>
+                <h3 data-cpath={`members.${i}.name`} className="site-heading mt-5 text-lg text-[var(--site-ink)]">{m.name}</h3>
                 <p
+                  data-cpath={`members.${i}.designation`}
                   className="mt-2 rounded-full px-3 py-1 text-xs font-extrabold text-white"
                   style={{ background: blob }}
                 >
                   {m.designation}
                 </p>
                 {m.qualification ? (
-                  <p className="mt-2.5 text-sm text-[var(--site-ink)]/60">{m.qualification}</p>
+                  <p data-cpath={`members.${i}.qualification`} className="mt-2.5 text-sm text-[var(--site-ink)]/60">{m.qualification}</p>
                 ) : null}
               </article>
             );
@@ -91,12 +92,12 @@ export function FaqSectionView({ content }: { content: FaqSection }) {
           accentWords={[content.title.split(" ").length - 1]}
         />
         <div className="mt-12 space-y-4">
-          {content.items.map((item) => (
+          {content.items.map((item, i) => (
             <details
               key={item.question}
               className="group rounded-2xl border-2 border-transparent bg-white px-6 py-1 shadow-[0_4px_16px_rgba(30,58,52,0.07)] open:border-[var(--site-primary)]/20 open:bg-white open:shadow-[0_10px_30px_rgba(30,58,52,0.12)]"
             >
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-left font-bold text-[var(--site-ink)] marker:hidden [&::-webkit-details-marker]:hidden">
+              <summary data-cpath={`items.${i}.question`} className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-left font-bold text-[var(--site-ink)] marker:hidden [&::-webkit-details-marker]:hidden">
                 {item.question}
                 <span
                   aria-hidden="true"
@@ -105,7 +106,7 @@ export function FaqSectionView({ content }: { content: FaqSection }) {
                   +
                 </span>
               </summary>
-              <p className="pb-5 text-[15px] leading-relaxed text-[var(--site-ink)]/75">{item.answer}</p>
+              <p data-cpath={`items.${i}.answer`} className="pb-5 text-[15px] leading-relaxed text-[var(--site-ink)]/75">{item.answer}</p>
             </details>
           ))}
         </div>
