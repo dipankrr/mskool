@@ -1437,3 +1437,50 @@ save/publish — verified end-to-end). Next in this phase:
   (the resolved layer, reference table 23) land via the Phase 5 resolver seam
   (ADR-032 §12); v1 = every student takes every counted mapping of the class
 - Notifications / WhatsApp, timetabling, admissions workflow, library, transport
+
+---
+
+## Site editor — working state + known bugs (next session backlog)
+
+The on-screen editor at `/site` works end-to-end: outline + fields + live
+preview (real renderer in an iframe), canvas click-to-select, inline
+contentEditable editing on text leaves, image upload, draft → publish.
+Tested by the user; known issues accepted for now:
+
+- Hover is text-leaf-only; inspect-mode hover (card containers, section
+  frames) pending.
+- Starter-content generator: new orgs open an empty site; preset should
+  generate a skeleton from the org row (~half day).
+
+COMPLETE 2026-10-08 (uncommitted, gates: check-types 8/8, lint 0 errors, web
+unit 93/93, check:openapi clean incl. new POST /public-site/ensure;
+check:builders fails identically on clean HEAD — stale publicProcedure rule,
+pre-existing, untouched):
+- Tree was type-broken (page passed string focusPath, fields-editor expects
+  {path,n}); fixed with a real nonce, threaded through EVERY recursion level
+  (object/array children previously dropped it, so deep paths never rang).
+- Save → Publish disabled-after-save: Publish now keys off live-outdated
+  (effective content vs published snapshot), publishes the server draft
+  directly when there are no local edits, saves silently inside publish (one
+  toast, not two). Discard button added.
+- Section delete + duplicate in the outline (delete behind a confirm, live
+  site untouched until publish; selection re-seated).
+- Theme editor: new "Design" outline row editing content.theme (hex + font
+  names); canvas has no theme affordance, fields only.
+- Unpublish button (live badge only) + publish reactivates isActive, so
+  publish-after-unpublish goes live again (service fix).
+- Starter generator: empty state (NOT_FOUND or empty draft) offers "Create
+  starter site" (org name prefilled from memberships, editable) → idempotent
+  ensure + save of a factual-minimal valid skeleton; new publicSite.ensure
+  route (edit-gated) + ensureForOrg accepts initial draft content.
+- Canvas coverage: SectionHeader h2/subtitle stamped (data-edit-rich so the
+  accent spans stay one leaf); card/member/FAQ containers stamped so blank
+  clicks ring the card sheet (FieldsEditor FocusWrap); chrome/nav/footer all
+  stamped with data-region (footer wordmark resolves to chrome); about/CTA
+  banner CTA labels, hero/about/banner images, contact phones stamped.
+  Draft-edit applies to chrome/nav/footer via a shared path walker.
+- Gallery skeleton was save-invalid (images min 1): now ships a labeled local
+  placeholder photo.
+- Preview height: iframe reports scrollHeight, frame fits the whole page and
+  scrolls (was clipping at fixed 900px). Shift+Enter inserts newlines inline;
+  plain Enter still commits.

@@ -63,16 +63,22 @@ function FieldRow({
   label,
   children,
   active,
+  focus,
 }: {
   label: string;
   children: React.ReactNode;
   /** The canvas clicked THIS exact field — ring it and bring it into view. */
   active?: boolean;
+  /** Carries the click nonce: re-clicking the same field re-fires the
+   * scroll/ring instead of silently no-opping on an unchanged boolean. */
+  focus?: { path: string; n: number };
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (active) rowRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [active]);
+    // Re-runs on every canvas click: focus carries a nonce so re-clicking
+    // the same field re-rings and re-scrolls instead of dying silently.
+  }, [active, focus]);
   return (
     <div
       ref={rowRef}
@@ -87,18 +93,49 @@ function FieldRow({
   );
 }
 
+/**
+ * The ring+scroll for list rows that are not FieldRows: array-of-object
+ * sheets (cards, members, FAQ items — the canvas addresses a whole card by
+ * `cards.2`) and short string-list rows (phones). Same nonce contract as
+ * FieldRow: an exact-path match rings, every click re-scrolls.
+ */
+function FocusWrap({
+  active,
+  n,
+  className,
+  children,
+}: {
+  active?: boolean;
+  n?: number;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (active) ref.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [active, n]);
+  return (
+    <div
+      ref={ref}
+      className={cn(className, active && "ring-2 ring-primary ring-offset-2 ring-offset-background")}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function FieldsEditor({
   value,
   onChange,
   path = [],
-  focusPath,
+  focus,
 }: {
   value: unknown;
   onChange: (next: unknown) => void;
   path?: string[];
   /** Content path clicked on the canvas (e.g. "cards.2.description") — the
    * matching field here rings and scrolls into view. */
-  focusPath?: string;
+  focus?: { path: string; n: number };
 }) {
   // ── Leaves ────────────────────────────────────────────────────────────────
   if (typeof value === "string") {
@@ -132,7 +169,12 @@ export function FieldsEditor({
       return (
         <div className="space-y-2">
           {value.map((item, i) => (
-            <div key={i} className="flex items-center gap-2">
+            <FocusWrap
+              key={i}
+              active={focus?.path === [...path, String(i)].join(".")}
+              n={focus?.n}
+              className="flex items-center gap-2 rounded-lg"
+            >
               <Input
                 value={String(item)}
                 onChange={(e) => {
@@ -150,7 +192,7 @@ export function FieldsEditor({
               >
                 ×
               </Button>
-            </div>
+            </FocusWrap>
           ))}
           <Button type="button" variant="outline" size="sm" onClick={() => onChange([...value, ""])}>
             + Add item
@@ -176,7 +218,12 @@ export function FieldsEditor({
     return (
       <div className="space-y-3">
         {value.map((item, i) => (
-          <div key={i} className="rounded-xl border bg-card p-4 shadow-sm">
+          <FocusWrap
+            key={i}
+            active={focus?.path === [...path, String(i)].join(".")}
+            n={focus?.n}
+            className="rounded-xl border bg-card p-4 shadow-sm"
+          >
             <div className="mb-3 flex items-center justify-between">
               <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
                 {humanize(path[path.length - 1] ?? "item").replace(/s$/, "")} {i + 1}
@@ -193,6 +240,7 @@ export function FieldsEditor({
             </div>
             <FieldsEditor
               value={item}
+              focus={focus}
               onChange={(next) => {
                 const arr = [...value];
                 arr[i] = next;
@@ -200,7 +248,7 @@ export function FieldsEditor({
               }}
               path={[...path, String(i)]}
             />
-          </div>
+          </FocusWrap>
         ))}
         <Button
           type="button"
@@ -246,9 +294,10 @@ export function FieldsEditor({
           block.kind === "pair" ? (
             <div key={bi} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {block.items.map(([key, v]) => (
-                <FieldRow key={key} label={humanize(key)} active={focusPath === [...path, key].join(".")}>
+                <FieldRow key={key} label={humanize(key)} active={focus?.path === [...path, key].join(".")} focus={focus}>
                   <FieldsEditor
                     value={v}
+                    focus={focus}
                     onChange={(next) => onChange({ ...(value as object), [key]: next })}
                     path={[...path, key]}
                   />
@@ -256,9 +305,10 @@ export function FieldsEditor({
               ))}
             </div>
           ) : (
-            <FieldRow key={block.key} label={humanize(block.key)} active={focusPath === [...path, block.key].join(".")}>
+            <FieldRow key={block.key} label={humanize(block.key)} active={focus?.path === [...path, block.key].join(".")} focus={focus}>
               <FieldsEditor
                 value={block.v}
+                focus={focus}
                 onChange={(next) => onChange({ ...(value as object), [block.key]: next })}
                 path={[...path, block.key]}
               />

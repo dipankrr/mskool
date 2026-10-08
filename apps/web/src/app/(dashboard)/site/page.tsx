@@ -1,6 +1,6 @@
 "use client";
 
-import { GlobeIcon, LayersIcon, MonitorIcon, PlusIcon, RocketIcon, SaveIcon, SmartphoneIcon } from "lucide-react";
+import { CopyIcon, EyeOffIcon, GlobeIcon, LayersIcon, MonitorIcon, PaletteIcon, PlusIcon, RocketIcon, SaveIcon, SmartphoneIcon, Trash2Icon, Undo2Icon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -9,29 +9,38 @@ import { PermissionGate } from "@/components/permission-gate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { useActiveContext } from "@/features/session/active-context";
 import { FieldsEditor } from "@/features/site/fields-editor";
+import type { CanvasTarget } from "@/features/site/preview";
+import { buildStarterContent } from "@/features/site/starter";
 import { useSite, useSiteMutations } from "@/features/site/use-site";
 import type { PublicSiteContent, SectionKey } from "@repo/contracts";
 
 /**
- * THE SITE EDITOR (ADR-041 Tier A). Two panes: an OUTLINE of everything the
- * site is made of (chrome, nav, footer, the ordered sections) on the left;
- * the selected node's fields on the right. Save Draft writes the whole
- * draft; Publish is the only act that changes the live site. Drag-drop and
- * an image picker are Tier B — reorder buttons and URL fields with previews
- * carry those jobs until then.
+ * THE SITE EDITOR (ADR-041 Tier A + on-screen editing). Two panes: an OUTLINE
+ * of everything the site is made of (chrome, nav, footer, design tokens, the
+ * ordered sections) on the left; the selected node's fields on the right; the
+ * live preview (the real renderer in an iframe) alongside. Save Draft writes
+ * the whole draft; Publish is the only act that changes the live site.
+ * Unpublish takes it offline without touching the draft.
  */
 
-/** Blank content per section key, used by "+ Add section". */
+/** Blank content per section key, used by "+ Add section". Every skeleton is
+ * valid against its section schema, so adding never breaks the next save —
+ * the gallery carries a clearly-labeled local placeholder photo. */
 const SECTION_SKELETONS: Record<SectionKey, unknown> = {
   hero: { title: "New hero", subtitle: "", images: [], ctas: [] },
   stats: { items: [{ value: "100%", label: "New stat" }] },
   about: { title: "New section", body: "", images: [], ctas: [] },
   cardGrid: { title: "New section", subtitle: "", cards: [{ title: "New card" }] },
-  gallery: { title: "Gallery", images: [] },
+  gallery: {
+    title: "Gallery",
+    images: [{ url: "/sites/ujjwal/hero-1.webp", alt: "Placeholder — replace with a school photo" }],
+  },
   faculty: { title: "Faculty", members: [{ name: "Name", designation: "Designation" }] },
   faq: { title: "FAQ", items: [{ question: "Question?", answer: "Answer." }] },
   contact: {
@@ -56,7 +65,12 @@ const SECTION_LABELS: Record<SectionKey, string> = {
   ctaBanner: "CTA banner",
 };
 
-type Selection = { kind: "chrome" } | { kind: "nav" } | { kind: "footer" } | { kind: "section"; index: number };
+type Selection =
+  | { kind: "chrome" }
+  | { kind: "nav" }
+  | { kind: "footer" }
+  | { kind: "theme" }
+  | { kind: "section"; index: number };
 
 function OutlineRow({
   label,
@@ -95,18 +109,83 @@ function OutlineRow({
   );
 }
 
+/**
+ * The empty state: no provisioned row, or a row with no usable draft. Offers
+ * the starter generator — provision + a factual-minimal skeleton named for
+ * the org — instead of the old dead-end "seed a site first" text.
+ */
+function StarterEmpty({ orgName }: { orgName: string }) {
+  const [name, setName] = useState(orgName);
+  const { ensureSite, save, validate, isSaving } = useSiteMutations();
+
+  const create = async () => {
+    const content = buildStarterContent(name);
+    const check = validate(content);
+    if (!check.success) {
+      const issue = check.error.issues[0]!;
+      toast.error(`Starter content is invalid at "${issue.path.join(".")}" — ${issue.message}`);
+      return;
+    }
+    try {
+      // ensure is idempotent: creates the row when missing, no-ops when the
+      // row exists with an empty draft. The save then writes the starter.
+      await ensureSite();
+      await save(content, { silent: true });
+      toast.success("Starter site created — edit it, then publish.");
+    } catch {
+      // toasts handled in the mutations
+    }
+  };
+
+  return (
+    <Card className="mx-auto mt-10 max-w-lg">
+      <CardContent className="space-y-4 p-6">
+        <div className="flex items-center gap-2">
+          <GlobeIcon className="size-4 text-muted-foreground" />
+          <h2 className="font-semibold">Create your school website</h2>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          No site exists for this organization yet. Start from a short skeleton
+          named for your school — no invented claims, just sections to fill in.
+        </p>
+        <div className="space-y-1.5">
+          <label htmlFor="starter-org-name" className="text-[13px] font-medium">
+            School name on the site
+          </label>
+          <Input
+            id="starter-org-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Our School"
+          />
+        </div>
+        <Button disabled={isSaving} onClick={() => void create()}>
+          <PlusIcon className="size-4" /> Create starter site
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 function SiteEditor() {
-  const { data: site, isLoading, error } = useSite();
-  const { save, publishDraft, validate, isSaving } = useSiteMutations();
+  const { data: site, isLoading, error, refetch } = useSite();
+  const { save, publishDraft, publishNow, unpublishNow, validate, isSaving } = useSiteMutations();
+  const { scopeArgs, memberships } = useActiveContext();
+  const orgName =
+    memberships.find((m) => m.organization.id === scopeArgs().organizationId)?.organization.name ??
+    "Our School";
 
   const [draft, setDraft] = useState<PublicSiteContent | null>(null);
   const [selection, setSelection] = useState<Selection>({ kind: "chrome" });
   const [addKey, setAddKey] = useState<SectionKey>("cardGrid");
   const [previewWide, setPreviewWide] = useState(true);
   // The exact field clicked on the canvas (e.g. "cards.2.description") — the
-  // fields editor rings and scrolls to it. Cleared after a beat so the ring
+  // fields editor rings and scrolls to it. The nonce re-fires the ring when
+  // the same field is clicked twice; the path clears after a beat so the ring
   // is a pointer, not a permanent state.
   const [focusPath, setFocusPath] = useState<string | undefined>(undefined);
+  const [focusTick, setFocusTick] = useState(0);
+  const focus = focusPath ? { path: focusPath, n: focusTick } : undefined;
   const iframeRef = useRef<HTMLIFrameElement>(null);
   // Content mirror for the postMessage handler (its closure would otherwise
   // go stale between renders). Assigned below, after `content` exists.
@@ -114,6 +193,9 @@ function SiteEditor() {
   // Set when a canvas keystroke updates the draft: the next post effect skips
   // one round so the iframe is never re-rendered mid-keystroke.
   const canvasEditRef = useRef(false);
+  // The preview reports its rendered height; the scaled frame fits the whole
+  // page instead of clipping long sites at a fixed viewport height.
+  const [previewHeight, setPreviewHeight] = useState(900);
 
   // Adopt the server draft into local state once; edits are local until saved.
   // (Cast: the wire type's `content` is inferred optional through the zod
@@ -125,11 +207,20 @@ function SiteEditor() {
     () => Boolean(draft && site?.draftContent && JSON.stringify(draft) !== JSON.stringify(site.draftContent)),
     [draft, site],
   );
+  // Publish is about the LIVE site, not the local buffer: enabled whenever
+  // what the visitor would see differs from the snapshot — including right
+  // after a save, when `dirty` has already reset.
+  const liveOutdated = useMemo(() => {
+    if (!content) return false;
+    if (!site?.publishedContent) return true;
+    return JSON.stringify(content) !== JSON.stringify(site.publishedContent);
+  }, [content, site]);
+  const live = Boolean(site?.publishedAt && site.isActive);
 
   // ── The live preview handshake (the on-screen editor) ─────────────────────
   // The iframe renders the REAL site renderer fed the draft: post it on every
   // edit (debounced — the payload includes the whole content tree), receive
-  // clicks back as section selections. Same-origin only, both directions.
+  // clicks back as node selections. Same-origin only, both directions.
   const postDraft = useCallback(() => {
     // Posts the EFFECTIVE content (the server draft until the first local
     // edit), so the preview renders immediately — not only after an edit.
@@ -160,21 +251,30 @@ function SiteEditor() {
         postDraft();
         return;
       }
+      if (e.data?.type === "mskool:preview-height") {
+        const h = Number(e.data.height);
+        if (Number.isFinite(h)) setPreviewHeight(Math.max(300, Math.min(8000, h)));
+        return;
+      }
       if (e.data?.type === "mskool:draft-edit") {
         // A canvas keystroke: apply it into the draft WITHOUT re-posting to
         // the iframe — re-rendering mid-keystroke would destroy the caret.
         // The iframe already shows the typed text.
-        const index = Number(e.data.index);
-        const cpath = String(e.data.cpath ?? "");
+        const t = e.data.target as CanvasTarget | undefined;
         const value = String(e.data.value ?? "");
-        if (!Number.isFinite(index) || !cpath) return;
+        if (!t || typeof t.cpath !== "string" || !t.cpath) return;
+        if (t.kind === "section" && !Number.isFinite(t.index)) return;
+        const cpath = t.cpath;
         canvasEditRef.current = true;
         setDraft((current) => {
           const base = structuredClone((current ?? contentRef.current)!);
-          const section = base.sections[index];
-          if (!section) return base;
+          const root: unknown =
+            t.kind === "section"
+              ? (base.sections[t.index]?.content ?? null)
+              : (base as unknown as Record<string, unknown>)[t.kind];
+          if (root == null || typeof root !== "object") return base;
           const keys = cpath.split(".");
-          let cur: unknown = section.content;
+          let cur: unknown = root;
           for (let i = 0; i < keys.length - 1; i++) {
             const k = keys[i]!;
             cur = Array.isArray(cur) ? cur[Number(k)] : (cur as Record<string, unknown>)[k];
@@ -187,10 +287,20 @@ function SiteEditor() {
         });
         return;
       }
-      if (e.data?.type === "mskool:select" && Number.isFinite(e.data.index)) {
-        setSelection({ kind: "section", index: e.data.index });
-        // The canvas resolved the click to a specific field — ring it.
-        setFocusPath(typeof e.data.cpath === "string" ? e.data.cpath : undefined);
+      if (e.data?.type === "mskool:select" && e.data.target) {
+        const t = e.data.target as CanvasTarget;
+        if (t.kind === "section") {
+          if (!Number.isFinite(t.index)) return;
+          setSelection({ kind: "section", index: t.index });
+        } else {
+          setSelection({ kind: t.kind });
+        }
+        // The canvas resolved the click to a specific field — ring it. Every
+        // click bumps the nonce so re-clicking the same field re-rings.
+        if (typeof t.cpath === "string" && t.cpath) {
+          setFocusPath(t.cpath);
+          setFocusTick((n) => n + 1);
+        }
       }
     }
     window.addEventListener("message", onMessage);
@@ -218,7 +328,6 @@ function SiteEditor() {
   // layout — the previous version let the pane's ~400px width decide, which
   // made "desktop" render mobile.
   const VIEWPORT_W = previewWide ? 1280 : 390;
-  const VIEWPORT_H = 900;
   const paneRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.3);
   useEffect(() => {
@@ -232,6 +341,30 @@ function SiteEditor() {
   }, [VIEWPORT_W]);
 
   const doSave = async (thenPublish: boolean) => {
+    if (thenPublish) {
+      // Publish the local edits when there are any, else the server draft.
+      if (draft) {
+        const check = validate(draft);
+        if (!check.success) {
+          const issue = check.error.issues[0]!;
+          toast.error(`Content is invalid at "${issue.path.join(".")}" — ${issue.message}`);
+          return;
+        }
+        try {
+          await publishDraft(draft);
+          setDraft(null);
+        } catch {
+          // toasts handled in the mutations
+        }
+      } else {
+        try {
+          await publishNow();
+        } catch {
+          // toasts handled in the mutations
+        }
+      }
+      return;
+    }
     if (!draft) return;
     const check = validate(draft);
     if (!check.success) {
@@ -240,12 +373,17 @@ function SiteEditor() {
       return;
     }
     try {
-      if (thenPublish) {
-        await publishDraft(draft);
-      } else {
-        await save(draft);
-      }
+      await save(draft);
       setDraft(null);
+    } catch {
+      // toasts handled in the mutations
+    }
+  };
+
+  const doUnpublish = async () => {
+    if (!window.confirm("Take the public site offline? Visitors will see nothing; the draft is kept.")) return;
+    try {
+      await unpublishNow();
     } catch {
       // toasts handled in the mutations
     }
@@ -253,19 +391,51 @@ function SiteEditor() {
 
   if (isLoading) return <p className="p-6 text-muted-foreground">Loading the site draft…</p>;
   if (error) {
+    const code = (error as { data?: { code?: string } })?.data?.code;
+    // No row provisioned yet: the starter generator, not a dead end.
+    if (code === "NOT_FOUND") return <StarterEmpty orgName={orgName} />;
     return (
       <p className="p-6 text-muted-foreground">
-        You don't have access to a site editor for this organization, or none has been
-        provisioned yet.
+        You don&apos;t have access to a site editor for this organization.{" "}
+        <Button variant="link" className="h-auto p-0" onClick={() => void refetch()}>
+          Retry
+        </Button>
       </p>
     );
   }
   if (!content) {
-    return <p className="p-6 text-muted-foreground">The draft is empty — seed a site first.</p>;
+    return <StarterEmpty orgName={orgName} />;
   }
 
   const mutateContent = (fn: (c: PublicSiteContent) => PublicSiteContent) =>
     setDraft((current) => fn(structuredClone(current ?? content)));
+
+  const removeSection = (index: number, title: string) => {
+    if (
+      !window.confirm(
+        `Remove "${title}" from the draft? The live site is untouched until you publish.`,
+      )
+    ) {
+      return;
+    }
+    mutateContent((c) => {
+      c.sections.splice(index, 1);
+      return c;
+    });
+    // Keep the selection on something that still exists.
+    if (selection.kind === "section") {
+      if (selection.index === index) setSelection({ kind: "chrome" });
+      else if (selection.index > index) setSelection({ kind: "section", index: selection.index - 1 });
+    }
+  };
+
+  const duplicateSection = (index: number) => {
+    mutateContent((c) => {
+      c.sections.splice(index + 1, 0, structuredClone(c.sections[index]!));
+      return c;
+    });
+    setSelection({ kind: "section", index: index + 1 });
+  };
 
   const sections = content.sections;
   const selectedSection = selection.kind === "section" ? sections[selection.index] : undefined;
@@ -276,6 +446,7 @@ function SiteEditor() {
         return (
           <FieldsEditor
             value={content.chrome}
+            focus={focus}
             onChange={(next) => mutateContent((c) => ({ ...c, chrome: next as PublicSiteContent["chrome"] }))}
           />
         );
@@ -283,6 +454,7 @@ function SiteEditor() {
         return (
           <FieldsEditor
             value={content.nav}
+            focus={focus}
             onChange={(next) => mutateContent((c) => ({ ...c, nav: next as PublicSiteContent["nav"] }))}
           />
         );
@@ -290,15 +462,30 @@ function SiteEditor() {
         return (
           <FieldsEditor
             value={content.footer}
+            focus={focus}
             onChange={(next) => mutateContent((c) => ({ ...c, footer: next as PublicSiteContent["footer"] }))}
           />
+        );
+      case "theme":
+        return (
+          <>
+            <p className="mb-4 text-sm text-muted-foreground">
+              Colors are hex values (click any field to type a new one); the two
+              fonts are family names the theme loads.
+            </p>
+            <FieldsEditor
+              value={content.theme}
+              focus={focus}
+              onChange={(next) => mutateContent((c) => ({ ...c, theme: next as PublicSiteContent["theme"] }))}
+            />
+          </>
         );
       case "section":
         return selectedSection ? (
           <FieldsEditor
             key={`${selectedSection.key}-${selection.index}`}
             value={selectedSection.content}
-            focusPath={focusPath}
+            focus={focus}
             onChange={(next) =>
               mutateContent((c) => {
                 c.sections[selection.index] = { ...c.sections[selection.index]!, content: next };
@@ -318,6 +505,8 @@ function SiteEditor() {
         return "Navigation links";
       case "footer":
         return "Footer";
+      case "theme":
+        return "Design · colors & fonts";
       case "section": {
         const s = sections[selection.index]!;
         return SECTION_LABELS[s.key] + (s.id ? ` · #${s.id}` : "");
@@ -333,15 +522,27 @@ function SiteEditor() {
         actions={
           <>
             {dirty ? <Badge>Pending changes</Badge> : null}
-            {site?.publishedAt ? (
-              <Badge variant="secondary">Live since {new Date(site.publishedAt).toLocaleDateString()}</Badge>
+            {live ? (
+              <Badge variant="secondary">Live since {new Date(site!.publishedAt!).toLocaleDateString()}</Badge>
+            ) : site?.publishedAt ? (
+              <Badge variant="secondary">Unpublished</Badge>
             ) : (
               <Badge variant="secondary">Never published</Badge>
             )}
+            {dirty ? (
+              <Button variant="ghost" disabled={isSaving} onClick={() => setDraft(null)}>
+                <Undo2Icon className="size-4" /> Discard
+              </Button>
+            ) : null}
             <Button variant="outline" disabled={isSaving || !dirty} onClick={() => void doSave(false)}>
               <SaveIcon className="size-4" /> Save draft
             </Button>
-            <Button disabled={isSaving || !draft} onClick={() => void doSave(true)}>
+            {live ? (
+              <Button variant="outline" disabled={isSaving} onClick={() => void doUnpublish()}>
+                <EyeOffIcon className="size-4" /> Unpublish
+              </Button>
+            ) : null}
+            <Button disabled={isSaving || !liveOutdated} onClick={() => void doSave(true)}>
               <RocketIcon className="size-4" /> Publish
             </Button>
           </>
@@ -371,6 +572,12 @@ function SiteEditor() {
               label="Footer"
               active={selection.kind === "footer"}
               onClick={() => setSelection({ kind: "footer" })}
+            />
+            <OutlineRow
+              label="Design"
+              hint="theme"
+              active={selection.kind === "theme"}
+              onClick={() => setSelection({ kind: "theme" })}
             />
 
             <Separator className="my-3" />
@@ -443,6 +650,24 @@ function SiteEditor() {
                     >
                       ↓
                     </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-6"
+                      aria-label="Duplicate section"
+                      onClick={() => duplicateSection(i)}
+                    >
+                      <CopyIcon className="size-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-6 text-destructive hover:text-destructive"
+                      aria-label="Remove section"
+                      onClick={() => removeSection(i, title)}
+                    >
+                      <Trash2Icon className="size-3.5" />
+                    </Button>
                   </span>
                 }
               />
@@ -485,7 +710,11 @@ function SiteEditor() {
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center gap-2">
-              <LayersIcon className="size-4 text-muted-foreground" />
+              {selection.kind === "theme" ? (
+                <PaletteIcon className="size-4 text-muted-foreground" />
+              ) : (
+                <LayersIcon className="size-4 text-muted-foreground" />
+              )}
               <h2 className="font-semibold">{titleForSelection()}</h2>
               {selection.kind === "section" ? (
                 <Badge variant="outline" className="ml-auto font-mono text-xs">
@@ -510,7 +739,7 @@ function SiteEditor() {
           <CardContent className="p-4">
             <div className="mb-3 flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Live preview · click a section to edit it
+                Live preview · click anything to edit it
               </p>
               <div className="flex items-center gap-1">
                 <Button
@@ -535,13 +764,15 @@ function SiteEditor() {
             </div>
             {/* The observed wrapper is FULL-WIDTH and independent of scale —
                 observing the scaled box itself would feed its own output back
-                into the ResizeObserver and shrink to nothing. */}
-            <div ref={paneRef} className="w-full">
+                into the ResizeObserver and shrink to nothing. The frame box
+                fits the page's reported height and scrolls when taller than
+                the viewport. */}
+            <div ref={paneRef} className="max-h-[75vh] w-full overflow-auto">
               <div
                 className="mx-auto overflow-hidden rounded-xl border bg-white shadow-sm"
                 style={{
                   width: Math.round(VIEWPORT_W * scale),
-                  height: Math.round(VIEWPORT_H * scale),
+                  height: Math.round(previewHeight * scale),
                 }}
               >
               {/* The iframe runs at a REAL desktop/mobile viewport and is
@@ -556,7 +787,7 @@ function SiteEditor() {
                 className="border-0 bg-white"
                 style={{
                   width: VIEWPORT_W,
-                  height: VIEWPORT_H,
+                  height: previewHeight,
                   transform: `scale(${scale})`,
                   transformOrigin: "top left",
                 }}

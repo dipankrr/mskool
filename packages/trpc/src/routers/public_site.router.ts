@@ -72,6 +72,32 @@ export const publicSiteRouter = router({
       };
     }),
 
+  ensure: staffProcedure("public_site:edit")
+    .meta({
+      openapi: {
+        method: "POST",
+        path: "/public-site/ensure",
+        tags: ["public-site"],
+        summary: "Provision the org's site row, optionally with starter content",
+        protect: true,
+      },
+    })
+    .input(
+      z.object({
+        preset: z.string().min(2).max(50).optional(),
+        content: publicSiteContentInputSchema.optional(),
+      }),
+    )
+    .output(z.object({ ok: z.boolean() }))
+    .mutation(async ({ input }) => {
+      await publicSiteService.ensureForOrg(
+        input.organizationId,
+        input.preset ?? "ujjwal-kids",
+        input.content,
+      );
+      return { ok: true };
+    }),
+
   saveDraft: staffProcedure("public_site:edit")
     .meta({
       openapi: {

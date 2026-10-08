@@ -36,10 +36,6 @@ export function useSiteMutations() {
   };
 
   const saveDraft = trpc.publicSite.saveDraft.useMutation({
-    onSuccess: () => {
-      toast.success("Draft saved.");
-      invalidate();
-    },
     onError: (error) => toast.error(errorMessage(error)),
   });
 
@@ -51,13 +47,38 @@ export function useSiteMutations() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  const save = (content: PublicSiteContent) =>
-    saveDraft.mutateAsync({ ...args, content });
+  const unpublish = trpc.publicSite.unpublish.useMutation({
+    onSuccess: () => {
+      toast.success("Unpublished — the public site is offline. The draft is untouched.");
+      invalidate();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
 
+  const ensure = trpc.publicSite.ensure.useMutation({
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const save = async (content: PublicSiteContent, opts?: { silent?: boolean }) => {
+    await saveDraft.mutateAsync({ ...args, content });
+    if (!opts?.silent) toast.success("Draft saved.");
+    invalidate();
+  };
+
+  /** Save-then-publish in one gesture; the save stays silent so only the publish toasts. */
   const publishDraft = async (content: PublicSiteContent) => {
-    await save(content);
+    await save(content, { silent: true });
     await publish.mutateAsync(args);
   };
+
+  /** Publish the current server draft without a save round-trip. */
+  const publishNow = () => publish.mutateAsync(args);
+
+  const unpublishNow = () => unpublish.mutateAsync(args);
+
+  /** Provision the org's site row, optionally seeded with starter content. */
+  const ensureSite = (content?: PublicSiteContent) =>
+    ensure.mutateAsync(content ? { ...args, content } : args);
 
   /** Client-side gate before anything is sent: same schema as the server. */
   const validate = (content: PublicSiteContent) =>
@@ -66,7 +87,10 @@ export function useSiteMutations() {
   return {
     save,
     publishDraft,
+    publishNow,
+    unpublishNow,
+    ensureSite,
     validate,
-    isSaving: saveDraft.isPending || publish.isPending,
+    isSaving: saveDraft.isPending || publish.isPending || unpublish.isPending || ensure.isPending,
   };
 }

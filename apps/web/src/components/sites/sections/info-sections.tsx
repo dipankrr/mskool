@@ -46,9 +46,10 @@ export function FacultySectionView({ content }: { content: FacultySection }) {
             return (
               <article
                 key={m.name + String(i)}
+                data-cpath={`members.${i}`}
                 className="site-reveal group flex flex-col items-center rounded-3xl bg-white p-8 text-center shadow-[0_10px_28px_rgba(30,58,52,0.09)] transition-transform duration-300 hover:-translate-y-1.5"
               >
-                <div className="relative grid size-28 place-items-center">
+                <div data-cpath={`members.${i}.imageUrl`} className="relative grid size-28 place-items-center">
                   <DoodleBlob className="absolute inset-0 transition-transform duration-500 group-hover:rotate-12" color={blob} />
                   <div className="relative size-20 overflow-hidden rounded-full border-4 border-white bg-white shadow-[0_4px_14px_rgba(30,58,52,0.2)]">
                     {m.imageUrl ? (
@@ -95,6 +96,7 @@ export function FaqSectionView({ content }: { content: FaqSection }) {
           {content.items.map((item, i) => (
             <details
               key={item.question}
+              data-cpath={`items.${i}`}
               className="group rounded-2xl border-2 border-transparent bg-white px-6 py-1 shadow-[0_4px_16px_rgba(30,58,52,0.07)] open:border-[var(--site-primary)]/20 open:bg-white open:shadow-[0_10px_30px_rgba(30,58,52,0.12)]"
             >
               <summary data-cpath={`items.${i}.question`} className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-left font-bold text-[var(--site-ink)] marker:hidden [&::-webkit-details-marker]:hidden">

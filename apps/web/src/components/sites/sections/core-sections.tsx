@@ -55,7 +55,9 @@ export function SectionHeader({
   const words = title.split(" ");
   return (
     <div className="mx-auto max-w-3xl text-center">
-      <h2 className="site-heading text-3xl text-[var(--site-primary)] sm:text-4xl md:text-5xl">
+      {/* data-edit-rich: the accent spans are inline decoration, so the
+          canvas treats this as one text leaf for the whole title. */}
+      <h2 data-cpath="title" data-edit-rich className="site-heading text-3xl text-[var(--site-primary)] sm:text-4xl md:text-5xl">
         {words.map((w, i) =>
           accentWords.includes(i) ? (
             <span key={i}>
@@ -67,7 +69,7 @@ export function SectionHeader({
         )}
       </h2>
       {subtitle ? (
-        <p className="mx-auto mt-4 max-w-[58ch] text-base leading-relaxed text-[var(--site-ink)]/70 sm:text-lg">
+        <p data-cpath="subtitle" className="mx-auto mt-4 max-w-[58ch] text-base leading-relaxed text-[var(--site-ink)]/70 sm:text-lg">
           {subtitle}
         </p>
       ) : null}
@@ -127,6 +129,7 @@ export function HeroSection({ content }: { content: HeroSection }) {
           <div className="relative mx-auto mt-14 grid max-w-4xl grid-cols-5 items-end gap-5 sm:mt-20 sm:gap-7">
             {img2 ? (
               <div
+                data-cpath="images.1.url"
                 className="site-frame site-hero-photo col-span-2 rotate-[-2.5deg]"
                 style={frame(1)}
               >
@@ -136,6 +139,7 @@ export function HeroSection({ content }: { content: HeroSection }) {
               <div className="col-span-2" />
             )}
             <div
+              data-cpath="images.0.url"
               className="site-frame site-hero-photo col-span-3 rotate-[1.5deg]"
               style={frame(0)}
             >
@@ -188,9 +192,10 @@ export function AboutSection({ content }: { content: AboutSection }) {
           </p>
           {content.ctas.length > 0 ? (
             <div className="mt-8 flex flex-wrap gap-3">
-              {content.ctas.map((cta) => (
+              {content.ctas.map((cta, i) => (
                 <a
                   key={cta.href + cta.label}
+                  data-cpath={`ctas.${i}.label`}
                   href={cta.href}
                   className={
                     cta.style === "primary"
@@ -207,11 +212,11 @@ export function AboutSection({ content }: { content: AboutSection }) {
         {img1 ? (
           <div className="relative grid grid-cols-2 items-end gap-5">
             <DoodleSparkle className="absolute -left-4 -top-4 z-10 size-8" />
-            <div className="site-frame site-hero-photo rotate-[-2deg]" style={frame(0)}>
+            <div data-cpath="images.0.url" className="site-frame site-hero-photo rotate-[-2deg]" style={frame(0)}>
               <Image src={img1.url} alt={img1.alt} width={520} height={620} className="h-full w-full object-cover" />
             </div>
             {img2 ? (
-              <div className="site-frame site-hero-photo mt-12 rotate-[2deg]" style={frame(3)}>
+              <div data-cpath="images.1.url" className="site-frame site-hero-photo mt-12 rotate-[2deg]" style={frame(3)}>
                 <Image src={img2.url} alt={img2.alt} width={520} height={560} className="h-full w-full object-cover" />
               </div>
             ) : null}
@@ -256,7 +261,7 @@ function SiteCard({ card, index }: { card: CardGridSection["cards"][number]; ind
   const style = frame(index);
 
   return (
-    <article className="site-reveal flex h-full flex-col">
+    <article data-cpath={`cards.${index}`} className="site-reveal flex h-full flex-col">
       {card.videoId ? (
         <div className="site-frame" style={style} data-cpath={`cards.${index}.videoId`}>
           <CardVideo videoId={card.videoId} title={card.title} />
@@ -341,6 +346,7 @@ export function CtaBannerSection({ content }: { content: CtaBannerSection }) {
         {content.imageUrl ? (
           <div className="absolute inset-y-0 right-0 hidden w-[40%] md:block">
             <div
+              data-cpath="imageUrl"
               className="site-frame absolute right-[-1rem] top-1/2 w-[115%] -translate-y-1/2 rotate-[3deg]"
               style={{ background: "#155E4B", boxShadow: "0 18px 44px rgba(0,0,0,0.3)" }}
             >
@@ -356,9 +362,10 @@ export function CtaBannerSection({ content }: { content: CtaBannerSection }) {
           ) : null}
           {content.ctas.length > 0 ? (
             <div className="mt-9 flex flex-wrap gap-4">
-              {content.ctas.map((cta) => (
+              {content.ctas.map((cta, i) => (
                 <a
                   key={cta.href + cta.label}
+                  data-cpath={`ctas.${i}.label`}
                   href={cta.href}
                   className={
                     cta.style === "primary"

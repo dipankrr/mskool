@@ -12,16 +12,20 @@ export function SiteFooter({
   wordmark: string;
 }) {
   return (
-    <footer className="bg-[var(--site-primary)] pb-10 text-[var(--site-on-primary)]">
+    <footer data-region="footer" className="bg-[var(--site-primary)] pb-10 text-[var(--site-on-primary)]">
       <div className="mx-auto max-w-6xl px-4 md:px-6">
         {footer.blurb ? (
-          <p className="max-w-[62ch] pt-14 text-base leading-relaxed text-[var(--site-on-primary)]/80">
+          <p data-cpath="blurb" className="max-w-[62ch] pt-14 text-base leading-relaxed text-[var(--site-on-primary)]/80">
             {footer.blurb}
           </p>
         ) : null}
 
+        {/* The wordmark displays chrome.orgName, so it resolves to the chrome
+            region even though it renders inside the footer. */}
         <div
           aria-hidden="true"
+          data-region="chrome"
+          data-cpath="orgName"
           className="site-heading mt-8 select-none text-[13.5vw] leading-[0.95] text-[var(--site-on-primary)] md:text-[9rem]"
         >
           {wordmark}
@@ -29,15 +33,16 @@ export function SiteFooter({
 
         {footer.columns.length > 0 ? (
           <div className="mt-12 grid grid-cols-2 gap-8 border-t border-white/15 pt-10 sm:grid-cols-4">
-            {footer.columns.map((col) => (
+            {footer.columns.map((col, ci) => (
               <div key={col.heading}>
-                <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-[var(--site-on-primary)]/60">
+                <h3 data-cpath={`columns.${ci}.heading`} className="text-sm font-bold uppercase tracking-[0.14em] text-[var(--site-on-primary)]/60">
                   {col.heading}
                 </h3>
                 <ul className="mt-4 space-y-2.5">
-                  {col.links.map((link) => (
+                  {col.links.map((link, li) => (
                     <li key={link.href + link.label}>
                       <a
+                        data-cpath={`columns.${ci}.links.${li}.label`}
                         href={link.href}
                         className="text-[15px] font-medium text-[var(--site-on-primary)]/85 transition-colors hover:text-[var(--site-on-primary)] hover:underline"
                       >
@@ -52,13 +57,13 @@ export function SiteFooter({
         ) : null}
 
         <div className="mt-12 flex flex-col gap-4 border-t border-white/15 pt-8 text-sm text-[var(--site-on-primary)]/70 sm:flex-row sm:items-center sm:justify-between">
-          <p>{footer.copyright}</p>
+          <p data-cpath="copyright">{footer.copyright}</p>
           <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4">
-            {footer.tagline ? <p className="font-bold">{footer.tagline}</p> : null}
+            {footer.tagline ? <p data-cpath="tagline" className="font-bold">{footer.tagline}</p> : null}
             {footer.social.length > 0 ? (
               <p className="flex gap-4">
-                {footer.social.map((s) => (
-                  <a key={s.label} href={s.href} className="font-semibold hover:text-[var(--site-on-primary)] hover:underline">
+                {footer.social.map((s, i) => (
+                  <a key={s.label} data-cpath={`social.${i}.label`} href={s.href} className="font-semibold hover:text-[var(--site-on-primary)] hover:underline">
                     {s.label}
                   </a>
                 ))}

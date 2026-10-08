@@ -46,9 +46,15 @@ export class PublicSiteService {
   /**
    * Provisions the org's site row if missing, returning the existing row
    * either way. Seeding and first-open of the editor both go through here,
-   * so a missing row is never a 500 in the editor.
+   * so a missing row is never a 500 in the editor. The caller may supply the
+   * initial draft (the editor's starter generator does); it must already
+   * satisfy the content contract, because the draft read re-validates it.
    */
-  async ensureForOrg(organizationId: string, preset = "ujjwal-kids") {
+  async ensureForOrg(
+    organizationId: string,
+    preset = "ujjwal-kids",
+    draftContent?: PublicSiteContentInput,
+  ) {
     const existing = await db.query.orgPublicSites.findFirst({
       where: eq(orgPublicSites.organizationId, organizationId),
     });
@@ -59,7 +65,7 @@ export class PublicSiteService {
       .values({
         organizationId,
         preset,
-        draftContent: { sections: [] },
+        draftContent: draftContent ?? { sections: [] },
       })
       .onConflictDoNothing({ target: orgPublicSites.organizationId })
       .returning();
@@ -113,6 +119,9 @@ export class PublicSiteService {
         .set({
           publishedContent: site.draftContent,
           publishedAt: new Date(),
+          // A publish after an unpublish must go live again — unpublish only
+          // flips the flag, so publish must flip it back.
+          isActive: true,
         })
         .where(eq(orgPublicSites.organizationId, input.organizationId))
         .returning();

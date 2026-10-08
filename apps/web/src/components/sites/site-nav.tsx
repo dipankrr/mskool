@@ -29,10 +29,11 @@ export function SiteNav({ chrome, nav }: { chrome: SiteChrome; nav: SiteLink[] }
   return (
     <header className="relative z-40">
       {hasTopbar ? (
-        <div className="bg-[color-mix(in_srgb,var(--site-primary)_88%,black)] px-4 py-1.5 text-center text-xs text-[var(--site-on-primary)] sm:text-sm">
+        <div data-region="chrome" className="bg-[color-mix(in_srgb,var(--site-primary)_88%,black)] px-4 py-1.5 text-center text-xs text-[var(--site-on-primary)] sm:text-sm">
           <span className="inline-flex flex-wrap items-center justify-center gap-x-6 gap-y-1">
             {chrome.topbar?.phone ? (
               <a
+                data-cpath="topbar.phone"
                 href={`tel:${chrome.topbar.phone.replace(/\s/g, "")}`}
                 className="hover:underline"
               >
@@ -40,11 +41,11 @@ export function SiteNav({ chrome, nav }: { chrome: SiteChrome; nav: SiteLink[] }
               </a>
             ) : null}
             {chrome.topbar?.email ? (
-              <a href={`mailto:${chrome.topbar.email}`} className="hidden hover:underline sm:inline">
+              <a data-cpath="topbar.email" href={`mailto:${chrome.topbar.email}`} className="hidden hover:underline sm:inline">
                 {chrome.topbar.email}
               </a>
             ) : null}
-            {chrome.topbar?.hours ? <span>{chrome.topbar.hours}</span> : null}
+            {chrome.topbar?.hours ? <span data-cpath="topbar.hours">{chrome.topbar.hours}</span> : null}
           </span>
         </div>
       ) : null}
@@ -62,7 +63,7 @@ export function SiteNav({ chrome, nav }: { chrome: SiteChrome; nav: SiteLink[] }
             scrolled ? "shadow-[0_18px_50px_rgba(0,0,0,0.35)]" : ""
           }`}
         >
-          <a href="#top" className="flex items-center gap-2.5">
+          <a href="#top" data-region="chrome" data-cpath="logoUrl" className="flex items-center gap-2.5">
             {chrome.logoUrl ? (
               <Image
                 src={chrome.logoUrl}
@@ -72,15 +73,16 @@ export function SiteNav({ chrome, nav }: { chrome: SiteChrome; nav: SiteLink[] }
                 className="size-10 rounded-full bg-white object-contain p-0.5"
               />
             ) : null}
-            <span className="site-heading text-lg text-[var(--site-on-primary)] sm:text-xl">
+            <span data-cpath="orgName" className="site-heading text-lg text-[var(--site-on-primary)] sm:text-xl">
               {chrome.orgName}
             </span>
           </a>
 
-          <div className="hidden items-center gap-6 lg:flex">
-            {nav.map((item) => (
+          <div data-region="nav" className="hidden items-center gap-6 lg:flex">
+            {nav.map((item, i) => (
               <a
                 key={item.href + item.label}
+                data-cpath={`${i}.label`}
                 href={item.href}
                 className="site-nav-link text-[15px] font-semibold text-[var(--site-on-primary)]/85"
               >
@@ -101,10 +103,11 @@ export function SiteNav({ chrome, nav }: { chrome: SiteChrome; nav: SiteLink[] }
         </nav>
 
         {open ? (
-          <div className="site-glass pointer-events-auto mt-2 rounded-3xl p-3 lg:hidden">
-            {nav.map((item) => (
+          <div data-region="nav" className="site-glass pointer-events-auto mt-2 rounded-3xl p-3 lg:hidden">
+            {nav.map((item, i) => (
               <a
                 key={item.href + item.label}
+                data-cpath={`${i}.label`}
                 href={item.href}
                 onClick={() => setOpen(false)}
                 className="block rounded-2xl px-4 py-3 text-base font-semibold text-[var(--site-on-primary)]/90 transition-colors hover:bg-white/10"
