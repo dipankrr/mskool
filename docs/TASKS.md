@@ -1484,3 +1484,28 @@ pre-existing, untouched):
 - Preview height: iframe reports scrollHeight, frame fits the whole page and
   scrolls (was clipping at fixed 900px). Shift+Enter inserts newlines inline;
   plain Enter still commits.
+
+FOLLOW-UP 2026-10-09 (uncommitted): the empty state now shows the template
+catalog (`PRESETS` in presets.ts — today one entry, display name "Playful
+Kindergarten"; the row id stays ujjwal-kids since renaming it needs a data
+migration), then the school name. Create provisions with the chosen preset
+id + themed starter. A second template is one PRESETS entry, zero editor
+changes. The picker shows a live miniature — the real SiteRenderer fed the
+starter content, scaled, non-interactive, rebuilt as the name is typed —
+not just swatches — plus a "Preview full page" dialog (whole starter page,
+unscaled, scrollable), so templates are test-drivable without creating
+anything. Creating is non-destructive anyway: nothing is public until
+Publish, and with several templates each card gets its own miniature.
+
+TEMPLATE REALIZED 2026-10-11 (uncommitted; check-types 8/8, lint 0 errors,
+web unit 93/93, check:openapi clean, migration 0029 applied to dev DB): the
+preset is now theme + its own 15-section sample page. `template-starter.ts`
+builds the full skeleton (same keys/anchors/nav/footer as the design,
+generic SAMPLE content, neutral SVG dummies under
+`public/sites/placeholders/`, school name stamped) — written fresh, never
+reads any org's row; the 4-section `starter.ts` is deleted and the dead
+`UJJWAL_KIDS_SECTION_ORDER` list is gone. Rows carry `preset_version`
+(stamped at creation via `ensure`, readable on `draft`) for the future
+opt-in update flow. Builder output proven VALID against the contract
+(15 sections). Ujjwal's live site untouched. Next: the opt-in "template has
+updates" offer UI; browser-walk the Demo-org create flow.

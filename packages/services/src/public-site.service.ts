@@ -54,6 +54,7 @@ export class PublicSiteService {
     organizationId: string,
     preset = "ujjwal-kids",
     draftContent?: PublicSiteContentInput,
+    presetVersion = 1,
   ) {
     const existing = await db.query.orgPublicSites.findFirst({
       where: eq(orgPublicSites.organizationId, organizationId),
@@ -65,6 +66,7 @@ export class PublicSiteService {
       .values({
         organizationId,
         preset,
+        presetVersion,
         draftContent: draftContent ?? { sections: [] },
       })
       .onConflictDoNothing({ target: orgPublicSites.organizationId })

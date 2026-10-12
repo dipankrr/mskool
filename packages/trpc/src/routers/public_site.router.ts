@@ -51,6 +51,7 @@ export const publicSiteRouter = router({
         id: z.uuid(),
         organizationId: z.uuid(),
         preset: z.string(),
+        presetVersion: z.number(),
         draftContent: publicSiteContentInputSchema.nullable(),
         publishedContent: publicSiteContentInputSchema.nullable(),
         publishedAt: z.date().nullable(),
@@ -85,6 +86,7 @@ export const publicSiteRouter = router({
     .input(
       z.object({
         preset: z.string().min(2).max(50).optional(),
+        presetVersion: z.number().int().min(1).max(1000).optional(),
         content: publicSiteContentInputSchema.optional(),
       }),
     )
@@ -94,6 +96,7 @@ export const publicSiteRouter = router({
         input.organizationId,
         input.preset ?? "ujjwal-kids",
         input.content,
+        input.presetVersion ?? 1,
       );
       return { ok: true };
     }),

@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ImageField } from "./image-field";
+import { VideoIdField } from "./video-field";
 import { useEffect, useRef } from "react";
 
 /**
@@ -139,6 +140,11 @@ export function FieldsEditor({
 }) {
   // ── Leaves ────────────────────────────────────────────────────────────────
   if (typeof value === "string") {
+    // Video ids are the one leaf with a link-paste habit: the contract holds
+    // a bare id, humans paste watch URLs, so this field extracts on input.
+    if (path[path.length - 1] === "videoId") {
+      return <VideoIdField value={value} onChange={onChange} />;
+    }
     return <StringInput value={value} onChange={onChange} />;
   }
 

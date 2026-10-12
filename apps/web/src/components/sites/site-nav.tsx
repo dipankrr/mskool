@@ -81,7 +81,7 @@ export function SiteNav({ chrome, nav }: { chrome: SiteChrome; nav: SiteLink[] }
           <div data-region="nav" className="hidden items-center gap-6 lg:flex">
             {nav.map((item, i) => (
               <a
-                key={item.href + item.label}
+                key={`${item.href}-${item.label}-${i}`}
                 data-cpath={`${i}.label`}
                 href={item.href}
                 className="site-nav-link text-[15px] font-semibold text-[var(--site-on-primary)]/85"
@@ -106,7 +106,7 @@ export function SiteNav({ chrome, nav }: { chrome: SiteChrome; nav: SiteLink[] }
           <div data-region="nav" className="site-glass pointer-events-auto mt-2 rounded-3xl p-3 lg:hidden">
             {nav.map((item, i) => (
               <a
-                key={item.href + item.label}
+                key={`${item.href}-${item.label}-${i}`}
                 data-cpath={`${i}.label`}
                 href={item.href}
                 onClick={() => setOpen(false)}

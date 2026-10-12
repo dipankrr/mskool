@@ -31,7 +31,7 @@ export function ContactSectionView({ content }: { content: ContactSection }) {
             <h3 className="site-heading mt-4 text-lg">Call Us</h3>
             <ul className="mt-2 space-y-1">
               {content.phones.map((p, i) => (
-                <li key={p}>
+                <li key={`${p}-${i}`}>
                   <a data-cpath={`phones.${i}`} href={`tel:${p.replace(/\s/g, "")}`} className="text-[15px] font-semibold text-[var(--site-ink)]/85 hover:text-[var(--site-accent)] hover:underline">
                     {p}
                   </a>

@@ -34,13 +34,13 @@ export function SiteFooter({
         {footer.columns.length > 0 ? (
           <div className="mt-12 grid grid-cols-2 gap-8 border-t border-white/15 pt-10 sm:grid-cols-4">
             {footer.columns.map((col, ci) => (
-              <div key={col.heading}>
+              <div key={`${col.heading}-${ci}`}>
                 <h3 data-cpath={`columns.${ci}.heading`} className="text-sm font-bold uppercase tracking-[0.14em] text-[var(--site-on-primary)]/60">
                   {col.heading}
                 </h3>
                 <ul className="mt-4 space-y-2.5">
                   {col.links.map((link, li) => (
-                    <li key={link.href + link.label}>
+                    <li key={`${link.href}-${link.label}-${li}`}>
                       <a
                         data-cpath={`columns.${ci}.links.${li}.label`}
                         href={link.href}
@@ -63,7 +63,7 @@ export function SiteFooter({
             {footer.social.length > 0 ? (
               <p className="flex gap-4">
                 {footer.social.map((s, i) => (
-                  <a key={s.label} data-cpath={`social.${i}.label`} href={s.href} className="font-semibold hover:text-[var(--site-on-primary)] hover:underline">
+                  <a key={`${s.label}-${i}`} data-cpath={`social.${i}.label`} href={s.href} className="font-semibold hover:text-[var(--site-on-primary)] hover:underline">
                     {s.label}
                   </a>
                 ))}

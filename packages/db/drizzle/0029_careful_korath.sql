@@ -1,0 +1,1 @@
+ALTER TABLE "org_public_sites" ADD COLUMN "preset_version" integer DEFAULT 1 NOT NULL;

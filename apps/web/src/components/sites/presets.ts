@@ -1,11 +1,14 @@
-import type { PublicSiteContent, SectionKey } from "@repo/contracts";
+import type { PublicSiteContent } from "@repo/contracts";
 
 /**
  * Preset: "ujjwal-kids" (ADR-041) — the first template in the section
  * library, art-directed from the reference in
- * docs/reference/design/school_landing_design.webp and ported onto Ujjwal
- * Kids World's content. A preset is DATA: default theme tokens + default
- * section order. Renderers are shared across presets.
+ * docs/reference/design/school_landing_design.webp. A preset is DATA: theme
+ * tokens + the function that builds its sample page. Renderers are shared
+ * across presets.
+ *
+ * The sample page is owned by the template and written generically — it
+ * never reads any org's row (a template must not derive from its children).
  */
 
 /** Fallback theme when a site row predates a token or a new token lands. */
@@ -20,18 +23,29 @@ export const UJJWAL_KIDS_THEME: PublicSiteContent["theme"] = {
   fontBody: "Nunito",
 };
 
-/** The section order the preset ships with; the org's row can reorder it. */
-export const UJJWAL_KIDS_SECTION_ORDER: SectionKey[] = [
-  "hero",
-  "stats",
-  "about",
-  "cardGrid",
-  "cardGrid",
-  "faculty",
-  "gallery",
-  "faq",
-  "ctaBanner",
-  "contact",
+/**
+ * The template catalog the empty state offers. One entry today; a second
+ * preset is a new entry here (theme + its own starter builder, renderers
+ * shared) with zero editor changes. `id` is what `org_public_sites.preset`
+ * stores; `version` is stamped onto the row at creation so template updates
+ * can be offered to existing sites later (opt-in, never automatic).
+ */
+export interface PresetDescriptor {
+  id: string;
+  name: string;
+  blurb: string;
+  version: number;
+  theme: PublicSiteContent["theme"];
+}
+
+export const PRESETS: PresetDescriptor[] = [
+  {
+    id: "ujjwal-kids",
+    name: "Playful Kindergarten",
+    blurb: "Cheerful kindergarten look — deep green, coral CTAs, warm cream sections.",
+    version: 1,
+    theme: UJJWAL_KIDS_THEME,
+  },
 ];
 
 /**

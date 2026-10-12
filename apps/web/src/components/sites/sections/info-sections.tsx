@@ -95,7 +95,7 @@ export function FaqSectionView({ content }: { content: FaqSection }) {
         <div className="mt-12 space-y-4">
           {content.items.map((item, i) => (
             <details
-              key={item.question}
+              key={`${item.question}-${i}`}
               data-cpath={`items.${i}`}
               className="group rounded-2xl border-2 border-transparent bg-white px-6 py-1 shadow-[0_4px_16px_rgba(30,58,52,0.07)] open:border-[var(--site-primary)]/20 open:bg-white open:shadow-[0_10px_30px_rgba(30,58,52,0.12)]"
             >

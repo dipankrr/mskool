@@ -1,6 +1,6 @@
 "use client";
 
-import { CopyIcon, EyeOffIcon, GlobeIcon, LayersIcon, MonitorIcon, PaletteIcon, PlusIcon, RocketIcon, SaveIcon, SmartphoneIcon, Trash2Icon, Undo2Icon } from "lucide-react";
+import { CopyIcon, ExpandIcon, EyeOffIcon, GlobeIcon, LayersIcon, MonitorIcon, PaletteIcon, PlusIcon, RocketIcon, SaveIcon, SmartphoneIcon, Trash2Icon, Undo2Icon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -13,10 +13,13 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useActiveContext } from "@/features/session/active-context";
+import { PRESETS } from "@/components/sites/presets";
+import { SiteRenderer } from "@/components/sites/site-renderer";
 import { FieldsEditor } from "@/features/site/fields-editor";
 import type { CanvasTarget } from "@/features/site/preview";
-import { buildStarterContent } from "@/features/site/starter";
+import { buildTemplateStarter } from "@/features/site/template-starter";
 import { useSite, useSiteMutations } from "@/features/site/use-site";
 import type { PublicSiteContent, SectionKey } from "@repo/contracts";
 
@@ -110,16 +113,44 @@ function OutlineRow({
 }
 
 /**
+ * A real miniature of the template: the actual renderer fed starter content
+ * in the template's theme, scaled down and non-interactive. What you see is
+ * what the school gets — not a swatch card.
+ */
+function TemplatePreview({ content }: { content: PublicSiteContent }) {
+  const WIDTH = 1200;
+  const SCALE = 0.32;
+  return (
+    <div className="overflow-hidden rounded-lg border bg-white" style={{ height: 300 }}>
+      <div
+        className="pointer-events-none origin-top-left"
+        style={{ width: WIDTH, transform: `scale(${SCALE})` }}
+      >
+        <SiteRenderer content={content} />
+      </div>
+    </div>
+  );
+}
+
+/**
  * The empty state: no provisioned row, or a row with no usable draft. Offers
- * the starter generator — provision + a factual-minimal skeleton named for
- * the org — instead of the old dead-end "seed a site first" text.
+ * the template catalog first, then the school name — provision + a
+ * factual-minimal skeleton in the chosen template, instead of the old
+ * dead-end "seed a site first" text.
  */
 function StarterEmpty({ orgName }: { orgName: string }) {
   const [name, setName] = useState(orgName);
+  const [presetId, setPresetId] = useState(PRESETS[0]!.id);
   const { ensureSite, save, validate, isSaving } = useSiteMutations();
+  const preset = PRESETS.find((p) => p.id === presetId) ?? PRESETS[0]!;
+  // Live miniature, rebuilt as the name is typed.
+  const previewContent = useMemo(
+    () => buildTemplateStarter(name, preset.theme),
+    [name, preset.theme],
+  );
 
   const create = async () => {
-    const content = buildStarterContent(name);
+    const content = buildTemplateStarter(name, preset.theme);
     const check = validate(content);
     if (!check.success) {
       const issue = check.error.issues[0]!;
@@ -129,9 +160,9 @@ function StarterEmpty({ orgName }: { orgName: string }) {
     try {
       // ensure is idempotent: creates the row when missing, no-ops when the
       // row exists with an empty draft. The save then writes the starter.
-      await ensureSite();
+      await ensureSite(undefined, preset.id, preset.version);
       await save(content, { silent: true });
-      toast.success("Starter site created — edit it, then publish.");
+      toast.success(`Starter site created from ${preset.name} — edit it, then publish.`);
     } catch {
       // toasts handled in the mutations
     }
@@ -145,9 +176,70 @@ function StarterEmpty({ orgName }: { orgName: string }) {
           <h2 className="font-semibold">Create your school website</h2>
         </div>
         <p className="text-sm text-muted-foreground">
-          No site exists for this organization yet. Start from a short skeleton
-          named for your school — no invented claims, just sections to fill in.
+          No site exists for this organization yet. Pick a template, name your
+          school, and start from a short skeleton — no invented claims, just
+          sections to fill in.
         </p>
+        <div className="space-y-2" role="radiogroup" aria-label="Website template">
+          {PRESETS.map((p) => (
+            <div
+              key={p.id}
+              role="radio"
+              aria-checked={p.id === presetId}
+              tabIndex={0}
+              onClick={() => setPresetId(p.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") setPresetId(p.id);
+              }}
+              className={cn(
+                "cursor-pointer rounded-xl border p-3 transition-colors",
+                p.id === presetId
+                  ? "border-primary bg-primary/5 ring-1 ring-primary"
+                  : "hover:bg-muted/50",
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <span className="flex -space-x-1.5">
+                  {[p.theme.colorPrimary, p.theme.colorAccent, p.theme.colorSurface].map((c) => (
+                    <span
+                      key={c}
+                      className="size-6 rounded-full border-2 border-background"
+                      style={{ background: c }}
+                    />
+                  ))}
+                </span>
+                <span>
+                  <span className="block text-sm font-semibold">{p.name}</span>
+                  <span className="block text-xs text-muted-foreground">{p.blurb}</span>
+                </span>
+              </div>
+              {p.id === presetId ? (
+                <div className="mt-3 space-y-2">
+                  <TemplatePreview content={previewContent} />
+                  {/* Full test drive without creating anything: the whole
+                      starter page, unscaled, in a scrollable dialog. */}
+                  <Dialog>
+                    <DialogTrigger
+                      render={
+                        <Button variant="outline" size="sm" className="w-full">
+                          <ExpandIcon className="size-4" /> Preview full page
+                        </Button>
+                      }
+                    />
+                    <DialogContent className="max-h-[88vh] w-[min(1100px,96vw)] max-w-none overflow-hidden p-0">
+                      <DialogTitle className="sr-only">{p.name} — full page preview</DialogTitle>
+                      <div className="max-h-[88vh] overflow-auto bg-white">
+                        <div className="pointer-events-none">
+                          <SiteRenderer content={previewContent} />
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
         <div className="space-y-1.5">
           <label htmlFor="starter-org-name" className="text-[13px] font-medium">
             School name on the site
@@ -160,7 +252,7 @@ function StarterEmpty({ orgName }: { orgName: string }) {
           />
         </div>
         <Button disabled={isSaving} onClick={() => void create()}>
-          <PlusIcon className="size-4" /> Create starter site
+          <PlusIcon className="size-4" /> Create site from {preset.name}
         </Button>
       </CardContent>
     </Card>

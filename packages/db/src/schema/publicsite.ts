@@ -1,4 +1,4 @@
-import { boolean, jsonb, pgTable, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, pgTable, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
 import { organizations } from "./organization";
 
 /**
@@ -27,6 +27,11 @@ export const orgPublicSites = pgTable(
     // Presets are code-side defaults; the row carries the org's own content
     // and theme overrides.
     preset: varchar({ length: 50 }).notNull().default("ujjwal-kids"),
+
+    // The template version stamped at creation. Template updates are offered
+    // to existing rows opt-in (never automatic) by comparing this with the
+    // catalog — a new sample section must never rewrite a school's words.
+    presetVersion: integer().notNull().default(1),
 
     // What the staff editor edits. { theme, sections: [{key, content}] }.
     draftContent: jsonb().notNull(),

@@ -162,7 +162,7 @@ export function StatsSection({ content }: { content: StatsSection }) {
     <section className="relative z-10 -mt-28 px-4 sm:-mt-32">
       <div className="mx-auto grid max-w-5xl grid-cols-2 gap-x-6 gap-y-10 rounded-[2rem] border-2 border-[var(--site-primary)]/10 bg-white px-6 py-10 shadow-[0_20px_50px_rgba(30,58,52,0.12)] sm:grid-cols-4 sm:px-10">
         {content.items.map((stat, i) => (
-          <div key={stat.label} className="text-center">
+          <div key={`${stat.label}-${i}`} className="text-center">
             <p data-cpath={`items.${i}.value`} className="site-heading text-4xl sm:text-5xl" style={{ color: FRAMES[i % FRAMES.length] }}>
               {stat.value}
             </p>
@@ -291,7 +291,7 @@ function SiteCard({ card, index }: { card: CardGridSection["cards"][number]; ind
         {card.bullets && card.bullets.length > 0 ? (
           <ul className="mt-4 space-y-1.5">
             {card.bullets.map((b, bi) => (
-              <li key={b} data-cpath={`cards.${index}.bullets.${bi}`} className="flex gap-2 text-sm text-[var(--site-ink)]/80">
+              <li key={`${b}-${bi}`} data-cpath={`cards.${index}.bullets.${bi}`} className="flex gap-2 text-sm text-[var(--site-ink)]/80">
                 <span aria-hidden="true" className="mt-0.5 font-bold" style={{ color: FRAMES[index % FRAMES.length] }}>
                   ✓
                 </span>
@@ -327,7 +327,9 @@ export function CardGridSection({ content }: { content: CardGridSection }) {
         />
         <div className="mt-14 grid grid-cols-1 gap-x-7 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
           {content.cards.map((card, i) => (
-            <SiteCard key={card.title} card={card} index={i} />
+            // Index-qualified: titles are not unique (three "Sample program"
+            // cards would share one key and React would mix up their edits).
+            <SiteCard key={`${card.title}-${i}`} card={card} index={i} />
           ))}
         </div>
       </div>

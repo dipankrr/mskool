@@ -76,9 +76,14 @@ export function useSiteMutations() {
 
   const unpublishNow = () => unpublish.mutateAsync(args);
 
-  /** Provision the org's site row, optionally seeded with starter content. */
-  const ensureSite = (content?: PublicSiteContent) =>
-    ensure.mutateAsync(content ? { ...args, content } : args);
+  /** Provision the org's site row, optionally seeded with template id + version. */
+  const ensureSite = (content?: PublicSiteContent, preset?: string, presetVersion?: number) =>
+    ensure.mutateAsync({
+      ...args,
+      ...(content ? { content } : {}),
+      ...(preset ? { preset } : {}),
+      ...(presetVersion !== undefined ? { presetVersion } : {}),
+    });
 
   /** Client-side gate before anything is sent: same schema as the server. */
   const validate = (content: PublicSiteContent) =>
