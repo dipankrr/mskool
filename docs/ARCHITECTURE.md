@@ -17,12 +17,14 @@ packages/services    Business logic — transactions, invariants, calculations
 packages/trpc        Routers — validate input, call a service, return
       ↓
 apps/web             `import type { AppRouter }` — inferred client, zero runtime coupling
+apps/mobile          `import type { AppRouter }` — second client, same rule (ADR-043)
 ```
 
-One direction only. Rename a column and the error surfaces in the web client at compile
-time — that is the whole point of the arrangement.
+One direction only. Rename a column and the error surfaces in both clients at
+compile time — that is the whole point of the arrangement.
 
-**The boundary that matters:** `apps/web` may only ever `import type` from `@repo/trpc`.
+**The boundary that matters:** `apps/web` and `apps/mobile` may only ever
+`import type` from `@repo/trpc`.
 A runtime import drags Drizzle, the Postgres driver, and your connection string into the
 browser bundle. `packages/services` has no HTTP awareness: no `req`, no `res`, no
 `TRPCError`. It should be callable from a router, a webhook, a cron job, or a test with

@@ -238,3 +238,35 @@ dropped.
 
 **Optional tenancy parameters.** `schoolId?: string` means "sometimes unscoped", which
 means eventually unscoped. Required argument, or a discriminated union.
+
+---
+
+## Mobile client conventions (ADR-043)
+
+Four rules for `apps/mobile`. The first three bind both clients; the fourth is
+mobile-only mechanics.
+
+**Grow the shared package on second import, never upfront.** Pure helpers
+(`money`, `format`, `calendar-grid`, error mapping, contract-derived enums)
+move into the shared frontend package file-by-file *when mobile first needs
+them*: copy file → leave the web original as a re-export shim → gates green
+→ delete shim, repoint imports. An extraction with one consumer is
+speculation about Metro/Hermes constraints nothing tests.
+
+**i18n keys from day one, English strings only.** Screens call
+`t("domain.key")`, never a literal. `expo-localization` for device locale +
+persisted override, `i18next` with `en` fallback. A later locale adds files;
+no screen is touched.
+
+**Endpoint tables are the domain-completion record.** Each domain phase ticks
+every procedure in its namespace against the screen consuming it; unticked
+rows are the resume point. Tables live in `docs/MOBILE_PLAN.md` (durable)
+and the slice plan (working). The exported router tree in
+`packages/trpc/src/routers/` is the procedure inventory; `check:openapi`
+validates its REST projection and metadata, not UI/workflow completeness.
+
+**One token system, two brand packs.** Spacing/type/radius/motion scales are
+shared; the staff and family shells resolve different palettes through the
+same component API. Components promote inline → screen-colocated →
+`components/` on second use only. Mobile `env.ts` validates `EXPO_PUBLIC_*`
+with literals, mirroring the `NEXT_PUBLIC_*` rule above.

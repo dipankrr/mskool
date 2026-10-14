@@ -1901,3 +1901,76 @@ cannot read from.
 **Non-goals:** signed URLs with expiry (nothing needs time-boxed access yet),
 a public listing/discovery endpoint (never — enumeration is the leak),
 per-object ACLs beyond the binary flag.
+
+---
+
+## ADR-043 — The mobile app: one Expo binary, staff shell first, same API surface
+
+Date: 2026-10-12. Status: accepted. Refines ADR-034 (fixes "natively or
+cross-platform" to Expo, one binary, two shells); amends ADR-010 (route
+groups gain a native counterpart).
+
+**Context.** The owner has set the product direction: a fully mobile-operative
+SMS, built staff-side first on Expo, family-side later with a deliberately
+different, richer UI. The homework backend (ADR-039/040) is complete with no
+client; attendance, fees, exams, and staff backends are complete with a web
+console client. The question is how the mobile client is shaped so the whole
+admin surface can land on it step by step without rewiring, and the family
+surface later without a second app.
+
+**Decision.**
+
+1. **One Expo app, `apps/mobile`, two shells.** `(staff)` (org/branch/session
+   context, permission-gated tabs) ships first; `(family)` (child switcher,
+   bottom tabs) lands with the family phase. Post-login routing reads
+   `me.get`: staff-kind → staff shell, student-kind → family shell. No
+   separate staff/family store listings; that split stays available later
+   with no backend change.
+2. **One additive backend exception: auth.** Mobile consumes the same
+   routers — staff namespaces with `organizationId` in inputs, `portal.*`
+   under ownership — and imports `type AppRouter` only, exactly like
+   `apps/web`. A column rename breaks mobile at compile time. No
+   mobile-only endpoints unless a measured performance case forces an
+   aggregation; dashboards compose queries client-side. The single exception
+   is better-auth transport: the server gains the `expo()` plugin plus the
+   app scheme in `trustedOrigins` (additive — web's cookie flow is
+   untouched), because native has no cookie jar and the tRPC link must
+   attach `authClient.getCookie()` as a `Cookie` header itself.
+3. **Login mirrors the web's two doors, minus the dead one.** Staff:
+   email + password. Family (with the family shell): ADR-037's phone-only
+   claim flow — digits → account-status → password or first-claim trio — no
+   school picker, no org slug. Any description of `{org_slug}-{phone}` plus
+   picker is stale since the ADR-037 cutover and must not be copied into
+   mobile.
+4. **Online-only with retry.** No offline queue, no conflict resolution; a
+   dead network is a retry state. Money paths keep the web's discipline: no
+   optimistic updates, idempotency key per attempt, server receipt as the
+   success story.
+5. **One token system, two brand packs.** Spacing/type/radius/motion scales
+   are shared; `(staff)` resolves a restrained palette, `(family)` a rich
+   one, through the same component API. Components promote
+   inline → screen-colocated → `components/` only on second use.
+6. **i18n keys from day one, English strings only.** `t("domain.key")`
+   everywhere; `expo-localization` + `i18next`, `en` fallback, persisted
+   override. Later locales add files, never touch screens.
+7. **Phases are build order, and endpoint tables are the completion
+   record.** Each domain phase ticks every procedure in its namespace
+   (staff door in the admin phase; the portal door with the family shell).
+   Unticked rows are the resume point. See `docs/MOBILE_PLAN.md`.
+8. **Forms are the contracts; rows are the router outputs.** Validation
+   schemas from `@repo/contracts`, row shapes from
+   `inferRouterOutputs<AppRouter>` — the web's split, unchanged, because
+   the wire (no superjson: timestamps as strings, money as decimal
+   strings) is identical.
+
+**Non-goals for the admin build:** timetable (reaffirms the PRD refusal —
+no tables exist, only forward-references in comments); push/WhatsApp
+delivery (in-app feed first, delivery its own later phase); gateway
+payments (read-only fees first; ADR-009 webhook with live keys later);
+EAS/store setup and Sentry (at store-build time, not before).
+
+**Consequences.** `apps/web` `(portal)` stays the stopgap until the family
+shell ships, then dies per ADR-034. Teachers' "stay on responsive web"
+interim stance is superseded: the staff shell is the operative surface.
+`EXPO_PUBLIC_*` env discipline mirrors the web's `NEXT_PUBLIC_*` rule
+(CONVENTIONS.md).

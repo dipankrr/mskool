@@ -6,6 +6,29 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
+**MOBILE PLAN + AGENT CONTRACT REVIEWED (2026-10-13) — ADR-043 + `docs/MOBILE_PLAN.md`, no app code.**
+Audited the actual staff route tree and mapped every workflow to a mobile phase
+or an explicit web-only public surface. Added root-agent rules against porting
+web UI, requiring task-first wireflows and state design, owner review of three
+native prototype journeys before shell work, and phone/device walkthroughs
+before a slice is called complete. Added the Expo client boundary and
+runtime-schema gate, SDK-pinned navigation, role-aware IA, and release QA
+guidance. Re-audit corrected the Expo UI list guidance against current Expo
+docs, made a development build the normal project baseline, replaced the
+unsupported “Expo recommends no snapshots” claim with a project-specific
+testing policy, and marked online-first behavior as an owner decision to
+validate for attendance/photo capture. Owner explicitly deferred the public-site
+editor/admin preview from mobile; keep it on web and do not block family work
+on it. Step 0 is now bounded to Expo workspace/dev build, auth and route shell,
+typed tRPC plumbing, `me.get`, and a session-persistence proof; no domain CRUD.
+Next: execute `.kilo/plans/1791972469955-mobile-step0-foundation.md`. First
+create the three phone-sized prototype journeys in `docs/design/mobile/` and
+get owner review before locking the production shell; record the web-logic
+reuse audit, resolve schema import graph/SDK setup, then build and walk through
+staff login → persisted session → `me.get` on iOS and Android. This planning
+chunk created the Kilo work order only; no app implementation or tests were
+run.
+
 **HOMEWORK / ASSIGNMENTS — BACKEND COMPLETE ON `feature/assignments` (2026-10-03, ADR-039). 6 commits, backend-only per owner instruction. The whole 26-table domain (06+07 reference SQL) is served: slice A (settings, rubrics, lifecycle, submissions, evaluations, comments, acknowledgements, family door) and slice B (question bank, snapshot, attempts, AUTO-GRADING with reveal policies, teacher manual grading).**
 
 Namespacing: the tRPC namespace is `homework.*` / `portalHomework.*` — `assignment.*` was already the teaching-assignment layer (a different domain). Authz: two new actions, `homework:grade` (subject-gated like marks:create) and `homework:comment` (NOT gated — conversation, not subject content); settings + rubrics ride `school_settings:read/update`. **Existing orgs need `pnpm db:seed` (the A-025 permission backfill) + a Redis auth-cache invalidation before the new routes answer for non-org_admin roles.** Migration 0026 (26 tables) — drizzle-kit emits uncast text[] defaults for enum arrays; 0026 carries the `::assignment_submission_type[]` casts, keep them if regenerated.
