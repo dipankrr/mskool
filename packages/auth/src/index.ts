@@ -1,10 +1,23 @@
 import { betterAuth } from "better-auth";
 import { username } from "better-auth/plugins";
+import { expo } from "@better-auth/expo";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { eq } from "drizzle-orm";
 import { db } from "@repo/db";
 import { user as userTable } from "@repo/db/schema";
 import { env } from "./env";
+
+const trustedOrigins = [
+  ...env.CORS_ORIGIN.split(",").map((origin) => origin.trim()),
+  // Step 0 (ADR-043): the native app's deep-link scheme. Additive — the web's
+  // cookie flow is untouched.
+  "mskool://",
+  // Expo dev clients speak `exp://` with the machine's LAN IP. Dev/test only:
+  // production trusts the app scheme above and nothing else.
+  ...(env.NODE_ENV === "production"
+    ? []
+    : ["exp://", "exp://**", "exp://192.168.*.*:*/**"]),
+];
 
 /**
  * ADR-007's flag clearer, shared by the databaseHooks below and importable
@@ -43,7 +56,7 @@ export async function clearMustChangePassword(userId: string): Promise<void> {
 export const auth = betterAuth({
   secret: env.BETTER_AUTH_SECRET,
   baseURL: env.BETTER_AUTH_URL,
-  trustedOrigins: [env.CORS_ORIGIN],
+  trustedOrigins,
 
   database: drizzleAdapter(db, { provider: "pg" }),
 
@@ -78,6 +91,10 @@ export const auth = betterAuth({
       maxUsernameLength: 64,
       usernameValidator: (username) => /^[a-z0-9._-]+$/.test(username),
     }),
+    // Step 0 (ADR-043): native session transport. The web keeps its cookie
+    // flow; mobile persists the session cookie in SecureStore and attaches it
+    // as a `Cookie` header itself (see apps/mobile/src/lib/trpc.tsx).
+    expo(),
   ],
 
   // ADR-007's must_change_password is OUR field, so better-auth does not
