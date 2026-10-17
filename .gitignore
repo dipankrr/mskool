@@ -7,6 +7,10 @@ dist
 .env
 .env.*
 !.env.example
+# apps/mobile/.env carries shared Expo CLI config (no secrets) and must be
+# committed — see the Metro section in
+# .kilo/plans/1791972469955-mobile-step0-foundation.md.
+!apps/mobile/.env
 .DS_Store
 rough.md
 *.log

@@ -1,0 +1,48 @@
+import { useState } from "react";
+import type { ReactNode } from "react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createTRPCReact } from "@trpc/react-query";
+import { httpBatchLink } from "@trpc/client";
+// Type-only import — the same boundary as apps/web: TypeScript erases this
+// entirely, so server-only modules (HTTP server, data layer, drivers,
+// connection strings) can never reach the native bundle. Row shapes come
+// from inferRouterOutputs.
+import type { AppRouter } from "@repo/trpc";
+
+import { authClient } from "./auth";
+import { queryClient } from "./query";
+import { env } from "../env";
+
+export const trpc = createTRPCReact<AppRouter>();
+
+/**
+ * tRPC-over-HTTP is the only transport. Auth rides a `Cookie` header built
+ * from SecureStore (`await authClient.getCookie()`), NOT
+ * `credentials: "include"` — include interferes with the manually-set
+ * cookies on native. Wire carries no superjson: timestamps arrive as
+ * strings, money as decimal strings — identical to web.
+ */
+export function TrpcProvider({ children }: { children: ReactNode }) {
+  const [trpcClient] = useState(() =>
+    trpc.createClient({
+      links: [
+        httpBatchLink({
+          url: `${env.EXPO_PUBLIC_API_URL}/trpc`,
+          async headers() {
+            const cookies = await authClient.getCookie();
+            return cookies ? { Cookie: cookies } : {};
+          },
+          fetch(url, options) {
+            return fetch(url, { ...options, credentials: "omit" });
+          },
+        }),
+      ],
+    }),
+  );
+
+  return (
+    <trpc.Provider client={trpcClient} queryClient={queryClient}>
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    </trpc.Provider>
+  );
+}

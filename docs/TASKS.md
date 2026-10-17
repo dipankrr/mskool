@@ -6,6 +6,47 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
+**MOBILE STEP 0 — FIXES + BUILD DURABILITY DONE, COMMITTED (2026-10-17). iOS walk + prototype review open.**
+
+The Windows native-build blocker is solved (full record in
+`.kilo/plans/1791972469955-mobile-step0-foundation.md`, section “Native build
+resolution + device walk”): CMake `OBJECT_PATH_MAX=255` +
+`CMAKE_SUPPRESS_REGENERATION=ON` are now injected in-repo by
+`apps/mobile/plugins/with-cmake-path-limit.js` — **`expo prebuild --clean` is
+safe again** (re-run 2026-10-17; regenerated android/ rebuilt green, 475
+tasks, app booted — w25) — plus `.npmrc` `virtual-store-dir-max-length=12`,
+and `EXPO_NO_METRO_WORKSPACE_ROOT=1` persisted in the committed
+`apps/mobile/.env` (no shell variable needed; root `.gitignore` has an
+exception for that file; entry.bundle 200 verified). Full local
+`expo run:android` build + install green; dev client + LAN Metro + API walked
+on emulator-5554; screenshots in `apps/mobile/.expo/walk/` (w01–w21 walk,
+w22–w25 fix re-walk + post-prebuild boot; gitignored).
+
+The walk's three findings are fixed and re-walked on device: **(1)** the
+post-sign-in redirect race — root cause is `@better-auth/expo` only notifying
+(not setting) the session atom after sign-in; login's guard now routes any
+settled session (armed → `/change-password`) and sign-in settles the session
+via `refetchSession()` (bounded 4 s) before navigating; **(2)** network error
+copy — `looksTechnical` now covers native transport strings; **(3)** a 15 s
+`withTimeout` (AbortController) wraps every better-auth call
+(`lib/with-timeout.ts` + unit tests, mobile suite 21/21). Evidence: w22 armed
+sign-in → change-password; w23c API-down → friendly copy within ~15 s (was
+~2.5 min); w24 retry → staff home. Mobile lint now actually runs (`expo lint`
+had half-configured itself; `eslint` + `eslint-config-expo` added,
+`_layout.tsx` ref-during-render fixed). Demo admin at seed state
+(`Password123!`, flag false, 0 sessions); temporary tooling deleted.
+
+The Step-0 foundation is committed (3 commits: auth, repo tooling, mobile).
+Next: **(a)** the prototype-journey review gate (`docs/design/mobile/`) before
+any production shell — the three native prototype journeys still need
+drafting + owner review; **(b)** iOS walk at a Mac/EAS gateway — deferred
+(verify `EXPO_NO_METRO_WORKSPACE_ROOT` on the first EAS build — `eas.json`
+`env` is the lever if the worker needs it). tRPC link
+timeout deliberately deferred (query-cancellation signals need combining;
+AbortSignal.any support on Hermes 0.86 to verify — recorded in the plan).
+Pre-existing unrelated red check remains: `apps/web/.../textarea.tsx` imports
+`{ cn } from "cn"`.
+
 **MOBILE PLAN + AGENT CONTRACT REVIEWED (2026-10-13) — ADR-043 + `docs/MOBILE_PLAN.md`, no app code.**
 Audited the actual staff route tree and mapped every workflow to a mobile phase
 or an explicit web-only public surface. Added root-agent rules against porting
