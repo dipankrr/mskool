@@ -27,7 +27,9 @@
         "NEXT_PUBLIC_API_URL",
         "REDIS_URL",
         "FEE_WEBHOOK_SECRET",
-        "DISABLE_RATE_LIMIT"
+        "DISABLE_RATE_LIMIT",
+        "EXPO_PUBLIC_API_URL",
+        "STORAGE_DRIVER"
       ]
     },
     "dev": {
@@ -43,7 +45,9 @@
         "NEXT_PUBLIC_API_URL",
         "REDIS_URL",
         "FEE_WEBHOOK_SECRET",
-        "DISABLE_RATE_LIMIT"
+        "DISABLE_RATE_LIMIT",
+        "EXPO_PUBLIC_API_URL",
+        "STORAGE_DRIVER"
       ]
     },
     "lint": {
