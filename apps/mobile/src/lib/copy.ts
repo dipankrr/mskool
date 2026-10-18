@@ -45,6 +45,7 @@ export const copy = {
     changeAction: "Set password",
     changing: "Setting password…",
     signOutAction: "Sign out",
+    signOutFailed: "Couldn't sign out. Check your connection and try again.",
   },
   session: {
     loading: "Checking your session…",

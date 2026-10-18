@@ -167,3 +167,15 @@ export function toFriendlyError(cause: unknown): FriendlyError {
 export function errorMessage(cause: unknown): string {
   return toFriendlyError(cause).message;
 }
+
+/**
+ * Message for a thrown (not tRPC-shaped) error — the auth transport path
+ * (sign-in / sign-out). A human Error message passes through (the rule the
+ * login screen used inline); anything else becomes the network copy, the
+ * dominant cause of a thrown auth call on native (2026-10-17 walk).
+ */
+export function thrownMessage(cause: unknown): string {
+  return cause instanceof Error && !looksTechnical(cause.message)
+    ? cause.message
+    : copy.errors.network;
+}

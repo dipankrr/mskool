@@ -4,6 +4,8 @@ import { expoClient } from "@better-auth/expo/client";
 import * as SecureStore from "expo-secure-store";
 
 import { env } from "../env";
+import { copy } from "./copy";
+import { queryClient } from "./query";
 import { withTimeout } from "./with-timeout";
 
 /**
@@ -13,13 +15,27 @@ import { withTimeout } from "./with-timeout";
  * (see ./trpc.tsx). `credentials: "omit"` — `include` interferes with the
  * manually-set Cookie header on native.
  */
+/**
+ * SecureStore namespace for the expo plugin's persisted auth material:
+ * `${prefix}_cookie` (the session cookie map) and `${prefix}_session_data`
+ * (a cached get-session response, rehydrated into the session atom on cold
+ * start). `logout()` sweeps both plus the plugin's chunk suffixes — the
+ * plugin splits values past ~1.8 KB into `<key>.0..N`.
+ */
+const AUTH_STORAGE_PREFIX = "mskool";
+const AUTH_STORAGE_BASE_KEYS = [
+  `${AUTH_STORAGE_PREFIX}_cookie`,
+  `${AUTH_STORAGE_PREFIX}_session_data`,
+] as const;
+const AUTH_STORAGE_CHUNK_SWEEP = 10;
+
 export const authClient = createAuthClient({
   baseURL: env.EXPO_PUBLIC_API_URL,
   plugins: [
     usernameClient(),
     expoClient({
       scheme: "mskool",
-      storagePrefix: "mskool",
+      storagePrefix: AUTH_STORAGE_PREFIX,
       storage: SecureStore,
     }),
   ],
@@ -45,8 +61,40 @@ export async function loginByPhone(username: string, password: string) {
   );
 }
 
+/**
+ * Sign-out must never masquerade. better-auth resolves `{ error }` instead of
+ * throwing, and swallowing it is how a still-live session could pass as a
+ * sign-out (2026-10-18 walk finding #3) — a resolved error THROWS so the
+ * caller alerts honestly.
+ */
 export async function logout() {
-  return withTimeout((signal) => authClient.signOut({ fetchOptions: { signal } }));
+  const result = await withTimeout((signal) =>
+    authClient.signOut({ fetchOptions: { signal } }),
+  );
+  if (result.error) {
+    throw new Error(copy.auth.signOutFailed);
+  }
+  // Confirmed by the server. Sweep the persisted auth material and cached
+  // server state deterministically: the expo plugin resets its own cache
+  // around the request, but a raced or half-completed flow left the old
+  // identity readable (the account-switch walk bug). Deletion is stronger
+  // than the plugin's "{}" reset — nothing left to hydrate from.
+  const keys = AUTH_STORAGE_BASE_KEYS.flatMap((base) => [
+    base,
+    ...Array.from(
+      { length: AUTH_STORAGE_CHUNK_SWEEP },
+      (_, index) => `${base}.${index}`,
+    ),
+  ]);
+  try {
+    await Promise.all(keys.map((key) => SecureStore.deleteItemAsync(key)));
+  } catch {
+    // Best-effort: the server session is already dead; a failed native
+    // delete must not read as a failed sign-out.
+  }
+  await queryClient.cancelQueries();
+  queryClient.clear();
+  return result;
 }
 
 /**

@@ -1,8 +1,9 @@
-import { Button, StyleSheet, Text, View } from "react-native";
+import { Alert, Button, StyleSheet, Text, View } from "react-native";
 import { Redirect } from "expo-router";
 
 import { logout } from "../lib/auth";
 import { copy } from "../lib/copy";
+import { thrownMessage } from "../lib/errors";
 import { useMe } from "../hooks/use-me";
 
 /**
@@ -35,7 +36,14 @@ export default function Index() {
         Signed in as {me?.user.name ?? me?.user.email ?? "a family login"}.
         This preview build serves staff only — the family shell arrives later.
       </Text>
-      <Button title={copy.auth.signOutAction} onPress={() => void logout()} />
+      <Button
+        title={copy.auth.signOutAction}
+        onPress={() => {
+          void logout().catch((error: unknown) => {
+            Alert.alert(copy.auth.appName, thrownMessage(error));
+          });
+        }}
+      />
     </View>
   );
 }

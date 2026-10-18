@@ -14,7 +14,7 @@ import {
 import { useMe } from "../../hooks/use-me";
 import { logout } from "../../lib/auth";
 import { copy } from "../../lib/copy";
-import { errorMessage } from "../../lib/errors";
+import { thrownMessage } from "../../lib/errors";
 import { colors } from "../../theme/brand-admin";
 import { gutter, spacing } from "../../theme/tokens";
 
@@ -35,9 +35,10 @@ export function MoreScreen() {
     setSigningOut(true);
     logout().catch((error: unknown) => {
       // The session is still live server-side — say so instead of pretending
-      // the user is signed out. The session boundary handles the success path.
+      // the user is signed out (walk finding #3: a resolved {error} used to
+      // pass silently). The session boundary handles the success path.
       setSigningOut(false);
-      Alert.alert(copy.more.title, errorMessage(error));
+      Alert.alert(copy.more.title, thrownMessage(error));
     });
   };
 

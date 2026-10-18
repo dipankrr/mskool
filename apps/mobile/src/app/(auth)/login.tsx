@@ -11,7 +11,7 @@ import { Redirect, router } from "expo-router";
 
 import { login } from "../../lib/auth";
 import { copy } from "../../lib/copy";
-import { looksTechnical } from "../../lib/errors";
+import { thrownMessage } from "../../lib/errors";
 import { bestEffort } from "../../lib/with-timeout";
 import { useMe } from "../../hooks/use-me";
 
@@ -64,11 +64,7 @@ export default function LoginScreen() {
       await bestEffort(refetchSession(), SIGN_IN_SETTLE_MS);
       router.replace("/");
     } catch (cause) {
-      const message =
-        cause instanceof Error && !looksTechnical(cause.message)
-          ? cause.message
-          : copy.errors.network;
-      setError(message);
+      setError(thrownMessage(cause));
     } finally {
       setSubmitting(false);
     }

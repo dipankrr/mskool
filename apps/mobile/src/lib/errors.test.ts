@@ -3,7 +3,12 @@ import { TRPCClientError } from "@trpc/client";
 // Port of apps/web's errors.test.ts (vitest → jest globals; jest-expo
 // preset). Same contract: whatever arrives, the message shown is one a
 // teacher can act on and never something a developer wrote for a log.
-import { errorMessage, looksTechnical, toFriendlyError } from "./errors";
+import {
+  errorMessage,
+  looksTechnical,
+  thrownMessage,
+  toFriendlyError,
+} from "./errors";
 
 type FakeErrorInit = {
   message?: string;
@@ -193,5 +198,20 @@ describe("looksTechnical", () => {
     ).toBe(true);
     expect(looksTechnical("Network request failed")).toBe(true);
     expect(looksTechnical("The operation was aborted")).toBe(true);
+  });
+});
+
+describe("thrownMessage", () => {
+  it("passes a human Error message through", () => {
+    expect(thrownMessage(new Error("Couldn't sign out. Try again."))).toContain(
+      "sign out",
+    );
+  });
+
+  it("maps technical and non-Error throws to the network copy", () => {
+    expect(thrownMessage(new Error("Network request failed"))).toContain(
+      "Couldn't reach the server",
+    );
+    expect(thrownMessage(undefined)).toContain("Couldn't reach the server");
   });
 });
