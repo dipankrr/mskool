@@ -1,4 +1,4 @@
-import { bestEffort, withTimeout } from "./with-timeout";
+import { bestEffort, withDeadline, withTimeout } from "./with-timeout";
 
 describe("withTimeout", () => {
   it("passes an un-aborted signal and resolves when work finishes first", async () => {
@@ -44,6 +44,47 @@ describe("bestEffort", () => {
       const done = bestEffort(hanging, 2_000);
       jest.advanceTimersByTime(2_001);
       await done;
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
+describe("withDeadline", () => {
+  it("aborts the fused signal when the deadline passes", () => {
+    jest.useFakeTimers();
+    try {
+      const { signal, release } = withDeadline(undefined, 1_000);
+      expect(signal.aborted).toBe(false);
+      jest.advanceTimersByTime(1_001);
+      expect(signal.aborted).toBe(true);
+      release();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("forwards an external abort, and starts aborted when already aborted", () => {
+    const external = new AbortController();
+    const fused = withDeadline(external.signal, 60_000);
+    external.abort();
+    expect(fused.signal.aborted).toBe(true);
+    fused.release();
+
+    const preAborted = new AbortController();
+    preAborted.abort();
+    const immediate = withDeadline(preAborted.signal, 60_000);
+    expect(immediate.signal.aborted).toBe(true);
+    immediate.release();
+  });
+
+  it("stops watching the deadline after release", () => {
+    jest.useFakeTimers();
+    try {
+      const { signal, release } = withDeadline(undefined, 1_000);
+      release();
+      jest.advanceTimersByTime(5_000);
+      expect(signal.aborted).toBe(false);
     } finally {
       jest.useRealTimers();
     }

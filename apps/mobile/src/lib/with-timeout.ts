@@ -43,3 +43,35 @@ export async function bestEffort(
     if (timer !== undefined) clearTimeout(timer);
   }
 }
+
+/**
+ * The tRPC deadline (2026-10-18 walk finding #4): on a dead-zone network a
+ * request stays pending until the OS gives up — minutes, or never from the
+ * user's point of view. A deadline turns that into the screens' existing
+ * connection copy + retry, draft intact. Same 15 s bound as the auth calls.
+ */
+export const API_REQUEST_TIMEOUT_MS = 15_000;
+
+/**
+ * Fuse an optional external signal (React Query cancellation) with a deadline
+ * into one signal. `AbortSignal.any` is not available on Hermes, so this is
+ * hand-rolled; call `release()` once the request settles to clear the timer
+ * and the listener.
+ */
+export function withDeadline(
+  external: AbortSignal | null | undefined,
+  timeoutMs: number = API_REQUEST_TIMEOUT_MS,
+): { signal: AbortSignal; release: () => void } {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const forwardAbort = () => controller.abort();
+  if (external) {
+    if (external.aborted) controller.abort();
+    else external.addEventListener("abort", forwardAbort);
+  }
+  const release = () => {
+    clearTimeout(timer);
+    external?.removeEventListener("abort", forwardAbort);
+  };
+  return { signal: controller.signal, release };
+}

@@ -11,6 +11,7 @@ import type { AppRouter } from "@repo/trpc";
 
 import { authClient } from "./auth";
 import { queryClient } from "./query";
+import { withDeadline } from "./with-timeout";
 import { env } from "../env";
 
 export const trpc = createTRPCReact<AppRouter>();
@@ -33,7 +34,14 @@ export function TrpcProvider({ children }: { children: ReactNode }) {
             return cookies ? { Cookie: cookies } : {};
           },
           fetch(url, options) {
-            return fetch(url, { ...options, credentials: "omit" });
+            // Every call carries a deadline (2026-10-18 walk finding #4): a
+            // dead-zone network must fail into the screens' retry copy, not
+            // spin forever. Fused with React Query's cancellation signal so
+            // unmounts still abort; `release` drops the timer + listener.
+            const { signal, release } = withDeadline(options?.signal);
+            return fetch(url, { ...options, credentials: "omit", signal }).finally(
+              release,
+            );
           },
         }),
       ],
