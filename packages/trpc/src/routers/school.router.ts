@@ -45,9 +45,12 @@ export const schoolRouter = router({
       return organizationService.listSchools(ctx.scopes);
     }),
 
-  // B7 (ADR-028): overlap read — same rule as class.byId. For seeded roles
-  // nothing observable changes: only org-scoped and branch principals hold
-  // school:read, and both cover any school they can address by id.
+  // B7 (ADR-028): overlap read — same rule as class.byId. A class-scoped
+  // teacher (school:read per ADR-044) does not strictly cover the school
+  // node, but her grant reaches into its subtree, so the overlap gate admits
+  // her. The service then filters with the ADDRESSED node's scope, which is
+  // school-deep by construction — no class-level restriction ever reaches
+  // this table.
   byId: staffProcedure("school:read", { addressedBy: "id", gate: "overlap" })
     .meta({
       openapi: {

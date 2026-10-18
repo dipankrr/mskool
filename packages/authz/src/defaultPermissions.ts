@@ -235,6 +235,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "class:read",
     "section:read",
     "subject:read",
+    // Branch identity for the app's context (owner direction, 2026-10-18):
+    // the mobile branch chip and the school-scoped attendance-policy read.
+    // Scope-clipped like every read — she resolves exactly her own school.
+    "school:read",
     // Sees the year list to switch context; without read_history the switcher
     // offers the current session only.
     "academic_year:read",
@@ -277,6 +281,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "class:read",
     "section:read",
     "subject:read",
+    // Branch identity for the app's context (owner direction, 2026-10-18);
+    // scope-clipped to her own school, same reasoning as class_teacher's.
+    "school:read",
     "academic_year:read",
     // Sees which subjects their class teaches and their own assignments.
     "subject_mapping:read",
@@ -327,6 +334,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "student:read",
     "class:read",
     "section:read",
+    // Branch identity (owner direction, 2026-10-18): every in-school role
+    // reads its own school record; scope-clipped as ever.
+    "school:read",
     "announcement:read",
     "leave:create",
     "leave:read",

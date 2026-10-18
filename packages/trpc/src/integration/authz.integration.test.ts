@@ -676,19 +676,31 @@ describe("schools — list and byId", () => {
   });
 
   it("dual grants union only their QUALIFYING grants' reach", async () => {
-    // Her class_teacher grant carries no school:read; only the principal@A2
-    // grant qualifies, so A2 is all she gets — even though she can also see
-    // Class 6 of A1 through her other role.
+    // Both of her grants carry school:read (ADR-044): the principal grant
+    // reaches A2 directly, the class-teacher grant reaches A1 through her
+    // class's school (clamped at school level). The union is both branches.
     const ids = await okIds(
       callerOf(schoolListRouter, U().dual).probe({ organizationId: world.orgAId }),
     );
-    expect(ids).toEqual([world.schoolA2Id]);
+    expect(ids).toEqual([world.schoolA1Id, world.schoolA2Id].sort());
   });
 
-  it("personas without school:read are 403 on school.list", async () => {
+  it("teaching grants list exactly their branch — class and section scopes clamp to the school", async () => {
+    const cases = [
+      ["class teacher (class-depth grant)", U().teacherC6],
+      ["subject teacher (section-depth grant)", U().subjectS6A],
+    ] as const;
+
+    for (const [name, userId] of cases) {
+      const ids = await okIds(
+        callerOf(schoolListRouter, userId).probe({ organizationId: world.orgAId }),
+      );
+      expect(ids, name).toEqual([world.schoolA1Id]);
+    }
+  });
+
+  it("assignments that grant nothing are 403 on school.list", async () => {
     const denied = [
-      ["class teacher (role lacks school:read)", U().teacherC6],
-      ["subject teacher (role lacks school:read)", U().subjectS6A],
       ["expired assignment", U().expiredT],
       ["revoked assignment (SQL-filtered)", U().revokedT],
       ["admin of ANOTHER org", U().adminB],
@@ -726,6 +738,23 @@ describe("schools — list and byId", () => {
     // The overlap miss is decided IN THE GATE, so the generic wording wins.
     await expectTrpcError(
       callerOf(schoolByIdRouter, U().principalA1).probe({
+        organizationId: world.orgAId,
+        id: world.schoolA2Id,
+      }),
+      "NOT_FOUND",
+      "Resource not found.",
+    );
+  });
+
+  it("the class teacher reads her branch by id (overlap reach); the sibling is NOT_FOUND", async () => {
+    const own = await callerOf(schoolByIdRouter, U().teacherC6).probe({
+      organizationId: world.orgAId,
+      id: world.schoolA1Id,
+    });
+    expect(own.id).toBe(world.schoolA1Id);
+
+    await expectTrpcError(
+      callerOf(schoolByIdRouter, U().teacherC6).probe({
         organizationId: world.orgAId,
         id: world.schoolA2Id,
       }),

@@ -552,9 +552,10 @@ export async function buildWorld(): Promise<IntegrationWorld> {
     userId: subjectS6A.id, organizationId: orgA.id,
     roleType: "subject_teacher", scopeType: "section", scopeId: section6a.id,
   });
-  // Dual-grant union: her principal grant carries school:read; her teacher
-  // grant does not. What she can list is the union of what her QUALIFYING
-  // grants reach — never the union of everything she holds.
+  // Dual-grant union: both grants carry school:read (ADR-044) — the
+  // principal grant reaches A2 directly, the class-teacher grant reaches A1
+  // through her class's school. What she can list is the union of what her
+  // QUALIFYING grants reach — never the union of everything she holds.
   await findOrCreateAssignment({
     userId: dual.id, organizationId: orgA.id,
     roleType: "class_teacher", scopeType: "class", scopeId: class6.id,

@@ -1974,3 +1974,39 @@ shell ships, then dies per ADR-034. Teachers' "stay on responsive web"
 interim stance is superseded: the staff shell is the operative surface.
 `EXPO_PUBLIC_*` env discipline mirrors the web's `NEXT_PUBLIC_*` rule
 (CONVENTIONS.md).
+
+---
+
+## ADR-044 — Every in-school staff role holds `school:read` by default
+
+Date: 2026-10-18. Status: accepted. Clarifies ADR-011 (defaults vs org-owned
+matrix); supports ADR-043 (mobile context).
+
+**Context.** The mobile walk (2026-10-18) found the class-teacher persona
+resolving no branch: `me.get`'s `memberships[].schools[]` is computed under
+`school:read`, and the teacher roles did not hold it. The branch chip, the
+school-scoped attendance-policy read, and the web Branches list are all the
+same read: the identity of the school the caller already works in.
+Withholding it forced a client-side org fallback or a `memberships`
+extension — both would route around the scoping model instead of through it.
+
+**Decision.** The DEFAULT matrix grants `school:read` to every operational
+in-school role: `class_teacher`, `subject_teacher`, and `librarian` join
+`principal`, `vice_principal`, `accountant`, and `staff_coordinator`
+(`org_admin` holds it via ALL_PERMISSIONS). Owner direction: "every role in
+the school should get school:read." The read stays scope-clipped — a caller
+resolves only schools their assignments already reach (a section-scoped
+teacher resolves exactly her school) — and the school record is branch
+identity (name/code/board/address/contact/logo), not academic or financial
+reach. Defaults only: an org may still revoke it per role (ADR-011). One
+service adjustment rides with the grant: `organizationService.listSchools`
+was the single caller still handing raw class/section-depth scopes to a
+school-level table, so the new grant made `me.get` throw for a class teacher;
+it now clamps with `atSchoolLevel`, the documented rule for entities with no
+class dimension. No router, contract, or client change.
+
+**Consequences.** Class teachers and subject teachers get the branch chip and
+branch-scoped reads in the mobile app; the web Branches navigation item
+appears for those roles, scoped to their school. Demo fixtures are backfilled
+by the seed's INSERT-only `syncDefaultPermissions`; production orgs are
+untouched by construction (defaults are copied once at provisioning).

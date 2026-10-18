@@ -1,3 +1,4 @@
+import { atSchoolLevel } from "./academic.service";
 import {
   DEFAULT_ROLE_PERMISSIONS,
   insertScopeNode,
@@ -25,9 +26,14 @@ import { and, eq } from "drizzle-orm";
  * a principal scoped to one branch listed every school in the trust. Mapping
  * it explicitly is what makes that class of bug impossible.
  *
- * Nothing is mapped for class or section: a scope narrowed to those levels
- * cannot be expressed against this table, and scopeWhere() will throw rather
- * than return a wider result than the caller is entitled to.
+ * Nothing is mapped for class or section because a school row has neither
+ * dimension: "the schools of my class" and "the school my class is in" are
+ * the same question, asked with a word this table does not have (the entity-
+ * shape rule documented on `atSchoolLevel`). Callers clamp class/section-depth
+ * scopes to school level first (see listSchools) — the clamp keeps `schoolId`,
+ * so nothing widens — and any scope that still reaches scopeWhere() with an
+ * inexpressible restriction throws rather than returning a wider result than
+ * the caller is entitled to.
  */
 const SCHOOL_SCOPE_COLUMNS: ScopeColumns = {
   organizationId: schools.organizationId,
@@ -125,6 +131,12 @@ export class OrganizationService {
    *
    * Takes the PLURAL scopes: a user may hold grants in several branches, and
    * no single DataScope can express "school A or school B".
+   *
+   * Clamped with `atSchoolLevel` before the filter. A class-scoped teacher's
+   * grant (school:read per ADR-044) is a school-level question about her own
+   * branch — same reasoning as that helper's docstring. Without the clamp,
+   * scopeWhere() would (correctly) refuse her class restriction on a table
+   * that has no such column and the whole call would 500.
    */
   async listSchools(scopes: DataScope[]) {
     return db
@@ -132,7 +144,7 @@ export class OrganizationService {
       .from(schools)
       .where(
         and(
-          scopeWhere(scopes, SCHOOL_SCOPE_COLUMNS),
+          scopeWhere(scopes.map(atSchoolLevel), SCHOOL_SCOPE_COLUMNS),
           eq(schools.isActive, true),
         ),
       );
