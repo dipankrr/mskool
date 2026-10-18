@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>mskool staff: flow specs</title>
+<link rel="stylesheet" href="file:///C:/Users/dipan/Coding/mskool/.agents/skills/app-designer/assets/device.css">
+<style>
+/* ============================================================
+   mskool staff: flow specs (the design-gate set).
+   Same settled language as admin.html: white ground, console
+   tokens (amber #B45309, ink #0C0A09, muted #79716B), system
+   type, colour only where it means something.
+   Frames are STATES of real journeys, not style options.
+   ============================================================ */
+
+.screen {
+  background: #FFFFFF; color: #0C0A09;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+.d-a { --accent: #B45309; }
+
+/* ---- header ---- */
+.sheet { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 74px 20px 0; }
+.ctx { display: flex; align-items: center; gap: 4px; font-size: 13px; color: #79716B; }
+.ctx svg { display: block; }
+.title { font-size: 28px; font-weight: 600; letter-spacing: -0.5px; margin-top: 10px; }
+.sub { font-size: 14px; color: #79716B; margin-top: 4px; }
+
+.backwrap { width: 44px; height: 44px; margin: 0 0 0 -10px; display: flex; align-items: center; justify-content: center; }
+.backwrap svg { display: block; }
+.ptitle { font-size: 28px; font-weight: 600; letter-spacing: -0.5px; margin-top: 2px; }
+
+/* ---- summary ---- */
+.sum { margin-top: 22px; }
+.sumrow { display: flex; align-items: baseline; gap: 6px; }
+.bignum { font-size: 22px; font-weight: 600; }
+.of { font-size: 15px; color: #79716B; }
+.track { margin-top: 12px; height: 4px; border-radius: 2px; background: #EDEBE8; overflow: hidden; }
+.fill { height: 100%; width: 89.5%; background: #0C0A09; border-radius: 2px; }
+.statline { margin-top: 10px; font-size: 15px; color: #79716B; }
+.statline b { font-weight: 600; }
+.abs { color: #E7000B; }
+.late { color: #A16207; }
+
+/* ---- lists ---- */
+.roster { flex: 1; min-height: 0; overflow: hidden; margin-top: 14px; }
+.row {
+  display: grid; grid-template-columns: 36px 1fr auto; align-items: center; height: 58px;
+  border-bottom: 1px solid rgba(12, 10, 9, 0.08);
+}
+.row.xp { height: auto; }
+.row.xp .roll, .row.xp .nm { padding-top: 13px; }
+.row.xp .st { padding-top: 13px; }
+.row.xp .chips { grid-column: 1 / -1; padding: 10px 0 14px 0; }
+.roll { font-size: 13px; color: #79716B; font-variant-numeric: tabular-nums; }
+.name { font-size: 17px; font-weight: 500; letter-spacing: -0.2px; }
+.adm { font-size: 13px; color: #79716B; margin-top: 2px; }
+.st { justify-self: end; display: flex; align-items: center; }
+.stword { font-size: 15px; font-weight: 600; }
+.stword.leave { color: #79716B; font-weight: 400; }
+.stword.pend { color: #B45309; font-weight: 600; } /* not-yet-done action text */
+
+/* ---- chips (status picker + form segments) ---- */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  font-size: 13px; font-weight: 500; padding: 10px 14px; border: 1px solid #E7E5E3;
+  border-radius: 8px; color: #0C0A09;
+}
+.chip.on { border-color: #B45309; color: #B45309; background: rgba(180, 83, 9, 0.07); font-weight: 600; }
+
+/* ---- fields ---- */
+.fgap { height: 12px; }
+.fldlabel { font-size: 13px; color: #79716B; margin-bottom: 6px; }
+.input { height: 46px; border: 1px solid #E7E5E3; border-radius: 10px; padding: 0 14px; display: flex; align-items: center; font-size: 17px; }
+.input.err { border-color: #E7000B; }
+.ferr { font-size: 13px; color: #E7000B; margin-top: 6px; }
+.input.sel { justify-content: space-between; }
+.input.sel svg { display: block; }
+.fhelper { font-size: 13px; color: #79716B; margin-top: 6px; }
+.search { height: 46px; border: 1px solid #0C0A09; border-radius: 10px; padding: 0 14px; display: flex; align-items: center; }
+.search svg { display: block; }
+.search .q { font-size: 17px; margin-left: 8px; }
+.ph { color: #79716B; }
+
+/* ---- success / key-value blocks ---- */
+.bigrow { display: flex; align-items: center; gap: 10px; margin-top: 24px; }
+.bigrow h2 { font-size: 28px; font-weight: 600; letter-spacing: -0.5px; margin: 0; }
+.oksub { font-size: 14px; color: #79716B; margin-top: 6px; }
+.kv { display: flex; align-items: baseline; justify-content: space-between; padding: 13px 0; border-bottom: 1px solid rgba(12, 10, 9, 0.08); }
+.kv .k { font-size: 13px; color: #79716B; }
+.kv .v { font-size: 15px; font-weight: 500; }
+.kv .v.pend { color: #B45309; font-weight: 600; }
+.note { margin-top: 18px; background: rgba(12, 10, 9, 0.04); border-radius: 12px; padding: 14px; }
+.note .nt { font-size: 15px; font-weight: 600; }
+.note .nb { font-size: 14px; color: #6F6A63; margin-top: 6px; line-height: 1.45; }
+
+/* ---- branch menu ---- */
+.menu {
+  position: absolute; top: 100px; left: 152px; width: 230px; z-index: 30;
+  background: #FFFFFF; border: 1px solid #E7E5E3; border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(12, 10, 9, 0.13); padding: 6px;
+}
+.menu-t { font-size: 13px; color: #79716B; padding: 8px 12px 6px; }
+.menu-i { display: flex; align-items: center; justify-content: space-between; padding: 11px 12px; font-size: 15px; font-weight: 500; border-radius: 10px; }
+.menu-i svg { display: block; }
+
+/* ---- bottom bars ---- */
+.bottom {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 20;
+  background: #FFFFFF; border-top: 1px solid rgba(12, 10, 9, 0.08);
+  padding: 10px 20px calc(8px + var(--safe-bottom));
+  display: flex; flex-direction: column; gap: 10px;
+}
+.bottom.notabs { padding-bottom: calc(12px + var(--safe-bottom)); gap: 8px; }
+.save {
+  width: 100%; height: 50px; border: 0; border-radius: 10px;
+  background: var(--accent); color: #FFFBEA;
+  font-family: inherit; font-size: 16px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+}
+.srow { display: flex; align-items: center; gap: 8px; height: 38px; }
+.srow svg { display: block; }
+.stxt { font-size: 15px; font-weight: 500; }
+.sedit { margin-left: auto; font-size: 15px; font-weight: 600; color: #B45309; }
+.tlink { height: 40px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 500; color: #79716B; }
+.tabrow { display: flex; height: 48px; }
+.tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: #79716B; }
+.tab.on { color: var(--accent); }
+.tab span { font-size: 10px; font-weight: 500; }
+.tab.on span { font-weight: 600; }
+.tab svg { display: block; }
+
+/* ---- timeout panel ---- */
+.tpanel { border: 1px solid rgba(180, 83, 9, 0.35); background: rgba(180, 83, 9, 0.06); border-radius: 12px; padding: 14px; }
+.trow { display: flex; align-items: center; gap: 8px; }
+.trow svg { display: block; }
+.tt { font-size: 15px; font-weight: 600; }
+.tbody { font-size: 14px; color: #6F6A63; margin: 8px 0 12px; line-height: 1.45; }
+</style>
+</head>
+<body>
+
+<!-- ==================== 1 · home + branch menu ==================== -->
+<section class="screen d-a" data-name="01-home-branch" data-time="8:52">
+  <div class="sheet">
+    <div class="ctx">Demo Public School · Main Campus
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 3.5 L5 6.5 L8 3.5" stroke="#79716B" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="title">Today</div>
+    <div class="sub">Wednesday 15 Oct</div>
+
+    <div class="roster" data-scrolls data-bleed style="margin-top: 22px;">
+      <div class="row">
+        <span class="roll"></span>
+        <span><div class="name">Class 6-A</div><div class="adm">Class teacher · 38 students</div></span>
+        <span class="st"><span class="stword pend">Mark</span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="menu" data-float>
+    <div class="menu-t">Switch branch</div>
+    <div class="menu-i"><span>Main Campus</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#0C0A09" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="menu-i"><span>North Campus</span></div>
+  </div>
+
+  <div class="bottom" data-float>
+    <nav class="tabrow" data-system>
+      <div class="tab on">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.6 12 4.4l8 6.2"/><path d="M6.2 9.4V18.8a1 1 0 0 0 1 1h9.6a1 1 0 0 0 1-1V9.4"/></svg>
+        <span>Home</span>
+      </div>
+      <div class="tab">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3.8h6v2.4H9z" fill="currentColor" stroke="none"/><rect x="5" y="4.6" width="14" height="15.6" rx="2.4"/><path d="M8.6 12.4 11 14.8 15.6 9.6"/></svg>
+        <span>Attendance</span>
+      </div>
+      <div class="tab">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.6" r="3.1"/><path d="M3.9 19c0-3.1 2.2-5 5.1-5s5.1 1.9 5.1 5"/><circle cx="16.6" cy="9.6" r="2.5"/><path d="M15.2 14c2.7 0 4.5 1.8 4.7 4.2"/></svg>
+        <span>Students</span>
+      </div>
+      <div class="tab">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="5.5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18.5" cy="12" r="1.5"/></svg>
+        <span>More</span>
+      </div>
+    </nav>
+  </div>
+</section>
+
+<!-- ==================== 2 · attendance: marking a row ==================== -->
+<section class="screen d-a" data-name="02-attendance-mark" data-time="8:52">
+  <div class="sheet">
+    <div class="ctx">Demo Public School · Main Campus
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 3.5 L5 6.5 L8 3.5" stroke="#79716B" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="title">Class 6-A</div>
+    <div class="sub">Attendance · Wednesday 15 Oct</div>
+
+    <div class="sum">
+      <div class="sumrow"><div class="bignum">34</div><div class="of">of 38 present</div></div>
+      <div class="track"><div class="fill"></div></div>
+      <div class="statline"><b class="abs">2 absent</b> · <b class="late">1 late</b> · 1 on leave</div>
+    </div>
+
+    <div class="roster" data-scrolls data-bleed>
+      <div class="row"><span class="roll">01</span><span><div class="name">Aditi Sharma</div><div class="adm">DEMO-0001</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">02</span><span><div class="name">Arjun Mehta</div><div class="adm">DEMO-0007</div></span><span class="st"><span class="stword abs">Absent</span></span></div>
+      <div class="row"><span class="roll">03</span><span><div class="name">Diya Patel</div><div class="adm">DEMO-0012</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row xp">
+        <span class="roll">04</span><span class="nm"><div class="name">Kabir Malhotra</div><div class="adm">DEMO-0019</div></span><span class="st"></span>
+        <div class="chips">
+          <div class="chip">Present</div>
+          <div class="chip on">Late</div>
+          <div class="chip">Absent</div>
+          <div class="chip">On leave</div>
+          <div class="chip">Half day</div>
+        </div>
+      </div>
+      <div class="row"><span class="roll">05</span><span><div class="name">Ananya Iyer</div><div class="adm">DEMO-0023</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">06</span><span><div class="name">Rohan Gupta</div><div class="adm">DEMO-0028</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">07</span><span><div class="name">Zara Sheikh</div><div class="adm">DEMO-0031</div></span><span class="st"><span class="stword leave">On leave</span></span></div>
+      <div class="row"><span class="roll">08</span><span><div class="name">Ishaan Reddy</div><div class="adm">DEMO-0036</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+    </div>
+  </div>
+
+  <div class="bottom" data-float>
+    <button class="save">Save attendance</button>
+    <nav class="tabrow" data-system>
+      <div class="tab">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.6 12 4.4l8 6.2"/><path d="M6.2 9.4V18.8a1 1 0 0 0 1 1h9.6a1 1 0 0 0 1-1V9.4"/></svg>
+        <span>Home</span>
+      </div>
+      <div class="tab on">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3.8h6v2.4H9z"/><rect x="5" y="4.6" width="14" height="15.6" rx="2.4" fill="none" stroke-width="1.9"/><path d="M8.6 12.4 11 14.8 15.6 9.6" fill="none" stroke="#FFFFFF" stroke-width="2"/></svg>
+        <span>Attendance</span>
+      </div>
+      <div class="tab">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.6" r="3.1"/><path d="M3.9 19c0-3.1 2.2-5 5.1-5s5.1 1.9 5.1 5"/><circle cx="16.6" cy="9.6" r="2.5"/><path d="M15.2 14c2.7 0 4.5 1.8 4.7 4.2"/></svg>
+        <span>Students</span>
+      </div>
+      <div class="tab">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="5.5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18.5" cy="12" r="1.5"/></svg>
+        <span>More</span>
+      </div>
+    </nav>
+  </div>
+</section>
+
+<!-- ==================== 3 · attendance: saved ==================== -->
+<section class="screen d-a" data-name="03-attendance-saved" data-time="8:53">
+  <div class="sheet">
+    <div class="ctx">Demo Public School · Main Campus
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 3.5 L5 6.5 L8 3.5" stroke="#79716B" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="title">Class 6-A</div>
+    <div class="sub">Attendance · Wednesday 15 Oct</div>
+
+    <div class="sum">
+      <div class="sumrow"><div class="bignum">34</div><div class="of">of 38 present</div></div>
+      <div class="track"><div class="fill"></div></div>
+      <div class="statline"><b class="abs">2 absent</b> · <b class="late">1 late</b> · 1 on leave</div>
+    </div>
+
+    <div class="roster" data-scrolls data-bleed>
+      <div class="row"><span class="roll">01</span><span><div class="name">Aditi Sharma</div><div class="adm">DEMO-0001</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">02</span><span><div class="name">Arjun Mehta</div><div class="adm">DEMO-0007</div></span><span class="st"><span class="stword abs">Absent</span></span></div>
+      <div class="row"><span class="roll">03</span><span><div class="name">Diya Patel</div><div class="adm">DEMO-0012</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">04</span><span><div class="name">Kabir Malhotra</div><div class="adm">DEMO-0019</div></span><span class="st"><span class="stword late">Late</span></span></div>
+      <div class="row"><span class="roll">05</span><span><div class="name">Ananya Iyer</div><div class="adm">DEMO-0023</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">06</span><span><div class="name">Rohan Gupta</div><div class="adm">DEMO-0028</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">07</span><span><div class="name">Zara Sheikh</div><div class="adm">DEMO-0031</div></span><span class="st"><span class="stword leave">On leave</span></span></div>
+      <div class="row"><span class="roll">08</span><span><div class="name">Ishaan Reddy</div><div class="adm">DEMO-0036</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+    </div>
+  </div>
+
+  <div class="bottom" data-float>
+    <div class="srow">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#15803D" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="stxt">Attendance saved · 8:53</span>
+      <span class="sedit">Edit</span>
+    </div>
+    <button class="save">Done</button>
+    <nav class="tabrow" data-system>
+      <div class="tab">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.6 12 4.4l8 6.2"/><path d="M6.2 9.4V18.8a1 1 0 0 0 1 1h9.6a1 1 0 0 0 1-1V9.4"/></svg>
+        <span>Home</span>
+      </div>
+      <div class="tab on">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3.8h6v2.4H9z"/><rect x="5" y="4.6" width="14" height="15.6" rx="2.4" fill="none" stroke-width="1.9"/><path d="M8.6 12.4 11 14.8 15.6 9.6" fill="none" stroke="#FFFFFF" stroke-width="2"/></svg>
+        <span>Attendance</span>
+      </div>
+      <div class="tab">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.6" r="3.1"/><path d="M3.9 19c0-3.1 2.2-5 5.1-5s5.1 1.9 5.1 5"/><circle cx="16.6" cy="9.6" r="2.5"/><path d="M15.2 14c2.7 0 4.5 1.8 4.7 4.2"/></svg>
+        <span>Students</span>
+      </div>
+      <div class="tab">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="5.5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18.5" cy="12" r="1.5"/></svg>
+        <span>More</span>
+      </div>
+    </nav>
+  </div>
+</section>
+
+<!-- ==================== 4 · fees: find the student ==================== -->
+<section class="screen d-a" data-name="04-fees-find" data-time="12:10">
+  <div class="sheet">
+    <div class="backwrap">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0C0A09" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+    </div>
+    <div class="ptitle">Collect fee</div>
+
+    <div style="margin-top: 20px;">
+      <div class="search">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#79716B" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+        <span class="q">Sha</span>
+      </div>
+    </div>
+
+    <div class="roster" data-scrolls data-bleed style="margin-top: 10px;">
+      <div class="row">
+        <span class="roll"></span>
+        <span><div class="name">Aditi Sharma</div><div class="adm">Class 6-A · DEMO-0001</div></span>
+        <span class="st"><span class="stword">₹11,000 due</span></span>
+      </div>
+      <div class="row">
+        <span class="roll"></span>
+        <span><div class="name">Ishaan Sharma</div><div class="adm">Class 7-A · DEMO-0036</div></span>
+        <span class="st"><span class="stword leave">No dues</span></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 5 · fees: collect ==================== -->
+<section class="screen d-a" data-name="05-fees-collect" data-time="12:10">
+  <div class="sheet">
+    <div class="backwrap">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0C0A09" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+    </div>
+    <div class="ptitle">Aditi Sharma</div>
+    <div class="sub">Class 6-A · DEMO-0001 · Outstanding ₹11,000</div>
+
+    <div style="margin-top: 24px;">
+      <div class="fldlabel">Amount (₹)</div>
+      <div class="input">11,000</div>
+      <div class="fhelper">11 open instalments · May 2025 to Mar 2026</div>
+
+      <div class="fgap"></div>
+      <div class="fldlabel">Payment mode</div>
+      <div class="chips">
+        <div class="chip">Cash</div>
+        <div class="chip on">UPI</div>
+        <div class="chip">Cheque</div>
+        <div class="chip">Card</div>
+        <div class="chip">NEFT / RTGS</div>
+        <div class="chip">DD</div>
+      </div>
+
+      <div class="fgap"></div>
+      <div class="fldlabel">UPI reference (optional)</div>
+      <div class="input"><span class="ph">Reference number</span></div>
+    </div>
+  </div>
+
+  <div class="bottom notabs" data-float>
+    <button class="save">Collect ₹11,000</button>
+  </div>
+</section>
+
+<!-- ==================== 6 · fees: not confirmed ==================== -->
+<section class="screen d-a" data-name="06-fees-timeout" data-time="12:11">
+  <div class="sheet">
+    <div class="backwrap">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0C0A09" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+    </div>
+    <div class="ptitle">Aditi Sharma</div>
+    <div class="sub">Class 6-A · DEMO-0001 · Outstanding ₹11,000</div>
+
+    <div style="margin-top: 24px;">
+      <div class="fldlabel">Amount (₹)</div>
+      <div class="input">11,000</div>
+      <div class="fhelper">11 open instalments · May 2025 to Mar 2026</div>
+
+      <div class="fgap"></div>
+      <div class="fldlabel">Payment mode</div>
+      <div class="chips">
+        <div class="chip">Cash</div>
+        <div class="chip on">UPI</div>
+        <div class="chip">Cheque</div>
+        <div class="chip">Card</div>
+        <div class="chip">NEFT / RTGS</div>
+        <div class="chip">DD</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom notabs" data-float>
+    <div class="tpanel">
+      <div class="trow">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+        <span class="tt">Taking longer than usual</span>
+      </div>
+      <div class="tbody">Your phone hasn't heard back from the server, so this collection is not confirmed yet. Checking is safe. The same collection can never be posted twice.</div>
+      <button class="save">Check status</button>
+    </div>
+    <div class="tlink">Back to home</div>
+  </div>
+</section>
+
+<!-- ==================== 7 · admission: form with an error ==================== -->
+<section class="screen d-a" data-name="07-admission-form" data-time="10:24">
+  <div class="sheet">
+    <div class="backwrap">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0C0A09" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+    </div>
+    <div class="ptitle">New admission</div>
+
+    <div class="roster" data-scrolls data-bleed style="margin-top: 14px;">
+      <div class="fldlabel">First name</div>
+      <div class="input">Vivaan</div>
+      <div class="fgap"></div>
+
+      <div class="fldlabel">Last name</div>
+      <div class="input">Joshi</div>
+      <div class="fgap"></div>
+
+      <div class="fldlabel">Date of birth</div>
+      <div class="input">12 Mar 2014</div>
+      <div class="fgap"></div>
+
+      <div class="fldlabel">Gender</div>
+      <div class="chips">
+        <div class="chip on">Male</div>
+        <div class="chip">Female</div>
+        <div class="chip">Other</div>
+      </div>
+      <div class="fgap"></div>
+
+      <div class="fldlabel">Guardian name</div>
+      <div class="input">Rakesh Joshi</div>
+      <div class="fgap"></div>
+
+      <div class="fldlabel">Guardian mobile</div>
+      <div class="input err">98765 4321</div>
+      <div class="ferr">Enter a 10-digit mobile number.</div>
+      <div class="fgap"></div>
+
+      <div class="fldlabel">Class &amp; session</div>
+      <div class="input sel"><span>Class 6 · 2025-26</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+      </div>
+      <div class="fhelper">Section is assigned after admission.</div>
+      <div class="fgap"></div>
+
+      <div class="fldlabel">Admission number</div>
+      <div class="input">DEMO-0052</div>
+    </div>
+  </div>
+
+  <div class="bottom notabs" data-float>
+    <button class="save">Admit student</button>
+  </div>
+</section>
+
+<!-- ==================== 8 · admission: admitted ==================== -->
+<section class="screen d-a" data-name="08-admission-result" data-time="10:25">
+  <div class="sheet">
+    <div class="backwrap">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0C0A09" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+    </div>
+
+    <div class="bigrow">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#15803D" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <h2>Admitted</h2>
+    </div>
+    <div class="oksub">Vivaan Joshi · Class 6 · Session 2025-26</div>
+
+    <div style="margin-top: 26px;">
+      <div class="kv"><span class="k">Admission number</span><span class="v">DEMO-0052</span></div>
+      <div class="kv"><span class="k">Guardian</span><span class="v">Rakesh Joshi · 98765 43210</span></div>
+      <div class="kv"><span class="k">Section</span><span class="v pend">Not assigned yet</span></div>
+    </div>
+
+    <div class="note">
+      <div class="nt">Assign the section</div>
+      <div class="nb">Vivaan has no section yet, so he won't appear on any class roster. Assign one when seats are confirmed.</div>
+    </div>
+  </div>
+
+  <div class="bottom notabs" data-float>
+    <button class="save">Assign section</button>
+    <div class="tlink">Done</div>
+  </div>
+</section>
+
+<script src="file:///C:/Users/dipan/Coding/mskool/.agents/skills/app-designer/assets/device.js"></script>
+</body>
+</html>

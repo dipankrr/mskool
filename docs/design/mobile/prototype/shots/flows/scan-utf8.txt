@@ -1,0 +1,51 @@
+﻿
+Shot 8 screen(s) at 3x -> C:\Users\dipan\Coding\mskool\docs\design\mobile\prototype\shots\flows
+  C:\Users\dipan\Coding\mskool\docs\design\mobile\prototype\shots\flows\01-home-branch.png
+  C:\Users\dipan\Coding\mskool\docs\design\mobile\prototype\shots\flows\02-attendance-mark.png
+  C:\Users\dipan\Coding\mskool\docs\design\mobile\prototype\shots\flows\03-attendance-saved.png
+  C:\Users\dipan\Coding\mskool\docs\design\mobile\prototype\shots\flows\04-fees-find.png
+  C:\Users\dipan\Coding\mskool\docs\design\mobile\prototype\shots\flows\05-fees-collect.png
+  C:\Users\dipan\Coding\mskool\docs\design\mobile\prototype\shots\flows\06-fees-timeout.png
+  C:\Users\dipan\Coding\mskool\docs\design\mobile\prototype\shots\flows\07-admission-form.png
+  C:\Users\dipan\Coding\mskool\docs\design\mobile\prototype\shots\flows\08-admission-result.png
+  C:\Users\dipan\Coding\mskool\docs\design\mobile\prototype\shots\flows\sheet.png   (the flow; open each 3x PNG above for detail)
+
+Page errors:
+  request failed: file:///System/Library/Fonts/SFNS.ttf
+
+ΓöÇΓöÇ 01-home-branch ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  fonts {"-apple-system":9}  sizes [28, 17, 15, 14, 13]  weights [400, 500, 600]  hues [24]  cards 1
+  clean
+
+ΓöÇΓöÇ 02-attendance-mark ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  fonts {"-apple-system":40}  sizes [28, 22, 17, 16, 15, 14, 13]  weights [400, 500, 600]  hues [0, 24]  cards 0
+  clean
+
+ΓöÇΓöÇ 03-attendance-saved ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  fonts {"-apple-system":38}  sizes [28, 22, 17, 16, 15, 14, 13]  weights [400, 500, 600]  hues [0, 24, 144]  cards 0
+  warn  Three saturated hue families (0┬░, 24┬░, 144┬░). Is each one earning its place?
+
+ΓöÇΓöÇ 04-fees-find ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  fonts {"-apple-system":8}  sizes [28, 17, 15, 13]  weights [400, 500, 600]  hues []  cards 0
+  clean
+
+ΓöÇΓöÇ 05-fees-collect ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  fonts {"-apple-system":15}  sizes [28, 17, 16, 14, 13]  weights [400, 500, 600]  hues [24]  cards 0
+  clean
+
+ΓöÇΓöÇ 06-fees-timeout ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  fonts {"-apple-system":16}  sizes [28, 17, 16, 15, 14, 13]  weights [400, 500, 600]  hues [24]  cards 1
+  clean
+
+ΓöÇΓöÇ 07-admission-form ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  fonts {"-apple-system":22}  sizes [28, 17, 16, 13]  weights [400, 500, 600]  hues [24, 0]  cards 0
+  clean
+
+ΓöÇΓöÇ 08-admission-result ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  fonts {"-apple-system":12}  sizes [28, 16, 15, 14, 13]  weights [400, 500, 600]  hues [144, 24]  cards 0
+  clean
+
+App-wide: 7 text sizes [28, 22, 17, 16, 15, 14, 13]
+
+No FAILs. The scan only catches mechanical tells. Now read sheet.png with your own eyes.
+

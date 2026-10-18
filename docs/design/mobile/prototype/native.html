@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>mskool staff: native redesign probe</title>
+<link rel="stylesheet" href="file:///C:/Users/dipan/Coding/mskool/.agents/skills/app-designer/assets/device.css">
+<style>
+/* ============================================================
+   mskool staff: native redesign probe (2026-10-17, v3).
+   Answer to "this is a web app, not a mobile app".
+
+   The language: a tinted canvas with white cards (iOS grouped),
+   initials avatars, status pills + tinted stat tiles (colour =
+   information, not decoration), a floating glass tab bar,
+   bottom sheets, large titles, capsule buttons.
+   One accent: emerald #0F7A44 (green = present, the app's own
+   action colour). Semantic red/amber only on statuses.
+   Type: the system stack. Sizes {11,12,13,15,16,20,30,34}.
+   ============================================================ */
+
+.screen {
+  background: #F2F3F7; color: #101828;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --ink: #101828; --mut: #5D6674; --line: rgba(16, 24, 40, 0.08);
+  --pri: #0F7A44; --pri-t: #E8F5EE; --pri-d: #0B6B3A;
+  --red: #B42318; --red-t: #FEF3F2;
+  --amb: #B54708; --amb-t: #FFFAEB;
+  --slate: #475467; --slate-t: #F2F4F7;
+  --field: #ECEEF3; --chip: #E9EDF3;
+}
+button { font-family: inherit; border: 0; padding: 0; background: none; color: inherit; }
+.ic { display: block; flex: none; }
+.tnum { font-variant-numeric: tabular-nums; }
+
+.page { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 62px 20px 0; }
+
+/* ---- nav + headers ---- */
+.nav { height: 44px; display: flex; align-items: center; position: relative; }
+.branch {
+  display: flex; align-items: center; gap: 7px; height: 36px; padding: 0 13px;
+  background: #fff; border: 1px solid var(--line); border-radius: 999px;
+  font-size: 13px; font-weight: 600; color: var(--ink);
+}
+.branch .ic { color: var(--slate); }
+.back { width: 44px; height: 44px; margin-left: -10px; display: flex; align-items: center; justify-content: center; color: var(--pri); }
+.pt { position: absolute; left: 0; right: 0; text-align: center; font-size: 16px; font-weight: 600; pointer-events: none; }
+.h1 { margin-top: 12px; font-size: 30px; font-weight: 700; letter-spacing: -0.6px; }
+.sub { margin-top: 2px; font-size: 15px; color: var(--mut); }
+.label { margin-top: 24px; font-size: 12px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--mut); }
+
+/* ---- avatars, pills, rows ---- */
+.av {
+  width: 40px; height: 40px; border-radius: 50%; background: var(--chip); color: var(--slate);
+  font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center;
+}
+.av.lg { width: 44px; height: 44px; font-size: 15px; }
+.nm { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
+.sm { margin-top: 1px; font-size: 13px; color: var(--mut); }
+.pill { height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; }
+.pill.p { color: var(--pri-d); background: var(--pri-t); }
+.pill.a { color: var(--red); background: var(--red-t); }
+.pill.l { color: var(--amb); background: var(--amb-t); }
+.pill.v { color: var(--slate); background: var(--slate-t); }
+
+/* ---- class card (home) ---- */
+.ccard {
+  margin-top: 10px; display: grid; grid-template-columns: 44px 1fr 16px; gap: 12px; align-items: center;
+  background: #fff; border-radius: 16px; padding: 16px;
+}
+.tic { width: 44px; height: 44px; border-radius: 12px; background: var(--pri-t); color: var(--pri); display: flex; align-items: center; justify-content: center; }
+.sm .amber { color: var(--amb); font-weight: 600; }
+.chev { color: #98A2B3; }
+
+/* ---- attendance ---- */
+.tiles { margin-top: 14px; display: flex; gap: 10px; }
+.tile { flex: 1; height: 74px; border-radius: 14px; padding: 0 12px; display: flex; flex-direction: column; justify-content: center; text-align: left; }
+.tile b { display: block; font-size: 20px; font-weight: 700; }
+.tile span { display: block; margin-top: 1px; font-size: 12px; font-weight: 600; }
+.tile.p { background: var(--pri-t); color: var(--pri-d); }
+.tile.a { background: var(--red-t); color: var(--red); }
+.tile.l { background: var(--amb-t); color: var(--amb); }
+.tile.v { background: var(--slate-t); color: var(--slate); }
+.bulk { margin-top: 12px; display: flex; justify-content: space-between; gap: 10px; }
+.bulk button { height: 38px; padding: 0 12px; border-radius: 999px; font-size: 14px; font-weight: 600; display: flex; align-items: center; }
+.bulk .bp { color: var(--pri-d); background: var(--pri-t); }
+.bulk .ba { color: var(--red); background: var(--red-t); }
+.hint { margin-top: 9px; font-size: 12px; color: var(--mut); }
+.saved {
+  position: absolute; left: 20px; right: 20px; bottom: 92px; height: 54px; border-radius: 999px;
+  background: var(--pri); display: flex; align-items: center; padding: 0 12px;
+  box-shadow: 0 10px 24px rgba(16, 24, 40, 0.16);
+}
+.saved .sx { font-size: 15px; font-weight: 600; color: #fff; }
+.saved .sedit { margin-left: auto; height: 34px; padding: 0 14px; border-radius: 999px; background: #fff; color: var(--pri); font-size: 14px; font-weight: 600; display: flex; align-items: center; }
+
+.list { margin-top: 12px; background: #fff; border-radius: 16px; overflow: hidden; }
+.row { height: 62px; padding: 0 16px; display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center; position: relative; }
+.row + .row::before { content: ""; position: absolute; top: 0; left: 68px; right: 0; height: 1px; background: var(--line); }
+
+/* ---- floating actions + tab bar ---- */
+.cta {
+  position: absolute; left: 20px; right: 20px; bottom: 92px; height: 54px; border-radius: 999px;
+  background: var(--pri); color: #fff; font-size: 16px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 10px 24px rgba(16, 24, 40, 0.16);
+}
+.cta.solo { bottom: calc(12px + var(--safe-bottom)); }
+.tabbar {
+  position: absolute; left: 16px; right: 16px; bottom: 18px; height: 64px; border-radius: 32px;
+  padding: 6px; gap: 4px; display: flex; z-index: 40;
+  border: 1px solid rgba(16, 24, 40, 0.06);
+  box-shadow: 0 14px 34px rgba(16, 24, 40, 0.12);
+}
+.tab { flex: 1; border-radius: 26px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--mut); }
+.tab span { font-size: 11px; font-weight: 500; }
+.tab.on { color: var(--pri-d); background: rgba(15, 122, 68, 0.12); }
+.tab.on span { font-weight: 600; }
+
+/* ---- search + money ---- */
+.search { margin-top: 16px; height: 44px; border-radius: 12px; background: var(--field); display: flex; align-items: center; gap: 8px; padding: 0 12px; }
+.search .ic { color: var(--mut); }
+.search .q { font-size: 16px; color: var(--ink); }
+.search .clr { margin-left: auto; }
+.frow { height: 76px; padding: 0 16px; display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center; }
+.amt { text-align: right; }
+.amt b { display: block; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.amt span { font-size: 12px; font-weight: 600; color: var(--red); }
+
+.scard { margin-top: 16px; background: #fff; border-radius: 16px; padding: 14px 16px; display: flex; gap: 12px; align-items: center; }
+.dues { margin-top: 14px; background: #fff; border-radius: 16px; padding: 16px; }
+.dues .lb { font-size: 12px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--mut); }
+.dues .big { margin-top: 4px; font-size: 34px; font-weight: 700; letter-spacing: -0.8px; font-variant-numeric: tabular-nums; }
+.dues .note { margin-top: 2px; font-size: 13px; color: var(--mut); }
+.field { margin-top: 8px; height: 56px; border-radius: 12px; background: var(--field); display: flex; align-items: center; gap: 6px; padding: 0 14px; font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.field .cur { color: var(--mut); font-weight: 500; }
+.modes { margin-top: 10px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.mode {
+  height: 72px; border-radius: 14px; background: #fff; border: 1px solid var(--line);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  font-size: 13px; font-weight: 500; color: var(--ink);
+}
+.mode .ic { color: var(--slate); }
+.mode.on { background: var(--pri-t); border-color: var(--pri); color: var(--pri-d); font-weight: 600; }
+.mode.on .ic { color: var(--pri-d); }
+
+/* ---- bottom sheet ---- */
+.dim { position: absolute; inset: 0; background: rgba(16, 24, 40, 0.45); z-index: 30; }
+.msheet {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 40;
+  background: #fff; border-radius: 24px 24px 0 0;
+  padding: 12px 0 calc(10px + var(--safe-bottom));
+  box-shadow: 0 -12px 40px rgba(16, 24, 40, 0.18);
+}
+.grab { width: 36px; height: 5px; border-radius: 3px; background: #D5DAE2; margin: 0 auto 8px; }
+.shd { display: flex; gap: 12px; align-items: center; padding: 6px 20px 14px; }
+.opt { height: 58px; padding: 0 20px; display: grid; grid-template-columns: 36px 1fr auto; gap: 16px; align-items: center; position: relative; font-size: 16px; font-weight: 500; }
+.opt + .opt::before { content: ""; position: absolute; top: 0; left: 72px; right: 0; height: 1px; background: var(--line); }
+.oic { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+.oic.p { background: var(--pri-t); color: var(--pri-d); }
+.oic.l { background: var(--amb-t); color: var(--amb); }
+.oic.a { background: var(--red-t); color: var(--red); }
+.oic.v { background: var(--slate-t); color: var(--slate); }
+.opt.on { font-weight: 600; }
+.oc { color: var(--pri); visibility: hidden; }
+.opt.on .oc { visibility: visible; }
+</style>
+</head>
+<body>
+
+<!-- ==================== 1 · home ==================== -->
+<section class="screen" data-name="01-home" data-time="9:41">
+  <div class="page">
+    <div class="nav">
+      <div class="branch">
+        Main Campus
+        <svg class="ic" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5D6674" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9.5 6 6 6-6"/></svg>
+      </div>
+    </div>
+    <div class="h1">Today</div>
+    <div class="sub">Wednesday, 15 Oct</div>
+
+    <div class="label">Your classes</div>
+    <div class="ccard">
+      <div class="tic">
+        <svg class="ic" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 5H7a1.5 1.5 0 0 0-1.5 1.5v13A1.5 1.5 0 0 0 7 21h10a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17 5h-1.5"/><path d="M9.5 4.5A1.5 1.5 0 0 1 11 3h2a1.5 1.5 0 0 1 1.5 1.5v.5A1.5 1.5 0 0 1 13 6.5h-2A1.5 1.5 0 0 1 9.5 5z"/><path d="m9.2 13.6 2.4 2.4 4.6-4.8"/></svg>
+      </div>
+      <div>
+        <div class="nm">Class 6-A</div>
+        <div class="sm">Class teacher · <span class="amber">Attendance not marked</span></div>
+      </div>
+      <svg class="ic chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9.5 6 6 6-6 6"/></svg>
+    </div>
+  </div>
+
+  <nav class="tabbar glass" data-float>
+    <button class="tab on">
+      <svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 10 12 3.2 20.5 10v10a1 1 0 0 1-1 1H15v-6.4H9V21H4.5a1 1 0 0 1-1-1z"/></svg>
+      <span>Home</span>
+    </button>
+    <button class="tab">
+      <svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 5H7a1.5 1.5 0 0 0-1.5 1.5v13A1.5 1.5 0 0 0 7 21h10a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17 5h-1.5"/><path d="M9.5 4.5A1.5 1.5 0 0 1 11 3h2a1.5 1.5 0 0 1 1.5 1.5v.5A1.5 1.5 0 0 1 13 6.5h-2A1.5 1.5 0 0 1 9.5 5z"/><path d="m9.2 13.6 2.4 2.4 4.6-4.8"/></svg>
+      <span>Attendance</span>
+    </button>
+    <button class="tab">
+      <svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="5.5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18.5" cy="12" r="1.6"/></svg>
+      <span>More</span>
+    </button>
+  </nav>
+</section>
+
+<!-- ==================== 2 · attendance ==================== -->
+<section class="screen" data-name="02-attendance" data-time="9:42">
+  <div class="page">
+    <div class="nav">
+      <div class="branch">
+        Main Campus
+        <svg class="ic" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5D6674" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9.5 6 6 6-6"/></svg>
+      </div>
+    </div>
+    <div class="h1">Class 6-A</div>
+    <div class="sub">Wed 15 Oct · 38 students</div>
+
+    <div class="tiles">
+      <div class="tile p"><b>35</b><span>Present</span></div>
+      <div class="tile a"><b>1</b><span>Absent</span></div>
+      <div class="tile l"><b>1</b><span>Late</span></div>
+      <div class="tile v"><b>1</b><span>On leave</span></div>
+    </div>
+
+    <div class="bulk">
+      <button class="bp">All present</button>
+      <button class="ba">All absent</button>
+    </div>
+    <div class="hint">Tap: present / absent · Hold: late, leave, half day</div>
+
+    <div class="list" data-scrolls>
+      <div class="row">
+        <div class="av">AS</div>
+        <div><div class="nm">Aditi Sharma</div><div class="sm">Roll 1</div></div>
+        <span class="pill p">Present</span>
+      </div>
+      <div class="row">
+        <div class="av">AP</div>
+        <div><div class="nm">Aarav Patel</div><div class="sm">Roll 2</div></div>
+        <span class="pill p">Present</span>
+      </div>
+      <div class="row">
+        <div class="av">MI</div>
+        <div><div class="nm">Meera Iyer</div><div class="sm">Roll 3</div></div>
+        <span class="pill a">Absent</span>
+      </div>
+      <div class="row">
+        <div class="av">KM</div>
+        <div><div class="nm">Kabir Malhotra</div><div class="sm">Roll 4</div></div>
+        <span class="pill l">Late</span>
+      </div>
+      <div class="row">
+        <div class="av">VR</div>
+        <div><div class="nm">Vivaan Reddy</div><div class="sm">Roll 5</div></div>
+        <span class="pill p">Present</span>
+      </div>
+      <div class="row">
+        <div class="av">ZK</div>
+        <div><div class="nm">Zara Khan</div><div class="sm">Roll 6</div></div>
+        <span class="pill v">On leave</span>
+      </div>
+      <div class="row">
+        <div class="av">IG</div>
+        <div><div class="nm">Ishaan Gupta</div><div class="sm">Roll 7</div></div>
+        <span class="pill p">Present</span>
+      </div>
+    </div>
+  </div>
+
+  <button class="cta" data-float>Save attendance</button>
+
+  <nav class="tabbar glass" data-float>
+    <button class="tab">
+      <svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 10 12 3.2 20.5 10v10a1 1 0 0 1-1 1H15v-6.4H9V21H4.5a1 1 0 0 1-1-1z"/></svg>
+      <span>Home</span>
+    </button>
+    <button class="tab on">
+      <svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 5H7a1.5 1.5 0 0 0-1.5 1.5v13A1.5 1.5 0 0 0 7 21h10a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17 5h-1.5"/><path d="M9.5 4.5A1.5 1.5 0 0 1 11 3h2a1.5 1.5 0 0 1 1.5 1.5v.5A1.5 1.5 0 0 1 13 6.5h-2A1.5 1.5 0 0 1 9.5 5z"/><path d="m9.2 13.6 2.4 2.4 4.6-4.8"/></svg>
+      <span>Attendance</span>
+    </button>
+    <button class="tab">
+      <svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="5.5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18.5" cy="12" r="1.6"/></svg>
+      <span>More</span>
+    </button>
+  </nav>
+</section>
+
+<!-- ==================== 3 · mark sheet (modal) ==================== -->
+<section class="screen" data-name="03-mark-sheet" data-time="9:43">
+  <div class="page" data-behind>
+    <div class="nav">
+      <div class="branch">
+        Main Campus
+        <svg class="ic" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5D6674" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9.5 6 6 6-6"/></svg>
+      </div>
+    </div>
+    <div class="h1">Class 6-A</div>
+    <div class="sub">Wed 15 Oct · 38 students</div>
+
+    <div class="tiles">
+      <div class="tile p"><b>35</b><span>Present</span></div>
+      <div class="tile a"><b>1</b><span>Absent</span></div>
+      <div class="tile l"><b>1</b><span>Late</span></div>
+      <div class="tile v"><b>1</b><span>On leave</span></div>
+    </div>
+
+    <div class="bulk">
+      <button class="bp">All present</button>
+      <button class="ba">All absent</button>
+    </div>
+    <div class="hint">Tap: present / absent · Hold: late, leave, half day</div>
+
+    <div class="list" data-scrolls>
+      <div class="row">
+        <div class="av">AS</div>
+        <div><div class="nm">Aditi Sharma</div><div class="sm">Roll 1</div></div>
+        <span class="pill p">Present</span>
+      </div>
+      <div class="row">
+        <div class="av">AP</div>
+        <div><div class="nm">Aarav Patel</div><div class="sm">Roll 2</div></div>
+        <span class="pill p">Present</span>
+      </div>
+      <div class="row">
+        <div class="av">MI</div>
+        <div><div class="nm">Meera Iyer</div><div class="sm">Roll 3</div></div>
+        <span class="pill a">Absent</span>
+      </div>
+      <div class="row">
+        <div class="av">KM</div>
+        <div><div class="nm">Kabir Malhotra</div><div class="sm">Roll 4</div></div>
+        <span class="pill p">Present</span>
+      </div>
+      <div class="row">
+        <div class="av">VR</div>
+        <div><div class="nm">Vivaan Reddy</div><div class="sm">Roll 5</div></div>
+        <span class="pill p">Present</span>
+      </div>
+      <div class="row">
+        <div class="av">ZK</div>
+        <div><div class="nm">Zara Khan</div><div class="sm">Roll 6</div></div>
+        <span class="pill v">On leave</span>
+      </div>
+      <div class="row">
+        <div class="av">IG</div>
+        <div><div class="nm">Ishaan Gupta</div><div class="sm">Roll 7</div></div>
+        <span class="pill p">Present</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="dim" data-float></div>
+
+  <div class="msheet" data-float>
+    <div class="grab"></div>
+    <div class="shd">
+      <div class="av">KM</div>
+      <div>
+        <div class="nm">Kabir Malhotra</div>
+        <div class="sm">Roll 4</div>
+      </div>
+    </div>
+    <div class="opt">
+      <span class="oic p"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="m8.6 12.3 2.3 2.3 4.5-4.8"/></svg></span>
+      Present
+      <span class="oc"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7"/></svg></span>
+    </div>
+    <div class="opt on">
+      <span class="oic l"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.6v4.6l3.1 1.9"/></svg></span>
+      Late
+      <span class="oc"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7"/></svg></span>
+    </div>
+    <div class="opt">
+      <span class="oic a"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="m9.3 9.3 5.4 5.4M14.7 9.3l-5.4 5.4"/></svg></span>
+      Absent
+      <span class="oc"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7"/></svg></span>
+    </div>
+    <div class="opt">
+      <span class="oic v"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5.5" width="16" height="15" rx="2.5"/><path d="M4 10.5h16M8.5 3.5v4M15.5 3.5v4"/></svg></span>
+      On leave
+      <span class="oc"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7"/></svg></span>
+    </div>
+    <div class="opt">
+      <span class="oic v"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor" stroke="none"/></svg></span>
+      Half day
+      <span class="oc"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7"/></svg></span>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 4 · attendance saved ==================== -->
+<section class="screen" data-name="04-attendance-saved" data-time="9:44">
+  <div class="page">
+    <div class="nav">
+      <div class="branch">
+        Main Campus
+        <svg class="ic" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5D6674" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9.5 6 6 6-6"/></svg>
+      </div>
+    </div>
+    <div class="h1">Class 6-A</div>
+    <div class="sub">Wed 15 Oct · 38 students</div>
+
+    <div class="tiles">
+      <div class="tile p"><b>35</b><span>Present</span></div>
+      <div class="tile a"><b>1</b><span>Absent</span></div>
+      <div class="tile l"><b>1</b><span>Late</span></div>
+      <div class="tile v"><b>1</b><span>On leave</span></div>
+    </div>
+
+    <div class="bulk">
+      <button class="bp">All present</button>
+      <button class="ba">All absent</button>
+    </div>
+    <div class="hint">Tap: present / absent · Hold: late, leave, half day</div>
+
+    <div class="list" data-scrolls>
+      <div class="row">
+        <div class="av">AS</div>
+        <div><div class="nm">Aditi Sharma</div><div class="sm">Roll 1</div></div>
+        <span class="pill p">Present</span>
+      </div>
+      <div class="row">
+        <div class="av">AP</div>
+        <div><div class="nm">Aarav Patel</div><div class="sm">Roll 2</div></div>
+        <span class="pill p">Present</span>
+      </div>
+      <div class="row">
+        <div class="av">MI</div>
+        <div><div class="nm">Meera Iyer</div><div class="sm">Roll 3</div></div>
+        <span class="pill a">Absent</span>
+      </div>
+      <div class="row">
+        <div class="av">KM</div>
+        <div><div class="nm">Kabir Malhotra</div><div class="sm">Roll 4</div></div>
+        <span class="pill l">Late</span>
+      </div>
+      <div class="row">
+        <div class="av">VR</div>
+        <div><div class="nm">Vivaan Reddy</div><div class="sm">Roll 5</div></div>
+        <span class="pill p">Present</span>
+      </div>
+      <div class="row">
+        <div class="av">ZK</div>
+        <div><div class="nm">Zara Khan</div><div class="sm">Roll 6</div></div>
+        <span class="pill v">On leave</span>
+      </div>
+      <div class="row">
+        <div class="av">IG</div>
+        <div><div class="nm">Ishaan Gupta</div><div class="sm">Roll 7</div></div>
+        <span class="pill p">Present</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="saved" data-float>
+    <span class="sx">Attendance saved</span>
+    <button class="sedit">Edit</button>
+  </div>
+
+  <nav class="tabbar glass" data-float>
+    <button class="tab">
+      <svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 10 12 3.2 20.5 10v10a1 1 0 0 1-1 1H15v-6.4H9V21H4.5a1 1 0 0 1-1-1z"/></svg>
+      <span>Home</span>
+    </button>
+    <button class="tab on">
+      <svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 5H7a1.5 1.5 0 0 0-1.5 1.5v13A1.5 1.5 0 0 0 7 21h10a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17 5h-1.5"/><path d="M9.5 4.5A1.5 1.5 0 0 1 11 3h2a1.5 1.5 0 0 1 1.5 1.5v.5A1.5 1.5 0 0 1 13 6.5h-2A1.5 1.5 0 0 1 9.5 5z"/><path d="m9.2 13.6 2.4 2.4 4.6-4.8"/></svg>
+      <span>Attendance</span>
+    </button>
+    <button class="tab">
+      <svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="5.5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18.5" cy="12" r="1.6"/></svg>
+      <span>More</span>
+    </button>
+  </nav>
+</section>
+
+<!-- ==================== 5 · fees find ==================== -->
+<section class="screen" data-name="05-fees-find" data-time="12:10">
+  <div class="page">
+    <div class="nav">
+      <div class="branch">
+        Main Campus
+        <svg class="ic" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5D6674" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9.5 6 6 6-6"/></svg>
+      </div>
+    </div>
+    <div class="h1">Fees</div>
+    <div class="sub">Find the student to collect from</div>
+
+    <div class="search">
+      <svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4-4"/></svg>
+      <span class="q">sha</span>
+      <svg class="ic clr" width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.6" fill="#C9CFD9"/><path d="m9.4 9.4 5.2 5.2M14.6 9.4l-5.2 5.2" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/></svg>
+    </div>
+
+    <div class="list" data-scrolls>
+      <div class="frow">
+        <div class="av">AS</div>
+        <div>
+          <div class="nm">Aditi Sharma</div>
+          <div class="sm">Class 6-A · DEMO-0001</div>
+        </div>
+        <div class="amt"><b>₹11,000</b><span>due</span></div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="tabbar glass" data-float>
+    <button class="tab">
+      <svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 10 12 3.2 20.5 10v10a1 1 0 0 1-1 1H15v-6.4H9V21H4.5a1 1 0 0 1-1-1z"/></svg>
+      <span>Home</span>
+    </button>
+    <button class="tab on">
+      <svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12"/><path d="M6 8h12"/><path d="m6 13 8.5 8"/><path d="M6 13h3"/><path d="M9 13c6.667 0 6.667-10 0-10"/></svg>
+      <span>Fees</span>
+    </button>
+    <button class="tab">
+      <svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="5.5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18.5" cy="12" r="1.6"/></svg>
+      <span>More</span>
+    </button>
+  </nav>
+</section>
+
+<!-- ==================== 6 · collect fee ==================== -->
+<section class="screen" data-name="06-collect" data-time="12:11">
+  <div class="page">
+    <div class="nav">
+      <button class="back" aria-label="Back">
+        <svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4.5 7.5 12l7.5 7.5"/></svg>
+      </button>
+      <div class="pt">Collect fee</div>
+    </div>
+
+    <div class="scard">
+      <div class="av lg">AS</div>
+      <div>
+        <div class="nm">Aditi Sharma</div>
+        <div class="sm">Class 6-A · DEMO-0001</div>
+      </div>
+    </div>
+
+    <div class="dues">
+      <div class="lb">Outstanding</div>
+      <div class="big">₹11,000</div>
+      <div class="note">11 unpaid instalments</div>
+    </div>
+
+    <div class="label">Amount</div>
+    <div class="field"><span class="cur">₹</span>11,000</div>
+
+    <div class="label">Payment mode</div>
+    <div class="modes">
+      <div class="mode">
+        <svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6.8" width="18" height="10.4" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6.6 10v4M17.4 10v4"/></svg>
+        Cash
+      </div>
+      <div class="mode on">
+        <svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7.5" y="3" width="9" height="18" rx="2.4"/><path d="M11 17.8h2"/></svg>
+        UPI
+      </div>
+      <div class="mode">
+        <svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5.5" width="18" height="13" rx="2.4"/><path d="M3 10h18M6.8 14.6h4"/></svg>
+        Card
+      </div>
+      <div class="mode">
+        <svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.2" y="5.8" width="13.6" height="9.4" rx="2"/><path d="M3.2 9.2h13.6"/><path d="m14.5 18.2 4.8-4.8a1.35 1.35 0 0 1 1.9 1.9l-4.8 4.8-3.1.9z"/></svg>
+        Cheque
+      </div>
+      <div class="mode">
+        <svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8.2h13.2"/><path d="m13.8 4.8 3.4 3.4-3.4 3.4"/><path d="M20 15.8H6.8"/><path d="m10.2 12.4-3.4 3.4 3.4 3.4"/></svg>
+        NEFT/RTGS
+      </div>
+      <div class="mode">
+        <svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5h7.2L19 8.3V14"/><path d="M14.2 3.5v4.8H19"/><path d="M7 3.5A1.5 1.5 0 0 0 5.5 5v14A1.5 1.5 0 0 0 7 20.5h5"/><circle cx="16.4" cy="16.6" r="3.1"/><path d="M15.4 16.6h2M16.4 15.6v2"/></svg>
+        DD
+      </div>
+    </div>
+  </div>
+
+  <button class="cta solo" data-float>Collect ₹11,000</button>
+</section>
+
+<script src="file:///C:/Users/dipan/Coding/mskool/.agents/skills/app-designer/assets/device.js"></script>
+</body>
+</html>

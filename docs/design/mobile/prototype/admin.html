@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>mskool staff: admin direction</title>
+<link rel="stylesheet" href="file:///C:/Users/dipan/Coding/mskool/.agents/skills/app-designer/assets/device.css">
+<style>
+/* ============================================================
+   mskool staff: the admin direction.
+   White ground, console tokens (amber-700 primary, warm ink, warm grey),
+   system type, color only where it carries meaning.
+   Two screens, identical except the accent placement:
+   d-a = console amber primary · d-b = fully neutral ink.
+   ============================================================ */
+
+.screen {
+  background: #FFFFFF; color: #0C0A09;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+.d-a { --accent: #B45309; }   /* console --primary (oklch 0.555 0.163 49) */
+.d-b { --accent: #0C0A09; }   /* console --foreground */
+
+/* ---- header ---- */
+.sheet { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 74px 20px 0; }
+.ctx { display: flex; align-items: center; gap: 4px; font-size: 13px; color: #79716B; }
+.ctx svg { display: block; }
+.title { font-size: 28px; font-weight: 600; letter-spacing: -0.5px; margin-top: 10px; }
+.sub { font-size: 14px; color: #79716B; margin-top: 4px; }
+
+/* ---- summary ---- */
+.sum { margin-top: 22px; }
+.sumrow { display: flex; align-items: baseline; gap: 6px; }
+.bignum { font-size: 22px; font-weight: 600; }
+.of { font-size: 15px; color: #79716B; }
+.track { margin-top: 12px; height: 4px; border-radius: 2px; background: #EDEBE8; overflow: hidden; }
+.fill { height: 100%; width: 89.5%; background: #0C0A09; border-radius: 2px; }
+.statline { margin-top: 10px; font-size: 15px; color: #79716B; }
+.statline b { font-weight: 600; }
+.abs { color: #E7000B; }
+.late { color: #A16207; }
+
+/* ---- roster ---- */
+.roster { flex: 1; min-height: 0; overflow: hidden; margin-top: 14px; }
+.row {
+  display: grid; grid-template-columns: 36px 1fr auto; align-items: center; height: 58px;
+  border-bottom: 1px solid rgba(12, 10, 9, 0.08);
+}
+.roll { font-size: 13px; color: #79716B; font-variant-numeric: tabular-nums; }
+.name { font-size: 17px; font-weight: 500; letter-spacing: -0.2px; }
+.adm { font-size: 13px; color: #79716B; margin-top: 2px; }
+.st { justify-self: end; display: flex; align-items: center; }
+.stword { font-size: 15px; font-weight: 600; }
+.stword.leave { color: #79716B; font-weight: 400; }
+
+/* ---- bottom bar: primary action + tab row ---- */
+.bottom {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 20;
+  background: #FFFFFF; border-top: 1px solid rgba(12, 10, 9, 0.08);
+  padding: 10px 20px calc(8px + var(--safe-bottom));
+  display: flex; flex-direction: column; gap: 10px;
+}
+.save {
+  width: 100%; height: 50px; border: 0; border-radius: 10px;
+  background: var(--accent); color: #FFFBEA;
+  font-family: inherit; font-size: 16px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+}
+.tabrow { display: flex; height: 48px; }
+.tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: #79716B; }
+.tab.on { color: var(--accent); }
+.tab span { font-size: 10px; font-weight: 500; }
+.tab.on span { font-weight: 600; }
+.tab svg { display: block; }
+</style>
+</head>
+<body>
+
+<!-- ==================== A · accent: console amber ==================== -->
+<section class="screen d-a" data-name="admin-accent-amber" data-time="8:52">
+  <div class="sheet">
+    <div class="ctx">Demo Public School · Main Campus
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 3.5 L5 6.5 L8 3.5" stroke="#79716B" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="title">Class 6-A</div>
+    <div class="sub">Attendance · Wednesday 15 Oct · period 3 at 8:55</div>
+
+    <div class="sum">
+      <div class="sumrow"><div class="bignum">34</div><div class="of">of 38 present</div></div>
+      <div class="track"><div class="fill"></div></div>
+      <div class="statline"><b class="abs">2 absent</b> · <b class="late">1 late</b> · 1 on leave</div>
+    </div>
+
+    <div class="roster" data-scrolls data-bleed>
+      <div class="row"><span class="roll">01</span><span><div class="name">Aditi Sharma</div><div class="adm">DEMO-0001</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">02</span><span><div class="name">Arjun Mehta</div><div class="adm">DEMO-0007</div></span><span class="st"><span class="stword abs">Absent</span></span></div>
+      <div class="row"><span class="roll">03</span><span><div class="name">Diya Patel</div><div class="adm">DEMO-0012</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">04</span><span><div class="name">Kabir Malhotra</div><div class="adm">DEMO-0019</div></span><span class="st"><span class="stword late">Late</span></span></div>
+      <div class="row"><span class="roll">05</span><span><div class="name">Ananya Iyer</div><div class="adm">DEMO-0023</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">06</span><span><div class="name">Rohan Gupta</div><div class="adm">DEMO-0028</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">07</span><span><div class="name">Zara Sheikh</div><div class="adm">DEMO-0031</div></span><span class="st"><span class="stword leave">On leave</span></span></div>
+      <div class="row"><span class="roll">08</span><span><div class="name">Ishaan Reddy</div><div class="adm">DEMO-0036</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">09</span><span><div class="name">Meera Nair</div><div class="adm">DEMO-0041</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">10</span><span><div class="name">Nikhil Rao</div><div class="adm">DEMO-0044</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">11</span><span><div class="name">Priya Menon</div><div class="adm">DEMO-0049</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+    </div>
+  </div>
+
+  <div class="bottom" data-float>
+    <button class="save">Save attendance</button>
+    <nav class="tabrow" data-system>
+      <div class="tab">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.6 12 4.4l8 6.2"/><path d="M6.2 9.4V18.8a1 1 0 0 0 1 1h9.6a1 1 0 0 0 1-1V9.4"/></svg>
+        <span>Home</span>
+      </div>
+      <div class="tab on">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3.8h6v2.4H9z"/><rect x="5" y="4.6" width="14" height="15.6" rx="2.4" fill="none" stroke-width="1.9"/><path d="M8.6 12.4 11 14.8 15.6 9.6" fill="none" stroke="#FFFFFF" stroke-width="2" /></svg>
+        <span>Attendance</span>
+      </div>
+      <div class="tab">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.6" r="3.1"/><path d="M3.9 19c0-3.1 2.2-5 5.1-5s5.1 1.9 5.1 5"/><circle cx="16.6" cy="9.6" r="2.5"/><path d="M15.2 14c2.7 0 4.5 1.8 4.7 4.2"/></svg>
+        <span>Students</span>
+      </div>
+      <div class="tab">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="5.5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18.5" cy="12" r="1.5"/></svg>
+        <span>More</span>
+      </div>
+    </nav>
+  </div>
+</section>
+
+<!-- ==================== B · accent: neutral ink ==================== -->
+<section class="screen d-b" data-name="admin-accent-ink" data-time="8:52">
+  <div class="sheet">
+    <div class="ctx">Demo Public School · Main Campus
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 3.5 L5 6.5 L8 3.5" stroke="#79716B" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="title">Class 6-A</div>
+    <div class="sub">Attendance · Wednesday 15 Oct · period 3 at 8:55</div>
+
+    <div class="sum">
+      <div class="sumrow"><div class="bignum">34</div><div class="of">of 38 present</div></div>
+      <div class="track"><div class="fill"></div></div>
+      <div class="statline"><b class="abs">2 absent</b> · <b class="late">1 late</b> · 1 on leave</div>
+    </div>
+
+    <div class="roster" data-scrolls data-bleed>
+      <div class="row"><span class="roll">01</span><span><div class="name">Aditi Sharma</div><div class="adm">DEMO-0001</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">02</span><span><div class="name">Arjun Mehta</div><div class="adm">DEMO-0007</div></span><span class="st"><span class="stword abs">Absent</span></span></div>
+      <div class="row"><span class="roll">03</span><span><div class="name">Diya Patel</div><div class="adm">DEMO-0012</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">04</span><span><div class="name">Kabir Malhotra</div><div class="adm">DEMO-0019</div></span><span class="st"><span class="stword late">Late</span></span></div>
+      <div class="row"><span class="roll">05</span><span><div class="name">Ananya Iyer</div><div class="adm">DEMO-0023</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">06</span><span><div class="name">Rohan Gupta</div><div class="adm">DEMO-0028</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">07</span><span><div class="name">Zara Sheikh</div><div class="adm">DEMO-0031</div></span><span class="st"><span class="stword leave">On leave</span></span></div>
+      <div class="row"><span class="roll">08</span><span><div class="name">Ishaan Reddy</div><div class="adm">DEMO-0036</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">09</span><span><div class="name">Meera Nair</div><div class="adm">DEMO-0041</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">10</span><span><div class="name">Nikhil Rao</div><div class="adm">DEMO-0044</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">11</span><span><div class="name">Priya Menon</div><div class="adm">DEMO-0049</div></span><span class="st"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.6 9.7 17.8 19.5 6.6" stroke="#79716B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+    </div>
+  </div>
+
+  <div class="bottom" data-float>
+    <button class="save">Save attendance</button>
+    <nav class="tabrow" data-system>
+      <div class="tab">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.6 12 4.4l8 6.2"/><path d="M6.2 9.4V18.8a1 1 0 0 0 1 1h9.6a1 1 0 0 0 1-1V9.4"/></svg>
+        <span>Home</span>
+      </div>
+      <div class="tab on">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3.8h6v2.4H9z"/><rect x="5" y="4.6" width="14" height="15.6" rx="2.4" fill="none" stroke-width="1.9"/><path d="M8.6 12.4 11 14.8 15.6 9.6" fill="none" stroke="#FFFFFF" stroke-width="2" /></svg>
+        <span>Attendance</span>
+      </div>
+      <div class="tab">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.6" r="3.1"/><path d="M3.9 19c0-3.1 2.2-5 5.1-5s5.1 1.9 5.1 5"/><circle cx="16.6" cy="9.6" r="2.5"/><path d="M15.2 14c2.7 0 4.5 1.8 4.7 4.2"/></svg>
+        <span>Students</span>
+      </div>
+      <div class="tab">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="5.5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18.5" cy="12" r="1.5"/></svg>
+        <span>More</span>
+      </div>
+    </nav>
+  </div>
+</section>
+
+<script src="file:///C:/Users/dipan/Coding/mskool/.agents/skills/app-designer/assets/device.js"></script>
+</body>
+</html>

@@ -1,0 +1,196 @@
+[
+  {
+    "name": "01-home",
+    "fails": [],
+    "warns": [],
+    "facts": {
+      "fonts": {
+        "-apple-system": 10
+      },
+      "sizes": [
+        30,
+        16,
+        15,
+        13,
+        12,
+        11
+      ],
+      "weights": [
+        "400",
+        "500",
+        "600",
+        "700"
+      ],
+      "leftEdges": 3,
+      "accentHues": [
+        144,
+        24
+      ],
+      "cards": 2
+    }
+  },
+  {
+    "name": "02-attendance",
+    "fails": [],
+    "warns": [
+      "Three saturated hue families (144°, 0°, 24°). Is each one earning its place?"
+    ],
+    "facts": {
+      "fonts": {
+        "-apple-system": 46
+      },
+      "sizes": [
+        30,
+        20,
+        16,
+        15,
+        14,
+        13,
+        12,
+        11
+      ],
+      "weights": [
+        "400",
+        "500",
+        "600",
+        "700"
+      ],
+      "leftEdges": 5,
+      "accentHues": [
+        144,
+        0,
+        24
+      ],
+      "cards": 2
+    }
+  },
+  {
+    "name": "03-mark-sheet",
+    "fails": [],
+    "warns": [
+      "Three saturated hue families (144°, 0°, 24°). Is each one earning its place?"
+    ],
+    "facts": {
+      "fonts": {
+        "-apple-system": 50
+      },
+      "sizes": [
+        30,
+        20,
+        16,
+        15,
+        14,
+        13,
+        12
+      ],
+      "weights": [
+        "400",
+        "500",
+        "600",
+        "700"
+      ],
+      "leftEdges": 5,
+      "accentHues": [
+        144,
+        0,
+        24
+      ],
+      "cards": 2
+    }
+  },
+  {
+    "name": "04-attendance-saved",
+    "fails": [],
+    "warns": [
+      "Three saturated hue families (144°, 0°, 24°). Is each one earning its place?"
+    ],
+    "facts": {
+      "fonts": {
+        "-apple-system": 47
+      },
+      "sizes": [
+        30,
+        20,
+        16,
+        15,
+        14,
+        13,
+        12,
+        11
+      ],
+      "weights": [
+        "400",
+        "500",
+        "600",
+        "700"
+      ],
+      "leftEdges": 5,
+      "accentHues": [
+        144,
+        0,
+        24
+      ],
+      "cards": 2
+    }
+  },
+  {
+    "name": "05-fees-find",
+    "fails": [],
+    "warns": [],
+    "facts": {
+      "fonts": {
+        "-apple-system": 12
+      },
+      "sizes": [
+        30,
+        16,
+        15,
+        14,
+        13,
+        12,
+        11
+      ],
+      "weights": [
+        "400",
+        "500",
+        "600",
+        "700"
+      ],
+      "leftEdges": 4,
+      "accentHues": [
+        0,
+        144
+      ],
+      "cards": 2
+    }
+  },
+  {
+    "name": "06-collect",
+    "fails": [],
+    "warns": [],
+    "facts": {
+      "fonts": {
+        "-apple-system": 18
+      },
+      "sizes": [
+        34,
+        20,
+        16,
+        15,
+        13,
+        12
+      ],
+      "weights": [
+        "400",
+        "500",
+        "600",
+        "700"
+      ],
+      "leftEdges": 3,
+      "accentHues": [
+        144
+      ],
+      "cards": 2
+    }
+  }
+]

@@ -1,0 +1,226 @@
+[
+  {
+    "name": "01-home-branch",
+    "fails": [],
+    "warns": [],
+    "facts": {
+      "fonts": {
+        "-apple-system": 9
+      },
+      "sizes": [
+        28,
+        17,
+        15,
+        14,
+        13
+      ],
+      "weights": [
+        "400",
+        "500",
+        "600"
+      ],
+      "leftEdges": 2,
+      "accentHues": [
+        24
+      ],
+      "cards": 1
+    }
+  },
+  {
+    "name": "02-attendance-mark",
+    "fails": [],
+    "warns": [],
+    "facts": {
+      "fonts": {
+        "-apple-system": 40
+      },
+      "sizes": [
+        28,
+        22,
+        17,
+        16,
+        15,
+        14,
+        13
+      ],
+      "weights": [
+        "400",
+        "500",
+        "600"
+      ],
+      "leftEdges": 5,
+      "accentHues": [
+        0,
+        24
+      ],
+      "cards": 0
+    }
+  },
+  {
+    "name": "03-attendance-saved",
+    "fails": [],
+    "warns": [
+      "Three saturated hue families (0°, 24°, 144°). Is each one earning its place?"
+    ],
+    "facts": {
+      "fonts": {
+        "-apple-system": 38
+      },
+      "sizes": [
+        28,
+        22,
+        17,
+        16,
+        15,
+        14,
+        13
+      ],
+      "weights": [
+        "400",
+        "500",
+        "600"
+      ],
+      "leftEdges": 5,
+      "accentHues": [
+        0,
+        24,
+        144
+      ],
+      "cards": 0
+    }
+  },
+  {
+    "name": "04-fees-find",
+    "fails": [],
+    "warns": [],
+    "facts": {
+      "fonts": {
+        "-apple-system": 8
+      },
+      "sizes": [
+        28,
+        17,
+        15,
+        13
+      ],
+      "weights": [
+        "400",
+        "500",
+        "600"
+      ],
+      "leftEdges": 3,
+      "accentHues": [],
+      "cards": 0
+    }
+  },
+  {
+    "name": "05-fees-collect",
+    "fails": [],
+    "warns": [],
+    "facts": {
+      "fonts": {
+        "-apple-system": 15
+      },
+      "sizes": [
+        28,
+        17,
+        16,
+        14,
+        13
+      ],
+      "weights": [
+        "400",
+        "500",
+        "600"
+      ],
+      "leftEdges": 3,
+      "accentHues": [
+        24
+      ],
+      "cards": 0
+    }
+  },
+  {
+    "name": "06-fees-timeout",
+    "fails": [],
+    "warns": [],
+    "facts": {
+      "fonts": {
+        "-apple-system": 16
+      },
+      "sizes": [
+        28,
+        17,
+        16,
+        15,
+        14,
+        13
+      ],
+      "weights": [
+        "400",
+        "500",
+        "600"
+      ],
+      "leftEdges": 4,
+      "accentHues": [
+        24
+      ],
+      "cards": 1
+    }
+  },
+  {
+    "name": "07-admission-form",
+    "fails": [],
+    "warns": [],
+    "facts": {
+      "fonts": {
+        "-apple-system": 22
+      },
+      "sizes": [
+        28,
+        17,
+        16,
+        13
+      ],
+      "weights": [
+        "400",
+        "500",
+        "600"
+      ],
+      "leftEdges": 3,
+      "accentHues": [
+        24,
+        0
+      ],
+      "cards": 0
+    }
+  },
+  {
+    "name": "08-admission-result",
+    "fails": [],
+    "warns": [],
+    "facts": {
+      "fonts": {
+        "-apple-system": 12
+      },
+      "sizes": [
+        28,
+        16,
+        15,
+        14,
+        13
+      ],
+      "weights": [
+        "400",
+        "500",
+        "600"
+      ],
+      "leftEdges": 3,
+      "accentHues": [
+        144,
+        24
+      ],
+      "cards": 0
+    }
+  }
+]

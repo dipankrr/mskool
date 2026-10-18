@@ -1,0 +1,97 @@
+[
+  {
+    "name": "explore-a-register",
+    "fails": [],
+    "warns": [],
+    "facts": {
+      "fonts": {
+        "Oswald": 20,
+        "system-ui": 25
+      },
+      "sizes": [
+        64,
+        30,
+        16,
+        15,
+        13.5,
+        11.5,
+        11
+      ],
+      "weights": [
+        "400",
+        "500",
+        "600"
+      ],
+      "leftEdges": 5,
+      "accentHues": [
+        216,
+        0
+      ],
+      "cards": 1
+    }
+  },
+  {
+    "name": "explore-b-blackboard",
+    "fails": [],
+    "warns": [],
+    "facts": {
+      "fonts": {
+        "Baloo 2": 46
+      },
+      "sizes": [
+        56,
+        20,
+        17,
+        16,
+        15,
+        14,
+        12.5,
+        11.5
+      ],
+      "weights": [
+        "500",
+        "600",
+        "700",
+        "800"
+      ],
+      "leftEdges": 4,
+      "accentHues": [
+        0,
+        48
+      ],
+      "cards": 1
+    }
+  },
+  {
+    "name": "explore-c-assembly",
+    "fails": [],
+    "warns": [],
+    "facts": {
+      "fonts": {
+        "Archivo": 39
+      },
+      "sizes": [
+        96,
+        42,
+        16,
+        15,
+        14,
+        12,
+        11.5
+      ],
+      "weights": [
+        "500",
+        "600",
+        "700",
+        "800",
+        "900"
+      ],
+      "leftEdges": 3,
+      "accentHues": [
+        24,
+        0
+      ],
+      "cards": 1
+    }
+  }
+]

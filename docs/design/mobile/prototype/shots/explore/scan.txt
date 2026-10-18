@@ -1,0 +1,26 @@
+﻿
+Shot 3 screen(s) at 3x -> C:\Users\dipan\Coding\mskool\docs\design\mobile\prototype\shots\explore
+  C:\Users\dipan\Coding\mskool\docs\design\mobile\prototype\shots\explore\01-explore-a-register.png
+  C:\Users\dipan\Coding\mskool\docs\design\mobile\prototype\shots\explore\02-explore-b-blackboard.png
+  C:\Users\dipan\Coding\mskool\docs\design\mobile\prototype\shots\explore\03-explore-c-assembly.png
+  C:\Users\dipan\Coding\mskool\docs\design\mobile\prototype\shots\explore\sheet.png   (the flow; open each 3x PNG above for detail)
+
+Page errors:
+  request failed: file:///System/Library/Fonts/SFNS.ttf
+
+ΓöÇΓöÇ explore-a-register ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  fonts {"Oswald":20,"system-ui":25}  sizes [64, 30, 16, 15, 13.5, 11.5, 11]  weights [400, 500, 600]  hues [216, 0]  cards 1
+  clean
+
+ΓöÇΓöÇ explore-b-blackboard ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  fonts {"Baloo 2":46}  sizes [56, 20, 17, 16, 15, 14, 12.5, 11.5]  weights [500, 600, 700, 800]  hues [0, 48]  cards 1
+  clean
+
+ΓöÇΓöÇ explore-c-assembly ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  fonts {"Archivo":39}  sizes [96, 42, 16, 15, 14, 12, 11.5]  weights [500, 600, 700, 800, 900]  hues [24, 0]  cards 1
+  clean
+
+App-wide: 15 text sizes [96, 64, 56, 42, 30, 20, 17, 16, 15, 14, 13.5, 12.5, 12, 11.5, 11]  warn: a type scale this long is not a scale. Merge sizes a step apart.
+
+No FAILs. The scan only catches mechanical tells. Now read sheet.png with your own eyes.
+

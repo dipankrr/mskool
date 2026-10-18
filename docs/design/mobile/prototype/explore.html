@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>mskool staff: direction exploration</title>
+<link rel="stylesheet" href="file:///C:/Users/dipan/Coding/mskool/.agents/skills/app-designer/assets/device.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..900&family=Baloo+2:wght@500..800&family=Oswald:wght@400..700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   mskool staff: attendance screen, three directions.
+   A Register (printed/light/Oswald/red) · B Blackboard (object/dark/Baloo 2/yellow) · C Assembly (place/marigold/Archivo expanded/orange)
+   ============================================================ */
+
+.screen { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #111; }
+.sheet { position: absolute; inset: 0; display: flex; flex-direction: column; }
+
+/* ---- shared rows ---- */
+.roster { flex: 1; min-height: 0; overflow: hidden; position: relative; }
+.row { display: grid; align-items: center; position: relative; }
+.sub { font-size: 11.5px; margin-top: 2px; }
+.markcell { display: flex; align-items: center; justify-content: center; position: relative; }
+
+/* ---- bottom glass panel: primary action + tab row, one continuous surface ---- */
+.bottom {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 20;
+  border-radius: 34px 34px 0 0;
+  padding: 10px 16px calc(6px + var(--safe-bottom));
+  display: flex; flex-direction: column; gap: 8px;
+}
+.save {
+  width: 100%; height: 52px; border: 0; display: flex; align-items: center; justify-content: center;
+  font-family: inherit; font-size: 16px; font-weight: 600; letter-spacing: -0.2px;
+}
+.tabrow { display: flex; height: 50px; }
+.tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; }
+.tab svg { display: block; }
+.tab span { font-size: 10px; font-weight: 500; }
+
+/* ============================================================
+   A · THE REGISTER   printed · light paper · Oswald · red stamp
+   ============================================================ */
+.d-a { background: #F7F1E3; color: #22335C; }
+.d-a .sheet { padding: 70px 22px 0; }
+.d-a .meta { font-family: "Oswald", system-ui, sans-serif; font-size: 11px; font-weight: 500; letter-spacing: 1.6px; color: #5C6478; text-transform: uppercase; }
+.d-a .titlerow { display: flex; align-items: flex-start; justify-content: space-between; margin-top: 14px; }
+.d-a .kicker { font-family: "Oswald", system-ui, sans-serif; font-size: 11.5px; font-weight: 600; letter-spacing: 1.8px; text-transform: uppercase; color: #B3261E; }
+.d-a .hero { font-family: "Oswald", system-ui, sans-serif; font-size: 64px; line-height: 1.02; font-weight: 600; letter-spacing: -0.5px; margin-top: 2px; }
+.d-a .stamp {
+  transform: rotate(-5deg); border: 2px solid #B3261E; color: #B3261E; border-radius: 3px;
+  font-family: "Oswald", system-ui, sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 1.4px;
+  padding: 7px 9px 6px; margin-top: 20px; text-transform: uppercase; white-space: nowrap;
+}
+.d-a .when { font-size: 13.5px; margin-top: 12px; color: #5C6478; }
+.d-a .sum { display: flex; align-items: baseline; gap: 0; margin-top: 16px; }
+.d-a .sumnum { font-family: "Oswald", system-ui, sans-serif; font-size: 30px; font-weight: 600; width: 40px; }
+.d-a .sumcap { font-size: 13.5px; color: #5C6478; }
+.d-a .sumline { font-size: 13.5px; margin-top: 3px; }
+.d-a .sumline b { font-weight: 600; }
+.d-a .red { color: #B3261E; }
+.d-a .soft { color: #5C6478; }
+.d-a .rule { height: 6px; border-top: 1px solid #22335C; border-bottom: 1.5px solid #B3261E; margin-top: 14px; }
+.d-a .colhead {
+  display: grid; grid-template-columns: 40px 1fr 64px; align-items: center;
+  font-family: "Oswald", system-ui, sans-serif; font-size: 11px; font-weight: 500; letter-spacing: 1.6px;
+  text-transform: uppercase; color: #5C6478; padding: 10px 0 7px;
+}
+.d-a .colhead .markcell { justify-content: flex-end; padding-right: 6px; }
+.d-a .roster { margin-top: 0; }
+.d-a .marginrule { position: absolute; left: 40px; top: 0; bottom: 0; width: 1.5px; background: #E4AFA4; }
+.d-a .row { grid-template-columns: 40px 1fr 64px; height: 58px; border-bottom: 1px solid #DCD4BE; }
+.d-a .roll { font-family: "Oswald", system-ui, sans-serif; font-size: 15px; font-weight: 500; color: #5C6478; }
+.d-a .name { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
+.d-a .markcell { justify-content: flex-end; padding-right: 6px; }
+.d-a .tick { display: block; }
+.d-a .circ-a {
+  width: 27px; height: 27px; border: 1.8px solid #B3261E; border-radius: 50%; color: #B3261E;
+  display: flex; align-items: center; justify-content: center;
+  font-family: "Oswald", system-ui, sans-serif; font-size: 15px; font-weight: 600;
+}
+.d-a .ltr { font-family: "Oswald", system-ui, sans-serif; font-size: 15px; font-weight: 600; }
+.d-a .ltr.ol { font-size: 13.5px; font-weight: 500; color: #5C6478; }
+.d-a .save { background: #22335C; color: #F7F1E3; border-radius: 6px; }
+.d-a .bottom { background: rgba(255, 253, 247, 0.66); }
+.d-a .tab { color: #7C8296; }
+.d-a .tab.on { color: #22335C; font-weight: 700; }
+
+/* ============================================================
+   B · THE BLACKBOARD   object · dark board · Baloo 2 · chalk
+   ============================================================ */
+.d-b { background: #1E3A31; color: #F2EDDE; font-family: "Baloo 2", system-ui, sans-serif; }
+.d-b .tray { position: absolute; top: 0; left: 0; right: 0; height: 9px; background: #6B543C; box-shadow: inset 0 -1px 0 rgba(0,0,0,.35); }
+.d-b .sheet { padding: 76px 24px 0; }
+.d-b .meta { font-size: 12.5px; font-weight: 500; color: #A9C0B2; }
+.d-b .hero { font-size: 56px; line-height: 1.05; font-weight: 800; letter-spacing: -1px; margin-top: 10px; }
+.d-b .chalkline { display: block; margin-top: 6px; }
+.d-b .when { font-size: 14px; font-weight: 500; color: #A9C0B2; margin-top: 8px; }
+.d-b .counts { font-size: 17px; font-weight: 700; margin-top: 14px; }
+.d-b .counts .sep { color: #A9C0B2; font-weight: 500; }
+.d-b .creds { color: #F2887A; }
+.d-b .clate { color: #E9C46A; }
+.d-b .cleave { color: #A9C0B2; font-weight: 600; font-size: 15px; }
+.d-b .b-rule { height: 1px; background: rgba(242,237,222,.22); margin-top: 16px; }
+.d-b .row { grid-template-columns: 40px 1fr 56px; height: 58px; border-bottom: 1px solid rgba(242,237,222,.11); }
+.d-b .roll { font-size: 14px; font-weight: 600; color: #A9C0B2; }
+.d-b .name { font-size: 17px; font-weight: 600; letter-spacing: -0.2px; }
+.d-b .sub { color: #A9C0B2; font-weight: 500; }
+.d-b .ltr { font-size: 20px; font-weight: 700; }
+.d-b .ltr.red { color: #F2887A; }
+.d-b .ltr.yellow { color: #E9C46A; }
+.d-b .ltr.ol { font-size: 14px; font-weight: 600; color: #A9C0B2; }
+.d-b .ring { position: absolute; right: -4px; top: 50%; transform: translateY(-50%) rotate(-8deg); }
+.d-b .save { background: #F2EDDE; color: #1E3A31; border-radius: 16px; font-weight: 700; }
+.d-b .tab { color: #A9C0B2; }
+.d-b .tab.on { color: #F2EDDE; font-weight: 700; }
+
+/* ============================================================
+   C · THE ASSEMBLY   place · marigold field · Archivo expanded
+   ============================================================ */
+.d-c { background: #E8942B; color: #2B1A05; font-family: "Archivo", system-ui, sans-serif; }
+.d-c .sheet { padding: 74px 24px 0; }
+.d-c .meta { font-size: 12px; font-weight: 600; letter-spacing: 0.1px; }
+.d-c .garland { margin-top: 12px; }
+.d-c .hero { font-size: 42px; font-weight: 800; font-stretch: 118%; letter-spacing: -0.6px; margin-top: 10px; }
+.d-c .when { font-size: 12px; font-weight: 600; margin-top: 5px; }
+.d-c .countrow { display: flex; align-items: flex-end; gap: 12px; margin-top: 10px; }
+.d-c .bignum { font-size: 96px; line-height: 0.9; font-weight: 900; font-stretch: 125%; letter-spacing: -4px; }
+.d-c .countcap { font-size: 15px; font-weight: 700; padding-bottom: 10px; }
+.d-c .countline { font-size: 14px; font-weight: 700; margin-top: 16px; }
+.d-c .cred { color: #6E1A06; }
+.d-c .c-rule { height: 1px; background: rgba(43,26,5,.24); margin-top: 14px; }
+.d-c .row { grid-template-columns: 26px 1fr 92px; height: 56px; border-bottom: 1px solid rgba(43,26,5,.18); }
+.d-c .roll { font-size: 14px; font-weight: 600; }
+.d-c .name { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
+.d-c .sub { font-size: 11.5px; font-weight: 500; }
+.d-c .markcell { justify-content: flex-start; gap: 7px; }
+.d-c .beadword { font-size: 12px; font-weight: 700; }
+.d-c .beadword.red { color: #6E1A06; }
+.d-c .save { background: #2B1A05; color: #F7E9CF; border-radius: 26px; font-weight: 700; letter-spacing: -0.1px; }
+.d-c .tab { color: rgba(43,26,5,.72); }
+.d-c .tab.on { color: #2B1A05; font-weight: 800; }
+</style>
+</head>
+<body>
+
+<!-- ==================== A · THE REGISTER ==================== -->
+<section class="screen d-a" data-name="explore-a-register" data-time="8:52">
+  <div class="sheet">
+    <div class="meta">Demo Public School · Main Campus · AY 2025-26</div>
+    <div class="titlerow">
+      <div>
+        <div class="kicker">Attendance register</div>
+        <div class="hero">6-A</div>
+      </div>
+      <div class="stamp">15 Oct 2025</div>
+    </div>
+    <div class="when">Wednesday · period 3 at 8:55</div>
+    <div class="sum">
+      <div class="sumnum">34</div>
+      <div class="sumcap">of 38 present</div>
+    </div>
+    <div class="sumline"><b class="red">2 absent</b> · <b>1 late</b> · <span class="soft">1 on leave</span></div>
+    <div class="rule"></div>
+    <div class="colhead"><span>№</span><span>Student</span><span class="markcell">Mark</span></div>
+    <div class="roster" data-scrolls data-bleed>
+      <div class="marginrule"></div>
+      <div class="row"><span class="roll">01</span><span><div class="name">Aditi Sharma</div><div class="sub soft">DEMO-0001</div></span><span class="markcell"><svg class="tick" width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 12.8 C6.2 14.6 8 16.6 9.6 18.4 C12.8 13 16.6 7.6 20.4 4.6" stroke="#22335C" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">02</span><span><div class="name">Arjun Mehta</div><div class="sub soft">DEMO-0007</div></span><span class="markcell"><span class="circ-a">A</span></span></div>
+      <div class="row"><span class="roll">03</span><span><div class="name">Diya Patel</div><div class="sub soft">DEMO-0012</div></span><span class="markcell"><svg class="tick" width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 12.8 C6.2 14.6 8 16.6 9.6 18.4 C12.8 13 16.6 7.6 20.4 4.6" stroke="#22335C" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">04</span><span><div class="name">Kabir Malhotra</div><div class="sub soft">DEMO-0019</div></span><span class="markcell"><span class="ltr">L</span></span></div>
+      <div class="row"><span class="roll">05</span><span><div class="name">Ananya Iyer</div><div class="sub soft">DEMO-0023</div></span><span class="markcell"><svg class="tick" width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 12.8 C6.2 14.6 8 16.6 9.6 18.4 C12.8 13 16.6 7.6 20.4 4.6" stroke="#22335C" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">06</span><span><div class="name">Rohan Gupta</div><div class="sub soft">DEMO-0028</div></span><span class="markcell"><svg class="tick" width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 12.8 C6.2 14.6 8 16.6 9.6 18.4 C12.8 13 16.6 7.6 20.4 4.6" stroke="#22335C" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">07</span><span><div class="name">Zara Sheikh</div><div class="sub soft">DEMO-0031</div></span><span class="markcell"><span class="ltr ol">OL</span></span></div>
+      <div class="row"><span class="roll">08</span><span><div class="name">Ishaan Reddy</div><div class="sub soft">DEMO-0036</div></span><span class="markcell"><svg class="tick" width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 12.8 C6.2 14.6 8 16.6 9.6 18.4 C12.8 13 16.6 7.6 20.4 4.6" stroke="#22335C" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">09</span><span><div class="name">Meera Nair</div><div class="sub soft">DEMO-0041</div></span><span class="markcell"><svg class="tick" width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 12.8 C6.2 14.6 8 16.6 9.6 18.4 C12.8 13 16.6 7.6 20.4 4.6" stroke="#22335C" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">10</span><span><div class="name">Nikhil Rao</div><div class="sub soft">DEMO-0044</div></span><span class="markcell"><svg class="tick" width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 12.8 C6.2 14.6 8 16.6 9.6 18.4 C12.8 13 16.6 7.6 20.4 4.6" stroke="#22335C" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">11</span><span><div class="name">Priya Menon</div><div class="sub soft">DEMO-0049</div></span><span class="markcell"><svg class="tick" width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 12.8 C6.2 14.6 8 16.6 9.6 18.4 C12.8 13 16.6 7.6 20.4 4.6" stroke="#22335C" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+    </div>
+  </div>
+  <div class="bottom glass" data-float>
+    <button class="save">Save attendance</button>
+    <nav class="tabrow" data-system>
+    <div class="tab">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.6 12 4.4l8 6.2"/><path d="M6.2 9.4V18.8a1 1 0 0 0 1 1h9.6a1 1 0 0 0 1-1V9.4"/></svg>
+      <span>Home</span>
+    </div>
+    <div class="tab on">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3.8h6v2.4H9z"/><rect x="5" y="4.6" width="14" height="15.6" rx="2.4" fill="none" stroke-width="1.9"/><path d="M8.6 12.4 11 14.8 15.6 9.6" fill="none" stroke="#F7F1E3" stroke-width="2" /></svg>
+      <span>Attendance</span>
+    </div>
+    <div class="tab">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.6" r="3.1"/><path d="M3.9 19c0-3.1 2.2-5 5.1-5s5.1 1.9 5.1 5"/><circle cx="16.6" cy="9.6" r="2.5"/><path d="M15.2 14c2.7 0 4.5 1.8 4.7 4.2"/></svg>
+      <span>Students</span>
+    </div>
+    <div class="tab">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="5.5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18.5" cy="12" r="1.5"/></svg>
+      <span>More</span>
+    </div>
+    </nav>
+  </div>
+</section>
+
+<!-- ==================== B · THE BLACKBOARD ==================== -->
+<section class="screen d-b" data-name="explore-b-blackboard" data-time="8:52" data-chrome="light">
+  <div class="tray"></div>
+  <div class="sheet">
+    <div class="meta">Demo Public School · Main Campus · 2025-26</div>
+    <div class="hero">Class 6-A</div>
+    <svg class="chalkline" width="150" height="8" viewBox="0 0 150 8" fill="none"><path d="M2 5 C 40 2.2, 92 2.6, 148 4.4" stroke="#F2EDDE" stroke-width="2.2" stroke-linecap="round" opacity="0.85"/></svg>
+    <div class="when">Wednesday 15 October · period 3 at 8:55</div>
+    <div class="counts">34 present <span class="sep">·</span> <span class="creds">2 absent</span> <span class="sep">·</span> <span class="clate">1 late</span> <span class="sep">·</span> <span class="cleave">1 on leave</span></div>
+    <div class="b-rule"></div>
+    <div class="roster" data-scrolls data-bleed>
+      <div class="row"><span class="roll">01</span><span><div class="name">Aditi Sharma</div><div class="sub">DEMO-0001</div></span><span class="markcell"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 12.4 C6.2 14 8.2 16 9.6 18 C13 12.8 16.6 7.8 20.4 4.8" stroke="#F2EDDE" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">02</span><span><div class="name">Arjun Mehta</div><div class="sub">DEMO-0007</div></span><span class="markcell"><span class="ltr red">A</span></span></div>
+      <div class="row"><span class="roll">03</span><span><div class="name">Diya Patel</div><div class="sub">DEMO-0012</div></span><span class="markcell"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 12.4 C6.2 14 8.2 16 9.6 18 C13 12.8 16.6 7.8 20.4 4.8" stroke="#F2EDDE" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">04</span><span><div class="name">Kabir Malhotra</div><div class="sub">DEMO-0019</div></span><span class="markcell"><span class="ltr yellow">L</span><svg class="ring" width="44" height="38" viewBox="0 0 44 38" fill="none"><ellipse cx="22" cy="19" rx="20" ry="16" stroke="#A9C0B2" stroke-width="1.6"/></svg></span></div>
+      <div class="row"><span class="roll">05</span><span><div class="name">Ananya Iyer</div><div class="sub">DEMO-0023</div></span><span class="markcell"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 12.4 C6.2 14 8.2 16 9.6 18 C13 12.8 16.6 7.8 20.4 4.8" stroke="#F2EDDE" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">06</span><span><div class="name">Rohan Gupta</div><div class="sub">DEMO-0028</div></span><span class="markcell"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 12.4 C6.2 14 8.2 16 9.6 18 C13 12.8 16.6 7.8 20.4 4.8" stroke="#F2EDDE" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">07</span><span><div class="name">Zara Sheikh</div><div class="sub">DEMO-0031</div></span><span class="markcell"><span class="ltr ol">OL</span></span></div>
+      <div class="row"><span class="roll">08</span><span><div class="name">Ishaan Reddy</div><div class="sub">DEMO-0036</div></span><span class="markcell"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 12.4 C6.2 14 8.2 16 9.6 18 C13 12.8 16.6 7.8 20.4 4.8" stroke="#F2EDDE" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">09</span><span><div class="name">Meera Nair</div><div class="sub">DEMO-0041</div></span><span class="markcell"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 12.4 C6.2 14 8.2 16 9.6 18 C13 12.8 16.6 7.8 20.4 4.8" stroke="#F2EDDE" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">10</span><span><div class="name">Nikhil Rao</div><div class="sub">DEMO-0044</div></span><span class="markcell"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 12.4 C6.2 14 8.2 16 9.6 18 C13 12.8 16.6 7.8 20.4 4.8" stroke="#F2EDDE" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+      <div class="row"><span class="roll">11</span><span><div class="name">Priya Menon</div><div class="sub">DEMO-0049</div></span><span class="markcell"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 12.4 C6.2 14 8.2 16 9.6 18 C13 12.8 16.6 7.8 20.4 4.8" stroke="#F2EDDE" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+    </div>
+  </div>
+  <div class="bottom glass-dark" data-float>
+    <button class="save">Save attendance</button>
+    <nav class="tabrow" data-system>
+    <div class="tab">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.6 12 4.4l8 6.2"/><path d="M6.2 9.4V18.8a1 1 0 0 0 1 1h9.6a1 1 0 0 0 1-1V9.4"/></svg>
+      <span>Home</span>
+    </div>
+    <div class="tab on">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3.8h6v2.4H9z"/><rect x="5" y="4.6" width="14" height="15.6" rx="2.4" fill="none" stroke-width="1.9"/><path d="M8.6 12.4 11 14.8 15.6 9.6" fill="none" stroke="#1E3A31" stroke-width="2" /></svg>
+      <span>Attendance</span>
+    </div>
+    <div class="tab">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.6" r="3.1"/><path d="M3.9 19c0-3.1 2.2-5 5.1-5s5.1 1.9 5.1 5"/><circle cx="16.6" cy="9.6" r="2.5"/><path d="M15.2 14c2.7 0 4.5 1.8 4.7 4.2"/></svg>
+      <span>Students</span>
+    </div>
+    <div class="tab">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="5.5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18.5" cy="12" r="1.5"/></svg>
+      <span>More</span>
+    </div>
+    </nav>
+  </div>
+</section>
+
+<!-- ==================== C · THE ASSEMBLY ==================== -->
+<section class="screen d-c" data-name="explore-c-assembly" data-time="8:52">
+  <div class="sheet">
+    <div class="meta">Demo Public School · Main Campus · 2025-26</div>
+    <svg class="garland" width="354" height="34" viewBox="0 0 354 34" fill="none">
+      <path d="M2 4 C 80 27, 274 27, 352 4" stroke="#A9540A" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="20" cy="8.5" r="6.5" fill="#B85E07"/>
+      <circle cx="58" cy="15.5" r="6.5" fill="#B85E07"/>
+      <circle cx="103" cy="20.5" r="6.5" fill="#B85E07"/>
+      <circle cx="151" cy="22.6" r="6.5" fill="#B85E07"/>
+      <circle cx="203" cy="22.6" r="6.5" fill="#B85E07"/>
+      <circle cx="251" cy="20.5" r="6.5" fill="#B85E07"/>
+      <circle cx="296" cy="15.5" r="6.5" fill="#B85E07"/>
+      <circle cx="334" cy="8.5" r="6.5" fill="#B85E07"/>
+    </svg>
+    <div class="hero">Class 6-A</div>
+    <div class="when">Wednesday 15 Oct · period 3 at 8:55</div>
+    <div class="countrow">
+      <div class="bignum">34</div>
+      <div class="countcap">of 38 present</div>
+    </div>
+    <div class="countline"><span class="cred">2 absent</span> · 1 late · 1 on leave</div>
+    <div class="c-rule"></div>
+    <div class="roster" data-scrolls data-bleed>
+      <div class="row"><span class="roll">01</span><span><div class="name">Aditi Sharma</div><div class="sub">DEMO-0001</div></span><span class="markcell"><svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="7" fill="#2B1A05"/></svg></span></div>
+      <div class="row"><span class="roll">02</span><span><div class="name">Arjun Mehta</div><div class="sub">DEMO-0007</div></span><span class="markcell"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="7" stroke="#6E1A06" stroke-width="2.6"/><path d="M6 6 L16 16" stroke="#6E1A06" stroke-width="2.6" stroke-linecap="round"/></svg><span class="beadword red">absent</span></span></div>
+      <div class="row"><span class="roll">03</span><span><div class="name">Diya Patel</div><div class="sub">DEMO-0012</div></span><span class="markcell"><svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="7" fill="#2B1A05"/></svg></span></div>
+      <div class="row"><span class="roll">04</span><span><div class="name">Kabir Malhotra</div><div class="sub">DEMO-0019</div></span><span class="markcell"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M11 4 a7 7 0 0 1 0 14 z" fill="#2B1A05"/><circle cx="11" cy="11" r="7" stroke="#2B1A05" stroke-width="1.6"/></svg><span class="beadword">late</span></span></div>
+      <div class="row"><span class="roll">05</span><span><div class="name">Ananya Iyer</div><div class="sub">DEMO-0023</div></span><span class="markcell"><svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="7" fill="#2B1A05"/></svg></span></div>
+      <div class="row"><span class="roll">06</span><span><div class="name">Rohan Gupta</div><div class="sub">DEMO-0028</div></span><span class="markcell"><svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="7" fill="#2B1A05"/></svg></span></div>
+      <div class="row"><span class="roll">07</span><span><div class="name">Zara Sheikh</div><div class="sub">DEMO-0031</div></span><span class="markcell"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="7" stroke="#2B1A05" stroke-width="1.8" stroke-dasharray="3 3"/></svg><span class="beadword">on leave</span></span></div>
+      <div class="row"><span class="roll">08</span><span><div class="name">Ishaan Reddy</div><div class="sub">DEMO-0036</div></span><span class="markcell"><svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="7" fill="#2B1A05"/></svg></span></div>
+      <div class="row"><span class="roll">09</span><span><div class="name">Meera Nair</div><div class="sub">DEMO-0041</div></span><span class="markcell"><svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="7" fill="#2B1A05"/></svg></span></div>
+      <div class="row"><span class="roll">10</span><span><div class="name">Nikhil Rao</div><div class="sub">DEMO-0044</div></span><span class="markcell"><svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="7" fill="#2B1A05"/></svg></span></div>
+      <div class="row"><span class="roll">11</span><span><div class="name">Priya Menon</div><div class="sub">DEMO-0049</div></span><span class="markcell"><svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="7" fill="#2B1A05"/></svg></span></div>
+    </div>
+  </div>
+  <div class="bottom glass" style="--glass: rgba(255, 240, 214, 0.44);" data-float>
+    <button class="save">Save attendance</button>
+    <nav class="tabrow" data-system>
+    <div class="tab">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.6 12 4.4l8 6.2"/><path d="M6.2 9.4V18.8a1 1 0 0 0 1 1h9.6a1 1 0 0 0 1-1V9.4"/></svg>
+      <span>Home</span>
+    </div>
+    <div class="tab on">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3.8h6v2.4H9z"/><rect x="5" y="4.6" width="14" height="15.6" rx="2.4" fill="none" stroke-width="1.9"/><path d="M8.6 12.4 11 14.8 15.6 9.6" fill="none" stroke="#E8942B" stroke-width="2" /></svg>
+      <span>Attendance</span>
+    </div>
+    <div class="tab">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.6" r="3.1"/><path d="M3.9 19c0-3.1 2.2-5 5.1-5s5.1 1.9 5.1 5"/><circle cx="16.6" cy="9.6" r="2.5"/><path d="M15.2 14c2.7 0 4.5 1.8 4.7 4.2"/></svg>
+      <span>Students</span>
+    </div>
+    <div class="tab">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="5.5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18.5" cy="12" r="1.5"/></svg>
+      <span>More</span>
+    </div>
+    </nav>
+  </div>
+</section>
+
+<script src="file:///C:/Users/dipan/Coding/mskool/.agents/skills/app-designer/assets/device.js"></script>
+</body>
+</html>

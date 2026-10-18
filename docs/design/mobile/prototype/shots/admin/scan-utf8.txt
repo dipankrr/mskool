@@ -1,0 +1,21 @@
+﻿
+Shot 2 screen(s) at 3x -> C:\Users\dipan\Coding\mskool\docs\design\mobile\prototype\shots\admin
+  C:\Users\dipan\Coding\mskool\docs\design\mobile\prototype\shots\admin\01-admin-accent-amber.png
+  C:\Users\dipan\Coding\mskool\docs\design\mobile\prototype\shots\admin\02-admin-accent-ink.png
+  C:\Users\dipan\Coding\mskool\docs\design\mobile\prototype\shots\admin\sheet.png   (the flow; open each 3x PNG above for detail)
+
+Page errors:
+  request failed: file:///System/Library/Fonts/SFNS.ttf
+
+ΓöÇΓöÇ admin-accent-amber ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  fonts {"-apple-system":44}  sizes [28, 22, 17, 16, 15, 14, 13]  weights [400, 500, 600]  hues [0, 24]  cards 0
+  clean
+
+ΓöÇΓöÇ admin-accent-ink ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  fonts {"-apple-system":44}  sizes [28, 22, 17, 16, 15, 14, 13]  weights [400, 500, 600]  hues [0, 24]  cards 0
+  clean
+
+App-wide: 7 text sizes [28, 22, 17, 16, 15, 14, 13]
+
+No FAILs. The scan only catches mechanical tells. Now read sheet.png with your own eyes.
+

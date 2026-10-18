@@ -1,0 +1,62 @@
+[
+  {
+    "name": "admin-accent-amber",
+    "fails": [],
+    "warns": [],
+    "facts": {
+      "fonts": {
+        "-apple-system": 44
+      },
+      "sizes": [
+        28,
+        22,
+        17,
+        16,
+        15,
+        14,
+        13
+      ],
+      "weights": [
+        "400",
+        "500",
+        "600"
+      ],
+      "leftEdges": 4,
+      "accentHues": [
+        0,
+        24
+      ],
+      "cards": 0
+    }
+  },
+  {
+    "name": "admin-accent-ink",
+    "fails": [],
+    "warns": [],
+    "facts": {
+      "fonts": {
+        "-apple-system": 44
+      },
+      "sizes": [
+        28,
+        22,
+        17,
+        16,
+        15,
+        14,
+        13
+      ],
+      "weights": [
+        "400",
+        "500",
+        "600"
+      ],
+      "leftEdges": 4,
+      "accentHues": [
+        0,
+        24
+      ],
+      "cards": 0
+    }
+  }
+]
