@@ -6,7 +6,7 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
-**MOBILE STEP 0 — FIXES + BUILD DURABILITY DONE, COMMITTED (2026-10-17). iOS walk + prototype review open.**
+**MOBILE DESIGN GATE PASSED (2026-10-18). NEXT: build the production shell + teacher attendance slice — plan: `.kilo/plans/2026-10-18-mobile-shell-attendance.md`. iOS walk still open.**
 
 The Windows native-build blocker is solved (full record in
 `.kilo/plans/1791972469955-mobile-step0-foundation.md`, section “Native build
@@ -37,11 +37,37 @@ had half-configured itself; `eslint` + `eslint-config-expo` added,
 (`Password123!`, flag false, 0 sessions); temporary tooling deleted.
 
 The Step-0 foundation is committed (3 commits: auth, repo tooling, mobile).
-Next: **(a)** the prototype-journey review gate (`docs/design/mobile/`) before
-any production shell — the three native prototype journeys still need
-drafting + owner review; **(b)** iOS walk at a Mac/EAS gateway — deferred
-(verify `EXPO_NO_METRO_WORKSPACE_ROOT` on the first EAS build — `eas.json`
-`env` is the lever if the worker needs it). tRPC link
+Design gate, in order: **(i)** the three-direction visual probe (register /
+blackboard / assembly) was rendered and scan-clean, but the owner **rejected
+themed directions for staff screens** (2026-10-17): "no flashy eye catching
+theme for admin side screens". Record + rejected trail:
+`docs/design/mobile/prototype/DIRECTION.md`. **(ii)** The first utility pass
+("console in your pocket": `prototype/admin.html` accent frame + `prototype/
+flows.html`, 8 flow frames) was **also rejected 2026-10-17**: "this is not
+mobile app. this is simply web app ... single color that too brown". Reading
+accepted: web tables in a phone frame — no cards, avatars, tiles, pills,
+sheets or materials. Both passes kept as the rejected trail; the 8 flow
+states/copy decisions survive. **(iii)** v3 native rebuild: the owner **approved** the direction 2026-10-18
+("good, it has improved a lot. the design is good.") with the attendance
+interaction re-cut on their feedback: tap a row toggles present / absent,
+long-press opens the five-status sheet, "All present" / "All absent" bulk
+pills + gesture hint. The set is now **6 frames** (`prototype/native.html` ->
+`prototype/shots/native/`: home, mid-mark, sheet, saved, fee find, collect;
+scan clean, three intended hue warns on the attendance frames). The new
+"saved" frame (green "Attendance saved" bar + Edit, replacing the CTA) closes
+the attendance journey. **Gate closed.** Build next: production shell (tokens,
+primitives, role-aware tabs Home / Attendance / More via JS tabs, staff home)
+then the attendance slice as real screens (emulator walk per slice) — plan:
+`.kilo/plans/2026-10-18-mobile-shell-attendance.md`. Remaining flow states
+(timeout, admission form/result) re-render when their slices reach design.
+**(iv)** Journey briefs read; decision **F1** (front-office credential: VP
+lacks `enrollment:create`, no front-office role exists) still needs the
+owner's call — blocks the admission slice only. Offline stance: no objection
+at the gate; attendance builds online-only with visible failure copy
+(ADR-043). Half-day tile / day-picker pattern / subject-teacher home copy /
+read-only hint are recorded build-time questions in the slice plan. **(b)** iOS
+walk at a Mac/EAS gateway — deferred (verify `EXPO_NO_METRO_WORKSPACE_ROOT` on
+the first EAS build — `eas.json` `env` is the lever if the worker needs it). tRPC link
 timeout deliberately deferred (query-cancellation signals need combining;
 AbortSignal.any support on Hermes 0.86 to verify — recorded in the plan).
 Pre-existing unrelated red check remains: `apps/web/.../textarea.tsx` imports

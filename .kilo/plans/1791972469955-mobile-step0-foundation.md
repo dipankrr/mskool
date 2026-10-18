@@ -115,8 +115,10 @@ Still open (Step 0 exit needs these):
    The walk's three findings are **fixed and re-walked on device** (w22–w24
    in that section). iOS walk still open: needs a Mac or an EAS gateway build
    — deferred by owner decision; do not imply it passed.
-2. Prototype review gate: three phone-sized journeys in `docs/design/mobile/`
-   + navigation decision before the production shell. Owner review required.
+2. Prototype review gate: **PASSED 2026-10-18** — owner approved the rendered
+   probe (`docs/design/mobile/prototype/shots/native/`) and the navigation
+   decision (JS tabs, Home / Attendance / More); shell + attendance slice
+   build per `.kilo/plans/2026-10-18-mobile-shell-attendance.md`.
 3. Router-integration tests (`renderRouter` guards) — L1 unit done, L3 open.
 
 ## Transport proof (2026-10-14, live dev API + seeded DB)

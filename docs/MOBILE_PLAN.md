@@ -607,7 +607,7 @@ short, repeated teacher task before the more complex assignment workflow.
 
 | Step | Domain | Backend | Status |
 |---|---|---|---|
-| 0 | Foundation (native auth/API proof + prototype review) | staff login, `me.get` | in progress (Android build + walk done; findings fixed + re-walked; build durability in-repo — prebuild safe; committed 2026-10-17; iOS walk + prototype review open) |
+| 0 | Foundation (native auth/API proof + prototype review) | staff login, `me.get` | in progress (Android build + walk done; findings fixed + re-walked; build durability in-repo — prebuild safe; committed 2026-10-17; **prototype review PASSED 2026-10-18 — shell build next**; iOS walk open) |
 | 1 | Home + context + profile | `me` 1 · `school` 5 · `academic` years 6 | open |
 | 2 | Students + academic setup (§7) | `student` 7 · `enrollment` 6 · `guardian` 4 · `portalAccess` 4 · `academic` classes 5 + sections 5 · `subject` 5 · `term` 4 · `assignment` 10 | open |
 | 3 | Attendance (§8) | `attendance.*` 12 | open |
