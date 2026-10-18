@@ -637,7 +637,7 @@ shell until those workflows are complete or explicitly deferred by the owner.
 | `/subjects`, `/classes`, `/classes/[classId]` | 2 | Searchable catalog and class detail; setup forms grouped by school workflow |
 | `/students`, `/students/[studentId]` | 2 | Roster search/filter, student detail, admit/edit/enroll, guardian and portal-access flows |
 | `/students/photos` | 2 | Native photo picker, review-before-upload bulk matching, retry-failed-only |
-| `/attendance/calendar`, `/attendance/policy`, `/attendance/mark`, `/attendance/reports` | 3 | Fast section/day selection, roster marking, correction reason, readable summaries |
+| `/attendance/calendar`, `/attendance/policy`, `/attendance/mark`, `/attendance/reports` | 3 | Fast section/day selection, roster marking, correction reason, readable summaries. **`/attendance/mark` is live** as the native marking screen (`(staff)/attendance`, device-walked 2026-10-18; the day-sheet reads `calendar.list`); calendar generate/days, policy management and reports remain open |
 | `(no existing web route; backend exists)` homework staff routes | 4 | Assignment authoring, question management, publish lifecycle, grading and comments |
 | `/fees`, `/fees/setup`, `/fees/setup/[structureId]` | 5 | Fee setup, installments, concessions, subscription and late-fee workflows |
 | `/fees/dues`, `/fees/outstanding`, `/fees/matrix` | 5 | Mobile search/list/detail summaries; do not reproduce a wide matrix as a squeezed table |
@@ -714,15 +714,19 @@ ADR-030 reason.
 
 | Group | Paths | Screen | Done |
 |---|---|---|---|
-| calendar list / generate / days (3) | `/attendance/calendar`, `/generate`, `/days` | — | ☐ |
-| policy get / upsert (2) | `GET|PUT /attendance/policy` | — | ☐ |
+| calendar list / generate / days (3) | `/attendance/calendar`, `/generate`, `/days` | `(staff)/attendance` month day-sheet (list) | ☑ list (walked 2026-10-18); ☐ generate/days |
+| policy get / upsert (2) | `GET|PUT /attendance/policy` | `(staff)/attendance` marking-mode hint | ☐ — get is wired but resolves only with a known `schoolId`; disabled for `class_teacher` (walk finding #1); upsert open |
 | periods list / byId / create / update (4) | `/attendance/periods`, `/{id}` | — | ☐ |
-| mark (1) | `POST /attendance/mark` | — | ☐ |
-| status (1) | `GET /attendance/status` | — | ☐ |
+| mark (1) | `POST /attendance/mark` | `(staff)/attendance` marking screen | ☑ (device-walked 2026-10-18) |
+| status (1) | `GET /attendance/status` | `(staff)/attendance` marking screen | ☑ (device-walked 2026-10-18) |
 | summary (1) | `GET /attendance/summary` | — | ☐ |
 
 Acceptance: a teacher marks a section's day in under a minute on 4G;
-read-only for callers without `attendance:create`.
+read-only for callers without `attendance:create`. Walked 2026-10-18
+(emulator-5554): the marking journey ran end-to-end on device, and read-only
+is proven twice — the UI notice plus a 403 on a crafted call
+(`Missing permission: attendance:create`). Record:
+`.kilo/plans/2026-10-18-mobile-shell-attendance.md` §9 + walk record.
 
 ---
 

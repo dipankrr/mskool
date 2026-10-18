@@ -6,6 +6,14 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
+**MOBILE SHELL + TEACHER ATTENDANCE SLICE BUILT AND DEVICE-WALKED (Android, 2026-10-18). Chunks 1–3 are uncommitted with gates green — owner commits next (messages + exact file lists in the plan). iOS walk still open.**
+
+Shipped: shell primitives (design tokens, colour, 15 components, permissions hook, format helpers) + the production staff shell (role-aware JS tabs with the floating capsule bar, staff home, More/profile) + the teacher attendance slice — `(staff)/(tabs)/attendance` marks a section/day natively: five live status tiles, one-tap present⇄absent, long-press five-status sheet, bulk All present/absent, past-day correction reason, saved bar + Edit only after server confirmation, month day-sheet (reads `calendar.list`), read-only mode for callers without `attendance:create`. 59 tests / 6 suites; tsc + lint green (run from `apps/mobile`).
+
+Walk (§9, emulator-5554; device clock pinned to Fri 2026-03-06 to match the seeded AY — restored after): marking journey pass — all five statuses, bulk pills, save verified in the DB, kill/reopen, past-day reason rides only the changed entry (ADR-030), weekend refusal copy; principal read-only proven twice (UI notice; crafted `attendance.mark` → 403 `Missing permission: attendance:create`); offline error + retry pass at UI level (friendly alert, draft kept, retry lands). Evidence: screenshots w26–w107 in `apps/mobile/.expo/walk/` (gitignored) + the plan's "Walk record" section. Findings: **(1)** `class_teacher` lacks `school:read` → no branch chip / policy query disabled — **owner decision needed**; **(2)** five-tile label truncation — **fixed** (`components/stat-tile.tsx`) and re-walked at 1.0/1.3; **(3)** stale identity after an in-app account switch (client state survives sign-out until app data is wiped; server always correct — hardening: clear query cache + auth storage on sign-out; `handleSignOut` should treat better-auth's resolved `{error}` as failure); **(4)** offline save on a blackholed network hangs with no client timeout — recommendation recorded. Walk-only local aids (disclosed): 5 extra Class 6-A students for roll-sort proof; temp scripts deleted.
+
+Next: owner commits chunks 1–3 (+ docs); then attendance chunk 2 (`calendar` generate/days, `policy`, `reports` surface) or the finding fixes; iOS walk at the Mac/EAS gateway; admission-slice F1 decision (no front-office role) still pending.
+
 **MOBILE DESIGN GATE PASSED (2026-10-18). NEXT: build the production shell + teacher attendance slice — plan: `.kilo/plans/2026-10-18-mobile-shell-attendance.md`. iOS walk still open.**
 
 The Windows native-build blocker is solved (full record in

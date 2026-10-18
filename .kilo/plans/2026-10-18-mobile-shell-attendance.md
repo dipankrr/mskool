@@ -306,3 +306,144 @@ reason scope, derived done).
    absent; is a quiet "View only" hint wanted, or absence is enough?
 5. **Period-wise device coverage** (proof item 7) — create a period in the
    demo data or accept the recorded gap.
+
+---
+
+## Walk record — 2026-10-18 (Android emulator, Expo dev client)
+
+Setup: emulator-5554 (1080×2400 @ 420 dpi), `com.mskool.app` dev client on
+Metro :8081, API :4000. Demo data is AY 2025-26 while the host clock is
+2026-10-18 (outside the seeded calendar) — the device clock was pinned to
+`Fri 2026-03-06 10:15 IST` (`auto_time` off) for the walk and restored to
+automatic afterwards. Screenshots `w26–w107` in `apps/mobile/.expo/walk/`
+(gitignored). Two local-only, disclosed aids: 5 students added to Main Campus
+Class 6-A (rolls 2, 10, 11, null, null) to verify numeric-roll sort with nulls
+last + name tiebreak, and a temporary query script (deleted after use). No
+repo code or seed data was changed for the walk.
+
+### §9 step results
+
+1–9 **PASS** (w26–w63). Home card with today's live state (w35); marking screen
+in roll order with all-present draft and live tiles (w36); one-tap toggle
+(w37); long-press five-status sheet → Late (w38/w39); bulk All absent / All
+present (w40/w41); mixed statuses incl. on_leave and half_day, all five
+statuses exercised (w42/w43); Save spinner → saved bar only after the server
+confirmed (w44/w45; DB: six 2026-03-06 rows, `period_id` null, `marked_by`
+set); kill/reopen re-reads the marked day (w46). Past day Thu 5 Mar: first save
+Isha absent, reasons null (w57/w58); Edit → change Kabir → reason block "1
+student changing — say why" (w59), "Walk correction" typed (w60), save (w61);
+DB confirms the reason rides only the changed entry (Kabir `correction_reason`
+set, Isha stays null) per ADR-030. Weekend refusal: Sun 8 Mar → "This day
+cannot be marked — Sun 8 Mar is a weekend" (w62/w63).
+10. **PASS** — principal read-only + crafted-call refusal. Home: branch chip
+"Demo Public School — Main Campus", card without role word (w83); attendance
+screen shows the five live tiles (3/1/0/1/1), full roster with status chips,
+and the read-only notice "...but not mark it — marking needs the
+attendance:create permission"; no bulk pills, no save CTA (w84); a roster tap
+changes nothing (w85). Server: script sign-in as `principal@` → `me.get` 200
+(Demo Principal), `attendance.status` 200 (6 rows), `attendance.mark` → **403
+FORBIDDEN "Missing permission: attendance:create"**.
+11. **PASS with finding #4** — airplane mode → Save: blackholed network leaves
+the CTA spinning indefinitely (5+ min, no error, no cancel; w95/w96; draft
+kept). Controlled fast failure (REJECT rule) → immediate friendly alert
+"Couldn't reach the server. Check your connection and try again." with the
+draft preserved (w99); after restoring connectivity the same Save retried
+cleanly → saved bar (w100; DB write at 12:28:11Z), then a restore-save put the
+day back to 3 present / 1 absent / 0 late / 1 on leave / 1 half day (w101; DB
+12:29:46Z).
+12. **PASS with notes** — TalkBack is not installed on this emulator, so the
+pass used the accessibility tree + scaled text instead. uiautomator: every
+interactive control has a content description, roster rows read as one
+sentence ("Isha Patel, Roll 2, status Present"), the untruncated tile labels
+appear in the tree, and no unlabeled clickables exist. `font_scale 1.3`: layout
+holds on home and attendance (w102/w103); the tile strip previously truncated
+even harder there — fixed and re-walked (see finding #2). Scale restored.
+13. Evidence: `apps/mobile/.expo/walk/` w26–w107; this record + `TASKS.md`.
+
+### Findings and dispositions
+
+1. **Branch chip absent for `class_teacher`** — the teacher lacks `school:read`,
+   so `schoolId` resolves null: no branch chip, branch label "Not set" in
+   More, and the policy-backed marking-mode query stays disabled. The
+   principal (with `school:read`) shows the chip. Needs an owner decision:
+   client-side org fallback, granting teachers a narrow school read, or
+   extending `memberships` in `me.get`.
+2. **Five-tile truncation ("On lea…", "Half d…")** — FIXED in
+   `components/stat-tile.tsx` (padding `md`→`sm`, labels wrap to two lines
+   instead of truncating) and re-walked: full labels at 1.0 (w105) and clean
+   word-wrap at 1.3 (w106; single-word "Present" breaks mid-word only at 1.3 —
+   accepted, all letters readable). Gates re-run green (tsc, lint, 59 tests).
+3. **Stale identity after an account switch (client-state bug)** — after
+   signing out of the teacher and signing in as the principal in the same app
+   process, the app kept rendering the previous identity (More: "Demo Class
+   Teacher"; home card with the class-teacher word; no branch chip) even across
+   app restarts, while the server was provably correct (`me.get` as principal
+   returns Demo Principal; the DB held only the principal's session). `pm
+   clear` (wipe app data) + fresh login rendered the correct principal UI.
+   Repro: sign out → sign in as another role → open More / home. Hypothesis:
+   persistent client auth/query state is not cleared on sign-out (or the expo
+   plugin cookie replacement leaves the old material readable). Hardening
+   candidates: clear the query cache and secure-store auth keys on sign-out;
+   make `handleSignOut` treat better-auth's resolved `{error}` values as
+   failures (today only thrown errors are caught). The single earlier
+   "zombie" sign-out (More → Home, context blank, no alert) fits this class
+   and is not separately reproducible.
+4. **Offline save hangs without a client timeout** — on a blackholed network
+   (no route, no RST — the common dead-zone case) the Save stays pending
+   indefinitely; the friendly error copy exists but only surfaces on a fast
+   failure, and connectivity returning does not rescue the in-flight request
+   (w95/w96 vs w99/w100). Recommendation: a bounded fetch timeout (talking to
+   the deferred tRPC link-timeout question), keeping the draft + retry.
+5. **Auth stack header still shows the raw route title "login"** — cosmetic;
+   set a polished header title or hide the header in the auth group.
+6. **Environment (not app bugs)** — Gboard/autofill overlay layers on this
+   emulator periodically draw ghost text and can steal taps (dismiss with
+   BACK; force-stop the IME; prefer uiautomator bounds for scripted taps);
+   the seeded AY does not cover the real clock (clock pinned for the walk);
+   the dev-server group crashed mid-walk and was restarted (API/Web back up,
+   Metro untouched).
+
+### Walk resolutions for open questions
+
+1. Half-day tile: shipped as a **fifth tile shown always** (0 valued when
+   absent) next to Late — the probe's 4-tile look is superseded; half-day
+   currently shares Late's amber tone. Owner review at walk sign-off.
+2. Day-picker: sheet reviewed (month grid + day-type tags + Today chip, w55).
+3. Subject-teacher home: not device-covered (no subject-teacher seed login);
+   card copy stays as built (role word only when truthfully derivable).
+4. Read-only affordance: the explicit permission-named notice is shipped (w84).
+5. Period-wise coverage: remains a recorded gap (seed is daily).
+
+### Commit plan (prepared for owner — commit, do not push)
+
+Four commits, one concern each, staged from the current tree:
+
+1. `feat(mobile): shell primitives - tokens, components, format helpers`
+   `apps/mobile/src/theme/` · `apps/mobile/src/components/` ·
+   `apps/mobile/src/hooks/use-permissions.ts` · `apps/mobile/src/lib/copy.ts` ·
+   `apps/mobile/src/lib/format.ts` · `apps/mobile/src/lib/format.test.ts` ·
+   `apps/mobile/package.json` · `pnpm-lock.yaml`
+2. `feat(mobile): staff shell - role-aware tabs, staff home, profile tab`
+   `apps/mobile/src/app/_layout.tsx` · `apps/mobile/src/app/index.tsx` ·
+   `apps/mobile/src/app/(staff)/_layout.tsx` ·
+   `apps/mobile/src/app/(staff)/index.tsx` (deleted) ·
+   `apps/mobile/src/app/(staff)/(tabs)/_layout.tsx` ·
+   `apps/mobile/src/app/(staff)/(tabs)/home.tsx` ·
+   `apps/mobile/src/app/(staff)/(tabs)/more.tsx` ·
+   `apps/mobile/src/screens/staff-home/` · `apps/mobile/src/screens/more/` ·
+   `apps/mobile/src/hooks/use-active-context.tsx`
+3. `feat(mobile): teacher attendance slice - marking, sheets, saved state`
+   `apps/mobile/src/app/(staff)/(tabs)/attendance.tsx` ·
+   `apps/mobile/src/screens/staff-attendance/`
+4. `docs(mobile): walk record - shell + attendance findings and ledger updates`
+   `.kilo/plans/2026-10-18-mobile-shell-attendance.md` · `docs/TASKS.md` ·
+   `docs/MOBILE_PLAN.md`
+
+Chunk 2 carries the attendance tab config and the class card's typed
+`router.push("/attendance")` (typed routes are on, `app.json`); the route file
+follows in chunk 3. Typecheck stays green in practice (the generated route
+types come from the dev-run tree), but if the owner wants a strictly
+self-contained green at every commit, merge chunks 2+3. Suggested commit
+message bodies: short bullet summaries (what shipped, which states, what the
+walk proved); keep each body to a few lines — the walk record in this file is
+the long form.
