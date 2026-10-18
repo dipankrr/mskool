@@ -447,3 +447,92 @@ self-contained green at every commit, merge chunks 2+3. Suggested commit
 message bodies: short bullet summaries (what shipped, which states, what the
 walk proved); keep each body to a few lines — the walk record in this file is
 the long form.
+
+---
+
+## Post-walk hardening chunk — 2026-10-18 (same day, after the walk)
+
+All five walk findings were dispositioned in one chunk; the tree was then
+re-verified with a clean-state device spot-check.
+
+### Findings → implementation
+
+1. **Finding #1 (branch chip missing for `class_teacher`)** — owner direction:
+   every role gets `school:read`; scoping does the narrowing. `class_teacher`,
+   `subject_teacher` and `librarian` now receive `school:read`
+   (`packages/authz/src/defaultPermissions.ts`, ADR-044); the seed DB was
+   backfilled via `syncDefaultPermissions` (INSERT-only). `listSchools` also
+   threw `scopeWhere: scope restricts classId but no classId column …` for
+   class/section-depth scopes — fixed by clamping with `atSchoolLevel` inside
+   `listSchools` (keeps the addressed `schoolId`; no widening). Integration
+   matrix updated: dual-persona list unions, denied-list narrowing, new
+   teaching-persona `school.list` + class-teacher `byId` gates.
+2. **Finding #2 (tile truncation)** — fixed pre-hardening (commit `16924cc`).
+3. **Finding #3 (stale identity / zombie sign-out)** — root-caused as stale
+   client auth state surviving sign-out: the app process kept rendering while
+   SecureStore held a cached *other-user* `session_data` and no cookie; the
+   session atom rehydrated from that cache on module re-execution. Hardening:
+   `logout()` treats better-auth's resolved `{error}` as failure, sweeps
+   `mskool_cookie` + `mskool_session_data` (+ the chunked `<key>.N` markers),
+   and cancels + clears the query cache; failures surface an alert (More and
+   the family-preview root).
+4. **Finding #4 (offline save hangs)** — `withDeadline` (15 s,
+   `API_REQUEST_TIMEOUT_MS`) now wraps the tRPC fetch in `lib/trpc.tsx`;
+   draft kept, retry works.
+5. **Finding #5 (auth stack header)** — `headerShown: false` in
+   `(auth)/_layout.tsx`.
+
+### Clean-state device spot-check (Android emulator)
+
+The walk's app storage was unrecoverable (no cookie on disk, foreign
+`session_data`), so the app was reset with `pm clear` and the full flow re-run
+with server-side request logging (temporary API middleware, removed after).
+
+- Fresh boot → login screen with **no header** (w120/w121); exactly one
+  `get-session` (`cookieLen=0`) reaches the API.
+- Teacher login → cookie persisted (`mskool_cookie` + `mskool_session_data`),
+  every request authenticated; new okhttp session row (16:11:04Z). Home shows
+  the branch chip + `Class 6 · A — Marked · 3 present` (w123) → finding #1
+  verified on device.
+- Marking: teacher sees the live marking UI (no read-only notice), save
+  round-trip `POST /trpc/attendance.mark` → "Attendance saved" (w124–w127).
+- Sign-out: `POST /api/auth/sign-out` with the cookie → session row deleted
+  server-side, cookie key swept, atom null, immediate redirect to the clean
+  login screen (w129) — the zombie does not reproduce.
+- Account switch both directions: principal login → More "Demo Principal"
+  (w130/w131) → sign-out → teacher login → correct teacher identity (w132).
+- Timeout path: iptables DROP to the API → save → ~15 s spinner → alert
+  "Couldn't reach the server. Check your connection and try again." with the
+  draft preserved (w133a/w133) → DROP removed → retry → saved (w134/w135);
+  server log confirms the retried `POST`.
+
+Evidence: `apps/mobile/.expo/walk/w120–w135.png` (gitignored). Gates re-run
+after the chunk: mobile 64 tests / 6 suites; authz 88 + trpc 35 unit;
+integration 274 (real Postgres); lint 0 errors; `check-types` 8/9 (only the
+pre-existing owner-file `apps/web/src/components/ui/textarea.tsx` `cn` error).
+
+### Commit plan (hardening) — prepared for owner, commit do not push
+
+1. `fix(authz): school:read for teaching personas; clamp school.list`
+   `packages/authz/src/defaultPermissions.ts` ·
+   `packages/services/src/organization.service.ts` ·
+   `packages/trpc/src/routers/school.router.ts` ·
+   `packages/trpc/src/integration/authz.integration.test.ts` ·
+   `packages/trpc/src/integration/world.ts` · `docs/DECISIONS.md`
+2. `fix(mobile): bound API requests with a deadline`
+   `apps/mobile/src/lib/with-timeout.ts` ·
+   `apps/mobile/src/lib/with-timeout.test.ts` ·
+   `apps/mobile/src/lib/trpc.tsx`
+3. `fix(mobile): honest sign-out - sweep auth storage, surface failures`
+   `apps/mobile/src/lib/auth.ts` · `apps/mobile/src/lib/errors.ts` ·
+   `apps/mobile/src/lib/errors.test.ts` · `apps/mobile/src/lib/copy.ts` ·
+   `apps/mobile/src/app/index.tsx` ·
+   `apps/mobile/src/app/(auth)/login.tsx` ·
+   `apps/mobile/src/app/(auth)/_layout.tsx` ·
+   `apps/mobile/src/screens/more/index.tsx`
+4. `docs(mobile): hardening record - findings, spot-check, commit plan`
+   `.kilo/plans/2026-10-18-mobile-shell-attendance.md` · `docs/TASKS.md`
+
+Do not stage owner files (`apps/api/src/env.ts`, `apps/web/src/lib/
+auth-client.ts`, `apps/web/src/lib/trpc/client.ts`, `rough.md`,
+`skills-lock.json`, `.zcodeignore`, `packages/db/query-tmp.mjs`).
