@@ -2,6 +2,7 @@ import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { Redirect, Stack } from "expo-router";
 
 import { useMe } from "../../hooks/use-me";
+import { colors } from "../../theme/brand-admin";
 
 /**
  * Staff shell guard (Step 0): staff-kind AND flag clear. A wrong-kind
@@ -29,7 +30,14 @@ export default function StaffLayout() {
   if (!isStaff) {
     return <Redirect href="/" />;
   }
-  return <Stack />;
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: colors.canvas },
+      }}
+    />
+  );
 }
 
 const styles = StyleSheet.create({

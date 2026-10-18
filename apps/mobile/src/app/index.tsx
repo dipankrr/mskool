@@ -25,7 +25,7 @@ export default function Index() {
     return <Redirect href="/change-password" />;
   }
   if (isStaff) {
-    return <Redirect href="/(staff)" />;
+    return <Redirect href="/home" />;
   }
 
   return (

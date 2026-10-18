@@ -10,6 +10,7 @@ import { wireQueryLifecycle } from "../lib/query";
 import { ActiveContextProvider, useActiveContext } from "../hooks/use-active-context";
 import { useSessionBoundary } from "../hooks/use-session-boundary";
 import { useMe } from "../hooks/use-me";
+import { colors } from "../theme/brand-admin";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -59,8 +60,15 @@ function Shell() {
 
   return (
     <>
-      <StatusBar style="auto" />
-      <Stack screenOptions={{ headerShown: false }} />
+      {/* The design is light-only this slice; dark content on the light canvas
+          (no UIUserInterfaceStyle flip until dark mode is designed). */}
+      <StatusBar style="dark" />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.canvas },
+        }}
+      />
     </>
   );
 }
