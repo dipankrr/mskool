@@ -1,0 +1,134 @@
+appId: com.mskool.app
+name: 03 — admin manages calendar, policy, periods
+---
+# Continues from flow 02 (subject teacher signed in).
+- tapOn:
+    id: "tab-more"
+- tapOn:
+    id: "more-sign-out"
+
+- extendedWaitUntil:
+    visible:
+      id: "login-email"
+    timeout: 30000
+
+- tapOn:
+    id: "login-email"
+- inputText: "admin@demo-trust.test"
+- tapOn:
+    id: "login-password"
+- inputText: "Password123!"
+- hideKeyboard
+- tapOn:
+    id: "login-submit"
+
+- extendedWaitUntil:
+    visible:
+      id: "tab-home"
+    timeout: 45000
+
+- tapOn:
+    id: "tab-attendance"
+
+- extendedWaitUntil:
+    visible:
+      id: "attendance-manage-entry"
+    timeout: 45000
+# Dev builds only: the Expo DevTools FAB resets onto the header gear after a
+# sign-in and intercepts the tap. Drag it to the bottom-left first.
+- swipe:
+    start: "90%, 10%"
+    end: "15%, 80%"
+    duration: 1200
+- tapOn:
+    id: "attendance-manage-entry"
+
+- extendedWaitUntil:
+    visible:
+      id: "manage-calendar"
+    timeout: 30000
+
+# --- Calendar: 7 Mar 2026 (Saturday) -> Holiday with a reason.
+- tapOn:
+    id: "manage-calendar"
+- extendedWaitUntil:
+    visible:
+      id: "manage-day-2026-03-07"
+    timeout: 30000
+- tapOn:
+    id: "manage-day-2026-03-07"
+- extendedWaitUntil:
+    visible:
+      id: "day-save"
+    timeout: 30000
+- tapOn:
+    id: "day-type-holiday"
+- tapOn:
+    id: "day-reason"
+- inputText: "E2E holiday"
+- hideKeyboard
+- tapOn:
+    id: "day-save"
+- extendedWaitUntil:
+    notVisible:
+      id: "day-save"
+    timeout: 30000
+- assertVisible: ".*E2E holiday.*"
+
+- tapOn:
+    id: "manage-back"
+- extendedWaitUntil:
+    visible:
+      id: "manage-policy"
+    timeout: 30000
+
+# --- Policy: late window 15 -> 20.
+- tapOn:
+    id: "manage-policy"
+- extendedWaitUntil:
+    visible:
+      id: "policy-save"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: "policy-late"
+    direction: DOWN
+- tapOn:
+    id: "policy-late"
+- eraseText: 5
+- inputText: "20"
+- hideKeyboard
+- tapOn:
+    id: "policy-save"
+- extendedWaitUntil:
+    visible:
+      id: "policy-saved"
+    timeout: 30000
+
+- tapOn:
+    id: "manage-back"
+- extendedWaitUntil:
+    visible:
+      id: "manage-periods"
+    timeout: 30000
+
+# --- Periods: add the first period for 6-A (times optional).
+- tapOn:
+    id: "manage-periods"
+- extendedWaitUntil:
+    visible:
+      id: "period-add"
+    timeout: 30000
+- tapOn:
+    id: "period-add"
+- extendedWaitUntil:
+    visible:
+      id: "period-save"
+    timeout: 30000
+- tapOn:
+    id: "period-save"
+- extendedWaitUntil:
+    notVisible:
+      id: "period-save"
+    timeout: 30000
+- assertVisible: "Period 1"

@@ -14,6 +14,7 @@
     "test": "turbo run test",
     "test:integration": "pnpm --filter @repo/trpc test:integration",
     "test:e2e": "dotenv -e .env -- pnpm --filter @repo/web test:e2e",
+    "e2e:android": "dotenv -e .env -- node apps/mobile/e2e/run-android.mjs",
     "clean": "turbo run clean && rm -rf node_modules",
     "db:check": "dotenv -e .env -- pnpm --filter @repo/db db:check",
     "db:verify": "dotenv -e .env -- pnpm --filter @repo/db db:verify",

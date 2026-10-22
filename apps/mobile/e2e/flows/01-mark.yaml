@@ -1,0 +1,61 @@
+appId: com.mskool.app
+name: 01 — class teacher marks and saves
+---
+# Dev-client first-run sheet (only after `pm clear`).
+- runFlow:
+    when:
+      visible: "This is the developer menu"
+    commands:
+      - tapOn: "Continue"
+
+- extendedWaitUntil:
+    visible:
+      id: "login-email"
+    timeout: 90000
+
+- tapOn:
+    id: "login-email"
+- inputText: "teacher@demo-trust.test"
+- tapOn:
+    id: "login-password"
+- inputText: "Password123!"
+- hideKeyboard
+- tapOn:
+    id: "login-submit"
+
+- extendedWaitUntil:
+    visible:
+      id: "tab-home"
+    timeout: 45000
+
+- tapOn:
+    id: "tab-attendance"
+
+- extendedWaitUntil:
+    visible:
+      id: "attendance-save"
+    timeout: 45000
+
+# Clock was pinned by the runner; the default day is Fri 6 Mar 2026.
+- assertVisible: "Fri 6 Mar"
+
+# Aditi is the only sectioned 6-A student after the clean seed. The unmarked
+# day defaults to present; one tap makes her absent, which enables Save.
+- tapOn: "Aditi Sharma"
+
+- tapOn:
+    id: "attendance-save"
+
+- extendedWaitUntil:
+    visible:
+      id: "attendance-saved"
+    timeout: 30000
+- assertVisible: "Attendance saved"
+
+- tapOn:
+    id: "attendance-view-summary"
+
+- extendedWaitUntil:
+    visible: "1 absent"
+    timeout: 30000
+- assertVisible: "1 absent"

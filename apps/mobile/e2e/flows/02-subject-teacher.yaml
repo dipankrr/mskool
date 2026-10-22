@@ -1,0 +1,43 @@
+appId: com.mskool.app
+name: 02 — subject teacher can mark, cannot manage
+---
+# Continues from flow 01 (teacher signed in).
+- tapOn:
+    id: "tab-more"
+- tapOn:
+    id: "more-sign-out"
+
+- extendedWaitUntil:
+    visible:
+      id: "login-email"
+    timeout: 30000
+
+- tapOn:
+    id: "login-email"
+- inputText: "subject-teacher@demo-trust.test"
+- tapOn:
+    id: "login-password"
+- inputText: "Password123!"
+- hideKeyboard
+- tapOn:
+    id: "login-submit"
+
+- extendedWaitUntil:
+    visible:
+      id: "tab-home"
+    timeout: 45000
+
+- tapOn:
+    id: "tab-attendance"
+
+# Subject teacher holds attendance:create but not attendance:update:
+# the saved day is editable, the manage gear is not offered.
+- extendedWaitUntil:
+    visible:
+      id: "attendance-saved"
+    timeout: 45000
+- assertVisible: "Aditi Sharma"
+- assertVisible:
+    id: "attendance-edit"
+- assertNotVisible:
+    id: "attendance-manage-entry"
