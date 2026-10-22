@@ -548,15 +548,19 @@ clients at compile time). Six layers, cheapest first — no blind building:
   readable text, touch reach, platform conventions, and visual states. Use
   the app's development build for normal device work and whenever native
   dependencies/configuration are involved; Expo Go is for quick exploration.
-* **L5 E2E (Maestro, `.maestro/*.yml`):** the never-regress journeys —
-  login → post → publish, dues → collect → receipt, admit → enroll. Written
-  alongside their slices and run locally against the emulator during the
-  build; EAS Workflows (`e2e-test` profile: APK / simulator `.app`) at store
-  time. Stable `testID`s on automation targets (Maestro reads `testID`,
-  never the screen-reader label — labels stay human); so L5
-  costs nothing extra when its flows are written. Snapshot tests are not UX
-  proof; behavior and device tests are required evidence. Add snapshots only
-  as supplemental checks when a slice has a clear use for them.
+* **L5 E2E (Maestro, `apps/mobile/e2e/flows/*.yaml`):** the never-regress journeys —
+  login → post → publish, dues → collect → receipt, admit → enroll. The first
+  suite is attendance (2026-10-20): `pnpm e2e:android` resets the demo fixture,
+  pins the emulator clock, runs the three flows against the real API/Postgres, and
+  restores the clock — see `.kilo/plans/2026-10-20-mobile-attendance-e2e.md`.
+  Written alongside their slices (attendance's followed the walk) and run locally
+  against the emulator during the build; EAS Workflows (`e2e-test` profile: APK /
+  simulator `.app`) at store time. Stable `testID`s on automation targets (Maestro
+  reads `testID`; content assertions may read visible data text, never the
+  screen-reader label — labels stay human); so L5 costs nothing extra when its
+  flows are written. Snapshot tests are not UX proof; behavior and device tests
+  are required evidence. Add snapshots only as supplemental checks when a slice
+  has a clear use for them.
 
 Backend gates (integration, smoke) stay green for both clients; mobile adds
 no backend. CI must block merge on L0–L3. Run critical L5 journeys for pull
@@ -607,10 +611,10 @@ short, repeated teacher task before the more complex assignment workflow.
 
 | Step | Domain | Backend | Status |
 |---|---|---|---|
-| 0 | Foundation (native auth/API proof + prototype review) | staff login, `me.get` | in progress (Android build + walk done; findings fixed + re-walked; build durability in-repo — prebuild safe; committed 2026-10-17; **prototype review PASSED 2026-10-18 — shell build next**; iOS walk open) |
+| 0 | Foundation (native auth/API proof + prototype review) | staff login, `me.get` | in progress (Android build + walk done; findings fixed + re-walked; build durability in-repo — prebuild safe; committed 2026-10-17; **prototype review PASSED 2026-10-18 — shell build next**; iOS walk parked 2026-10-20) |
 | 1 | Home + context + profile | `me` 1 · `school` 5 · `academic` years 6 | open |
 | 2 | Students + academic setup (§7) | `student` 7 · `enrollment` 6 · `guardian` 4 · `portalAccess` 4 · `academic` classes 5 + sections 5 · `subject` 5 · `term` 4 · `assignment` 10 | open |
-| 3 | Attendance (§8) | `attendance.*` 12 | open |
+| 3 | Attendance (§8) | `attendance.*` 12 | complete (mark/status walked 2026-10-18; summary + section switcher 2026-10-19; calendar generate/days, policy, periods 2026-10-20; report exports remain open) |
 | 4 | Homework manage (§9) | `homework.*` staff 28 | open |
 | 5 | Fees (§10) | `fees.*` 38 | open |
 | 6 | Staff + roles + ID cards + feed (§11) | `staff` 8 · `role` 8 · `idCard` 10 | open |
@@ -637,7 +641,7 @@ shell until those workflows are complete or explicitly deferred by the owner.
 | `/subjects`, `/classes`, `/classes/[classId]` | 2 | Searchable catalog and class detail; setup forms grouped by school workflow |
 | `/students`, `/students/[studentId]` | 2 | Roster search/filter, student detail, admit/edit/enroll, guardian and portal-access flows |
 | `/students/photos` | 2 | Native photo picker, review-before-upload bulk matching, retry-failed-only |
-| `/attendance/calendar`, `/attendance/policy`, `/attendance/mark`, `/attendance/reports` | 3 | Fast section/day selection, roster marking, correction reason, readable summaries. **`/attendance/mark` is live** as the native marking screen (`(staff)/attendance`, device-walked 2026-10-18; the day-sheet reads `calendar.list`); calendar generate/days, policy management and reports remain open |
+| `/attendance/calendar`, `/attendance/policy`, `/attendance/mark`, `/attendance/reports` | 3 | Fast section/day selection, roster marking, correction reason, readable summaries. **`/attendance/mark` is live** as the native marking screen (`(staff)/attendance`, device-walked 2026-10-18; the day-sheet reads `calendar.list`); **yearly summaries and the section switcher are live** as the Mark ⇄ Summary segments with the section sheet (device-walked 2026-10-19); **management surfaces are live** — calendar generate/day overrides, marking policy and periods in `(staff)/attendance/manage` (device-walked 2026-10-20); report exports remain open |
 | `(no existing web route; backend exists)` homework staff routes | 4 | Assignment authoring, question management, publish lifecycle, grading and comments |
 | `/fees`, `/fees/setup`, `/fees/setup/[structureId]` | 5 | Fee setup, installments, concessions, subscription and late-fee workflows |
 | `/fees/dues`, `/fees/outstanding`, `/fees/matrix` | 5 | Mobile search/list/detail summaries; do not reproduce a wide matrix as a squeezed table |
@@ -714,12 +718,12 @@ ADR-030 reason.
 
 | Group | Paths | Screen | Done |
 |---|---|---|---|
-| calendar list / generate / days (3) | `/attendance/calendar`, `/generate`, `/days` | `(staff)/attendance` month day-sheet (list) | ☑ list (walked 2026-10-18); ☐ generate/days |
-| policy get / upsert (2) | `GET|PUT /attendance/policy` | `(staff)/attendance` marking-mode hint | ☐ — get is wired but resolves only with a known `schoolId`; disabled for `class_teacher` (walk finding #1); upsert open |
-| periods list / byId / create / update (4) | `/attendance/periods`, `/{id}` | — | ☐ |
+| calendar list / generate / days (3) | `/attendance/calendar`, `/generate`, `/days` | `(staff)/attendance/manage/calendar` (month list, generate sheet, day sheet) | ☑ list (walked 2026-10-18); ☑ generate/days (walked 2026-10-20) |
+| policy get / upsert (2) | `GET|PUT /attendance/policy` | `(staff)/attendance/manage/policy` | ☑ (walked 2026-10-20). Class teacher sees the gear (has `attendance:update`) but the server refuses school-scoped saves (“You don't have permission…”); copy recorded |
+| periods list / byId / create / update (4) | `/attendance/periods`, `/{id}` | `(staff)/attendance/manage/periods` + `period-edit` | ☑ (walked 2026-10-20); section-scoped writes work for the class teacher (6-A); no delete endpoint in v1 |
 | mark (1) | `POST /attendance/mark` | `(staff)/attendance` marking screen | ☑ (device-walked 2026-10-18) |
 | status (1) | `GET /attendance/status` | `(staff)/attendance` marking screen | ☑ (device-walked 2026-10-18) |
-| summary (1) | `GET /attendance/summary` | — | ☐ |
+| summary (1) | `GET /attendance/summary` | `(staff)/attendance` Summary segment (yearly, per section; section switcher on the shared title row) | ☑ (device-walked 2026-10-19) |
 
 Acceptance: a teacher marks a section's day in under a minute on 4G;
 read-only for callers without `attendance:create`. Walked 2026-10-18
@@ -727,6 +731,12 @@ read-only for callers without `attendance:create`. Walked 2026-10-18
 is proven twice — the UI notice plus a 403 on a crafted call
 (`Missing permission: attendance:create`). Record:
 `.kilo/plans/2026-10-18-mobile-shell-attendance.md` §9 + walk record.
+
+Chunk 2 walked 2026-10-19 (same emulator, principal persona): switcher with
+two sections, section switch with Summary open, empty vs populated section,
+error → Retry → recovery, home per-section cards, card-param entry,
+cold-start default. Record + findings (walk-test corrections, open
+questions): `.kilo/plans/2026-10-18-mobile-attendance-summary.md`.
 
 ---
 
