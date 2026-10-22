@@ -29,6 +29,39 @@ const AUTH_STORAGE_BASE_KEYS = [
 ] as const;
 const AUTH_STORAGE_CHUNK_SWEEP = 10;
 
+/** Every key the plugin may hold for these bases, chunk suffixes included. */
+function storageKeysFor(bases: readonly string[]) {
+  return bases.flatMap((base) => [
+    base,
+    ...Array.from(
+      { length: AUTH_STORAGE_CHUNK_SWEEP },
+      (_, index) => `${base}.${index}`,
+    ),
+  ]);
+}
+
+/**
+ * Account-switch hygiene (2026-10-18 walk finding): a get-session response
+ * raced across sign-out can write the OLD session into the plugin's
+ * `_session_data` cache *after* `logout()` swept it, and a deleted session's
+ * blob then rehydrates the session atom on every cold start — the old user's
+ * name, email, and screens appear while the cookie is the new user's.
+ * Sweeping the cache on successful sign-in leaves nothing stale to hydrate
+ * from; the caller's session refetch writes the new user's copy.
+ */
+async function purgeSessionCache() {
+  try {
+    await Promise.all(
+      storageKeysFor([`${AUTH_STORAGE_PREFIX}_session_data`]).map((key) =>
+        SecureStore.deleteItemAsync(key),
+      ),
+    );
+  } catch {
+    // Best-effort: the server session is live and the refetch that follows
+    // heals the cache; a failed native delete must not fail the sign-in.
+  }
+}
+
 export const authClient = createAuthClient({
   baseURL: env.EXPO_PUBLIC_API_URL,
   plugins: [
@@ -46,9 +79,13 @@ export const authClient = createAuthClient({
 
 /** Staff sign-in: email + password (better-auth's emailAndPassword core). */
 export async function login(email: string, password: string) {
-  return withTimeout((signal) =>
+  const result = await withTimeout((signal) =>
     authClient.signIn.email({ email, password }, { signal }),
   );
+  if (!result.error) {
+    await purgeSessionCache();
+  }
+  return result;
 }
 
 /**
@@ -56,9 +93,13 @@ export async function login(email: string, password: string) {
  * family shell reuses this seam — staff screens never call it.
  */
 export async function loginByPhone(username: string, password: string) {
-  return withTimeout((signal) =>
+  const result = await withTimeout((signal) =>
     authClient.signIn.username({ username, password }, { signal }),
   );
+  if (!result.error) {
+    await purgeSessionCache();
+  }
+  return result;
 }
 
 /**
@@ -79,13 +120,7 @@ export async function logout() {
   // around the request, but a raced or half-completed flow left the old
   // identity readable (the account-switch walk bug). Deletion is stronger
   // than the plugin's "{}" reset — nothing left to hydrate from.
-  const keys = AUTH_STORAGE_BASE_KEYS.flatMap((base) => [
-    base,
-    ...Array.from(
-      { length: AUTH_STORAGE_CHUNK_SWEEP },
-      (_, index) => `${base}.${index}`,
-    ),
-  ]);
+  const keys = storageKeysFor(AUTH_STORAGE_BASE_KEYS);
   try {
     await Promise.all(keys.map((key) => SecureStore.deleteItemAsync(key)));
   } catch {
