@@ -91,12 +91,84 @@ import {
   subjectTypes,
   termAssessments,
 } from "@repo/db/schema";
+// Homework/assignment domain — added after the reset was written. Child-first:
+// answers/submissions before student assignments before assignment definitions
+// before rubrics/questions. Keep this list in FK order when the domain grows.
+import {
+  assignmentAcknowledgements,
+  assignmentComments,
+  assignmentEvaluations,
+  assignmentExtensions,
+  assignmentQuestionSettings,
+  assignmentQuestions,
+  assignmentResources,
+  assignmentRevisions,
+  assignmentRubricScores,
+  assignmentSeries,
+  assignmentSettings,
+  assignmentTargets,
+  assignments,
+  evaluationFiles,
+  idCardTemplates,
+  orgPublicSites,
+  questionAttemptAnswerFiles,
+  questionAttemptAnswers,
+  questionAttempts,
+  questionBankItems,
+  questionOptions,
+  reportCardTemplates,
+  rubrics,
+  rubricCriteria,
+  rubricLevels,
+  storageObjects,
+  studentAssignmentSummary,
+  studentAssignments,
+  studentPhotos,
+  submissionFiles,
+  submissions,
+} from "@repo/db/schema";
 import { eq, inArray, like, or, sql } from "drizzle-orm";
 
 const DEMO_SLUG = "demo-trust";
 const DEMO_EMAIL_LIKE = "%@demo-trust.test";
 const ITG_SLUG_LIKE = "fees-itg-%";
 const ITG_EMAIL_LIKE = "%@fees-itg.test";
+
+/**
+ * Hard rule 3 is non-negotiable: the trigger is dropped only for the duration
+ * of the wipe. A failed delete must not leave the window open, so the failure
+ * path in `main().catch` calls this too. Idempotent (drops a trigger that may
+ * already be gone, then recreates it).
+ */
+let ledgerTriggerDropped = false;
+async function restoreLedgerTrigger() {
+  await db.execute(sql`
+    DROP TRIGGER IF EXISTS financial_transactions_append_only_trg
+      ON financial_transactions
+  `);
+  await db.execute(sql`
+    CREATE OR REPLACE FUNCTION financial_transactions_block_mutation()
+    RETURNS trigger AS $$
+    BEGIN
+        RAISE EXCEPTION
+            'financial_transactions is append-only (hard rule 3): % is forbidden. Corrections are new offsetting rows.',
+            TG_OP;
+    END;
+    $$ LANGUAGE plpgsql;
+  `);
+  await db.execute(sql`
+    CREATE TRIGGER financial_transactions_append_only_trg
+        BEFORE UPDATE OR DELETE ON "financial_transactions"
+        FOR EACH ROW EXECUTE FUNCTION financial_transactions_block_mutation();
+  `);
+  const triggerCheck = await db.execute(sql`
+    SELECT 1 FROM pg_trigger WHERE tgname = 'financial_transactions_append_only_trg'
+  `);
+  if ((triggerCheck as unknown as unknown[]).length === 0) {
+    throw new Error("Ledger trigger was not restored — aborting loudly by design.");
+  }
+  ledgerTriggerDropped = false;
+}
 
 async function main() {
   if (process.env.NODE_ENV === "production") {
@@ -168,6 +240,7 @@ async function main() {
   await db.execute(
     sql`DROP TRIGGER IF EXISTS financial_transactions_append_only_trg ON financial_transactions`,
   );
+  ledgerTriggerDropped = true;
 
   // 2. Fees — ledger leaves first, config last.
   if (orgIds.length > 0) {
@@ -239,6 +312,8 @@ async function main() {
       db.delete(termAssessments).where(inArray(termAssessments.organizationId, orgIds)).returning());
     await wipe("published_report_cards", () =>
       db.delete(publishedReportCards).where(inArray(publishedReportCards.organizationId, orgIds)).returning());
+    await wipe("report_card_templates", () =>
+      db.delete(reportCardTemplates).where(inArray(reportCardTemplates.organizationId, orgIds)).returning());
     await wipe("exam_class_publication", () =>
       db.delete(examClassPublication).where(inArray(examClassPublication.organizationId, orgIds)).returning());
     await wipe("pass_criteria", () =>
@@ -251,6 +326,68 @@ async function main() {
       db.delete(examSubjectSchedules).where(inArray(examSubjectSchedules.organizationId, orgIds)).returning());
     await wipe("exams", () =>
       db.delete(exams).where(inArray(exams.organizationId, orgIds)).returning());
+    // 4a. Homework/assignments — leaves first. These reference enrollments,
+    // students, sections, subjects and grading scales, so the whole block must
+    // leave before the academic spine and before grading_scales below.
+    await wipe("question_attempt_answer_files", () =>
+      db.delete(questionAttemptAnswerFiles).where(inArray(questionAttemptAnswerFiles.organizationId, orgIds)).returning());
+    await wipe("question_attempt_answers", () =>
+      db.delete(questionAttemptAnswers).where(inArray(questionAttemptAnswers.organizationId, orgIds)).returning());
+    await wipe("question_attempts", () =>
+      db.delete(questionAttempts).where(inArray(questionAttempts.organizationId, orgIds)).returning());
+    // student_assignments.current_evaluation_id -> assignment_evaluations is a
+    // cycle; unlink it before the evaluations leave.
+    await wipe("student_assignments_clear_current_evaluation", () =>
+      db.update(studentAssignments)
+        .set({ currentEvaluationId: null })
+        .where(inArray(studentAssignments.organizationId, orgIds))
+        .returning({ id: studentAssignments.id }));
+    await wipe("assignment_rubric_scores", () =>
+      db.delete(assignmentRubricScores).where(inArray(assignmentRubricScores.organizationId, orgIds)).returning());
+    await wipe("evaluation_files", () =>
+      db.delete(evaluationFiles).where(inArray(evaluationFiles.organizationId, orgIds)).returning());
+    await wipe("assignment_evaluations", () =>
+      db.delete(assignmentEvaluations).where(inArray(assignmentEvaluations.organizationId, orgIds)).returning());
+    await wipe("submission_files", () =>
+      db.delete(submissionFiles).where(inArray(submissionFiles.organizationId, orgIds)).returning());
+    await wipe("submissions", () =>
+      db.delete(submissions).where(inArray(submissions.organizationId, orgIds)).returning());
+    await wipe("assignment_comments", () =>
+      db.delete(assignmentComments).where(inArray(assignmentComments.organizationId, orgIds)).returning());
+    await wipe("assignment_acknowledgements", () =>
+      db.delete(assignmentAcknowledgements).where(inArray(assignmentAcknowledgements.organizationId, orgIds)).returning());
+    await wipe("assignment_extensions", () =>
+      db.delete(assignmentExtensions).where(inArray(assignmentExtensions.organizationId, orgIds)).returning());
+    await wipe("assignment_question_settings", () =>
+      db.delete(assignmentQuestionSettings).where(inArray(assignmentQuestionSettings.organizationId, orgIds)).returning());
+    await wipe("assignment_questions", () =>
+      db.delete(assignmentQuestions).where(inArray(assignmentQuestions.organizationId, orgIds)).returning());
+    await wipe("assignment_resources", () =>
+      db.delete(assignmentResources).where(inArray(assignmentResources.organizationId, orgIds)).returning());
+    await wipe("assignment_revisions", () =>
+      db.delete(assignmentRevisions).where(inArray(assignmentRevisions.organizationId, orgIds)).returning());
+    await wipe("assignment_targets", () =>
+      db.delete(assignmentTargets).where(inArray(assignmentTargets.organizationId, orgIds)).returning());
+    await wipe("student_assignments", () =>
+      db.delete(studentAssignments).where(inArray(studentAssignments.organizationId, orgIds)).returning());
+    await wipe("student_assignment_summary", () =>
+      db.delete(studentAssignmentSummary).where(inArray(studentAssignmentSummary.organizationId, orgIds)).returning());
+    await wipe("assignments", () =>
+      db.delete(assignments).where(inArray(assignments.organizationId, orgIds)).returning());
+    await wipe("assignment_series", () =>
+      db.delete(assignmentSeries).where(inArray(assignmentSeries.organizationId, orgIds)).returning());
+    await wipe("assignment_settings", () =>
+      db.delete(assignmentSettings).where(inArray(assignmentSettings.organizationId, orgIds)).returning());
+    await wipe("rubric_levels", () =>
+      db.delete(rubricLevels).where(inArray(rubricLevels.organizationId, orgIds)).returning());
+    await wipe("rubric_criteria", () =>
+      db.delete(rubricCriteria).where(inArray(rubricCriteria.organizationId, orgIds)).returning());
+    await wipe("rubrics", () =>
+      db.delete(rubrics).where(inArray(rubrics.organizationId, orgIds)).returning());
+    await wipe("question_options", () =>
+      db.delete(questionOptions).where(inArray(questionOptions.organizationId, orgIds)).returning());
+    await wipe("question_bank_items", () =>
+      db.delete(questionBankItems).where(inArray(questionBankItems.organizationId, orgIds)).returning());
     await wipe("grading_scale_bands", () =>
       db.delete(gradingScaleBands).where(inArray(gradingScaleBands.organizationId, orgIds)).returning());
     await wipe("grading_scales", () =>
@@ -265,6 +402,8 @@ async function main() {
       db.delete(studentRelationships).where(inArray(studentRelationships.studentId, studentIds)).returning());
     await wipe("previous_school_records", () =>
       db.delete(previousSchoolRecords).where(inArray(previousSchoolRecords.studentId, studentIds)).returning());
+    await wipe("student_photos", () =>
+      db.delete(studentPhotos).where(inArray(studentPhotos.studentId, studentIds)).returning());
   }
   if (userIds.length > 0) {
     await wipe("student_portal_access_by_user", () =>
@@ -311,6 +450,12 @@ async function main() {
       db.delete(orgRolePermissions).where(inArray(orgRolePermissions.organizationId, orgIds)).returning());
     await wipe("authz_audit_log", () =>
       db.delete(authzAuditLog).where(inArray(authzAuditLog.organizationId, orgIds)).returning());
+    await wipe("storage_objects", () =>
+      db.delete(storageObjects).where(inArray(storageObjects.organizationId, orgIds)).returning());
+    await wipe("id_card_templates", () =>
+      db.delete(idCardTemplates).where(inArray(idCardTemplates.organizationId, orgIds)).returning());
+    await wipe("org_public_sites", () =>
+      db.delete(orgPublicSites).where(inArray(orgPublicSites.organizationId, orgIds)).returning());
     await wipe("schools", () =>
       db.delete(schools).where(inArray(schools.organizationId, orgIds)).returning());
     await wipe("organizations", () =>
@@ -319,6 +464,20 @@ async function main() {
 
   // 7. Identity last (sessions/accounts cascade, deleted explicitly for the counts).
   if (userIds.length > 0) {
+    // A demo user may hold a role outside demo-trust (the public-site org is
+    // the known case). Remove their assignments wherever they live before the
+    // user row leaves.
+    await wipe("role_assignments_by_user", () =>
+      db.delete(roleAssignments).where(or(
+        inArray(roleAssignments.userId, userIds),
+        inArray(roleAssignments.grantedBy, userIds),
+        inArray(roleAssignments.revokedBy, userIds),
+      )).returning());
+    await wipe("authz_audit_log_by_user", () =>
+      db.delete(authzAuditLog).where(or(
+        inArray(authzAuditLog.actorUserId, userIds),
+        inArray(authzAuditLog.targetUserId, userIds),
+      )).returning());
     await wipe("session", () =>
       db.delete(session).where(inArray(session.userId, userIds)).returning());
     await wipe("account", () =>
@@ -328,27 +487,7 @@ async function main() {
   }
 
   // 8. Restore the ledger trigger and ASSERT it exists.
-  await db.execute(sql`
-    CREATE OR REPLACE FUNCTION financial_transactions_block_mutation()
-    RETURNS trigger AS $$
-    BEGIN
-        RAISE EXCEPTION
-            'financial_transactions is append-only (hard rule 3): % is forbidden. Corrections are new offsetting rows.',
-            TG_OP;
-    END;
-    $$ LANGUAGE plpgsql;
-  `);
-  await db.execute(sql`
-    CREATE TRIGGER financial_transactions_append_only_trg
-        BEFORE UPDATE OR DELETE ON "financial_transactions"
-        FOR EACH ROW EXECUTE FUNCTION financial_transactions_block_mutation();
-  `);
-  const triggerCheck = await db.execute(sql`
-    SELECT 1 FROM pg_trigger WHERE tgname = 'financial_transactions_append_only_trg'
-  `);
-  if ((triggerCheck as unknown as unknown[]).length === 0) {
-    throw new Error("Ledger trigger was not restored — aborting loudly by design.");
-  }
+  await restoreLedgerTrigger();
 
   console.log("\nDeleted rows per table:");
   for (const [label, n] of deleted) console.log(`  ${label}: ${n}`);
@@ -358,7 +497,15 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
   console.error(err);
+  if (ledgerTriggerDropped) {
+    try {
+      await restoreLedgerTrigger();
+      console.error("Ledger trigger restored after the failed reset.");
+    } catch (restoreErr) {
+      console.error("FAILED TO RESTORE THE LEDGER TRIGGER:", restoreErr);
+    }
+  }
   process.exit(1);
 });
