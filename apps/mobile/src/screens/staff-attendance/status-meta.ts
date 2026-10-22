@@ -30,6 +30,22 @@ export function statusLabel(status: Status): string {
   return copy.attendance.marking.statuses[status];
 }
 
+/**
+ * The day-type vocabulary for the calendar surfaces (chunk 3): DB value in,
+ * word out. An unknown value falls back to itself rather than "Not set" —
+ * a server that learns a new type shows its own word, not a lie.
+ */
+export function dayTypeLabel(dayType: string | null): string {
+  if (!dayType) return copy.attendance.marking.dayTypes.none;
+  const labels = copy.attendance.marking.dayTypes as Record<string, string>;
+  return labels[dayType] ?? dayType;
+}
+
+/** True when the marking gate accepts this day type (the same set, one place). */
+export function isMarkableDayType(dayType: string | null): boolean {
+  return dayType !== null && MARKABLE_DAY_TYPES.includes(dayType);
+}
+
 export const statusTone: Record<Status, Tone> = {
   present: "positive",
   absent: "critical",

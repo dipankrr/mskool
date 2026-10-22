@@ -22,18 +22,8 @@ import { formatMonthLong, todayIso, weekdayShort } from "../../lib/format";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { radius, spacing } from "../../theme/tokens";
-import { MARKABLE_DAY_TYPES } from "./status-meta";
-
-function isoOf(year: number, month: number, day: number): string {
-  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-}
-
-/** `anchor` is any ISO day in a month; `delta` shifts whole months. */
-function shiftMonth(anchor: string, delta: number): string {
-  const index =
-    Number(anchor.slice(0, 4)) * 12 + (Number(anchor.slice(5, 7)) - 1) + delta;
-  return isoOf(Math.floor(index / 12), (index % 12) + 1, 1);
-}
+import { daysInMonth, isoOf, shiftMonth } from "./calendar-month";
+import { dayTypeLabel, isMarkableDayType } from "./status-meta";
 
 /**
  * The day picker: one month at a time with a prev/next stepper, every day
@@ -89,7 +79,7 @@ export function DaySheet({
   const dayTypeByDate = new Map(
     (calendarQuery.data ?? []).map((row) => [row.date, row.dayType]),
   );
-  const dayCount = new Date(year, month, 0).getDate();
+  const dayCount = daysInMonth(year, month);
   const days = Array.from({ length: dayCount }, (_, index) =>
     isoOf(year, month, index + 1),
   );
@@ -146,11 +136,8 @@ export function DaySheet({
           >
             {days.map((iso) => {
               const dayType = dayTypeByDate.get(iso) ?? null;
-              const markable =
-                dayType !== null && MARKABLE_DAY_TYPES.includes(dayType);
-              const tagLabel = dayType
-                ? copy.attendance.marking.dayTypes[dayType]
-                : copy.attendance.marking.dayTypes.none;
+              const markable = isMarkableDayType(dayType);
+              const tagLabel = dayTypeLabel(dayType);
               const dayNumber = Number(iso.slice(8, 10));
               const isToday = iso === today;
               const selected = iso === date;
