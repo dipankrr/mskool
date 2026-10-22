@@ -31,7 +31,14 @@ export function TrpcProvider({ children }: { children: ReactNode }) {
           url: `${env.EXPO_PUBLIC_API_URL}/trpc`,
           async headers() {
             const cookies = await authClient.getCookie();
-            return cookies ? { Cookie: cookies } : {};
+            // Queries are GETs and React Query invalidates them on every
+            // mutation. The native HTTP layer has a disk cache; without this
+            // a refetch is answered from the stored body and the screen keeps
+            // the pre-save value (API also sends no-store; this is the belt).
+            return {
+              "cache-control": "no-store",
+              ...(cookies ? { Cookie: cookies } : {}),
+            };
           },
           fetch(url, options) {
             // Every call carries a deadline (2026-10-18 walk finding #4): a

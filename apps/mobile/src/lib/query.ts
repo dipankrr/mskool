@@ -16,6 +16,11 @@ export const queryClient = new QueryClient({
     queries: {
       staleTime: 60_000,
       refetchOnWindowFocus: false, // native has no window focus; AppState drives it
+      // Do not PAUSE offline reads (2026-10-19 walk): a paused query keeps
+      // `isPending` forever, so a screen with no cache shows a skeleton and no
+      // explanation. Attempt the request instead — it fails fast into the
+      // screens' existing connection copy + Retry, and resumes on reconnect.
+      networkMode: "always",
       retry: (failureCount, error) => {
         if (failureCount >= 1) return false;
         // 403/404/409 never succeed on retry — fail honestly instead.
@@ -24,6 +29,12 @@ export const queryClient = new QueryClient({
           code !== "FORBIDDEN" && code !== "NOT_FOUND" && code !== "CONFLICT"
         );
       },
+    },
+    mutations: {
+      // Same rule for writes: a paused offline save would sit on "Saving…"
+      // and fire later, after the user thinks it failed. Fail now with the
+      // connection copy instead — nothing is written behind their back.
+      networkMode: "always",
     },
   },
 });

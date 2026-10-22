@@ -13,14 +13,35 @@ import { useMe } from "../hooks/use-me";
  * dead end and never staff screens.
  */
 export default function Index() {
-  const { session, sessionPending, me, isStaff, mustChangePassword, isFetched } =
-    useMe();
+  const {
+    session,
+    sessionPending,
+    me,
+    isStaff,
+    mustChangePassword,
+    isFetched,
+    isError,
+    error,
+    refetch,
+  } = useMe();
 
   if (sessionPending || (session && !isFetched)) {
     return null; // splash gate in _layout covers this
   }
   if (!session) {
     return <Redirect href="/login" />;
+  }
+  // A failed `me.get` is a connection problem, not a family session. Without
+  // this branch an offline boot (or any failed hydration) falls through to
+  // the staff-only notice and strands a staff user there — 2026-10-19 walk.
+  if (isError) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>{copy.auth.appName}</Text>
+        <Text style={styles.body}>{thrownMessage(error)}</Text>
+        <Button title={copy.common.retry} onPress={() => void refetch()} />
+      </View>
+    );
   }
   if (mustChangePassword) {
     return <Redirect href="/change-password" />;

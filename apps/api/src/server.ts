@@ -201,6 +201,15 @@ export function createServer(): Server {
   // Native tRPC endpoint — this is what apps/web's httpBatchLink talks
   // to (full type inference, batched calls, no REST/JSON-schema layer
   // in between).
+  app.use("/trpc", (_req, res, next) => {
+    // Queries travel as GET (httpBatchLink) and are per-session, cache-
+    // invalidated data. Expo's fetch keeps a disk HTTP cache
+    // (`cache/http-cache`) and without an explicit no-store a refetch after a
+    // mutation replays the cached body — screens keep showing the old row.
+    res.setHeader("Cache-Control", "no-store");
+    next();
+  });
+
   app.use("/trpc", createExpressMiddleware({ router: appRouter, createContext }));
 
   // REST-over-tRPC: every procedure with `.meta({ openapi: {...} })`

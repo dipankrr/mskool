@@ -2010,3 +2010,41 @@ branch-scoped reads in the mobile app; the web Branches navigation item
 appears for those roles, scoped to their school. Demo fixtures are backfilled
 by the seed's INSERT-only `syncDefaultPermissions`; production orgs are
 untouched by construction (defaults are copied once at provisioning).
+
+---
+
+## ADR-045 — Mobile server state is never cached by the HTTP layer; offline requests fail honestly
+
+Date: 2026-10-20. Status: accepted. Extends ADR-043 (mobile server state).
+
+**Context.** The attendance management walk (2026-10-19/20) found two
+transport-level failures. (1) Expo's native fetch keeps a disk HTTP cache
+(`cache/http-cache`); tRPC queries travel as GET, so after a save the
+invalidated refetch was answered from the stored body — the DB changed, the
+screen kept the old row, and the API never saw the request. (2) React Query's
+`onlineManager` (wired to `expo-network`) paused queries while offline: a
+screen with no cache showed a skeleton indefinitely, and a paused mutation
+would sit on “Saving…” and fire later, after the user thought it failed. The
+chunk-2 walk had already flagged the paused-offline path as unverified.
+
+**Decision.** Treat server state as uncacheable by the transport and make
+offline behaviour explicit at the request layer:
+
+- the API sets `Cache-Control: no-store` on every `/trpc` response;
+- the mobile tRPC link sends a per-request `cache-control: no-store` header
+  (belt for entries stored before the API change);
+- the mobile `QueryClient` uses `networkMode: "always"` for queries **and**
+  mutations. Reads attempt, fail into the existing connection copy + Retry,
+  and recover on reconnect; writes fail with the same copy and write nothing.
+
+No offline queue or persistence is introduced: the app is read-only offline.
+
+**Consequences.** Every data screen reuses its existing error/retry state
+instead of adding offline UI. A dead-zone request is bounded by the existing
+15 s tRPC deadline. The same no-store header protects the web client from
+browser HTTP caching of authenticated GETs. A later offline-write feature must
+introduce an explicit queue, not remove `networkMode`.
+
+**Alternatives rejected.** Per-screen offline banners (would have left the
+paused mutation hazard); `networkMode: "online"` + cached-first UI (no
+persistence exists, so there is nothing honest to show).
