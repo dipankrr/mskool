@@ -34,6 +34,7 @@ const iconMap = {
   checkCircle: { ios: "checkmark.circle.fill", android: "check-circle" },
   close: { ios: "xmark", android: "close" },
   clock: { ios: "clock.fill", android: "schedule" },
+  settings: { ios: "gearshape", android: "settings" },
   edit: { ios: "pencil", android: "edit" },
   search: { ios: "magnifyingglass", android: "search" },
 } as const satisfies Record<

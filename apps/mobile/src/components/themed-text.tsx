@@ -10,16 +10,24 @@ import { fontSize, fontWeight, tracking } from "../theme/tokens";
  * and, rarely, a colour override; they never set sizes or weights themselves.
  *
  * Variants and where they come from (probe values in tokens.ts):
- * `title` screen h1 · `subtitle` its sub line · `sectionLabel` uppercase
- * grouping · `name` row titles · `body` default prose · `bodyStrong` inline
- * emphasis · `meta` secondary lines · `caption` pills/small labels ·
- * `chip` small rounded chips (branch) · `numeric` tabular numbers (stat
- * tiles) · `tab` tab-bar labels.
+ * `hero` the one headline number of a block (year card; the fees hero
+ * later) · `title` screen h1 · `subtitle` its sub line · `sectionLabel`
+ * uppercase grouping · `name` row titles · `body` default prose ·
+ * `bodyStrong` inline emphasis · `meta` secondary lines · `caption`
+ * pills/small labels · `chip` small rounded chips (branch) · `numeric`
+ * tabular numbers (stat tiles) · `tab` tab-bar labels.
  *
  * (The prop is `variant`, not `role`: RN's TextProps already owns `role` for
  * accessibility and the two unions would collide.)
  */
 const variantStyles = StyleSheet.create({
+  hero: {
+    fontSize: fontSize.hero,
+    fontWeight: fontWeight.bold,
+    letterSpacing: tracking.tight,
+    fontVariant: ["tabular-nums"],
+    color: colors.ink,
+  },
   title: {
     fontSize: fontSize.large,
     fontWeight: fontWeight.bold,

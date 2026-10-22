@@ -88,9 +88,57 @@ export const copy = {
     noAccessTitle: "Attendance isn't in your account",
     noAccessBody:
       "Your role doesn't include the attendance permission. Ask your administrator.",
+    /** Section captions shared by the marking and summary panels. */
+    studentsCount: (count: number) =>
+      count === 1 ? "1 student" : `${count} students`,
+    /** The Mark ⇄ Summary segments (chunk 2). */
+    views: {
+      mark: "Mark",
+      summary: "Summary",
+    },
+    viewsA11y: {
+      mark: "Mark attendance",
+      summary: "Attendance summary",
+    },
+    /** The section switcher (chunk 2). */
+    section: {
+      open: "Choose a section",
+      sheetTitle: "Pick a section",
+    },
+    /** The yearly summary panel (chunk 2). */
+    summary: {
+      /** The year card's uppercase label. */
+      yearLabel: "Year so far",
+      /** The hero number's caption. */
+      averageLabel: "Average attendance",
+      /** The list's group label (probe section anatomy). */
+      studentsLabel: "Students",
+      /** Shown where nothing has been marked yet. */
+      noValue: "—",
+      /** The coverage bar's caption when the year has working days. */
+      coverage: (marked: number, working: number) =>
+        `${marked} of ${working} days marked`,
+      /** The coverage caption when the section has no rows at all. */
+      noCoverageYet: "No days marked yet",
+      present: (count: number) => `${count} present`,
+      absent: (count: number) => `${count} absent`,
+      late: (count: number) => `${count} late`,
+      onLeave: (count: number) => `${count} on leave`,
+      noneYet: "No attendance yet",
+      /** Only rendered when someone in the roster has no rows at all. */
+      noDataLine: (count: number) =>
+        count === 1
+          ? "1 student has no attendance yet"
+          : `${count} students have no attendance yet`,
+      footnote:
+        "The average counts present days against the session's full working calendar, so it rises as days get marked — the same figure exam eligibility reads.",
+      a11y: {
+        row: (name: string, detail: string, percent: string) =>
+          `${name}, ${detail}, ${percent} attendance`,
+        none: (name: string) => `${name}, no attendance marked yet`,
+      },
+    },
     marking: {
-      studentsCount: (count: number) =>
-        count === 1 ? "1 student" : `${count} students`,
       roll: (roll: string) => `Roll ${roll}`,
       /** Shown where a roster row has no roll number assigned. */
       noRoll: "No roll number",
@@ -149,6 +197,160 @@ export const copy = {
         rowHint:
           "Double tap to change status, double tap and hold for all statuses",
         changeAction: "Change status",
+      },
+    },
+    /** Chunk 3 — the management surfaces behind the header gear. */
+    manage: {
+      /** The header gear and the hub's shared words. */
+      open: "Manage attendance",
+      openHint: "Calendar, marking policy and periods",
+      title: "Manage attendance",
+      back: "Back",
+      noAccessTitle: "Management isn't in your account",
+      noAccessBody:
+        "Changing the calendar, marking policy and periods needs the attendance:update permission. Ask your administrator.",
+      /** The hub's three rows; the hints double as fallback subtitles. */
+      rows: {
+        calendar: "Calendar",
+        calendarHint: "Generate the year, set holidays and exam days",
+        policy: "Marking policy",
+        policyHint: "Marking mode, daily rule and late window",
+        periods: "Periods",
+        periodsHint: "Section timetable slots for period-wise marking",
+      },
+      /** The policy row's live subtitle, by stored shape. */
+      policySummary: {
+        daily: "Daily marking",
+        periodHomeroom: "Period-wise · Homeroom decides",
+        periodThreshold: (percent: string) =>
+          `Period-wise · threshold ${percent}%`,
+        unset: "Not set — defaults apply",
+      },
+      /** The periods row's live subtitle, by count. */
+      periodsSummary: {
+        count: (count: number, section: string) =>
+          count === 1
+            ? `1 period · ${section}`
+            : `${count} periods · ${section}`,
+        none: (section: string) => `No periods yet · ${section}`,
+      },
+      /** The manage calendar: month list, day editor, generate sheet. */
+      calendar: {
+        generate: "Generate calendar",
+        monthEmpty: "No days set for this month — generate the calendar.",
+        editorTitle: "Set the day type",
+        reason: "Reason",
+        reasonPlaceholder: 'Optional — "Diwali", "Sports day"…',
+        reasonHelp:
+          "Shown wherever this day is read. Leave it empty to remove the note.",
+        save: "Save day",
+        /** One line per day type, in sheet order. */
+        meanings: {
+          working: "School in session — markable",
+          holiday: "Closed all day — not markable",
+          half_day: "Partial day — markable",
+          exam_day: "Exams — markable",
+          weekend: "Weekly off — not markable",
+        },
+        /** The generate sheet. */
+        generateHelp:
+          "Pick the days a week school is in session. Days already set are left untouched — this only fills gaps.",
+        weekdays: [
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday",
+          "Saturday",
+          "Sunday",
+        ],
+        weekdayA11y: (weekday: string, state: string) =>
+          `${weekday}, ${state}. Double tap to change.`,
+        states: {
+          working: "Working",
+          half_day: "Half day",
+          off: "Off",
+        },
+        minWorking: "At least one working day a week.",
+        confirm: "Generate",
+        running: "Generating…",
+        done: "Done",
+        filled: (count: number) =>
+          count === 1 ? "1 day filled in." : `${count} days filled in.`,
+        filledNone: "Every day already had a row — nothing to add.",
+      },
+      /** The marking policy screen. */
+      policy: {
+        unsetTitle: "Not set yet",
+        unsetBody:
+          "The server's defaults apply: daily marking, homeroom decides the day, a 15-minute late window. Saving creates this school's policy.",
+        modeLabel: "Marking mode",
+        modeHelp:
+          "Daily: one mark per student per day. Period-wise: a mark per period, and the day's status derives from the rule.",
+        modeDaily: "Daily",
+        modePeriod: "Period-wise",
+        ruleLabel: "Daily status rule",
+        ruleHelp:
+          "How a period-wise day resolves to a present or absent day.",
+        ruleHomeroom: "Homeroom decides",
+        ruleThreshold: "Threshold",
+        thresholdLabel: "Threshold %",
+        thresholdHelp:
+          "A day counts present once this share of its periods is present.",
+        lateLabel: "Late arrival window",
+        lateHelp:
+          "A mark later than this many minutes past the period's start reads as late.",
+        minutesSuffix: "min",
+        caution: (section: string) =>
+          `Period-wise marking needs ${section}'s periods — add them before the first marking.`,
+        cautionAction: "Add periods",
+        save: "Save policy",
+        saved: "Policy saved",
+        errors: {
+          threshold: "Enter a threshold between 1 and 100.",
+          late: "Enter minutes between 0 and 120.",
+        },
+      },
+      /** The periods list and its editor. */
+      periods: {
+        dailyNote:
+          "This school marks daily — periods matter when it switches to period-wise marking.",
+        emptyTitle: "No periods yet",
+        emptyBody:
+          "Add this section's timetable slots so period-wise marking can start.",
+        add: "Add period",
+        times: (start: string, end: string) => `${start}–${end}`,
+        startsAt: (start: string) => `Starts ${start}`,
+        endsAt: (end: string) => `Ends ${end}`,
+        noTimes: "No times set",
+        homeroom: "Homeroom",
+        rowA11y: (
+          sequence: number,
+          name: string,
+          detail: string,
+          homeroom: boolean,
+        ) =>
+          `Period ${sequence}, ${name}, ${detail}${homeroom ? ", homeroom" : ""}`,
+        editorNew: "New period",
+        editorEdit: "Edit period",
+        name: "Name",
+        namePlaceholder: "Period 1",
+        sequence: "Sequence",
+        sequenceHelp: "Where it sits in the day, 1–30.",
+        starts: "Starts",
+        ends: "Ends",
+        notSet: "Not set",
+        clear: "Clear",
+        homeroomLabel: "Homeroom period",
+        homeroomHelp:
+          "Daily status is read from the homeroom period on homeroom-decides schools. One per section stays the rule.",
+        save: "Save period",
+        done: "Done",
+        errors: {
+          name: "Give the period a name (1–50 characters).",
+          sequence: "Enter a sequence between 1 and 30.",
+          timeOrder: "The end time cannot be before the start time.",
+        },
       },
     },
   },
