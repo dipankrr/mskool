@@ -2,8 +2,12 @@ import {
   formatIsoDate,
   formatLongWeekday,
   formatMonthLong,
+  formatReadableDate,
+  formatReadableDateRange,
   formatShortWeekday,
   isIsoDate,
+  isoToLocalDate,
+  localDateToIso,
   todayIso,
   weekdayShort,
 } from "./format";
@@ -67,5 +71,40 @@ describe("weekdayShort / formatMonthLong", () => {
   it("renders the em dash for anything unparseable", () => {
     expect(weekdayShort("2026-13-01")).toBe("—");
     expect(formatMonthLong(null)).toBe("—");
+  });
+});
+
+describe("formatReadableDate / formatReadableDateRange", () => {
+  it("reads as a date, without leading zeroes or slashes", () => {
+    expect(formatReadableDate("2026-04-01")).toBe("1 Apr 2026");
+    expect(formatReadableDate("2026-12-31")).toBe("31 Dec 2026");
+  });
+
+  it("joins a session range with an en dash", () => {
+    expect(formatReadableDateRange("2025-04-01", "2026-03-31")).toBe(
+      "1 Apr 2025 – 31 Mar 2026",
+    );
+  });
+
+  it("degrades to the one date it has, and to the em dash with none", () => {
+    expect(formatReadableDateRange(null, "2026-03-31")).toBe("31 Mar 2026");
+    expect(formatReadableDateRange("2025-04-01", null)).toBe("1 Apr 2025");
+    expect(formatReadableDateRange(null, null)).toBe("—");
+  });
+});
+
+describe("isoToLocalDate / localDateToIso", () => {
+  it("round-trips across month and year ends without UTC drift", () => {
+    for (const iso of ["2026-01-01", "2026-03-31", "2026-12-31", "2024-02-29"]) {
+      const local = isoToLocalDate(iso);
+      expect(local).not.toBeNull();
+      expect(localDateToIso(local!)).toBe(iso);
+      expect(local!.getDate()).toBe(Number(iso.slice(8, 10)));
+    }
+  });
+
+  it("returns null for an impossible date", () => {
+    expect(isoToLocalDate("2026-02-31")).toBeNull();
+    expect(isoToLocalDate(null)).toBeNull();
   });
 });

@@ -6,24 +6,19 @@ import { AppIcon } from "../../components/app-icon";
 import { Avatar } from "../../components/avatar";
 import { Card } from "../../components/card";
 import { FactRow } from "../../components/fact-row";
+import { IconTile } from "../../components/icon-tile";
 import { LinkRow } from "../../components/link-row";
 import { ScreenFrame } from "../../components/screen-frame";
 import { SectionLabel } from "../../components/section-label";
+import { StatusPill } from "../../components/status-pill";
 import { ThemedText } from "../../components/themed-text";
 import { useActiveContext } from "../../hooks/use-active-context";
 import { useMe } from "../../hooks/use-me";
 import { copy } from "../../lib/copy";
+import { roleLabel, scopeLabel } from "../../lib/labels";
 import { colors } from "../../theme/brand-admin";
-import { radius, spacing } from "../../theme/tokens";
+import { spacing } from "../../theme/tokens";
 import { groupPermissions } from "./permissions";
-
-/** Scope levels in the words the rest of the app uses. */
-const SCOPE_LABELS: Record<string, string> = {
-  org: "Organization",
-  school: "Branch",
-  class: "Class",
-  section: "Section",
-};
 
 /**
  * Profile and access (Step 1).
@@ -57,11 +52,11 @@ export function ProfileScreen() {
     [membership],
   );
 
-  const roles = (membership?.roleTypes ?? []).map(roleLabel);
-  const scopes = (membership?.scopeTypes ?? []).map(
-    (scope) => SCOPE_LABELS[scope] ?? roleLabel(scope),
-  );
+  const roles = Array.from(new Set(membership?.roleTypes ?? [])).map(roleLabel);
+  const scopes = (membership?.scopeTypes ?? []).map(scopeLabel);
   const roleSummary = roles.length > 0 ? roles.join(", ") : copy.profile.noRoles;
+  const scopeSummary =
+    scopes.length > 0 ? scopes.join(", ") : copy.profile.noScopes;
 
   return (
     <ScreenFrame
@@ -88,11 +83,13 @@ export function ProfileScreen() {
         <FactRow
           label={copy.profile.organization}
           value={membership?.organization.name ?? copy.more.notSet}
+          icon="school"
           first
         />
         <LinkRow
           title={copy.profile.changePassword}
           detail={copy.profile.changePasswordDetail}
+          icon="key"
           onPress={() =>
             router.push({
               pathname: "/change-password",
@@ -111,35 +108,39 @@ export function ProfileScreen() {
           accessible
           accessibilityLabel={`${copy.profile.roles}: ${roleSummary}`}
         >
-          <ThemedText variant="meta">{copy.profile.roles}</ThemedText>
-          {roles.length > 0 ? (
-            <View style={styles.chips}>
-              {roles.map((role) => (
-                <Pill key={role} label={role} accent />
-              ))}
-            </View>
-          ) : (
-            <ThemedText variant="body">{copy.profile.noRoles}</ThemedText>
-          )}
+          <IconTile name="shield" />
+          <View style={styles.blockText}>
+            <ThemedText variant="bodyStrong">{copy.profile.roles}</ThemedText>
+            {roles.length > 0 ? (
+              <View style={styles.chips}>
+                {roles.map((role) => (
+                  <StatusPill key={role} label={role} tone="neutral" />
+                ))}
+              </View>
+            ) : (
+              <ThemedText variant="meta">{copy.profile.noRoles}</ThemedText>
+            )}
+          </View>
         </View>
 
         <View
           style={[styles.block, styles.divider]}
           accessible
-          accessibilityLabel={`${copy.profile.scopes}: ${
-            scopes.length > 0 ? scopes.join(", ") : copy.profile.noScopes
-          }`}
+          accessibilityLabel={`${copy.profile.scopes}: ${scopeSummary}`}
         >
-          <ThemedText variant="meta">{copy.profile.scopes}</ThemedText>
-          {scopes.length > 0 ? (
-            <View style={styles.chips}>
-              {scopes.map((scope) => (
-                <Pill key={scope} label={scope} />
-              ))}
-            </View>
-          ) : (
-            <ThemedText variant="body">{copy.profile.noScopes}</ThemedText>
-          )}
+          <IconTile name="stack" />
+          <View style={styles.blockText}>
+            <ThemedText variant="bodyStrong">{copy.profile.scopes}</ThemedText>
+            {scopes.length > 0 ? (
+              <View style={styles.chips}>
+                {scopes.map((scope) => (
+                  <StatusPill key={scope} label={scope} tone="neutral" />
+                ))}
+              </View>
+            ) : (
+              <ThemedText variant="meta">{copy.profile.noScopes}</ThemedText>
+            )}
+          </View>
         </View>
 
         <Pressable
@@ -158,11 +159,11 @@ export function ProfileScreen() {
           style={({ pressed }) => [
             styles.block,
             styles.divider,
-            styles.toggle,
             pressed ? styles.pressed : null,
           ]}
         >
-          <View style={styles.toggleText}>
+          <IconTile name="lock" />
+          <View style={styles.blockText}>
             <ThemedText variant="bodyStrong">
               {copy.profile.permissionsLabel}
             </ThemedText>
@@ -180,17 +181,23 @@ export function ProfileScreen() {
         {permissionsOpen ? (
           groups.length > 0 ? (
             groups.map((group) => (
-              <View
-                key={group.resource}
-                style={[styles.group, styles.divider]}
-              >
-                <ThemedText variant="bodyStrong" accessibilityRole="header">
-                  {group.label}
-                </ThemedText>
+              <View key={group.resource} style={[styles.group, styles.divider]}>
+                <View style={styles.groupHead}>
+                  <ThemedText variant="bodyStrong" accessibilityRole="header">
+                    {group.label}
+                  </ThemedText>
+                  <ThemedText variant="caption" color={colors.muted}>
+                    {group.actions.length}
+                  </ThemedText>
+                </View>
                 {group.actions.length > 0 ? (
                   <View style={styles.chips}>
                     {group.actions.map((action) => (
-                      <Pill key={action.key} label={action.label} />
+                      <StatusPill
+                        key={action.key}
+                        label={action.label}
+                        tone="neutral"
+                      />
                     ))}
                   </View>
                 ) : null}
@@ -207,25 +214,6 @@ export function ProfileScreen() {
   );
 }
 
-/** Role keys are enum words, not user copy: `class_teacher` -> "Class teacher". */
-function roleLabel(value: string): string {
-  const words = value.replaceAll("_", " ");
-  return words.length === 0 ? words : words.charAt(0).toUpperCase() + words.slice(1);
-}
-
-function Pill({ label, accent }: { label: string; accent?: boolean }) {
-  return (
-    <View style={[styles.pill, accent ? styles.pillAccent : null]}>
-      <ThemedText
-        variant="caption"
-        color={accent ? colors.accentDeep : colors.muted}
-      >
-        {label}
-      </ThemedText>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   identity: {
     marginTop: spacing.md,
@@ -235,14 +223,21 @@ const styles = StyleSheet.create({
   },
   identityText: {
     flex: 1,
+    gap: spacing.xxs,
   },
   card: {
     marginTop: spacing.sm,
   },
   block: {
-    gap: spacing.sm,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.md,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
+  },
+  blockText: {
+    flex: 1,
+    gap: spacing.xs,
   },
   divider: {
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -253,25 +248,6 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: spacing.xs,
   },
-  pill: {
-    minHeight: 26,
-    justifyContent: "center",
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.full,
-    backgroundColor: colors.field,
-  },
-  pillAccent: {
-    backgroundColor: colors.accentTint,
-  },
-  toggle: {
-    flexDirection: "row",
-    alignItems: "center",
-    minHeight: 56,
-  },
-  toggleText: {
-    flex: 1,
-    gap: spacing.xxs,
-  },
   pressed: {
     backgroundColor: colors.field,
   },
@@ -279,5 +255,11 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
+  },
+  groupHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
   },
 });

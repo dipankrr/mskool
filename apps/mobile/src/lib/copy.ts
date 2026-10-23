@@ -11,6 +11,8 @@ const common = {
   retry: "Retry",
   saving: "Saving…",
   ok: "OK",
+  back: "Back",
+  cancel: "Cancel",
 } as const;
 
 export const copy = {
@@ -95,6 +97,15 @@ export const copy = {
     sessionRetryHint: "Reloads the current session",
     branchHint: "Opens the branch picker",
     branchSheetTitle: "Choose branch",
+    workspace: "Workspace",
+    manage: "Manage",
+    account: "Account",
+    branches: "Branches",
+    branchesDetail: "Names, codes and contacts",
+    branchesHint: "Opens the branch list",
+    sessions: "Sessions",
+    sessionsDetail: "Academic years and the running one",
+    sessionsHint: "Opens the session list",
     profile: "Profile and access",
     profileDetail: "Roles, scopes and permissions",
     profileHint: "Opens your profile and permissions",
@@ -118,6 +129,169 @@ export const copy = {
     changePassword: "Change password",
     changePasswordDetail: "Choose a new password for your account",
     changePasswordHint: "Opens the password form",
+  },
+  /**
+   * Shared form behaviour. The field labels live with their domain; these are
+   * the words every form uses (leaving with unsaved work, a picker's hint).
+   */
+  forms: {
+    optional: "Optional",
+    discardTitle: "Discard changes?",
+    discardBody: "Your changes on this form have not been saved.",
+    keepEditing: "Keep editing",
+    discard: "Discard",
+    invalidSummary: "Check the highlighted fields before saving.",
+    datePickerHint: "Opens the date picker.",
+    dateNotSet: "Choose a date",
+    done: "Done",
+    readOnly:
+      "You can see these details, but changing them needs a permission your account does not have.",
+  },
+  /** Honest refusals for a screen reached without its read/write grant. */
+  denied: {
+    branchesReadTitle: "Branches aren't in your account",
+    branchesReadBody:
+      "Seeing the trust's branches needs the school:read permission. Ask your administrator.",
+    branchesWriteTitle: "Branch management isn't in your account",
+    branchesWriteBody:
+      "Adding, editing or closing a branch needs a school management permission. Ask your administrator.",
+    sessionsReadTitle: "Sessions aren't in your account",
+    sessionsReadBody:
+      "Seeing academic sessions needs the academic_year:read permission. Ask your administrator.",
+    sessionsWriteTitle: "Session management isn't in your account",
+    sessionsWriteBody:
+      "Adding or changing a session needs a session management permission. Ask your administrator.",
+  },
+  /** Chunk B — the trust's branches (`school.*`). */
+  branches: {
+    title: "Branches",
+    add: "Add branch",
+    addTitle: "Add a branch",
+    editTitle: "Edit branch",
+    emptyTitle: "No branches yet",
+    emptyBody: "Add the first school in this trust to begin.",
+    loading: "Loading branches…",
+    noOrgTitle: "No organization yet",
+    noOrgBody:
+      "This account isn't attached to a trust yet. Ask your administrator.",
+    current: "Current",
+    openHint: "Opens this branch's details",
+    sections: {
+      basics: "The basics",
+      contact: "Contact",
+      records: "Records",
+    },
+    fields: {
+      name: "Name",
+      nameHelp: "What people call this school day to day.",
+      legalName: "Registered name",
+      legalNameHelp: "As it appears on official records.",
+      code: "Code",
+      codeHelp: "A short identifier in capitals, used on receipts and reports.",
+      board: "Board",
+      boardHelp: "Which examination board this school follows.",
+      email: "Email",
+      phone: "Phone",
+      city: "City",
+      state: "State",
+      pincode: "Pincode",
+      udiseCode: "UDISE code",
+      udiseHelp: "11 digits, if this school has one.",
+    },
+    boards: {
+      cbse: "CBSE",
+      icse: "ICSE",
+      state: "State board",
+      ib: "IB",
+      unaffiliated: "Not affiliated yet",
+    },
+    closeNoticeTitle: "Close this branch",
+    closeNoticeBody:
+      "It leaves the branch list and staff can no longer work in it. Nothing is deleted — students, payments and results stay exactly as they are. If it is the branch you are using, the app switches to another one.",
+    closeAction: "Close branch",
+    closing: "Closing…",
+    closeConfirmTitle: "Close this branch?",
+    closeConfirmBody:
+      "Staff will no longer be able to work in it, and it leaves the branch list. Students, payments and results stay exactly as they are.",
+    closeConfirm: "Close branch",
+    save: "Save branch",
+    created: "Branch added.",
+    errors: {
+      name: "Enter the branch's name (at least 2 characters).",
+      legalName: "Enter the registered name (at least 2 characters).",
+      code: "Enter a short code for receipts and reports.",
+      codeFormat: "Use capitals, numbers and hyphens only.",
+      email: "Enter a valid email address.",
+      phone: "Enter 10–20 characters, including the country code if needed.",
+      pincode: "Enter a 6-digit pincode that does not start with 0.",
+      udiseCode: "UDISE codes are 11 digits.",
+    },
+  },
+  /** Chunk B — academic years, and the one a branch is running. */
+  sessions: {
+    title: "Sessions",
+    add: "Add session",
+    addTitle: "Add a session",
+    editTitle: "Edit session",
+    emptyTitle: "No session yet",
+    emptyBody:
+      "A session is one academic year. Classes and sections hang off it, so this comes first.",
+    loading: "Loading sessions…",
+    noBranchTitle: "Choose a branch first",
+    noBranchBody:
+      "Sessions belong to one branch. Pick the branch you are working in from More, then come back.",
+    noBranchAction: "Back to More",
+    runningGroup: "Running session",
+    otherGroup: "Other sessions",
+    otherGroupCount: (count: number) =>
+      count === 1 ? "Other sessions · 1" : `Other sessions · ${count}`,
+    statuses: {
+      running: "Running",
+      upcoming: "Upcoming",
+      not_running: "Not running",
+      past: "Past",
+    },
+    openHint: "Opens this session",
+    noCurrentTitle: "No session is running",
+    noCurrentBody:
+      "Staff cannot mark attendance until one is. Open a session below and make it the running one.",
+    historyHiddenTitle: "Older sessions are hidden",
+    historyHiddenBody:
+      "Your access covers the running session only. Ask an administrator if you need a past year.",
+    startYearLabel: "Which year does it start in?",
+    startYearHelp:
+      "Picking a year fills 1 April to 31 March and names the session. You can change the dates after.",
+    detailsGroup: "Session details",
+    alreadyAdded: "Already added",
+    fields: {
+      name: "Name",
+      nameHelp: "Usually the two years it spans, like 2026-27.",
+      startDate: "Starts on",
+      endDate: "Ends on",
+      datesHelp: "Both dates are inclusive.",
+    },
+    runningNoticeTitle: "This is the running session",
+    runningNoticeBody: "This is what every colleague sees by default.",
+    makeRunningTitle: "Make this the running session",
+    makeRunningBody:
+      "Every colleague's default view moves to this session. The one running now becomes a past session. Nothing is deleted, and you can switch back.",
+    makeRunningAction: "Make this the running session",
+    makeRunningDirty:
+      "Save your changes first. Switching the running session cannot include dates you have not saved yet.",
+    makeRunningConfirmTitle: "Make this the running session?",
+    makeRunningConfirmBody:
+      "Every colleague's default view moves here, and the session running now becomes past. Nothing is deleted.",
+    makeRunningConfirm: "Make it running",
+    makingRunning: "Changing the running session…",
+    save: "Save session",
+    errors: {
+      name: "Give the session a name (4–20 characters).",
+      startDate: "Choose a start date.",
+      endDate: "Choose an end date.",
+      dateOrder: "The session cannot end before it starts.",
+      overlap: (name: string) =>
+        `These dates overlap ${name}. A branch can run only one session at a time.`,
+    },
   },
   attendance: {
     /** Screen and alert title (the tab label lives in `nav`). */

@@ -4,6 +4,8 @@ import type { StyleProp, ViewStyle } from "react-native";
 import { colors } from "../theme/brand-admin";
 import { spacing } from "../theme/tokens";
 import { AppIcon } from "./app-icon";
+import type { AppIconName } from "./app-icon";
+import { IconTile } from "./icon-tile";
 import { ThemedText } from "./themed-text";
 
 /**
@@ -13,10 +15,15 @@ import { ThemedText } from "./themed-text";
  * row grows a chevron, a 48 dp touch floor, press feedback and a button role.
  * A single-branch teacher gets a plain line — no affordance for a picker that
  * would have one option.
+ *
+ * An optional 32 pt icon tile gives the eye a scanning anchor without turning
+ * the row into a link — rows that go somewhere use `LinkRow`.
  */
 export function FactRow({
   label,
   value,
+  icon,
+  iconTone = "neutral",
   first,
   onPress,
   accessibilityHint,
@@ -25,6 +32,10 @@ export function FactRow({
 }: {
   label: string;
   value: string;
+  /** Leading decorative tile; omit for a plain line. */
+  icon?: AppIconName;
+  /** Accent marks the branch/session the app is working in. */
+  iconTone?: "neutral" | "accent";
   /** Suppresses the divider above the row (the first row in a card). */
   first?: boolean;
   onPress?: () => void;
@@ -35,6 +46,7 @@ export function FactRow({
 }) {
   const body = (
     <>
+      {icon ? <IconTile name={icon} tone={iconTone} /> : null}
       <ThemedText variant="body">{label}</ThemedText>
       <ThemedText
         variant="bodyStrong"
@@ -86,7 +98,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: spacing.md,
-    minHeight: 48,
+    minHeight: 56,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
   },

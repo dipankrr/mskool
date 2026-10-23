@@ -94,6 +94,50 @@ export function formatIsoDate(iso: string | null | undefined): string {
 }
 
 /**
+ * ISO `2026-04-01` → `1 Apr 2026` — the reading format for entity cards,
+ * where a slash date makes the eye decode three numbers before it knows what
+ * it is looking at. Unparseable input → empty value.
+ */
+export function formatReadableDate(iso: string | null | undefined): string {
+  if (!isIsoDate(iso)) return EMPTY_VALUE;
+  const day = Number(iso.slice(8, 10));
+  const month = MONTHS_SHORT[Number(iso.slice(5, 7)) - 1];
+  return `${day} ${month} ${iso.slice(0, 4)}`;
+}
+
+/**
+ * `1 Apr 2025 – 31 Mar 2026`, with an en dash so the range does not read as
+ * part of either date. One missing end degrades to the one date that exists.
+ */
+export function formatReadableDateRange(
+  startIso: string | null | undefined,
+  endIso: string | null | undefined,
+): string {
+  if (!isIsoDate(startIso)) return formatReadableDate(endIso);
+  if (!isIsoDate(endIso)) return formatReadableDate(startIso);
+  return `${formatReadableDate(startIso)} – ${formatReadableDate(endIso)}`;
+}
+
+/**
+ * ISO → a Date at local midnight, for the native pickers. Never
+ * `new Date(iso)`: that parses as UTC and lands on the previous day west of
+ * Greenwich — the reader's calendar is the only one a picker may show.
+ */
+export function isoToLocalDate(iso: string | null | undefined): Date | null {
+  if (!isIsoDate(iso)) return null;
+  return new Date(
+    Number(iso.slice(0, 4)),
+    Number(iso.slice(5, 7)) - 1,
+    Number(iso.slice(8, 10)),
+  );
+}
+
+/** A picker's Date → ISO from its LOCAL parts, the inverse of the above. */
+export function localDateToIso(date: Date): string {
+  return `${pad(date.getFullYear(), 4)}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/**
  * Today, in the reader's own calendar.
  *
  * Local parts, not `toISOString().slice(0, 10)`: in India that would return

@@ -11,6 +11,8 @@ import {
   shadow,
   spacing,
 } from "../theme/tokens";
+import { AppIcon } from "./app-icon";
+import type { AppIconName } from "./app-icon";
 import { ThemedText } from "./themed-text";
 
 /**
@@ -29,6 +31,7 @@ import { ThemedText } from "./themed-text";
 export function CapsuleButton({
   title,
   onPress,
+  icon,
   variant = "primary",
   size = "cta",
   loading = false,
@@ -38,6 +41,8 @@ export function CapsuleButton({
 }: {
   title: string;
   onPress: () => void;
+  /** Optional leading glyph; the label remains the control's name. */
+  icon?: AppIconName;
   variant?: "primary" | "secondary" | "destructive" | "onAccent";
   size?: "cta" | "compact" | "mini";
   loading?: boolean;
@@ -75,14 +80,17 @@ export function CapsuleButton({
       {loading ? (
         <ActivityIndicator color={fg} />
       ) : (
-        <ThemedText
-          variant="bodyStrong"
-          color={fg}
-          numberOfLines={1}
-          style={size === "cta" ? styles.ctaLabel : styles.smallLabel}
-        >
-          {title}
-        </ThemedText>
+        <>
+          {icon ? <AppIcon name={icon} size={18} color={fg} /> : null}
+          <ThemedText
+            variant="bodyStrong"
+            color={fg}
+            numberOfLines={1}
+            style={size === "cta" ? styles.ctaLabel : styles.smallLabel}
+          >
+            {title}
+          </ThemedText>
+        </>
       )}
     </Pressable>
   );
@@ -122,8 +130,10 @@ const sizeStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   base: {
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: spacing.sm,
     alignSelf: "flex-start",
   },
   secondaryBorder: {

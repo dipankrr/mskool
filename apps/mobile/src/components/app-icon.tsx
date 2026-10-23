@@ -25,6 +25,21 @@ const iconMap = {
   school: { ios: "graduationcap.fill", android: "school" },
   students: { ios: "person.2.fill", android: "people" },
   person: { ios: "person.fill", android: "person" },
+  /** A branch (a school under the trust). */
+  branches: { ios: "building.2.fill", android: "business" },
+  /** An academic session/year. */
+  sessions: { ios: "calendar.badge.clock", android: "date-range" },
+  /** Management surfaces as a group. */
+  manage: { ios: "slider.horizontal.3", android: "tune" },
+  /** The signed-in identity card / profile destination. */
+  profileCard: { ios: "person.text.rectangle.fill", android: "badge" },
+  shield: { ios: "checkmark.shield.fill", android: "verified-user" },
+  key: { ios: "key.fill", android: "vpn-key" },
+  logout: { ios: "rectangle.portrait.and.arrow.right", android: "logout" },
+  add: { ios: "plus", android: "add" },
+  warning: { ios: "exclamationmark.triangle.fill", android: "warning" },
+  stack: { ios: "square.stack.3d.up.fill", android: "layers" },
+  lock: { ios: "lock.fill", android: "lock" },
   chevronRight: { ios: "chevron.right", android: "chevron-right" },
   chevronLeft: { ios: "chevron.left", android: "chevron-left" },
   chevronDown: { ios: "chevron.down", android: "expand-more" },

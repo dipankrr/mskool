@@ -79,6 +79,16 @@ export function useActiveBranchName(): string | null {
   return membership?.schools.find((s) => s.id === schoolId)?.name ?? null;
 }
 
+/** The active organization's name, from the same settled membership data. */
+export function useActiveOrganizationName(): string | null {
+  const { me } = useMe();
+  const { organizationId } = useActiveContext();
+  return (
+    me?.memberships.find((m) => m.organization.id === organizationId)
+      ?.organization.name ?? null
+  );
+}
+
 export function ActiveContextProvider({ children }: { children: ReactNode }) {
   const { me, isFetched } = useMe();
   const [organizationId, setOrganizationId] = useState<string | null>(null);
