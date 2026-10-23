@@ -9,36 +9,45 @@ import { CapsuleButton } from "../../components/capsule-button";
 import { ChoiceSheet } from "../../components/choice-sheet";
 import { FactRow } from "../../components/fact-row";
 import { LinkRow } from "../../components/link-row";
+import { SectionLabel } from "../../components/section-label";
+import { StatusPill } from "../../components/status-pill";
 import { useTabBarSpace } from "../../components/tab-bar";
 import { ThemedText } from "../../components/themed-text";
 import {
   useActiveBranchName,
   useActiveContext,
+  useActiveOrganizationName,
 } from "../../hooks/use-active-context";
 import { useMe } from "../../hooks/use-me";
+import { usePermissions } from "../../hooks/use-permissions";
 import { logout } from "../../lib/auth";
 import { copy } from "../../lib/copy";
 import { thrownMessage } from "../../lib/errors";
+import { roleLabel } from "../../lib/labels";
 import { colors } from "../../theme/brand-admin";
 import { gutter, spacing } from "../../theme/tokens";
 
 /**
- * "More" — identity, the context this session is running in, and the account
- * destinations that need no permission of their own.
+ * "More" — identity, the context this session is running in, the management
+ * surfaces the caller's permissions unlock, and the account destinations that
+ * need no permission of their own.
  *
  * The branch row is a real switcher only when the org grants more than one
  * branch: one branch is a fact, not a choice, so it stays a plain line with no
- * chevron. The session is always the branch's current one (ADR-049): changing
+ * chevron. The session is always the branch's current one (ADR-047): changing
  * it is an administrative act in Sessions management, never a personal viewing
  * mode, so this row is a label — and a retry target when the session list is
  * the thing that failed.
  *
- * Profile and access is not gated: every staff member may see their own roles,
- * scopes and permissions. That is what makes an org-customized permission set
- * legible on a phone.
+ * Manage appears only when a write hint exists. Every gate is a permission
+ * string (ADR-044); the role pills are labels, never gates. Profile and access
+ * is not gated: every staff member may see their own roles, scopes and
+ * permissions, which is what makes an org-customized permission set legible on
+ * a phone.
  */
 export function MoreScreen() {
   const { me } = useMe();
+  const { has } = usePermissions();
   const {
     organizationId,
     schoolId,
@@ -51,6 +60,7 @@ export function MoreScreen() {
     select,
   } = useActiveContext();
   const branchName = useActiveBranchName();
+  const organizationName = useActiveOrganizationName();
   const tabSpace = useTabBarSpace();
   const [signingOut, setSigningOut] = useState(false);
   const [branchSheetOpen, setBranchSheetOpen] = useState(false);
@@ -66,6 +76,20 @@ export function MoreScreen() {
     });
   };
 
+  const membership =
+    me?.memberships.find((m) => m.organization.id === organizationId) ??
+    me?.memberships[0] ??
+    null;
+  const roles = Array.from(new Set(membership?.roleTypes ?? []));
+
+  const canManageBranches =
+    has("school:read") &&
+    (has("school:create") || has("school:update") || has("school:delete"));
+  const canManageSessions =
+    has("academic_year:read") &&
+    (has("academic_year:create") || has("academic_year:update"));
+  const showManage = canManageBranches || canManageSessions;
+
   const canSwitchBranch = branches.length > 1;
   const branchValue = ready ? branchName ?? copy.more.notSet : copy.more.loading;
   const sessionValue = yearError
@@ -79,26 +103,45 @@ export function MoreScreen() {
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: tabSpace }]}
       >
-        <ThemedText variant="title">{copy.more.title}</ThemedText>
+        <View>
+          <ThemedText variant="title">{copy.more.title}</ThemedText>
+          {organizationName ? (
+            <ThemedText variant="meta" style={styles.org}>
+              {organizationName}
+            </ThemedText>
+          ) : null}
+        </View>
 
         <Card style={styles.identity}>
-          <Avatar name={me?.user.name ?? ""} size="lg" />
-          <View style={styles.identityText}>
-            <ThemedText variant="name" numberOfLines={1}>
-              {me?.user.name ?? ""}
-            </ThemedText>
-            {me?.user.email ? (
-              <ThemedText variant="meta" numberOfLines={1}>
-                {me.user.email}
+          <View style={styles.identityTop}>
+            <Avatar name={me?.user.name ?? ""} size="lg" />
+            <View style={styles.identityText}>
+              <ThemedText variant="name" numberOfLines={1}>
+                {me?.user.name ?? ""}
               </ThemedText>
-            ) : null}
+              {me?.user.email ? (
+                <ThemedText variant="meta" numberOfLines={1}>
+                  {me.user.email}
+                </ThemedText>
+              ) : null}
+            </View>
           </View>
+          {roles.length > 0 ? (
+            <View style={styles.roles}>
+              {roles.map((role) => (
+                <StatusPill key={role} label={roleLabel(role)} tone="neutral" />
+              ))}
+            </View>
+          ) : null}
         </Card>
 
-        <Card padless style={styles.card}>
+        <SectionLabel>{copy.more.workspace}</SectionLabel>
+        <Card padless>
           <FactRow
             label={copy.more.branch}
             value={branchValue}
+            icon="branches"
+            iconTone="accent"
             first
             onPress={
               canSwitchBranch ? () => setBranchSheetOpen(true) : undefined
@@ -111,6 +154,8 @@ export function MoreScreen() {
           <FactRow
             label={copy.more.session}
             value={sessionValue}
+            icon="sessions"
+            iconTone="accent"
             onPress={yearError ? retryYears : undefined}
             accessibilityHint={
               yearError ? copy.more.sessionRetryHint : undefined
@@ -119,11 +164,42 @@ export function MoreScreen() {
           />
         </Card>
 
-        <Card padless style={styles.card}>
+        {showManage ? (
+          <>
+            <SectionLabel>{copy.more.manage}</SectionLabel>
+            <Card padless>
+              {canManageBranches ? (
+                <LinkRow
+                  title={copy.more.branches}
+                  detail={copy.more.branchesDetail}
+                  icon="branches"
+                  onPress={() => router.push("/branches")}
+                  accessibilityHint={copy.more.branchesHint}
+                  first
+                  testID="more-branches"
+                />
+              ) : null}
+              {canManageSessions ? (
+                <LinkRow
+                  title={copy.more.sessions}
+                  detail={copy.more.sessionsDetail}
+                  icon="sessions"
+                  onPress={() => router.push("/sessions")}
+                  accessibilityHint={copy.more.sessionsHint}
+                  first={!canManageBranches}
+                  testID="more-sessions"
+                />
+              ) : null}
+            </Card>
+          </>
+        ) : null}
+
+        <SectionLabel>{copy.more.account}</SectionLabel>
+        <Card padless>
           <LinkRow
             title={copy.more.profile}
             detail={copy.more.profileDetail}
-            icon="person"
+            icon="profileCard"
             onPress={() => router.push("/profile")}
             accessibilityHint={copy.more.profileHint}
             first
@@ -133,6 +209,7 @@ export function MoreScreen() {
 
         <CapsuleButton
           title={copy.auth.signOutAction}
+          icon="logout"
           variant="secondary"
           onPress={handleSignOut}
           loading={signingOut}
@@ -174,20 +251,29 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     gap: spacing.md,
   },
+  org: {
+    marginTop: spacing.xxs,
+  },
   identity: {
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
+    gap: spacing.md,
+  },
+  identityTop: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
   },
   identityText: {
     flex: 1,
+    gap: spacing.xxs,
   },
-  card: {
-    marginTop: spacing.xs,
+  roles: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
   },
   signOut: {
     alignSelf: "stretch",
-    marginTop: spacing.sm,
+    marginTop: spacing.xxl,
   },
 });
