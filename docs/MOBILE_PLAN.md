@@ -614,7 +614,7 @@ short, repeated teacher task before the more complex assignment workflow.
 | 0 | Foundation (native auth/API proof + prototype review) | staff login, `me.get` | in progress (Android build + walk done; findings fixed + re-walked; build durability in-repo — prebuild safe; committed 2026-10-17; **prototype review PASSED 2026-10-18 — shell build next**; iOS walk parked 2026-10-20) |
 | 1 | Home + context + profile | `me` 1 · `school` 5 · `academic` years 6 | open |
 | 2 | Students + academic setup (§7) | `student` 7 · `enrollment` 6 · `guardian` 4 · `portalAccess` 4 · `academic` classes 5 + sections 5 · `subject` 5 · `term` 4 · `assignment` 10 | open |
-| 3 | Attendance (§8) | `attendance.*` 12 | complete (mark/status walked 2026-10-18; summary + section switcher 2026-10-19; calendar generate/days, policy, periods 2026-10-20; report exports remain open) |
+| 3 | Attendance (§8) | `attendance.*` 13 | complete (mark/status walked 2026-10-18; summary + section switcher 2026-10-19; calendar generate/days, policy, periods 2026-10-20; report exports remain open) |
 | 4 | Homework manage (§9) | `homework.*` staff 28 | open |
 | 5 | Fees (§10) | `fees.*` 38 | open |
 | 6 | Staff + roles + ID cards + feed (§11) | `staff` 8 · `role` 8 · `idCard` 10 | open |
@@ -710,7 +710,7 @@ subjects → mappings → staffing) with `scope_nodes` written in-transaction
 
 ---
 
-## 8. Step 3 — Attendance (12)
+## 8. Step 3 — Attendance (13)
 
 Source: `attendance.router.ts`. Calendar is the marking gate; reports read
 `daily_attendance_status` only (hard rule 5); past-date edits carry the
@@ -723,6 +723,7 @@ ADR-030 reason.
 | periods list / byId / create / update (4) | `/attendance/periods`, `/{id}` | `(staff)/attendance/manage/periods` + `period-edit` | ☑ (walked 2026-10-20); section-scoped writes work for the class teacher (6-A); no delete endpoint in v1 |
 | mark (1) | `POST /attendance/mark` | `(staff)/attendance` marking screen | ☑ (device-walked 2026-10-18) |
 | status (1) | `GET /attendance/status` | `(staff)/attendance` marking screen | ☑ (device-walked 2026-10-18) |
+| statusHistory (1) | `GET /attendance/status-history` | `(staff)/attendance` recent strip, day-sheet marked dots, Summary student month map | ☑ read 2026-10-23; phone-walked and E2E-green |
 | summary (1) | `GET /attendance/summary` | `(staff)/attendance` Summary segment (yearly, per section; section switcher on the shared title row) | ☑ (device-walked 2026-10-19) |
 
 Acceptance: a teacher marks a section's day in under a minute on 4G;
