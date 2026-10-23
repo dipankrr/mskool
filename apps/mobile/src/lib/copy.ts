@@ -10,6 +10,7 @@
 const common = {
   retry: "Retry",
   saving: "Saving…",
+  ok: "OK",
 } as const;
 
 export const copy = {
@@ -41,8 +42,17 @@ export const copy = {
     newPasswordLabel: "New password",
     confirmPasswordLabel: "Confirm new password",
     passwordMismatch: "The new passwords don't match.",
+    currentPasswordMismatch:
+      "That current password doesn't match. Check it and try again.",
     changeAction: "Set password",
     changing: "Setting password…",
+    /** Voluntary change, entered from Profile — no "you cannot skip" warning. */
+    voluntaryChangeTitle: "Change password",
+    voluntaryChangeBody: "Enter your current password, then choose a new one.",
+    changePasswordAction: "Change password",
+    backToProfile: "Back to profile",
+    passwordChangedTitle: "Password changed",
+    passwordChangedBody: "Use your new password the next time you sign in.",
     signOutAction: "Sign out",
     signOutFailed: "Couldn't sign out. Check your connection and try again.",
   },
@@ -79,6 +89,35 @@ export const copy = {
     branch: "Branch",
     session: "Session",
     notSet: "Not set",
+    loading: "Loading…",
+    /** Pressable variant of the session row: the value says what a tap does. */
+    sessionRetry: "Couldn't load · Tap to retry",
+    sessionRetryHint: "Reloads the current session",
+    branchHint: "Opens the branch picker",
+    branchSheetTitle: "Choose branch",
+    profile: "Profile and access",
+    profileDetail: "Roles, scopes and permissions",
+    profileHint: "Opens your profile and permissions",
+  },
+  profile: {
+    title: "Profile and access",
+    back: "Back",
+    account: "Account",
+    organization: "Organization",
+    access: "Your access",
+    roles: "Roles",
+    scopes: "Scopes",
+    permissionsLabel: "Permissions",
+    noRoles: "No roles assigned",
+    noScopes: "No scope recorded",
+    noPermissions: "No permissions granted. Ask your administrator.",
+    permissionCount: (count: number) =>
+      count === 1 ? "1 permission" : `${count} permissions`,
+    showPermissions: "Show every permission on this account",
+    hidePermissions: "Hide the permission list",
+    changePassword: "Change password",
+    changePasswordDetail: "Choose a new password for your account",
+    changePasswordHint: "Opens the password form",
   },
   attendance: {
     /** Screen and alert title (the tab label lives in `nav`). */

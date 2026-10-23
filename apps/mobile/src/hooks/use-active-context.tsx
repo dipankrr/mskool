@@ -6,6 +6,7 @@ import type { AppRouter } from "@repo/trpc";
 
 import { trpc } from "../lib/trpc";
 import { useMe } from "./use-me";
+import type { Me } from "./use-me";
 
 /**
  * Organization → granted branch → academic year (Step 1).
@@ -27,14 +28,21 @@ const ORG_KEY = "mskool.active-org";
 const SCHOOL_KEY = "mskool.active-school";
 
 export type AcademicYear = inferRouterOutputs<AppRouter>["academic"]["year"]["list"][number];
+export type Branch = Me["memberships"][number]["schools"][number];
 
 type ActiveContextValue = {
   organizationId: string | null;
   schoolId: string | null;
+  /** Every branch the active org grants, ordered by the server (name). */
+  branches: Branch[];
   /** The active branch's current session; null while unset, unreadable or loading. */
   academicYear: AcademicYear | null;
   /** True while the session list is genuinely in flight for a resolved org. */
   yearPending: boolean;
+  /** True when the session list failed; the caller offers a retry. */
+  yearError: boolean;
+  /** Reloads the session list (the More screen's retry). */
+  retryYears: () => void;
   /** True once `me` has settled (data or honest error) — guards wait for this. */
   ready: boolean;
   select: (organizationId: string, schoolId: string) => void;
@@ -44,8 +52,11 @@ type ActiveContextValue = {
 const ActiveContext = createContext<ActiveContextValue>({
   organizationId: null,
   schoolId: null,
+  branches: [],
   academicYear: null,
   yearPending: false,
+  yearError: false,
+  retryYears: () => {},
   ready: false,
   select: () => {},
   clear: () => {},
@@ -103,14 +114,30 @@ export function ActiveContextProvider({ children }: { children: ReactNode }) {
     };
   }, [me, isFetched]);
 
+  /**
+   * The org's sessions, fetched once and narrowed to the active branch below.
+   *
+   * `schoolId` is deliberately NOT in the input: the permissive list returns
+   * every session the caller's grants cover, and keeping it out of the query
+   * key means a branch switch resolves the new year from data already in hand
+   * instead of flashing a loading state. The `schoolId` filter in `useMemo` is
+   * what makes the active-year pick branch-correct.
+   */
   const yearQuery = trpc.academic.year.list.useQuery(
-    { organizationId: organizationId ?? "", ...(schoolId ? { schoolId } : {}) },
+    { organizationId: organizationId ?? "" },
     {
       enabled: hydrated && Boolean(organizationId),
       // A reference list: the year changes at most between sessions.
       staleTime: 300_000,
     },
   );
+
+  const branches = useMemo(() => {
+    const membership = me?.memberships.find(
+      (candidate) => candidate.organization.id === organizationId,
+    );
+    return membership?.schools ?? [];
+  }, [me, organizationId]);
 
   // Exactly one `isCurrent` flag, or null. Two flags in one branch is data
   // the app must not guess about — screens render the honest "not set" state
@@ -124,6 +151,11 @@ export function ActiveContextProvider({ children }: { children: ReactNode }) {
   }, [yearQuery.data, schoolId]);
 
   const yearPending = Boolean(organizationId) && yearQuery.isPending;
+  const yearError = yearQuery.isError;
+  const { refetch: refetchYears } = yearQuery;
+  const retryYears = useCallback(() => {
+    void refetchYears();
+  }, [refetchYears]);
 
   const select = useCallback((orgId: string, schoolId: string) => {
     setOrganizationId(orgId);
@@ -148,13 +180,27 @@ export function ActiveContextProvider({ children }: { children: ReactNode }) {
     () => ({
       organizationId,
       schoolId,
+      branches,
       academicYear,
       yearPending,
+      yearError,
+      retryYears,
       ready: hydrated,
       select,
       clear,
     }),
-    [organizationId, schoolId, academicYear, yearPending, hydrated, select, clear],
+    [
+      organizationId,
+      schoolId,
+      branches,
+      academicYear,
+      yearPending,
+      yearError,
+      retryYears,
+      hydrated,
+      select,
+      clear,
+    ],
   );
 
   return <ActiveContext.Provider value={value}>{children}</ActiveContext.Provider>;

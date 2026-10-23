@@ -1,10 +1,14 @@
 import { useState } from "react";
 import { Alert, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { router } from "expo-router";
 
 import { Avatar } from "../../components/avatar";
 import { Card } from "../../components/card";
 import { CapsuleButton } from "../../components/capsule-button";
+import { ChoiceSheet } from "../../components/choice-sheet";
+import { FactRow } from "../../components/fact-row";
+import { LinkRow } from "../../components/link-row";
 import { useTabBarSpace } from "../../components/tab-bar";
 import { ThemedText } from "../../components/themed-text";
 import {
@@ -19,17 +23,37 @@ import { colors } from "../../theme/brand-admin";
 import { gutter, spacing } from "../../theme/tokens";
 
 /**
- * "More" — identity, the context this session is running in, and sign out.
- * Everything shown is real: no placeholder rows (a tab that cannot do its
- * journey yet is incomplete — the Students entry arrives with its slice, and
- * the branch/session lines become the switchers when switching ships).
+ * "More" — identity, the context this session is running in, and the account
+ * destinations that need no permission of their own.
+ *
+ * The branch row is a real switcher only when the org grants more than one
+ * branch: one branch is a fact, not a choice, so it stays a plain line with no
+ * chevron. The session is always the branch's current one (ADR-049): changing
+ * it is an administrative act in Sessions management, never a personal viewing
+ * mode, so this row is a label — and a retry target when the session list is
+ * the thing that failed.
+ *
+ * Profile and access is not gated: every staff member may see their own roles,
+ * scopes and permissions. That is what makes an org-customized permission set
+ * legible on a phone.
  */
 export function MoreScreen() {
   const { me } = useMe();
-  const { academicYear } = useActiveContext();
+  const {
+    organizationId,
+    schoolId,
+    branches,
+    academicYear,
+    yearPending,
+    yearError,
+    retryYears,
+    ready,
+    select,
+  } = useActiveContext();
   const branchName = useActiveBranchName();
   const tabSpace = useTabBarSpace();
   const [signingOut, setSigningOut] = useState(false);
+  const [branchSheetOpen, setBranchSheetOpen] = useState(false);
 
   const handleSignOut = () => {
     setSigningOut(true);
@@ -41,6 +65,14 @@ export function MoreScreen() {
       Alert.alert(copy.more.title, thrownMessage(error));
     });
   };
+
+  const canSwitchBranch = branches.length > 1;
+  const branchValue = ready ? branchName ?? copy.more.notSet : copy.more.loading;
+  const sessionValue = yearError
+    ? copy.more.sessionRetry
+    : !ready || yearPending
+      ? copy.more.loading
+      : academicYear?.name ?? copy.more.notSet;
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -63,11 +95,39 @@ export function MoreScreen() {
           </View>
         </Card>
 
-        <Card style={styles.facts}>
-          <FactRow label={copy.more.branch} value={branchName ?? copy.more.notSet} first />
+        <Card padless style={styles.card}>
+          <FactRow
+            label={copy.more.branch}
+            value={branchValue}
+            first
+            onPress={
+              canSwitchBranch ? () => setBranchSheetOpen(true) : undefined
+            }
+            accessibilityHint={
+              canSwitchBranch ? copy.more.branchHint : undefined
+            }
+            testID="more-branch"
+          />
           <FactRow
             label={copy.more.session}
-            value={academicYear?.name ?? copy.more.notSet}
+            value={sessionValue}
+            onPress={yearError ? retryYears : undefined}
+            accessibilityHint={
+              yearError ? copy.more.sessionRetryHint : undefined
+            }
+            testID="more-session"
+          />
+        </Card>
+
+        <Card padless style={styles.card}>
+          <LinkRow
+            title={copy.more.profile}
+            detail={copy.more.profileDetail}
+            icon="person"
+            onPress={() => router.push("/profile")}
+            accessibilityHint={copy.more.profileHint}
+            first
+            testID="more-profile"
           />
         </Card>
 
@@ -80,27 +140,27 @@ export function MoreScreen() {
           style={styles.signOut}
         />
       </ScrollView>
-    </SafeAreaView>
-  );
-}
 
-/** A label + value line inside the facts card; `first` suppresses the divider. */
-function FactRow({
-  label,
-  value,
-  first,
-}: {
-  label: string;
-  value: string;
-  first?: boolean;
-}) {
-  return (
-    <View style={[styles.factRow, first ? null : styles.factRowDivider]}>
-      <ThemedText variant="body">{label}</ThemedText>
-      <ThemedText variant="bodyStrong" color={colors.muted} numberOfLines={1}>
-        {value}
-      </ThemedText>
-    </View>
+      <ChoiceSheet
+        visible={branchSheetOpen}
+        title={copy.more.branchSheetTitle}
+        options={branches.map((branch) => ({
+          id: branch.id,
+          label: branch.name,
+          detail:
+            [branch.code, branch.city].filter(Boolean).join(" · ") || null,
+        }))}
+        currentId={schoolId ?? ""}
+        onSelect={(id) => {
+          if (organizationId) {
+            select(organizationId, id);
+          }
+          setBranchSheetOpen(false);
+        }}
+        onDismiss={() => setBranchSheetOpen(false)}
+        testIDPrefix="branch-option"
+      />
+    </SafeAreaView>
   );
 }
 
@@ -123,21 +183,11 @@ const styles = StyleSheet.create({
   identityText: {
     flex: 1,
   },
-  facts: {
-    paddingVertical: 0,
-  },
-  factRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  factRowDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.hairline,
+  card: {
+    marginTop: spacing.xs,
   },
   signOut: {
     alignSelf: "stretch",
+    marginTop: spacing.sm,
   },
 });
