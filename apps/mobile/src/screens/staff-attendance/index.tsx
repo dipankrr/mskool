@@ -44,8 +44,9 @@ export function AttendanceScreen() {
 
   // Which section this tab shows — the shared hook, so the manage surfaces
   // (chunk 3) resolve the same one from the same params.
-  const { sectionsQuery, section, sectionLabel, sectionOptions } =
-    useAttendanceSection(params.sectionId);
+  const { sectionsQuery, section, sectionLabel, sectionOptions } = useAttendanceSection(
+    params.sectionId,
+  );
 
   const yearState = academicYear ? "ready" : yearPending ? "loading" : "none";
 
@@ -62,10 +63,7 @@ export function AttendanceScreen() {
     );
   }
 
-  if (
-    yearState === "loading" ||
-    (yearState === "ready" && sectionsQuery.isPending)
-  ) {
+  if (yearState === "loading" || (yearState === "ready" && sectionsQuery.isPending)) {
     return (
       <Frame>
         <Skeleton width={150} height={30} />
@@ -85,9 +83,7 @@ export function AttendanceScreen() {
       <Frame>
         <ThemedText variant="title">{copy.attendance.title}</ThemedText>
         <Card style={styles.gapTopLg}>
-          <ThemedText variant="bodyStrong">
-            {copy.session.noYearTitle}
-          </ThemedText>
+          <ThemedText variant="bodyStrong">{copy.session.noYearTitle}</ThemedText>
           <ThemedText variant="meta" style={styles.cardBody}>
             {copy.session.noYearBody}
           </ThemedText>
@@ -141,11 +137,7 @@ export function AttendanceScreen() {
             onPress={() => setSwitcherOpen(true)}
             style={styles.titleRow}
           >
-            <ThemedText
-              variant="title"
-              numberOfLines={1}
-              style={styles.titleText}
-            >
+            <ThemedText variant="title" numberOfLines={1} style={styles.titleText}>
               {title}
             </ThemedText>
             <AppIcon name="chevronDown" size={18} color={colors.chevron} />
@@ -163,10 +155,7 @@ export function AttendanceScreen() {
                   params: { sectionId: section.id },
                 })
               }
-              style={({ pressed }) => [
-                styles.gear,
-                pressed ? styles.gearPressed : null,
-              ]}
+              style={({ pressed }) => [styles.gear, pressed ? styles.gearPressed : null]}
             >
               <AppIcon name="settings" size={20} color={colors.muted} />
             </Pressable>
@@ -183,6 +172,7 @@ export function AttendanceScreen() {
             key={`summary-${section.id}`}
             sectionId={section.id}
             visible={view === "summary"}
+            onStartMarking={() => setView("mark")}
           />
         </PanelFrame>
       </View>
@@ -205,13 +195,7 @@ export function AttendanceScreen() {
  * display-hidden and closed to assistive tech, so nothing invisible is
  * reachable and nothing visible is stale.
  */
-function PanelFrame({
-  visible,
-  children,
-}: {
-  visible: boolean;
-  children: ReactNode;
-}) {
+function PanelFrame({ visible, children }: { visible: boolean; children: ReactNode }) {
   return (
     <View
       style={[styles.flex, visible ? null : styles.hidden]}
@@ -229,9 +213,7 @@ function Frame({ children }: { children: ReactNode }) {
   const tabSpace = useTabBarSpace();
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: tabSpace }]}
-      >
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: tabSpace }]}>
         {children}
       </ScrollView>
     </SafeAreaView>
@@ -265,8 +247,8 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   gear: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.full,

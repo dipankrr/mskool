@@ -39,8 +39,16 @@ name: 01 — class teacher marks and saves
 # Clock was pinned by the runner; the default day is Fri 6 Mar 2026.
 - assertVisible: "Fri 6 Mar"
 
-# Aditi is the only sectioned 6-A student after the clean seed. The unmarked
-# day defaults to present; one tap makes her absent, which enables Save.
+# The blank register shows no default statuses. The save CTA is the progress
+# indicator: ghost at 0, filled at 1 of 1. Its visible count is gone; the
+# counts below come from the button's accessibility label.
+- assertVisible: "Not marked"
+- assertVisible: "Save attendance"
+- assertVisible: "Save attendance. 0 of 1 marked"
+- tapOn:
+    id: "bulk-present"
+- assertVisible: "Save attendance. 1 of 1 marked"
+# One tap on a present row toggles it to absent so the day has a real mix.
 - tapOn: "Aditi Sharma"
 
 - tapOn:
@@ -50,7 +58,8 @@ name: 01 — class teacher marks and saves
     visible:
       id: "attendance-saved"
     timeout: 30000
-- assertVisible: "Attendance saved"
+- assertVisible: "Attendance done"
+- assertVisible: "1 student marked for this day."
 
 - tapOn:
     id: "attendance-view-summary"
@@ -58,4 +67,12 @@ name: 01 — class teacher marks and saves
 - extendedWaitUntil:
     visible: "1 absent"
     timeout: 30000
+# Tinted status cards keep their full count in the accessibility label.
 - assertVisible: "1 absent"
+# Half day is a visible bucket even before the first half-day mark exists.
+- assertVisible: "Half day"
+- scrollUntilVisible:
+    element:
+      text: "Most absent"
+    direction: DOWN
+- assertVisible: "Most absent"

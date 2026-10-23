@@ -76,7 +76,13 @@ export function DayEditorSheet({
   }, [visible]);
 
   return (
-    <BottomSheetModal ref={ref} enablePanDownToClose onDismiss={onDismiss}>
+    <BottomSheetModal
+      ref={ref}
+      enablePanDownToClose
+      onDismiss={onDismiss}
+      backgroundStyle={{ backgroundColor: colors.surface }}
+      handleIndicatorStyle={{ backgroundColor: colors.grabber }}
+    >
       {visible && iso ? (
         <DayEditorBody
           iso={iso}

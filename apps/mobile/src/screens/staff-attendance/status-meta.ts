@@ -21,13 +21,21 @@ export const MARKABLE_DAY_TYPES: readonly string[] = [
 export const SHEET_ORDER: readonly Status[] = [
   "present",
   "late",
+  "half_day",
   "absent",
   "on_leave",
-  "half_day",
 ];
 
 export function statusLabel(status: Status): string {
   return copy.attendance.marking.statuses[status];
+}
+
+export function statusDescription(status: Status): string {
+  return copy.attendance.marking.statusDescriptions[status];
+}
+
+export function statusShort(status: Status): string {
+  return copy.attendance.marking.statusShort[status];
 }
 
 /**
@@ -39,6 +47,20 @@ export function dayTypeLabel(dayType: string | null): string {
   if (!dayType) return copy.attendance.marking.dayTypes.none;
   const labels = copy.attendance.marking.dayTypes as Record<string, string>;
   return labels[dayType] ?? dayType;
+}
+
+/**
+ * The two-to-three character label inside a day-picker cell. It replaces the
+ * old 4 px status dot: the tinted square carries the category, the label
+ * carries it again in words a thumb can read at arm's length.
+ */
+export function dayTypeShort(dayType: string | null): string {
+  if (dayType === "half_day") return "½";
+  if (dayType === "exam_day") return "EX";
+  if (dayType === "holiday") return "HOL";
+  if (dayType === "weekend") return "OFF";
+  if (dayType === "working") return "";
+  return "—";
 }
 
 /** True when the marking gate accepts this day type (the same set, one place). */

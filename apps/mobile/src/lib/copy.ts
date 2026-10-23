@@ -33,8 +33,7 @@ export const copy = {
     passwordLabel: "Password",
     signInAction: "Sign in",
     signingIn: "Signing in…",
-    invalidCredentials:
-      "Those details didn't match. Check them and try again.",
+    invalidCredentials: "Those details didn't match. Check them and try again.",
     forcedChangeTitle: "Set your own password",
     forcedChangeBody:
       "For security, set your own password before continuing. You cannot skip this step.",
@@ -53,8 +52,7 @@ export const copy = {
     retry: common.retry,
     /** A resolved branch whose current year is unset — home and attendance. */
     noYearTitle: "No session is set",
-    noYearBody:
-      "The current academic session isn't set for this branch. Ask your administrator.",
+    noYearBody: "The current academic session isn't set for this branch. Ask your administrator.",
   },
   /** The section list shared by home and attendance. */
   classes: {
@@ -86,11 +84,9 @@ export const copy = {
     /** Screen and alert title (the tab label lives in `nav`). */
     title: "Attendance",
     noAccessTitle: "Attendance isn't in your account",
-    noAccessBody:
-      "Your role doesn't include the attendance permission. Ask your administrator.",
+    noAccessBody: "Your role doesn't include the attendance permission. Ask your administrator.",
     /** Section captions shared by the marking and summary panels. */
-    studentsCount: (count: number) =>
-      count === 1 ? "1 student" : `${count} students`,
+    studentsCount: (count: number) => (count === 1 ? "1 student" : `${count} students`),
     /** The Mark ⇄ Summary segments (chunk 2). */
     views: {
       mark: "Mark",
@@ -109,32 +105,82 @@ export const copy = {
     summary: {
       /** The year card's uppercase label. */
       yearLabel: "Year so far",
-      /** The hero number's caption. */
-      averageLabel: "Average attendance",
+      /** The hero is coverage; the official rate is the secondary figure. */
+      coverageLabel: "Days marked",
+      coverageOf: (marked: number, working: number) =>
+        `${marked} of ${working} working days marked`,
+      daysMarked: (count: number) => (count === 1 ? "Day marked" : "Days marked"),
+      officialRateLabel: "Official year rate",
+      officialRateNote:
+        "Present against the session calendar. Half days are marked, not present.",
+      howCalculated: "How this is calculated",
+      presentOfMarked: (present: number, marked: number) => `${present}/${marked}`,
+      presentShareLabel: "Present share",
+      presentShareNote: "Present days out of all marked days.",
+      markToday: "Mark today's attendance",
+      noMarksTitle: "No attendance yet",
+      noMarksBody: "Mark today's register to start the year.",
+      sortLabel: "Order",
+      sortRoll: "Roll order",
+      sortTop: "Top present",
+      sortMostAbsent: "Most absent",
+      sortA11y: (current: string) => `Student order: ${current}. Double tap to change.`,
+      calculation: {
+        title: "How this is calculated",
+        coverageTitle: "Days marked",
+        coverageBody:
+          "The student with the most marked days. Present, absent, late, half day and on-leave all count. The bar compares that against the session's working calendar.",
+        officialTitle: "Official year rate",
+        officialBody:
+          "Present days divided by the session's full working calendar. It rises as days are marked and is the figure exam eligibility reads. Half day is a marked day but does not count as present here.",
+        markedTitle: "Present share of marked days",
+        markedBody:
+          "Present days divided by all marked days for that student, including half days. It is a day-to-day read, not a policy threshold.",
+        close: "Close",
+      },
+      detail: {
+        title: "Attendance so far",
+        covered: (working: number) => `of ${working} working days marked`,
+        statusMix: "Status mix",
+        officialRate: "Official rate",
+        presentShare: "Present share",
+        attendanceMap: "Attendance map",
+        mapEmpty: "No attendance marked in this month.",
+        noData: "No attendance has been marked for this student yet.",
+        halfDayNote:
+          "Half day counts as a marked day in present share, but not as present in the official year rate.",
+        close: "Close",
+      },
       /** The list's group label (probe section anatomy). */
       studentsLabel: "Students",
       /** Shown where nothing has been marked yet. */
       noValue: "—",
-      /** The coverage bar's caption when the year has working days. */
-      coverage: (marked: number, working: number) =>
-        `${marked} of ${working} days marked`,
+      ofWorkingDays: (working: number) => `of ${working} working days`,
       /** The coverage caption when the section has no rows at all. */
       noCoverageYet: "No days marked yet",
       present: (count: number) => `${count} present`,
       absent: (count: number) => `${count} absent`,
       late: (count: number) => `${count} late`,
+      halfDay: (count: number) => `${count} half day`,
       onLeave: (count: number) => `${count} on leave`,
+      /** The roster's compact status key, e.g. "2P 1A 1L 1H 1OL". */
+      shortCount: {
+        present: (count: number) => `${count}P`,
+        absent: (count: number) => `${count}A`,
+        late: (count: number) => `${count}L`,
+        halfDay: (count: number) => `${count}H`,
+        onLeave: (count: number) => `${count}OL`,
+      },
       noneYet: "No attendance yet",
       /** Only rendered when someone in the roster has no rows at all. */
       noDataLine: (count: number) =>
         count === 1
           ? "1 student has no attendance yet"
           : `${count} students have no attendance yet`,
-      footnote:
-        "The average counts present days against the session's full working calendar, so it rises as days get marked — the same figure exam eligibility reads.",
       a11y: {
-        row: (name: string, detail: string, percent: string) =>
-          `${name}, ${detail}, ${percent} attendance`,
+        row: (name: string, detail: string, presentOfMarked: string) =>
+          `${name}, ${detail}, ${presentOfMarked} marked days present`,
+        rowHint: "View attendance details",
         none: (name: string) => `${name}, no attendance marked yet`,
       },
     },
@@ -142,9 +188,15 @@ export const copy = {
       roll: (roll: string) => `Roll ${roll}`,
       /** Shown where a roster row has no roll number assigned. */
       noRoll: "No roll number",
-      allPresent: "All present",
-      allAbsent: "All absent",
-      tapHint: "Tap: present / absent · Hold: late, leave, half day",
+      /** The one day-composition card above the roster. */
+      pulseLabel: "Day so far",
+      pulsePresentLabel: "present",
+      pulsePresentShare: (percent: number) => `${percent}% of marked present`,
+      allPresent: "Mark all present",
+      allAbsent: "Mark all absent",
+      tapHint: "Tap a blank row for present · Tap again for absent · Hold for more",
+      unmarked: "Not marked",
+      unmarkedShort: "–",
       statuses: {
         present: "Present",
         absent: "Absent",
@@ -152,13 +204,47 @@ export const copy = {
         half_day: "Half day",
         on_leave: "On leave",
       },
+      statusDescriptions: {
+        present: "In class for the whole day",
+        absent: "Not in class",
+        late: "Arrived after the late window",
+        half_day: "Attended part of the day",
+        on_leave: "Approved absence",
+      },
+      statusShort: {
+        present: "P",
+        absent: "A",
+        late: "L",
+        half_day: "½",
+        on_leave: "OL",
+      },
       save: "Save attendance",
-      saved: "Attendance saved",
+      saveChanges: (count: number) => (count === 1 ? "Save 1 change" : `Save ${count} changes`),
+      saveProgress: (marked: number, total: number) => `${marked} of ${total} marked`,
+      saved: "Attendance done",
+      doneTitle: "Attendance done",
+      doneBody: (count: number) =>
+        count === 1 ? "1 student marked for this day." : `${count} students marked for this day.`,
+      doneEdit: "Edit",
+      doneEditHint: "Edit this day's attendance",
+      doneAction: "Done",
       edit: "Edit",
       statusSheetTitle: "Set status",
+      statusSheetHint: "Choose one status for this student's day.",
       dayPickerTitle: "Pick a day",
       prevMonth: "Previous month",
       nextMonth: "Next month",
+      sessionRange: (start: string, end: string) => `Session ${start} – ${end}`,
+      outsideSession: "Today is outside this session. Pick a day inside it.",
+      outsideSessionA11y: (date: string) => `${date} is outside this session.`,
+      selectedDay: "Selected day",
+      holidayWeekendLegend: "Holiday / weekend",
+      examLegend: "Exam day",
+      workingLegend: "Working",
+      markedLegend: "Marked",
+      unmarkedPastLegend: "Past, not marked",
+      marked: "Marked",
+      notMarked: "Not marked",
       dayTypes: {
         working: "Working",
         half_day: "Half day",
@@ -173,9 +259,7 @@ export const copy = {
       reasonHelp:
         "Optional — only the students whose status changes need a reason. Leaving it blank keeps any earlier note.",
       changedCount: (count: number) =>
-        count === 1
-          ? "1 student changing — say why:"
-          : `${count} students changing — say why:`,
+        count === 1 ? "1 student changing — say why:" : `${count} students changing — say why:`,
       readOnly:
         "You can view this section's day but not mark it — marking needs the attendance:create permission.",
       gateTitle: "This day cannot be marked",
@@ -185,8 +269,12 @@ export const copy = {
         `${date} is a weekend — attendance cannot be marked on a weekend.`,
       gateNoCalendar: (date: string) =>
         `${date} has no calendar entry. Generate the year's calendar first, then mark attendance.`,
-      gateOther: (date: string) =>
-        `${date} is not a day attendance can be marked on.`,
+      gateOther: (date: string) => `${date} is not a day attendance can be marked on.`,
+      recentLabel: "Recent",
+      recentHint: (count: number) =>
+        count === 1 ? "Last marked day" : `Last ${count} marked days`,
+      recentEmpty: "No earlier marks",
+      recentA11y: (date: string, status: string) => `${date}: ${status}`,
       rosterEmptyTitle: "No students enrolled",
       rosterEmptyBody: "No students are enrolled in this section yet.",
       loading: "Loading the roster…",
@@ -194,9 +282,9 @@ export const copy = {
       a11y: {
         row: (name: string, roll: string | null, status: string) =>
           `${name}, ${roll ? `Roll ${roll}, ` : ""}status ${status}`,
-        rowHint:
-          "Double tap to change status, double tap and hold for all statuses",
+        rowHint: "Double tap to change status, double tap and hold for all statuses",
         changeAction: "Change status",
+        recent: (name: string, days: string) => `${name}, recent days: ${days}`,
       },
     },
     /** Chunk 3 — the management surfaces behind the header gear. */
@@ -206,6 +294,7 @@ export const copy = {
       openHint: "Calendar, marking policy and periods",
       title: "Manage attendance",
       back: "Back",
+      sessionLabel: "Session settings",
       noAccessTitle: "Management isn't in your account",
       noAccessBody:
         "Changing the calendar, marking policy and periods needs the attendance:update permission. Ask your administrator.",
@@ -222,16 +311,24 @@ export const copy = {
       policySummary: {
         daily: "Daily marking",
         periodHomeroom: "Period-wise · Homeroom decides",
-        periodThreshold: (percent: string) =>
-          `Period-wise · threshold ${percent}%`,
+        periodThreshold: (percent: string) => `Period-wise · threshold ${percent}%`,
+        lateWindow: (minutes: number) => `${minutes}-min late window`,
         unset: "Not set — defaults apply",
+      },
+      /** The calendar row's live subtitle, from the session's day rows. */
+      calendarSummary: {
+        unset: "Not generated — set the year's days",
+        working: (count: number) => (count === 1 ? "1 working day" : `${count} working days`),
+        nextHoliday: (date: string, reason: string | null) =>
+          `Next holiday ${date}${reason ? ` · ${reason}` : ""}`,
+        noNextHoliday: "No holidays ahead",
+        missingMonth: (count: number) =>
+          count === 1 ? "1 day this month has no entry" : `${count} days this month have no entry`,
       },
       /** The periods row's live subtitle, by count. */
       periodsSummary: {
         count: (count: number, section: string) =>
-          count === 1
-            ? `1 period · ${section}`
-            : `${count} periods · ${section}`,
+          count === 1 ? `1 period · ${section}` : `${count} periods · ${section}`,
         none: (section: string) => `No periods yet · ${section}`,
       },
       /** The manage calendar: month list, day editor, generate sheet. */
@@ -241,8 +338,7 @@ export const copy = {
         editorTitle: "Set the day type",
         reason: "Reason",
         reasonPlaceholder: 'Optional — "Diwali", "Sports day"…',
-        reasonHelp:
-          "Shown wherever this day is read. Leave it empty to remove the note.",
+        reasonHelp: "Shown wherever this day is read. Leave it empty to remove the note.",
         save: "Save day",
         /** One line per day type, in sheet order. */
         meanings: {
@@ -255,15 +351,7 @@ export const copy = {
         /** The generate sheet. */
         generateHelp:
           "Pick the days a week school is in session. Days already set are left untouched — this only fills gaps.",
-        weekdays: [
-          "Monday",
-          "Tuesday",
-          "Wednesday",
-          "Thursday",
-          "Friday",
-          "Saturday",
-          "Sunday",
-        ],
+        weekdays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
         weekdayA11y: (weekday: string, state: string) =>
           `${weekday}, ${state}. Double tap to change.`,
         states: {
@@ -275,8 +363,7 @@ export const copy = {
         confirm: "Generate",
         running: "Generating…",
         done: "Done",
-        filled: (count: number) =>
-          count === 1 ? "1 day filled in." : `${count} days filled in.`,
+        filled: (count: number) => (count === 1 ? "1 day filled in." : `${count} days filled in.`),
         filledNone: "Every day already had a row — nothing to add.",
       },
       /** The marking policy screen. */
@@ -290,16 +377,13 @@ export const copy = {
         modeDaily: "Daily",
         modePeriod: "Period-wise",
         ruleLabel: "Daily status rule",
-        ruleHelp:
-          "How a period-wise day resolves to a present or absent day.",
+        ruleHelp: "How a period-wise day resolves to a present or absent day.",
         ruleHomeroom: "Homeroom decides",
         ruleThreshold: "Threshold",
         thresholdLabel: "Threshold %",
-        thresholdHelp:
-          "A day counts present once this share of its periods is present.",
+        thresholdHelp: "A day counts present once this share of its periods is present.",
         lateLabel: "Late arrival window",
-        lateHelp:
-          "A mark later than this many minutes past the period's start reads as late.",
+        lateHelp: "A mark later than this many minutes past the period's start reads as late.",
         minutesSuffix: "min",
         caution: (section: string) =>
           `Period-wise marking needs ${section}'s periods — add them before the first marking.`,
@@ -316,20 +400,14 @@ export const copy = {
         dailyNote:
           "This school marks daily — periods matter when it switches to period-wise marking.",
         emptyTitle: "No periods yet",
-        emptyBody:
-          "Add this section's timetable slots so period-wise marking can start.",
+        emptyBody: "Add this section's timetable slots so period-wise marking can start.",
         add: "Add period",
         times: (start: string, end: string) => `${start}–${end}`,
         startsAt: (start: string) => `Starts ${start}`,
         endsAt: (end: string) => `Ends ${end}`,
         noTimes: "No times set",
         homeroom: "Homeroom",
-        rowA11y: (
-          sequence: number,
-          name: string,
-          detail: string,
-          homeroom: boolean,
-        ) =>
+        rowA11y: (sequence: number, name: string, detail: string, homeroom: boolean) =>
           `Period ${sequence}, ${name}, ${detail}${homeroom ? ", homeroom" : ""}`,
         editorNew: "New period",
         editorEdit: "Edit period",

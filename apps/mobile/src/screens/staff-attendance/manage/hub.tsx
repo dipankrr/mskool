@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
@@ -5,16 +6,19 @@ import { AppIcon } from "../../../components/app-icon";
 import type { AppIconName } from "../../../components/app-icon";
 import { Card } from "../../../components/card";
 import { EmptyState } from "../../../components/empty-state";
+import { SectionLabel } from "../../../components/section-label";
 import { Skeleton } from "../../../components/skeleton";
 import { ThemedText } from "../../../components/themed-text";
 import { useActiveContext } from "../../../hooks/use-active-context";
 import { usePermissions } from "../../../hooks/use-permissions";
 import { copy } from "../../../lib/copy";
+import { formatShortWeekday, todayIso } from "../../../lib/format";
 import { trpc } from "../../../lib/trpc";
 import { colors } from "../../../theme/brand-admin";
 import { radius, spacing } from "../../../theme/tokens";
 import { useAttendanceSection } from "../use-attendance-section";
 import { ManageFrame } from "./frame";
+import { summarizeCalendar } from "./manage-summary";
 
 /**
  * Manage attendance — the hub (chunk 3). Three rows over the session context:
@@ -40,6 +44,24 @@ export function ManageHub() {
     { organizationId: organizationId ?? "", sectionId: section?.id ?? "" },
     { enabled: ready && canManage && Boolean(section), staleTime: 60_000 },
   );
+  const calendarQuery = trpc.attendance.calendar.list.useQuery(
+    {
+      organizationId: organizationId ?? "",
+      ...(schoolId ? { schoolId } : {}),
+      academicYearId: academicYear?.id ?? "",
+    },
+    { enabled: ready && canManage, staleTime: 300_000 },
+  );
+  const calendar = useMemo(
+    () =>
+      summarizeCalendar(
+        calendarQuery.data ?? [],
+        todayIso(),
+        academicYear?.startDate,
+        academicYear?.endDate,
+      ),
+    [calendarQuery.data, academicYear?.startDate, academicYear?.endDate],
+  );
 
   if (!canManage) {
     return (
@@ -55,6 +77,22 @@ export function ManageHub() {
   }
 
   const sectionName = sectionLabel ?? section?.name ?? "";
+  const calendarDetail = calendarQuery.isPending
+    ? null
+    : calendarQuery.isError
+      ? copy.attendance.manage.rows.calendarHint
+      : calendarQuery.data && calendarQuery.data.length > 0
+        ? `${copy.attendance.manage.calendarSummary.working(calendar.workingDays)} · ${
+            calendar.nextHoliday
+              ? copy.attendance.manage.calendarSummary.nextHoliday(
+                  formatShortWeekday(calendar.nextHoliday.date),
+                  calendar.nextHoliday.reason,
+                )
+              : copy.attendance.manage.calendarSummary.noNextHoliday
+          }`
+        : copy.attendance.manage.calendarSummary.unset;
+  const calendarGap =
+    !calendarQuery.isPending && !calendarQuery.isError && calendar.missingThisMonth > 0;
   const policyDetail = policyQuery.isPending
     ? null
     : policyQuery.isError
@@ -67,10 +105,7 @@ export function ManageHub() {
       : periodsQuery.isError || !periodsQuery.data
         ? copy.attendance.manage.rows.periodsHint
         : periodsQuery.data.length > 0
-          ? copy.attendance.manage.periodsSummary.count(
-              periodsQuery.data.length,
-              sectionName,
-            )
+          ? copy.attendance.manage.periodsSummary.count(periodsQuery.data.length, sectionName)
           : copy.attendance.manage.periodsSummary.none(sectionName);
 
   return (
@@ -78,11 +113,12 @@ export function ManageHub() {
       title={copy.attendance.manage.title}
       meta={academicYear ? academicYear.name : null}
     >
+      <SectionLabel>{copy.attendance.manage.sessionLabel}</SectionLabel>
       <Card padless style={styles.rows}>
         <HubRow
           icon="calendar"
           title={copy.attendance.manage.rows.calendar}
-          detail={copy.attendance.manage.rows.calendarHint}
+          detail={calendarDetail}
           testID="manage-calendar"
           onPress={() => router.push("/attendance/manage/calendar")}
         />
@@ -113,29 +149,44 @@ export function ManageHub() {
           }
         />
       </Card>
+      {calendarGap ? (
+        <Pressable
+          testID="manage-calendar-gap"
+          accessibilityRole="button"
+          onPress={() => router.push("/attendance/manage/calendar")}
+          style={({ pressed }) => [styles.gapNote, pressed ? styles.gapNotePressed : null]}
+        >
+          <AppIcon name="calendarOff" size={18} color={colors.tone.caution.fg} />
+          <ThemedText variant="caption" color={colors.tone.caution.fg} style={styles.gapText}>
+            {copy.attendance.manage.calendarSummary.missingMonth(calendar.missingThisMonth)}
+          </ThemedText>
+          <AppIcon name="chevronRight" size={16} color={colors.chevron} />
+        </Pressable>
+      ) : null}
     </ManageFrame>
   );
 }
 
 /** The policy row's subtitle, from the stored shape (defaults when unset). */
-function policySummary(policy: {
-  markingMode: string;
-  dailyStatusRule: string;
-  thresholdPercentage: number | null;
-} | null): string {
+function policySummary(
+  policy: {
+    markingMode: string;
+    dailyStatusRule: string;
+    thresholdPercentage: number | null;
+    lateArrivalMinutes: number;
+  } | null,
+): string {
   if (!policy) return copy.attendance.manage.policySummary.unset;
+  const late = copy.attendance.manage.policySummary.lateWindow(policy.lateArrivalMinutes);
   if (policy.markingMode === "daily") {
-    return copy.attendance.manage.policySummary.daily;
+    return `${copy.attendance.manage.policySummary.daily} · ${late}`;
   }
-  if (
-    policy.dailyStatusRule === "threshold_percentage" &&
-    policy.thresholdPercentage != null
-  ) {
-    return copy.attendance.manage.policySummary.periodThreshold(
+  if (policy.dailyStatusRule === "threshold_percentage" && policy.thresholdPercentage != null) {
+    return `${copy.attendance.manage.policySummary.periodThreshold(
       String(policy.thresholdPercentage),
-    );
+    )} · ${late}`;
   }
-  return copy.attendance.manage.policySummary.periodHomeroom;
+  return `${copy.attendance.manage.policySummary.periodHomeroom} · ${late}`;
 }
 
 function HubRow({
@@ -184,6 +235,21 @@ function RowDivider() {
 const styles = StyleSheet.create({
   rows: {
     marginTop: spacing.sm,
+  },
+  gapNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.tone.caution.bg,
+  },
+  gapNotePressed: {
+    opacity: 0.8,
+  },
+  gapText: {
+    flex: 1,
   },
   row: {
     flexDirection: "row",

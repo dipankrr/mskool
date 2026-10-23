@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, View } from "react-native";
+import * as Haptics from "expo-haptics";
 
 import { ThemedText } from "../../components/themed-text";
 import { copy } from "../../lib/copy";
@@ -52,13 +53,17 @@ export function ViewToggle({
             accessibilityRole="tab"
             accessibilityState={{ selected }}
             accessibilityLabel={option.a11y}
-            onPress={() => onChange(option.value)}
-            style={[styles.segment, selected ? styles.segmentOn : null]}
+            onPress={() => {
+              if (!selected) void Haptics.selectionAsync();
+              onChange(option.value);
+            }}
+            style={({ pressed }) => [
+              styles.segment,
+              selected ? styles.segmentOn : null,
+              pressed && !selected ? styles.segmentPressed : null,
+            ]}
           >
-            <ThemedText
-              variant="bodyStrong"
-              color={selected ? colors.accentDeep : colors.muted}
-            >
+            <ThemedText variant="bodyStrong" color={selected ? colors.accentDeep : colors.muted}>
               {option.label}
             </ThemedText>
           </Pressable>
@@ -78,12 +83,15 @@ const styles = StyleSheet.create({
   },
   segment: {
     flex: 1,
-    minHeight: 40,
+    minHeight: 48,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.full,
   },
   segmentOn: {
     backgroundColor: colors.accentTint,
+  },
+  segmentPressed: {
+    backgroundColor: colors.surface,
   },
 });

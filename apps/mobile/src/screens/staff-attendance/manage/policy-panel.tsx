@@ -45,6 +45,12 @@ export function ManagePolicy() {
   const { section, sectionLabel } = useAttendanceSection(params.sectionId);
   const ready = Boolean(organizationId && schoolId && academicYear);
   const meta = academicYear ? academicYear.name : null;
+  const contextKey = `${organizationId ?? ""}:${schoolId ?? ""}:${section?.id ?? ""}`;
+  // Survives the policy query invalidation that follows a save. The body is
+  // keyed by updatedAt, so its local success state would otherwise be lost
+  // when the refetched row remounts it.
+  const [savedContext, setSavedContext] = useState<string | null>(null);
+  const saved = savedContext === contextKey;
 
   const policyQuery = trpc.attendance.policy.get.useQuery(
     { organizationId: organizationId ?? "", schoolId: schoolId ?? "" },
@@ -95,6 +101,9 @@ export function ManagePolicy() {
           schoolId={schoolId ?? ""}
           sectionId={section?.id ?? null}
           sectionName={sectionLabel ?? section?.name ?? null}
+          saved={saved}
+          onSaved={() => setSavedContext(contextKey)}
+          onEdited={() => setSavedContext(null)}
         />
       )}
     </ManageFrame>
@@ -107,6 +116,9 @@ function PolicyBody({
   schoolId,
   sectionId,
   sectionName,
+  saved,
+  onSaved,
+  onEdited,
 }: {
   initial: {
     markingMode: string;
@@ -118,10 +130,12 @@ function PolicyBody({
   schoolId: string;
   sectionId: string | null;
   sectionName: string | null;
+  saved: boolean;
+  onSaved: () => void;
+  onEdited: () => void;
 }) {
   const utils = trpc.useUtils();
   const [form, setForm] = useState<PolicyForm>(() => initialPolicyForm(initial));
-  const [saved, setSaved] = useState(false);
 
   const periodsQuery = trpc.attendance.period.list.useQuery(
     { organizationId, sectionId: sectionId ?? "" },
@@ -133,8 +147,8 @@ function PolicyBody({
 
   const upsert = trpc.attendance.policy.upsert.useMutation({
     onSuccess: () => {
+      onSaved();
       void utils.attendance.policy.get.invalidate();
-      setSaved(true);
     },
   });
 
@@ -143,7 +157,7 @@ function PolicyBody({
 
   const update = (patch: Partial<PolicyForm>) => {
     setForm((current) => ({ ...current, ...patch }));
-    setSaved(false);
+    onEdited();
   };
 
   const submit = () => {

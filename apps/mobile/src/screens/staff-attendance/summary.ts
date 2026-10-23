@@ -1,3 +1,5 @@
+import type { RosterEntry } from "./roster";
+
 /**
  * The summary panel's pure maths — reading `attendance.summary` rows the way
  * the web report does, never recomputing what the server already aggregated
@@ -22,15 +24,14 @@ export type SummaryRow = {
   daysPresent: number;
   daysAbsent: number;
   daysLate: number;
+  daysHalfDay: number;
   daysOnLeave: number;
   /** Generated stored column: never null in practice, nullable in the API. */
   attendancePercentage: string | null;
 };
 
 /** The row a student's summary line renders from, or nothing when unmarked. */
-export function summaryByStudent(
-  rows: readonly SummaryRow[],
-): Map<string, SummaryRow> {
+export function summaryByStudent(rows: readonly SummaryRow[]): Map<string, SummaryRow> {
   const term = new Map<string, SummaryRow>();
   const annual = new Map<string, SummaryRow>();
 
@@ -52,20 +53,72 @@ export function summaryByStudent(
   return byStudent;
 }
 
+export type SummarySort = "roll" | "top" | "mostAbsent";
+
+/**
+ * The summary list's client-side order. Roll is the roster's own order and the
+ * default; the other two are reads over the same summary rows, never a new
+ * endpoint. Students with no summary row always sink to the bottom so a
+ * "top present" sort cannot put missing data first. Ties fall back to the
+ * student's name for a stable, predictable list.
+ */
+export function sortSummaryRoster(
+  roster: readonly RosterEntry[],
+  byStudent: ReadonlyMap<string, SummaryRow>,
+  sort: SummarySort,
+): RosterEntry[] {
+  const copy = [...roster];
+  if (sort === "roll") return copy;
+
+  return copy.sort((a, b) => {
+    const rowA = byStudent.get(a.studentId);
+    const rowB = byStudent.get(b.studentId);
+    if (!rowA && !rowB) return a.name.localeCompare(b.name);
+    if (!rowA) return 1;
+    if (!rowB) return -1;
+
+    if (sort === "top") {
+      const shareA = presentSharePercent(rowA) ?? 0;
+      const shareB = presentSharePercent(rowB) ?? 0;
+      if (shareA !== shareB) return shareB - shareA;
+      if (rowA.daysPresent !== rowB.daysPresent) {
+        return rowB.daysPresent - rowA.daysPresent;
+      }
+    } else {
+      if (rowA.daysAbsent !== rowB.daysAbsent) {
+        return rowB.daysAbsent - rowA.daysAbsent;
+      }
+      const shareA = presentSharePercent(rowA) ?? 0;
+      const shareB = presentSharePercent(rowB) ?? 0;
+      if (shareA !== shareB) return shareA - shareB;
+    }
+    return a.name.localeCompare(b.name);
+  });
+}
+
 export type SectionTotals = {
   /** Σ daysPresent over students with rows. */
   present: number;
+  /** Σ daysAbsent over students with rows. */
+  absent: number;
+  /** Σ daysLate over students with rows. */
+  late: number;
+  /** Σ daysHalfDay over students with rows. */
+  halfDay: number;
+  /** Σ daysOnLeave over students with rows. */
+  onLeave: number;
   /** Σ workingDays over students with rows. */
   working: number;
   /**
    * Days the section has attendance for: the most-covered student's
-   * marked-day count (every bucket plus on-leave). Marking writes a status
-   * for every student on a marked day, so the fullest student's count is the
-   * section's coverage; a day where every student was `half_day` fills no
-   * bucket and is the one edge this glance number misses. The server's
-   * percentage stays the audited figure.
+   * marked-day count (every bucket, including half day). Marking writes a
+   * status for every student on a marked day, so the fullest student's count
+   * is the section's coverage. The server's percentage stays the audited
+   * figure and does not treat half day as present.
    */
   markedDays: number;
+  /** Σ every bucket over students with rows — the status strip's base. */
+  markedStatusDays: number;
   /** Roster students with no summary row at all ("no attendance yet"). */
   noData: number;
   /** The section's working-day count (calendar truth; same for all students). */
@@ -77,8 +130,13 @@ export function sectionTotals(
   rosterIds: readonly string[],
 ): SectionTotals {
   let present = 0;
+  let absent = 0;
+  let late = 0;
+  let halfDay = 0;
+  let onLeave = 0;
   let working = 0;
   let markedDays = 0;
+  let markedStatusDays = 0;
   let noData = 0;
   let workingDays: number | null = null;
 
@@ -89,16 +147,53 @@ export function sectionTotals(
       continue;
     }
     present += row.daysPresent;
+    absent += row.daysAbsent;
+    late += row.daysLate;
+    halfDay += row.daysHalfDay;
+    onLeave += row.daysOnLeave;
     working += row.workingDays;
-    markedDays = Math.max(
-      markedDays,
-      row.daysPresent + row.daysAbsent + row.daysLate + row.daysOnLeave,
-    );
-    workingDays =
-      workingDays === null ? row.workingDays : Math.max(workingDays, row.workingDays);
+    const studentMarkedDays = markedDaysForRow(row);
+    markedStatusDays += studentMarkedDays;
+    markedDays = Math.max(markedDays, studentMarkedDays);
+    workingDays = workingDays === null ? row.workingDays : Math.max(workingDays, row.workingDays);
   }
 
-  return { present, working, markedDays, noData, workingDays };
+  return {
+    present,
+    absent,
+    late,
+    halfDay,
+    onLeave,
+    working,
+    markedDays,
+    markedStatusDays,
+    noData,
+    workingDays,
+  };
+}
+
+/** One student's marked-day count, using the same buckets as the summary. */
+export function markedDaysForRow(row: SummaryRow): number {
+  return (
+    row.daysPresent +
+    row.daysAbsent +
+    row.daysLate +
+    row.daysHalfDay +
+    row.daysOnLeave
+  );
+}
+
+/** Present days ÷ all marked statuses for one student; null before any mark. */
+export function presentSharePercent(row: SummaryRow): number | null {
+  const marked = markedDaysForRow(row);
+  if (marked === 0) return null;
+  return (row.daysPresent / marked) * 100;
+}
+
+/** Present days ÷ all marked statuses across the section; null before any mark. */
+export function presentSharePercentForTotals(totals: SectionTotals): number | null {
+  if (totals.markedStatusDays === 0) return null;
+  return (totals.present / totals.markedStatusDays) * 100;
 }
 
 /** Σpresent ÷ Σworking as a percentage, or null when nothing is marked. */

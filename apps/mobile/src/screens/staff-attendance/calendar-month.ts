@@ -24,6 +24,26 @@ export function monthIndex(iso: string): number {
   return Number(iso.slice(0, 4)) * 12 + (Number(iso.slice(5, 7)) - 1);
 }
 
+/**
+ * Whole-day arithmetic on an ISO date, returned as ISO. UTC parts keep DST and
+ * local-midnight parsing out of the result; callers use this for history
+ * windows, never for display formatting.
+ */
+export function shiftIsoDays(iso: string, delta: number): string {
+  const shifted = new Date(
+    Date.UTC(
+      Number(iso.slice(0, 4)),
+      Number(iso.slice(5, 7)) - 1,
+      Number(iso.slice(8, 10)) + delta,
+    ),
+  );
+  return isoOf(
+    shifted.getUTCFullYear(),
+    shifted.getUTCMonth() + 1,
+    shifted.getUTCDate(),
+  );
+}
+
 /** Days in a month — the day lists' length. Leap years included. */
 export function daysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate();

@@ -50,10 +50,7 @@ export function ManageFrame({
               accessibilityLabel={copy.attendance.manage.back}
               hitSlop={8}
               onPress={() => router.back()}
-              style={({ pressed }) => [
-                styles.back,
-                pressed ? styles.backPressed : null,
-              ]}
+              style={({ pressed }) => [styles.back, pressed ? styles.backPressed : null]}
             >
               <AppIcon name="chevronLeft" size={22} color={colors.ink} />
             </Pressable>
@@ -84,9 +81,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   back: {
-    width: 44,
-    height: 44,
-    marginLeft: -spacing.md,
+    width: 48,
+    height: 48,
+    marginLeft: -spacing.lg,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.full,

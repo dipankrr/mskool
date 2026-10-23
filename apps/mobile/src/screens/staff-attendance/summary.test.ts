@@ -2,7 +2,11 @@ import {
   averagePercent,
   coveragePercent,
   formatPercent,
+  markedDaysForRow,
+  presentSharePercent,
+  presentSharePercentForTotals,
   sectionTotals,
+  sortSummaryRoster,
   summaryByStudent,
 } from "./summary";
 import type { SummaryRow } from "./summary";
@@ -19,6 +23,7 @@ function row(
     daysPresent: 80,
     daysAbsent: 15,
     daysLate: 3,
+    daysHalfDay: 0,
     daysOnLeave: 2,
     attendancePercentage: "80.00",
     ...overrides,
@@ -47,10 +52,7 @@ describe("summaryByStudent", () => {
   });
 
   it("keys by student and leaves unmarked students absent from the map", () => {
-    const map = summaryByStudent([
-      row("a", "annual"),
-      row("b", "annual", { daysPresent: 10 }),
-    ]);
+    const map = summaryByStudent([row("a", "annual"), row("b", "annual", { daysPresent: 10 })]);
     expect(map.size).toBe(2);
     expect(map.get("b")?.daysPresent).toBe(10);
     expect(map.has("c")).toBe(false);
@@ -67,13 +69,19 @@ describe("sectionTotals", () => {
     const totals = sectionTotals(byStudent, ["a", "b", "c", "d"]);
     expect(totals).toEqual({
       present: 130,
+      absent: 30,
+      late: 6,
+      halfDay: 0,
+      onLeave: 4,
       working: 200,
-      // Buckets: a = 80+15+3+2 = 100, b = 50+15+3+2 = 70 → fullest student.
+      // Buckets: a = 80+15+3+0+2 = 100, b = 50+15+3+0+2 = 70 → fullest student.
       markedDays: 100,
+      markedStatusDays: 170,
       noData: 2,
       workingDays: 100,
     });
     expect(averagePercent(totals)).toBe(65);
+    expect(presentSharePercentForTotals(totals)).toBeCloseTo(76.47, 2);
   });
 
   it("counts marked days from the fullest student, never the sum", () => {
@@ -91,6 +99,7 @@ describe("sectionTotals", () => {
         daysPresent: 0,
         daysAbsent: 0,
         daysLate: 0,
+        daysHalfDay: 0,
         daysOnLeave: 0,
       }),
     ]);
@@ -103,8 +112,13 @@ describe("sectionTotals", () => {
     const totals = sectionTotals(summaryByStudent([]), ["a", "b"]);
     expect(totals).toEqual({
       present: 0,
+      absent: 0,
+      late: 0,
+      halfDay: 0,
+      onLeave: 0,
       working: 0,
       markedDays: 0,
+      markedStatusDays: 0,
       noData: 2,
       workingDays: null,
     });
@@ -112,12 +126,39 @@ describe("sectionTotals", () => {
   });
 
   it("does not divide by zero for all-zero counts", () => {
-    const byStudent = summaryByStudent([
-      row("a", "annual", { workingDays: 0, daysPresent: 0 }),
-    ]);
+    const byStudent = summaryByStudent([row("a", "annual", { workingDays: 0, daysPresent: 0 })]);
     const totals = sectionTotals(byStudent, ["a"]);
     expect(totals.workingDays).toBe(0);
     expect(averagePercent(totals)).toBeNull();
+  });
+});
+
+describe("marked-day rates", () => {
+  it("counts marked days from all five buckets", () => {
+    const value = row("a", "annual", {
+      daysPresent: 3,
+      daysAbsent: 1,
+      daysLate: 2,
+      daysHalfDay: 1,
+      daysOnLeave: 0,
+    });
+    expect(markedDaysForRow(value)).toBe(7);
+    expect(presentSharePercent(value)).toBeCloseTo(42.857, 2);
+  });
+
+  it("returns null before any bucket has a day", () => {
+    const value = row("a", "annual", {
+      daysPresent: 0,
+      daysAbsent: 0,
+      daysLate: 0,
+      daysHalfDay: 0,
+      daysOnLeave: 0,
+    });
+    expect(presentSharePercent(value)).toBeNull();
+  });
+
+  it("returns null for an empty section", () => {
+    expect(presentSharePercentForTotals(sectionTotals(summaryByStudent([]), ["a"]))).toBeNull();
   });
 });
 
@@ -177,6 +218,62 @@ describe("coveragePercent", () => {
       }),
     ]);
     expect(coveragePercent(sectionTotals(byStudent, ["a"]))).toBe(100);
+  });
+});
+
+describe("sortSummaryRoster", () => {
+  const roster = [
+    { studentId: "a", name: "Aarav", roll: "1" },
+    { studentId: "b", name: "Bela", roll: "2" },
+    { studentId: "c", name: "Chetan", roll: "3" },
+    { studentId: "d", name: "Divya", roll: "4" },
+  ];
+  const byStudent = summaryByStudent([
+    row("a", "annual", {
+      daysPresent: 2,
+      daysAbsent: 1,
+      daysLate: 1,
+      daysHalfDay: 0,
+      daysOnLeave: 0,
+    }),
+    row("b", "annual", {
+      daysPresent: 9,
+      daysAbsent: 1,
+      daysLate: 0,
+      daysHalfDay: 0,
+      daysOnLeave: 0,
+    }),
+    row("c", "annual", {
+      daysPresent: 5,
+      daysAbsent: 5,
+      daysLate: 0,
+      daysHalfDay: 0,
+      daysOnLeave: 0,
+    }),
+  ]);
+
+  it("keeps the roster order for roll", () => {
+    expect(sortSummaryRoster(roster, byStudent, "roll").map((entry) => entry.studentId)).toEqual([
+      "a",
+      "b",
+      "c",
+      "d",
+    ]);
+  });
+
+  it("puts the highest present share first and no-data students last", () => {
+    expect(sortSummaryRoster(roster, byStudent, "top").map((entry) => entry.studentId)).toEqual([
+      "b",
+      "c",
+      "a",
+      "d",
+    ]);
+  });
+
+  it("puts the most absent first, using share as the tie-breaker", () => {
+    expect(
+      sortSummaryRoster(roster, byStudent, "mostAbsent").map((entry) => entry.studentId),
+    ).toEqual(["c", "a", "b", "d"]);
   });
 });
 

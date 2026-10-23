@@ -3,6 +3,7 @@ import {
   daysInMonth,
   isoOf,
   monthIndex,
+  shiftIsoDays,
   shiftMonth,
 } from "./calendar-month";
 
@@ -26,6 +27,20 @@ describe("shiftMonth", () => {
 
   it("returns the first of the target month", () => {
     expect(shiftMonth("2026-03-31", 0)).toBe("2026-03-01");
+  });
+});
+
+describe("shiftIsoDays", () => {
+  it("moves one day and crosses month and year boundaries", () => {
+    expect(shiftIsoDays("2026-03-01", -1)).toBe("2026-02-28");
+    expect(shiftIsoDays("2026-01-01", -1)).toBe("2025-12-31");
+    expect(shiftIsoDays("2025-12-31", 1)).toBe("2026-01-01");
+    expect(shiftIsoDays("2024-02-28", 1)).toBe("2024-02-29");
+  });
+
+  it("walks back a 45-day history window without losing a day", () => {
+    expect(shiftIsoDays("2026-03-31", -45)).toBe("2026-02-14");
+    expect(shiftIsoDays("2026-03-31", -1)).toBe("2026-03-30");
   });
 });
 

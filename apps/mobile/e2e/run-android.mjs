@@ -259,8 +259,9 @@ async function main() {
   adb(["shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", deepLink]);
   console.log("  waiting for the bundle and the login screen (up to 3 minutes)");
   waitForLogin(180_000);
-  // The dev-client sheet can pop a beat after login draws; settle and re-check.
-  sleep(2000);
+  // The dev-client onboarding can pop several seconds after login draws. Give
+  // it a quiet settle window, then dismiss it before Maestro takes over.
+  sleep(15_000);
   waitForLogin(30_000);
 
   console.log("\n4/5 running Maestro flows");

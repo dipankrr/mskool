@@ -46,7 +46,13 @@ export function SectionSheet({
   }, [visible]);
 
   return (
-    <BottomSheetModal ref={ref} enablePanDownToClose onDismiss={onDismiss}>
+    <BottomSheetModal
+      ref={ref}
+      enablePanDownToClose
+      onDismiss={onDismiss}
+      backgroundStyle={{ backgroundColor: colors.surface }}
+      handleIndicatorStyle={{ backgroundColor: colors.grabber }}
+    >
       <BottomSheetView style={styles.content}>
         <SectionLabel>{copy.attendance.section.sheetTitle}</SectionLabel>
         <BottomSheetScrollView

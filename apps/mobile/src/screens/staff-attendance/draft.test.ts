@@ -17,6 +17,10 @@ function stored(entries: [string, Status][]): Map<string, Status> {
 }
 
 describe("toggleStatus", () => {
+  it("marks a blank row present", () => {
+    expect(toggleStatus(undefined)).toBe("present");
+  });
+
   it("flips present to absent", () => {
     expect(toggleStatus("present")).toBe("absent");
   });
@@ -33,18 +37,27 @@ describe("toggleStatus", () => {
 });
 
 describe("buildDraft", () => {
-  it("prefills stored marks and defaults the missing rows to present", () => {
+  it("prefills stored marks and leaves missing rows unmarked", () => {
     const draft = buildDraft(ROSTER, stored([["s1", "absent"], ["s3", "late"]]));
     expect(draft.get("s1")).toBe("absent");
-    expect(draft.get("s2")).toBe("present");
+    expect(draft.has("s2")).toBe(false);
     expect(draft.get("s3")).toBe("late");
+  });
+
+  it("starts an unmarked day empty", () => {
+    expect(buildDraft(ROSTER, stored([])).size).toBe(0);
   });
 });
 
 describe("changingIds", () => {
-  it("treats a missing row as the default, not as a change", () => {
+  it("treats two missing rows as no change", () => {
     const draft = buildDraft(ROSTER, stored([]));
     expect(changingIds(ROSTER, draft, stored([]))).toEqual([]);
+  });
+
+  it("counts a newly marked row as a change", () => {
+    const draft = withStatus(buildDraft(ROSTER, stored([])), "s2", "present");
+    expect(changingIds(ROSTER, draft, stored([]))).toEqual(["s2"]);
   });
 
   it("counts only entries that differ from the stored marks", () => {
@@ -69,6 +82,8 @@ describe("bulkDraft and countStatuses", () => {
       late: 0,
       half_day: 0,
       on_leave: 0,
+      unmarked: 0,
+      marked: 3,
     });
   });
 
@@ -84,18 +99,38 @@ describe("bulkDraft and countStatuses", () => {
       late: 1,
       half_day: 0,
       on_leave: 1,
+      unmarked: 0,
+      marked: 3,
+    });
+  });
+
+  it("counts an empty draft as all unmarked", () => {
+    expect(countStatuses(ROSTER, buildDraft(ROSTER, stored([])))).toEqual({
+      present: 0,
+      absent: 0,
+      late: 0,
+      half_day: 0,
+      on_leave: 0,
+      unmarked: 3,
+      marked: 0,
     });
   });
 });
 
 describe("buildEntries", () => {
-  it("sends every roster row with the current status", () => {
+  it("sends every marked roster row and omits blank ones", () => {
     const marks = stored([["s1", "present"], ["s2", "absent"]]);
     const draft = withStatus(buildDraft(ROSTER, marks), "s2", "late");
     expect(buildEntries(ROSTER, draft, marks, { isPast: false, reason: "" })).toEqual([
       { studentId: "s1", status: "present" },
       { studentId: "s2", status: "late" },
-      { studentId: "s3", status: "present" },
+    ]);
+  });
+
+  it("never turns a blank row into present implicitly", () => {
+    const draft = withStatus(buildDraft(ROSTER, stored([])), "s3", "absent");
+    expect(buildEntries(ROSTER, draft, stored([]), { isPast: false, reason: "" })).toEqual([
+      { studentId: "s3", status: "absent" },
     ]);
   });
 
@@ -106,6 +141,7 @@ describe("buildEntries", () => {
       isPast: true,
       reason: "  bus was late  ",
     });
+    expect(entries).toHaveLength(2);
     expect(entries[0]).toEqual({ studentId: "s1", status: "present" });
     expect(entries[1]).toEqual({
       studentId: "s2",
@@ -136,27 +172,58 @@ describe("buildEntries", () => {
 });
 
 describe("deriveClean", () => {
-  it("is clean only when marked, unchanged and not editing", () => {
+  it("is clean only when fully marked, unchanged and not editing", () => {
     expect(
-      deriveClean({ dayIsMarked: true, changingCount: 0, editing: false }),
+      deriveClean({
+        dayIsMarked: true,
+        changingCount: 0,
+        unmarkedCount: 0,
+        editing: false,
+      }),
     ).toBe(true);
   });
 
   it("is not clean on an unmarked day even with a matching draft", () => {
     expect(
-      deriveClean({ dayIsMarked: false, changingCount: 0, editing: false }),
+      deriveClean({
+        dayIsMarked: false,
+        changingCount: 0,
+        unmarkedCount: 3,
+        editing: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("is not clean while any roster row is unmarked", () => {
+    expect(
+      deriveClean({
+        dayIsMarked: true,
+        changingCount: 0,
+        unmarkedCount: 1,
+        editing: false,
+      }),
     ).toBe(false);
   });
 
   it("is not clean with any pending change", () => {
     expect(
-      deriveClean({ dayIsMarked: true, changingCount: 1, editing: false }),
+      deriveClean({
+        dayIsMarked: true,
+        changingCount: 1,
+        unmarkedCount: 0,
+        editing: false,
+      }),
     ).toBe(false);
   });
 
   it("is not clean after Edit re-opened the day", () => {
     expect(
-      deriveClean({ dayIsMarked: true, changingCount: 0, editing: true }),
+      deriveClean({
+        dayIsMarked: true,
+        changingCount: 0,
+        unmarkedCount: 0,
+        editing: true,
+      }),
     ).toBe(false);
   });
 });

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
+  ActivityIndicator,
   Alert,
   FlatList,
   KeyboardAvoidingView,
@@ -11,6 +12,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import * as Haptics from "expo-haptics";
 
 import { AppIcon } from "../../components/app-icon";
 import { BulkPill } from "../../components/bulk-pill";
@@ -18,7 +20,6 @@ import { CapsuleButton } from "../../components/capsule-button";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorCard } from "../../components/error-card";
 import { Skeleton } from "../../components/skeleton";
-import { StatTile } from "../../components/stat-tile";
 import { useTabBarSpace } from "../../components/tab-bar";
 import { ThemedText } from "../../components/themed-text";
 import { useActiveContext } from "../../hooks/use-active-context";
@@ -28,10 +29,11 @@ import { errorMessage } from "../../lib/errors";
 import { formatShortWeekday, todayIso } from "../../lib/format";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
-import { fontSize, gutter, radius, spacing } from "../../theme/tokens";
+import { fontSize, gutter, motion, radius, shadow, spacing } from "../../theme/tokens";
+import { clampMonth } from "./calendar-month";
+import { DayPulse } from "./day-pulse";
 import { DaySheet } from "./day-sheet";
 import {
-  DEFAULT_STATUS,
   buildDraft,
   buildEntries,
   bulkDraft,
@@ -43,8 +45,10 @@ import {
 } from "./draft";
 import type { Status } from "./draft";
 import { RosterRow } from "./roster-row";
+import type { RecentMark } from "./roster-row";
 import { StatusSheet } from "./status-sheet";
-import { MARKABLE_DAY_TYPES, statusLabel } from "./status-meta";
+import { MARKABLE_DAY_TYPES, dayTypeLabel } from "./status-meta";
+import { useRecentAttendance } from "./use-recent-attendance";
 import { useSectionRoster } from "./use-section-roster";
 
 type RefusalKind = "holiday" | "weekend" | "noCalendar" | "other";
@@ -76,10 +80,10 @@ const RosterSeparator = () => <View style={styles.separator} />;
 /**
  * The marking panel — chunk 1's screen body (probe frames 02/03, slice plan
  * §4), now mounted under the shell's section header. One section, one day,
- * one roster. The tap/long-press/bulk interaction, the prefill and done rules
- * and the correction-reason scope are the web page's, ported into `draft.ts`;
- * the ONE divergence is the unmarked-day default (all present — the fact the
- * teacher is confirming on a phone), recorded in the slice plan.
+ * one roster. The tap/long-press/bulk interaction and the correction-reason
+ * scope are the web page's, ported into `draft.ts`; the owner-approved
+ * divergence is the blank draft: an unmarked day shows no statuses until the
+ * teacher acts, and the save CTA carries the marking progress.
  *
  * The section id comes from the shell (route params + switcher); a section
  * change remounts this panel via `key`, so draft, reason and sheet state all
@@ -104,7 +108,6 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
    *  overwrite them until the day changes or a submit resets the flag. */
   const editedRef = useRef(false);
   const prefillKeyRef = useRef("");
-  const wasCleanRef = useRef(false);
 
   const ready = Boolean(organizationId && academicYear);
 
@@ -149,8 +152,28 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
 
   // The roster, in roll order, through the shared hook — the summary panel
   // reads the same query and the same order.
-  const { roster, rosterIds, query: enrollmentsQuery } =
-    useSectionRoster(sectionId);
+  const { roster, rosterIds, query: enrollmentsQuery } = useSectionRoster(sectionId);
+
+  const { days: recentDays } = useRecentAttendance({
+    sectionId,
+    date,
+    enabled: ready,
+  });
+
+  /** One array per student, oldest-to-newest, for the row's history strip. */
+  const recentByStudent = useMemo(() => {
+    const map = new Map<string, RecentMark[]>();
+    for (const studentId of rosterIds) {
+      map.set(
+        studentId,
+        recentDays.map((day) => ({
+          date: day.date,
+          status: day.statuses.get(studentId) ?? null,
+        })),
+      );
+    }
+    return map;
+  }, [recentDays, rosterIds]);
 
   /** The stored marks as a lookup — the baseline for the changed-set. */
   const storedByStudent = useMemo(() => {
@@ -176,10 +199,7 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
     setReason("");
   }, [sectionId, date, selectedPeriodId, rosterIds, storedByStudent]);
 
-  const counts = useMemo(
-    () => countStatuses(rosterIds, draft),
-    [rosterIds, draft],
-  );
+  const counts = useMemo(() => countStatuses(rosterIds, draft), [rosterIds, draft]);
   const changing = useMemo(
     () => changingIds(rosterIds, draft, storedByStudent),
     [rosterIds, draft, storedByStudent],
@@ -189,20 +209,23 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
   const clean = deriveClean({
     dayIsMarked,
     changingCount: changing.length,
+    unmarkedCount: counts.unmarked,
     editing,
   });
+  const complete = counts.unmarked === 0 && roster.length > 0;
+  const editingNoChanges = editing && dayIsMarked && changing.length === 0;
   const showReason = canMark && isPast && dayIsMarked && changing.length > 0;
+  const canEditRows = canMark && !clean;
+  const showSaveBar = canMark && !clean;
 
-  const calendarDay =
-    (calendarQuery.data ?? []).find((row) => row.date === date) ?? null;
+  const calendarDay = (calendarQuery.data ?? []).find((row) => row.date === date) ?? null;
+  const isToday = date === todayIso();
   const refusal = refusalOf(calendarDay);
 
   const state: "loading" | "error" | "refused" | "empty" | "ready" =
     calendarQuery.isError || statusQuery.isError || enrollmentsQuery.isError
       ? "error"
-      : calendarQuery.isPending ||
-          statusQuery.isPending ||
-          enrollmentsQuery.isPending
+      : calendarQuery.isPending || statusQuery.isPending || enrollmentsQuery.isPending
         ? "loading"
         : refusal !== null
           ? "refused"
@@ -223,9 +246,15 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
       // The summary panel reads the same model this mark rewrote — refresh it
       // in the background so a panel switch shows the new day, not a stale one.
       void utils.attendance.status.invalidate();
+      void utils.attendance.statusHistory.invalidate();
       void utils.attendance.summary.invalidate();
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      // Announce on server confirmation, not when a previously saved day
+      // happens to render clean on open.
+      AccessibilityInfo.announceForAccessibility(copy.attendance.marking.saved);
     },
     onError: (error) => {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert(copy.attendance.title, errorMessage(error));
     },
   });
@@ -233,7 +262,7 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
   const toggleRow = (studentId: string) => {
     editedRef.current = true;
     setDraft((current) =>
-      withStatus(current, studentId, toggleStatus(current.get(studentId) ?? DEFAULT_STATUS)),
+      withStatus(current, studentId, toggleStatus(current.get(studentId))),
     );
   };
   const markAll = (status: Status) => {
@@ -248,6 +277,7 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
   };
   const submit = () => {
     if (!canMark || markSubmit.isPending || clean || roster.length === 0) return;
+    if (!complete) return;
     markSubmit.mutate({
       organizationId: organizationId ?? "",
       ...(schoolId ? { schoolId } : {}),
@@ -261,13 +291,17 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
     });
   };
 
-  // The saved bar is announced, not just shown (plan §8).
-  useEffect(() => {
-    if (clean && !wasCleanRef.current) {
-      AccessibilityInfo.announceForAccessibility(copy.attendance.marking.saved);
-    }
-    wasCleanRef.current = clean;
-  }, [clean]);
+  const finishEditing = () => {
+    setEditing(false);
+    setReason("");
+  };
+
+  const openDaySheet = () => {
+    const min = academicYear?.startDate;
+    const max = academicYear?.endDate;
+    setSheetMonth(min && max ? clampMonth(date, min, max) : date);
+    setDaySheetOpen(true);
+  };
 
   const sheetStudent = sheetStudentId
     ? (roster.find((row) => row.studentId === sheetStudentId) ?? null)
@@ -282,22 +316,26 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
           accessibilityLabel={formatShortWeekday(date)}
           accessibilityHint={copy.attendance.marking.dayPickerTitle}
           hitSlop={8}
-          onPress={() => {
-            setSheetMonth(date);
-            setDaySheetOpen(true);
-          }}
+          onPress={openDaySheet}
           style={styles.dayButton}
         >
           <ThemedText variant="subtitle">{formatShortWeekday(date)}</ThemedText>
           <AppIcon name="chevronDown" size={14} color={colors.chevron} />
         </Pressable>
-        {enrollmentsQuery.isSuccess ? (
-          <ThemedText variant="subtitle">
-            {" · "}
-            {copy.attendance.studentsCount(roster.length)}
-          </ThemedText>
+        {isToday ? (
+          <View style={styles.todayChip}>
+            <ThemedText variant="caption" color={colors.accentDeep}>
+              {copy.attendance.marking.today}
+            </ThemedText>
+          </View>
         ) : null}
       </View>
+      {enrollmentsQuery.isSuccess ? (
+        <ThemedText variant="meta" numberOfLines={1} style={styles.headerContext}>
+          {calendarDay ? `${dayTypeLabel(calendarDay.dayType)} · ` : ""}
+          {copy.attendance.studentsCount(roster.length)}
+        </ThemedText>
+      ) : null}
       {periodWise && periods.length > 0 ? (
         <ScrollView
           horizontal
@@ -316,10 +354,7 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
                 onPress={() => setPeriodId(period.id)}
                 style={[styles.periodChip, active ? styles.periodChipOn : null]}
               >
-                <ThemedText
-                  variant="caption"
-                  color={active ? colors.accentDeep : colors.ink}
-                >
+                <ThemedText variant="caption" color={active ? colors.accentDeep : colors.ink}>
                   {period.name}
                 </ThemedText>
               </Pressable>
@@ -330,86 +365,63 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
     </View>
   );
 
-  const tiles = (
-    <View style={styles.tiles}>
-      <StatTile
-        value={counts.present}
-        label={statusLabel("present")}
-        tone="positive"
-        style={styles.tile}
-        testID="tile-present"
-      />
-      <StatTile
-        value={counts.absent}
-        label={statusLabel("absent")}
-        tone="critical"
-        style={styles.tile}
-        testID="tile-absent"
-      />
-      <StatTile
-        value={counts.late}
-        label={statusLabel("late")}
-        tone="caution"
-        style={styles.tile}
-        testID="tile-late"
-      />
-      <StatTile
-        value={counts.on_leave}
-        label={statusLabel("on_leave")}
-        tone="neutral"
-        style={styles.tile}
-        testID="tile-on-leave"
-      />
-      {counts.half_day > 0 ? (
-        <StatTile
-          value={counts.half_day}
-          label={statusLabel("half_day")}
-          tone="caution"
-          style={styles.tile}
-          testID="tile-half-day"
-        />
-      ) : null}
-    </View>
-  );
+  const pulse = <DayPulse counts={counts} />;
 
-  const controls = canMark ? (
-    <>
-      <View style={styles.bulkRow}>
-        <BulkPill
-          title={copy.attendance.marking.allPresent}
-          tone="positive"
-          onPress={() => markAll("present")}
-          disabled={markSubmit.isPending}
-          testID="bulk-present"
-        />
-        <BulkPill
-          title={copy.attendance.marking.allAbsent}
-          tone="critical"
-          onPress={() => markAll("absent")}
-          disabled={markSubmit.isPending}
-          testID="bulk-absent"
-        />
-      </View>
+  const doneCard = clean ? (
+    <DoneCard
+      marked={counts.marked}
+      onEdit={() => {
+        setEditing(true);
+        setReason("");
+      }}
+    />
+  ) : null;
+
+  const controls =
+    canMark && !clean ? (
+      <>
+        <View style={styles.bulkRow}>
+          <BulkPill
+            title={copy.attendance.marking.allPresent}
+            tone="positive"
+            onPress={() => markAll("present")}
+            disabled={markSubmit.isPending}
+            testID="bulk-present"
+          />
+          <BulkPill
+            title={copy.attendance.marking.allAbsent}
+            tone="critical"
+            onPress={() => markAll("absent")}
+            disabled={markSubmit.isPending}
+            testID="bulk-absent"
+          />
+        </View>
+        <ThemedText variant="meta" style={styles.hint}>
+          {copy.attendance.marking.tapHint}
+        </ThemedText>
+      </>
+    ) : canMark ? null : (
       <ThemedText variant="meta" style={styles.hint}>
-        {copy.attendance.marking.tapHint}
+        {copy.attendance.marking.readOnly}
       </ThemedText>
-    </>
-  ) : (
-    <ThemedText variant="meta" style={styles.hint}>
-      {copy.attendance.marking.readOnly}
-    </ThemedText>
-  );
+    );
+
+  const recentLegend =
+    recentDays.length > 0 ? (
+      <View style={styles.recentLegend} testID="attendance-recent-legend">
+        <AppIcon name="history" size={15} color={colors.muted} />
+        <ThemedText variant="meta">{copy.attendance.marking.recentHint(recentDays.length)}</ThemedText>
+      </View>
+    ) : null;
 
   if (state !== "ready") {
     return (
       <>
-        <ScrollView
-          contentContainerStyle={[styles.content, { paddingBottom: tabSpace }]}
-        >
+        <ScrollView contentContainerStyle={[styles.content, { paddingBottom: tabSpace }]}>
           {header}
           {state === "loading" ? (
             <>
-              {tiles}
+              <Skeleton height={146} style={styles.pulseSkeleton} />
               <View style={styles.skeletonBlock}>
                 <Skeleton height={56} />
                 <Skeleton height={56} />
@@ -419,11 +431,7 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
             </>
           ) : state === "error" ? (
             <ErrorCard
-              cause={
-                calendarQuery.error ??
-                statusQuery.error ??
-                enrollmentsQuery.error
-              }
+              cause={calendarQuery.error ?? statusQuery.error ?? enrollmentsQuery.error}
               onRetry={retryAll}
               style={styles.gapTopLg}
               testID="attendance-error"
@@ -447,6 +455,7 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
           )}
         </ScrollView>
         <DaySheet
+          sectionId={sectionId}
           visible={daySheetOpen}
           anchor={sheetMonth}
           onAnchorChange={setSheetMonth}
@@ -473,8 +482,12 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
           keyExtractor={(row) => row.studentId}
           renderItem={({ item, index }) => (
             <RosterRow
-              row={{ ...item, status: draft.get(item.studentId) ?? DEFAULT_STATUS }}
-              canMark={canMark}
+              row={{
+                ...item,
+                status: draft.get(item.studentId) ?? null,
+                recent: recentByStudent.get(item.studentId) ?? [],
+              }}
+              canMark={canEditRows}
               onToggle={toggleRow}
               onOpenSheet={(studentId) => setSheetStudentId(studentId)}
               style={[
@@ -487,18 +500,20 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
           ListHeaderComponent={
             <View>
               {header}
-              {tiles}
+              {doneCard}
+              {pulse}
               {controls}
+              {recentLegend}
             </View>
           }
           contentContainerStyle={{
             paddingHorizontal: gutter,
             paddingTop: spacing.md,
-            paddingBottom: canMark ? spacing.md : tabSpace,
+            paddingBottom: showSaveBar ? spacing.md : tabSpace,
           }}
           keyboardShouldPersistTaps="handled"
         />
-        {canMark ? (
+        {showSaveBar ? (
           <View style={[styles.bottomBlock, { marginBottom: tabSpace }]}>
             {showReason ? (
               <View style={styles.reasonBlock}>
@@ -518,54 +533,42 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
                 />
               </View>
             ) : null}
-            {clean ? (
-              <View
-                testID="attendance-saved"
-                accessibilityLiveRegion="polite"
-                style={styles.savedBar}
-              >
-                <AppIcon name="check" size={18} color={colors.onAccent} />
-                <ThemedText
-                  variant="bodyStrong"
-                  color={colors.onAccent}
-                  style={styles.savedLabel}
-                >
-                  {copy.attendance.marking.saved}
-                </ThemedText>
-                <CapsuleButton
-                  title={copy.attendance.marking.edit}
-                  variant="onAccent"
-                  size="mini"
-                  onPress={() => setEditing(true)}
-                  testID="attendance-edit"
-                />
-              </View>
-            ) : (
-              <CapsuleButton
-                title={
-                  markSubmit.isPending
-                    ? copy.common.saving
-                    : copy.attendance.marking.save
+            <SaveAttendanceButton
+              label={
+                markSubmit.isPending
+                  ? copy.common.saving
+                  : editingNoChanges
+                    ? copy.attendance.marking.doneAction
+                    : dayIsMarked && changing.length > 0
+                      ? copy.attendance.marking.saveChanges(changing.length)
+                      : copy.attendance.marking.save
+              }
+              marked={counts.marked}
+              total={roster.length}
+              loading={markSubmit.isPending}
+              disabled={
+                markSubmit.isPending ||
+                (!editingNoChanges && (!complete || clean))
+              }
+              onPress={() => {
+                if (editingNoChanges) {
+                  finishEditing();
+                } else {
+                  submit();
                 }
-                onPress={submit}
-                loading={markSubmit.isPending}
-                testID="attendance-save"
-              />
-            )}
+              }}
+            />
           </View>
         ) : null}
       </KeyboardAvoidingView>
       <StatusSheet
         student={sheetStudent}
-        current={
-          sheetStudent
-            ? (draft.get(sheetStudent.studentId) ?? DEFAULT_STATUS)
-            : null
-        }
+        current={sheetStudent ? (draft.get(sheetStudent.studentId) ?? null) : null}
         onSelect={selectStatus}
         onDismiss={() => setSheetStudentId(null)}
       />
       <DaySheet
+        sectionId={sectionId}
         visible={daySheetOpen}
         anchor={sheetMonth}
         onAnchorChange={setSheetMonth}
@@ -577,6 +580,134 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
         onDismiss={() => setDaySheetOpen(false)}
       />
     </>
+  );
+}
+
+function DoneCard({ marked, onEdit }: { marked: number; onEdit: () => void }) {
+  return (
+    <View
+      testID="attendance-saved"
+      accessibilityLiveRegion="polite"
+      style={styles.doneCard}
+    >
+      <View style={styles.doneIcon}>
+        <AppIcon name="checkCircle" size={24} color={colors.accentDeep} />
+      </View>
+      <View style={styles.doneCopy}>
+        <ThemedText variant="bodyStrong" color={colors.accentDeep}>
+          {copy.attendance.marking.doneTitle}
+        </ThemedText>
+        <ThemedText variant="meta">{copy.attendance.marking.doneBody(marked)}</ThemedText>
+      </View>
+      <CapsuleButton
+        title={copy.attendance.marking.doneEdit}
+        variant="secondary"
+        size="compact"
+        onPress={onEdit}
+        testID="attendance-edit"
+      />
+    </View>
+  );
+}
+
+function SaveAttendanceButton({
+  label,
+  marked,
+  total,
+  loading,
+  disabled,
+  onPress,
+}: {
+  label: string;
+  marked: number;
+  total: number;
+  loading: boolean;
+  disabled: boolean;
+  onPress: () => void;
+}) {
+  const [buttonWidth, setButtonWidth] = useState(0);
+  const progress = total > 0 ? Math.min(100, (marked / total) * 100) : 0;
+  const complete = progress >= 100;
+  const filledWidth = Math.round((buttonWidth * progress) / 100);
+  const progressLabel = copy.attendance.marking.saveProgress(marked, total);
+
+  return (
+    <Pressable
+      testID="attendance-save"
+      accessibilityRole="button"
+      accessibilityLabel={`${label}. ${progressLabel}`}
+      accessibilityState={{ disabled, busy: loading }}
+      disabled={disabled || loading}
+      onLayout={(event) => {
+        const nextWidth = Math.round(event.nativeEvent.layout.width);
+        if (nextWidth !== buttonWidth) setButtonWidth(nextWidth);
+      }}
+      onPressIn={() => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.saveButton,
+        complete ? styles.saveButtonComplete : styles.saveButtonGhost,
+        pressed ? styles.savePressed : null,
+        disabled ? styles.saveDisabled : null,
+      ]}
+    >
+      {/* The button itself is the progress bar: no separate track or count.
+          Use the measured pixel width so the fill edge and the two clipped
+          labels stay on the same coordinate, inside the button's padding. */}
+      <View pointerEvents="none" style={[styles.saveFill, { width: filledWidth }]} />
+      {loading ? (
+        <ActivityIndicator color={complete ? colors.onAccent : colors.accentDeep} />
+      ) : buttonWidth === 0 ? (
+        <ThemedText
+          variant="bodyStrong"
+          color={complete ? colors.onAccent : colors.accentDeep}
+          numberOfLines={1}
+          style={styles.saveLabel}
+        >
+          {label}
+        </ThemedText>
+      ) : (
+        <>
+          {/* The label switches ink at the fill edge, like a download bar. */}
+          <View
+            pointerEvents="none"
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
+            style={[styles.saveLabelClip, { left: filledWidth, right: 0 }]}
+          >
+            <View style={[styles.saveLabelInner, { width: buttonWidth, marginLeft: -filledWidth }]}>
+              <ThemedText
+                variant="bodyStrong"
+                color={colors.accentDeep}
+                numberOfLines={1}
+                style={styles.saveLabel}
+              >
+                {label}
+              </ThemedText>
+            </View>
+          </View>
+          <View
+            pointerEvents="none"
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
+            style={[styles.saveLabelClip, { left: 0, width: filledWidth }]}
+          >
+            <View style={[styles.saveLabelInner, { width: buttonWidth }]}>
+              <ThemedText
+                variant="bodyStrong"
+                color={colors.onAccent}
+                numberOfLines={1}
+                style={styles.saveLabel}
+              >
+                {label}
+              </ThemedText>
+            </View>
+          </View>
+        </>
+      )}
+    </Pressable>
   );
 }
 
@@ -596,6 +727,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
+    minHeight: 48,
+    paddingHorizontal: spacing.xs,
+    marginLeft: -spacing.xs,
+  },
+  todayChip: {
+    minHeight: 24,
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: colors.accentStrong,
+  },
+  headerContext: {
+    marginTop: spacing.xxs,
+    paddingHorizontal: spacing.xs,
   },
   periodScroll: {
     marginTop: spacing.md,
@@ -618,17 +763,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentTint,
     borderColor: colors.accentTint,
   },
-  tiles: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-  },
-  tile: {
-    flexGrow: 1,
-    flexBasis: 62,
-    minWidth: 62,
-  },
   bulkRow: {
     flexDirection: "row",
     gap: spacing.sm,
@@ -636,6 +770,12 @@ const styles = StyleSheet.create({
   },
   hint: {
     marginTop: spacing.sm,
+  },
+  recentLegend: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    marginTop: spacing.md,
   },
   separator: {
     height: StyleSheet.hairlineWidth,
@@ -673,21 +813,81 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontSize: fontSize.body,
   },
-  savedBar: {
-    minHeight: 54,
-    borderRadius: radius.full,
-    backgroundColor: colors.accent,
+  doneCard: {
+    marginTop: spacing.md,
+    minHeight: 68,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.xl,
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.accentTint,
   },
-  savedLabel: {
+  doneIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surface,
+  },
+  doneCopy: {
     flex: 1,
+    gap: spacing.xxs,
+  },
+  saveButton: {
+    alignSelf: "stretch",
+    minHeight: 56,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    boxShadow: shadow.floating,
+  },
+  saveButtonGhost: {
+    backgroundColor: colors.surface,
+    borderColor: colors.hairline,
+  },
+  saveButtonComplete: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  saveFill: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: colors.accent,
+  },
+  saveLabelClip: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    overflow: "hidden",
+    justifyContent: "center",
+  },
+  saveLabelInner: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  savePressed: {
+    transform: [{ scale: motion.pressScale }],
+  },
+  saveDisabled: {
+    opacity: 0.55,
+  },
+  saveLabel: {
+    fontSize: fontSize.callout,
   },
   skeletonBlock: {
     marginTop: spacing.lg,
     gap: spacing.sm,
+  },
+  pulseSkeleton: {
+    marginTop: spacing.lg,
   },
   gapTopLg: {
     marginTop: spacing.lg,

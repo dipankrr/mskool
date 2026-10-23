@@ -93,7 +93,7 @@ export function ClassCard({
           {title}
         </ThemedText>
         {roleWord || statusText ? (
-          <ThemedText variant="meta" numberOfLines={1}>
+          <ThemedText variant="meta" numberOfLines={2}>
             {roleWord ? copy.home.classTeacher : null}
             {roleWord && statusText ? " · " : null}
             {statusText ? (

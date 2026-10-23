@@ -65,7 +65,13 @@ export function GenerateSheet({
   }, [visible]);
 
   return (
-    <BottomSheetModal ref={ref} enablePanDownToClose onDismiss={onDismiss}>
+    <BottomSheetModal
+      ref={ref}
+      enablePanDownToClose
+      onDismiss={onDismiss}
+      backgroundStyle={{ backgroundColor: colors.surface }}
+      handleIndicatorStyle={{ backgroundColor: colors.grabber }}
+    >
       {visible ? <GenerateBody onDone={onDismiss} /> : null}
     </BottomSheetModal>
   );
