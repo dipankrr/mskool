@@ -1,12 +1,17 @@
-import { StyleSheet, View } from "react-native";
+import { useState } from "react";
+import { Alert, StyleSheet, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/trpc";
 import type { ReactNode } from "react";
 
+import { CapsuleButton } from "../../components/capsule-button";
 import { Card } from "../../components/card";
+import { ChoiceSheet } from "../../components/choice-sheet";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorCard } from "../../components/error-card";
+import { LinkRow } from "../../components/link-row";
+import { Notice } from "../../components/notice";
 import { PersonRow } from "../../components/person-row";
 import { ScreenFrame } from "../../components/screen-frame";
 import { SectionLabel } from "../../components/section-label";
@@ -16,9 +21,11 @@ import { ThemedText } from "../../components/themed-text";
 import { useActiveContext } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
 import { copy } from "../../lib/copy";
+import { toFriendlyError } from "../../lib/errors";
 import { formatReadableDate } from "../../lib/format";
 import { trpc } from "../../lib/trpc";
 import { spacing } from "../../theme/tokens";
+import { ENROLLMENT_TRANSITIONS, type EnrollmentStatus } from "./people-logic";
 
 type Guardian = inferRouterOutputs<AppRouter>["guardian"]["list"][number];
 
@@ -33,11 +40,14 @@ type Guardian = inferRouterOutputs<AppRouter>["guardian"]["list"][number];
  */
 export function StudentDetailScreen() {
   const { studentId } = useLocalSearchParams<{ studentId?: string }>();
-  const { organizationId, ready } = useActiveContext();
+  const { organizationId, academicYear, ready } = useActiveContext();
   const { has } = usePermissions();
 
   const canRead = has("student:read");
   const canUpdate = has("student:update");
+  const canEnroll = has("enrollment:create");
+  const canEnrollUpdate = has("enrollment:update");
+  const canSeePortal = has("portal_access:activate");
 
   const studentQuery = trpc.student.byId.useQuery(
     { organizationId: organizationId ?? "", id: studentId ?? "" },
@@ -50,6 +60,44 @@ export function StudentDetailScreen() {
       placeholderData: (previous) => previous,
     },
   );
+  const enrollmentsQuery = trpc.enrollment.list.useQuery(
+    { organizationId: organizationId ?? "", academicYearId: academicYear?.id ?? "" },
+    {
+      enabled:
+        ready &&
+        Boolean(organizationId) &&
+        has("enrollment:read") &&
+        Boolean(academicYear?.id),
+    },
+  );
+
+  const enrollment = (enrollmentsQuery.data ?? []).find(
+    (row) => row.student.id === studentId,
+  );
+  const transitions = enrollment
+    ? ENROLLMENT_TRANSITIONS[
+        enrollment.enrollment.enrollmentStatus as EnrollmentStatus
+      ] ?? []
+    : [];
+
+  const [transitionOpen, setTransitionOpen] = useState(false);
+  const [transitionError, setTransitionError] = useState<unknown>(null);
+  const utils = trpc.useUtils();
+  const transition = trpc.enrollment.transition.useMutation();
+  const moveAlong = async (to: EnrollmentStatus) => {
+    if (!enrollment || !organizationId) return;
+    setTransitionError(null);
+    try {
+      await transition.mutateAsync({
+        organizationId,
+        id: enrollment.enrollment.id,
+        to,
+      });
+      await utils.enrollment.list.invalidate();
+    } catch (error) {
+      setTransitionError(error);
+    }
+  };
 
   const student = studentQuery.data;
   const name = student
@@ -284,6 +332,96 @@ export function StudentDetailScreen() {
         </>
       )}
 
+      <SectionLabel>{copy.people.enrollmentLabel}</SectionLabel>
+      {enrollmentsQuery.isPending ? (
+        <Card>
+          <Skeleton height={20} width="40%" />
+        </Card>
+      ) : enrollment ? (
+        <Card padless>
+          <FactRow
+            label={copy.people.enrollment.statusLabel}
+            value={
+              copy.people.enrollment.statuses[
+                enrollment.enrollment.enrollmentStatus as EnrollmentStatus
+              ] ?? enrollment.enrollment.enrollmentStatus
+            }
+            first
+          />
+          {enrollment.enrollment.rollNumber ? (
+            <FactRow
+              label={copy.people.enrollment.rollLabel}
+              value={
+                canEnrollUpdate
+                  ? `${enrollment.enrollment.rollNumber} · Edit`
+                  : enrollment.enrollment.rollNumber
+              }
+              onPress={
+                canEnrollUpdate
+                  ? () =>
+                      router.push({
+                        pathname: "/enrollment-form",
+                        params: { enrollmentId: enrollment.enrollment.id },
+                      })
+                  : undefined
+              }
+              accessibilityHint={copy.people.enrollment.editRoll}
+            />
+          ) : null}
+          {canEnrollUpdate && enrollment.enrollment.sectionId === null ? (
+            <FactRow
+              label={copy.people.enrollment.sectionLabel}
+              value={copy.people.enrollment.noSection}
+              onPress={() =>
+                router.push({
+                  pathname: "/enrollment-form",
+                  params: { enrollmentId: enrollment.enrollment.id },
+                })
+              }
+              accessibilityHint={copy.people.enrollment.assignHint}
+            />
+          ) : null}
+          {canEnrollUpdate && transitions.length > 0 ? (
+            <FactRow
+              label={copy.people.enrollment.moveAlong}
+              value={copy.people.enrollment.statuses[
+                transitions[0] as EnrollmentStatus
+              ]}
+              onPress={() => setTransitionOpen(true)}
+              accessibilityHint={copy.people.enrollment.moveAlongHint}
+            />
+          ) : null}
+        </Card>
+      ) : (
+        <Card>
+          <ThemedText variant="meta">
+            {copy.people.enrollment.notEnrolledTitle} —{" "}
+            {copy.people.enrollment.notEnrolledBody}
+          </ThemedText>
+          {canEnroll ? (
+            <CapsuleButton
+              title={copy.people.enrollment.enroll}
+              icon="add"
+              onPress={() =>
+                router.push({
+                  pathname: "/enrollment-form",
+                  params: { studentId: studentId ?? "" },
+                })
+              }
+              testID="enrollment-start"
+              style={styles.enrollButton}
+            />
+          ) : null}
+        </Card>
+      )}
+      {transitionError ? (
+        <Notice
+          tone="critical"
+          message={toFriendlyError(transitionError).message}
+          testID="enrollment-transition-error"
+        />
+      ) : null}
+
       <SectionLabel>{copy.students.sections.guardians}</SectionLabel>
       {guardiansQuery.isPending ? (
         <Card>
@@ -292,7 +430,20 @@ export function StudentDetailScreen() {
       ) : guardians.length > 0 ? (
         <Card padless>
           {guardians.map((guardian, index) => (
-            <GuardianRow key={guardian.id} guardian={guardian} first={index === 0} />
+            <GuardianRow
+              key={guardian.id}
+              guardian={guardian}
+              first={index === 0}
+              onPress={
+                canUpdate
+                  ? () =>
+                      router.push({
+                        pathname: "/guardian-form",
+                        params: { studentId: studentId ?? "", guardianId: guardian.id },
+                      })
+                  : undefined
+              }
+            />
           ))}
         </Card>
       ) : (
@@ -300,11 +451,86 @@ export function StudentDetailScreen() {
           <ThemedText variant="meta">{copy.students.guardiansEmpty}</ThemedText>
         </Card>
       )}
+      {canUpdate ? (
+        <Card padless>
+          <LinkRow
+            title={copy.people.guardians.add}
+            detail={copy.people.guardians.addRowDetail}
+            icon="add"
+            onPress={() =>
+              router.push({
+                pathname: "/guardian-form",
+                params: { studentId: studentId ?? "" },
+              })
+            }
+            accessibilityHint={copy.people.guardians.addHint}
+            first
+            testID="guardian-add"
+          />
+        </Card>
+      ) : null}
+
+      {canSeePortal ? (
+        <>
+          <SectionLabel>{copy.people.portal.title}</SectionLabel>
+          <Card padless>
+            <LinkRow
+              title={copy.people.portal.title}
+              detail={copy.people.portal.detail}
+              icon="key"
+              onPress={() =>
+                router.push({
+                  pathname: "/portal-access",
+                  params: { studentId: studentId ?? "" },
+                })
+              }
+              accessibilityHint={copy.people.portal.hint}
+              first
+              testID="student-portal-link"
+            />
+          </Card>
+        </>
+      ) : null}
+
+      <ChoiceSheet
+        visible={transitionOpen}
+        title={copy.people.enrollment.transitions.sheetTitle}
+        options={transitions.map((to) => ({
+          id: to,
+          label: copy.people.enrollment.statuses[to],
+        }))}
+        currentId=""
+        onSelect={(to) => {
+          setTransitionOpen(false);
+          Alert.alert(
+            copy.people.enrollment.transitions.confirmTitle,
+            copy.people.enrollment.transitions.confirmBody,
+            [
+              { text: copy.common.cancel, style: "cancel" },
+              {
+                text: copy.people.enrollment.transitions.confirm,
+                style: "destructive",
+                onPress: () => void moveAlong(to as EnrollmentStatus),
+              },
+            ],
+          );
+        }}
+        onDismiss={() => setTransitionOpen(false)}
+        testIDPrefix="enrollment-transition"
+      />
     </View>,
   );
 }
 
-function GuardianRow({ guardian, first }: { guardian: Guardian; first: boolean }) {
+function GuardianRow({
+  guardian,
+  first,
+  onPress,
+}: {
+  guardian: Guardian;
+  first: boolean;
+  onPress?: () => void;
+}) {
   const flags = [
     guardian.isPrimary ? copy.students.guardianPrimary : null,
     guardian.isEmergencyContact ? copy.students.guardianEmergency : null,
@@ -321,6 +547,8 @@ function GuardianRow({ guardian, first }: { guardian: Guardian; first: boolean }
         flags || null,
       )}
       first={first}
+      onPress={onPress}
+      accessibilityHint={onPress ? copy.students.openHint : undefined}
       testID={`student-guardian-${guardian.id}`}
     />
   );
@@ -332,5 +560,9 @@ const styles = StyleSheet.create({
   },
   skeleton: {
     gap: spacing.md,
+  },
+  enrollButton: {
+    alignSelf: "stretch",
+    marginTop: spacing.sm,
   },
 });
