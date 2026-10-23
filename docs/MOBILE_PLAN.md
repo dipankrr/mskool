@@ -612,7 +612,7 @@ short, repeated teacher task before the more complex assignment workflow.
 | Step | Domain | Backend | Status |
 |---|---|---|---|
 | 0 | Foundation (native auth/API proof + prototype review) | staff login, `me.get` | in progress (Android build + walk done; findings fixed + re-walked; build durability in-repo — prebuild safe; committed 2026-10-17; **prototype review PASSED 2026-10-18 — shell build next**; iOS walk parked 2026-10-20) |
-| 1 | Home + context + profile | `me` 1 · `school` 5 · `academic` years 6 | open |
+| 1 | Home + context + profile | `me` 1 · `school` 5 · `academic` years 6 | in progress — branch switcher, profile/access and voluntary password walked 2026-10-23; branch + session management (chunk B) open |
 | 2 | Students + academic setup (§7) | `student` 7 · `enrollment` 6 · `guardian` 4 · `portalAccess` 4 · `academic` classes 5 + sections 5 · `subject` 5 · `term` 4 · `assignment` 10 | open |
 | 3 | Attendance (§8) | `attendance.*` 13 | complete (mark/status walked 2026-10-18; summary + section switcher 2026-10-19; calendar generate/days, policy, periods 2026-10-20; report exports remain open) |
 | 4 | Homework manage (§9) | `homework.*` staff 28 | open |
@@ -637,7 +637,7 @@ shell until those workflows are complete or explicitly deferred by the owner.
 | Existing web route(s) | Mobile phase | Required mobile experience |
 |---|---:|---|
 | `(auth)/login`, `(auth)/change-password` | 0 | Native staff sign-in, forced password change, recovery and session expiry |
-| `(dashboard)/`, `/profile`, `/branches`, `/sessions` | 1 | Task-led home, organization/branch/year context, profile and account actions |
+| `(dashboard)/`, `/profile`, `/branches`, `/sessions` | 1 | Task-led home, organization/branch/session context, profile and account actions. **Home, branch switcher, profile/access and voluntary password are live** (device-walked 2026-10-23); branch management (`/branches`) and session management (`/sessions`) remain — chunk B, permission-gated, with the session change behind a confirm (ADR-047) |
 | `/subjects`, `/classes`, `/classes/[classId]` | 2 | Searchable catalog and class detail; setup forms grouped by school workflow |
 | `/students`, `/students/[studentId]` | 2 | Roster search/filter, student detail, admit/edit/enroll, guardian and portal-access flows |
 | `/students/photos` | 2 | Native photo picker, review-before-upload bulk matching, retry-failed-only |
@@ -667,16 +667,20 @@ Home is a native operational landing screen composed from existing caller,
 branch, and academic-year queries; do not invent a dashboard endpoint just to
 recreate web cards. Its task shortcuts are permission-filtered for navigation,
 while each destination and mutation remains server-authorized. Context is
-organization → granted branch → current academic year, with persisted ids
-revalidated against `me.get` on every new session.
+organization → granted branch → the branch's **current** academic year, with
+persisted ids revalidated against `me.get` on every new session.
+
+There is **no global year picker** on mobile (ADR-047): the session is a fact
+the More screen displays, not a control, and surfaces that look backwards carry
+their own bounded year control. Changing the current session is an
+administrative write, gated by permission, that lands with chunk B.
 
 | Procedure | Screen/use | Done |
 |---|---|---|
-| `me.get` | Session hydration, role/permission map, staff/family dispatch, owned-student detection | ☐ |
-| `school.list` / `school.byId` | Branch picker and branch summary | ☐ |
-| `school.create` / `school.update` / `school.deactivate` | Branch management from the organization context | ☐ |
-| `academic.year.list` / `.current` / `.byId` | Year picker and current-year context | ☐ |
-| `academic.year.create` / `.update` / `.setCurrent` | Year setup and transition | ☐ |
+| `me.get` | Session hydration, role/permission map, staff/family dispatch, owned-student detection, branch rows and profile | ☑ walked 2026-10-23 (branch row, profile, permission groups) |
+| `school.list` / `school.byId` | Not used by the shell: the branch picker reads `me.get`'s `memberships[].schools[]`, which is already scope-filtered (ADR-044). Branch *management* needs these and lands with chunk B | ☐ chunk B |
+| `academic.year.list` / `.current` / `.byId` | `list` supplies the branch's current session (filtered by `schoolId` client-side, one org-wide read). `.current` is deliberately unused: it is a strict `staffProcedure` and 403s for section-scoped teachers. `.byId` unused so far | ☑ `list` walked 2026-10-23 (session row follows the branch) |
+| `academic.year.create` / `.update` / `.setCurrent` | Session management (chunk B): create a session, edit dates, set the current one with a confirm | ☐ chunk B |
 
 Profile reads the `me.get` identity. Password changes and logout use
 better-auth, not a profile mutation. If the web staff routes expose additional

@@ -1957,11 +1957,11 @@ surface later without a second app.
    record.** Each domain phase ticks every procedure in its namespace
    (staff door in the admin phase; the portal door with the family shell).
    Unticked rows are the resume point. See `docs/MOBILE_PLAN.md`.
-8. **Forms are the contracts; rows are the router outputs.** Validation
-   schemas from `@repo/contracts`, row shapes from
-   `inferRouterOutputs<AppRouter>` — the web's split, unchanged, because
-   the wire (no superjson: timestamps as strings, money as decimal
-   strings) is identical.
+8. **Forms are the contracts; rows are the router outputs.** Row shapes from
+   `inferRouterOutputs<AppRouter>`; no runtime contract import — mobile
+   validates on the server and imports `@repo/contracts` as types only
+   (superseded by ADR-048). The wire stays the web's (no superjson:
+   timestamps as strings, money as decimal strings).
 
 **Non-goals for the admin build:** timetable (reaffirms the PRD refusal —
 no tables exist, only forward-references in comments); push/WhatsApp
@@ -2090,3 +2090,86 @@ that is a new ADR and a new number, not a reinterpretation of this column.
 **Alternatives rejected.** Reusing `days_present` for half day (would inflate the
 official rate); a new materialized report table (duplicates the summary read
 model); an unbounded history endpoint (a report, not a register glance).
+
+---
+
+## ADR-047 - The staff shell runs in the branch's current session; changing a session is an admin act, not a viewing mode
+
+Date: 2026-10-23. Status: accepted. Supersedes the global year picker in
+`docs/MOBILE_PLAN.md` §6.1; refines ADR-043 (mobile staff shell).
+
+**Context.** The plan inherited the web console's three context switchers
+(organization -> branch -> academic year) without asking whether a phone wants
+all three. The owner's direction for Step 1 was explicit: "app is app - do
+whatever is good for mobile". A phone is a personal working surface used in a
+corridor between periods, not a desk console. A teacher's job is today's
+register in the session the school is actually running. A global year picker
+would (a) invite marking attendance in a closed session, (b) add a fourth piece
+of shell state every screen must respect, and (c) imply the app has a
+"history browsing" mode it does not have.
+
+**Decision.**
+
+1. The staff shell resolves **organization -> granted branch -> that branch's
+   current session** (`academic.year.list`, the row flagged `isCurrent`).
+   `academic.year.current` is not called: it demands the caller COVER the
+   school node, so a class/section-scoped teacher gets a 403.
+2. **There is no user-selectable year in the shell.** The session is a fact the
+   More screen displays, not a control.
+3. **Branch is selectable only when the grant covers more than one.** A single
+   branch renders as a plain line with no chevron; the persisted branch id is a
+   convenience, revalidated against `me.get` on every new session.
+4. **Changing the current session is an administrative write** in Sessions
+   management (`academic.year.setCurrent`), reviewed with a confirm, and lands
+   in the next slice - not a personal viewing mode.
+5. **History lives inside the surface that needs it.** A read surface that can
+   look backwards (attendance calendar, reports, results) carries its own
+   bounded year/period control inside that screen, defaulting to the shell's
+   current session. No screen invents a second global context.
+
+**Consequences.** Shell state is two ids, not three. Screens no longer need a
+"current year != selected year" guard. Web keeps its year picker: a desk
+surface, and its own ADR-adjacent choice. Branch and session *management*
+(`school.create/update/deactivate`, `academic.year.*` writes) remains in the
+Step 1 backlog as an admin surface, gated by permission, not by role name.
+
+**Alternatives rejected.** A year picker in More (the web model) - wrong
+affordance for a corridor, and a foot-gun for marking. Hiding the session
+entirely - a teacher must be able to see which session she is marking. A
+per-screen year chip everywhere - clutters the screens that never look back.
+
+---
+
+## ADR-048 - Mobile imports shared packages as types only; the server is the only validator
+
+Date: 2026-10-23. Status: accepted. Supersedes ADR-043 §8 ("Validation schemas
+from `@repo/contracts`").
+
+**Context.** ADR-043 §8 assumed mobile would reuse the web's contracts the way
+the web does. The Step 0 foundation spike measured the cost: importing one
+runtime contract module into the native bundle pulled the schema graph in -
+1616 -> 1834 modules, 4.3 -> 5.3 MB - because `@repo/contracts` is built on
+`drizzle-zod` over the Drizzle schema. A phone downloads that on every cold
+start; a server-side truth it cannot enforce anyway.
+
+**Decision.** `apps/mobile` may import `@repo/contracts`, `@repo/db`,
+`@repo/services` and `@repo/trpc` **only with `import type`**. The one runtime
+import is `type AppRouter` from `@repo/trpc`, which erases at build time and
+keeps the column-rename type chain intact. Form validation is either local UI
+rules (required, lengths, equality, numeric range) or the server's answer; the
+server is the only validator. Client-side formatting helpers are ported into
+`apps/mobile/src/lib/` with their own unit tests (`format.ts`), never imported
+from a server package. tRPC errors map to copy keys in `lib/errors.ts`, so the
+server's refusal is the state the user sees.
+
+**Consequences.** No shared validator means no drift between client and server:
+the server's rejection is the contract. A helper needed on both sides is either
+duplicated deliberately with tests on each side or promoted to a new
+client-safe package - and that promotion needs its own measurement, not an
+assumption. The bundle stays at foundation size, which is what the spike
+proved.
+
+**Alternatives rejected.** Importing contracts and tree-shaking zod (measured:
+still pulls the schema graph). A `contracts/client` entry point exposing only
+zod-safe schemas (real work, no consumer yet - revisit only if a third client
+needs one). Validating on the client and trusting it (ADR-001: never).
