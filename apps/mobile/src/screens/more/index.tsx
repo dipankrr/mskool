@@ -82,13 +82,15 @@ export function MoreScreen() {
     null;
   const roles = Array.from(new Set(membership?.roleTypes ?? []));
 
+  const canManageStudents = has("student:read");
   const canManageBranches =
     has("school:read") &&
     (has("school:create") || has("school:update") || has("school:delete"));
   const canManageSessions =
     has("academic_year:read") &&
     (has("academic_year:create") || has("academic_year:update"));
-  const showManage = canManageBranches || canManageSessions;
+  const showManage =
+    canManageStudents || canManageBranches || canManageSessions;
 
   const canSwitchBranch = branches.length > 1;
   const branchValue = ready ? branchName ?? copy.more.notSet : copy.more.loading;
@@ -168,6 +170,17 @@ export function MoreScreen() {
           <>
             <SectionLabel>{copy.more.manage}</SectionLabel>
             <Card padless>
+              {canManageStudents ? (
+                <LinkRow
+                  title={copy.more.students}
+                  detail={copy.more.studentsDetail}
+                  icon="students"
+                  onPress={() => router.push("/students")}
+                  accessibilityHint={copy.more.studentsHint}
+                  first
+                  testID="more-students"
+                />
+              ) : null}
               {canManageBranches ? (
                 <LinkRow
                   title={copy.more.branches}
@@ -175,7 +188,7 @@ export function MoreScreen() {
                   icon="branches"
                   onPress={() => router.push("/branches")}
                   accessibilityHint={copy.more.branchesHint}
-                  first
+                  first={!canManageStudents}
                   testID="more-branches"
                 />
               ) : null}
@@ -186,7 +199,7 @@ export function MoreScreen() {
                   icon="sessions"
                   onPress={() => router.push("/sessions")}
                   accessibilityHint={copy.more.sessionsHint}
-                  first={!canManageBranches}
+                  first={!canManageStudents && !canManageBranches}
                   testID="more-sessions"
                 />
               ) : null}
