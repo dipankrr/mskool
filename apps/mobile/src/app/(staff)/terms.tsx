@@ -1,0 +1,6 @@
+import { TermsScreen } from "../../screens/academic/terms";
+
+/** Thin route: the screen body lives in `screens/` (MOBILE_PLAN layout rule). */
+export default function TermsRoute() {
+  return <TermsScreen />;
+}
