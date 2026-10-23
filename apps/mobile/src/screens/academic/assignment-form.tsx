@@ -52,7 +52,7 @@ export function TeacherAssignmentFormScreen() {
     id?: string;
     sectionId?: string;
   }>();
-  const { organizationId, academicYear, ready } = useActiveContext();
+  const { organizationId, schoolId, academicYear, ready } = useActiveContext();
   const { has } = usePermissions();
 
   const editing = Boolean(id);
@@ -87,6 +87,7 @@ export function TeacherAssignmentFormScreen() {
     >
       <AssignmentFormBody
         organizationId={organizationId ?? ""}
+        schoolId={schoolId}
         academicYearId={academicYear?.id ?? null}
         sectionId={assignmentQuery.data?.sectionId ?? sectionId ?? null}
         row={assignmentQuery.data ?? null}
@@ -99,6 +100,7 @@ export function TeacherAssignmentFormScreen() {
 
 function AssignmentFormBody({
   organizationId,
+  schoolId,
   academicYearId,
   sectionId,
   row,
@@ -106,6 +108,8 @@ function AssignmentFormBody({
   canEnd,
 }: {
   organizationId: string;
+  /** Create's addressed parent — the gate covers `teacher_assignment:create` here. */
+  schoolId: string | null;
   academicYearId: string | null;
   sectionId: string | null;
   row: AssignmentRow | null;
@@ -178,12 +182,15 @@ function AssignmentFormBody({
     setSaveError(null);
     if (hasErrors) return;
     try {
-      if (!academicYearId || !sectionId) {
-        setSaveError(new Error(copy.academic.noSessionBody));
+      if (!academicYearId || !sectionId || !schoolId) {
+        setSaveError(
+          new Error(schoolId ? copy.academic.noSessionBody : copy.students.noOrgBody),
+        );
         return;
       }
       await create.mutateAsync({
         organizationId,
+        schoolId,
         ...assignmentPayload(form, sectionId, academicYearId),
       });
       await utils.assignment.teacherAssignment.list.invalidate();

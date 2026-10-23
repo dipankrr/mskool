@@ -110,75 +110,75 @@ export function TeacherAssignmentsScreen() {
       filteredEmptyTitle={copy.academic.assignments.emptyTitle}
       filteredEmptyBody={copy.academic.assignments.emptyBody}
       emptyIcon="person"
-      emptyAction={
-        hasSection && canCreate ? (
-          <Card style={styles.filterCard}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={copy.academic.assignments.add}
-              onPress={() =>
-                router.push({
-                  pathname: "/teacher-assignment-form",
-                  params: { sectionId: selectedSectionId ?? "" },
-                })
-              }
-              style={({ pressed }) => [
-                styles.filter,
-                pressed ? styles.filterPressed : null,
-              ]}
-              testID="assignments-empty-add"
-            >
-              <AppIcon name="add" size={18} color={colors.accentDeep} />
-              <ThemedText variant="bodyStrong" color={colors.accentDeep}>
-                {copy.academic.assignments.add}
-              </ThemedText>
-            </Pressable>
-          </Card>
-        ) : null
-      }
       titleTestID="assignments-title"
-    >
-      <View style={styles.filterWrap}>
-        <Card style={styles.filterCard}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`${copy.academic.sections.title}, ${sectionLabel(selectedSectionId) ?? ""}`}
-            accessibilityHint={copy.academic.assignments.sectionPickerTitle}
-            onPress={() => setPickerOpen(true)}
-            style={({ pressed }) => [styles.filter, pressed ? styles.filterPressed : null]}
-            testID="assignments-section-filter"
-          >
-            <ThemedText variant="bodyStrong" numberOfLines={1} style={styles.filterText}>
-              {`Section: ${sectionLabel(selectedSectionId) ?? copy.academic.assignments.sectionPickerTitle}`}
-            </ThemedText>
-            <AppIcon name="chevronDown" size={16} color={colors.muted} />
-          </Pressable>
-        </Card>
-        {hasSection && canCreate ? (
+      header={
+        <View style={styles.filterWrap}>
           <Card style={styles.filterCard}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={copy.academic.assignments.add}
-              onPress={() =>
-                router.push({
-                  pathname: "/teacher-assignment-form",
-                  params: { sectionId: selectedSectionId ?? "" },
-                })
-              }
+              accessibilityLabel={`${copy.academic.sections.title}, ${sectionLabel(selectedSectionId) ?? ""}`}
+              accessibilityHint={copy.academic.assignments.sectionPickerTitle}
+              onPress={() => setPickerOpen(true)}
               style={({ pressed }) => [
                 styles.filter,
                 pressed ? styles.filterPressed : null,
               ]}
-              testID="assignments-add"
+              testID="assignments-section-filter"
             >
-              <AppIcon name="add" size={18} color={colors.accentDeep} />
-              <ThemedText variant="bodyStrong" color={colors.accentDeep}>
-                {copy.academic.assignments.add}
+              <ThemedText
+                variant="bodyStrong"
+                numberOfLines={1}
+                style={styles.filterText}
+              >
+                {`Section: ${sectionLabel(selectedSectionId) ?? copy.academic.assignments.sectionPickerTitle}`}
               </ThemedText>
+              <AppIcon name="chevronDown" size={16} color={colors.muted} />
             </Pressable>
           </Card>
-        ) : null}
-      </View>
+          {hasSection && canCreate ? (
+            <Card style={styles.filterCard}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={copy.academic.assignments.add}
+                onPress={() =>
+                  router.push({
+                    pathname: "/teacher-assignment-form",
+                    params: { sectionId: selectedSectionId ?? "" },
+                  })
+                }
+                style={({ pressed }) => [
+                  styles.filter,
+                  pressed ? styles.filterPressed : null,
+                ]}
+                testID="assignments-add"
+              >
+                <AppIcon name="add" size={18} color={colors.accentDeep} />
+                <ThemedText variant="bodyStrong" color={colors.accentDeep}>
+                  {copy.academic.assignments.add}
+                </ThemedText>
+              </Pressable>
+            </Card>
+          ) : null}
+          <ChoiceSheet
+            visible={pickerOpen}
+            title={copy.academic.assignments.sectionPickerTitle}
+            options={(sections.data ?? []).map((section) => ({
+              id: section.id,
+              label: sectionLabel(section.id) ?? section.name,
+            }))}
+            currentId={selectedSectionId ?? ""}
+            onSelect={(id) => {
+              setPickerOpen(false);
+              if (id && id !== selectedSectionId) {
+                router.setParams({ sectionId: id });
+              }
+            }}
+            onDismiss={() => setPickerOpen(false)}
+            testIDPrefix="assignments-section"
+          />
+        </View>
+      }
+    >
       {(list.data ?? []).map((row: AssignmentRow) => (
         <PersonRow
           key={row.id}
@@ -207,23 +207,6 @@ export function TeacherAssignmentsScreen() {
           testID={`assignment-row-${row.id}`}
         />
       ))}
-      <ChoiceSheet
-        visible={pickerOpen}
-        title={copy.academic.assignments.sectionPickerTitle}
-        options={(sections.data ?? []).map((section) => ({
-          id: section.id,
-          label: sectionLabel(section.id) ?? section.name,
-        }))}
-        currentId={selectedSectionId ?? ""}
-        onSelect={(id) => {
-          setPickerOpen(false);
-          if (id && id !== selectedSectionId) {
-            router.setParams({ sectionId: id });
-          }
-        }}
-        onDismiss={() => setPickerOpen(false)}
-        testIDPrefix="assignments-section"
-      />
     </AcademicListFrame>
   );
 }

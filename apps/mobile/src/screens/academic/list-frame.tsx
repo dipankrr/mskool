@@ -50,6 +50,7 @@ export function AcademicListFrame({
   emptyIcon,
   emptyAction,
   action,
+  header,
   children,
   titleTestID,
 }: {
@@ -79,6 +80,8 @@ export function AcademicListFrame({
   emptyIcon: "stack" | "school" | "edit" | "calendar" | "sort" | "person";
   emptyAction?: ReactNode;
   action?: HeaderAction;
+  /** Filter rows that must stay reachable in the empty state too (pickers). */
+  header?: ReactNode;
   children: ReactNode;
   titleTestID: string;
 }) {
@@ -153,22 +156,30 @@ export function AcademicListFrame({
 
   if (isEmpty) {
     return frame(
-      <EmptyState
-        icon={emptyIcon}
-        title={
-          isFilteredEmpty && filteredEmptyTitle ? filteredEmptyTitle : emptyTitle
-        }
-        message={
-          isFilteredEmpty && filteredEmptyBody ? filteredEmptyBody : emptyBody
-        }
-        testID={`${titleTestID}-empty`}
-      >
-        {emptyAction}
-      </EmptyState>,
+      <View>
+        {header}
+        <EmptyState
+          icon={emptyIcon}
+          title={
+            isFilteredEmpty && filteredEmptyTitle ? filteredEmptyTitle : emptyTitle
+          }
+          message={
+            isFilteredEmpty && filteredEmptyBody ? filteredEmptyBody : emptyBody
+          }
+          testID={`${titleTestID}-empty`}
+        >
+          {emptyAction}
+        </EmptyState>
+      </View>,
     );
   }
 
-  return frame(<View style={styles.list}>{children}</View>);
+  return frame(
+    <View style={styles.list}>
+      {header}
+      {children}
+    </View>,
+  );
 }
 
 const styles = StyleSheet.create({

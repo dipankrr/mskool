@@ -43,7 +43,7 @@ export function SubjectMappingFormScreen() {
     id?: string;
     classId?: string;
   }>();
-  const { organizationId, academicYear, ready } = useActiveContext();
+  const { organizationId, schoolId, academicYear, ready } = useActiveContext();
   const { has } = usePermissions();
 
   const editing = Boolean(id);
@@ -76,6 +76,7 @@ export function SubjectMappingFormScreen() {
     >
       <MappingFormBody
         organizationId={organizationId ?? ""}
+        schoolId={schoolId}
         academicYearId={academicYear?.id ?? null}
         classId={mappingQuery.data?.classId ?? classId ?? null}
         row={mappingQuery.data ?? null}
@@ -88,6 +89,7 @@ export function SubjectMappingFormScreen() {
 
 function MappingFormBody({
   organizationId,
+  schoolId,
   academicYearId,
   classId,
   row,
@@ -95,6 +97,8 @@ function MappingFormBody({
   canEnd,
 }: {
   organizationId: string;
+  /** Create's addressed parent — the gate covers `subject_mapping:create` here. */
+  schoolId: string | null;
   academicYearId: string | null;
   classId: string | null;
   row: MappingRow | null;
@@ -169,12 +173,15 @@ function MappingFormBody({
           data: mappingUpdatePayload(form),
         });
       } else {
-        if (!academicYearId || !classId) {
-          setSaveError(new Error(copy.academic.noSessionBody));
+        if (!academicYearId || !classId || !schoolId) {
+          setSaveError(
+            new Error(schoolId ? copy.academic.noSessionBody : copy.students.noOrgBody),
+          );
           return;
         }
         await create.mutateAsync({
           organizationId,
+          schoolId,
           ...mappingCreatePayload(form, { academicYearId, classId }),
         });
       }

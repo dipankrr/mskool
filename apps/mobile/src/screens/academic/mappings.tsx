@@ -5,7 +5,6 @@ import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/trpc";
 
 import { AppIcon } from "../../components/app-icon";
-import { CapsuleButton } from "../../components/capsule-button";
 import { Card } from "../../components/card";
 import { ChoiceSheet } from "../../components/choice-sheet";
 import { EntityCard } from "../../components/entity-card";
@@ -97,43 +96,75 @@ export function SubjectMappingsScreen() {
       filteredEmptyTitle={copy.academic.mappings.emptyTitle}
       filteredEmptyBody={copy.academic.mappings.emptyBody}
       emptyIcon="sort"
-      emptyAction={
-        hasClass && canCreate ? (
-          <CapsuleButton
-            title={copy.academic.mappings.add}
-            icon="add"
-            onPress={() =>
-              router.push({
-                pathname: "/subject-mapping-form",
-                params: { classId: selectedClassId ?? "" },
-              })
-            }
-            testID="mappings-empty-add"
-          />
-        ) : null
-      }
       titleTestID="mappings-title"
+      header={
+        <View style={styles.filterWrap}>
+          <Card style={styles.filterCard}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${copy.academic.sections.classFilterLabel}, ${className ?? ""}`}
+              accessibilityHint={copy.academic.mappings.classPickerTitle}
+              onPress={() => setPickerOpen(true)}
+              style={({ pressed }) => [
+                styles.filter,
+                pressed ? styles.filterPressed : null,
+              ]}
+              testID="mappings-class-filter"
+            >
+              <ThemedText
+                variant="bodyStrong"
+                numberOfLines={1}
+                style={styles.filterText}
+              >
+                {`${copy.academic.sections.classFilterLabel}: ${className ?? copy.academic.sections.allClasses}`}
+              </ThemedText>
+              <AppIcon name="chevronDown" size={16} color={colors.muted} />
+            </Pressable>
+          </Card>
+          {hasClass && canCreate ? (
+            <Card style={styles.filterCard}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={copy.academic.mappings.add}
+                onPress={() =>
+                  router.push({
+                    pathname: "/subject-mapping-form",
+                    params: { classId: selectedClassId ?? "" },
+                  })
+                }
+                style={({ pressed }) => [
+                  styles.filter,
+                  pressed ? styles.filterPressed : null,
+                ]}
+                testID="mappings-add"
+              >
+                <AppIcon name="add" size={18} color={colors.accentDeep} />
+                <ThemedText variant="bodyStrong" color={colors.accentDeep}>
+                  {copy.academic.mappings.add}
+                </ThemedText>
+              </Pressable>
+            </Card>
+          ) : null}
+          <ChoiceSheet
+            visible={pickerOpen}
+            title={copy.academic.mappings.classPickerTitle}
+            options={(classes.data ?? []).map((row) => ({
+              id: row.id,
+              label: row.name,
+            }))}
+            currentId={selectedClassId ?? ""}
+            onSelect={(id) => {
+              setPickerOpen(false);
+              if (id && id !== selectedClassId) {
+                router.setParams({ classId: id });
+              }
+            }}
+            onDismiss={() => setPickerOpen(false)}
+            testIDPrefix="mappings-class"
+          />
+        </View>
+      }
     >
-      <View style={styles.filterWrap}>
-        <Card style={styles.filterCard}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`${copy.academic.sections.classFilterLabel}, ${className ?? ""}`}
-            accessibilityHint={copy.academic.mappings.classPickerTitle}
-            onPress={() => setPickerOpen(true)}
-            style={({ pressed }) => [styles.filter, pressed ? styles.filterPressed : null]}
-            testID="mappings-class-filter"
-          >
-            <ThemedText variant="bodyStrong" numberOfLines={1} style={styles.filterText}>
-              {`${copy.academic.sections.classFilterLabel}: ${className ?? copy.academic.sections.allClasses}`}
-            </ThemedText>
-            <AppIcon name="chevronDown" size={16} color={colors.muted} />
-          </Pressable>
-        </Card>
-        {hasClass && canCreate ? (
-          <AddMappingRow classId={selectedClassId ?? ""} />
-        ) : null}
-      </View>
       {(list.data ?? []).map((row: MappingRow) => (
         <EntityCard
           key={row.id}
@@ -153,45 +184,7 @@ export function SubjectMappingsScreen() {
           testID={`mapping-card-${row.id}`}
         />
       ))}
-      <ChoiceSheet
-        visible={pickerOpen}
-        title={copy.academic.mappings.classPickerTitle}
-        options={(classes.data ?? []).map((row) => ({ id: row.id, label: row.name }))}
-        currentId={selectedClassId ?? ""}
-        onSelect={(id) => {
-          setPickerOpen(false);
-          if (id && id !== selectedClassId) {
-            router.setParams({ classId: id });
-          }
-        }}
-        onDismiss={() => setPickerOpen(false)}
-        testIDPrefix="mappings-class"
-      />
     </AcademicListFrame>
-  );
-}
-
-function AddMappingRow({ classId }: { classId: string }) {
-  return (
-    <Card style={styles.filterCard}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={copy.academic.mappings.add}
-        onPress={() =>
-          router.push({
-            pathname: "/subject-mapping-form",
-            params: { classId },
-          })
-        }
-        style={({ pressed }) => [styles.filter, pressed ? styles.filterPressed : null]}
-        testID="mappings-add"
-      >
-        <AppIcon name="add" size={18} color={colors.accentDeep} />
-        <ThemedText variant="bodyStrong" color={colors.accentDeep}>
-          {copy.academic.mappings.add}
-        </ThemedText>
-      </Pressable>
-    </Card>
   );
 }
 

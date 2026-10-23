@@ -43,7 +43,7 @@ const SHIFTS = ["morning", "day", "evening"] as const;
  */
 export function SectionFormScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const { organizationId, academicYear, ready } = useActiveContext();
+  const { organizationId, schoolId, academicYear, ready } = useActiveContext();
   const { has } = usePermissions();
 
   const editing = Boolean(id);
@@ -74,6 +74,7 @@ export function SectionFormScreen() {
     >
       <SectionFormBody
         organizationId={organizationId ?? ""}
+        schoolId={schoolId}
         academicYearId={academicYear?.id ?? null}
         row={sectionQuery.data ?? null}
         canWrite={canWrite}
@@ -85,12 +86,15 @@ export function SectionFormScreen() {
 
 function SectionFormBody({
   organizationId,
+  schoolId,
   academicYearId,
   row,
   canWrite,
   canDelete,
 }: {
   organizationId: string;
+  /** Create's addressed parent — the gate covers `section:create` at this node. */
+  schoolId: string | null;
   academicYearId: string | null;
   row: SectionRow | null;
   canWrite: boolean;
@@ -160,12 +164,15 @@ function SectionFormBody({
           data: sectionUpdatePayload(form),
         });
       } else {
-        if (!academicYearId) {
-          setSaveError(new Error(copy.academic.noSessionBody));
+        if (!academicYearId || !schoolId) {
+          setSaveError(
+            new Error(schoolId ? copy.academic.noSessionBody : copy.students.noOrgBody),
+          );
           return;
         }
         await create.mutateAsync({
           organizationId,
+          schoolId,
           data: sectionPayload(form, academicYearId),
         });
       }
