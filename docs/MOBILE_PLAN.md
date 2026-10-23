@@ -612,7 +612,7 @@ short, repeated teacher task before the more complex assignment workflow.
 | Step | Domain | Backend | Status |
 |---|---|---|---|
 | 0 | Foundation (native auth/API proof + prototype review) | staff login, `me.get` | in progress (Android build + walk done; findings fixed + re-walked; build durability in-repo — prebuild safe; committed 2026-10-17; **prototype review PASSED 2026-10-18 — shell build next**; iOS walk parked 2026-10-20) |
-| 1 | Home + context + profile | `me` 1 · `school` 5 · `academic` years 6 | in progress — branch switcher, profile/access and voluntary password walked 2026-10-23; branch + session management (chunk B) open |
+| 1 | Home + context + profile | `me` 1 · `school` 5 · `academic` years 6 | complete — branch switcher, profile/access, voluntary password, branch management and session management (chunk B) device-walked 2026-10-23 |
 | 2 | Students + academic setup (§7) | `student` 7 · `enrollment` 6 · `guardian` 4 · `portalAccess` 4 · `academic` classes 5 + sections 5 · `subject` 5 · `term` 4 · `assignment` 10 | open |
 | 3 | Attendance (§8) | `attendance.*` 13 | complete (mark/status walked 2026-10-18; summary + section switcher 2026-10-19; calendar generate/days, policy, periods 2026-10-20; report exports remain open) |
 | 4 | Homework manage (§9) | `homework.*` staff 28 | open |
@@ -637,7 +637,7 @@ shell until those workflows are complete or explicitly deferred by the owner.
 | Existing web route(s) | Mobile phase | Required mobile experience |
 |---|---:|---|
 | `(auth)/login`, `(auth)/change-password` | 0 | Native staff sign-in, forced password change, recovery and session expiry |
-| `(dashboard)/`, `/profile`, `/branches`, `/sessions` | 1 | Task-led home, organization/branch/session context, profile and account actions. **Home, branch switcher, profile/access and voluntary password are live** (device-walked 2026-10-23); branch management (`/branches`) and session management (`/sessions`) remain — chunk B, permission-gated, with the session change behind a confirm (ADR-047) |
+| `(dashboard)/`, `/profile`, `/branches`, `/sessions` | 1 | Task-led home, organization/branch/session context, profile and account actions. **Complete (device-walked 2026-10-23)**: home, branch switcher, profile/access and voluntary password; native Branches list + add/edit/close (org-admin create/delete, principal edit); native Sessions list + add/edit and make-running behind a confirm (ADR-047), permission-gated and read-only for teacher scopes |
 | `/subjects`, `/classes`, `/classes/[classId]` | 2 | Searchable catalog and class detail; setup forms grouped by school workflow |
 | `/students`, `/students/[studentId]` | 2 | Roster search/filter, student detail, admit/edit/enroll, guardian and portal-access flows |
 | `/students/photos` | 2 | Native photo picker, review-before-upload bulk matching, retry-failed-only |
@@ -673,14 +673,30 @@ persisted ids revalidated against `me.get` on every new session.
 There is **no global year picker** on mobile (ADR-047): the session is a fact
 the More screen displays, not a control, and surfaces that look backwards carry
 their own bounded year control. Changing the current session is an
-administrative write, gated by permission, that lands with chunk B.
+administrative write behind a confirm on that session's edit screen — never a
+switcher in the header or More.
+
+The management journeys are native lists and pushed forms under More's Manage
+group, gated on `me.get` permission strings rather than role names. Branches
+reads the active-only `school.list`; Add appears with `school:create`, editing
+with `school:update`, and Close (a one-way deactivation, not a delete) with
+`school:delete`. Sessions reads the org-wide `academic.year.list` and filters
+to the active branch; Add needs `academic_year:create`, editing
+`academic_year:update`, and Make running calls `academic.year.setCurrent` behind
+a confirm. A principal therefore edits her branch and manages sessions but
+cannot add or close a branch; a teacher sees both lists read-only, `/sessions`
+shows the running session plus a "history hidden" notice, and direct form deep
+links render the permission-denial screen. Both forms keep the active branch
+name in the header, handle loading/empty/error/retry, preserve input through a
+failed save, and guard unsaved changes on back.
 
 | Procedure | Screen/use | Done |
 |---|---|---|
 | `me.get` | Session hydration, role/permission map, staff/family dispatch, owned-student detection, branch rows and profile | ☑ walked 2026-10-23 (branch row, profile, permission groups) |
-| `school.list` / `school.byId` | Not used by the shell: the branch picker reads `me.get`'s `memberships[].schools[]`, which is already scope-filtered (ADR-044). Branch *management* needs these and lands with chunk B | ☐ chunk B |
-| `academic.year.list` / `.current` / `.byId` | `list` supplies the branch's current session (filtered by `schoolId` client-side, one org-wide read). `.current` is deliberately unused: it is a strict `staffProcedure` and 403s for section-scoped teachers. `.byId` unused so far | ☑ `list` walked 2026-10-23 (session row follows the branch) |
-| `academic.year.create` / `.update` / `.setCurrent` | Session management (chunk B): create a session, edit dates, set the current one with a confirm | ☐ chunk B |
+| `school.list` / `school.byId` | The shell's branch picker still reads `me.get`'s `memberships[].schools[]` (ADR-044); management reads `school.list` (active-only) and `school.byId` for the edit form | ☑ walked 2026-10-23 (list, add, edit, close) |
+| `academic.year.list` / `.current` / `.byId` | `list` supplies the branch's current session (filtered by `schoolId` client-side, one org-wide read) and the management list. `.current` is deliberately unused: it is a strict `staffProcedure` and 403s for section-scoped teachers. `.byId` feeds the edit form | ☑ `list` walked 2026-10-23 (session row follows the branch; Running/Other groups); ☑ `byId` walked with create/edit |
+| `school.create` / `.update` / `.deactivate` | Branch management: create with name/legal name/code/board and optional contact/address, edit the same fields, close with a consequence confirm | ☑ walked 2026-10-23 (admin create/edit/close; principal edit-only; teacher denied) |
+| `academic.year.create` / `.update` / `.setCurrent` | Session management: create from a free start-year preset (name and 1 Apr–31 Mar filled, dates editable), edit name/dates, make running with a confirm | ☑ walked 2026-10-23 (create 2026-27, edit end date, promote and restore 2025-26; principal add/edit; teacher denied) |
 
 Profile reads the `me.get` identity. Password changes and logout use
 better-auth, not a profile mutation. If the web staff routes expose additional
