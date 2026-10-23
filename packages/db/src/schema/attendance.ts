@@ -571,6 +571,7 @@ export const attendanceSummary = pgTable(
     daysPresent: smallint().notNull().default(0),
     daysAbsent: smallint().notNull().default(0),
     daysLate: smallint().notNull().default(0),
+    daysHalfDay: smallint().notNull().default(0),
     daysOnLeave: smallint().notNull().default(0),
 
     // GENERATED ALWAYS AS — see the table comment. Never written by code.

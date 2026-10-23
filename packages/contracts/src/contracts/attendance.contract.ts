@@ -267,6 +267,37 @@ export const getDailyStatusSchema = z.object({
 export type GetDailyStatusInput = z.infer<typeof getDailyStatusSchema>;
 
 /**
+ * A section's authoritative status rows for an inclusive date range. Mark uses
+ * it for the recent-day strip and the day picker's marked dates; the Summary
+ * student map asks one month at a time. It is a bounded read of the same
+ * `daily_attendance_status` layer as `status`, never `attendance_records`.
+ * The range is capped at 45 days: the register glance is recent history, and
+ * an unbounded request would be a report, which belongs on Summary.
+ */
+export const getStatusHistorySchema = z
+  .object({
+    sectionId: z.uuid(),
+    fromDate: isoDate,
+    toDate: isoDate,
+  })
+  .refine((v) => v.fromDate <= v.toDate, {
+    message: "The history range must start on or before it ends.",
+    path: ["toDate"],
+  })
+  .refine(
+    (v) =>
+      (Date.parse(`${v.toDate}T00:00:00Z`) -
+        Date.parse(`${v.fromDate}T00:00:00Z`)) /
+        86_400_000 <=
+      45,
+    {
+      message: "Attendance history is limited to a 45-day range.",
+      path: ["fromDate"],
+    },
+  );
+export type GetStatusHistoryInput = z.infer<typeof getStatusHistorySchema>;
+
+/**
  * Which summaries to read. `sectionId` and `studentId` narrow an otherwise
  * school-wide read; the caller's scope narrows it further regardless — the
  * service scopes through the enrollment JOIN, so a section teacher gets her

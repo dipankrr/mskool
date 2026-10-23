@@ -5,6 +5,7 @@ import {
   dailyAttendanceStatusSelectSchema,
   generateCalendarSchema,
   getDailyStatusSchema,
+  getStatusHistorySchema,
   listCalendarSchema,
   listSummariesSchema,
   markAttendanceSchema,
@@ -284,9 +285,10 @@ const periodRouter = router({
  * REST paths are `/attendance/*`.
  *
  * The marking surface (C6) sits as FLAT procedures beside the sub-routers —
- * `attendance.mark`, `attendance.status`, `attendance.summary` are single
- * actions with no sub-resource to group, so a second nesting level would
- * only duplicate the name (the enrollment router's flat precedent).
+ * `attendance.mark`, `attendance.status`, `attendance.statusHistory`,
+ * `attendance.summary` are single actions with no sub-resource to group, so a
+ * second nesting level would only duplicate the name (the enrollment router's
+ * flat precedent).
  *
  * **`attendance.create` is spent here, as reserved in C3**: `mark` is the
  * one endpoint that records attendance. It is a section-addressed write
@@ -343,6 +345,25 @@ export const attendanceRouter = router({
     .output(z.array(dailyAttendanceStatusSelectSchema))
     .query(async ({ ctx, input }) =>
       attendanceService.getDailyStatus(ctx.scopes, input),
+    ),
+
+  // The recent-register strip's read: a bounded range from the authoritative
+  // layer. Same permission and no-widening scope as `status`; the contract
+  // caps the window at 45 days so this stays a glance, not a report.
+  statusHistory: staffListProcedure("attendance:read")
+    .meta({
+      openapi: {
+        method: "GET",
+        path: "/attendance/status-history",
+        tags: ["attendance"],
+        summary: "One section's daily attendance statuses across a date range",
+        protect: true,
+      },
+    })
+    .input(getStatusHistorySchema)
+    .output(z.array(dailyAttendanceStatusSelectSchema))
+    .query(async ({ ctx, input }) =>
+      attendanceService.getStatusHistory(ctx.scopes, input),
     ),
 
   // Summary rows for a year — the read-model report cards and fee fines

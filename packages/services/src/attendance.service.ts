@@ -3,6 +3,7 @@ import { scopeWhere, type DataScope } from "@repo/authz";
 import type {
   GenerateCalendarInput,
   GetDailyStatusInput,
+  GetStatusHistoryInput,
   ListCalendarInput,
   ListSummariesInput,
   MarkAttendanceInput,
@@ -25,7 +26,7 @@ import {
   subjects,
   terms,
 } from "@repo/db/schema";
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 
 /**
  * ATTENDANCE — Phase 3. Configuration layer (C2): calendar, policy, periods.
@@ -987,6 +988,28 @@ export class AttendanceService {
   }
 
   /**
+   * A section's status rows across a bounded date range — the recent-register
+   * strip on Mark. Same authoritative layer and the same no-widening scope
+   * rule as `getDailyStatus`; the contract caps the window so this cannot
+   * turn into an unbounded reporting query. Ascending by date keeps the
+   * client's "last five marked days" fold deterministic.
+   */
+  async getStatusHistory(scopes: DataScope[], input: GetStatusHistoryInput) {
+    return db
+      .select()
+      .from(dailyAttendanceStatus)
+      .where(
+        and(
+          eq(dailyAttendanceStatus.sectionId, input.sectionId),
+          gte(dailyAttendanceStatus.date, input.fromDate),
+          lte(dailyAttendanceStatus.date, input.toDate),
+          scopeWhere(scopes, STATUS_SCOPE_COLUMNS),
+        ),
+      )
+      .orderBy(asc(dailyAttendanceStatus.date), asc(dailyAttendanceStatus.studentId));
+  }
+
+  /**
    * Summary rows for a year — optionally one section's students or one
    * student. `attendance_summary` has NO class/section columns (it is
    * student-level), so the scope CANNOT filter it directly and widening
@@ -1068,9 +1091,9 @@ type SummaryTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
  * half day in the period, whether or not anyone was marked — never "days
  * someone happened to mark". No mid-period cap: a month half over shows its
  * full planned denominator, so a percentage can only rise as days fill in.
- * Counts come from `daily_attendance_status` (never records — hard rule 5);
- * a `half_day` status fills no count bucket, mirroring the reference's
- * columns.
+ * Counts come from `daily_attendance_status` (never records — hard rule 5).
+ * Half day has its own display bucket; it is deliberately NOT added to
+ * `days_present`, so the official percentage remains an all-day figure.
  */
 async function recomputeSummaries(
   tx: SummaryTx,
@@ -1126,6 +1149,7 @@ async function recomputeSummaries(
       daysPresent: rows.filter((r) => r.status === "present").length,
       daysAbsent: rows.filter((r) => r.status === "absent").length,
       daysLate: rows.filter((r) => r.status === "late").length,
+      daysHalfDay: rows.filter((r) => r.status === "half_day").length,
       daysOnLeave: rows.filter((r) => r.status === "on_leave").length,
     };
   };
@@ -1135,6 +1159,7 @@ async function recomputeSummaries(
     daysPresent: c.daysPresent,
     daysAbsent: c.daysAbsent,
     daysLate: c.daysLate,
+    daysHalfDay: c.daysHalfDay,
     daysOnLeave: c.daysOnLeave,
     updatedAt: new Date(),
   });

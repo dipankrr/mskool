@@ -2048,3 +2048,45 @@ introduce an explicit queue, not remove `networkMode`.
 **Alternatives rejected.** Per-screen offline banners (would have left the
 paused mutation hazard); `networkMode: "online"` + cached-first UI (no
 persistence exists, so there is nothing honest to show).
+
+---
+
+## ADR-046 — Half day is a marked day, never a present day; recent history is one bounded read
+
+Date: 2026-10-23. Status: accepted. Extends ADR-043 (mobile staff surface); it
+adds a display bucket to the existing attendance summary and reads the
+authoritative `daily_attendance_status` layer.
+
+**Context.** The register walk (2026-10-23) found that half day disappeared from
+reports: `attendance_summary` had no half-day bucket, so the UI could count it in
+the draft but not explain it in the year view or the student detail. The official
+attendance percentage is the exam-eligibility figure and must remain an all-day
+number. The same walk needed a paper-register glance at the last few marked days
+without issuing one request per student.
+
+**Decision.**
+
+- Add `attendance_summary.days_half_day` as a display bucket. A half day counts
+  toward marked days and the present-share denominator, but not toward
+  `days_present`; the generated official percentage is unchanged.
+- Recompute and backfill the bucket from `daily_attendance_status` only (hard
+  rule 5), never from `attendance_records`.
+- Expose `attendance.statusHistory` as a staff read (`attendance:read`) for one
+  section across an inclusive date range capped at 45 days, scoped through the
+  status table's own scope columns. It is read-only and has no student-portal
+  counterpart.
+- The client folds the response to the last five marked days before the selected
+  date; no N+1 requests and no new report surface.
+- The same bounded read also supplies the day picker's marked-day dots and one
+  student's month map. Both ask for one calendar month at a time and filter to
+  the addressed section/student on the client.
+
+**Consequences.** Summary composition and the student detail can name half day
+without promoting it to present. The official rate stays comparable across
+schools and years. The change is one additive migration plus a bounded read. If
+the school later wants half day weighted as 0.5 present for the official rate,
+that is a new ADR and a new number, not a reinterpretation of this column.
+
+**Alternatives rejected.** Reusing `days_present` for half day (would inflate the
+official rate); a new materialized report table (duplicates the summary read
+model); an unbounded history endpoint (a report, not a register glance).
