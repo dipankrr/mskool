@@ -156,7 +156,10 @@ function AssignmentFormBody({
     { enabled: Boolean(organizationId) },
   );
   const subjects = trpc.subject.list.useQuery(
-    { organizationId },
+    {
+      organizationId,
+      schoolId: schoolId ?? undefined,
+    },
     { enabled: Boolean(organizationId) },
   );
 

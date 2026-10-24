@@ -204,6 +204,39 @@ export function SubjectMappingsScreen() {
             onDismiss={() => setPickerOpen(false)}
             testIDPrefix="mappings-class"
           />
+          {bulkOpen ? (
+            <BulkMapSheet
+              onClose={() => setBulkOpen(false)}
+              organizationId={organizationId ?? ""}
+              schoolId={schoolId}
+              academicYearId={academicYear?.id ?? null}
+              classId={selectedClassId}
+              candidates={unmapped.map((row) => ({ id: row.id, name: row.name }))}
+              subjectTypes={subjectTypes.data ?? []}
+              showTypes={Boolean(subjectTypes.data && subjectTypes.data.length > 0)}
+              onSaved={(message) => {
+                setBulkOpen(false);
+                setSaved(message);
+              }}
+            />
+          ) : null}
+          {editSheetId !== null ? (
+            <EditMappingSheet
+              row={editRow}
+              onClose={() => setEditSheetId(null)}
+              organizationId={organizationId ?? ""}
+              className={className}
+              subjectName={editRow ? subjectName(editRow.subjectId) : null}
+              subjectTypes={subjectTypes.data ?? []}
+              showTypes={Boolean(subjectTypes.data && subjectTypes.data.length > 0)}
+              canUpdate={has("subject_mapping:update")}
+              canEnd={has("subject_mapping:delete")}
+              onSaved={(message) => {
+                setEditSheetId(null);
+                setSaved(message);
+              }}
+            />
+          ) : null}
         </View>
       }
     >
@@ -228,41 +261,6 @@ export function SubjectMappingsScreen() {
           testID={`mapping-card-${row.id}`}
         />
       ))}
-
-      {bulkOpen ? (
-      <BulkMapSheet
-        onClose={() => setBulkOpen(false)}
-        organizationId={organizationId ?? ""}
-        schoolId={schoolId}
-        academicYearId={academicYear?.id ?? null}
-        classId={selectedClassId}
-        candidates={unmapped.map((row) => ({ id: row.id, name: row.name }))}
-        subjectTypes={subjectTypes.data ?? []}
-        showTypes={Boolean(subjectTypes.data && subjectTypes.data.length > 0)}
-        onSaved={(message) => {
-          setBulkOpen(false);
-          setSaved(message);
-        }}
-      />
-      ) : null}
-
-      {editSheetId !== null ? (
-      <EditMappingSheet
-        row={editRow}
-        onClose={() => setEditSheetId(null)}
-        organizationId={organizationId ?? ""}
-        className={className}
-        subjectName={editRow ? subjectName(editRow.subjectId) : null}
-        subjectTypes={subjectTypes.data ?? []}
-        showTypes={Boolean(subjectTypes.data && subjectTypes.data.length > 0)}
-        canUpdate={has("subject_mapping:update")}
-        canEnd={has("subject_mapping:delete")}
-        onSaved={(message) => {
-          setEditSheetId(null);
-          setSaved(message);
-        }}
-      />
-      ) : null}
 
     </AcademicListFrame>
   );
