@@ -1,0 +1,93 @@
+import { Pressable, StyleSheet, View } from "react-native";
+import * as Haptics from "expo-haptics";
+
+import { ThemedText } from "../../components/themed-text";
+import { colors } from "../../theme/brand-admin";
+import { radius, spacing } from "../../theme/tokens";
+
+export type SegmentOption<T extends string> = {
+  value: T;
+  label: string;
+  /** The spoken label when the printed one is too terse ("Live · 4"). */
+  accessibilityLabel?: string;
+  testID: string;
+};
+
+/**
+ * The homework surface's segment bars: Agenda ⇄ All, and the All view's
+ * Live / Drafts / Closed / All. One anatomy for both so the screen has a
+ * single "switch a dimension" gesture rather than two competing tab styles.
+ *
+ * Selected is accent tint + accent text; the tab role carries the state to a
+ * screen reader and the tint doubles it for everyone else. 44 pt floor.
+ */
+export function SegmentBar<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: readonly SegmentOption<T>[];
+  onChange: (next: T) => void;
+}) {
+  return (
+    <View style={styles.bar} accessibilityRole="tablist" accessibilityLabel={label}>
+      {options.map((option) => {
+        const selected = option.value === value;
+        return (
+          <Pressable
+            key={option.value}
+            testID={option.testID}
+            accessibilityRole="tab"
+            accessibilityState={{ selected }}
+            accessibilityLabel={option.accessibilityLabel ?? option.label}
+            onPress={() => {
+              if (selected) return;
+              void Haptics.selectionAsync();
+              onChange(option.value);
+            }}
+            style={({ pressed }) => [
+              styles.segment,
+              selected ? styles.segmentOn : null,
+              pressed && !selected ? styles.segmentPressed : null,
+            ]}
+          >
+            <ThemedText
+              variant="bodyStrong"
+              color={selected ? colors.accentDeep : colors.muted}
+              numberOfLines={1}
+              maxFontSizeMultiplier={1.4}
+            >
+              {option.label}
+            </ThemedText>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  bar: {
+    flexDirection: "row",
+    padding: 3,
+    borderRadius: radius.full,
+    backgroundColor: colors.field,
+  },
+  segment: {
+    flex: 1,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.xs,
+  },
+  segmentOn: {
+    backgroundColor: colors.accentTint,
+  },
+  segmentPressed: {
+    backgroundColor: colors.surface,
+  },
+});

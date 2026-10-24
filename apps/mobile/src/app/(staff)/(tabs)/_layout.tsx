@@ -21,6 +21,7 @@ export default function StaffTabsLayout() {
   const { hasAny } = usePermissions();
   const showAttendance = hasAny("attendance:read", "attendance:create");
   const showStudents = hasAny("student:read");
+  const showHomework = hasAny("homework:read");
 
   return (
     <Tabs
@@ -56,6 +57,16 @@ export default function StaffTabsLayout() {
           href: showStudents ? undefined : null,
           tabBarIcon: ({ color }) => (
             <AppIcon name="students" color={color} size={22} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="homework"
+        options={{
+          title: copy.nav.homework,
+          href: showHomework ? undefined : null,
+          tabBarIcon: ({ color }) => (
+            <AppIcon name="homework" color={color} size={22} />
           ),
         }}
       />
