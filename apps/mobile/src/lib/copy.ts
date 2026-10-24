@@ -837,6 +837,56 @@ export const copy = {
       },
     },
   },
+  /** Step 2 photo slice — the bulk photo workbench. */
+  photos: {
+    title: "Photo upload",
+    detail: "A section's photos in one pass",
+    hint: "Opens the photo workbench",
+    deniedTitle: "Photo upload isn't in your account",
+    deniedBody:
+      "Uploading student photos needs the student:update permission. Ask your administrator.",
+    noSessionTitle: "No session is set",
+    noSessionBody:
+      "Photos match against the running session's rosters, and none is running. Set one in Sessions first.",
+    pickSection: "Choose a section",
+    sectionLabel: "Section",
+    rosterLoading: "Loading the roster…",
+    rosterEmptyTitle: "No students in this section",
+    rosterEmptyBody: "Enroll students first, then bring their photos here.",
+    add: "Choose photos",
+    addHint: "Opens the photo picker",
+    modeLabel: "Match by",
+    modes: {
+      section: "Section order",
+      register: "Register numbers",
+    },
+    modeSectionHelp:
+      "Photos map to the roster in the order you picked them, against the section's roll order — no renaming needed.",
+    modeRegisterHelp:
+      "Each file's name is matched against an admission number, like IMG_0142.jpg for 2026-0142.",
+    matchedCount: (count: number) =>
+      count === 1 ? "1 photo matched" : `${count} photos matched`,
+    unmatchedLabel: (count: number) =>
+      count === 1 ? "1 photo unmatched" : `${count} photos unmatched`,
+    unmatchedHelp:
+      "These photos found no student. Clear a row below to move its photo back here.",
+    clearRow: "Clear this match",
+    noFileName: "No file name",
+    uploadCount: (count: number) =>
+      count === 1 ? "Upload 1 photo" : `Upload ${count} photos`,
+    uploading: (done: number, total: number) => `${done} of ${total} uploaded`,
+    uploadingState: "Uploading…",
+    retryFailed: "Retry failed",
+    retryFailedCount: (count: number) =>
+      count === 1 ? "Retry 1 failed upload" : `Retry ${count} failed uploads`,
+    done: "Uploaded",
+    failed: "Failed",
+    doneBannerTitle: "Photos uploaded",
+    tooLarge: "This photo is too large even resized — try a smaller one.",
+    errors: {
+      pickFailed: "Couldn't read the photos. Try the picker again.",
+    },
+  },
   attendance: {
     /** Screen and alert title (the tab label lives in `nav`). */
     title: "Attendance",

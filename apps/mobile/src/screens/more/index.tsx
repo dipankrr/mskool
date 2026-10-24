@@ -83,6 +83,7 @@ export function MoreScreen() {
   const roles = Array.from(new Set(membership?.roleTypes ?? []));
 
   const canManageStudents = has("student:read");
+  const canManagePhotos = has("student:update");
   const canManageAcademic = [
     "class:read",
     "section:read",
@@ -99,6 +100,7 @@ export function MoreScreen() {
     (has("academic_year:create") || has("academic_year:update"));
   const showManage =
     canManageStudents ||
+    canManagePhotos ||
     canManageAcademic ||
     canManageBranches ||
     canManageSessions;
@@ -192,6 +194,17 @@ export function MoreScreen() {
                   testID="more-students"
                 />
               ) : null}
+              {canManagePhotos ? (
+                <LinkRow
+                  title={copy.photos.title}
+                  detail={copy.photos.detail}
+                  icon="person"
+                  onPress={() => router.push("/students/photos")}
+                  accessibilityHint={copy.photos.hint}
+                  first={!canManageStudents}
+                  testID="more-photos"
+                />
+              ) : null}
               {canManageAcademic ? (
                 <LinkRow
                   title={copy.academic.title}
@@ -199,7 +212,7 @@ export function MoreScreen() {
                   icon="manage"
                   onPress={() => router.push("/academic-setup")}
                   accessibilityHint={copy.academic.hint}
-                  first={!canManageStudents}
+                  first={!canManageStudents && !canManagePhotos}
                   testID="more-academic"
                 />
               ) : null}
@@ -210,7 +223,9 @@ export function MoreScreen() {
                   icon="branches"
                   onPress={() => router.push("/branches")}
                   accessibilityHint={copy.more.branchesHint}
-                  first={!canManageStudents && !canManageAcademic}
+                  first={
+                    !canManageStudents && !canManagePhotos && !canManageAcademic
+                  }
                   testID="more-branches"
                 />
               ) : null}
@@ -222,7 +237,10 @@ export function MoreScreen() {
                   onPress={() => router.push("/sessions")}
                   accessibilityHint={copy.more.sessionsHint}
                   first={
-                    !canManageStudents && !canManageAcademic && !canManageBranches
+                    !canManageStudents &&
+                    !canManagePhotos &&
+                    !canManageAcademic &&
+                    !canManageBranches
                   }
                   testID="more-sessions"
                 />
