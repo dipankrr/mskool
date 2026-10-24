@@ -39,7 +39,7 @@ type GuardianRow = inferRouterOutputs<AppRouter>["guardian"]["list"][number];
  */
 export function PortalAccessScreen() {
   const { studentId } = useLocalSearchParams<{ studentId?: string }>();
-  const { organizationId, ready } = useActiveContext();
+  const { organizationId, schoolId, ready } = useActiveContext();
   const { has } = usePermissions();
 
   const canActivate = has("portal_access:activate");
@@ -54,7 +54,11 @@ export function PortalAccessScreen() {
   const [revokingUserId, setRevokingUserId] = useState<string | null>(null);
 
   const status = trpc.portalAccess.status.useQuery(
-    { organizationId: organizationId ?? "", studentId: studentId ?? "" },
+    {
+      organizationId: organizationId ?? "",
+      schoolId: schoolId ?? undefined,
+      studentId: studentId ?? "",
+    },
     { enabled: ready && Boolean(organizationId) && canActivate && Boolean(studentId) },
   );
   const guardians = trpc.guardian.list.useQuery(
@@ -83,6 +87,7 @@ export function PortalAccessScreen() {
     try {
       await ensureLink.mutateAsync({
         organizationId,
+        schoolId: schoolId ?? undefined,
         studentId,
         phone: phone.trim(),
         guardianId: selectedGuardianId,
@@ -116,6 +121,7 @@ export function PortalAccessScreen() {
     try {
       await revokeLink.mutateAsync({
         organizationId,
+        schoolId: schoolId ?? undefined,
         studentId,
         userId: row.userId,
       });
