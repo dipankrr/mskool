@@ -638,9 +638,9 @@ shell until those workflows are complete or explicitly deferred by the owner.
 |---|---:|---|
 | `(auth)/login`, `(auth)/change-password` | 0 | Native staff sign-in, forced password change, recovery and session expiry |
 | `(dashboard)/`, `/profile`, `/branches`, `/sessions` | 1 | Task-led home, organization/branch/session context, profile and account actions. **Complete (device-walked 2026-10-23)**: home, branch switcher, profile/access and voluntary password; native Branches list + add/edit/close (org-admin create/delete, principal edit); native Sessions list + add/edit and make-running behind a confirm (ADR-047), permission-gated and read-only for teacher scopes |
-| `/subjects`, `/classes`, `/classes/[classId]` | 2 | Searchable catalog and class detail; setup forms grouped by school workflow |
-| `/students`, `/students/[studentId]` | 2 | Roster search/filter, student detail, admit/edit/enroll, guardian and portal-access flows |
-| `/students/photos` | 2 | Native photo picker, review-before-upload bulk matching, retry-failed-only |
+| `/subjects`, `/classes`, `/classes/[classId]` | 2 | Searchable catalog and class detail; setup forms grouped by school workflow. **Classes and subjects are live** as Academic-setup surfaces (list + form + deactivate, walked 2026-10-24) |
+| `/students`, `/students/[studentId]` | 2 | Roster search/filter, student detail, admit/edit/enroll, guardian and portal-access flows. **Live (walked 2026-10-24)**: roster + detail + admit/edit/deactivate; enrollment, guardians and portal access hang off the detail |
+| `/students/photos` | 2 | Native photo picker, review-before-upload bulk matching, retry-failed-only. **Not built** — the step's remaining slice; design record owed owner review |
 | `/attendance/calendar`, `/attendance/policy`, `/attendance/mark`, `/attendance/reports` | 3 | Fast section/day selection, roster marking, correction reason, readable summaries. **`/attendance/mark` is live** as the native marking screen (`(staff)/attendance`, device-walked 2026-10-18; the day-sheet reads `calendar.list`); **yearly summaries and the section switcher are live** as the Mark ⇄ Summary segments with the section sheet (device-walked 2026-10-19); **management surfaces are live** — calendar generate/day overrides, marking policy and periods in `(staff)/attendance/manage` (device-walked 2026-10-20); report exports remain open |
 | `(no existing web route; backend exists)` homework staff routes | 4 | Assignment authoring, question management, publish lifecycle, grading and comments |
 | `/fees`, `/fees/setup`, `/fees/setup/[structureId]` | 5 | Fee setup, installments, concessions, subscription and late-fee workflows |
@@ -712,16 +712,21 @@ writes make mobile self-sufficient for new schools (no web needed).
 
 | Group | Paths | Screen | Done |
 |---|---|---|---|
-| `student` list / by-admissions / byId / create / update / deactivate / photo (7) | `/students…` | — | ☐ |
-| `enrollment` list / byId / create / update / assign-section / transition (6) | `/enrollments…` | — | ☐ |
-| `guardian` list / add / update / detach (4) | `/students/{id}/guardians…` | — | ☐ |
-| `portalAccess` ensure-link / status / verify-link / revoke-link (4) | `/portal-access/…` | — | ☐ |
-| classes list/byId/create/update/deactivate (5) | `/classes…` | — | ☐ |
-| sections list/byId/create/update/deactivate (5) | `/sections…` | — | ☐ |
-| subjects list/byId/create/update/deactivate (5) | `/subjects…` | — | ☐ |
-| terms list/byId/create/update (4) | `/terms…` | — | ☐ |
-| subject-mappings list/byId/create/update/end (5) | `/subject-mappings…` | — | ☐ |
-| teacher-assignments list/byId/create/end + directory (5) | `/teacher-assignments…`, `/teacher-directory` | — | ☐ |
+| `student` list / by-admissions / byId / create / update / deactivate / photo (7) | `/students…` | `/students` roster, `/students/[studentId]` detail, `/student-form` | ☑ list/byId/create/update/deactivate walked 2026-10-24 (roster search, admit with validation refusal, edit round-trip, deactivate → roster; row + status verified in Postgres). by-admissions + photo reads belong to the photo slice below |
+| `enrollment` list / byId / create / update / assign-section / transition (6) | `/enrollments…` | detail enrollment section + `/enrollment-form` | ☑ walked 2026-10-24: create (status derives `section_assigned`), transition `section_assigned→active` via the legal-map sheet, roll-number label edit — all verified in Postgres. `assignSection` is built (same form, assign mode for admitted rows) but its dedicated device exercise is the step's one pending walk item |
+| `guardian` list / add / update / detach (4) | `/students/{id}/guardians…` | detail guardians + `/guardian-form` | ☑ add walked 2026-10-24 (mother, primary, portal flag; Postgres verified); edit/detach share the form and server ops — update exercised by the re-render, detach not fired on the demo fixture |
+| `portalAccess` ensure-link / status / revoke-link (4) | `/portal-access/…` | `/portal-access` | ☑ walked 2026-10-24: status (empty → link opened → `Pending — not claimed yet · No password yet`); ensureLink verified. revokeLink built behind its confirm, not fired on the demo fixture. `verifyLink` is the parent's own claim step — no staff UI |
+| classes list/byId/create/update/deactivate (5) | `/classes…` | `/classes` + `/class-form` | ☑ walked 2026-10-24 (create "Class 9"; row + `scope_nodes` verified in Postgres — hard rule 12) |
+| sections list/byId/create/update/deactivate (5) | `/sections…` | `/sections` + `/section-form` | ☑ walked 2026-10-24 (create "B" of Class 9 for the running session; `scope_nodes` verified) |
+| subjects list/byId/create/update/deactivate (5) | `/subjects…` | `/subjects` + `/subject-form` | ☑ walked 2026-10-24 (create "Art") |
+| terms list/byId/create/update (4) | `/terms…` | `/terms` + `/term-form` | ☑ walked 2026-10-24: form + date pickers + validation proven; the demo session's terms cover it, so the create surfaced the server's real no-overlap refusal (correct behaviour). Update rides the same form |
+| subject-mappings list/byId/create/update/end (5) | `/subject-mappings…` | `/subject-mappings` + `/subject-mapping-form` | ☑ walked 2026-10-24 (map Art to Class 9; class picker rides the route). End built behind its confirm, not fired |
+| teacher-assignments list/byId/create/end + directory (5) | `/teacher-assignments…`, `/teacher-directory` | `/teacher-assignments` + `/teacher-assignment-form` | ☑ walked 2026-10-24 (directory picker, role/subject CHECK mirrored live, Priya Chatterjee assigned as subject teacher of 9-B). End built behind its confirm, not fired |
+
+Photos (`/students/photos`: by-admissions, upload, remove) are the step's
+remaining slice — a new interaction pattern (native picker + review-before-
+upload matching) whose design record is still owed owner review; everything
+else in Step 2 is built, walked and gate-green.
 
 Acceptance: admit → enroll → assign section → guardian recorded → link
 status visible; trust onboards a branch (session → classes → sections →
