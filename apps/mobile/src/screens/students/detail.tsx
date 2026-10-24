@@ -1,31 +1,39 @@
-import { useState } from "react";
-import { Alert, StyleSheet, View } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { Alert, Image, Pressable, StyleSheet, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/trpc";
 import type { ReactNode } from "react";
+import * as ImagePicker from "expo-image-picker";
 
+import { AppIcon } from "../../components/app-icon";
 import { CapsuleButton } from "../../components/capsule-button";
 import { Card } from "../../components/card";
 import { ChoiceSheet } from "../../components/choice-sheet";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorCard } from "../../components/error-card";
+import { FormField } from "../../components/form-field";
+import { FormSheet } from "../../components/form-sheet";
 import { LinkRow } from "../../components/link-row";
 import { Notice } from "../../components/notice";
 import { PersonRow } from "../../components/person-row";
 import { ScreenFrame } from "../../components/screen-frame";
 import { SectionLabel } from "../../components/section-label";
+import { SelectField } from "../../components/select-field";
 import { Skeleton } from "../../components/skeleton";
 import { FactRow } from "../../components/fact-row";
 import { ThemedText } from "../../components/themed-text";
 import { useActiveContext } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
+import { env } from "../../env";
 import { copy } from "../../lib/copy";
 import { toFriendlyError } from "../../lib/errors";
 import { formatReadableDate } from "../../lib/format";
 import { trpc } from "../../lib/trpc";
+import { colors } from "../../theme/brand-admin";
 import { spacing } from "../../theme/tokens";
 import { ENROLLMENT_TRANSITIONS, type EnrollmentStatus } from "./people-logic";
+import { photoToWireBase64 } from "./photo-matching";
 
 type Guardian = inferRouterOutputs<AppRouter>["guardian"]["list"][number];
 
@@ -40,7 +48,7 @@ type Guardian = inferRouterOutputs<AppRouter>["guardian"]["list"][number];
  */
 export function StudentDetailScreen() {
   const { studentId } = useLocalSearchParams<{ studentId?: string }>();
-  const { organizationId, academicYear, ready } = useActiveContext();
+  const { organizationId, schoolId, academicYear, ready } = useActiveContext();
   const { has } = usePermissions();
 
   const canRead = has("student:read");
@@ -84,6 +92,8 @@ export function StudentDetailScreen() {
   const [transitionError, setTransitionError] = useState<unknown>(null);
   const utils = trpc.useUtils();
   const transition = trpc.enrollment.transition.useMutation();
+  const uploadPhoto = trpc.student.uploadPhoto.useMutation();
+  const removePhotoMutation = trpc.student.removePhoto.useMutation();
   const moveAlong = async (to: EnrollmentStatus) => {
     if (!enrollment || !organizationId) return;
     setTransitionError(null);
@@ -99,6 +109,107 @@ export function StudentDetailScreen() {
     }
   };
 
+  // The student's own photo (Step 2 rework): viewed through the stable
+  // storage route, set from the gallery, removed behind a confirm — all
+  // through the ordinary student.photo/uploadPhoto/removePhoto seam.
+  const photoQuery = trpc.student.photo.useQuery(
+    { organizationId: organizationId ?? "", id: studentId ?? "" },
+    { enabled: ready && Boolean(organizationId) && canRead && Boolean(studentId) },
+  );
+  const photoObjectId = photoQuery.data?.objectId ?? null;
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [photoSheetOpen, setPhotoSheetOpen] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoError, setPhotoError] = useState<unknown>(null);
+
+  const loadPhoto = useCallback(async (objectId: string) => {
+    try {
+      const response = await fetch(`${env.EXPO_PUBLIC_API_URL}/api/storage/${objectId}`, {
+        credentials: "include",
+      });
+      if (!response.ok) return;
+      const blob = await response.blob();
+      const reader = new FileReader();
+      reader.onload = () => setPhotoUri(String(reader.result));
+      reader.readAsDataURL(blob);
+    } catch {
+      // A failed render keeps the initials avatar — never a broken image.
+    }
+  }, []);
+
+  const pickPhoto = async () => {
+    setPhotoError(null);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        quality: 1,
+        exif: false,
+      });
+      if (result.canceled || !studentId || !organizationId) return;
+      const asset = result.assets[0];
+      setPhotoBusy(true);
+      const base64 = await photoToWireBase64(asset.uri, asset.width, asset.height);
+      if (!base64) {
+        setPhotoError(new Error(copy.photos.tooLarge));
+        return;
+      }
+      await uploadPhoto.mutateAsync({
+        organizationId,
+        id: studentId,
+        data: { contentType: "image/jpeg", dataBase64: base64 },
+      });
+      const objectId = await utils.student.photo.fetch({
+        organizationId,
+        id: studentId,
+      });
+      if (objectId?.objectId) await loadPhoto(objectId.objectId);
+      setPhotoSheetOpen(false);
+    } catch (error) {
+      setPhotoError(error);
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
+  const removePhoto = () => {
+    if (!studentId || !organizationId) return;
+    Alert.alert(
+      copy.profilePhoto.removeConfirmTitle,
+      copy.profilePhoto.removeConfirmBody,
+      [
+        { text: copy.common.cancel, style: "cancel" },
+        {
+          text: copy.profilePhoto.removeConfirm,
+          style: "destructive",
+          onPress: () => {
+            setPhotoBusy(true);
+            removePhotoMutation
+              .mutateAsync({ organizationId, id: studentId })
+              .then(() => {
+                setPhotoUri(null);
+                setPhotoSheetOpen(false);
+              })
+              .catch((error: unknown) => setPhotoError(error))
+              .finally(() => setPhotoBusy(false));
+          },
+        },
+      ],
+    );
+  };
+
+  // The stored photo renders through a fetched data URI (RN's Image does not
+  // ride the session cookie the storage route requires).
+  useEffect(() => {
+    if (photoObjectId) void loadPhoto(photoObjectId);
+  }, [photoObjectId, loadPhoto]);
+
+  // Enrollment sheets (Step 2 rework): a two-field act never leaves the
+  // record — create, assign-section, and roll edit open here, not on a
+  // pushed screen.
+  const [enrollSheet, setEnrollSheet] = useState<
+    null | "create" | "assign" | "roll"
+  >(null);
+  const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const student = studentQuery.data;
   const name = student
     ? [student.firstName, student.middleName, student.lastName]
@@ -175,12 +286,51 @@ export function StudentDetailScreen() {
 
   return frame(
     <View style={styles.body}>
+      {savedMsg ? (
+        <Notice tone="positive" message={savedMsg} testID="student-saved" />
+      ) : null}
       <SectionLabel>{copy.students.sections.identity}</SectionLabel>
       <Card padless>
+        <Pressable
+          accessibilityRole={canUpdate ? "button" : undefined}
+          accessibilityLabel={
+            photoUri
+              ? copy.profilePhoto.change
+              : copy.profilePhoto.change
+          }
+          accessibilityHint={canUpdate ? copy.profilePhoto.changeHint : undefined}
+          onPress={canUpdate ? () => setPhotoSheetOpen(true) : undefined}
+          style={({ pressed }) => [
+            styles.photoRow,
+            pressed && canUpdate ? styles.photoPressed : null,
+          ]}
+          testID="student-photo-row"
+        >
+          {photoUri ? (
+            <Image source={{ uri: photoUri }} style={styles.photo} />
+          ) : (
+            <View style={[styles.photo, styles.photoEmpty]}>
+              <ThemedText variant="name" color={colors.muted}>
+                {student.firstName.charAt(0)}
+                {student.lastName.charAt(0)}
+              </ThemedText>
+            </View>
+          )}
+          <View style={styles.photoText}>
+            <ThemedText variant="bodyStrong" numberOfLines={1}>
+              {photoUri ? copy.profilePhoto.change : copy.profilePhoto.change}
+            </ThemedText>
+            <ThemedText variant="meta" numberOfLines={1}>
+              {student.admissionNumber}
+            </ThemedText>
+          </View>
+          {canUpdate ? (
+            <AppIcon name="chevronRight" size={18} color={colors.chevron} />
+          ) : null}
+        </Pressable>
         <FactRow
           label={copy.students.fields.admissionNumber}
           value={student.admissionNumber}
-          first
           testID="student-fact-admission"
         />
         {student.admissionDate ? (
@@ -359,10 +509,7 @@ export function StudentDetailScreen() {
               onPress={
                 canEnrollUpdate
                   ? () =>
-                      router.push({
-                        pathname: "/enrollment-form",
-                        params: { enrollmentId: enrollment.enrollment.id },
-                      })
+                      setEnrollSheet(enrollment.enrollment.sectionId === null ? "assign" : "roll")
                   : undefined
               }
               accessibilityHint={copy.people.enrollment.editRoll}
@@ -373,10 +520,7 @@ export function StudentDetailScreen() {
               label={copy.people.enrollment.sectionLabel}
               value={copy.people.enrollment.noSection}
               onPress={() =>
-                router.push({
-                  pathname: "/enrollment-form",
-                  params: { enrollmentId: enrollment.enrollment.id },
-                })
+                setEnrollSheet(enrollment.enrollment.sectionId === null ? "assign" : "roll")
               }
               accessibilityHint={copy.people.enrollment.assignHint}
             />
@@ -403,10 +547,7 @@ export function StudentDetailScreen() {
               title={copy.people.enrollment.enroll}
               icon="add"
               onPress={() =>
-                router.push({
-                  pathname: "/enrollment-form",
-                  params: { studentId: studentId ?? "" },
-                })
+                setEnrollSheet("create")
               }
               testID="enrollment-start"
               style={styles.enrollButton}
@@ -518,9 +659,79 @@ export function StudentDetailScreen() {
         onDismiss={() => setTransitionOpen(false)}
         testIDPrefix="enrollment-transition"
       />
+
+      {enrollSheet ? (
+        <EnrollmentSheet
+          organizationId={organizationId ?? ""}
+          schoolId={schoolId}
+          academicYearId={academicYear?.id ?? null}
+          studentId={studentId ?? ""}
+          mode={enrollSheet}
+          existing={enrollment?.enrollment ?? null}
+          onClose={() => setEnrollSheet(null)}
+          onSaved={(message) => {
+            setEnrollSheet(null);
+            setSavedMsg(message);
+          }}
+        />
+      ) : null}
+
+      {photoSheetOpen ? (
+      <FormSheet
+        title={copy.profilePhoto.sheetTitle}
+        onClose={() => setPhotoSheetOpen(false)}
+        testIDPrefix="student-photo-sheet"
+        footer={
+          <>
+            {photoError ? (
+              <Notice
+                tone="critical"
+                message={toFriendlyError(photoError).message}
+                testID="student-photo-error"
+              />
+            ) : null}
+            {canUpdate ? (
+              <>
+                <CapsuleButton
+                  title={copy.profilePhoto.change}
+                  icon="add"
+                  onPress={() => void pickPhoto()}
+                  loading={photoBusy}
+                  disabled={photoBusy}
+                  testID="student-photo-pick"
+                />
+                {photoObjectId ? (
+                  <CapsuleButton
+                    title={copy.profilePhoto.remove}
+                    icon="close"
+                    variant="destructive"
+                    onPress={removePhoto}
+                    disabled={photoBusy}
+                    testID="student-photo-remove"
+                  />
+                ) : null}
+              </>
+            ) : null}
+          </>
+        }
+      >
+        <View style={styles.photoSheetPreview}>
+          {photoUri ? (
+            <Image source={{ uri: photoUri }} style={styles.photo} />
+          ) : (
+            <View style={[styles.photo, styles.photoEmpty]}>
+              <ThemedText variant="name" color={colors.muted}>
+                {student ? student.firstName.charAt(0) : ""}
+                {student ? student.lastName.charAt(0) : ""}
+              </ThemedText>
+            </View>
+          )}
+          <ThemedText variant="meta">{copy.profilePhoto.changeHint}</ThemedText>
+        </View>
+      </FormSheet>
+      ) : null}
     </View>,
-  );
-}
+  );}
 
 function GuardianRow({
   guardian,
@@ -554,6 +765,189 @@ function GuardianRow({
   );
 }
 
+
+function EnrollmentSheet({
+  organizationId,
+  schoolId,
+  academicYearId,
+  studentId,
+  mode,
+  existing,
+  onClose,
+  onSaved,
+}: {
+  organizationId: string;
+  schoolId: string | null;
+  academicYearId: string | null;
+  studentId: string;
+  mode: "create" | "assign" | "roll";
+  existing: inferRouterOutputs<AppRouter>["enrollment"]["byId"] | null;
+  onClose: () => void;
+  onSaved: (message: string) => void;
+}) {
+  const visible = true;
+  const classes = trpc.academic.class.list.useQuery(
+    { organizationId, schoolId: schoolId ?? undefined },
+    { enabled: visible },
+  );
+  const sections = trpc.academic.section.list.useQuery(
+    { organizationId, schoolId: schoolId ?? undefined, academicYearId: academicYearId ?? "" },
+    { enabled: visible && Boolean(academicYearId) },
+  );
+  const [classId, setClassId] = useState<string | null>(existing?.classId ?? null);
+  const [sectionId, setSectionId] = useState<string | null>(existing?.sectionId ?? null);
+  const [roll, setRoll] = useState(existing?.rollNumber ?? "");
+  const [saveError, setSaveError] = useState<unknown>(null);
+
+  const utils = trpc.useUtils();
+  const create = trpc.enrollment.create.useMutation();
+  const update = trpc.enrollment.update.useMutation();
+  const assignSection = trpc.enrollment.assignSection.useMutation();
+  const pending = create.isPending || update.isPending || assignSection.isPending;
+
+  const sectionOptions = (sections.data ?? [])
+    .filter((section) => (mode === "create" && classId ? section.classId === classId : true))
+    .map((section) => {
+      const sectionClassName =
+        (classes.data ?? []).find((candidate) => candidate.id === section.classId)?.name ?? "";
+      return {
+        id: section.id,
+        label: [sectionClassName, section.name].filter(Boolean).join(" · "),
+      };
+    });
+
+  const rollInvalid = roll.trim().length > 20;
+  const classInvalid = mode === "create" && !classId;
+  const sectionInvalid = mode === "assign" && !sectionId;
+
+  const submit = async () => {
+    setSaveError(null);
+    if (rollInvalid || classInvalid || sectionInvalid) return;
+    try {
+      if (mode === "create") {
+        if (!schoolId || !academicYearId) return;
+        await create.mutateAsync({
+          organizationId,
+          schoolId,
+          data: {
+            studentId,
+            academicYearId,
+            classId: classId ?? "",
+            ...(sectionId ? { sectionId } : {}),
+            ...(roll.trim() ? { rollNumber: roll.trim() } : {}),
+          },
+        });
+      } else if (mode === "assign" && existing) {
+        if (!sectionId) return;
+        await assignSection.mutateAsync({
+          organizationId,
+          id: existing.id,
+          sectionId,
+          ...(roll.trim() ? { rollNumber: roll.trim() } : {}),
+        });
+      } else if (existing) {
+        await update.mutateAsync({
+          organizationId,
+          id: existing.id,
+          data: roll.trim() ? { rollNumber: roll.trim() } : {},
+        });
+      }
+      await utils.enrollment.list.invalidate();
+      onSaved(
+        mode === "assign"
+          ? copy.rework.section
+          : mode === "roll"
+            ? copy.rework.roll
+            : copy.rework.enrollment,
+      );
+    } catch (error) {
+      setSaveError(error);
+    }
+  };
+
+  const title =
+    mode === "create"
+      ? copy.people.enrollment.formTitle
+      : mode === "assign"
+        ? copy.people.enrollment.assignTitle
+        : copy.people.enrollment.editRoll;
+
+  return (
+    <FormSheet
+      visible
+      title={title}
+      onClose={onClose}
+      testIDPrefix="enrollment-sheet"
+      footer={
+        <>
+          {saveError ? (
+            <Notice
+              tone="critical"
+              message={toFriendlyError(saveError).message}
+              testID="enrollment-sheet-error"
+            />
+          ) : null}
+          <CapsuleButton
+            title={copy.people.enrollment.save}
+            icon="check"
+            onPress={() => void submit()}
+            loading={pending}
+            disabled={pending}
+            testID="enrollment-sheet-save"
+          />
+        </>
+      }
+    >
+      {mode === "create" ? (
+        <SelectField
+          label={copy.people.enrollment.fields.class}
+          valueLabel={
+            classId
+              ? (classes.data ?? []).find((candidate) => candidate.id === classId)?.name ?? null
+              : null
+          }
+          placeholder={copy.people.enrollment.fields.class}
+          options={(classes.data ?? []).map((candidate) => ({
+            id: candidate.id,
+            label: candidate.name,
+          }))}
+          currentId={classId ?? ""}
+          onSelect={(next) => {
+            setClassId(next || null);
+            setSectionId(null);
+          }}
+          testID="enrollment-sheet-class"
+        />
+      ) : null}
+      {mode !== "roll" ? (
+        <SelectField
+          label={copy.people.enrollment.fields.section}
+          valueLabel={
+            sectionId
+              ? sectionOptions.find((option) => option.id === sectionId)?.label ?? null
+              : null
+          }
+          placeholder={copy.people.enrollment.noSection}
+          options={sectionOptions}
+          currentId={sectionId ?? ""}
+          onSelect={(next) => setSectionId(next || null)}
+          help={mode === "create" ? copy.people.enrollment.fields.sectionHelp : undefined}
+          testID="enrollment-sheet-section"
+        />
+      ) : null}
+      <FormField
+        label={copy.people.enrollment.fields.roll}
+        value={roll}
+        onChangeText={setRoll}
+        help={copy.people.enrollment.fields.rollHelp}
+        autoCapitalize="characters"
+        maxLength={20}
+        testID="enrollment-sheet-roll"
+      />
+    </FormSheet>
+  );
+}
+
 const styles = StyleSheet.create({
   body: {
     gap: spacing.sm,
@@ -563,6 +957,37 @@ const styles = StyleSheet.create({
   },
   enrollButton: {
     alignSelf: "stretch",
+    marginTop: spacing.sm,
+  },
+  photoRow: {
+    minHeight: 76,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  photoPressed: {
+    backgroundColor: colors.field,
+  },
+  photo: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.field,
+  },
+  photoEmpty: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photoText: {
+    flex: 1,
+    gap: spacing.xxs,
+  },
+  photoSheetPreview: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
     marginTop: spacing.sm,
   },
 });

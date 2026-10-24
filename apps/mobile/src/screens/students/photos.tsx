@@ -5,7 +5,6 @@ import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/trpc";
 import type { ReactNode } from "react";
 import * as ImagePicker from "expo-image-picker";
-import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 
 import { AppIcon } from "../../components/app-icon";
 import { CapsuleButton } from "../../components/capsule-button";
@@ -31,10 +30,9 @@ import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { spacing } from "../../theme/tokens";
 import {
-  fitsWireLimit,
   matchByAdmission,
   matchByOrder,
-  resizePlan,
+  photoToWireBase64,
   rosterInMarkingOrder,
   type PickedPhoto,
   type RosterEntry,
@@ -58,7 +56,7 @@ type PhotoStatus = "uploading" | "done" | "failed";
  */
 export function StudentPhotosScreen() {
   const { sectionId } = useLocalSearchParams<{ sectionId?: string }>();
-  const { organizationId, academicYear, ready } = useActiveContext();
+  const { organizationId, schoolId, academicYear, ready } = useActiveContext();
   const branchName = useActiveBranchName();
   const { has } = usePermissions();
 
@@ -66,11 +64,11 @@ export function StudentPhotosScreen() {
   const canReadRoster = has("enrollment:read") && has("student:read");
 
   const classes = trpc.academic.class.list.useQuery(
-    { organizationId: organizationId ?? "" },
+    { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
     { enabled: ready && Boolean(organizationId) && canWrite },
   );
   const sections = trpc.academic.section.list.useQuery(
-    { organizationId: organizationId ?? "", academicYearId: academicYear?.id ?? "" },
+    { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined, academicYearId: academicYear?.id ?? "" },
     {
       enabled:
         ready && Boolean(organizationId) && canWrite && Boolean(academicYear?.id),
@@ -192,25 +190,7 @@ export function StudentPhotosScreen() {
   const utils = trpc.useUtils();
   const upload = trpc.student.uploadPhoto.useMutation();
 
-  const toWireBase64 = async (photo: PickedPhoto): Promise<string | null> => {
-    for (let attempt = 0; ; attempt += 1) {
-      const plan = resizePlan(attempt);
-      if (!plan) return null;
-      const resize =
-        photo.height >= photo.width
-          ? { height: plan.maxEdge }
-          : { width: plan.maxEdge };
-      const rendered = await ImageManipulator.manipulate(photo.localUri)
-        .resize(resize)
-        .renderAsync();
-      const saved = await rendered.saveAsync({
-        compress: plan.quality,
-        format: SaveFormat.JPEG,
-        base64: true,
-      });
-      if (saved.base64 && fitsWireLimit(saved.base64)) return saved.base64;
-    }
-  };
+
 
   const uploadTargets = matches.filter(
     (match) => statuses[match.studentId] !== "done",
@@ -234,7 +214,7 @@ export function StudentPhotosScreen() {
             [target.studentId]: "uploading",
           }));
           try {
-            const base64 = await toWireBase64(target.photo);
+            const base64 = await photoToWireBase64(target.photo.localUri, target.photo.width, target.photo.height);
             if (!base64) {
               setStatuses((current) => ({
                 ...current,

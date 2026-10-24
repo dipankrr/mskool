@@ -11,6 +11,7 @@ import { Notice } from "../../components/notice";
 import { ScreenFrame } from "../../components/screen-frame";
 import { SectionLabel } from "../../components/section-label";
 import { SelectField } from "../../components/select-field";
+import { SwitchRow } from "../../components/switch-row";
 import { Skeleton } from "../../components/skeleton";
 import { useActiveContext } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
@@ -114,6 +115,7 @@ export function GuardianFormScreen() {
       studentId={studentId ?? null}
       guardianId={guardianId ?? null}
       row={row}
+      canWrite={canWrite}
     />
   );
 }
@@ -125,11 +127,13 @@ function GuardianFormBody({
   studentId,
   guardianId,
   row,
+  canWrite,
 }: {
   organizationId: string;
   studentId: string | null;
   guardianId: string | null;
   row: GuardianView | null;
+  canWrite: boolean;
 }) {
   const editing = Boolean(row);
   const view = row;
@@ -309,41 +313,26 @@ function GuardianFormBody({
           maxLength={10}
           testID="guardian-phone"
         />
-        <SelectField
+        <SwitchRow
           label={copy.people.guardians.fields.primary}
-          valueLabel={form.isPrimary ? "Yes" : "No"}
-          placeholder="No"
-          options={[
-            { id: "no", label: "No" },
-            { id: "yes", label: "Yes" },
-          ]}
-          currentId={form.isPrimary ? "yes" : "no"}
-          onSelect={(choice) => set("isPrimary", choice === "yes")}
+          value={form.isPrimary}
+          onChange={(next) => set("isPrimary", next)}
+          disabled={!canWrite}
           testID="guardian-primary"
         />
-        <SelectField
+        <SwitchRow
           label={copy.people.guardians.fields.emergency}
-          valueLabel={form.isEmergencyContact ? "Yes" : "No"}
-          placeholder="No"
-          options={[
-            { id: "no", label: "No" },
-            { id: "yes", label: "Yes" },
-          ]}
-          currentId={form.isEmergencyContact ? "yes" : "no"}
-          onSelect={(choice) => set("isEmergencyContact", choice === "yes")}
+          value={form.isEmergencyContact}
+          onChange={(next) => set("isEmergencyContact", next)}
+          disabled={!canWrite}
           testID="guardian-emergency"
         />
-        <SelectField
+        <SwitchRow
           label={copy.people.guardians.fields.portal}
-          valueLabel={form.canAccessPortal ? "Yes" : "No"}
-          placeholder="Yes"
-          options={[
-            { id: "yes", label: "Yes" },
-            { id: "no", label: "No" },
-          ]}
-          currentId={form.canAccessPortal ? "yes" : "no"}
-          onSelect={(choice) => set("canAccessPortal", choice === "yes")}
+          value={form.canAccessPortal}
+          onChange={(next) => set("canAccessPortal", next)}
           help={copy.people.guardians.fields.portalHelp}
+          disabled={!canWrite}
           testID="guardian-portal"
         />
       </Card>

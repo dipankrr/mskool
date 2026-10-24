@@ -20,6 +20,7 @@ import { colors } from "../../../theme/brand-admin";
 export default function StaffTabsLayout() {
   const { hasAny } = usePermissions();
   const showAttendance = hasAny("attendance:read", "attendance:create");
+  const showStudents = hasAny("student:read");
 
   return (
     <Tabs
@@ -45,6 +46,16 @@ export default function StaffTabsLayout() {
           href: showAttendance ? undefined : null,
           tabBarIcon: ({ color }) => (
             <AppIcon name="attendance" color={color} size={22} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="students"
+        options={{
+          title: copy.studentsTab.label,
+          href: showStudents ? undefined : null,
+          tabBarIcon: ({ color }) => (
+            <AppIcon name="students" color={color} size={22} />
           ),
         }}
       />

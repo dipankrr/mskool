@@ -1,7 +1,8 @@
-import { StyleSheet, ScrollView, View } from "react-native";
+import { Pressable, StyleSheet, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
+import { AppIcon } from "../../components/app-icon";
 import { Card } from "../../components/card";
 import { LinkRow } from "../../components/link-row";
 import { EmptyState } from "../../components/empty-state";
@@ -98,6 +99,16 @@ export function AcademicSetupScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: tabSpace }]}
       >
         <View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={copy.common.back}
+            hitSlop={8}
+            onPress={() => router.back()}
+            style={({ pressed }) => [styles.back, pressed ? styles.backPressed : null]}
+            testID="academic-back"
+          >
+            <AppIcon name="chevronLeft" size={22} color={colors.ink} />
+          </Pressable>
           <ThemedText variant="title">{copy.academic.title}</ThemedText>
           {branchName ? (
             <ThemedText variant="meta" style={styles.org}>
@@ -144,6 +155,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: gutter,
     paddingTop: spacing.sm,
     gap: spacing.md,
+  },
+  back: {
+    width: 44,
+    height: 44,
+    marginLeft: -spacing.md,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 22,
+  },
+  backPressed: {
+    backgroundColor: colors.field,
   },
   org: {
     marginTop: spacing.xxs,

@@ -128,7 +128,7 @@ function SectionFormBody({
   }, [deactivated]);
 
   const classes = trpc.academic.class.list.useQuery(
-    { organizationId },
+    { organizationId, schoolId: schoolId ?? undefined },
     { enabled: Boolean(organizationId) },
   );
   const className = (id: string) =>

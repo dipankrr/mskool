@@ -28,7 +28,7 @@ type AssignmentRow = inferRouterOutputs<
  */
 export function TeacherAssignmentsScreen() {
   const { sectionId } = useLocalSearchParams<{ sectionId?: string }>();
-  const { organizationId, academicYear, ready } = useActiveContext();
+  const { organizationId, schoolId, academicYear, ready } = useActiveContext();
   const branchName = useActiveBranchName();
   const { has } = usePermissions();
 
@@ -40,12 +40,13 @@ export function TeacherAssignmentsScreen() {
   const selectedSectionId = sectionId ?? null;
 
   const classes = trpc.academic.class.list.useQuery(
-    { organizationId: organizationId ?? "" },
+    { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
     { enabled: ready && Boolean(organizationId) && canRead },
   );
   const sections = trpc.academic.section.list.useQuery(
     {
       organizationId: organizationId ?? "",
+      schoolId: schoolId ?? undefined,
       academicYearId: academicYear?.id ?? "",
     },
     {
@@ -54,11 +55,11 @@ export function TeacherAssignmentsScreen() {
     },
   );
   const directory = trpc.assignment.teacherDirectory.useQuery(
-    { organizationId: organizationId ?? "" },
+    { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
     { enabled: ready && Boolean(organizationId) && canRead },
   );
   const subjects = trpc.subject.list.useQuery(
-    { organizationId: organizationId ?? "" },
+    { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
     { enabled: ready && Boolean(organizationId) && canRead },
   );
 

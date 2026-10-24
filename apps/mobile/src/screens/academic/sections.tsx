@@ -107,15 +107,17 @@ export function SectionsScreen() {
           : undefined
       }
       titleTestID="sections-title"
+      header={
+        <View style={styles.filterWrap}>
+          <Card style={styles.filterCard}>
+            <ClassFilterRow
+              label={filterLabel}
+              onPress={() => setPickerOpen(true)}
+            />
+          </Card>
+        </View>
+      }
     >
-      <View style={styles.filterWrap}>
-        <Card style={styles.filterCard}>
-          <ClassFilterRow
-            label={filterLabel}
-            onPress={() => setPickerOpen(true)}
-          />
-        </Card>
-      </View>
       {(list.data ?? []).map((row: SectionRow) => (
         <EntityCard
           key={row.id}

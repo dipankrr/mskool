@@ -887,6 +887,61 @@ export const copy = {
       pickFailed: "Couldn't read the photos. Try the picker again.",
     },
   },
+  /** Step 2 rework — sheet forms, success feedback, bulk mapping, students tab. */
+  rework: {
+    saved: (thing: string) => `${thing} saved.`,
+    class: "Class saved.",
+    subject: "Subject saved.",
+    mapping: "Mapping saved.",
+    mappings: (count: number) =>
+      count === 1 ? "1 subject mapped." : `${count} subjects mapped.`,
+    enrollment: "Enrollment saved.",
+    section: "Section assigned.",
+    roll: "Roll number saved.",
+    guardian: "Guardian saved.",
+    photo: "Photo updated.",
+  },
+  /** Bulk subject mapping (Step 2 rework). */
+  bulkMapping: {
+    add: "Add subjects",
+    addHint: "Maps several subjects to this class in one pass",
+    sheetTitle: "Pick the subjects to map",
+    sheetHint: "Subjects already mapped to this class are not offered.",
+    emptyTitle: "Every subject is already mapped",
+    emptyBody: "Add more subjects in Subjects, then map them here.",
+    confirm: (count: number) =>
+      count === 1 ? "Map 1 subject" : `Map ${count} subjects`,
+    mapping: (done: number, total: number) => `${done} of ${total} mapped`,
+    failed: (count: number) =>
+      count === 1 ? "1 failed — retry" : `${count} failed — retry`,
+    typeLabel: "Result type",
+    typeHelp:
+      "Decides whether it counts toward the result, takes a grade instead of marks, and which card section it appears in.",
+    typeNone: "School default",
+  },
+  /** Students tab + roster rework. */
+  studentsTab: {
+    label: "Students",
+  },
+  roster: {
+    sortLabel: "Sort",
+    sortName: "Name A–Z",
+    sortNameDesc: "Name Z–A",
+    sortRoll: "Roll order",
+    filterLabel: "Class",
+    filterAll: "All students",
+    filterSection: "Section",
+  },
+  profilePhoto: {
+    change: "Set photo",
+    changeHint: "Opens the photo picker",
+    remove: "Remove photo",
+    removeConfirmTitle: "Remove this photo?",
+    removeConfirmBody: "The photo leaves the student's record and the printed cards.",
+    removeConfirm: "Remove",
+    sheetTitle: "Student photo",
+    updated: "Photo updated.",
+  },
   attendance: {
     /** Screen and alert title (the tab label lives in `nav`). */
     title: "Attendance",

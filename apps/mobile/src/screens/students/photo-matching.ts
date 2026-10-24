@@ -154,3 +154,30 @@ export function fitsWireLimit(base64: string): boolean {
 export function tooLargeMessage(): string {
   return copy.photos.tooLarge;
 }
+
+/**
+ * One picked photo → the wire's base64, through the resize ladder. Shared by
+ * the bulk workbench and the single-student photo sheet.
+ */
+export async function photoToWireBase64(
+  localUri: string,
+  width: number,
+  height: number,
+): Promise<string | null> {
+  const { ImageManipulator, SaveFormat } = await import("expo-image-manipulator");
+  for (let attempt = 0; ; attempt += 1) {
+    const plan = resizePlan(attempt);
+    if (!plan) return null;
+    const resize =
+      height >= width ? { height: plan.maxEdge } : { width: plan.maxEdge };
+    const rendered = await ImageManipulator.manipulate(localUri)
+      .resize(resize)
+      .renderAsync();
+    const saved = await rendered.saveAsync({
+      compress: plan.quality,
+      format: SaveFormat.JPEG,
+      base64: true,
+    });
+    if (saved.base64 && fitsWireLimit(saved.base64)) return saved.base64;
+  }
+}
