@@ -1,3 +1,5 @@
+import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
+
 import { copy } from "../../lib/copy";
 
 /**
@@ -164,7 +166,10 @@ export async function photoToWireBase64(
   width: number,
   height: number,
 ): Promise<string | null> {
-  const { ImageManipulator, SaveFormat } = await import("expo-image-manipulator");
+  // Static import, not a lazy `await import`: Metro resolves the lazy form
+  // through a cached absolute path that goes stale after every pnpm
+  // reinstall (the 2026-10-25 "photo not uploading" failure), while the
+  // static form re-resolves through node_modules on each bundle.
   for (let attempt = 0; ; attempt += 1) {
     const plan = resizePlan(attempt);
     if (!plan) return null;

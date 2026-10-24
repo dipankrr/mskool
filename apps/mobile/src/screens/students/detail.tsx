@@ -26,6 +26,7 @@ import { ThemedText } from "../../components/themed-text";
 import { useActiveContext } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
 import { env } from "../../env";
+import { authClient } from "../../lib/auth";
 import { copy } from "../../lib/copy";
 import { toFriendlyError } from "../../lib/errors";
 import { formatReadableDate } from "../../lib/format";
@@ -124,8 +125,14 @@ export function StudentDetailScreen() {
 
   const loadPhoto = useCallback(async (objectId: string) => {
     try {
+      // The session cookie lives in SecureStore, not the native cookie jar —
+      // it must ride the header explicitly (same rule as the tRPC link;
+      // credentials: "include" here sent no cookie and the route 401'd,
+      // silently keeping the initials avatar).
+      const cookies = await authClient.getCookie();
       const response = await fetch(`${env.EXPO_PUBLIC_API_URL}/api/storage/${objectId}`, {
-        credentials: "include",
+        credentials: "omit",
+        ...(cookies ? { headers: { Cookie: cookies } } : {}),
       });
       if (!response.ok) return;
       const blob = await response.blob();
