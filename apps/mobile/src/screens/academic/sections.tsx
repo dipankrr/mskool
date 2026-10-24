@@ -27,7 +27,7 @@ type SectionRow = inferRouterOutputs<AppRouter>["academic"]["section"]["list"][n
  * picker deep in the form honest too.
  */
 export function SectionsScreen() {
-  const { organizationId, academicYear, ready } = useActiveContext();
+  const { organizationId, schoolId, academicYear, ready } = useActiveContext();
   const branchName = useActiveBranchName();
   const { has } = usePermissions();
 
@@ -39,7 +39,7 @@ export function SectionsScreen() {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const classes = trpc.academic.class.list.useQuery(
-    { organizationId: organizationId ?? "" },
+    { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
     { enabled: ready && Boolean(organizationId) && canRead },
   );
 
@@ -115,6 +115,24 @@ export function SectionsScreen() {
               onPress={() => setPickerOpen(true)}
             />
           </Card>
+          <ChoiceSheet
+            visible={pickerOpen}
+            title={copy.academic.mappings.classPickerTitle}
+            options={[
+              { id: "", label: copy.academic.sections.allClasses },
+              ...(classes.data ?? []).map((row) => ({
+                id: row.id,
+                label: row.name,
+              })),
+            ]}
+            currentId={classFilter ?? ""}
+            onSelect={(id) => {
+              setClassFilter(id || null);
+              setPickerOpen(false);
+            }}
+            onDismiss={() => setPickerOpen(false)}
+            testIDPrefix="sections-class-filter"
+          />
         </View>
       }
     >
@@ -147,24 +165,6 @@ export function SectionsScreen() {
           testID={`section-card-${row.id}`}
         />
       ))}
-      <ChoiceSheet
-        visible={pickerOpen}
-        title={copy.academic.mappings.classPickerTitle}
-        options={[
-          { id: "", label: copy.academic.sections.allClasses },
-          ...(classes.data ?? []).map((row) => ({
-            id: row.id,
-            label: row.name,
-          })),
-        ]}
-        currentId={classFilter ?? ""}
-        onSelect={(id) => {
-          setClassFilter(id || null);
-          setPickerOpen(false);
-        }}
-        onDismiss={() => setPickerOpen(false)}
-        testIDPrefix="section-class-filter"
-      />
     </AcademicListFrame>
   );
 }

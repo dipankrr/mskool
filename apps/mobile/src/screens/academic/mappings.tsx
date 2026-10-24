@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Pressable, StyleSheet, View } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/trpc";
 
@@ -51,7 +51,9 @@ export function SubjectMappingsScreen() {
   const canOpen = has("subject_mapping:update") || has("subject_mapping:delete");
 
   const [pickerOpen, setPickerOpen] = useState(false);
-  const selectedClassId = classId ?? null;
+  const [selectedClassId, setSelectedClassId] = useState<string | null>(
+    classId ?? null,
+  );
 
   const classes = trpc.academic.class.list.useQuery(
     { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
@@ -188,6 +190,20 @@ export function SubjectMappingsScreen() {
           {saved ? (
             <Notice tone="positive" message={saved} testID="mappings-saved" />
           ) : null}
+          <ChoiceSheet
+            visible={pickerOpen}
+            title={copy.academic.mappings.classPickerTitle}
+            options={(classes.data ?? []).map((row) => ({ id: row.id, label: row.name }))}
+            currentId={selectedClassId ?? ""}
+            onSelect={(id) => {
+              setPickerOpen(false);
+              if (id && id !== selectedClassId) {
+                setSelectedClassId(id);
+              }
+            }}
+            onDismiss={() => setPickerOpen(false)}
+            testIDPrefix="mappings-class"
+          />
         </View>
       }
     >
@@ -248,20 +264,6 @@ export function SubjectMappingsScreen() {
       />
       ) : null}
 
-      <ChoiceSheet
-        visible={pickerOpen}
-        title={copy.academic.mappings.classPickerTitle}
-        options={(classes.data ?? []).map((row) => ({ id: row.id, label: row.name }))}
-        currentId={selectedClassId ?? ""}
-        onSelect={(id) => {
-          setPickerOpen(false);
-          if (id && id !== selectedClassId) {
-            router.setParams({ classId: id });
-          }
-        }}
-        onDismiss={() => setPickerOpen(false)}
-        testIDPrefix="mappings-class"
-      />
     </AcademicListFrame>
   );
 }
