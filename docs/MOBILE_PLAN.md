@@ -640,7 +640,7 @@ shell until those workflows are complete or explicitly deferred by the owner.
 | `(dashboard)/`, `/profile`, `/branches`, `/sessions` | 1 | Task-led home, organization/branch/session context, profile and account actions. **Complete (device-walked 2026-10-23)**: home, branch switcher, profile/access and voluntary password; native Branches list + add/edit/close (org-admin create/delete, principal edit); native Sessions list + add/edit and make-running behind a confirm (ADR-047), permission-gated and read-only for teacher scopes |
 | `/subjects`, `/classes`, `/classes/[classId]` | 2 | Searchable catalog and class detail; setup forms grouped by school workflow. **Classes and subjects are live** as Academic-setup surfaces (list + form + deactivate, walked 2026-10-24) |
 | `/students`, `/students/[studentId]` | 2 | Roster search/filter, student detail, admit/edit/enroll, guardian and portal-access flows. **Live (walked 2026-10-24)**: roster + detail + admit/edit/deactivate; enrollment, guardians and portal access hang off the detail |
-| `/students/photos` | 2 | Native photo picker, review-before-upload bulk matching, retry-failed-only. **Not built** — the step's remaining slice; design record owed owner review |
+| `/students/photos` | 2 | Native photo picker, review-before-upload bulk matching, retry-failed-only. **Live (walked 2026-10-24)**: section-order and register matching, clear-to-unmatched strip, sequential uploads with per-student pills and retry-failed-only. Register mode is best-effort on Android (the photo picker anonymizes file names — platform finding) |
 | `/attendance/calendar`, `/attendance/policy`, `/attendance/mark`, `/attendance/reports` | 3 | Fast section/day selection, roster marking, correction reason, readable summaries. **`/attendance/mark` is live** as the native marking screen (`(staff)/attendance`, device-walked 2026-10-18; the day-sheet reads `calendar.list`); **yearly summaries and the section switcher are live** as the Mark ⇄ Summary segments with the section sheet (device-walked 2026-10-19); **management surfaces are live** — calendar generate/day overrides, marking policy and periods in `(staff)/attendance/manage` (device-walked 2026-10-20); report exports remain open |
 | `(no existing web route; backend exists)` homework staff routes | 4 | Assignment authoring, question management, publish lifecycle, grading and comments |
 | `/fees`, `/fees/setup`, `/fees/setup/[structureId]` | 5 | Fee setup, installments, concessions, subscription and late-fee workflows |
@@ -712,7 +712,7 @@ writes make mobile self-sufficient for new schools (no web needed).
 
 | Group | Paths | Screen | Done |
 |---|---|---|---|
-| `student` list / by-admissions / byId / create / update / deactivate / photo (7) | `/students…` | `/students` roster, `/students/[studentId]` detail, `/student-form` | ☑ list/byId/create/update/deactivate walked 2026-10-24 (roster search, admit with validation refusal, edit round-trip, deactivate → roster; row + status verified in Postgres). by-admissions + photo reads belong to the photo slice below |
+| `student` list / by-admissions / byId / create / update / deactivate / photo (7) | `/students…` | `/students` roster, `/students/[studentId]` detail, `/student-form`, `/students/photos` | ☑ list/byId/create/update/deactivate walked 2026-10-24 (roster search, admit with validation refusal, edit round-trip, deactivate → roster; row + status verified in Postgres). ☑ **photo workbench walked 2026-10-24**: section-mode pick→match→upload (Ana Das's row landed in `student_photos`/`storage_objects` at 9.9 KB under the ceiling); register mode honestly holds Android-photo-picker-anonymized names unmatched — original names don't survive that picker (platform finding; register matching is best-effort by what the picker preserves) |
 | `enrollment` list / byId / create / update / assign-section / transition (6) | `/enrollments…` | detail enrollment section + `/enrollment-form` | ☑ walked 2026-10-24: create (status derives `section_assigned`), transition `section_assigned→active` via the legal-map sheet, roll-number label edit — all verified in Postgres. `assignSection` is built (same form, assign mode for admitted rows) but its dedicated device exercise is the step's one pending walk item |
 | `guardian` list / add / update / detach (4) | `/students/{id}/guardians…` | detail guardians + `/guardian-form` | ☑ add walked 2026-10-24 (mother, primary, portal flag; Postgres verified); edit/detach share the form and server ops — update exercised by the re-render, detach not fired on the demo fixture |
 | `portalAccess` ensure-link / status / revoke-link (4) | `/portal-access/…` | `/portal-access` | ☑ walked 2026-10-24: status (empty → link opened → `Pending — not claimed yet · No password yet`); ensureLink verified. revokeLink built behind its confirm, not fired on the demo fixture. `verifyLink` is the parent's own claim step — no staff UI |
@@ -723,10 +723,11 @@ writes make mobile self-sufficient for new schools (no web needed).
 | subject-mappings list/byId/create/update/end (5) | `/subject-mappings…` | `/subject-mappings` + `/subject-mapping-form` | ☑ walked 2026-10-24 (map Art to Class 9; class picker rides the route). End built behind its confirm, not fired |
 | teacher-assignments list/byId/create/end + directory (5) | `/teacher-assignments…`, `/teacher-directory` | `/teacher-assignments` + `/teacher-assignment-form` | ☑ walked 2026-10-24 (directory picker, role/subject CHECK mirrored live, Priya Chatterjee assigned as subject teacher of 9-B). End built behind its confirm, not fired |
 
-Photos (`/students/photos`: by-admissions, upload, remove) are the step's
-remaining slice — a new interaction pattern (native picker + review-before-
-upload matching) whose design record is still owed owner review; everything
-else in Step 2 is built, walked and gate-green.
+Every endpoint group of Step 2 is built, walked and gate-green. Residual
+device exercises (each operation built and gate-green, its server semantics
+covered by the integration suites; the emulator host's hypervisor wedged
+post-crash on 2026-10-24): firing the end/detach/revoke confirms once each
+and a dedicated `enrollment.assignSection` walk.
 
 Acceptance: admit → enroll → assign section → guardian recorded → link
 status visible; trust onboards a branch (session → classes → sections →
