@@ -71,7 +71,15 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
           style={[styles.tab, focused ? styles.tabOn : null]}
         >
           {options.tabBarIcon?.({ focused, color, size: 22 })}
-          <ThemedText variant="tab" color={color} numberOfLines={1}>
+          {/* The capsule is a fixed 64 pt and iOS tab labels don't take
+              Dynamic Type either; cap the growth so five tabs never
+              ellipsise "Homework" at the largest system text sizes. */}
+          <ThemedText
+            variant="tab"
+            color={color}
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.15}
+          >
             {label}
           </ThemedText>
         </Pressable>
