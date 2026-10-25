@@ -26,11 +26,14 @@ export function SegmentBar<T extends string>({
   value,
   options,
   onChange,
+  disabled = false,
 }: {
   label: string;
   value: T;
   options: readonly SegmentOption<T>[];
   onChange: (next: T) => void;
+  /** A read-only view keeps the choice visible but inert. */
+  disabled?: boolean;
 }) {
   return (
     <View style={styles.bar} accessibilityRole="tablist" accessibilityLabel={label}>
@@ -41,8 +44,9 @@ export function SegmentBar<T extends string>({
             key={option.value}
             testID={option.testID}
             accessibilityRole="tab"
-            accessibilityState={{ selected }}
+            accessibilityState={{ selected, disabled }}
             accessibilityLabel={option.accessibilityLabel ?? option.label}
+            disabled={disabled}
             onPress={() => {
               if (selected) return;
               void Haptics.selectionAsync();
@@ -51,7 +55,8 @@ export function SegmentBar<T extends string>({
             style={({ pressed }) => [
               styles.segment,
               selected ? styles.segmentOn : null,
-              pressed && !selected ? styles.segmentPressed : null,
+              pressed && !selected && !disabled ? styles.segmentPressed : null,
+              disabled ? styles.segmentDisabled : null,
             ]}
           >
             <ThemedText
@@ -89,5 +94,8 @@ const styles = StyleSheet.create({
   },
   segmentPressed: {
     backgroundColor: colors.surface,
+  },
+  segmentDisabled: {
+    opacity: 0.6,
   },
 });

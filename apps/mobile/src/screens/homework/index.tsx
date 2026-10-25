@@ -102,6 +102,7 @@ export function HomeworkScreen({ variant = "pushed" }: { variant?: "pushed" | "t
 
   const canRead = has("homework:read");
   const canCreate = has("homework:create");
+  const canReadSettings = has("school_settings:read");
 
   const [view, setView] = useState<HomeworkView>("agenda");
   const [selectedDay, setSelectedDay] = useState(() => todayIso());
@@ -195,12 +196,29 @@ export function HomeworkScreen({ variant = "pushed" }: { variant?: "pushed" | "t
         }
       : undefined;
 
+  /**
+   * The gear is the only way into settings, and it is gated on the settings
+   * permission rather than on `homework:create`: a principal who reads
+   * homework but never writes it still owns the branch's rules.
+   */
+  const settingsAction = canReadSettings
+    ? {
+        label: copy.homework.settings.title,
+        icon: "settings" as const,
+        iconOnly: true,
+        onPress: () => router.push("/homework/settings"),
+        accessibilityHint: copy.homework.settings.intro,
+        testID: "homework-settings",
+      }
+    : undefined;
+
   const frame = (children: ReactNode) => (
     <ScreenFrame
       title={copy.homework.title}
       meta={branchName}
       backAccessibilityLabel={variant === "pushed" ? copy.common.back : undefined}
       action={addAction}
+      secondaryAction={settingsAction}
       onRefresh={canRead ? () => void list.refetch() : undefined}
       refreshing={list.isRefetching}
       titleTestID="homework-title"

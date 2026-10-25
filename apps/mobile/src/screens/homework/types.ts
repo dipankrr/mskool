@@ -46,6 +46,25 @@ export type AttemptAnswerRow = AttemptRow["answers"][number];
 export type CommentRow =
   inferRouterOutputs<AppRouter>["homework"]["comments"]["list"][number];
 
+/** The effective settings read model: no identity columns, just the rules. */
+export type EffectiveSettings =
+  inferRouterOutputs<AppRouter>["homework"]["settings"]["get"];
+
+/** The upsert response: the stored row, identity columns included. */
+export type SettingsRow =
+  inferRouterOutputs<AppRouter>["homework"]["settings"]["upsert"];
+
+export type RubricRow =
+  inferRouterOutputs<AppRouter>["homework"]["rubrics"]["list"][number];
+
+export type RubricDetailRow = NonNullable<
+  inferRouterOutputs<AppRouter>["homework"]["rubrics"]["byId"]
+>;
+
+export type RubricCriterionRow = RubricDetailRow["criteria"][number];
+
+export type RubricLevelRow = RubricCriterionRow["levels"][number];
+
 /**
  * The section a v1 assignment targets. The publish/close gate pair needs it
  * because the service verifies the pair describes the row; an assignment with
