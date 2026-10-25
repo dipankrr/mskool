@@ -10,6 +10,7 @@ import { CapsuleButton } from "../../components/capsule-button";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorCard } from "../../components/error-card";
 import { FactRow } from "../../components/fact-row";
+import { LinkRow } from "../../components/link-row";
 import { Notice } from "../../components/notice";
 import { ScreenFrame } from "../../components/screen-frame";
 import { Skeleton } from "../../components/skeleton";
@@ -139,6 +140,28 @@ export function HomeworkDetailScreen() {
     },
   );
 
+  /**
+   * The two teaching surfaces behind a homework: its question set and the
+   * class thread. Their counts are quiet metadata on the Tools rows; a failed
+   * count is left blank rather than turning the whole detail screen into an
+   * error, because both destinations can still be opened and retried there.
+   */
+  const questionSet = trpc.homework.questions.get.useQuery(
+    { organizationId: organizationId ?? "", id },
+    {
+      enabled:
+        ready && canRead && Boolean(organizationId) && Boolean(assignment),
+    },
+  );
+
+  const classComments = trpc.homework.comments.list.useQuery(
+    { organizationId: organizationId ?? "", assignmentId: id },
+    {
+      enabled:
+        ready && canRead && Boolean(organizationId) && Boolean(assignment),
+    },
+  );
+
   const subjectName = useMemo(
     () =>
       (subjects.data ?? []).find((row) => row.id === subjectId)?.name ?? null,
@@ -159,6 +182,16 @@ export function HomeworkDetailScreen() {
     () => countStudentWork(students.data ?? []),
     [students.data],
   );
+
+  const questionCount = questionSet.isSuccess
+    ? (questionSet.data ?? []).length
+    : null;
+
+  const classCommentCount = classComments.isSuccess
+    ? (classComments.data ?? []).filter(
+        (row) => row.studentAssignmentId === null,
+      ).length
+    : null;
 
   const invalidate = async () => {
     await Promise.all([
@@ -619,6 +652,53 @@ export function HomeworkDetailScreen() {
             >
               {assignment.description || copy.homework.detail.noInstructions}
             </ThemedText>
+          </Card>
+
+          <Card padless testID="homework-tools">
+            <View style={styles.factsHead}>
+              <ThemedText variant="sectionLabel">
+                {copy.homework.detail.tools}
+              </ThemedText>
+            </View>
+            <LinkRow
+              title={copy.homework.detail.questionSet}
+              detail={
+                questionCount === null
+                  ? null
+                  : questionCount > 0
+                    ? copy.homework.detail.questionsCount(questionCount)
+                    : copy.homework.detail.questionsNone
+              }
+              icon="quiz"
+              onPress={() =>
+                router.push({
+                  pathname: "/homework/[id]/questions",
+                  params: { id },
+                })
+              }
+              accessibilityHint={copy.homework.detail.questionSetHint}
+              first
+              testID="homework-tools-questions"
+            />
+            <LinkRow
+              title={copy.homework.detail.classComments}
+              detail={
+                classCommentCount === null
+                  ? null
+                  : classCommentCount > 0
+                    ? copy.homework.detail.commentsCount(classCommentCount)
+                    : copy.homework.detail.commentsNone
+              }
+              icon="comments"
+              onPress={() =>
+                router.push({
+                  pathname: "/homework/[id]/comments",
+                  params: { id },
+                })
+              }
+              accessibilityHint={copy.homework.detail.classCommentsHint}
+              testID="homework-tools-comments"
+            />
           </Card>
 
           <Card padless>

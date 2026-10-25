@@ -120,3 +120,42 @@ export function outcomeLabel(value: string): string {
   if (value === "reviewed") return copy.homework.grade.reviewed;
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
+
+/** One word for a question type, whatever build authored it. */
+export function questionTypeLabel(value: string): string {
+  return value in copy.homework.questions.types
+    ? copy.homework.questions.types[
+        value as keyof typeof copy.homework.questions.types
+      ]
+    : value.replace(/_/g, " ");
+}
+
+export type Difficulty = "easy" | "medium" | "hard";
+
+export function isDifficulty(value: string): value is Difficulty {
+  return value === "easy" || value === "medium" || value === "hard";
+}
+
+export function difficultyLabel(value: string): string {
+  return isDifficulty(value)
+    ? copy.homework.bank.difficultyLevels[value]
+    : value;
+}
+
+export type AttemptStatus = "in_progress" | "submitted" | "graded";
+
+export const attemptStatusTone: Record<AttemptStatus, Tone> = {
+  in_progress: "neutral",
+  submitted: "caution",
+  graded: "positive",
+};
+
+export function isAttemptStatus(value: string): value is AttemptStatus {
+  return value in attemptStatusTone;
+}
+
+export function attemptStatusLabel(value: string): string {
+  return isAttemptStatus(value)
+    ? copy.homework.grade.attemptStatuses[value]
+    : value.replace(/_/g, " ");
+}

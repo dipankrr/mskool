@@ -25,6 +25,27 @@ export type EvaluationRow = StudentAssignmentDetail["evaluations"][number];
 
 export type HomeworkTarget = HomeworkDetail["targets"][number];
 
+/** The teacher-facing set: options carry keys and the question carries marks. */
+export type AssignmentQuestionRow = NonNullable<
+  inferRouterOutputs<AppRouter>["homework"]["questions"]["get"]
+>[number];
+
+export type BankItemRow =
+  inferRouterOutputs<AppRouter>["homework"]["bank"]["list"][number];
+
+export type BankItemDetail = NonNullable<
+  inferRouterOutputs<AppRouter>["homework"]["bank"]["byId"]
+>;
+
+export type AttemptRow = NonNullable<
+  inferRouterOutputs<AppRouter>["homework"]["students"]["attempts"]["list"]
+>[number];
+
+export type AttemptAnswerRow = AttemptRow["answers"][number];
+
+export type CommentRow =
+  inferRouterOutputs<AppRouter>["homework"]["comments"]["list"][number];
+
 /**
  * The section a v1 assignment targets. The publish/close gate pair needs it
  * because the service verifies the pair describes the row; an assignment with

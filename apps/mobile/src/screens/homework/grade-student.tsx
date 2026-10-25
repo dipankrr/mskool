@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Linking,
   Pressable,
@@ -15,6 +15,7 @@ import { CapsuleButton } from "../../components/capsule-button";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorCard } from "../../components/error-card";
 import { FormField } from "../../components/form-field";
+import { LinkRow } from "../../components/link-row";
 import { Notice } from "../../components/notice";
 import { ScreenFrame } from "../../components/screen-frame";
 import { Skeleton } from "../../components/skeleton";
@@ -33,21 +34,33 @@ import {
   isPastClose,
   isPastDue,
 } from "../../lib/homework";
+import {
+  answerKeySummary,
+  answerSummary,
+} from "../../lib/homework-questions";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { radius, spacing } from "../../theme/tokens";
+import { AnswerGradeSheet } from "./answer-grade-sheet";
 import { ExcuseSheet } from "./excuse-sheet";
 import { ExtendSheet } from "./extend-sheet";
 import { GradeActionsSheet } from "./grade-actions-sheet";
 import { checkGradeDraft, MAX_FEEDBACK } from "./grade-logic";
 import {
+  attemptStatusLabel,
+  attemptStatusTone,
+  isAttemptStatus,
   isStudentWorkStatus,
   outcomeLabel,
+  questionTypeLabel,
   studentStatusLabel,
   studentStatusTone,
 } from "./meta";
 import { ResubmitSheet } from "./resubmit-sheet";
 import type {
+  AssignmentQuestionRow,
+  AttemptAnswerRow,
+  AttemptRow,
   EvaluationRow,
   HomeworkDetail,
   StudentAssignmentDetail,
@@ -295,6 +308,34 @@ function GradeStudentBody({
 }) {
   const utils = trpc.useUtils();
 
+  /**
+   * A question submission is the only thing that produces attempts. Asking for
+   * attempts on a notebook-only homework would query an empty table and show
+   * a "no attempts" card that can never fill.
+   */
+  const hasQuestions = assignment.submissionTypes.includes("questions");
+
+  const attempts = trpc.homework.students.attempts.list.useQuery(
+    { organizationId, id: student.id },
+    { enabled: hasQuestions },
+  );
+
+  const questionSet = trpc.homework.questions.get.useQuery(
+    { organizationId, id: assignment.id },
+    { enabled: hasQuestions },
+  );
+
+  const questionById = useMemo(
+    () => new Map((questionSet.data ?? []).map((row) => [row.id, row])),
+    [questionSet.data],
+  );
+
+  /** Newest effort first: that is the one a teacher usually marks. */
+  const attemptRows = useMemo(
+    () => [...(attempts.data ?? [])].sort((a, b) => b.attemptNo - a.attemptNo),
+    [attempts.data],
+  );
+
   const current =
     student.evaluations.find((evaluation) => evaluation.isCurrent) ?? null;
   const currentMarks = formatMarks(student.currentMarks) ?? "";
@@ -306,9 +347,16 @@ function GradeStudentBody({
   const [sheet, setSheet] = useState<
     "none" | "resubmit" | "extend" | "excuse" | "more"
   >("none");
+  const [answerTarget, setAnswerTarget] = useState<{
+    attemptId: string;
+    answer: AttemptAnswerRow;
+  } | null>(null);
+  const [openAttempts, setOpenAttempts] = useState<Record<string, boolean>>({});
+  const [attemptSaved, setAttemptSaved] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [saveError, setSaveError] = useState<unknown>(null);
   const [actionError, setActionError] = useState<unknown>(null);
+  const [answerError, setAnswerError] = useState<unknown>(null);
 
   const status = isStudentWorkStatus(student.status) ? student.status : null;
   const tone = status ? studentStatusTone[status] : "neutral";
@@ -353,6 +401,9 @@ function GradeStudentBody({
       utils.homework.students.list.invalidate(),
       utils.homework.byId.invalidate(),
       utils.homework.list.invalidate(),
+      ...(hasQuestions
+        ? [utils.homework.students.attempts.list.invalidate()]
+        : []),
     ]);
   };
 
@@ -393,7 +444,28 @@ function GradeStudentBody({
     onError: (error) => setActionError(error),
   });
 
-  const busy = evaluate.isPending || extend.isPending || excuse.isPending;
+  /**
+   * Marks for one answer. The sheet closes before the cache refresh so the
+   * screen never re-renders a modal over freshly sorted rows (Fabric's
+   * addViewAt crash). `fullyGraded` is the server's word, not ours: the notice
+   * appears only when every answer is settled.
+   */
+  const gradeAnswer = trpc.homework.students.attempts.gradeAnswer.useMutation({
+    onSuccess: async (data) => {
+      setAnswerTarget(null);
+      setAnswerError(null);
+      setAttemptSaved(data.fullyGraded);
+      await invalidate();
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    },
+    onError: (error) => setAnswerError(error),
+  });
+
+  const busy =
+    evaluate.isPending ||
+    extend.isPending ||
+    excuse.isPending ||
+    gradeAnswer.isPending;
 
   const openSheet = (next: "resubmit" | "extend" | "excuse" | "more") => {
     setActionError(null);
@@ -461,6 +533,31 @@ function GradeStudentBody({
       reason,
     });
   };
+
+  const requestAnswerGrade = (
+    attemptId: string,
+    answer: AttemptAnswerRow,
+  ) => {
+    setAnswerError(null);
+    setAttemptSaved(false);
+    setAnswerTarget({ attemptId, answer });
+  };
+
+  const closeAnswerSheet = () => {
+    if (gradeAnswer.isPending) return;
+    setAnswerTarget(null);
+    setAnswerError(null);
+  };
+
+  const toggleAttempt = (attemptId: string, open: boolean) => {
+    setOpenAttempts((current) => ({ ...current, [attemptId]: !open }));
+  };
+
+  const answerTargetQuestion = answerTarget
+    ? questionSet.data?.find(
+        (row) => row.id === answerTarget.answer.assignmentQuestionId,
+      )
+    : undefined;
 
   const dueLabel = `${dayLabel(dayKeyOf(student.effectiveDueAt))} · ${
     clockOf(student.effectiveDueAt) ?? "—"
@@ -640,6 +737,47 @@ function GradeStudentBody({
             submissionTypes={assignment.submissionTypes}
           />
 
+          {hasQuestions ? (
+            <AttemptsCard
+              loading={attempts.isPending || questionSet.isPending}
+              attemptsError={attempts.error}
+              questionsError={questionSet.error}
+              attempts={attemptRows}
+              questionById={questionById}
+              canGrade={canGrade}
+              saved={attemptSaved}
+              openAttempts={openAttempts}
+              onToggle={toggleAttempt}
+              onGrade={requestAnswerGrade}
+              onRetry={() => {
+                setAttemptSaved(false);
+                void attempts.refetch();
+                void questionSet.refetch();
+              }}
+            />
+          ) : null}
+
+          <Card padless testID="homework-grade-private-comments">
+            <LinkRow
+              title={copy.homework.grade.privateComments}
+              detail={copy.homework.grade.privateCommentsNote}
+              icon="comments"
+              onPress={() =>
+                router.push({
+                  pathname: "/homework/[id]/comments",
+                  params: {
+                    id: assignment.id,
+                    saId: student.id,
+                    name: displayName,
+                  },
+                })
+              }
+              accessibilityHint={copy.homework.grade.privateCommentsHint}
+              first
+              testID="homework-grade-private-comments-link"
+            />
+          </Card>
+
           {!excused ? (
             readOnlyMode ? (
               <Notice
@@ -776,6 +914,34 @@ function GradeStudentBody({
           onClose={closeSheet}
         />
       ) : null}
+
+      {answerTarget && answerTargetQuestion ? (
+        <AnswerGradeSheet
+          key={answerTarget.answer.id}
+          position={answerTarget.answer.position}
+          body={answerTarget.answer.body}
+          max={
+            formatMarks(answerTargetQuestion.marks) ??
+            answerTargetQuestion.marks
+          }
+          initialMarks={formatMarks(answerTarget.answer.marksAwarded) ?? ""}
+          initialFeedback={answerTarget.answer.feedback ?? ""}
+          submitting={gradeAnswer.isPending}
+          error={answerError}
+          onSubmit={({ marks: nextMarks, feedback: nextFeedback }) =>
+            gradeAnswer.mutate({
+              organizationId,
+              id: answerTarget.attemptId,
+              sectionId: student.sectionId,
+              subjectId: assignment.subjectId,
+              answerId: answerTarget.answer.id,
+              marksAwarded: nextMarks,
+              ...(nextFeedback ? { feedback: nextFeedback } : {}),
+            })
+          }
+          onClose={closeAnswerSheet}
+        />
+      ) : null}
     </>
   );
 }
@@ -891,6 +1057,337 @@ function SubmissionLink({ url }: { url: string }) {
             {copy.homework.grade.openLink}
           </ThemedText>
         </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * The quiz attempts behind a question submission. The newest effort is open;
+ * older ones collapse so a second attempt does not push the evaluation form
+ * off the screen. The card is only rendered when the homework actually takes
+ * question answers.
+ */
+function AttemptsCard({
+  loading,
+  attemptsError,
+  questionsError,
+  attempts,
+  questionById,
+  canGrade,
+  saved,
+  openAttempts,
+  onToggle,
+  onGrade,
+  onRetry,
+}: {
+  loading: boolean;
+  attemptsError: unknown;
+  questionsError: unknown;
+  attempts: AttemptRow[];
+  questionById: ReadonlyMap<string, AssignmentQuestionRow>;
+  canGrade: boolean;
+  saved: boolean;
+  openAttempts: Record<string, boolean>;
+  onToggle: (attemptId: string, open: boolean) => void;
+  onGrade: (attemptId: string, answer: AttemptAnswerRow) => void;
+  onRetry: () => void;
+}) {
+  const text = copy.homework.grade;
+  const failure = attemptsError ?? questionsError;
+
+  return (
+    <Card style={styles.card} testID="homework-grade-attempts">
+      <View style={styles.attemptsHead}>
+        <ThemedText variant="sectionLabel">{text.attempts}</ThemedText>
+        {!loading && !failure ? (
+          <ThemedText variant="meta">{attempts.length}</ThemedText>
+        ) : null}
+      </View>
+
+      {saved ? (
+        <Notice
+          tone="positive"
+          title={text.attemptGradedTitle}
+          message={text.attemptGradedBody}
+          testID="homework-grade-attempt-saved"
+        />
+      ) : null}
+
+      {loading ? (
+        <View style={styles.attemptSkeleton}>
+          <Skeleton height={64} />
+          <Skeleton height={64} />
+        </View>
+      ) : failure ? (
+        <>
+          <Notice
+            tone="critical"
+            title={text.attemptsLoadError}
+            message={errorMessage(failure)}
+            testID="homework-grade-attempts-error"
+          />
+          <CapsuleButton
+            title={copy.common.retry}
+            variant="secondary"
+            size="compact"
+            onPress={onRetry}
+            testID="homework-grade-attempts-retry"
+          />
+        </>
+      ) : attempts.length === 0 ? (
+        <>
+          <ThemedText variant="bodyStrong">{text.attemptsEmpty}</ThemedText>
+          <ThemedText variant="meta">{text.attemptsEmptyBody}</ThemedText>
+        </>
+      ) : (
+        attempts.map((attempt, index) => {
+          const open = openAttempts[attempt.id] ?? index === 0;
+          return (
+            <AttemptItem
+              key={attempt.id}
+              attempt={attempt}
+              open={open}
+              first={index === 0}
+              questionById={questionById}
+              canGrade={canGrade}
+              onToggle={() => onToggle(attempt.id, open)}
+              onGrade={(answer) => onGrade(attempt.id, answer)}
+            />
+          );
+        })
+      )}
+    </Card>
+  );
+}
+
+function AttemptItem({
+  attempt,
+  open,
+  first,
+  questionById,
+  canGrade,
+  onToggle,
+  onGrade,
+}: {
+  attempt: AttemptRow;
+  open: boolean;
+  first: boolean;
+  questionById: ReadonlyMap<string, AssignmentQuestionRow>;
+  canGrade: boolean;
+  onToggle: () => void;
+  onGrade: (answer: AttemptAnswerRow) => void;
+}) {
+  const text = copy.homework.grade;
+  const status = isAttemptStatus(attempt.status) ? attempt.status : null;
+  const started = `${dayLabel(dayKeyOf(attempt.startedAt))} · ${
+    clockOf(attempt.startedAt) ?? "—"
+  }`;
+  const submitted = attempt.submittedAt
+    ? `${dayLabel(dayKeyOf(attempt.submittedAt))} · ${
+        clockOf(attempt.submittedAt) ?? "—"
+      }`
+    : null;
+  const when = submitted
+    ? text.attemptSubmitted(submitted)
+    : text.attemptStarted(started);
+  const gradedCount = attempt.answers.filter(
+    (answer) => !answer.needsManualReview,
+  ).length;
+  const editable = canGrade && attempt.status !== "in_progress";
+
+  return (
+    <View style={[styles.attempt, first ? null : styles.attemptDivider]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${text.attemptNo(attempt.attemptNo)}, ${attemptStatusLabel(
+          attempt.status,
+        )}`}
+        accessibilityHint={text.attemptAnswersToggle(open)}
+        onPress={onToggle}
+        style={({ pressed }) => [
+          styles.attemptHead,
+          pressed ? styles.pressed : null,
+        ]}
+        testID={`homework-grade-attempt-${attempt.attemptNo}`}
+      >
+        <View style={styles.attemptTitle}>
+          <ThemedText variant="bodyStrong">
+            {text.attemptNo(attempt.attemptNo)}
+          </ThemedText>
+          <StatusPill
+            label={attemptStatusLabel(attempt.status)}
+            tone={status ? attemptStatusTone[status] : "neutral"}
+          />
+          {attempt.isLate ? (
+            <StatusPill label={text.late} tone="caution" />
+          ) : null}
+        </View>
+        <AppIcon
+          name={open ? "chevronDown" : "chevronRight"}
+          size={18}
+          color={colors.chevron}
+        />
+      </Pressable>
+
+      <ThemedText variant="meta">{when}</ThemedText>
+
+      {attempt.status !== "in_progress" ? (
+        <View style={styles.attemptStats}>
+          <ThemedText variant="meta">
+            {text.attemptTotal(
+              formatMarks(attempt.totalScore) ?? attempt.totalScore,
+              formatMarks(attempt.maxScore) ?? attempt.maxScore,
+            )}
+          </ThemedText>
+          <ThemedText variant="meta">
+            {text.attemptReviewed(gradedCount, attempt.answers.length)}
+          </ThemedText>
+        </View>
+      ) : null}
+
+      {open ? (
+        <View style={styles.answers}>
+          {attempt.status === "in_progress" ? (
+            <Notice
+              tone="neutral"
+              message={text.attemptInProgress}
+              testID="homework-grade-attempt-in-progress"
+            />
+          ) : null}
+
+          {attempt.answers.length === 0 ? (
+            <ThemedText variant="meta">{text.attemptNoAnswers}</ThemedText>
+          ) : (
+            attempt.answers.map((answer, index) => (
+              <AnswerItem
+                key={answer.id}
+                answer={answer}
+                question={
+                  questionById.get(answer.assignmentQuestionId) ?? null
+                }
+                editable={editable}
+                first={index === 0}
+                onGrade={() => onGrade(answer)}
+              />
+            ))
+          )}
+
+          {attempt.status !== "in_progress" &&
+          attempt.answers.length > 0 ? (
+            <>
+              <ThemedText variant="caption" color={colors.muted}>
+                {text.attemptAnswersOnly}
+              </ThemedText>
+              <ThemedText variant="caption" color={colors.muted}>
+                {text.attemptManualNote}
+              </ThemedText>
+            </>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * One answer. The attempt read model carries the JSON answer but not the
+ * options or the question's marks, so both come from the snapshot queried
+ * alongside it. Automatic marks are read-only here; a manual type — or an
+ * answer the server flagged for review — opens the marks sheet.
+ */
+function AnswerItem({
+  answer,
+  question,
+  editable,
+  first,
+  onGrade,
+}: {
+  answer: AttemptAnswerRow;
+  question: AssignmentQuestionRow | null;
+  editable: boolean;
+  first: boolean;
+  onGrade: () => void;
+}) {
+  const text = copy.homework.grade;
+  const given = answerSummary(
+    answer.questionType,
+    answer.answer,
+    question?.options ?? null,
+  );
+  const key = answerKeySummary({
+    questionType: answer.questionType,
+    options: question?.options ?? null,
+    correctAnswer: question?.correctAnswer ?? null,
+  });
+  const marks = formatMarks(answer.marksAwarded);
+  const max = question ? formatMarks(question.marks) ?? question.marks : null;
+  const manualType =
+    answer.questionType === "short_answer" ||
+    answer.questionType === "long_answer";
+  const markable = editable && (answer.needsManualReview || manualType);
+  const actionLabel =
+    answer.marksAwarded === null ? text.gradeAnswer : text.answerEdit;
+
+  return (
+    <View style={[styles.answer, first ? null : styles.answerDivider]}>
+      <View style={styles.answerHead}>
+        <ThemedText variant="caption" color={colors.muted}>
+          {`Q${answer.position} · ${questionTypeLabel(answer.questionType)}`}
+        </ThemedText>
+        {answer.needsManualReview ? (
+          <StatusPill label={text.needsMarks} tone="caution" />
+        ) : answer.isCorrect === true ? (
+          <StatusPill label={text.autoCorrect} tone="positive" />
+        ) : answer.isCorrect === false ? (
+          <StatusPill label={text.autoWrong} tone="critical" />
+        ) : null}
+      </View>
+
+      <ThemedText variant="bodyStrong" numberOfLines={4}>
+        {answer.body}
+      </ThemedText>
+
+      <View style={styles.answerGiven}>
+        <ThemedText variant="caption" color={colors.muted}>
+          {text.answerGiven}
+        </ThemedText>
+        <ThemedText variant="body" selectable style={styles.answerText}>
+          {given ?? text.leftBlank}
+        </ThemedText>
+      </View>
+
+      {key ? (
+        <ThemedText variant="meta">{text.answerKey(key)}</ThemedText>
+      ) : (
+        <ThemedText variant="meta">{text.noKey}</ThemedText>
+      )}
+
+      <View style={styles.answerFoot}>
+        <ThemedText
+          variant="bodyStrong"
+          color={marks ? colors.ink : colors.muted}
+        >
+          {marks && max
+            ? text.answerScore(marks, max)
+            : (marks ?? text.answerNotGraded)}
+        </ThemedText>
+        {markable ? (
+          <CapsuleButton
+            title={actionLabel}
+            icon="grade"
+            variant="secondary"
+            size="compact"
+            onPress={onGrade}
+            testID={`homework-grade-answer-${answer.id}`}
+          />
+        ) : null}
+      </View>
+
+      {answer.feedback ? (
+        <ThemedText variant="meta" style={styles.answerFeedback}>
+          {answer.feedback}
+        </ThemedText>
       ) : null}
     </View>
   );
@@ -1056,6 +1553,80 @@ const styles = StyleSheet.create({
   },
   blocked: {
     marginTop: spacing.md,
+  },
+  attemptsHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  attemptSkeleton: {
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  attempt: {
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  attemptDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.hairline,
+    paddingTop: spacing.md,
+  },
+  attemptHead: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  attemptTitle: {
+    flex: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  attemptStats: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.md,
+  },
+  answers: {
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  answer: {
+    gap: spacing.xs,
+  },
+  answerDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.hairline,
+    paddingTop: spacing.sm,
+  },
+  answerHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  answerGiven: {
+    gap: spacing.xxs,
+    marginTop: spacing.xxs,
+  },
+  answerText: {
+    lineHeight: 22,
+  },
+  answerFoot: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    marginTop: spacing.xxs,
+  },
+  answerFeedback: {
+    fontStyle: "italic",
+    lineHeight: 20,
   },
   historyHead: {
     flexDirection: "row",
