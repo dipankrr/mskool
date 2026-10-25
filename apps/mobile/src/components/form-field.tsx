@@ -29,6 +29,8 @@ export function FormField({
   editable = true,
   maxLength,
   suffix,
+  multiline = false,
+  numberOfLines = 4,
   testID,
 }: {
   label: string;
@@ -45,6 +47,10 @@ export function FormField({
   editable?: boolean;
   maxLength?: number;
   suffix?: string;
+  /** A prose field: taller box, top-aligned text, no single-line scroll. */
+  multiline?: boolean;
+  /** Visible lines for a multiline field (default 4). */
+  numberOfLines?: number;
   testID?: string;
 }) {
   return (
@@ -55,13 +61,14 @@ export function FormField({
       <View
         style={[
           styles.box,
+          multiline ? styles.boxMultiline : null,
           error ? styles.boxError : null,
           editable ? null : styles.boxReadOnly,
         ]}
       >
         <TextInput
           testID={testID}
-          style={styles.input}
+          style={[styles.input, multiline ? styles.inputMultiline : null]}
           value={value}
           onChangeText={onChangeText}
           onBlur={onBlur}
@@ -72,6 +79,9 @@ export function FormField({
           autoCorrect={autoCorrect}
           editable={editable}
           maxLength={maxLength}
+          multiline={multiline}
+          numberOfLines={multiline ? numberOfLines : undefined}
+          textAlignVertical={multiline ? "top" : undefined}
           accessibilityLabel={label}
           accessibilityHint={error ?? help}
         />
@@ -114,6 +124,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     backgroundColor: colors.field,
   },
+  boxMultiline: {
+    alignItems: "stretch",
+    minHeight: 112,
+    paddingVertical: spacing.sm,
+  },
   boxError: {
     borderWidth: 1,
     borderColor: colors.tone.critical.fg,
@@ -126,6 +141,10 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     color: colors.ink,
     fontSize: fontSize.callout,
+  },
+  inputMultiline: {
+    minHeight: 88,
+    paddingVertical: 0,
   },
   hint: {
     marginTop: spacing.xs,

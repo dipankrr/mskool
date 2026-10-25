@@ -57,6 +57,27 @@ const iconMap = {
   settings: { ios: "gearshape", android: "settings" },
   edit: { ios: "pencil", android: "edit" },
   search: { ios: "magnifyingglass", android: "search" },
+  /** Homework / assignments — the diary domain. */
+  homework: { ios: "book.closed.fill", android: "menu-book" },
+  classwork: { ios: "person.3.fill", android: "groups" },
+  project: { ios: "hammer.fill", android: "construction" },
+  worksheet: { ios: "doc.text.fill", android: "description" },
+  reading: { ios: "book.fill", android: "auto-stories" },
+  practice: { ios: "arrow.triangle.2.circlepath", android: "repeat" },
+  quiz: { ios: "questionmark.bubble.fill", android: "quiz" },
+  /** A link a student handed in. */
+  link: { ios: "link", android: "link" },
+  /** The grade / verified mark. */
+  grade: { ios: "checkmark.seal.fill", android: "verified" },
+  /** The question bank. */
+  bank: { ios: "tray.full.fill", android: "inventory" },
+  comments: { ios: "bubble.left.and.bubble.right.fill", android: "forum" },
+  resubmit: { ios: "arrow.uturn.backward", android: "undo" },
+  extend: { ios: "calendar.badge.plus", android: "event-available" },
+  rubric: { ios: "list.bullet.clipboard.fill", android: "fact-check" },
+  /** A subject's book — used by the pair picker. */
+  subject: { ios: "text.book.closed.fill", android: "library-books" },
+  filter: { ios: "line.3.horizontal.decrease", android: "filter-list" },
 } as const satisfies Record<
   string,
   { ios: SFSymbol; android: keyof typeof MaterialIcons.glyphMap }

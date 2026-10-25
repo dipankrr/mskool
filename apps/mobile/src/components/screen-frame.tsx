@@ -24,6 +24,12 @@ type HeaderAction = {
   onPress: () => void;
   /** A leading glyph — `add` for the list's create action. */
   icon?: AppIconName;
+  /**
+   * Renders the glyph without its printed label (the label stays as the
+   * accessibility label). For a low-frequency utility action beside the
+   * screen's one labelled action — the homework tab's settings gear.
+   */
+  iconOnly?: boolean;
   accessibilityHint?: string;
   testID?: string;
 };
@@ -58,6 +64,7 @@ export function ScreenFrame({
   backTestID = "screen-back",
   padForTabBar = false,
   action,
+  secondaryAction,
   footer,
   onRefresh,
   refreshing = false,
@@ -71,6 +78,8 @@ export function ScreenFrame({
   backTestID?: string;
   padForTabBar?: boolean;
   action?: HeaderAction;
+  /** A quieter utility action to the left of `action` (settings gear). */
+  secondaryAction?: HeaderAction;
   /** Sticky bottom content; the body yields its bottom padding to it. */
   footer?: ReactNode;
   /** Passing this enables pull-to-refresh. */
@@ -84,7 +93,9 @@ export function ScreenFrame({
   // inset: without it the last row of a long scroll ends flush with the
   // gesture bar. Under the tabs the bar's space already carries the inset.
   const bottom = padForTabBar ? tabSpace : insets.bottom + spacing.xl;
-  const showTopRow = Boolean(backAccessibilityLabel || action);
+  const showTopRow = Boolean(
+    backAccessibilityLabel || action || secondaryAction,
+  );
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -128,35 +139,13 @@ export function ScreenFrame({
               ) : (
                 <View style={styles.topSpacer} />
               )}
-              {action ? (
-                <Pressable
-                  testID={action.testID}
-                  accessibilityRole="button"
-                  accessibilityLabel={action.label}
-                  accessibilityHint={action.accessibilityHint}
-                  hitSlop={{ top: 5, bottom: 5 }}
-                  onPress={action.onPress}
-                  style={({ pressed }) => [
-                    styles.action,
-                    pressed ? styles.actionPressed : null,
-                  ]}
-                >
-                  {action.icon ? (
-                    <AppIcon
-                      name={action.icon}
-                      size={16}
-                      color={colors.accentDeep}
-                    />
+              {action || secondaryAction ? (
+                <View style={styles.actions}>
+                  {secondaryAction ? (
+                    <HeaderActionButton action={secondaryAction} />
                   ) : null}
-                  <ThemedText
-                    variant="caption"
-                    color={colors.accentDeep}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={1.4}
-                  >
-                    {action.label}
-                  </ThemedText>
-                </Pressable>
+                  {action ? <HeaderActionButton action={action} /> : null}
+                </View>
               ) : null}
             </View>
           ) : null}
@@ -184,6 +173,44 @@ export function ScreenFrame({
         ) : null}
       </KeyboardAvoidingView>
     </SafeAreaView>
+  );
+}
+
+/**
+ * One header action. A labelled pill is the default; `iconOnly` keeps the same
+ * tinted circle for a utility action whose glyph is unambiguous (a gear). The
+ * label is always the accessibility label, so the glyph never stands alone for
+ * a screen reader.
+ */
+function HeaderActionButton({ action }: { action: HeaderAction }) {
+  return (
+    <Pressable
+      testID={action.testID}
+      accessibilityRole="button"
+      accessibilityLabel={action.label}
+      accessibilityHint={action.accessibilityHint}
+      hitSlop={{ top: 5, bottom: 5 }}
+      onPress={action.onPress}
+      style={({ pressed }) => [
+        styles.action,
+        action.iconOnly ? styles.actionIconOnly : null,
+        pressed ? styles.actionPressed : null,
+      ]}
+    >
+      {action.icon ? (
+        <AppIcon name={action.icon} size={16} color={colors.accentDeep} />
+      ) : null}
+      {action.iconOnly ? null : (
+        <ThemedText
+          variant="caption"
+          color={colors.accentDeep}
+          numberOfLines={1}
+          maxFontSizeMultiplier={1.4}
+        >
+          {action.label}
+        </ThemedText>
+      )}
+    </Pressable>
   );
 }
 
@@ -225,6 +252,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     borderRadius: radius.full,
     backgroundColor: colors.accentTint,
+  },
+  actionIconOnly: {
+    width: 38,
+    justifyContent: "center",
+    paddingHorizontal: 0,
+  },
+  actions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
   },
   actionPressed: {
     backgroundColor: colors.accentStrong,
