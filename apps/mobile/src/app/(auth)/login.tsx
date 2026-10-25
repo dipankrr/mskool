@@ -135,16 +135,17 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: "600",
+    fontFamily: "ClashGrotesk-Semibold",
   },
   subtitle: {
     fontSize: 14,
+    fontFamily: "ClashGrotesk-Regular",
     opacity: 0.7,
     marginBottom: 16,
   },
   label: {
     fontSize: 14,
-    fontWeight: "500",
+    fontFamily: "ClashGrotesk-Medium",
     marginTop: 8,
   },
   input: {
@@ -153,10 +154,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 12,
     fontSize: 16,
+    fontFamily: "ClashGrotesk-Regular",
     minHeight: 48,
   },
   error: {
     color: "#b3261e",
+    fontFamily: "ClashGrotesk-Regular",
     marginTop: 8,
   },
 });

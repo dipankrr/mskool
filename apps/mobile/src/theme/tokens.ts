@@ -55,6 +55,21 @@ export const fontWeight = {
   bold: "700",
 } as const satisfies Record<string, TextStyle["fontWeight"]>;
 
+/**
+ * Clash Grotesk (Fontshare) — the app face. Each key names a separate family
+ * because the weight lives in the file, not in `fontWeight`. On Android,
+ * pairing a custom `fontFamily` with a numeric `fontWeight` silently falls
+ * back to the system font — so never set both; the family name alone is the
+ * weight. Names are the useFonts keys in `src/app/_layout.tsx` and the file
+ * names in `assets/fonts/`.
+ */
+export const fontFamily = {
+  regular: "ClashGrotesk-Regular",
+  medium: "ClashGrotesk-Medium",
+  semibold: "ClashGrotesk-Semibold",
+  bold: "ClashGrotesk-Bold",
+} as const;
+
 /** `letterSpacing` in px, tuned at the three sizes that carry it. */
 export const tracking = {
   /** Screen titles. */

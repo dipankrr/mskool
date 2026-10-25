@@ -33,7 +33,7 @@ import {
 import type { HomeworkSegment } from "../../lib/homework";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
-import { fontSize, radius, spacing } from "../../theme/tokens";
+import { fontFamily, fontSize, radius, spacing } from "../../theme/tokens";
 import { AssignmentCard } from "./assignment-card";
 import { SegmentBar } from "./segments";
 import type { SegmentOption } from "./segments";
@@ -688,6 +688,7 @@ const styles = StyleSheet.create({
     color: colors.ink,
     paddingVertical: spacing.sm,
     fontSize: fontSize.callout,
+    fontFamily: fontFamily.regular,
   },
   pressed: {
     opacity: 0.6,

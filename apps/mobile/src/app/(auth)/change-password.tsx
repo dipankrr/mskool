@@ -12,7 +12,7 @@ import { looksTechnical } from "../../lib/errors";
 import { trpc } from "../../lib/trpc";
 import { useMe } from "../../hooks/use-me";
 import { colors } from "../../theme/brand-admin";
-import { fontSize, radius, spacing } from "../../theme/tokens";
+import { fontFamily, fontSize, radius, spacing } from "../../theme/tokens";
 
 /** The only voluntary return allowed; anything else falls back to Home. */
 const RETURN_TO_PROFILE = "/profile";
@@ -246,6 +246,7 @@ const styles = StyleSheet.create({
   input: {
     minHeight: 48,
     paddingHorizontal: spacing.md,
+    fontFamily: fontFamily.regular,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
     backgroundColor: colors.field,

@@ -3,7 +3,7 @@ import type { StyleProp, ViewStyle } from "react-native";
 import * as Haptics from "expo-haptics";
 
 import { colors } from "../theme/brand-admin";
-import { fontSize, fontWeight, motion, radius, spacing } from "../theme/tokens";
+import { fontFamily, fontSize, motion, radius, spacing } from "../theme/tokens";
 import { ThemedText } from "./themed-text";
 
 /**
@@ -77,6 +77,6 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: fontSize.small,
-    fontWeight: fontWeight.semibold,
+    fontFamily: fontFamily.semibold,
   },
 });

@@ -2,7 +2,7 @@ import { StyleSheet, Text } from "react-native";
 import type { TextProps } from "react-native";
 
 import { colors } from "../theme/brand-admin";
-import { fontSize, fontWeight, tracking } from "../theme/tokens";
+import { fontFamily, fontSize, tracking } from "../theme/tokens";
 
 /**
  * The one way text renders in the app. Each variant is one line of the
@@ -23,67 +23,69 @@ import { fontSize, fontWeight, tracking } from "../theme/tokens";
 const variantStyles = StyleSheet.create({
   hero: {
     fontSize: fontSize.hero,
-    fontWeight: fontWeight.bold,
+    fontFamily: fontFamily.bold,
     letterSpacing: tracking.tight,
     fontVariant: ["tabular-nums"],
     color: colors.ink,
   },
   title: {
     fontSize: fontSize.large,
-    fontWeight: fontWeight.bold,
+    fontFamily: fontFamily.bold,
     letterSpacing: tracking.tight,
     color: colors.ink,
   },
   subtitle: {
     fontSize: fontSize.body,
-    fontWeight: fontWeight.medium,
+    fontFamily: fontFamily.medium,
     color: colors.muted,
   },
   sectionLabel: {
     fontSize: fontSize.caption,
-    fontWeight: fontWeight.semibold,
+    fontFamily: fontFamily.semibold,
     letterSpacing: tracking.label,
     textTransform: "uppercase",
     color: colors.muted,
   },
   name: {
     fontSize: fontSize.callout,
-    fontWeight: fontWeight.semibold,
+    fontFamily: fontFamily.semibold,
     letterSpacing: tracking.snug,
     color: colors.ink,
   },
   body: {
     fontSize: fontSize.body,
+    fontFamily: fontFamily.regular,
     color: colors.ink,
   },
   bodyStrong: {
     fontSize: fontSize.body,
-    fontWeight: fontWeight.semibold,
+    fontFamily: fontFamily.semibold,
     color: colors.ink,
   },
   meta: {
     fontSize: fontSize.fine,
+    fontFamily: fontFamily.regular,
     color: colors.muted,
   },
   caption: {
     fontSize: fontSize.caption,
-    fontWeight: fontWeight.semibold,
+    fontFamily: fontFamily.semibold,
     color: colors.ink,
   },
   chip: {
     fontSize: fontSize.fine,
-    fontWeight: fontWeight.semibold,
+    fontFamily: fontFamily.semibold,
     color: colors.ink,
   },
   numeric: {
     fontSize: fontSize.title,
-    fontWeight: fontWeight.bold,
+    fontFamily: fontFamily.bold,
     fontVariant: ["tabular-nums"],
     color: colors.ink,
   },
   tab: {
     fontSize: fontSize.micro,
-    fontWeight: fontWeight.medium,
+    fontFamily: fontFamily.medium,
     color: colors.muted,
   },
 });

@@ -22,7 +22,7 @@ import { copy } from "../../../lib/copy";
 import { formatShortWeekday } from "../../../lib/format";
 import { trpc } from "../../../lib/trpc";
 import { colors } from "../../../theme/brand-admin";
-import { fontSize, radius, spacing } from "../../../theme/tokens";
+import { fontFamily, fontSize, radius, spacing } from "../../../theme/tokens";
 import { dayTypeLabel } from "../status-meta";
 
 const DAY_TYPE_ORDER = [
@@ -267,6 +267,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: radius.md,
     backgroundColor: colors.surface,
+    fontFamily: fontFamily.regular,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     color: colors.ink,

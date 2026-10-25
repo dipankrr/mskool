@@ -2,7 +2,7 @@ import { StyleSheet, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
 import { colors } from "../theme/brand-admin";
-import { fontSize, fontWeight, radius } from "../theme/tokens";
+import { fontFamily, fontSize, radius } from "../theme/tokens";
 import { ThemedText } from "./themed-text";
 
 /**
@@ -70,7 +70,7 @@ const styles = StyleSheet.create({
   // Type (they would clip their circle), and never let them wrap.
   text: {
     color: colors.tone.neutral.fg,
-    fontWeight: fontWeight.semibold,
+    fontFamily: fontFamily.semibold,
     fontSize: fontSize.small,
   },
   textLg: {

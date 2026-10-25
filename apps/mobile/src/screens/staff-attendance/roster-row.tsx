@@ -8,7 +8,7 @@ import { ThemedText } from "../../components/themed-text";
 import { copy } from "../../lib/copy";
 import { formatShortWeekday } from "../../lib/format";
 import { colors } from "../../theme/brand-admin";
-import { fontSize, fontWeight, radius, spacing } from "../../theme/tokens";
+import { fontFamily, fontSize, radius, spacing } from "../../theme/tokens";
 import type { Status } from "./draft";
 import { statusLabel, statusShort, statusTone } from "./status-meta";
 
@@ -206,7 +206,7 @@ const styles = StyleSheet.create({
   },
   statusLetter: {
     fontSize: fontSize.title,
-    fontWeight: fontWeight.bold,
+    fontFamily: fontFamily.bold,
     letterSpacing: 0,
   },
   recent: {
@@ -226,6 +226,6 @@ const styles = StyleSheet.create({
     borderColor: colors.hairline,
   },
   recentLetter: {
-    fontWeight: fontWeight.bold,
+    fontFamily: fontFamily.bold,
   },
 });

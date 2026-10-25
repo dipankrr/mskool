@@ -4,8 +4,8 @@ import * as Haptics from "expo-haptics";
 
 import { colors } from "../theme/brand-admin";
 import {
+  fontFamily,
   fontSize,
-  fontWeight,
   motion,
   radius,
   shadow,
@@ -151,10 +151,10 @@ const styles = StyleSheet.create({
   },
   ctaLabel: {
     fontSize: fontSize.callout,
-    fontWeight: fontWeight.semibold,
+    fontFamily: fontFamily.semibold,
   },
   smallLabel: {
     fontSize: fontSize.small,
-    fontWeight: fontWeight.semibold,
+    fontFamily: fontFamily.semibold,
   },
 });

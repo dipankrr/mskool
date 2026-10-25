@@ -29,7 +29,7 @@ import { errorMessage } from "../../lib/errors";
 import { formatShortWeekday, todayIso } from "../../lib/format";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
-import { fontSize, gutter, motion, radius, shadow, spacing } from "../../theme/tokens";
+import { fontFamily, fontSize, gutter, motion, radius, shadow, spacing } from "../../theme/tokens";
 import { clampMonth } from "./calendar-month";
 import { DayPulse } from "./day-pulse";
 import { DaySheet } from "./day-sheet";
@@ -808,6 +808,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: radius.md,
     backgroundColor: colors.field,
+    fontFamily: fontFamily.regular,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     color: colors.ink,

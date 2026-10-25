@@ -7,7 +7,7 @@ import { ThemedText } from "../../components/themed-text";
 import { copy } from "../../lib/copy";
 import { errorMessage } from "../../lib/errors";
 import { colors } from "../../theme/brand-admin";
-import { fontSize, radius, spacing } from "../../theme/tokens";
+import { fontFamily, fontSize, radius, spacing } from "../../theme/tokens";
 
 const MIN_REASON = 3;
 const MAX_REASON = 500;
@@ -170,6 +170,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     minHeight: 96,
+    fontFamily: fontFamily.regular,
     color: colors.ink,
     fontSize: fontSize.callout,
   },

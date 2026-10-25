@@ -31,7 +31,7 @@ import type {
   QuestionDraftErrorKey,
 } from "../../lib/homework-questions";
 import { colors } from "../../theme/brand-admin";
-import { radius, spacing, touch } from "../../theme/tokens";
+import { fontFamily, radius, spacing, touch } from "../../theme/tokens";
 import { questionTypeLabel } from "./meta";
 import { SegmentBar } from "./segments";
 import type { SegmentOption } from "./segments";
@@ -472,6 +472,7 @@ const styles = StyleSheet.create({
     borderColor: colors.tone.critical.fg,
   },
   optionInput: {
+    fontFamily: fontFamily.regular,
     color: colors.ink,
     paddingVertical: spacing.xs,
   },

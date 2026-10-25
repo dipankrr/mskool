@@ -25,7 +25,7 @@ import { errorMessage, toFriendlyError } from "../../lib/errors";
 import { clockOf, dayKeyOf, dayLabel } from "../../lib/homework";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
-import { fontSize, radius, spacing } from "../../theme/tokens";
+import { fontFamily, fontSize, radius, spacing } from "../../theme/tokens";
 import type { CommentRow } from "./types";
 
 const MAX_COMMENT = 2000;
@@ -631,6 +631,7 @@ const styles = StyleSheet.create({
   input: {
     minHeight: 44,
     maxHeight: 120,
+    fontFamily: fontFamily.regular,
     paddingHorizontal: spacing.xs,
     paddingVertical: spacing.xs,
     color: colors.ink,

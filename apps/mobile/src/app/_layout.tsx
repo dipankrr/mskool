@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { AppState } from "react-native";
 import type { AppStateStatus } from "react-native";
 import { Stack } from "expo-router";
+import { useFonts } from "expo-font";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 
@@ -13,6 +14,15 @@ import { useMe } from "../hooks/use-me";
 import { colors } from "../theme/brand-admin";
 
 SplashScreen.preventAutoHideAsync();
+
+// Keys must match the `fontFamily` token in theme/tokens.ts. Loaded in the
+// root layout so no route renders before the face is available.
+const FONTS = {
+  "ClashGrotesk-Regular": require("../../assets/fonts/ClashGrotesk-Regular.ttf"),
+  "ClashGrotesk-Medium": require("../../assets/fonts/ClashGrotesk-Medium.ttf"),
+  "ClashGrotesk-Semibold": require("../../assets/fonts/ClashGrotesk-Semibold.ttf"),
+  "ClashGrotesk-Bold": require("../../assets/fonts/ClashGrotesk-Bold.ttf"),
+} as const;
 
 /**
  * Provider tree, outside-in: tRPC/QueryClient → active-context → session
@@ -74,6 +84,11 @@ function Shell() {
 }
 
 export default function RootLayout() {
+  const [fontsLoaded] = useFonts(FONTS);
+  // Splash stays up (hide is gated on hydration in Shell) until the face is
+  // in, so no early screen flashes the system font.
+  if (!fontsLoaded) return null;
+
   return (
     <TrpcProvider>
       <ActiveContextProvider>

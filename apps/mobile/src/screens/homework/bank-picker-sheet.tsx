@@ -15,7 +15,7 @@ import { copy } from "../../lib/copy";
 import { formatMarks } from "../../lib/homework";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
-import { fontSize, radius, spacing } from "../../theme/tokens";
+import { fontFamily, fontSize, radius, spacing } from "../../theme/tokens";
 import { questionTypeLabel } from "./meta";
 import type { BankItemRow } from "./types";
 
@@ -290,6 +290,7 @@ const styles = StyleSheet.create({
     color: colors.ink,
     paddingVertical: spacing.sm,
     fontSize: fontSize.callout,
+    fontFamily: fontFamily.regular,
   },
   skeleton: {
     gap: spacing.sm,

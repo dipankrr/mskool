@@ -79,9 +79,10 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 22,
-    fontWeight: "600",
+    fontFamily: "ClashGrotesk-Semibold",
   },
   body: {
     textAlign: "center",
+    fontFamily: "ClashGrotesk-Regular",
   },
 });

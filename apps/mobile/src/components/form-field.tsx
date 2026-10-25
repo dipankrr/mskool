@@ -2,7 +2,7 @@ import { StyleSheet, TextInput, View } from "react-native";
 import type { TextInputProps } from "react-native";
 
 import { colors } from "../theme/brand-admin";
-import { fontSize, radius, spacing } from "../theme/tokens";
+import { fontFamily, fontSize, radius, spacing } from "../theme/tokens";
 import { ThemedText } from "./themed-text";
 
 /**
@@ -141,6 +141,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     color: colors.ink,
     fontSize: fontSize.callout,
+    fontFamily: fontFamily.regular,
   },
   inputMultiline: {
     minHeight: 88,

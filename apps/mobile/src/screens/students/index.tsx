@@ -23,7 +23,7 @@ import { usePermissions } from "../../hooks/use-permissions";
 import { copy } from "../../lib/copy";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
-import { spacing } from "../../theme/tokens";
+import { fontFamily, spacing } from "../../theme/tokens";
 
 type SortKey = "name" | "nameDesc" | "roll";
 
@@ -414,6 +414,7 @@ const styles = StyleSheet.create({
     color: colors.ink,
     paddingVertical: spacing.sm,
     fontSize: 16,
+    fontFamily: fontFamily.regular,
   },
   pressed: {
     opacity: 0.6,
