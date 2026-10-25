@@ -65,6 +65,8 @@ const iconMap = {
   reading: { ios: "book.fill", android: "auto-stories" },
   practice: { ios: "arrow.triangle.2.circlepath", android: "repeat" },
   quiz: { ios: "questionmark.bubble.fill", android: "quiz" },
+  /** A link a student handed in. */
+  link: { ios: "link", android: "link" },
   /** The grade / verified mark. */
   grade: { ios: "checkmark.seal.fill", android: "verified" },
   /** The question bank. */

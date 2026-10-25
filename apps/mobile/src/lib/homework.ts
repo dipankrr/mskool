@@ -272,24 +272,37 @@ export function defaultDueParts(today = todayIso()): {
 }
 
 /**
- * The close moment an edit should send back, preserving the existing late
- * window instead of letting the server re-derive it from the SCHOOL default
- * (the edit path resolves settings without the class override).
+ * Move a due moment while keeping the row's existing grace window. The
+ * server would otherwise re-derive the close from the SCHOOL default, not
+ * the class override, so both edit and per-student extension send the close
+ * moment explicitly.
  */
-export function closeForEdit(
+export function preserveLateWindow(
   dueAt: string,
-  existingDueAt: string | Date,
-  existingCloseAt: string | Date,
+  previousDueAt: string | Date,
+  previousCloseAt: string | Date,
 ): string {
   const due = new Date(dueAt);
-  const oldDue = new Date(existingDueAt);
-  const oldClose = new Date(existingCloseAt);
+  const oldDue = new Date(previousDueAt);
+  const oldClose = new Date(previousCloseAt);
   if (Number.isNaN(due.getTime())) return dueAt;
   if (Number.isNaN(oldDue.getTime()) || Number.isNaN(oldClose.getTime())) {
     return dueAt;
   }
   const window = Math.max(0, oldClose.getTime() - oldDue.getTime());
   return new Date(due.getTime() + window).toISOString();
+}
+
+/**
+ * The close moment an edit should send back. Kept as the edit form's name so
+ * the reason it exists stays visible there.
+ */
+export function closeForEdit(
+  dueAt: string,
+  existingDueAt: string | Date,
+  existingCloseAt: string | Date,
+): string {
+  return preserveLateWindow(dueAt, existingDueAt, existingCloseAt);
 }
 
 /** Has the hard cutoff passed? */
@@ -371,6 +384,140 @@ export function formatMinutes(minutes: number | null | undefined): string {
 /** A positive decimal string, as the marks fields and the wire both use it. */
 export function isPositiveMarks(value: string): boolean {
   return /^\d{1,5}(\.\d{1,2})?$/.test(value.trim()) && Number(value) > 0;
+}
+
+/**
+ * A score against its ceiling. Unlike a maximum, zero is a real result, so
+ * the floor is 0 rather than "positive". A missing ceiling means uncapped.
+ */
+export function isValidMarks(value: string, max?: number | null): boolean {
+  const trimmed = value.trim();
+  if (!/^\d{1,5}(\.\d{1,2})?$/.test(trimmed)) return false;
+  if (max === null || max === undefined) return true;
+  return Number(trimmed) <= max;
+}
+
+/** `8.00` → `8`, `8.50` → `8.5`; anything non-numeric is returned as-is. */
+export function formatMarks(
+  value: string | number | null | undefined,
+): string | null {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  if (text === "" || !/^-?\d+(\.\d+)?$/.test(text)) return text;
+  if (!text.includes(".")) return text;
+  return text.replace(/0+$/, "").replace(/\.$/, "");
+}
+
+// ---------------------------------------------------------------------------
+// The grading grid's counts, filters and roster order
+// ---------------------------------------------------------------------------
+
+export type StudentWorkCounts = {
+  /** Rows that count toward the assignment's stats (late joiners excluded). */
+  total: number;
+  /** Everyone except excused — the honest denominator of "reviewed". */
+  reviewable: number;
+  reviewed: number;
+  submitted: number;
+  resubmit: number;
+  /** Submitted or resubmit_requested — work a teacher can act on now. */
+  toGrade: number;
+  notSubmitted: number;
+  missing: number;
+  excused: number;
+  /** View-only rows (backfilled late joiners); shown, never counted. */
+  viewOnly: number;
+};
+
+/**
+ * Count a student grid. `status` is deliberately a string: a row authored by
+ * a newer build must not crash an older one. `countsTowardStats` mirrors the
+ * schema's own rule for late joiners.
+ */
+export function countStudentWork(
+  rows: readonly { status: string; countsTowardStats?: boolean }[],
+): StudentWorkCounts {
+  const counts: StudentWorkCounts = {
+    total: 0,
+    reviewable: 0,
+    reviewed: 0,
+    submitted: 0,
+    resubmit: 0,
+    toGrade: 0,
+    notSubmitted: 0,
+    missing: 0,
+    excused: 0,
+    viewOnly: 0,
+  };
+
+  for (const row of rows) {
+    if (row.countsTowardStats === false) {
+      counts.viewOnly += 1;
+      continue;
+    }
+    counts.total += 1;
+    if (row.status === "excused") counts.excused += 1;
+    else counts.reviewable += 1;
+
+    if (row.status === "reviewed") counts.reviewed += 1;
+    else if (row.status === "submitted") counts.submitted += 1;
+    else if (row.status === "resubmit_requested") counts.resubmit += 1;
+    else if (row.status === "missing") counts.missing += 1;
+    else if (row.status !== "excused") counts.notSubmitted += 1;
+  }
+
+  counts.toGrade = counts.submitted + counts.resubmit;
+  return counts;
+}
+
+/** The grading grid's four segments. */
+export type StudentGradeFilter = "all" | "to_grade" | "graded" | "missing";
+
+export function matchesStudentFilter(
+  status: string,
+  filter: StudentGradeFilter,
+): boolean {
+  if (filter === "all") return true;
+  if (filter === "to_grade") {
+    return status === "submitted" || status === "resubmit_requested";
+  }
+  if (filter === "graded") return status === "reviewed";
+  return status === "missing";
+}
+
+/**
+ * Roll-number order, the way a teacher reads the register. Numeric rolls sort
+ * numerically (so 2 comes before 10); non-numeric rolls follow in their own
+ * alphabetical order; a missing roll sinks to the end; ties break on name.
+ */
+export function sortRoster<
+  T extends { rollNumber: string | null; studentName: string },
+>(rows: readonly T[]): T[] {
+  const rank = (roll: string | null) => {
+    const text = roll?.trim() ?? "";
+    if (text === "") {
+      return { numeric: false, value: Number.POSITIVE_INFINITY, text: "" };
+    }
+    const numeric = Number(text);
+    return Number.isFinite(numeric)
+      ? { numeric: true, value: numeric, text }
+      : { numeric: false, value: Number.POSITIVE_INFINITY, text };
+  };
+
+  return [...rows].sort((a, b) => {
+    const left = rank(a.rollNumber);
+    const right = rank(b.rollNumber);
+    if (left.numeric && right.numeric && left.value !== right.value) {
+      return left.value - right.value;
+    }
+    if (left.numeric !== right.numeric) return left.numeric ? -1 : 1;
+    if (!left.numeric && left.text !== right.text) {
+      if (left.text === "") return 1;
+      if (right.text === "") return -1;
+      return left.text.localeCompare(right.text);
+    }
+    return a.studentName.localeCompare(b.studentName);
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -3,19 +3,25 @@ import {
   clockOf,
   closeForEdit,
   composeTimestamp,
+  countStudentWork,
   dayLabel,
   dayKeyOf,
   dueLoadsByDay,
   formatClock,
+  formatMarks,
   formatMinutes,
   groupByDay,
   isPastDue,
   isPositiveMarks,
+  isValidMarks,
   localDayKey,
   matchesSegment,
+  matchesStudentFilter,
   nextDayWithWork,
+  preserveLateWindow,
   segmentOf,
   sortByDue,
+  sortRoster,
   splitTimestamp,
   startOfWeek,
   weekDays,
@@ -132,6 +138,16 @@ describe("timestamps", () => {
       24 * 60 * 60 * 1000,
     );
   });
+
+  it("moves an extension without inventing grace that was not there", () => {
+    const previousDue = new Date(2026, 9, 25, 8, 0);
+    const previousClose = new Date(2026, 9, 25, 8, 0);
+    const moved = composeTimestamp("2026-10-28", "10:00");
+    expect(moved).not.toBeNull();
+    expect(preserveLateWindow(moved as string, previousDue, previousClose)).toBe(
+      moved,
+    );
+  });
 });
 
 describe("grouping and counts", () => {
@@ -216,5 +232,92 @@ describe("triage", () => {
     expect(nextDayWithWork(rows, "2026-10-25")).toBe("2026-10-25");
     expect(nextDayWithWork(rows, "2026-10-26")).toBe("2026-10-27");
     expect(nextDayWithWork(rows, "2026-10-28")).toBeNull();
+  });
+});
+
+describe("grading maths", () => {
+  it("accepts zero as a score but not a broken decimal", () => {
+    expect(isValidMarks("0", 10)).toBe(true);
+    expect(isValidMarks("0.00", 10)).toBe(true);
+    expect(isValidMarks("9.75", 10)).toBe(true);
+    expect(isValidMarks("10", 10)).toBe(true);
+    expect(isValidMarks("10.01", 10)).toBe(false);
+    expect(isValidMarks("2.555", 10)).toBe(false);
+    expect(isValidMarks("", 10)).toBe(false);
+    expect(isValidMarks("9.75", null)).toBe(true);
+  });
+
+  it("prints marks without padding zeros", () => {
+    expect(formatMarks("8.00")).toBe("8");
+    expect(formatMarks("8.50")).toBe("8.5");
+    expect(formatMarks("0.00")).toBe("0");
+    expect(formatMarks(12)).toBe("12");
+    expect(formatMarks(null)).toBeNull();
+    expect(formatMarks("—")).toBe("—");
+  });
+
+  it("counts a grid honestly", () => {
+    const rows = [
+      { status: "reviewed" },
+      { status: "reviewed" },
+      { status: "submitted" },
+      { status: "resubmit_requested" },
+      { status: "assigned" },
+      { status: "in_progress" },
+      { status: "missing" },
+      { status: "excused" },
+    ];
+    const counts = countStudentWork(rows);
+    expect(counts).toMatchObject({
+      total: 8,
+      reviewable: 7,
+      reviewed: 2,
+      submitted: 1,
+      resubmit: 1,
+      toGrade: 2,
+      notSubmitted: 2,
+      missing: 1,
+      excused: 1,
+      viewOnly: 0,
+    });
+  });
+
+  it("shows late joiners without letting them skew the totals", () => {
+    const counts = countStudentWork([
+      { status: "reviewed" },
+      { status: "assigned", countsTowardStats: false },
+    ]);
+    expect(counts.total).toBe(1);
+    expect(counts.reviewed).toBe(1);
+    expect(counts.viewOnly).toBe(1);
+  });
+
+  it("maps a status onto the four filters", () => {
+    expect(matchesStudentFilter("submitted", "all")).toBe(true);
+    expect(matchesStudentFilter("submitted", "to_grade")).toBe(true);
+    expect(matchesStudentFilter("resubmit_requested", "to_grade")).toBe(true);
+    expect(matchesStudentFilter("assigned", "to_grade")).toBe(false);
+    expect(matchesStudentFilter("reviewed", "graded")).toBe(true);
+    expect(matchesStudentFilter("missing", "missing")).toBe(true);
+    expect(matchesStudentFilter("excused", "graded")).toBe(false);
+  });
+
+  it("sorts the register by roll, then name, with blanks last", () => {
+    const rows = [
+      { rollNumber: "10", studentName: "Tara" },
+      { rollNumber: "2", studentName: "Bilal" },
+      { rollNumber: null, studentName: "Aarav" },
+      { rollNumber: "A-3", studentName: "Zoya" },
+      { rollNumber: "A-1", studentName: "Ira" },
+      { rollNumber: "2", studentName: "Anya" },
+    ];
+    expect(sortRoster(rows).map((row) => row.studentName)).toEqual([
+      "Anya",
+      "Bilal",
+      "Tara",
+      "Ira",
+      "Zoya",
+      "Aarav",
+    ]);
   });
 });

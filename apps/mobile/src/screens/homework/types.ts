@@ -15,6 +15,14 @@ export type HomeworkDetail = NonNullable<
 export type StudentAssignmentRow =
   inferRouterOutputs<AppRouter>["homework"]["students"]["list"][number];
 
+export type StudentAssignmentDetail = NonNullable<
+  inferRouterOutputs<AppRouter>["homework"]["students"]["get"]
+>;
+
+export type SubmissionRow = StudentAssignmentDetail["submissions"][number];
+
+export type EvaluationRow = StudentAssignmentDetail["evaluations"][number];
+
 export type HomeworkTarget = HomeworkDetail["targets"][number];
 
 /**

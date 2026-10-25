@@ -111,3 +111,12 @@ export const studentStatusLabel: Record<StudentWorkStatus, string> = {
 export function isStudentWorkStatus(value: string): value is StudentWorkStatus {
   return value in studentStatusTone;
 }
+
+/** An evaluation's outcome, in the teacher's language. */
+export function outcomeLabel(value: string): string {
+  if (value === "resubmit_requested") {
+    return copy.homework.grade.resubmitAsked;
+  }
+  if (value === "reviewed") return copy.homework.grade.reviewed;
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}

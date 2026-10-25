@@ -23,6 +23,7 @@ import { copy } from "../../lib/copy";
 import { toFriendlyError } from "../../lib/errors";
 import {
   clockOf,
+  countStudentWork,
   dayKeyOf,
   dayLabel,
   formatMinutes,
@@ -35,14 +36,12 @@ import { CancelSheet } from "./cancel-sheet";
 import { ConfirmSheet } from "./confirm-sheet";
 import {
   gradingLabel,
-  isStudentWorkStatus,
   kindGlyph,
   kindLabel,
   statusLabel,
   statusTone,
   submissionLabel,
 } from "./meta";
-import type { StudentAssignmentRow } from "./types";
 import { sectionTargetOf } from "./types";
 
 /**
@@ -69,6 +68,7 @@ export function HomeworkDetailScreen() {
 
   const canRead = has("homework:read");
   const canWrite = has("homework:update");
+  const canGrade = has("homework:grade");
   const canReadSections = has("section:read");
   const canReadClasses = has("class:read");
 
@@ -156,7 +156,7 @@ export function HomeworkDetailScreen() {
   }, [sectionId, sections.data, classes.data]);
 
   const counts = useMemo(
-    () => countStudents(students.data ?? []),
+    () => countStudentWork(students.data ?? []),
     [students.data],
   );
 
@@ -353,28 +353,47 @@ export function HomeworkDetailScreen() {
           style={styles.footerSecondary}
         />
       </>
-    ) : canWrite && assignment.status === "published" ? (
+    ) : isLive && (canGrade || (canWrite && assignment.status === "published")) ? (
       <>
-        <CapsuleButton
-          title={copy.homework.actions.closeConfirm}
-          variant="secondary"
-          onPress={confirmClose}
-          loading={close.isPending}
-          disabled={!pairReady || close.isPending}
-          testID="homework-close"
-        />
-        <CapsuleButton
-          title={copy.homework.actions.cancelTitle}
-          variant="destructive"
-          size="compact"
-          onPress={() => {
-            setCancelError(null);
-            setCancelOpen(true);
-          }}
-          disabled={close.isPending || !pairReady}
-          testID="homework-cancel"
-          style={styles.footerSecondary}
-        />
+        {canGrade ? (
+          <CapsuleButton
+            title={copy.homework.detail.grade}
+            icon="grade"
+            onPress={() =>
+              router.push({
+                pathname: "/homework/[id]/grade",
+                params: { id },
+              })
+            }
+            disabled={!pairReady || close.isPending}
+            testID="homework-grade"
+          />
+        ) : null}
+        {canWrite && assignment.status === "published" ? (
+          <CapsuleButton
+            title={copy.homework.actions.closeConfirm}
+            variant="secondary"
+            onPress={confirmClose}
+            loading={close.isPending}
+            disabled={!pairReady || close.isPending}
+            testID="homework-close"
+            style={canGrade ? styles.footerSecondary : undefined}
+          />
+        ) : null}
+        {canWrite && assignment.status === "published" ? (
+          <CapsuleButton
+            title={copy.homework.actions.cancelTitle}
+            variant="destructive"
+            size="compact"
+            onPress={() => {
+              setCancelError(null);
+              setCancelOpen(true);
+            }}
+            disabled={close.isPending || !pairReady}
+            testID="homework-cancel"
+            style={styles.footerSecondary}
+          />
+        ) : null}
       </>
     ) : undefined;
 
@@ -499,7 +518,7 @@ export function HomeworkDetailScreen() {
                   <ThemedText variant="meta">
                     {copy.homework.detail.progressLine(
                       counts.reviewed,
-                      counts.total,
+                      counts.reviewable,
                     )}
                   </ThemedText>
                 ) : null}
@@ -578,6 +597,11 @@ export function HomeworkDetailScreen() {
                         {`${counts.excused} ${copy.homework.detail.excused.toLowerCase()}`}
                       </ThemedText>
                     </View>
+                  ) : null}
+                  {counts.viewOnly > 0 ? (
+                    <ThemedText variant="meta">
+                      {copy.homework.grade.viewOnly(counts.viewOnly)}
+                    </ThemedText>
                   ) : null}
                 </>
               )}
@@ -762,32 +786,6 @@ export function HomeworkDetailScreen() {
       ) : null}
     </>
   );
-}
-
-function countStudents(rows: readonly StudentAssignmentRow[]) {
-  let reviewed = 0;
-  let submitted = 0;
-  let resubmit = 0;
-  let missing = 0;
-  let excused = 0;
-  let notSubmitted = 0;
-  for (const row of rows) {
-    if (!isStudentWorkStatus(row.status)) continue;
-    if (row.status === "reviewed") reviewed += 1;
-    else if (row.status === "submitted") submitted += 1;
-    else if (row.status === "resubmit_requested") resubmit += 1;
-    else if (row.status === "missing") missing += 1;
-    else if (row.status === "excused") excused += 1;
-    else notSubmitted += 1;
-  }
-  return {
-    total: rows.length,
-    reviewed,
-    toGrade: submitted + resubmit,
-    notSubmitted,
-    missing,
-    excused,
-  };
 }
 
 const styles = StyleSheet.create({
