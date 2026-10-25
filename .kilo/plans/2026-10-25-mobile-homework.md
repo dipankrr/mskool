@@ -1,7 +1,10 @@
 # Mobile Homework — staff slice (Step 4)
 
-Status: in progress. Branch `feat/mobile-homework-slice` from `main` @ `2428713`.
-Backend is frozen for this slice; gaps are recorded at the bottom and in the final handoff.
+Status: built, gate-green and device-walked 2026-10-25; awaiting owner review + merge.
+Branch `feat/mobile-homework-slice` from `main` @ `2428713`; commits `88864ab`
+(4A diary), `678c5dd` (4B grading), `5ed3583` (4C questions/bank/comments),
+`6198649` (4D settings/rubrics), `4ad81f3` (tab-label legibility). Not pushed.
+Backend was frozen for this slice; gaps are recorded at the bottom and in the final handoff.
 
 ## Actor, task, context
 
@@ -147,6 +150,9 @@ Each chunk is its own commit. `pnpm check-types` is green after each.
 - A subject teacher can create a draft for an assigned (section, subject), publish it, see the
   student grid, grade a submission with marks/feedback, request a resubmit, extend and excuse.
 - A principal can change the school default late window and see the effective settings.
+  **Not met as written** — the school default is view-only because `settings.upsert`
+  cannot address the `class_id IS NULL` row (gap 19 below). A principal *can* save a
+  class override and see it win over the default.
 - Published assignments from web (scheduled, graded, cancelled) open without crashing and
   present honest read-only states.
 - No screen shows success before the server confirms; no mutation double-fires.
@@ -178,6 +184,33 @@ Each chunk is its own commit. `pnpm check-types` is green after each.
 11. No `teacherAssignment.listMine` read; the pair picker does one section query per section.
 12. `scheduled` has no publish worker/UI; mobile treats it as read-only.
 13. Comments have no staff delete/moderation endpoint.
+14. **Close does not close.** `closeAssignment` flips the status but leaves
+    `effective_close_at` alone, and `portalSubmit` accepts `published` *or*
+    `closed` and gates only on the window. Work keeps arriving after the
+    teacher taps "Close submissions". Quiz `startAttempt` *does* require
+    `published`, so the two submit paths disagree.
+15. **Post-publish deadline edits do not propagate.** `updateAssignment`
+    rewrites `assignments.due_at`/`close_at` and snapshots a revision, but the
+    existing `student_assignments.effective_*` rows keep the publish-time
+    values. The detail screen shows the new time; every child still has the
+    old one. Only `students.extend` moves a deadline. The edit screen warns
+    about the revision, not about this.
+16. **Bank `visibility` is not enforced on reads.** Every teacher in the
+    branch can read every question and its answer key. The UI keeps the share
+    switch and labels it honestly rather than implying privacy.
+17. **Private comment threads leak.** Staff `comments.list` called without a
+    `studentAssignmentId` returns class-wide comments *and* every private
+    thread on the assignment. The mobile class screen filters to
+    `studentAssignmentId === null`, so it does not display them — but the API
+    hands them over.
+18. **No `missing` sweeper.** The enum, the `missing_marked_at` column and the
+    partial index (`status IN ('assigned','in_progress')` on
+    `effective_close_at`) all exist for a job that was never written. Nothing
+    marks a child missing when the window closes.
+19. **`settings.upsert` cannot address the school default.** The endpoint's
+    input parser requires `classId`, while `staffProcedure`'s `staffScopeInput`
+    rejects `classId: null`. So `class_id IS NULL` is unreachable through the
+    API and the school policy is read-only in the app.
 
 ## Docs / skills used
 

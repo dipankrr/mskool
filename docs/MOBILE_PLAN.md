@@ -615,7 +615,7 @@ short, repeated teacher task before the more complex assignment workflow.
 | 1 | Home + context + profile | `me` 1 · `school` 5 · `academic` years 6 | complete — branch switcher, profile/access, voluntary password, branch management and session management (chunk B) device-walked 2026-10-23 |
 | 2 | Students + academic setup (§7) | `student` 7 · `enrollment` 6 · `guardian` 4 · `portalAccess` 4 · `academic` classes 5 + sections 5 · `subject` 5 · `term` 4 · `assignment` 10 | open |
 | 3 | Attendance (§8) | `attendance.*` 13 | complete (mark/status walked 2026-10-18; summary + section switcher 2026-10-19; calendar generate/days, policy, periods 2026-10-20; report exports remain open) |
-| 4 | Homework manage (§9) | `homework.*` staff 28 | open |
+| 4 | Homework manage (§9) | `homework.*` staff 28 | complete — staff slice device-walked 2026-10-25 (`88864ab`, `678c5dd`, `5ed3583`, `6198649`, `4ad81f3`); quiz-attempt grading not walked (no seeded attempts); family door at Step 9 |
 | 5 | Fees (§10) | `fees.*` 38 | open |
 | 6 | Staff + roles + ID cards + feed (§11) | `staff` 8 · `role` 8 · `idCard` 10 | open |
 | 7 | Exams + marks (§12) | `exam.*` staff 46 | open |
@@ -642,7 +642,7 @@ shell until those workflows are complete or explicitly deferred by the owner.
 | `/students`, `/students/[studentId]` | 2 | Roster search/filter, student detail, admit/edit/enroll, guardian and portal-access flows. **Live (walked 2026-10-24)**: roster + detail + admit/edit/deactivate; enrollment, guardians and portal access hang off the detail |
 | `/students/photos` | 2 | Native photo picker, review-before-upload bulk matching, retry-failed-only. **Live (walked 2026-10-24)**: section-order and register matching, clear-to-unmatched strip, sequential uploads with per-student pills and retry-failed-only. Register mode is best-effort on Android (the photo picker anonymizes file names — platform finding) |
 | `/attendance/calendar`, `/attendance/policy`, `/attendance/mark`, `/attendance/reports` | 3 | Fast section/day selection, roster marking, correction reason, readable summaries. **`/attendance/mark` is live** as the native marking screen (`(staff)/attendance`, device-walked 2026-10-18; the day-sheet reads `calendar.list`); **yearly summaries and the section switcher are live** as the Mark ⇄ Summary segments with the section sheet (device-walked 2026-10-19); **management surfaces are live** — calendar generate/day overrides, marking policy and periods in `(staff)/attendance/manage` (device-walked 2026-10-20); report exports remain open |
-| `(no existing web route; backend exists)` homework staff routes | 4 | Assignment authoring, question management, publish lifecycle, grading and comments |
+| `(no existing web route; backend exists)` homework staff routes | 4 | Assignment authoring, question management, publish lifecycle, grading and comments. **Complete (device-walked 2026-10-25)**: tab 5 agenda + All list, create/edit, detail with publish/close/cancel, grade grid and student desk, question-set editor, bank, comment threads, settings and rubrics |
 | `/fees`, `/fees/setup`, `/fees/setup/[structureId]` | 5 | Fee setup, installments, concessions, subscription and late-fee workflows |
 | `/fees/dues`, `/fees/outstanding`, `/fees/matrix` | 5 | Mobile search/list/detail summaries; do not reproduce a wide matrix as a squeezed table |
 | `/fees/counter`, `/fees/collect`, `/fees/payments`, `/fees/payments/[paymentId]`, `/fees/ledger` | 5 | Counter collection, allocation review, receipt, reversal/bounce recovery and ledger inspection |
@@ -783,17 +783,17 @@ ungated; settings/rubrics ride `school_settings`.
 
 | Procedure | Screen | Done |
 |---|---|---|
-| `homework.settings.get` / `.upsert` | — | ☐ |
-| `homework.rubrics.list` / `.create` / `.byId` / `.setActive` | — | ☐ |
-| `homework.list` / `.byId` | — | ☐ |
-| `homework.create` / `.update` | — | ☐ |
-| `homework.publish` / `.cancel` / `.close` | — | ☐ |
-| `homework.bank.list` / `.create` / `.byId` / `.setActive` | — | ☐ |
-| `homework.questions.set` / `.get` | — | ☐ |
-| `homework.students.list` / `.get` | — | ☐ |
-| `homework.students.evaluate` / `.extend` / `.excuse` | — | ☐ |
-| `homework.students.attempts.list` / `.gradeAnswer` | — | ☐ |
-| `homework.comments.list` / `.post` | — | ☐ |
+| `homework.settings.get` / `.upsert` | `/homework/settings` | ☑ |
+| `homework.rubrics.list` / `.create` / `.byId` / `.setActive` | `/homework/rubrics`, `/new`, `/[rubricId]` | ☑ |
+| `homework.list` / `.byId` | `/homework`, `/homework/[id]` | ☑ |
+| `homework.create` / `.update` | `/homework/new`, `/homework/[id]/edit` | ☑ |
+| `homework.publish` / `.cancel` / `.close` | `/homework/[id]` | ☑ |
+| `homework.bank.list` / `.create` / `.byId` / `.setActive` | `/homework/bank`, `/new`, `/[itemId]` | ☑ |
+| `homework.questions.set` / `.get` | `/homework/[id]/questions` | ☑ |
+| `homework.students.list` / `.get` | `/homework/[id]/grade`, `/homework/grade/[saId]` | ☑ |
+| `homework.students.evaluate` / `.extend` / `.excuse` | `/homework/grade/[saId]` | ☑ |
+| `homework.students.attempts.list` / `.gradeAnswer` | `/homework/grade/[saId]` | ☑ (list read; `gradeAnswer` not walked — no seeded attempts) |
+| `homework.comments.list` / `.post` | `/homework/[id]/comments` | ☑ |
 
 Family door at step 9: `portalHomework.list/get/markViewed/submit/
 acknowledge`, `attempts.start/get/saveAnswer/submit/result` (5),
@@ -802,6 +802,14 @@ acknowledge`, `attempts.start/get/saveAnswer/submit/result` (5),
 Acceptance: a subject teacher posts a section-targeted draft with questions
 between periods, publishes, and grades one student's submission on a
 mid-range Android — refused honestly outside her assignment facts.
+
+**Built and walked 2026-10-25** on `feat/mobile-homework-slice` (5 commits,
+not pushed). Plan, journeys, screen states and the gap list live in
+`.kilo/plans/2026-10-25-mobile-homework.md`; that file is the source of truth
+for this step, including the 19 backend gaps found while building it. Two
+paths are deliberately not walked: quiz `attempts.gradeAnswer` (no seeded
+attempts or `student_portal_access` rows in the demo DB) and the
+`created=1` rubric saved notice.
 
 ---
 
