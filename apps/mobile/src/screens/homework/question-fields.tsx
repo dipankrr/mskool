@@ -33,8 +33,8 @@ import type {
 import { colors } from "../../theme/brand-admin";
 import { fontFamily, radius, spacing, touch } from "../../theme/tokens";
 import { questionTypeLabel } from "./meta";
-import { SegmentBar } from "./segments";
-import type { SegmentOption } from "./segments";
+import { SegmentBar } from "../../components/segment-bar";
+import type { SegmentOption } from "../../components/segment-bar";
 
 const TRUE_FALSE_OPTIONS: readonly SegmentOption<"" | "true" | "false">[] = [
   {

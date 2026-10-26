@@ -1,9 +1,9 @@
 import { Pressable, StyleSheet, View } from "react-native";
 import * as Haptics from "expo-haptics";
 
-import { ThemedText } from "../../components/themed-text";
-import { colors } from "../../theme/brand-admin";
-import { radius, spacing } from "../../theme/tokens";
+import { ThemedText } from "./themed-text";
+import { colors } from "../theme/brand-admin";
+import { radius, spacing } from "../theme/tokens";
 
 export type SegmentOption<T extends string> = {
   value: T;
@@ -64,6 +64,10 @@ export function SegmentBar<T extends string>({
               color={selected ? colors.accentDeep : colors.muted}
               numberOfLines={1}
               maxFontSizeMultiplier={1.4}
+              // Four equal segments: at large text a label shrinks to fit
+              // rather than ellipsising ("Attenti…").
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
             >
               {option.label}
             </ThemedText>

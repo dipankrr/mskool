@@ -31,8 +31,8 @@ import type { QuestionDraft } from "../../lib/homework-questions";
 import { trpc } from "../../lib/trpc";
 import { spacing } from "../../theme/tokens";
 import { QuestionFields } from "./question-fields";
-import { SegmentBar } from "./segments";
-import type { SegmentOption } from "./segments";
+import { SegmentBar } from "../../components/segment-bar";
+import type { SegmentOption } from "../../components/segment-bar";
 import { useTeachingPairs } from "./use-teaching-pairs";
 import type { Difficulty } from "./meta";
 

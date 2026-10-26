@@ -72,13 +72,14 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         >
           {options.tabBarIcon?.({ focused, color, size: 22 })}
           {/* The capsule is a fixed 64 pt and iOS tab labels don't take
-              Dynamic Type either; cap the growth so five tabs never
-              ellipsise "Homework" at the largest system text sizes. */}
+              Dynamic Type either. With six tabs there is no width to grow
+              into — even 1.15× ellipsised "Attendance" and "Homework" at
+              1.3× system text — so the label stays at its designed size. */}
           <ThemedText
             variant="tab"
             color={color}
             numberOfLines={1}
-            maxFontSizeMultiplier={1.15}
+            maxFontSizeMultiplier={1}
           >
             {label}
           </ThemedText>

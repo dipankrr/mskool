@@ -78,6 +78,14 @@ const iconMap = {
   /** A subject's book — used by the pair picker. */
   subject: { ios: "text.book.closed.fill", android: "library-books" },
   filter: { ios: "line.3.horizontal.decrease", android: "filter-list" },
+  /** Fees — the money domain. */
+  fees: { ios: "indianrupeesign.circle.fill", android: "currency-rupee" },
+  collect: { ios: "creditcard.fill", android: "payments" },
+  receipt: { ios: "doc.text.fill", android: "receipt-long" },
+  ledger: { ios: "list.bullet.rectangle.fill", android: "receipt" },
+  refund: { ios: "arrow.uturn.backward.circle.fill", android: "replay" },
+  warningCircle: { ios: "exclamationmark.circle.fill", android: "error" },
+  share: { ios: "square.and.arrow.up", android: "share" },
 } as const satisfies Record<
   string,
   { ios: SFSymbol; android: keyof typeof MaterialIcons.glyphMap }

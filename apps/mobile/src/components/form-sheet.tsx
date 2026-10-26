@@ -1,4 +1,4 @@
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import type { ReactNode } from "react";
 
 import { colors } from "../theme/brand-admin";
@@ -54,10 +54,10 @@ export function FormSheet({
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={styles.flex}
-      >
+      {/* `padding` on Android too: a translucent-status-bar Modal is its own
+          window and is not resized by `adjustResize`, so without it the
+          keyboard covers the fields and the save action. */}
+      <KeyboardAvoidingView behavior="padding" style={styles.flex}>
         <Pressable style={styles.backdrop} onPress={onClose} />
         <View style={styles.sheet} testID={testIDPrefix}>
           <View style={styles.grabber} />
