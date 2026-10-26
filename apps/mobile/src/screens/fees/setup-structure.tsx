@@ -33,6 +33,7 @@ import {
   formatMoney,
   parseMoney,
   sanitizeAmountInput,
+  toInputAmount,
 } from "../../lib/money";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
@@ -873,7 +874,7 @@ function LineSheet({
     line?.feeHeadId ?? null,
   );
   const [annualAmount, setAnnualAmount] = useState(
-    line ? line.annualAmount : "",
+    line ? toInputAmount(line.annualAmount) : "",
   );
   const [frequency, setFrequency] = useState<Frequency>(
     (line?.installmentFrequency as Frequency | undefined) ?? "inherit",

@@ -39,6 +39,7 @@ import {
   toMoneyString,
   isPositiveMoney,
   sanitizeAmountInput,
+  toInputAmount,
 } from "../../lib/money";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
@@ -199,7 +200,7 @@ export function CollectPaymentScreen() {
   // both reads. Future months start empty.
   const dueNowAmounts = useMemo(() => {
     const next: Record<string, string> = {};
-    for (const line of nowLines) next[line.key] = line.balance;
+    for (const line of nowLines) next[line.key] = toInputAmount(line.balance);
     return next;
   }, [nowLines]);
 
@@ -287,7 +288,7 @@ export function CollectPaymentScreen() {
     if (raw > limit) {
       setAmounts((current) => ({
         ...current,
-        [id]: limit > 0n ? toMoneyString(limit) : "",
+        [id]: limit > 0n ? toInputAmount(toMoneyString(limit)) : "",
       }));
       setClamped((current) => ({
         ...current,
@@ -297,7 +298,7 @@ export function CollectPaymentScreen() {
     }
     setAmounts((current) => ({
       ...current,
-      [id]: raw > 0n ? toMoneyString(raw) : "",
+      [id]: raw > 0n ? toInputAmount(toMoneyString(raw)) : "",
     }));
     setClamped((current) => ({ ...current, [id]: null }));
   };
@@ -310,7 +311,8 @@ export function CollectPaymentScreen() {
   const fillAhead = () => {
     setAmounts((current) => {
       const next = { ...current };
-      for (const line of aheadLines) next[line.key] = line.balance;
+      for (const line of aheadLines)
+        next[line.key] = toInputAmount(line.balance);
       return next;
     });
   };
@@ -670,9 +672,7 @@ export function CollectPaymentScreen() {
                 }
                 variant="secondary"
                 size="mini"
-                onPress={() =>
-                  aheadOpen ? fillAhead() : setShowAhead(true)
-                }
+                onPress={() => (aheadOpen ? fillAhead() : setShowAhead(true))}
                 testID="fee-collect-pay-ahead"
               />
             </View>

@@ -61,7 +61,7 @@ function groupIndian(digits: string): string {
 }
 
 /**
- * The display string. `null`/undefined render as an em dash so a missing
+ * The display string. Whole rupees drop the ".00". `null`/undefined render as an em dash so a missing
  * amount is never mistaken for zero.
  */
 export function formatMoney(value: string | null | undefined): string {
@@ -71,7 +71,10 @@ export function formatMoney(value: string | null | undefined): string {
   const absolute = negative ? -paise : paise;
   const whole = (absolute / 100n).toString();
   const fraction = (absolute % 100n).toString().padStart(2, "0");
-  return `${negative ? "−" : ""}₹${groupIndian(whole)}.${fraction}`;
+  // Whole rupees read as ₹5,000, not ₹5,000.00; paise always show both
+  // digits (₹49.50), so an amount is never ambiguous.
+  const tail = fraction === "00" ? "" : `.${fraction}`;
+  return `${negative ? "−" : ""}₹${groupIndian(whole)}${tail}`;
 }
 
 /** The same grouping without the symbol — for inputs the user is typing. */
@@ -148,4 +151,16 @@ export function sanitizeAmountInput(value: string): string {
     .replace(/\./g, "")
     .slice(0, 2);
   return `${whole}.${fraction}`;
+}
+
+/**
+ * A wire amount as an input field shows it: "5000" for 5000.00, "49.5" is
+ * never produced — paise keep both digits ("49.50"). Unparseable values pass
+ * through untouched so the field shows what is really there.
+ */
+export function toInputAmount(value: string | null | undefined): string {
+  const paise = parseMoney(value);
+  if (paise === null) return value ?? "";
+  const text = toMoneyString(paise);
+  return text.endsWith(".00") ? text.slice(0, -3) : text;
 }

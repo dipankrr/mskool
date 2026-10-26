@@ -41,6 +41,7 @@ import {
   sumMoney,
   toMoneyString,
   sanitizeAmountInput,
+  toInputAmount,
 } from "../../lib/money";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
@@ -736,7 +737,7 @@ function RefundSheet({
   onClose: () => void;
   onDone: (message: string) => void;
 }) {
-  const [amount, setAmount] = useState(maxAmount);
+  const [amount, setAmount] = useState(toInputAmount(maxAmount));
   const [date, setDate] = useState(todayIso());
   const [mode, setMode] = useState<(typeof REFUND_MODES)[number]>("cash");
   const [reference, setReference] = useState("");

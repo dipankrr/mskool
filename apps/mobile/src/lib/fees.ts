@@ -479,7 +479,7 @@ export function installmentTitle(row: {
   installmentNumber?: number | null;
 }): string {
   const description = row.description?.trim();
-  if (description) return description;
+  if (description) return friendlyDueName(description);
   return row.installmentNumber
     ? `Installment ${row.installmentNumber}`
     : "Installment";
@@ -495,7 +495,7 @@ export function allocationLabel(row: {
   installmentNumber: number;
 }): string {
   const description = row.description?.trim();
-  if (description) return description;
+  if (description) return friendlyDueName(description);
   return `${row.feeHeadName} · Installment ${row.installmentNumber}`;
 }
 
@@ -836,4 +836,15 @@ export function splitByMonth(
     dueNow: sumMoney([overdue, thisMonth, previous]),
     overdueMonths,
   };
+}
+
+/**
+ * The generator names monthly dues "Tuition Fee — 2026-11"; people say
+ * "Tuition Fee — November 2026". Only a trailing year-month is rewritten.
+ */
+export function friendlyDueName(description: string): string {
+  return description.replace(
+    /(\d{4})-(0[1-9]|1[0-2])$/,
+    (_, year: string, month: string) => `${monthLabel(Number(month))} ${year}`,
+  );
 }

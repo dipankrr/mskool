@@ -8,6 +8,7 @@ import {
   sanitizeAmountInput,
   subtractMoney,
   sumMoney,
+  toInputAmount,
   toMoneyString,
 } from "./money";
 
@@ -49,10 +50,10 @@ describe("toMoneyString", () => {
 
 describe("formatMoney", () => {
   it("groups the Indian way: last three, then pairs", () => {
-    expect(formatMoney("0.00")).toBe("₹0.00");
+    expect(formatMoney("0.00")).toBe("₹0");
     expect(formatMoney("999.99")).toBe("₹999.99");
-    expect(formatMoney("1000")).toBe("₹1,000.00");
-    expect(formatMoney("125000")).toBe("₹1,25,000.00");
+    expect(formatMoney("1000")).toBe("₹1,000");
+    expect(formatMoney("125000")).toBe("₹1,25,000");
     expect(formatMoney("12345678.90")).toBe("₹1,23,45,678.90");
   });
 
@@ -138,5 +139,13 @@ describe("sanitizeAmountInput", () => {
 
   it("caps the whole part at ten digits", () => {
     expect(sanitizeAmountInput("12345678901234")).toBe("1234567890");
+  });
+});
+
+describe("toInputAmount", () => {
+  it("drops .00 and keeps real paise", () => {
+    expect(toInputAmount("5000.00")).toBe("5000");
+    expect(toInputAmount("49.50")).toBe("49.50");
+    expect(toInputAmount(null)).toBe("");
   });
 });

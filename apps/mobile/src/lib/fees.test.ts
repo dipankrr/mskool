@@ -11,6 +11,7 @@ import {
   ledgerTotals,
   ledgerTypeLabel,
   monthLabel,
+  friendlyDueName,
   monthKeyOf,
   monthRangeLabel,
   nextClientReference,
@@ -258,9 +259,9 @@ describe("buildReceiptText", () => {
 
     expect(text).toContain("Receipt: RCP-2026-00042");
     expect(text).toContain("Date: 26 Oct 2026");
-    expect(text).toContain("April 2026 Tuition Fee  ₹12,500.00");
-    expect(text).toContain("Late fee: ₹250.00");
-    expect(text).toContain("Total paid: ₹14,250.00");
+    expect(text).toContain("April 2026 Tuition Fee  ₹12,500");
+    expect(text).toContain("Late fee: ₹250");
+    expect(text).toContain("Total paid: ₹14,250");
     expect(text).toContain("Mode: UPI");
     expect(text).toContain("Reference: UPI-9931");
   });
@@ -375,5 +376,16 @@ describe("splitByMonth", () => {
 
   it("reads the month key from a date", () => {
     expect(monthKeyOf("2026-10-26")).toBe("2026-10");
+  });
+});
+
+describe("friendlyDueName", () => {
+  it("names the month in a generated due", () => {
+    expect(friendlyDueName("Tuition Fee — 2026-11")).toBe(
+      "Tuition Fee — November 2026",
+    );
+    expect(friendlyDueName("Admission Fee — full year")).toBe(
+      "Admission Fee — full year",
+    );
   });
 });
