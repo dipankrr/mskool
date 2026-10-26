@@ -23,6 +23,8 @@ import {
   installmentTitle,
   oldestFirst,
   outstandingTotals,
+  monthKeyOf,
+  splitByMonth,
 } from "../../lib/fees";
 import { formatReadableDate, todayIso } from "../../lib/format";
 import {
@@ -257,6 +259,11 @@ export function StudentFeeDeskScreen() {
   const yearBalance = row?.totals.balanceAmount ?? "0.00";
   const openingBalance = row?.openingBalance.balance ?? "0.00";
   const outstanding = sumMoney([yearBalance, openingBalance]);
+  const monthSplit = splitByMonth(
+    row?.cells ?? [],
+    monthKeyOf(todayIso()),
+    openingBalance,
+  );
   const settled = !isPositiveMoney(outstanding);
   const percent = row
     ? paidPercent(row.totals.paidAmount, row.totals.netAmount)
@@ -491,24 +498,32 @@ export function StudentFeeDeskScreen() {
         <View style={styles.heroTop}>
           <View style={styles.heroText}>
             <ThemedText variant="sectionLabel">
-              {copy.fees.desk.balanceLabel}
+              {copy.fees.dues.dueNowLabel}
             </ThemedText>
             <ThemedText
               variant="hero"
               numberOfLines={1}
               maxFontSizeMultiplier={1.15}
-              testID="fee-desk-outstanding"
+              testID="fee-desk-due-now"
             >
-              {formatMoney(outstanding)}
+              {formatMoney(monthSplit.dueNow)}
             </ThemedText>
             <ThemedText variant="meta">
-              {copy.fees.desk.thisSession(formatMoney(yearBalance))}
+              {copy.fees.dues.thisMonth} {formatMoney(monthSplit.thisMonth)}
+              {" · "}
+              {copy.fees.dues.overdue} {formatMoney(monthSplit.overdue)}
             </ThemedText>
             {isPositiveMoney(openingBalance) ? (
               <ThemedText variant="meta">
-                {copy.fees.desk.includesOpening(formatMoney(openingBalance))}
+                {copy.fees.dues.previousDues(formatMoney(openingBalance))}
               </ThemedText>
             ) : null}
+            <ThemedText variant="meta">
+              {copy.fees.desk.wholeSession(
+                formatMoney(outstanding),
+                formatMoney(monthSplit.later),
+              )}
+            </ThemedText>
           </View>
           {statusPill}
         </View>

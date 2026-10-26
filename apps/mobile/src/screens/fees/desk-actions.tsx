@@ -158,22 +158,32 @@ export function AssignSheet({
   const [error, setError] = useState<unknown>(null);
   const utils = trpc.useUtils();
   const assign = trpc.fees.assignment.assign.useMutation();
+  const generate = trpc.fees.assignment.generateInstallments.useMutation();
 
+  // "Bill this student": assign the chart, then create the dues, as one act
+  // for the cashier. If the second step fails the student is assigned but
+  // has no dues yet; "Add missing dues" (the generator, idempotent) finishes it.
   const confirm = async () => {
     if (!enrollmentId) return;
     setError(null);
     try {
-      await assign.mutateAsync({
+      const assignment = await assign.mutateAsync({
         organizationId,
         schoolId,
         data: { enrollmentId, joiningMonthFullCharge: fullCharge },
+      });
+      const result = await generate.mutateAsync({
+        organizationId,
+        schoolId,
+        id: assignment.id,
       });
       await Promise.all([
         utils.fees.assignment.byStudent.invalidate(),
         utils.fees.installment.dues.invalidate(),
         utils.fees.matrix.list.invalidate(),
+        utils.fees.matrix.cell.invalidate(),
       ]);
-      onDone(copy.fees.desk.assignDone);
+      onDone(copy.fees.desk.assignDone(result.inserted));
     } catch (cause) {
       setError(cause);
     }
@@ -207,7 +217,7 @@ export function AssignSheet({
       body={copy.fees.desk.assignSheetBody(className ?? "this class")}
       confirmLabel={copy.fees.desk.assignConfirm}
       busyLabel={copy.fees.desk.assigning}
-      busy={assign.isPending}
+      busy={assign.isPending || generate.isPending}
       error={error}
       onConfirm={() => void confirm()}
       onClose={onClose}

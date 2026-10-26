@@ -2408,8 +2408,8 @@ export const copy = {
       notAssignedTitle: "No fee assigned",
       notAssignedBody:
         "Assign this class's fee structure to start billing this student.",
-      assignAction: "Assign structure",
-      generateAction: "Generate installments",
+      assignAction: "Bill this student",
+      generateAction: "Add missing dues",
       recomputeAction: "Recompute concessions",
       concessionAction: "Add concession",
       waiverAction: "Waive",
@@ -2439,15 +2439,15 @@ export const copy = {
       missingTitle: "Student not in this session",
       missingBody:
         "They may have left the school, or the session changed. Go back and search again.",
-      actionsTitle: "Fee actions",
-      actionsHint: "Assignment, generation and concessions",
+      actionsTitle: "Billing",
+      actionsHint: "Fee chart, dues and concessions",
       assignmentTitle: "Assignment",
       assignmentEffective: (date: string) => `Effective ${date}`,
       installmentsOpen: (count: number) =>
         count === 1 ? "1 open installment" : `${count} open installments`,
       lateFeeChip: (amount: string) => `Late fee ${amount}`,
       paidOf: (paid: string, net: string) => `${paid} of ${net} paid`,
-      assignSheetTitle: "Assign fee structure",
+      assignSheetTitle: "Bill this student",
       assignSheetBody: (className: string) =>
         `Applies ${className}'s active fee structure for this session. The amounts are snapshotted, so later structure edits do not change this bill.`,
       assignStructureSummary: (name: string, mode: string) => `${name} · ${mode}`,
@@ -2459,17 +2459,20 @@ export const copy = {
         "Create the class's fee structure for this session in Fee setup, then come back.",
       assignNoEnrollment:
         "This student has no enrollment in the selected session, so there is nothing to assign.",
-      assignConfirm: "Assign structure",
-      assigning: "Assigning…",
-      assignDone: "Fee structure assigned. Generate the installments next.",
-      generateTitle: "Generate installments?",
+      assignConfirm: "Bill student",
+      assigning: "Billing…",
+      assignDone: (count: number) =>
+        count === 1
+          ? "Billed. 1 due created."
+          : `Billed. ${count} dues created.`,
+      generateTitle: "Add missing dues?",
       generateBody:
         "Runs the idempotent generator for this assignment. Existing installments are kept; only missing ones are added.",
-      generateConfirm: "Generate",
-      generating: "Generating…",
+      generateConfirm: "Add dues",
+      generating: "Adding…",
       generateDone: (count: number) =>
-        count === 1 ? "1 installment created." : `${count} installments created.`,
-      generateUpToDate: "Installments were already up to date.",
+        count === 1 ? "1 due added." : `${count} dues added.`,
+      generateUpToDate: "Nothing was missing; the dues were already complete.",
       recomputeTitle: "Recompute concessions?",
       recomputeBody:
         "Re-apportions the recorded concessions across installments that have never been paid. Paid installments are untouched.",
@@ -2525,9 +2528,11 @@ export const copy = {
       openingPaid: (paid: string, amount: string) => `${paid} of ${amount} paid`,
       openingOrigins: (count: number) =>
         count === 1 ? "from 1 earlier session" : `from ${count} earlier sessions`,
-      openingIncluded: "Included in the outstanding total.",
+      openingIncluded: "Included in due now.",
       includesOpening: (amount: string) => `Includes ${amount} carried forward`,
       thisSession: (amount: string) => `${amount} this session`,
+      wholeSession: (total: string, later: string) =>
+        `Whole session ${total} · ${later} not due yet`,
       assignmentLoadError: "Couldn't load this student's assignment.",
       enrollmentLoadError:
         "Couldn't load this student's enrollment for the session.",
