@@ -1156,9 +1156,10 @@ sheet's discards ride FormSheet's guard.
 - `lib/exams.ts`: no changes needed beyond reusing `isResultsStage`.
 - `lib/copy.ts`: `exams.results.*`, `exams.publication.*`, `exams.cards.*`,
   `exams.final.*`.
-- `screens/exams/results.tsx` + `use-results.ts` (reads + the six mutations with
-  invalidations), `result-detail.tsx` + `entries-sheet.tsx` + `correction-sheet.tsx` +
-  `use-correction.ts`, `class-cards.tsx`, `card-view.tsx`, `final-results.tsx`.
+- `screens/exams/results.tsx` + `use-results.ts` (reads + the seven mutations with
+  invalidations, the correction apply included), `result-detail.tsx` +
+  `entries-sheet.tsx` + `correction-sheet.tsx`, `class-cards.tsx`, `card-view.tsx`,
+  `final-results.tsx`.
 - Routes: `app/(staff)/exams/[examId]/class/[classId].tsx`,
   `.../class/[classId]/student/[studentId].tsx`,
   `.../class/[classId]/card/[studentId].tsx`, `.../class/[classId]/cards.tsx`,
