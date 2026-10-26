@@ -52,6 +52,35 @@ ADR-049, ADR-050, `docs/FEES-BACKEND-NEEDS.md` (missing endpoints),
 - **Upfront/annual lines are one-time charges** (admission, annual fee) and
   are billed whole whenever the student joins, due on the effective date.
 
+## Month-by-month generation (ADR-051)
+
+- **The mode changes timing, never amounts.** Shares are computed over the
+  student's full set of buckets, then filtered by the cut-off. Filtering
+  before computing shares would pile concessions onto the first months.
+- **Every generator call without `through` follows the school's mode**:
+  billing, "Bill all students" and "Add missing dues" alike. Pass `"all"` to
+  force the whole session.
+- **The cut-off uses the server's date**, not the device's.
+- **The automatic sweep is off unless `FEES_WORKER_DISABLED=false`**, like the
+  homework sweeper; test suites drive `runMonthlySweep` directly.
+- **A sweep killed mid-run leaves its Redis lease** (`lock:fees-monthly-sweep`)
+  for up to 10 minutes; every run until then reports "skipped". Harmless in
+  production (the next hourly run proceeds), but a test that runs the sweep
+  must clear the key first, or it silently tests nothing.
+- **The sweep is database-wide.** A test that switches its school to
+  `monthly_auto` and is then killed (a timeout skips its `finally`) leaves
+  that school in monthly_auto, and every later sweep processes it too. Tests
+  pass `runMonthlySweep({ schoolIds })`. Leftover fixture schools were reset
+  by hand on 2026-10-26.
+- **`generateThrough` is one transaction per student, run in sequence.** Over
+  a remote database a large school takes a while (the integration tests
+  needed a longer timeout). Fine for an hourly sweep or a button press; batch
+  it before running it inside a request for thousands of students.
+- **In monthly schools the bill and the written dues differ.**
+  `base_annual_amount` is the session; the matrix only sees written dues. The
+  student page shows the gap as "₹X more will be billed as the months
+  arrive".
+
 ## Ledger (ADR-009, ADR-049)
 
 - **`financial_transactions` is append-only** (a database trigger refuses

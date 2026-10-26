@@ -32,6 +32,7 @@ import {
   isPositiveMoney,
   paidPercent,
   sumMoney,
+  subtractMoney,
 } from "../../lib/money";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
@@ -167,6 +168,12 @@ export function StudentFeeDeskScreen() {
     },
   );
   const assignment = assignmentQuery.data ?? null;
+  // Month-by-month schools (ADR-051) create later months as they arrive, so
+  // the session bill can exceed the dues that exist yet. The bill is the
+  // assignment's net; the dues are what the matrix has seen.
+  const notYetBilled = assignment
+    ? subtractMoney(assignment.netAnnualAmount, row?.totals.netAmount ?? "0.00")
+    : "0.00";
 
   const structures = trpc.fees.structure.list.useQuery(
     {
@@ -534,6 +541,11 @@ export function StudentFeeDeskScreen() {
                 formatMoney(monthSplit.later),
               )}
             </ThemedText>
+            {isPositiveMoney(notYetBilled) ? (
+              <ThemedText variant="meta">
+                {copy.fees.desk.notYetBilled(formatMoney(notYetBilled))}
+              </ThemedText>
+            ) : null}
           </View>
           {statusPill}
         </View>

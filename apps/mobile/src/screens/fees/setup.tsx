@@ -17,6 +17,7 @@ import { usePermissions } from "../../hooks/use-permissions";
 import { copy } from "../../lib/copy";
 import { trpc } from "../../lib/trpc";
 import { spacing } from "../../theme/tokens";
+import { GenerationCard } from "./generation-card";
 
 /**
  * Fee setup (Step 5E) — the configuration hub.
@@ -210,6 +211,8 @@ export function FeeSetupScreen() {
           />
         ) : null}
       </Card>
+
+      <GenerationCard />
     </View>,
   );
 }

@@ -28,6 +28,7 @@ import {
   paymentModeLabel,
   referenceFields,
   monthKeyOf,
+  monthLabel,
 } from "../../lib/fees";
 import type { PaymentMode } from "../../lib/fees";
 import { formatReadableDate, todayIso } from "../../lib/format";
@@ -67,6 +68,25 @@ import { useSessionOpen } from "../../hooks/use-session-open";
  * dropped response can therefore be retried safely: the server returns the
  * payment it already recorded instead of taking the money twice.
  */
+/** "2026-10" → "2026-11". */
+function nextMonthOf(key: string): string {
+  const year = Number(key.slice(0, 4));
+  const month = Number(key.slice(5, 7));
+  return month === 12
+    ? `${year + 1}-01`
+    : `${year}-${String(month + 1).padStart(2, "0")}`;
+}
+
+/** "2026-11" → "2026-11-30". */
+function endOfMonthKey(key: string): string {
+  const last = new Date(
+    Number(key.slice(0, 4)),
+    Number(key.slice(5, 7)),
+    0,
+  ).getDate();
+  return `${key}-${String(last).padStart(2, "0")}`;
+}
+
 /** One amount box on collect: an installment or a carried-forward balance. */
 type PayableLine = {
   kind: "installment" | "opening";
@@ -99,6 +119,9 @@ export function CollectPaymentScreen() {
   // Carried-forward balances are read through the setup grant; a cashier
   // without it still collects installments and sees the notice instead.
   const canReadOpenings = has("fee_structure:read");
+  // Monthly schools (ADR-051) create later months only when asked: "pay
+  // ahead" first adds the next month's dues for this student.
+  const canAddMonths = has("student_fee_assignment:update") && sessionOpen;
 
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [clamped, setClamped] = useState<Record<string, string | null>>({});
@@ -147,6 +170,25 @@ export function CollectPaymentScreen() {
         Boolean(studentId),
     },
   );
+
+  const assignmentQuery = trpc.fees.assignment.byStudent.useQuery(
+    {
+      organizationId: organizationId ?? "",
+      studentId,
+      academicYearId: academicYear?.id ?? "",
+      schoolId: schoolId ?? "",
+    },
+    {
+      enabled:
+        ready &&
+        canAddMonths &&
+        Boolean(organizationId) &&
+        Boolean(academicYear?.id) &&
+        Boolean(studentId),
+    },
+  );
+  const addMonth = trpc.fees.assignment.generateInstallments.useMutation();
+  const utils = trpc.useUtils();
 
   const openings = trpc.fees.ledger.listOpeningBalances.useQuery(
     {
@@ -242,6 +284,63 @@ export function CollectPaymentScreen() {
   // is due yet (then pay ahead is the only thing to collect).
   const aheadOpen = showAhead || aheadChosen || nowLines.length === 0;
 
+  // The month "Add {month}" would create: one past the latest open due, and
+  // never before next month. Pressing it again steps forward a month, so a
+  // month that already exists (paid, so not listed) is simply skipped over.
+  const [addedThrough, setAddedThrough] = useState<string | null>(null);
+  const latestDueMonth = (dues.data ?? []).reduce(
+    (max, row) =>
+      row.dueDate.slice(0, 7) > max ? row.dueDate.slice(0, 7) : max,
+    currentMonth,
+  );
+  const nextMonthKey = nextMonthOf(
+    addedThrough && addedThrough > latestDueMonth
+      ? addedThrough
+      : latestDueMonth,
+  );
+  const sessionLastMonth = academicYear?.endDate.slice(0, 7) ?? "";
+  const canOfferNextMonth =
+    canAddMonths &&
+    Boolean(assignmentQuery.data) &&
+    nextMonthKey <= sessionLastMonth;
+
+  const addNextMonth = async () => {
+    const assignment = assignmentQuery.data;
+    if (!assignment) return;
+    setError(null);
+    try {
+      await addMonth.mutateAsync({
+        organizationId: organizationId ?? "",
+        schoolId: schoolId ?? "",
+        id: assignment.id,
+        through: endOfMonthKey(nextMonthKey),
+      });
+      setAddedThrough(nextMonthKey);
+      setShowAhead(true);
+      await Promise.all([
+        utils.fees.installment.dues.invalidate(),
+        utils.fees.matrix.list.invalidate(),
+        utils.fees.matrix.cell.invalidate(),
+      ]);
+    } catch (cause) {
+      setError(cause);
+    }
+  };
+
+  const nextMonthButton = canOfferNextMonth ? (
+    <CapsuleButton
+      title={copy.fees.collect.addMonth(
+        `${monthLabel(Number(nextMonthKey.slice(5, 7)))} ${nextMonthKey.slice(0, 4)}`,
+      )}
+      icon="add"
+      variant="secondary"
+      size="compact"
+      loading={addMonth.isPending}
+      onPress={() => void addNextMonth()}
+      testID="fee-collect-add-month"
+    />
+  ) : null;
+
   const studentName =
     (typeof params.studentName === "string" && params.studentName.length > 0
       ? params.studentName
@@ -330,7 +429,6 @@ export function CollectPaymentScreen() {
   };
 
   const record = trpc.fees.payment.record.useMutation();
-  const utils = trpc.useUtils();
 
   const confirm = async () => {
     if (!academicYear) return;
@@ -508,6 +606,7 @@ export function CollectPaymentScreen() {
         message={copy.fees.collect.emptyBody}
         testID="fee-collect-empty"
       >
+        {nextMonthButton}
         <CapsuleButton
           title={copy.fees.collect.backToDesk}
           variant="secondary"
@@ -654,6 +753,16 @@ export function CollectPaymentScreen() {
           />
         )}
 
+        {aheadLines.length === 0 && nextMonthButton ? (
+          <>
+            <SectionHead
+              title={copy.fees.collect.payAheadTitle}
+              hint={copy.fees.collect.payAheadEmptyHint}
+            />
+            {nextMonthButton}
+          </>
+        ) : null}
+
         {aheadLines.length > 0 ? (
           <>
             <View style={styles.sectionHead}>
@@ -681,6 +790,7 @@ export function CollectPaymentScreen() {
             {aheadOpen ? (
               <Card padless>{aheadLines.map(renderLine)}</Card>
             ) : null}
+            {aheadOpen ? nextMonthButton : null}
           </>
         ) : null}
 

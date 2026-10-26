@@ -2323,6 +2323,35 @@ export const copy = {
   fees: {
     title: "Fees",
     tabLabel: "Fees",
+    generation: {
+      title: "When dues are created",
+      hint: "Timing only; prices stay the same",
+      modeLabel: "Create dues",
+      modes: {
+        all_now: "All at once",
+        monthly_auto: "Monthly, automatic",
+        monthly_manual: "Monthly, by hand",
+      },
+      explain: {
+        all_now:
+          "Billing a student creates every due for the session straight away.",
+        monthly_auto:
+          "Billing creates dues up to this month. Each new month is added automatically on the 1st.",
+        monthly_manual:
+          "Billing creates dues up to this month. Add later months below when you are ready.",
+      },
+      throughLabel: "Create dues up to",
+      action: "Generate dues",
+      done: (dues: number, students: number, month: string, failed: number) =>
+        [
+          dues === 0
+            ? `Everyone already has dues up to ${month}.`
+            : `Added ${dues} ${dues === 1 ? "due" : "dues"} for ${students} ${students === 1 ? "student" : "students"}, up to ${month}.`,
+          failed > 0 ? `${failed} could not be updated.` : null,
+        ]
+          .filter(Boolean)
+          .join(" "),
+    },
     checklist: {
       title: (year: string) => `Set up ${year}`,
       hint: "Tap a step to do it",
@@ -2553,6 +2582,8 @@ export const copy = {
       openingIncluded: "Included in due now.",
       includesOpening: (amount: string) => `Includes ${amount} carried forward`,
       thisSession: (amount: string) => `${amount} this session`,
+      notYetBilled: (amount: string) =>
+        `${amount} more will be billed as the months arrive.`,
       wholeSession: (total: string, later: string) =>
         `Whole session ${total} · ${later} not due yet`,
       assignmentLoadError: "Couldn't load this student's assignment.",
@@ -2618,6 +2649,8 @@ export const copy = {
       payFull: "Pay all due now",
       nothingDueNow: "Nothing is due yet this session. A parent can still pay ahead.",
       payAheadTitle: "Pay ahead",
+      payAheadEmptyHint: "Later months are not billed yet",
+      addMonth: (month: string) => `Add ${month} dues`,
       payAheadHint: (count: number, amount: string) =>
         `${count} later ${count === 1 ? "due" : "dues"} · ${amount}`,
       payAheadShow: "Show",
