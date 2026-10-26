@@ -15,7 +15,11 @@ import type {
   FeeMatrixCellOutput,
   FeeMatrixInput,
   FeeMatrixOutput,
+  FeePaymentListRow,
+  FinancialTransactionListRow,
   GatewayPaymentInput,
+  LedgerCashEffect,
+  PaymentDetailOutput,
   PaymentTransitionInput,
   RecordPaymentInput,
   RecordRefundInput,
@@ -104,6 +108,36 @@ const MATRIX_OPENING_BALANCE_SCOPE: ScopeColumns = {
   organizationId: openingBalances.organizationId,
   schoolId: openingBalances.schoolId,
 };
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * ADR-049: the ledger types that move what is OWED, not cash. They keep their
+ * written direction (rows are immutable) but never count as Money in/out.
+ */
+const NON_CASH_TRANSACTION_TYPES = new Set([
+  "opening_balance",
+  "concession_applied",
+  "waiver_applied",
+]);
+
+function ledgerCashEffect(row: {
+  transactionType: string;
+  direction: "credit" | "debit";
+}): LedgerCashEffect {
+  if (NON_CASH_TRANSACTION_TYPES.has(row.transactionType)) return "none";
+  return row.direction === "credit" ? "in" : "out";
+}
+
+function fullName(parts: {
+  firstName: string;
+  middleName: string | null;
+  lastName: string | null;
+}) {
+  return [parts.firstName, parts.middleName, parts.lastName]
+    .filter((part): part is string => Boolean(part))
+    .join(" ");
+}
 
 /** The modes that confirm money at the desk; everything else enters `pending`. */
 const IMMEDIATE_MODES = new Set(["cash"]);
@@ -388,12 +422,24 @@ export class FeesCollectionService {
     opts?: { mode?: "online_portal" },
   ) {
     const schoolId = requireSchoolId(scope);
-    const allocationCents = input.allocations.reduce(
+    const openingAllocations = input.openingBalanceAllocations ?? [];
+    const installmentCents = input.allocations.reduce(
       (acc, a) => acc + toCents(a.amount),
       0n,
     );
+    const openingCents = openingAllocations.reduce((acc, a) => acc + toCents(a.amount), 0n);
+    const allocationCents = installmentCents + openingCents;
     if (allocationCents <= 0n) {
       throw new Error("A payment must allocate a positive amount.");
+    }
+    if (openingAllocations.some((a) => toCents(a.amount) <= 0n)) {
+      throw new Error("Each opening balance allocation must be a positive amount.");
+    }
+    if (
+      new Set(openingAllocations.map((a) => a.openingBalanceId)).size !==
+      openingAllocations.length
+    ) {
+      throw new Error("An opening balance can appear only once in a payment.");
     }
 
     return db.transaction(async (tx) => {
@@ -475,97 +521,14 @@ export class FeesCollectionService {
         );
       const receiptNumber = `${seq.prefix}-${year.name.split("-")[0]}-${String(nextNumber).padStart(5, "0")}`;
 
-      // The installments, ROW-LOCKED IN DETERMINISTIC ID ORDER — the deadlock
-      // prevention. Balances are re-checked INSIDE the transaction.
-      const allocationIds = input.allocations.map((a) => a.installmentId);
-      const locked = await tx
-        .select({
-          id: feeInstallments.id,
-          studentId: feeInstallments.studentId,
-          academicYearId: feeInstallments.academicYearId,
-          studentFeeAssignmentId: feeInstallments.studentFeeAssignmentId,
-          dueDate: feeInstallments.dueDate,
-          netAmount: feeInstallments.netAmount,
-          paidAmount: feeInstallments.paidAmount,
-          paymentStatus: feeInstallments.paymentStatus,
-        })
-        .from(feeInstallments)
-        .where(
-          and(
-            inArray(feeInstallments.id, allocationIds),
-            eq(feeInstallments.schoolId, schoolId),
-          ),
-        )
-        .orderBy(asc(feeInstallments.id))
-        .for("update");
-
-      const byId = new Map(locked.map((i) => [i.id, i]));
-      for (const allocation of input.allocations) {
-        const inst = byId.get(allocation.installmentId);
-        if (!inst) {
-          throw new Error("One of the installments does not exist in this school.");
-        }
-        if (inst.studentId !== input.studentId) {
-          throw new Error("Every allocated installment must belong to the paying student.");
-        }
-        // S1 (F2): a year-X payment cannot allocate year-Y installments —
-        // ledger year-scoped reads would otherwise misreport.
-        if (inst.academicYearId !== input.academicYearId) {
-          throw new Error(
-            "Every allocated installment must belong to the payment's academic year.",
-          );
-        }
-        if (inst.paymentStatus === "waived" || inst.paymentStatus === "cancelled") {
-          throw new Error("A waived or cancelled installment cannot be paid.");
-        }
-        const balance = toCents(inst.netAmount) - toCents(inst.paidAmount);
-        if (toCents(allocation.amount) > balance) {
-          throw new Error(
-            "An allocation exceeds the installment's outstanding balance. The outstanding amount is " +
-              fromCents(balance) +
-              ".",
-          );
-        }
-      }
-
-      // S1 (F3): late fee is computed live on the locked balances and
-      // frozen when charged — never trusted from the client. One
-      // installment list, one assignment; a mixed allocation is a refusal.
-      const assignmentIds = new Set(locked.map((i) => i.studentFeeAssignmentId));
-      if (assignmentIds.size !== 1) {
-        throw new Error("Every allocated installment must belong to one fee assignment.");
-      }
-      const [assignmentId] = [...assignmentIds];
-      const [assignment] = await tx
-        .select({ feeStructureId: studentFeeAssignments.feeStructureId })
-        .from(studentFeeAssignments)
-        .where(eq(studentFeeAssignments.id, assignmentId as string));
-      if (!assignment) {
-        throw new Error("Fee assignment not found in this school.");
-      }
-      const rules = await feesService.listActiveLateFeeRules([atSchoolLevel(scope)]);
-      let lateFeeCents = 0n;
-      for (const allocation of input.allocations) {
-        const inst = byId.get(allocation.installmentId);
-        if (!inst) continue;
-        lateFeeCents += computeLateFee(
-          {
-            dueDate: inst.dueDate,
-            balanceCents: toCents(inst.netAmount) - toCents(inst.paidAmount),
-          },
-          rules.map((r) => ({
-            feeStructureId: r.feeStructureId,
-            gracePeriodDays: r.gracePeriodDays ?? 0,
-            calculationType: r.calculationType,
-            valueCents: toCents(r.value),
-            maxLateFeeCents: r.maxLateFee ? toCents(r.maxLateFee) : null,
-            effectiveFrom: r.effectiveFrom,
-            effectiveTo: r.effectiveTo,
-          })),
-          assignment.feeStructureId,
-          input.paymentDate,
-        );
-      }
+      // The installments, ROW-LOCKED IN DETERMINISTIC ID ORDER, then the
+      // carried-forward balances the same way — every path takes installment
+      // locks before opening-balance locks, so the order is global.
+      const lateFeeCents =
+        input.allocations.length > 0
+          ? await this.lockInstallmentsAndPriceLateFee(tx, scope, schoolId, input)
+          : 0n;
+      await this.lockOpeningBalances(tx, schoolId, input, openingAllocations);
 
       // S1 (F4): the persisted mode is the wire mode unless the webhook's
       // system path overrides it internally. recordGatewayPayment inherits
@@ -602,35 +565,60 @@ export class FeesCollectionService {
         throw new Error("Failed to record payment.");
       }
 
-      await tx.insert(paymentAllocations).values(
-        input.allocations.map((a) => ({
-          organizationId: scope.organizationId,
-          schoolId,
-          paymentId: payment.id,
-          installmentId: a.installmentId,
-          amountAllocated: a.amount,
-        })),
-      );
+      if (input.allocations.length > 0) {
+        await tx.insert(paymentAllocations).values(
+          input.allocations.map((a) => ({
+            organizationId: scope.organizationId,
+            schoolId,
+            paymentId: payment.id,
+            installmentId: a.installmentId,
+            amountAllocated: a.amount,
+          })),
+        );
+      }
 
       await this.applyToInstallments(tx, input.allocations);
+      await this.applyToOpeningBalances(tx, openingAllocations);
 
-      // The ledger: the principal, then the frozen late fee if any. Hard rule
-      // 3: inserts only.
-      await tx.insert(financialTransactions).values({
-        organizationId: scope.organizationId,
-        schoolId,
-        studentId: input.studentId,
-        academicYearId: input.academicYearId,
-        transactionType: "fee_payment",
-        direction: "credit",
-        amount: fromCents(allocationCents),
-        referenceId: payment.id,
-        referenceTable: "fee_payments",
-        receiptNumber,
-        description: `Fee payment ${receiptNumber}`,
-        transactionDate: input.paymentDate,
-        createdBy: actorId ?? null,
-      });
+      // The ledger: the installment principal, one row per carried-forward
+      // portion, then the frozen late fee if any. Hard rule 3: inserts only.
+      if (installmentCents > 0n) {
+        await tx.insert(financialTransactions).values({
+          organizationId: scope.organizationId,
+          schoolId,
+          studentId: input.studentId,
+          academicYearId: input.academicYearId,
+          transactionType: "fee_payment",
+          direction: "credit",
+          amount: fromCents(installmentCents),
+          referenceId: payment.id,
+          referenceTable: "fee_payments",
+          receiptNumber,
+          description: `Fee payment ${receiptNumber}`,
+          transactionDate: input.paymentDate,
+          createdBy: actorId ?? null,
+        });
+      }
+      // ADR-049: this row IS the payment ↔ opening-balance link (reference =
+      // the balance, receipt number = the payment). It is append-only, which
+      // is exactly the immutability payment_allocations promises.
+      for (const a of openingAllocations) {
+        await tx.insert(financialTransactions).values({
+          organizationId: scope.organizationId,
+          schoolId,
+          studentId: input.studentId,
+          academicYearId: input.academicYearId,
+          transactionType: "opening_balance_payment",
+          direction: "credit",
+          amount: fromCents(toCents(a.amount)),
+          referenceId: a.openingBalanceId,
+          referenceTable: "opening_balances",
+          receiptNumber,
+          description: `Opening balance paid on ${receiptNumber}`,
+          transactionDate: input.paymentDate,
+          createdBy: actorId ?? null,
+        });
+      }
       if (lateFeeCents > 0n) {
         await tx.insert(financialTransactions).values({
           organizationId: scope.organizationId,
@@ -654,12 +642,117 @@ export class FeesCollectionService {
   }
 
   /**
+   * Locks the allocated installments in id order, re-checks every balance
+   * inside the lock, and prices the late fee on those locked balances.
+   * Returns the late fee in paise; the caller freezes it on the payment.
+   */
+  private async lockInstallmentsAndPriceLateFee(
+    tx: Tx,
+    scope: DataScope,
+    schoolId: string,
+    input: RecordPaymentInput,
+  ): Promise<bigint> {
+    // The installments, ROW-LOCKED IN DETERMINISTIC ID ORDER — the deadlock
+    // prevention. Balances are re-checked INSIDE the transaction.
+    const allocationIds = input.allocations.map((a) => a.installmentId);
+    const locked = await tx
+      .select({
+        id: feeInstallments.id,
+        studentId: feeInstallments.studentId,
+        academicYearId: feeInstallments.academicYearId,
+        studentFeeAssignmentId: feeInstallments.studentFeeAssignmentId,
+        dueDate: feeInstallments.dueDate,
+        netAmount: feeInstallments.netAmount,
+        paidAmount: feeInstallments.paidAmount,
+        paymentStatus: feeInstallments.paymentStatus,
+      })
+      .from(feeInstallments)
+      .where(
+        and(
+          inArray(feeInstallments.id, allocationIds),
+          eq(feeInstallments.schoolId, schoolId),
+        ),
+      )
+      .orderBy(asc(feeInstallments.id))
+      .for("update");
+
+    const byId = new Map(locked.map((i) => [i.id, i]));
+    for (const allocation of input.allocations) {
+      const inst = byId.get(allocation.installmentId);
+      if (!inst) {
+        throw new Error("One of the installments does not exist in this school.");
+      }
+      if (inst.studentId !== input.studentId) {
+        throw new Error("Every allocated installment must belong to the paying student.");
+      }
+      // S1 (F2): a year-X payment cannot allocate year-Y installments —
+      // ledger year-scoped reads would otherwise misreport.
+      if (inst.academicYearId !== input.academicYearId) {
+        throw new Error(
+          "Every allocated installment must belong to the payment's academic year.",
+        );
+      }
+      if (inst.paymentStatus === "waived" || inst.paymentStatus === "cancelled") {
+        throw new Error("A waived or cancelled installment cannot be paid.");
+      }
+      const balance = toCents(inst.netAmount) - toCents(inst.paidAmount);
+      if (toCents(allocation.amount) > balance) {
+        throw new Error(
+          "An allocation exceeds the installment's outstanding balance. The outstanding amount is " +
+            fromCents(balance) +
+            ".",
+        );
+      }
+    }
+
+    // S1 (F3): late fee is computed live on the locked balances and
+    // frozen when charged — never trusted from the client. One
+    // installment list, one assignment; a mixed allocation is a refusal.
+    const assignmentIds = new Set(locked.map((i) => i.studentFeeAssignmentId));
+    if (assignmentIds.size !== 1) {
+      throw new Error("Every allocated installment must belong to one fee assignment.");
+    }
+    const [assignmentId] = [...assignmentIds];
+    const [assignment] = await tx
+      .select({ feeStructureId: studentFeeAssignments.feeStructureId })
+      .from(studentFeeAssignments)
+      .where(eq(studentFeeAssignments.id, assignmentId as string));
+    if (!assignment) {
+      throw new Error("Fee assignment not found in this school.");
+    }
+    const rules = await feesService.listActiveLateFeeRules([atSchoolLevel(scope)]);
+    let lateFeeCents = 0n;
+    for (const allocation of input.allocations) {
+      const inst = byId.get(allocation.installmentId);
+      if (!inst) continue;
+      lateFeeCents += computeLateFee(
+        {
+          dueDate: inst.dueDate,
+          balanceCents: toCents(inst.netAmount) - toCents(inst.paidAmount),
+        },
+        rules.map((r) => ({
+          feeStructureId: r.feeStructureId,
+          gracePeriodDays: r.gracePeriodDays ?? 0,
+          calculationType: r.calculationType,
+          valueCents: toCents(r.value),
+          maxLateFeeCents: r.maxLateFee ? toCents(r.maxLateFee) : null,
+          effectiveFrom: r.effectiveFrom,
+          effectiveTo: r.effectiveTo,
+        })),
+        assignment.feeStructureId,
+        input.paymentDate,
+      );
+    }
+    return lateFeeCents;
+  }
+
+  /**
    * Adds each allocation to its installment's paid_amount and restates the
    * status. Caller holds the row locks; shared by record (adds) and the
    * transition operations' re-open path (negatives).
    */
   private async applyToInstallments(
-    tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+    tx: Tx,
     deltas: { installmentId: string; amount: string }[],
   ) {
     for (const delta of deltas) {
@@ -686,11 +779,133 @@ export class FeesCollectionService {
   }
 
   /**
+   * Locks the carried-forward balances a payment pays, in id order, and
+   * re-checks each inside the lock: same school, same student, the payment's
+   * own year (the year the balance was carried INTO), not waived, and no
+   * more than what is still owed.
+   */
+  private async lockOpeningBalances(
+    tx: Tx,
+    schoolId: string,
+    input: Pick<RecordPaymentInput, "studentId" | "academicYearId">,
+    allocations: { openingBalanceId: string; amount: string }[],
+  ) {
+    if (allocations.length === 0) return;
+    const locked = await tx
+      .select({
+        id: openingBalances.id,
+        studentId: openingBalances.studentId,
+        academicYearId: openingBalances.academicYearId,
+        amount: openingBalances.amount,
+        paidAmount: openingBalances.paidAmount,
+        status: openingBalances.status,
+      })
+      .from(openingBalances)
+      .where(
+        and(
+          inArray(
+            openingBalances.id,
+            allocations.map((a) => a.openingBalanceId),
+          ),
+          eq(openingBalances.schoolId, schoolId),
+        ),
+      )
+      .orderBy(asc(openingBalances.id))
+      .for("update");
+
+    const byId = new Map(locked.map((b) => [b.id, b]));
+    for (const allocation of allocations) {
+      const balance = byId.get(allocation.openingBalanceId);
+      if (!balance) {
+        throw new Error("One of the opening balances does not exist in this school.");
+      }
+      if (balance.studentId !== input.studentId) {
+        throw new Error("Every opening balance paid must belong to the paying student.");
+      }
+      if (balance.academicYearId !== input.academicYearId) {
+        throw new Error(
+          "An opening balance is paid in the academic year it was carried into.",
+        );
+      }
+      if (balance.status === "waived") {
+        throw new Error("A waived opening balance cannot be paid.");
+      }
+      const owed = toCents(balance.amount) - toCents(balance.paidAmount);
+      if (toCents(allocation.amount) > owed) {
+        throw new Error(
+          "An allocation exceeds the opening balance still owed. The outstanding amount is " +
+            fromCents(owed < 0n ? 0n : owed) +
+            ".",
+        );
+      }
+    }
+  }
+
+  /**
+   * The opening-balance sibling of `applyToInstallments`: adds each delta to
+   * paid_amount (negatives re-open) and restates the status. Caller holds,
+   * or here takes, the row lock.
+   */
+  private async applyToOpeningBalances(
+    tx: Tx,
+    deltas: { openingBalanceId: string; amount: string }[],
+  ) {
+    for (const delta of deltas) {
+      const [balance] = await tx
+        .select({ amount: openingBalances.amount, paidAmount: openingBalances.paidAmount })
+        .from(openingBalances)
+        .where(eq(openingBalances.id, delta.openingBalanceId))
+        .for("update");
+      if (!balance) {
+        throw new Error("Opening balance vanished mid-transaction.");
+      }
+      const paid = toCents(balance.paidAmount) + toCents(delta.amount);
+      const amount = toCents(balance.amount);
+      const status = paid <= 0n ? "unpaid" : paid >= amount ? "paid" : "partial";
+      await tx
+        .update(openingBalances)
+        .set({ paidAmount: fromCents(paid < 0n ? 0n : paid), status })
+        .where(eq(openingBalances.id, delta.openingBalanceId));
+    }
+  }
+
+  /**
+   * The carried-forward portions of a payment, read from their
+   * `opening_balance_payment` ledger rows (ADR-049) — the receipt number is
+   * unique per school, so (school, year, receipt) names exactly one payment.
+   */
+  private async openingBalancePortions(
+    runner: Tx | typeof db,
+    payment: { schoolId: string; academicYearId: string; receiptNumber: string },
+  ) {
+    const rows = await runner
+      .select({
+        openingBalanceId: financialTransactions.referenceId,
+        amount: financialTransactions.amount,
+      })
+      .from(financialTransactions)
+      .where(
+        and(
+          eq(financialTransactions.schoolId, payment.schoolId),
+          eq(financialTransactions.academicYearId, payment.academicYearId),
+          eq(financialTransactions.receiptNumber, payment.receiptNumber),
+          eq(financialTransactions.transactionType, "opening_balance_payment"),
+          eq(financialTransactions.referenceTable, "opening_balances"),
+        ),
+      )
+      .orderBy(asc(financialTransactions.createdAt), asc(financialTransactions.id));
+    return rows.flatMap((r) =>
+      r.openingBalanceId ? [{ openingBalanceId: r.openingBalanceId, amount: r.amount }] : [],
+    );
+  }
+
+  /**
    * The common skeleton of bounce/reverse/cancel: validate the current
    * status, flip it with the audit triple, and re-open the installments the
    * payment's allocations had reduced (the allocations themselves stay —
-   * history). `withLedger` decides whether an offsetting row is written:
-   * a bounce and a reversal are money events; a cancellation is not.
+   * history), plus any opening-balance portions. `transactionType` decides
+   * whether offsetting rows are written: a bounce and a reversal are money
+   * events (principal AND frozen late fee, ADR-049); a cancellation is not.
    */
   private async transitionPayment(
     scope: DataScope,
@@ -732,13 +947,19 @@ export class FeesCollectionService {
         .from(paymentAllocations)
         .where(eq(paymentAllocations.paymentId, payment.id));
 
-      // Re-open: every allocation's amount comes BACK OFF the installment.
+      // Re-open: every allocation's amount comes BACK OFF the installment,
+      // and every carried-forward portion back off its opening balance.
       await this.applyToInstallments(
         tx,
         allocations.map((a) => ({
           installmentId: a.installmentId,
           amount: `-${a.amountAllocated}`,
         })),
+      );
+      const portions = await this.openingBalancePortions(tx, payment);
+      await this.applyToOpeningBalances(
+        tx,
+        portions.map((p) => ({ openingBalanceId: p.openingBalanceId, amount: `-${p.amount}` })),
       );
 
       const [updated] = await tx
@@ -772,6 +993,26 @@ export class FeesCollectionService {
           transactionDate: new Date().toISOString().slice(0, 10),
           createdBy: actorId,
         });
+        // ADR-049: the late fee frozen on this payment never arrived either
+        // (bounce) or went back with it (reversal) — offset its credit too,
+        // as its own row so each debit mirrors one credit.
+        if (toCents(payment.lateFeeAmount) > 0n) {
+          await tx.insert(financialTransactions).values({
+            organizationId: scope.organizationId,
+            schoolId,
+            studentId: payment.studentId,
+            academicYearId: payment.academicYearId,
+            transactionType: opts.transactionType,
+            direction: "debit",
+            amount: payment.lateFeeAmount,
+            referenceId: payment.id,
+            referenceTable: "fee_payments",
+            receiptNumber: payment.receiptNumber,
+            description: `Late fee reversed: ${input.reason} (${payment.receiptNumber})`,
+            transactionDate: new Date().toISOString().slice(0, 10),
+            createdBy: actorId,
+          });
+        }
       }
 
       return updated;
@@ -899,7 +1140,8 @@ export class FeesCollectionService {
         .from(paymentAllocations)
         .where(eq(paymentAllocations.paymentId, payment.id));
 
-      // Walk the allocations oldest-first, taking back up to the refund.
+      // Walk the allocations oldest-first, taking back up to the refund;
+      // carried-forward portions come after the installments.
       let remaining = refundCents;
       const deltas: { installmentId: string; amount: string }[] = [];
       for (const a of allocations) {
@@ -912,7 +1154,16 @@ export class FeesCollectionService {
         });
         remaining -= take;
       }
+      const openingDeltas: { openingBalanceId: string; amount: string }[] = [];
+      for (const p of await this.openingBalancePortions(tx, payment)) {
+        if (remaining <= 0n) break;
+        const portionCents = toCents(p.amount);
+        const take = portionCents < remaining ? portionCents : remaining;
+        openingDeltas.push({ openingBalanceId: p.openingBalanceId, amount: `-${fromCents(take)}` });
+        remaining -= take;
+      }
       await this.applyToInstallments(tx, deltas);
+      await this.applyToOpeningBalances(tx, openingDeltas);
 
       const [refund] = await tx
         .insert(feeRefunds)
@@ -1595,10 +1846,32 @@ export class FeesCollectionService {
     scopes: DataScope[],
     academicYearId: string,
     studentId?: string,
-  ) {
-    return db
-      .select()
+  ): Promise<FeePaymentListRow[]> {
+    const rows = await db
+      .select({
+        payment: feePayments,
+        firstName: students.firstName,
+        middleName: students.middleName,
+        lastName: students.lastName,
+        admissionNumber: students.admissionNumber,
+        className: classes.name,
+        sectionName: sections.name,
+      })
       .from(feePayments)
+      .innerJoin(
+        students,
+        and(eq(students.id, feePayments.studentId), eq(students.schoolId, feePayments.schoolId)),
+      )
+      .leftJoin(
+        studentEnrollments,
+        and(
+          eq(studentEnrollments.studentId, feePayments.studentId),
+          eq(studentEnrollments.academicYearId, feePayments.academicYearId),
+          eq(studentEnrollments.schoolId, feePayments.schoolId),
+        ),
+      )
+      .leftJoin(classes, eq(classes.id, studentEnrollments.classId))
+      .leftJoin(sections, eq(sections.id, studentEnrollments.sectionId))
       .where(
         and(
           scopeWhere(scopes.map(atSchoolLevel), PAYMENT_SCOPE),
@@ -1607,10 +1880,21 @@ export class FeesCollectionService {
         ),
       )
       .orderBy(asc(feePayments.paymentDate));
+    return rows.map((r) => ({
+      ...r.payment,
+      studentName: fullName(r),
+      admissionNumber: r.admissionNumber,
+      className: r.className,
+      sectionName: r.sectionName,
+    }));
   }
 
-  /** A payment with its allocations — the receipt's backing detail. */
-  async getPaymentDetail(scope: DataScope, paymentId: string) {
+  /**
+   * A payment with its allocations — the receipt's backing detail. Every
+   * line is labelled here (fee head, description, due date; origin year for
+   * a carried-forward portion) so a receipt never depends on a client cache.
+   */
+  async getPaymentDetail(scope: DataScope, paymentId: string): Promise<PaymentDetailOutput | null> {
     const [payment] = await db
       .select()
       .from(feePayments)
@@ -1623,26 +1907,116 @@ export class FeesCollectionService {
     if (!payment) return null;
 
     const allocations = await db
-      .select()
+      .select({
+        installmentId: paymentAllocations.installmentId,
+        amountAllocated: paymentAllocations.amountAllocated,
+        feeHeadId: feeInstallments.feeHeadId,
+        feeHeadName: feeHeads.name,
+        description: feeInstallments.description,
+        installmentNumber: feeInstallments.installmentNumber,
+        dueDate: feeInstallments.dueDate,
+      })
       .from(paymentAllocations)
-      .where(eq(paymentAllocations.paymentId, payment.id));
+      .innerJoin(
+        feeInstallments,
+        and(
+          eq(feeInstallments.id, paymentAllocations.installmentId),
+          eq(feeInstallments.schoolId, paymentAllocations.schoolId),
+        ),
+      )
+      .innerJoin(
+        feeHeads,
+        and(
+          eq(feeHeads.id, feeInstallments.feeHeadId),
+          eq(feeHeads.schoolId, feeInstallments.schoolId),
+        ),
+      )
+      .where(eq(paymentAllocations.paymentId, payment.id))
+      .orderBy(
+        asc(feeInstallments.dueDate),
+        asc(feeHeads.name),
+        asc(feeInstallments.installmentNumber),
+      );
 
-    return { payment, allocations };
+    const portions = await this.openingBalancePortions(db, payment);
+    const balanceRows = portions.length
+      ? await db
+          .select({
+            id: openingBalances.id,
+            description: openingBalances.description,
+            originAcademicYearId: openingBalances.originAcademicYearId,
+            originAcademicYearName: academicYears.name,
+          })
+          .from(openingBalances)
+          .innerJoin(academicYears, eq(academicYears.id, openingBalances.originAcademicYearId))
+          .where(
+            and(
+              inArray(
+                openingBalances.id,
+                portions.map((p) => p.openingBalanceId),
+              ),
+              eq(openingBalances.schoolId, payment.schoolId),
+            ),
+          )
+      : [];
+    const balanceById = new Map(balanceRows.map((b) => [b.id, b]));
+    const openingBalanceAllocations = portions.flatMap((p) => {
+      const balance = balanceById.get(p.openingBalanceId);
+      if (!balance) return [];
+      return [
+        {
+          openingBalanceId: p.openingBalanceId,
+          amountAllocated: p.amount,
+          description: balance.description,
+          originAcademicYearId: balance.originAcademicYearId,
+          originAcademicYearName: balance.originAcademicYearName,
+        },
+      ];
+    });
+
+    return { payment, allocations, openingBalanceAllocations };
   }
 
   /**
    * THE LEDGER READ (hard rule 3's reason for existing): the single table
    * accountants query, per year, optionally per student. Append-only, so
-   * there is no "history" question here — every row is history.
+   * there is no "history" question here — every row is history. Each row
+   * carries its `cashEffect` (ADR-049) so Money in/out never counts a
+   * receivable, and its student label so the list needs no lookup.
    */
   async listLedger(
     scopes: DataScope[],
     academicYearId: string,
     studentId?: string,
-  ) {
-    return db
-      .select()
+  ): Promise<FinancialTransactionListRow[]> {
+    const rows = await db
+      .select({
+        row: financialTransactions,
+        firstName: students.firstName,
+        middleName: students.middleName,
+        lastName: students.lastName,
+        admissionNumber: students.admissionNumber,
+        className: classes.name,
+        sectionName: sections.name,
+      })
       .from(financialTransactions)
+      .leftJoin(
+        students,
+        and(
+          eq(students.id, financialTransactions.studentId),
+          eq(students.schoolId, financialTransactions.schoolId),
+        ),
+      )
+      .leftJoin(
+        studentEnrollments,
+        and(
+          eq(studentEnrollments.studentId, financialTransactions.studentId),
+          eq(studentEnrollments.academicYearId, financialTransactions.academicYearId),
+          eq(studentEnrollments.schoolId, financialTransactions.schoolId),
+        ),
+      )
+      .leftJoin(classes, eq(classes.id, studentEnrollments.classId))
+      .leftJoin(sections, eq(sections.id, studentEnrollments.sectionId))
       .where(
         and(
           scopeWhere(scopes.map(atSchoolLevel), LEDGER_SCOPE),
@@ -1650,7 +2024,15 @@ export class FeesCollectionService {
           studentId ? eq(financialTransactions.studentId, studentId) : undefined,
         ),
       )
-      .orderBy(asc(financialTransactions.transactionDate));
+      .orderBy(asc(financialTransactions.transactionDate), asc(financialTransactions.createdAt));
+    return rows.map((r) => ({
+      ...r.row,
+      cashEffect: ledgerCashEffect(r.row),
+      studentName: r.firstName === null ? null : fullName({ ...r, firstName: r.firstName }),
+      admissionNumber: r.admissionNumber,
+      className: r.className,
+      sectionName: r.sectionName,
+    }));
   }
 
   /** Assignments feed the dues screen's student selector. */

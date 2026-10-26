@@ -180,15 +180,19 @@ assignment but no installments ("Generate installments"), zero balance
 - Device walk: dues empty + loaded, collect full + partial, receipt, payments
   list, clear/bounce, ledger totals, setup create/deactivate, 1.3× pass.
 
-## Documented backend gaps (no changes made)
+## Documented backend gaps (no changes made in the slice)
 
-1. `installment.dues`, `payment.list` and `ledger.list` return raw rows with a
-   `studentId` and **no student name/class**. The dues tab therefore reads the
-   matrix; the payments list shows receipt + amount + date and the detail shows
-   the id. A `studentName` join is the fix.
-2. `payment.detail` allocations carry `installmentId` only — no description or
-   fee head, so receipt lines are labelled from the student's installment list
-   when available and fall back to the id.
+Status after the backend follow-up is marked **[closed]** / **[partly closed]**;
+see "Backend gap closure" below.
+
+1. **[partly closed]** `installment.dues`, `payment.list` and `ledger.list`
+   return raw rows with a `studentId` and **no student name/class**. The dues
+   tab therefore reads the matrix; the payments list shows receipt + amount +
+   date and the detail shows the id. A `studentName` join is the fix.
+   `payment.list` and `ledger.list` now carry it; `installment.dues` does not.
+2. **[closed]** `payment.detail` allocations carry `installmentId` only — no
+   description or fee head, so receipt lines are labelled from the student's
+   installment list when available and fall back to the id.
 3. No "all installments for a student" read: `installment.dues` is
    unpaid/partial only, so paid history comes from payments, not installments.
 4. `matrix.list` computes the whole cohort in memory before filtering and
@@ -235,17 +239,54 @@ and a ₹5000.00 allocation rendered as "000.00" (wider box, capped input).
 
 Further backend gaps found on the walk (no changes made):
 
-10. No write pays an **opening balance**: `payment.record` allocations target
-    installments only, so a carried-forward due shows on the desk but cannot be
-    collected. Collect says so.
-11. The ledger counts `opening_balance` as Money in, though it is a receivable,
-    not cash.
-12. A bounce posts a debit for the allocated amount only; the late fee charged on
-    the bounced payment stays in Money in.
+10. **[closed]** No write pays an **opening balance**: `payment.record`
+    allocations target installments only, so a carried-forward due shows on
+    the desk but cannot be collected. Collect says so.
+11. **[closed — server side]** The ledger counts `opening_balance` as Money in,
+    though it is a receivable, not cash.
+12. **[closed]** A bounce posts a debit for the allocated amount only; the late
+    fee charged on the bounced payment stays in Money in.
 13. "Collected" differs by screen: the matrix excludes late fees, the payments
-    list includes them.
-14. Gap 2 is the most visible one left: after a restart, receipts and payment
-    detail for fully paid installments show "Installment c1937743".
+    list includes them. (Open.)
+14. **[closed]** Gap 2 is the most visible one left: after a restart, receipts
+    and payment detail for fully paid installments show "Installment c1937743".
+
+## Backend gap closure (2026-10-26)
+
+Backend only — `apps/mobile` untouched; one web type alias repointed
+(`FeePayment` = `payment.record` output, since the list row grew). Decision
+record: **ADR-049** in `docs/DECISIONS.md`. Files:
+`packages/contracts/src/contracts/fees.contract.ts`,
+`packages/services/src/fees-collection.service.ts`,
+`packages/trpc/src/routers/fees.router.ts`,
+`packages/trpc/src/integration/fees.integration.test.ts` (new describe
+"fees: mobile backend gaps (ADR-049)"). No migration.
+
+| Gap | Server change | Mobile follow-up it unlocks |
+|---|---|---|
+| 2 / 14 | `payment.detail` → `paymentDetailOutputSchema`: each allocation adds `feeHeadId`, `feeHeadName`, `description`, `installmentNumber`, `dueDate` (ordered by due date); new `openingBalanceAllocations[]` (`openingBalanceId`, `amountAllocated`, `description`, `originAcademicYearId/Name`). | Receipt and payment detail label lines from the server; drop the installment label cache (`lib/fees-receipt-cache.ts`) and the "Installment c1937743" fallback; show a "Carried forward from 2025-26" line. |
+| 10 | `payment.record` accepts `openingBalanceAllocations: [{ openingBalanceId, amount }]`; `allocations` may now be empty (total must be > 0). Locks + re-checks the balance, updates `paidAmount`/`status`, writes one `opening_balance_payment` credit per portion (the link row). Bounce/reverse/refund re-open portions. Refusals are worded ("exceeds the opening balance still owed. The outstanding amount is …", "carried into", "belong to the paying student", "waived"). | Collect gets an opening-balance line (pay full/part, with the year it came from) on the same receipt; remove the "cannot take a carried-forward balance" explainer; the desk's opening-balance figure updates after collect. Opening balances are paid in the year they were carried **into**, so collect must send that year. |
+| 11 | `ledger.list` rows add `cashEffect: "in" \| "out" \| "none"` (`none` = `opening_balance`, `concession_applied`, `waiver_applied`). Rows themselves are unchanged (append-only). | Ledger In/Out/Net sums `cashEffect` instead of `direction`; show `none` rows as "not cash" (muted, outside the totals). Until mobile switches, its totals are still wrong. |
+| 12 | Bounce and reverse write a second debit for `lateFeeAmount` when > 0. | None required: the ledger's Net is right once the row lands. Old bounced payments keep their one-sided late fee (ADR-049). |
+| 1 | `payment.list` rows add `studentName`, `admissionNumber`, `className`, `sectionName`; `ledger.list` rows the same (nullable for non-student rows). Class/section come from the enrollment in the row's year (null if none). | Payments list and ledger rows show the student and class; the payment detail can show who paid without a second read. |
+
+Proven by `fees.integration`: detail labels (gap 2), list/ledger labels incl.
+an un-enrolled student and foreign-scope isolation (gap 1), opening balance
+refusals → cash part-payment → link row → detail → refund → cheque settles →
+bounce re-opens → cash nets to what was kept (gap 10/11), bounce + reverse
+with a late fee net to zero (gap 12), waiver is `none` (gap 11).
+
+Still open, found while closing these (backend):
+
+15. `cancelPayment` writes no ledger row, but `recordPayment` already credited
+    the pending payment, so a cancelled payment stays in Money in. Needs a new
+    `financial_transaction_type` value (migration) — ADR-049 consequences.
+16. A second partial refund re-walks the allocations from the first one
+    (`recordRefund` does not subtract what earlier refunds took back, and
+    reads allocations unordered), so with two or more allocations it can
+    over-reopen the first and never reopen the next (the clamp at 0 hides it).
+17. `reversePayment` after a partial refund re-opens the full allocations and
+    debits the full principal again — the refunded part is offset twice.
 
 ## Docs / skills used
 

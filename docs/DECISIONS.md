@@ -2173,3 +2173,67 @@ proved.
 still pulls the schema graph). A `contracts/client` entry point exposing only
 zod-safe schemas (real work, no consumer yet - revisit only if a third client
 needs one). Validating on the client and trusting it (ADR-001: never).
+
+---
+
+## ADR-049 - Ledger rows carry a cash effect; offsets mirror every credit; opening balances are paid through the ledger link
+
+Date: 2026-10-26. Status: accepted. Refines ADR-009 and hard rule 3; does not
+rewrite any existing ledger row.
+
+**Context.** The mobile fees device walk found three ledger-semantics gaps
+(`.kilo/plans/2026-10-26-mobile-fees.md`, gaps 10-12). `financial_transactions`
+mixes two kinds of row under one `direction`: cash that arrived or left
+(`fee_payment`, `late_fee_charged`, `fee_refund`, `cheque_bounce_charge`) and
+movements of what is *owed* (`opening_balance` credit, `waiver_applied` /
+`concession_applied` debit). Summing credits as "Money in" counted a
+carried-forward receivable as income. A bounce or reversal offset only the
+principal, so the late fee frozen on a bounced cheque stayed as income. And no
+write could pay an `opening_balances` row: `payment_allocations.installment_id`
+is `NOT NULL`, so a carried-forward due could be shown but never collected.
+
+**Decision.**
+1. *Cash effect is derived, not rewritten.* Rows are immutable, so existing
+   directions stay. `fee.ledger.list` returns each row with
+   `cashEffect: "in" | "out" | "none"`: `none` for `opening_balance`,
+   `concession_applied` and `waiver_applied`; otherwise `credit` -> `in`,
+   `debit` -> `out`. Money in/out totals sum `in`/`out` only. New rows of the
+   non-cash types keep the direction they have always had, so history and
+   new rows read the same way.
+2. *An offset mirrors every credit the payment wrote.* `bounce` and `reverse`
+   write the principal debit (as before) **and**, when `late_fee_amount > 0`, a
+   second debit of the same type for the late fee. A bounced or reversed
+   payment therefore nets to zero cash, late fee included.
+3. *Opening balances are paid on an ordinary receipt.* `fee.payment.record`
+   accepts `openingBalanceAllocations: [{ openingBalanceId, amount }]` beside
+   the installment `allocations` (either may be empty; the total must be
+   positive). Inside the same transaction the balance is row-locked (after
+   installments, id order), re-checked (same student, the payment's year = the
+   year it was carried into, not waived, no more than still owed), its
+   `paid_amount`/`status` updated, and one `opening_balance_payment` credit is
+   written per portion with `reference_table = 'opening_balances'`,
+   `reference_id` = the balance, `receipt_number` = the payment. **That ledger
+   row is the payment <-> balance link**: it is append-only, which is exactly
+   the immutability `payment_allocations` promises, and the receipt number is
+   unique per school. Bounce, reverse and refund find the portions through it
+   and re-open them (refunds take installments first, then portions);
+   `payment.detail` returns them as `openingBalanceAllocations`. The
+   `fee_payment` credit now carries the installment principal only, so the
+   two credit types sum to `fee_payments.amount`.
+
+**Consequences.** No migration: the change ships with the frozen schema and
+needs no backfill, because no opening balance was ever paid before. Old
+bounced payments that carried a late fee keep their one-sided late-fee credit;
+the derived figures are right from this change on, and a one-off offset for
+historical bounces is an accountant's correcting entry, not a code path.
+`cancelPayment` still writes no row although `recordPayment` credits a
+pending payment at entry; offsetting it needs a new transaction type (a
+migration) and is recorded as an open gap in the plan.
+
+**Alternatives rejected.** Rewriting `opening_balance` rows to `debit`
+(violates hard rule 3, and "debit" means money out, which is just as wrong).
+A nullable `opening_balance_id` on `payment_allocations` (cleaner join, but a
+schema migration on a shared database for a link the ledger already holds
+immutably; revisit if allocation reporting needs a single table). A separate
+"collect opening balance" endpoint with its own receipt sequence (two receipts
+for one counter visit; duplicates the idempotency and locking discipline).

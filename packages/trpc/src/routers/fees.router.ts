@@ -14,13 +14,15 @@ import {
   feeMatrixInputSchema,
   feeMatrixOutputSchema,
   feeInstallmentSelectSchema,
+  feePaymentListRowSchema,
   feePaymentSelectSchema,
   feeRefundSelectSchema,
   feeStructureLineSelectSchema,
   feeStructureSelectSchema,
-  financialTransactionSelectSchema,
+  financialTransactionListRowSchema,
   lateFeeRuleSelectSchema,
   openingBalanceSelectSchema,
+  paymentDetailOutputSchema,
   paymentTransitionSchema,
   recordPaymentSchema,
   recordRefundSchema,
@@ -623,27 +625,16 @@ export const feesRouter = router({
           method: "GET",
           path: "/fee-payments/{id}",
           tags: ["fees"],
-          summary: "Payment detail with allocations",
+          summary: "Payment detail with labelled installment and opening-balance lines",
           protect: true,
         },
       })
       .input(z.object({ id: z.uuid(), ...schoolParent.shape }))
-      .output(
-        z.object({
-          payment: feePaymentSelectSchema,
-          allocations: z.array(z.object({ installmentId: z.uuid(), amountAllocated: z.string() })),
-        }),
-      )
+      .output(paymentDetailOutputSchema)
       .query(async ({ ctx, input }) => {
         const detail = await feesCollectionService.getPaymentDetail(ctx.scope, input.id);
         if (!detail) throw notFound();
-        return {
-          payment: detail.payment,
-          allocations: detail.allocations.map((a) => ({
-            installmentId: a.installmentId,
-            amountAllocated: a.amountAllocated,
-          })),
-        };
+        return detail;
       }),
 
     list: staffListProcedure("fee_payment:read")
@@ -652,14 +643,14 @@ export const feesRouter = router({
           method: "GET",
           path: "/fee-payments",
           tags: ["fees"],
-          summary: "List a year's payments",
+          summary: "List a year's payments, each with its student label",
           protect: true,
         },
       })
       .input(
         z.object({ academicYearId: z.uuid(), studentId: z.uuid().optional() }),
       )
-      .output(z.array(feePaymentSelectSchema))
+      .output(z.array(feePaymentListRowSchema))
       .query(({ ctx, input }) =>
         feesCollectionService.listPayments(ctx.scopes, input.academicYearId, input.studentId),
       ),
@@ -776,7 +767,7 @@ export const feesRouter = router({
         },
       })
       .input(z.object({ academicYearId: z.uuid(), studentId: z.uuid().optional() }))
-      .output(z.array(financialTransactionSelectSchema))
+      .output(z.array(financialTransactionListRowSchema))
       .query(({ ctx, input }) =>
         feesCollectionService.listLedger(ctx.scopes, input.academicYearId, input.studentId),
       ),
