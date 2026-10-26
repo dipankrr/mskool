@@ -861,8 +861,9 @@ Slice plan (actors, journeys, wireflow, states, chunk order, owner decisions):
 `.kilo/plans/2026-10-26-mobile-exams.md`. Built in chunks 7A–7F; the Screen column
 names the chunk that closes each row. 7A (find the paper, enter marks) and 7B (verify,
 reopen, readiness) are built, device-walked and COMMITTED on `feat/mobile-exams-7a`
-(unpushed); 7C–7F get a design addendum before their UI starts (7C's is written; the
-owner waived pre-review on 2026-10-27).
+(unpushed); 7C (results, publish, correct) is designed (addendum; the owner waived
+pre-review 2026-10-27) and BUILT the same day — committed, not yet device-walked.
+7D–7F still get a design addendum before their UI starts.
 
 | Group | Count | Screen | Done |
 |---|---|---|---|
@@ -872,10 +873,10 @@ owner waived pre-review on 2026-10-27).
 | exam list/byId/create/update/transition | 5 | list/byId/transition 7A · create/update 7D | ◐ 3 of 5 (7A) |
 | schedules list/save + components list/save | 4 | 7D | ☐ |
 | eligibility list/recompute/override + readiness | 4 | list 7A · readiness 7B (moved from 7C, D9) · recompute/override 7D | ◐ 2 of 4 (7A, 7B) |
-| marks entry grid / student entries / autosave / verify / unverify | 5 | entry + autosave 7A · verify/unverify 7B · student entries 7C | ◐ 4 of 5 (7A, 7B) |
-| results table / compute / term ranks / final results | 4 | 7C | ☐ |
-| publication list / publish-class / publish / revision open+close / apply revision | 6 | 7C | ☐ |
-| cards versions / class set + term-grades list / save | 4 | cards 7C · term-grades 7E | ☐ |
+| marks entry grid / student entries / autosave / verify / unverify | 5 | entry + autosave 7A · verify/unverify 7B · student entries 7C (walk pending) | ◐ 5 of 5 (7A–7C) |
+| results table / compute / term ranks / final results | 4 | 7C built 2026-10-27 (walk pending) | ◐ 4 of 4 |
+| publication list / publish-class / publish / revision open+close / apply revision | 6 | 7C built 2026-10-27 (walk pending) | ◐ 6 of 6 |
+| cards versions / class set + term-grades list / save | 4 | cards built 7C 2026-10-27 (walk pending; print/share deferred, D15) · term-grades 7E | ◐ 2 of 4 |
 | portal results list / card (step 9) | 2 | — (Step 9) | ☐ |
 
 Acceptance: principal creates exam → papers inline → teacher enters marks

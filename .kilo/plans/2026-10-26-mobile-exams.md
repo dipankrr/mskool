@@ -1,6 +1,6 @@
 # Mobile Exams + Results — staff (Step 7)
 
-Status: **7A built and walked 2026-10-26; 7B (verify, reopen, readiness) approved (D6–D11), built and walked 2026-10-27. Both are COMMITTED on the branch 2026-10-27 — `2380fab`, `f335a0e`, `ace7f75` (the owner's three, which absorbed the lib/copy/hub groups), then `7820672` (entry rows, student sheet, verify hooks), `e678b4b` (paper screen + route), `968f778` (Home/More entry points) + the docs commit — see the notes at the two "Commits (hand-off)" sections for how the original grouping landed.** 7C–7F: 7C in design/build below.
+Status: **7A built and walked 2026-10-26; 7B (verify, reopen, readiness) approved (D6–D11), built and walked 2026-10-27. Both are COMMITTED on the branch 2026-10-27 — `2380fab`, `f335a0e`, `ace7f75` (the owner's three, which absorbed the lib/copy/hub groups), then `7820672` (entry rows, student sheet, verify hooks), `e678b4b` (paper screen + route), `968f778` (Home/More entry points) + the docs commit — see the notes at the two "Commits (hand-off)" sections for how the original grouping landed.** 7C (results, publish, correct): designed the same day under the owner's pre-review waiver and BUILT, gate-green, **not yet device-walked** — see the addendum below.
 Branch: `feat/mobile-exams-7a`, cut from `main` @ `dbc0a7a`. Committed, NOT pushed, NOT merged.
 Backend is frozen for this step, as for homework and fees; gaps are recorded at the bottom.
 Source of truth for the endpoint list: `exam.router.ts` (46 staff + 2 portal). The portal
@@ -941,3 +941,278 @@ Everything new in 7A is untracked, so `git add -p` needs `git add -N <file>` fir
 
 Do NOT include the unrelated working-tree changes (`apps/api/src/env.ts`, `apps/web/src/lib/*`, `rough.md`,
 `skills-lock.json`, `apps/api/scripts/tmp-*`, `packages/db/*.mjs`, `.kilo/tmp/`, `.zcodeignore`).
+
+---
+
+# Chunk 7C — Results, publish, correct (design addendum, 2026-10-27) — BUILDING
+
+Plan rule 2: the journey, wireflow, states and acceptance are written before any 7C UI.
+The owner waived pre-review on 2026-10-27 ("no need of permission needed for design") and
+directed the build to proceed; every decision below was taken under that waiver, is
+labelled D12–D16, and can be reopened by the owner at any walk. Where this addendum and
+the short "7C — Results, publish, correct" sketch above differ, this wins.
+
+## What the server actually does (read from `exam-results.service.ts` / `exam.router.ts`, not assumed)
+
+13 endpoints, three permission tiers:
+
+- **Reads.** `results.table` (`exam:read`, owner-resolved to the exam): one photograph of
+  the last compute — `examStatus`, roster (active enrollments, roll order), a subject
+  list, per-student×subject rows (`finalMarks/maxMarks/graceMarksApplied/isPassed/
+  isAbsent/isExempted/grade/countsTowardResult/isGradedOnly/resultStatus`), per-student
+  term rows of the exam's term (`total/percentage/grade/isPassed/subjectsFailedCount/
+  rankInSection/rankInClass/resultStatus/publishedAt`), per-subject class stats and the
+  class average. `publication.list` (`exam:read`): a row ONLY for classes already
+  published — `state: published | revision_open | re_issued` with the three timestamps.
+  `marks.studentEntries` (`marks:read`, owner-resolved to the exam): one student's
+  component rows across all the exam's papers, each carrying the `componentResultId` the
+  correction apply needs — ids only, no paper/subject names (join `exam.byId`).
+  `cards.versions` (`report_card:read`, owner-resolved to the STUDENT): every version of
+  the student's cards, newest first. `cards.classSet` (`report_card:read`, owner-resolved
+  to the exam): the class's CURRENT cards for the exam's term — `snapshotData` is
+  `unknown` and must pass `reportCardSnapshotV1` validation before render.
+- **Compute.** `results.compute` (`exam:update`): one class; refuses on
+  published/locked ("This exam is published — recompute is closed. Correct through a
+  revision window."). `results.computeTermRanks` (`exam:update`, term-wide, no owner
+  resolution): ranks per section AND per class; sectionless students get a class rank
+  only. `results.computeFinal` (`exam:update`, year-wide): verdicts
+  `promoted | compartment | detained`; throws "The year's cumulative terms weigh X —
+  they must sum to exactly 100…" when weights do not close; students with no term rows
+  get no final row at all.
+- **Publish.** `publication.publishClass` (`exam:publish`): the exam must be
+  `under_verification` or `published`; then per-schedule entry completeness (cohort ×
+  components rows, no drafts — "every student needs every component entered (or marked
+  absent)") and compute freshness ("Marks changed after the last compute — recompute the
+  results before publishing."). The act flips component/subject/term rows to published,
+  assembles every student's snapshot, re-issues existing cards (version+1), upserts the
+  publication row, writes the audit row, and flips the EXAM to `published` when the last
+  class publishes. All-or-nothing per class. **Verification is optional** (ADR-032 §7):
+  Entered rows publish fine — the readiness card's verified count is how the principal
+  publishes knowingly. `publication.publishExam` (`exam:publish`): loops the scheduled
+  classes, each in its own transaction; failures RIDE ALONG —
+  `{ publishedClasses, failedClassIds }`, no reasons (gap 23).
+- **Correct.** `publication.openRevisionWindow` (`marks:publish`): a guarded UPDATE that
+  returns NULL (not an error) when the class is not published or a window is already
+  open (gap 27). `publication.closeRevisionWindow` (`marks:publish`): requires state
+  `revision_open` (else NULL), then ONE recompute + ranks + re-version of exactly the
+  cards whose snapshot changed; returns `{ reIssued }`. `publication.applyRevision`
+  (`marks:publish`, owner-resolved to the component result): the LEDGER ROW FIRST (hard
+  rule 7; `requestedBy == approvedBy` — no maker-checker in v1), refusals for
+  draft/entered ("edit it directly in the grid") and locked; with an open window it
+  ledgers + updates the mark and stops (`{ applied: true }`, cards move at close);
+  without one it is the auto-window of size one — recompute class + term + ranks and
+  re-photograph every changed card of the CLASS, in one transaction. `reason` ≥ 3 chars,
+  `revisionType` is a four-value enum. It does NOT check `revisedMarks` against the
+  component max (gap 21) — the client must, as in entry.
+- **Default holders.** Principal: everything. Vice principal: compute + corrections +
+  reads, **no `exam:publish`**. Class/subject teacher: `exam:read` + `report_card:read`
+  — the results are visible, every act is hidden. All gating is by permission string
+  (`me.get`), never by role.
+
+## Actor, task, context
+
+**Actor:** the principal (publish) and the principal/VP (compute, correct), at a desk in
+the days after the exam closes, with the verification counts already green from 7B.
+Class teachers open the same screens read-only to see how their class did.
+**Task:** "Are the results fair and complete — and are we ready for families to see
+them?" Compute, scan the ranked list, fix a wrong mark through the ledger, publish one
+class or the exam, and hand out cards. **Frequency:** a few times per term; corrections
+are rare but high-stakes. **Stakes:** publication is the door to families — hard rule 8
+starts here, and every correction after it is a ledgered, versioned act.
+
+Design read: *the principal's decision surface — the calmest, most deliberate screen in
+the app; one decision per screen; numbers that explain themselves.* Dials: variance 2,
+motion 1, density 5. Reuses 7B's read-first row language and the confirm-sheet pattern.
+
+## Journeys
+
+### C1 — Compute and review a class
+Hub (under_verification or later) → class chip → **Results** row → the class results
+screen: readiness strip (entered/verified from `eligibility.readiness`, the stale banner
+when marks changed after the last compute) → ranked list — rank · name · total · % ·
+grade · result pill (or grade-only rows in the GPA branch) → filters
+Failed / Needs attention / Absent → **Compute results** → honest counts → **Compute
+ranks** (per section and class).
+
+### C2 — Publish one class
+Results screen → **Publish this class** (`exam:publish`) → confirm sheet restates the
+readiness counts and says families will see the cards → the server's three refusals
+show inline with their own wording → success banner "Published. Families can see Class
+6's cards now." → the publication card appears (state + timestamp).
+
+### C3 — Publish every class
+Hub options sheet → **Publish all classes** (`exam:publish`) → confirm → result sheet:
+"Published 3 classes." and, honestly, "1 failed: Class 7 — open its results to see why"
+(the failed ids joined to names; the class's readiness card explains).
+
+### C4 — Correct one published mark
+Results → student → **result detail** (term totals, subject rows with pass/absent/exempt
+and grace) → tap the subject → the entries sheet (`marks.studentEntries`: every
+component of every paper, with its id) → a published row → **Correct this mark** →
+sheet: previous value, revised marks (or grade for graded-only), type pills, reason
+≥ 3 chars → confirm says the act applies at once and re-issues affected cards →
+`applyRevision` → "Corrected. Results recomputed; changed cards were re-issued."
+(a draft/entered row instead routes: "edit it directly in the paper screen" with the
+link).
+
+### C5 — A correction window
+Publication card (`marks:publish`) → **Open correction window** → confirm ("corrections
+are ledgered now and apply when you close") → state badge `revision_open` → corrections
+during the window say "will apply when the window closes" → **Close window** → confirm →
+"Window closed · 2 cards re-issued" (the count is real: `reIssued`) or "No card
+changed."
+
+### C6 — Review and hand out the cards
+Results screen → **Report cards** (`report_card:read`) → the class set: student ·
+version · published-at, "No card" for the cohort's gaps → a card renders natively from
+the validated snapshot (widgets in `widgetSequence` order, totals, attendance ribbon,
+term-grade areas) → version history on the same screen (v2 replaces v1 · reason) → a
+card that fails snapshot validation renders "Card data unreadable — shown on the web"
+and never a crash. Print/share: **deferred** (D15) — no `expo-print` in the dev client;
+recorded, not silent.
+
+### C7 — The read-only teacher
+Same screens, zero act affordances: no compute, no publish, no window, no correct —
+hidden, not disabled (the 7B pattern). The result detail reads like a marksheet.
+
+### C8 — Final results (year end)
+Exams list header → **Final results** (`exam:update`) → class chips → the year's
+verdicts: student · Promoted/Compartment/Detained pill → **Compute final
+results** → the weightage refusal verbatim when the year does not close. The
+endpoint is the compute itself — its answer carries only
+`{ studentId, promotionStatus }` (gap 28: no percentage or grade comes back),
+so the row is name + verdict, honestly. Read-only for everyone else (the
+header row hides without `exam:update`).
+
+## Wireflow
+
+```
+Hub ─ class chip ─ "Results" row ─► Class results ─┬─ Compute / Compute ranks
+      │ (under_verification+)                       ├─ Publish confirm ─► banner
+      ├ options ─► Publish all ─► per-class result  ├─ Publication card ─ Open/Close window
+      │                                             ├─ Report cards ─► Class cards ─► Card view (versions)
+      └─ student row ─► Result detail ─┬─ Entries sheet ─► Correct confirm
+                                       └─ Card view
+Exams list header ─► Final results (year-wide compute, class chips)
+```
+
+### Screen 1 — Class results (`/exams/[examId]/class/[classId]`)
+```
+‹ Class 6 · Unit Test 1                       (stage pill: Under verification)
+┌ Readiness ─────────────────────────────────────────────┐
+│ Entered 96 of 96 · Verified 88 ▰▰▰▰▰▰▰▰▱▱               │
+│ ⚠ Marks changed after the last compute — recompute.     │  (readiness.staleCompute)
+│ ⚑ 2 students below the attendance bar (advisory)        │  (belowBar, overridable in 7D)
+└─────────────────────────────────────────────────────────┘
+[ Compute results ]  [ Compute ranks ]          (exam:update; busy → honest counts)
+[ Failed 3 ][ Needs attention 2 ][ Absent 1 ]   (ChipRow filters)
+ 1  Aarav Mehta        412/500   82.4%  A    Pass
+ 2  Bhavya Rao         296/500   59.2%  C    Pass
+ 3  Chirag Das         —        —       —    Not computed
+ 4  Divya Nair        Absent on 2 papers          Fail   (reason spelled, not just colour)
+─────────────────────────────────────────────────────────
+ [           Publish this class           ]              (exam:publish; reason line when off)
+┌ Publication ───────────────────────────────────────────┐
+│ Published 27 Oct · [ Open correction window ]           │  (marks:publish)
+│ Window open since 28 Oct · [ Close window ]             │
+└─────────────────────────────────────────────────────────┘
+ [ Report cards › ]                                      (report_card:read)
+```
+
+### Screen 2 — Result detail (`/exams/[examId]/class/[classId]/student/[studentId]`)
+```
+‹ Bhavya Rao · Class 6                    Rank 12 in class · Rank 3 in 6-B
+┌ Term result ─ 296/500 · 59.2% · Grade C · Pass (2 subjects failed) ┐
+Mathematics          62/80  B   Pass          ›   (tap → entries sheet)
+Physics              48/80  C   Pass          ›
+Personality          A      —   Graded        ›
+Report card: v2 · 26 Oct · [ View › ]
+```
+
+### Screen 3 — Card view (`/exams/[examId]/class/[classId]/card/[studentId]`)
+Native render of `reportCardSnapshotV1`: school/student header, widget groups in
+`widgetSequence` order (subject rows: marks, grade, absent/exempt), totals band with
+ranks, attendance ribbon, term-grade areas with remarks; below, the version history
+rows (v2 replaces v1 · "revision window re-issue" / "correction: …"). Unparseable
+snapshot → the unreadable notice, never a crash.
+
+## States (every screen)
+
+Initial loading = skeleton rows; empty = "Nothing computed yet — Compute results" (table
+null or zero term rows); error = ErrorCard + Retry; offline = the standard offline copy
+with Retry (never optimistic — every act waits for the server); permission = the acts
+are hidden, the reads stay; submitting = the button's pending state with the confirm
+sheet held open until the server answers; success = the 7B banner pattern, then the list
+refetches; resume = reads refetch on focus, an in-flight confirm sheet is cancelled
+safely (the acts are idempotent or refused server-side); unsaved = the correction
+sheet's discards ride FormSheet's guard.
+
+## Component/file plan
+
+- `lib/exam-results.ts` (NEW, pure, tested): row filter predicates (failed /
+  needs-attention / absent), rank display (class vs section), publication and promotion
+  labels/tones, snapshot parse-guard, version diff summary, correction input validation
+  (marks ≤ max, reason ≥ 3, type required).
+- `lib/exams.ts`: no changes needed beyond reusing `isResultsStage`.
+- `lib/copy.ts`: `exams.results.*`, `exams.publication.*`, `exams.cards.*`,
+  `exams.final.*`.
+- `screens/exams/results.tsx` + `use-results.ts` (reads + the six mutations with
+  invalidations), `result-detail.tsx` + `entries-sheet.tsx` + `correction-sheet.tsx` +
+  `use-correction.ts`, `class-cards.tsx`, `card-view.tsx`, `final-results.tsx`.
+- Routes: `app/(staff)/exams/[examId]/class/[classId].tsx`,
+  `.../class/[classId]/student/[studentId].tsx`,
+  `.../class/[classId]/card/[studentId].tsx`, `.../class/[classId]/cards.tsx`,
+  `app/(staff)/exams/final.tsx` (static segment wins over `[examId]`).
+- Hub: a per-class **Results** row from `under_verification` onward (D13);
+  **Publish all classes** in the options sheet (D12).
+
+## Decisions taken under the owner's waiver (reopenable at any walk)
+
+- **D12 — Publish-all lives in the hub options sheet.** An exam-level act next to the
+  stage moves; the class screen publishes exactly one class. The web's both-on-one-page
+  split is deliberate on mobile: one decision per screen.
+- **D13 — The Results row appears from `under_verification` onward.** Compute is legal
+  earlier, but the surface needs 7B's verification story to be honest; at `marks_entry`
+  the hub's readiness card is the truth. Revisit if the owner wants provisional peeks.
+- **D14 — Correction granularity is one component result**, exactly what the ledger
+  rows and `applyRevision` address; no whole-subject batch edit exists server-side.
+- **D15 — Report cards render natively; print/share is deferred.** No `expo-print` /
+  `expo-sharing` in the dev client, and adding them means a native rebuild mid-slice.
+  The follow-up is one commit: install both, render the snapshot to HTML, share the PDF
+  (the plan's D4 recommendation). Recorded in the ledger as 7C ◐ until then.
+- **D16 — Final results is one lean screen** (`/exams/final`): year-wide compute with
+  the weightage refusal verbatim, class chips, verdict pills. The annual's deep surfaces
+  (7E term grades) are separate chunks.
+
+## Backend gaps added during the design (no changes made)
+
+21. `applyRevision` does not check `revisedMarks` against the component max — the client
+    validates as in entry; the server's over-max refusal has no friendly wording (gap 8's family).
+22. `revisionImpactSchema` (contracts) is served by NO route — the rank-move impact
+    preview ADR-032 §8 imagined does not exist for any client; the web confirms without
+    it and so does mobile. Worth one read endpoint someday.
+23. `publishExam` returns `failedClassIds` without reasons; the client links each failed
+    class's results screen where readiness explains.
+24. `cards.classSet` cohorts on ALL enrollments (no status filter) — the list shows
+    "No card" rows for leavers; acceptable, but the read could filter.
+25. `results.table`'s subject list is exam-wide; the class screen intersects it with the
+    class's own schedules from `exam.byId`.
+26. `marks.studentEntries` carries ids only — paper/subject names come from `exam.byId`.
+27. `openRevisionWindow` returns NULL for "already open" and "nothing published" alike —
+    indistinguishable; the sheet's null case reads "Publish the class first."
+28. `results.computeFinal` returns only `{ studentId, promotionStatus }` — no percentage
+    or grade — so a client that wants to show the annual's numbers next to the verdict
+    needs a read endpoint or a wider response. The mobile screen shows name + verdict.
+
+## Acceptance (what the walk must show)
+
+Principal: compute a class → ranks → publish it → the exam flips when the last class
+publishes → open a window → correct a mark inside it → close (reIssued counts) → the
+class card set renders and the version history shows the re-issue. VP: correct outside a
+window (auto-window-of-one) but no publish button exists. Class teacher: everything
+read-only. Refusals verbatim: incomplete entry, stale compute, published-exam recompute,
+locked correction, weightage sum. Every act offline shows the standard failure, never a
+fake success. Filters, GPA-branch grade-only rows, "Not computed" and "No card" states
+all real. 1.3× text and TalkBack labels on the three new screens; Android first, iOS
+stays parked.
+
