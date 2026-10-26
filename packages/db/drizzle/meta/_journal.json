@@ -225,6 +225,13 @@
       "when": 1793003599185,
       "tag": "0031_furry_sister_grimm",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793023609727,
+      "tag": "0032_brown_kingpin",
+      "breakpoints": true
     }
   ]
 }

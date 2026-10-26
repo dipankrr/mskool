@@ -63,6 +63,19 @@ export const boardTypeEnum = pgEnum("board_type", [
 ]);
 
 /**
+ * When a billed student's dues are created (ADR-051). `all_now` writes the
+ * whole session at billing (the original behaviour); the monthly modes write
+ * dues up to the current month and add later months as they arrive —
+ * `monthly_auto` through the API's daily sweep, `monthly_manual` when staff
+ * press "Generate dues". A month's price is the same either way (ADR-050).
+ */
+export const feeGenerationModeEnum = pgEnum("fee_generation_mode", [
+  "all_now",
+  "monthly_auto",
+  "monthly_manual",
+]);
+
+/**
  * A school is a BRANCH under an organization, not a tenant. `schoolId` is the
  * tenancy key on nearly every operational table (hard rule 1).
  *
@@ -99,6 +112,8 @@ export const schools = pgTable(
     principalName: varchar({ length: 255 }),
     establishedOn: date(),
     logoUrl: text(),
+
+    feeGenerationMode: feeGenerationModeEnum().notNull().default("all_now"),
 
     isActive: boolean().notNull().default(true),
 
