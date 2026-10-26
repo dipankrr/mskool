@@ -2323,6 +2323,12 @@ export const copy = {
   fees: {
     title: "Fees",
     tabLabel: "Fees",
+    collectedLateFees: {
+      label: "Count late fees in Collected",
+      help: "On: all cash received. Off: fees only. Applies on this phone, here and on the Fees tab.",
+      included: "incl. late fees",
+      excluded: "fees only",
+    },
     noAccessTitle: "Fees is not on your account",
     noAccessBody:
       "Your role does not include the fee desk. Ask your administrator if that is wrong.",

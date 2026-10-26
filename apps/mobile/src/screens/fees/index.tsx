@@ -33,6 +33,7 @@ import { colors } from "../../theme/brand-admin";
 import { fontFamily, fontSize, radius, spacing } from "../../theme/tokens";
 import { DuesRow } from "./dues-row";
 import { SectionHead } from "./status";
+import { useCollectedIncludesLateFees } from "../../lib/fee-prefs";
 
 type FeeView = "attention" | "overdue" | "paid" | "all";
 
@@ -168,6 +169,14 @@ export function FeesScreen({
     totals?.openingBalance.balance,
   ]);
   const carriedForward = totals?.openingBalance.balance ?? "0.00";
+  // Gap 13: the viewer picks whether Collected counts late fees (the same
+  // switch as Payments). The progress bar stays fees-only: it measures bills.
+  const includeLateFees = useCollectedIncludesLateFees();
+  const collected = totals
+    ? includeLateFees
+      ? sumMoney([totals.paidAmount, totals.lateFeePaidAmount])
+      : totals.paidAmount
+    : null;
   const percent = totals ? paidPercent(totals.paidAmount, totals.netAmount) : 0;
 
   const resetFilters = () => {
@@ -327,7 +336,11 @@ export function FeesScreen({
             {copy.fees.dues.assessed} {formatMoney(totals?.netAmount)}
           </ThemedText>
           <ThemedText variant="meta">
-            {copy.fees.dues.collected} {formatMoney(totals?.paidAmount)}
+            {copy.fees.dues.collected} {formatMoney(collected)}
+            {" · "}
+            {includeLateFees
+              ? copy.fees.collectedLateFees.included
+              : copy.fees.collectedLateFees.excluded}
           </ThemedText>
         </View>
         {isPositiveMoney(carriedForward) ? (

@@ -24,6 +24,11 @@ import { colors } from "../../theme/brand-admin";
 import { fontFamily, fontSize, radius, spacing } from "../../theme/tokens";
 import { PaymentRow } from "./payment-row";
 import { SectionHead } from "./status";
+import { SwitchRow } from "../../components/switch-row";
+import {
+  setCollectedIncludesLateFees,
+  useCollectedIncludesLateFees,
+} from "../../lib/fee-prefs";
 
 type PaymentFilter = "all" | "pending" | "cleared" | "closed";
 
@@ -88,14 +93,19 @@ export function PaymentsScreen() {
     [list.data],
   );
 
+  // Gap 13: "Collected" is fees only, or all cash with late fees — the
+  // viewer chooses, and the same switch drives the Fees tab.
+  const includeLateFees = useCollectedIncludesLateFees();
   const collected = useMemo(
     () =>
       sumMoney(
         payments
           .filter((payment) => payment.paymentStatus === "cleared")
-          .map((payment) => payment.totalAmount),
+          .map((payment) =>
+            includeLateFees ? payment.totalAmount : payment.amount,
+          ),
       ),
-    [payments],
+    [payments, includeLateFees],
   );
 
   const pending = useMemo(
@@ -249,6 +259,13 @@ export function PaymentsScreen() {
         <ThemedText variant="meta">
           {copy.fees.payments.meta(payments.length)}
         </ThemedText>
+        <SwitchRow
+          label={copy.fees.collectedLateFees.label}
+          help={copy.fees.collectedLateFees.help}
+          value={includeLateFees}
+          onChange={setCollectedIncludesLateFees}
+          testID="fee-payments-include-late-fees"
+        />
         {pending.length > 0 ? (
           <View style={styles.pendingLine}>
             <ThemedText variant="meta">

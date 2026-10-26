@@ -301,6 +301,7 @@ export const LEDGER_TYPE_LABEL: Record<string, string> = {
   opening_balance_payment: "Opening balance paid",
   advance_payment: "Advance",
   cheque_bounce_charge: "Bounced payment",
+  payment_cancelled: "Payment cancelled",
   security_deposit_received: "Security deposit",
   security_deposit_refunded: "Deposit refunded",
 };
