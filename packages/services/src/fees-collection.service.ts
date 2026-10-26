@@ -68,9 +68,9 @@ import { and, asc, eq, ilike, inArray, or, sql } from "drizzle-orm";
  * validating the current state and recording `status_updated_*`. There is no
  * free-form status PATCH anywhere. A bounce and a reversal RE-OPEN the
  * installment balances the payment reduced (allocations stay — they are
- * history) and write their own ledger row; `cancelPayment` re-opens too but
- * writes NO ledger row, because a cancelled payment moved no money — the
- * audit trail is the payment row's own status triple.
+ * history) and write their own ledger rows; `cancelPayment` re-opens too and
+ * writes `payment_cancelled` debits — no money moved, but the pending payment
+ * was credited at entry, so the credit is offset (ADR-049).
  *
  * `recordGatewayPayment` is the ADR-009 `system` path: the webhook's signed
  * fact, not a session, is the authorization; the gateway's order id is the
@@ -127,6 +127,30 @@ function ledgerCashEffect(row: {
 }): LedgerCashEffect {
   if (NON_CASH_TRANSACTION_TYPES.has(row.transactionType)) return "none";
   return row.direction === "credit" ? "in" : "out";
+}
+
+type HeldLine = {
+  kind: "installment" | "opening_balance";
+  id: string;
+  heldCents: bigint;
+};
+
+/**
+ * Greedy walk: takes `cents` off the lines in order, mutating each line's
+ * `heldCents`, and returns what was taken from each.
+ */
+function takeFromLines(lines: HeldLine[], cents: bigint) {
+  let remaining = cents;
+  const takes: { line: HeldLine; cents: bigint }[] = [];
+  for (const line of lines) {
+    if (remaining <= 0n) break;
+    const take = line.heldCents < remaining ? line.heldCents : remaining;
+    if (take === 0n) continue;
+    line.heldCents -= take;
+    remaining -= take;
+    takes.push({ line, cents: take });
+  }
+  return takes;
 }
 
 function fullName(parts: {
@@ -870,6 +894,67 @@ export class FeesCollectionService {
   }
 
   /**
+   * What a payment still holds on each line it paid: installment allocations
+   * (due date, then id) followed by carried-forward portions (ledger order),
+   * less everything earlier refunds took back. Refunds always walk the lines
+   * greedily in this order, so replaying their SUM reproduces every earlier
+   * walk exactly — the answer does not depend on how the refunds were split.
+   */
+  private async heldLines(
+    tx: Tx,
+    payment: { id: string; schoolId: string; academicYearId: string; receiptNumber: string },
+  ): Promise<HeldLine[]> {
+    const allocations = await tx
+      .select({
+        installmentId: paymentAllocations.installmentId,
+        amountAllocated: paymentAllocations.amountAllocated,
+      })
+      .from(paymentAllocations)
+      .innerJoin(feeInstallments, eq(feeInstallments.id, paymentAllocations.installmentId))
+      .where(eq(paymentAllocations.paymentId, payment.id))
+      .orderBy(asc(feeInstallments.dueDate), asc(paymentAllocations.installmentId));
+    const portions = await this.openingBalancePortions(tx, payment);
+    const lines: HeldLine[] = [
+      ...allocations.map((a) => ({
+        kind: "installment" as const,
+        id: a.installmentId,
+        heldCents: toCents(a.amountAllocated),
+      })),
+      ...portions.map((p) => ({
+        kind: "opening_balance" as const,
+        id: p.openingBalanceId,
+        heldCents: toCents(p.amount),
+      })),
+    ];
+    const prior = await tx
+      .select({ refundAmount: feeRefunds.refundAmount })
+      .from(feeRefunds)
+      .where(eq(feeRefunds.originalPaymentId, payment.id));
+    takeFromLines(
+      lines,
+      prior.reduce((acc, r) => acc + toCents(r.refundAmount), 0n),
+    );
+    return lines;
+  }
+
+  /** Re-opens each line by the given amount (installment or opening balance). */
+  private async reopenLines(tx: Tx, takes: { line: HeldLine; cents: bigint }[]) {
+    const open = takes.filter((t) => t.cents > 0n);
+    await this.applyToInstallments(
+      tx,
+      open
+        .filter((t) => t.line.kind === "installment")
+        .map((t) => ({ installmentId: t.line.id, amount: `-${fromCents(t.cents)}` })),
+    );
+    await this.applyToOpeningBalances(
+      tx,
+      open
+        .filter((t) => t.line.kind === "opening_balance")
+        .map((t) => ({ openingBalanceId: t.line.id, amount: `-${fromCents(t.cents)}` })),
+    );
+  }
+
+  /**
    * The carried-forward portions of a payment, read from their
    * `opening_balance_payment` ledger rows (ADR-049) — the receipt number is
    * unique per school, so (school, year, receipt) names exactly one payment.
@@ -904,8 +989,8 @@ export class FeesCollectionService {
    * status, flip it with the audit triple, and re-open the installments the
    * payment's allocations had reduced (the allocations themselves stay —
    * history), plus any opening-balance portions. `transactionType` decides
-   * whether offsetting rows are written: a bounce and a reversal are money
-   * events (principal AND frozen late fee, ADR-049); a cancellation is not.
+   * which offsetting debits are written: every transition mirrors the credits
+   * the payment wrote (principal still held AND frozen late fee, ADR-049).
    */
   private async transitionPayment(
     scope: DataScope,
@@ -914,7 +999,7 @@ export class FeesCollectionService {
     opts: {
       from: ("pending" | "cleared")[];
       to: "bounced" | "reversed" | "cancelled";
-      transactionType: "cheque_bounce_charge" | "fee_refund" | null;
+      transactionType: "cheque_bounce_charge" | "fee_refund" | "payment_cancelled";
     },
   ) {
     const schoolId = requireSchoolId(scope);
@@ -939,27 +1024,18 @@ export class FeesCollectionService {
         );
       }
 
-      const allocations = await tx
-        .select({
-          installmentId: paymentAllocations.installmentId,
-          amountAllocated: paymentAllocations.amountAllocated,
-        })
-        .from(paymentAllocations)
-        .where(eq(paymentAllocations.paymentId, payment.id));
-
-      // Re-open: every allocation's amount comes BACK OFF the installment,
-      // and every carried-forward portion back off its opening balance.
-      await this.applyToInstallments(
+      // Re-open what the payment STILL HOLDS on each line — a partial refund
+      // already took its share back, and must not be re-opened twice.
+      const lines = await this.heldLines(tx, payment);
+      const heldCents = lines.reduce((acc, l) => acc + l.heldCents, 0n);
+      if (heldCents === 0n && opts.to !== "cancelled") {
+        throw new Error(
+          `This payment has been fully refunded; there is nothing left to mark ${opts.to}.`,
+        );
+      }
+      await this.reopenLines(
         tx,
-        allocations.map((a) => ({
-          installmentId: a.installmentId,
-          amount: `-${a.amountAllocated}`,
-        })),
-      );
-      const portions = await this.openingBalancePortions(tx, payment);
-      await this.applyToOpeningBalances(
-        tx,
-        portions.map((p) => ({ openingBalanceId: p.openingBalanceId, amount: `-${p.amount}` })),
+        lines.map((l) => ({ line: l, cents: l.heldCents })),
       );
 
       const [updated] = await tx
@@ -977,7 +1053,7 @@ export class FeesCollectionService {
         throw new Error("Failed to update the payment.");
       }
 
-      if (opts.transactionType) {
+      if (heldCents > 0n) {
         await tx.insert(financialTransactions).values({
           organizationId: scope.organizationId,
           schoolId,
@@ -985,7 +1061,8 @@ export class FeesCollectionService {
           academicYearId: payment.academicYearId,
           transactionType: opts.transactionType,
           direction: "debit",
-          amount: payment.amount,
+          // The principal less what refunds already debited (gap 17).
+          amount: fromCents(heldCents),
           referenceId: payment.id,
           referenceTable: "fee_payments",
           receiptNumber: payment.receiptNumber,
@@ -993,26 +1070,26 @@ export class FeesCollectionService {
           transactionDate: new Date().toISOString().slice(0, 10),
           createdBy: actorId,
         });
-        // ADR-049: the late fee frozen on this payment never arrived either
-        // (bounce) or went back with it (reversal) — offset its credit too,
-        // as its own row so each debit mirrors one credit.
-        if (toCents(payment.lateFeeAmount) > 0n) {
-          await tx.insert(financialTransactions).values({
-            organizationId: scope.organizationId,
-            schoolId,
-            studentId: payment.studentId,
-            academicYearId: payment.academicYearId,
-            transactionType: opts.transactionType,
-            direction: "debit",
-            amount: payment.lateFeeAmount,
-            referenceId: payment.id,
-            referenceTable: "fee_payments",
-            receiptNumber: payment.receiptNumber,
-            description: `Late fee reversed: ${input.reason} (${payment.receiptNumber})`,
-            transactionDate: new Date().toISOString().slice(0, 10),
-            createdBy: actorId,
-          });
-        }
+      }
+      // ADR-049: the late fee frozen on this payment never arrived (bounce,
+      // cancel) or went back with it (reversal) — offset its credit too, as
+      // its own row so each debit mirrors one credit.
+      if (toCents(payment.lateFeeAmount) > 0n) {
+        await tx.insert(financialTransactions).values({
+          organizationId: scope.organizationId,
+          schoolId,
+          studentId: payment.studentId,
+          academicYearId: payment.academicYearId,
+          transactionType: opts.transactionType,
+          direction: "debit",
+          amount: payment.lateFeeAmount,
+          referenceId: payment.id,
+          referenceTable: "fee_payments",
+          receiptNumber: payment.receiptNumber,
+          description: `Late fee reversed: ${input.reason} (${payment.receiptNumber})`,
+          transactionDate: new Date().toISOString().slice(0, 10),
+          createdBy: actorId,
+        });
       }
 
       return updated;
@@ -1077,12 +1154,16 @@ export class FeesCollectionService {
     });
   }
 
-  /** A pending payment withdrawn before confirmation. No ledger row: no money moved. */
+  /**
+   * A pending payment withdrawn before confirmation. No money moved, but
+   * recordPayment credited it at entry, so the credits are offset with
+   * `payment_cancelled` debits (gap 15, ADR-049) and it nets to zero cash.
+   */
   async cancelPayment(scope: DataScope, input: PaymentTransitionInput, actorId: string) {
     return this.transitionPayment(scope, input, actorId, {
       from: ["pending"],
       to: "cancelled",
-      transactionType: null,
+      transactionType: "payment_cancelled",
     });
   }
 
@@ -1117,53 +1198,18 @@ export class FeesCollectionService {
         );
       }
 
-      const priorRefunds = await tx
-        .select({ refundAmount: feeRefunds.refundAmount })
-        .from(feeRefunds)
-        .where(eq(feeRefunds.originalPaymentId, payment.id));
-      const alreadyRefunded = priorRefunds.reduce(
-        (acc, r) => acc + toCents(r.refundAmount),
-        0n,
-      );
-      const refundable = toCents(payment.amount) - alreadyRefunded;
+      const lines = await this.heldLines(tx, payment);
+      const refundable = lines.reduce((acc, l) => acc + l.heldCents, 0n);
       if (refundCents > refundable) {
         throw new Error(
           `The refund exceeds what this payment still holds. Refundable: ${fromCents(refundable)}.`,
         );
       }
 
-      const allocations = await tx
-        .select({
-          installmentId: paymentAllocations.installmentId,
-          amountAllocated: paymentAllocations.amountAllocated,
-        })
-        .from(paymentAllocations)
-        .where(eq(paymentAllocations.paymentId, payment.id));
-
-      // Walk the allocations oldest-first, taking back up to the refund;
-      // carried-forward portions come after the installments.
-      let remaining = refundCents;
-      const deltas: { installmentId: string; amount: string }[] = [];
-      for (const a of allocations) {
-        if (remaining <= 0n) break;
-        const allocCents = toCents(a.amountAllocated);
-        const take = allocCents < remaining ? allocCents : remaining;
-        deltas.push({
-          installmentId: a.installmentId,
-          amount: `-${fromCents(take)}`,
-        });
-        remaining -= take;
-      }
-      const openingDeltas: { openingBalanceId: string; amount: string }[] = [];
-      for (const p of await this.openingBalancePortions(tx, payment)) {
-        if (remaining <= 0n) break;
-        const portionCents = toCents(p.amount);
-        const take = portionCents < remaining ? portionCents : remaining;
-        openingDeltas.push({ openingBalanceId: p.openingBalanceId, amount: `-${fromCents(take)}` });
-        remaining -= take;
-      }
-      await this.applyToInstallments(tx, deltas);
-      await this.applyToOpeningBalances(tx, openingDeltas);
+      // Take the refund back off the lines in the same deterministic order
+      // the earlier refunds used (gap 16): installments by due date, then
+      // carried-forward portions.
+      await this.reopenLines(tx, takeFromLines(lines, refundCents));
 
       const [refund] = await tx
         .insert(feeRefunds)
@@ -1515,6 +1561,31 @@ export class FeesCollectionService {
           .orderBy(asc(openingBalances.createdAt))
       : [];
 
+    // Gap 13: the late fee frozen on the year's payments that still stand —
+    // pending or cleared, the same payments whose principal paidAmount
+    // counts. Bounced/reversed/cancelled ones are offset in the ledger.
+    const lateFeeRows = studentIds.length
+      ? await db
+          .select({
+            studentId: feePayments.studentId,
+            lateFee: sql<string>`coalesce(sum(${feePayments.lateFeeAmount}), 0)::text`,
+          })
+          .from(feePayments)
+          .where(
+            and(
+              eq(feePayments.academicYearId, year.id),
+              inArray(feePayments.studentId, studentIds),
+              inArray(feePayments.paymentStatus, ["pending", "cleared"]),
+              scopeWhere(scopes.map(atSchoolLevel), PAYMENT_SCOPE),
+            ),
+          )
+          .groupBy(feePayments.studentId)
+      : [];
+    const lateFeeCentsByStudent = new Map(
+      lateFeeRows.map((r) => [r.studentId, toCents(r.lateFee)]),
+    );
+    let cohortLateFeeCents = 0n;
+
     const installmentsByStudent = new Map<string, MatrixInstallment[]>();
     for (const installment of installmentRows) {
       const rows = installmentsByStudent.get(installment.studentId) ?? [];
@@ -1584,7 +1655,12 @@ export class FeesCollectionService {
         addOpeningBalance(rowOpeningAccumulator, openingRow);
       }
 
-      const totals = matrixAmounts(rowAccumulator, asOf);
+      const lateFeeCents = lateFeeCentsByStudent.get(cohortRow.studentId) ?? 0n;
+      cohortLateFeeCents += lateFeeCents;
+      const totals = {
+        ...matrixAmounts(rowAccumulator, asOf),
+        lateFeePaidAmount: fromCents(lateFeeCents),
+      };
       const assignmentState: FeeMatrixOutput["rows"][number]["assignmentState"] =
         cohortRow.assignmentId === null ? "unassigned" : (cohortRow.assignmentStatus ?? "active");
       const generationState: FeeMatrixOutput["rows"][number]["generationState"] =
@@ -1641,6 +1717,7 @@ export class FeesCollectionService {
     const cohortAmounts = matrixAmounts(cohortAccumulator, asOf);
     const cohortTotals = {
       ...cohortAmounts,
+      lateFeePaidAmount: fromCents(cohortLateFeeCents),
       studentCount: computedRows.length,
       assignedCount: computedRows.filter((row) => row.assignmentId !== null).length,
       notGeneratedCount: computedRows.filter((row) => row.generationState !== "generated").length,

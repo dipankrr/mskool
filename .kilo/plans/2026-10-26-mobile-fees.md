@@ -246,7 +246,7 @@ Further backend gaps found on the walk (no changes made):
     though it is a receivable, not cash.
 12. **[closed]** A bounce posts a debit for the allocated amount only; the late
     fee charged on the bounced payment stays in Money in.
-13. "Collected" differs by screen: the matrix excludes late fees, the payments
+13. **[closed server side — `fees.matrix.list` rows' `totals.lateFeePaidAmount` and `cohortTotals.lateFeePaidAmount`: late fee on the year's pending + cleared payments, so paidAmount + lateFeePaidAmount = collected incl. late fees; mobile toggle pending]** "Collected" differs by screen: the matrix excludes late fees, the payments
     list includes them. (Open.)
 14. **[closed]** Gap 2 is the most visible one left: after a restart, receipts
     and payment detail for fully paid installments show "Installment c1937743".
@@ -278,14 +278,14 @@ with a late fee net to zero (gap 12), waiver is `none` (gap 11).
 
 Still open, found while closing these (backend):
 
-15. `cancelPayment` writes no ledger row, but `recordPayment` already credited
+15. **[closed — migration 0031, `payment_cancelled` debit, cashEffect `out`; mobile label: "Payment cancelled"]** `cancelPayment` writes no ledger row, but `recordPayment` already credited
     the pending payment, so a cancelled payment stays in Money in. Needs a new
     `financial_transaction_type` value (migration) — ADR-049 consequences.
-16. A second partial refund re-walks the allocations from the first one
+16. **[closed — ADR-049 §4]** A second partial refund re-walks the allocations from the first one
     (`recordRefund` does not subtract what earlier refunds took back, and
     reads allocations unordered), so with two or more allocations it can
     over-reopen the first and never reopen the next (the clamp at 0 hides it).
-17. `reversePayment` after a partial refund re-opens the full allocations and
+17. **[closed — ADR-049 §4]** `reversePayment` after a partial refund re-opens the full allocations and
     debits the full principal again — the refunded part is offset twice.
 
 ## Docs / skills used

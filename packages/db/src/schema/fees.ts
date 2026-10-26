@@ -1058,6 +1058,8 @@ export const financialTransactionTypeEnum = pgEnum("financial_transaction_type",
   "opening_balance_payment",
   "advance_payment",
   "cheque_bounce_charge",
+  // Offsets the credits of a pending payment cancelled before it cleared (ADR-049).
+  "payment_cancelled",
   // Reserved for the deposits era (recorded deferral — not written yet).
   "security_deposit_received",
   "security_deposit_refunded",

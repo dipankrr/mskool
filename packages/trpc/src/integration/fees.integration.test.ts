@@ -155,6 +155,7 @@ async function assignAndGenerate(studentId: string, effectiveFrom?: string) {
 }
 
 const paise = (money: string) => BigInt(money.replace(".", ""));
+const fromPaise = (p: bigint) => `${p / 100n}.${String(p % 100n).padStart(2, "0")}`;
 
 const installmentsOf = (assignmentId: string) =>
   db
@@ -1198,7 +1199,7 @@ describe("fees: the remaining named transitions (H5)", () => {
     expect(after?.paymentStatus).toBe("paid");
   });
 
-  it("cancelPayment: pending → cancelled, balances RE-OPEN, NO ledger row", async () => {
+  it("cancelPayment: pending → cancelled, balances RE-OPEN, its credit is offset (gap 15)", async () => {
     const student = await freshStudent("TR2");
     const assignment = await assignAndGenerate(student.id);
     const rows = await installmentsOf(assignment.id);
@@ -1227,13 +1228,18 @@ describe("fees: the remaining named transitions (H5)", () => {
     expect(after?.paidAmount).toBe("0.00");
     expect(after?.paymentStatus).toBe("unpaid");
 
-    // No ledger row: no money moved. The audit trail is the payment's own
-    // status triple.
+    // No money moved, but the pending payment was credited at entry: the
+    // cancel offsets it with a payment_cancelled debit (ADR-049, gap 15).
     const ledgerAfter = await db
       .select()
       .from(financialTransactions)
       .where(eq(financialTransactions.referenceId, payment.id));
-    expect(ledgerAfter).toHaveLength(ledgerBefore.length);
+    expect(ledgerAfter).toHaveLength(ledgerBefore.length + 1);
+    const offset = ledgerAfter.find((r) => r.transactionType === "payment_cancelled");
+    expect(offset?.direction).toBe("debit");
+    expect(offset?.amount).toBe(payment.amount);
+    const cashRows = await feesCollectionService.listLedger([w.scopeA], w.yearAId, student.id);
+    expect(cashRows.find((r) => r.transactionType === "payment_cancelled")?.cashEffect).toBe("out");
 
     // Cancelling a CLEARED payment is refused — that money moved.
     const clearedPayment = await feesCollectionService.recordPayment(
@@ -2801,7 +2807,7 @@ describe("fees: mobile backend gaps (ADR-049)", () => {
     expect(cashIn - cashOut).toBe(paise(row.paidAmount));
   });
 
-  it("gap 12: a bounce and a reversal offset the late fee as well as the principal", async () => {
+  it("gaps 12 and 15: bounce, reversal and cancel offset the late fee as well as the principal", async () => {
     await db.insert(lateFeeRules).values({
       organizationId: w.orgAId,
       schoolId: w.schoolAId,
@@ -2821,8 +2827,8 @@ describe("fees: mobile backend gaps (ADR-049)", () => {
       const tuition = (await installmentsOf(assignment.id))
         .filter((r) => r.feeHeadId === w.tuitionHeadId)
         .sort((a, b) => (a.dueDate < b.dueDate ? -1 : 1));
-      const [first, second] = tuition;
-      if (!first || !second) throw new Error("Tuition installments missing.");
+      const [first, second, third] = tuition;
+      if (!first || !second || !third) throw new Error("Tuition installments missing.");
 
       // Both paid long past due: the flat rule fires on each.
       const cheque = await feesCollectionService.recordPayment(
@@ -2848,8 +2854,26 @@ describe("fees: mobile backend gaps (ADR-049)", () => {
         },
         w.adminId,
       );
+      const withdrawn = await feesCollectionService.recordPayment(
+        w.scopeA,
+        {
+          studentId: student.id,
+          academicYearId: w.yearAId,
+          paymentDate: "2025-06-20",
+          paymentMode: "upi",
+          transactionReference: "UPI-G12",
+          allocations: [{ installmentId: third.id, amount: third.netAmount }],
+        },
+        w.adminId,
+      );
       expect(cheque.lateFeeAmount).toBe("75.00");
       expect(cash.lateFeeAmount).toBe("75.00");
+      expect(withdrawn.lateFeeAmount).toBe("75.00");
+      await feesCollectionService.cancelPayment(
+        w.scopeA,
+        { paymentId: withdrawn.id, reason: "Parent withdrew" },
+        w.adminId,
+      );
 
       await feesCollectionService.bouncePayment(
         w.scopeA,
@@ -2865,6 +2889,7 @@ describe("fees: mobile backend gaps (ADR-049)", () => {
       for (const [payment, type] of [
         [cheque, "cheque_bounce_charge"],
         [cash, "fee_refund"],
+        [withdrawn, "payment_cancelled"],
       ] as const) {
         const debits = await db
           .select()
@@ -2894,7 +2919,190 @@ describe("fees: mobile backend gaps (ADR-049)", () => {
         .set({ isActive: false })
         .where(and(eq(lateFeeRules.schoolId, w.schoolAId), eq(lateFeeRules.isActive, true)));
     }
+  }, 90_000);
+
+  /** A cleared cash payment covering the student's first two tuition months. */
+  async function twoLinePayment(tag: string) {
+    const student = await freshStudent(tag);
+    const assignment = await assignAndGenerate(student.id);
+    const [first, second] = (await installmentsOf(assignment.id))
+      .filter((r) => r.feeHeadId === w.tuitionHeadId)
+      .sort((a, b) => (a.dueDate < b.dueDate ? -1 : 1));
+    if (!first || !second) throw new Error("Tuition installments missing.");
+    // Listed second-first on purpose: the walk order is by due date, not input order.
+    const payment = await feesCollectionService.recordPayment(
+      w.scopeA,
+      {
+        studentId: student.id,
+        academicYearId: w.yearAId,
+        paymentDate: "2025-04-01",
+        paymentMode: "cash",
+        allocations: [
+          { installmentId: second.id, amount: second.netAmount },
+          { installmentId: first.id, amount: first.netAmount },
+        ],
+      },
+      w.adminId,
+    );
+    const paidOf = async (id: string) => {
+      const [row] = await db.select().from(feeInstallments).where(eq(feeInstallments.id, id));
+      return [row?.paidAmount, row?.paymentStatus];
+    };
+    const refund = (amount: string) =>
+      feesCollectionService.recordRefund(
+        w.scopeA,
+        {
+          originalPaymentId: payment.id,
+          refundAmount: amount,
+          refundDate: "2025-04-02",
+          refundMode: "cash",
+          reason: `Refund ${amount}`,
+        },
+        w.adminId,
+      );
+    return { student, first, second, payment, paidOf, refund };
+  }
+
+  it("gap 16: repeated partial refunds walk on from where the last one stopped", async () => {
+    const { first, second, payment, paidOf, refund } = await twoLinePayment("G16");
+    expect(first.netAmount).toBe("1000.00");
+    expect(second.netAmount).toBe("1000.00");
+    expect(payment.amount).toBe("2000.00");
+
+    await refund("300.00");
+    expect(await paidOf(first.id)).toEqual(["700.00", "partial"]);
+    expect(await paidOf(second.id)).toEqual(["1000.00", "paid"]);
+
+    // The old walk took this from the first line again (clamped at 0) and
+    // never touched the second.
+    await refund("1200.00");
+    expect(await paidOf(first.id)).toEqual(["0.00", "unpaid"]);
+    expect(await paidOf(second.id)).toEqual(["500.00", "partial"]);
+
+    await refund("500.00");
+    expect(await paidOf(second.id)).toEqual(["0.00", "unpaid"]);
+    await expect(refund("0.01")).rejects.toThrow(/Refundable: 0.00/);
   });
+
+  it("gap 17: a reversal after a partial refund offsets only what the payment still holds", async () => {
+    const { student, first, second, payment, paidOf, refund } = await twoLinePayment("G17");
+    await refund("300.00");
+
+    await feesCollectionService.reversePayment(
+      w.scopeA,
+      { paymentId: payment.id, reason: "Disputed" },
+      w.adminId,
+    );
+    expect(await paidOf(first.id)).toEqual(["0.00", "unpaid"]);
+    expect(await paidOf(second.id)).toEqual(["0.00", "unpaid"]);
+
+    const [reversal] = await db
+      .select()
+      .from(financialTransactions)
+      .where(
+        and(
+          eq(financialTransactions.referenceId, payment.id),
+          eq(financialTransactions.direction, "debit"),
+        ),
+      );
+    expect(reversal?.transactionType).toBe("fee_refund");
+    expect(reversal?.amount).toBe("1700.00");
+
+    const ledger = await feesCollectionService.listLedger([w.scopeA], w.yearAId, student.id);
+    const net = ledger.reduce((acc, r) => {
+      if (r.cashEffect === "in") return acc + paise(r.amount);
+      if (r.cashEffect === "out") return acc - paise(r.amount);
+      return acc;
+    }, 0n);
+    expect(net).toBe(0n);
+
+    // A fully refunded payment has nothing left to reverse.
+    const full = await twoLinePayment("G17B");
+    await full.refund("2000.00");
+    await expect(
+      feesCollectionService.reversePayment(
+        w.scopeA,
+        { paymentId: full.payment.id, reason: "Too late" },
+        w.adminId,
+      ),
+    ).rejects.toThrow(/fully refunded/);
+  }, 90_000);
+
+  it("gap 13: the matrix reports late fees on standing payments beside paidAmount", async () => {
+    await db.insert(lateFeeRules).values({
+      organizationId: w.orgAId,
+      schoolId: w.schoolAId,
+      feeStructureId: null,
+      gracePeriodDays: 0,
+      calculationType: "flat",
+      value: "40.00",
+      maxLateFee: null,
+      isActive: true,
+      effectiveFrom: "2025-04-01",
+      effectiveTo: null,
+      createdBy: w.adminId,
+    });
+    try {
+      const student = await freshStudent("G13");
+      const assignment = await assignAndGenerate(student.id);
+      const [first, second, third] = (await installmentsOf(assignment.id))
+        .filter((r) => r.feeHeadId === w.tuitionHeadId)
+        .sort((a, b) => (a.dueDate < b.dueDate ? -1 : 1));
+      if (!first || !second || !third) throw new Error("Tuition installments missing.");
+      const pay = (installment: typeof first, mode: "cash" | "cheque") =>
+        feesCollectionService.recordPayment(
+          w.scopeA,
+          {
+            studentId: student.id,
+            academicYearId: w.yearAId,
+            paymentDate: "2025-06-20",
+            paymentMode: mode,
+            ...(mode === "cheque" ? { transactionReference: `CHQ-${installment.id.slice(0, 6)}` } : {}),
+            allocations: [{ installmentId: installment.id, amount: installment.netAmount }],
+          },
+          w.adminId,
+        );
+      await pay(first, "cash"); // cleared: counts
+      await pay(second, "cheque"); // pending: counts, like its principal
+      const bounced = await pay(third, "cheque");
+      await feesCollectionService.bouncePayment(
+        w.scopeA,
+        { paymentId: bounced.id, reason: "Cheque returned" },
+        w.adminId,
+      );
+
+      const result = feeMatrixOutputSchema.parse(
+        await feesCollectionService.listMatrix(
+          [w.scopeA],
+          feeMatrixInputSchema.parse({ academicYearId: w.yearAId, search: `${RUN}-G13` }),
+          true,
+        ),
+      );
+      const [row] = result.rows;
+      expect(result.rows).toHaveLength(1);
+      expect(row?.totals.lateFeePaidAmount).toBe("80.00");
+      // paidAmount stays principal only: the two standing installments.
+      expect(row?.totals.paidAmount).toBe(
+        fromPaise(paise(first.netAmount) + paise(second.netAmount)),
+      );
+      expect(result.cohortTotals.lateFeePaidAmount).toBe("80.00");
+
+      // A student with no payments reports zero, not a missing field.
+      const none = await freshStudent("G13B");
+      await assignAndGenerate(none.id);
+      const empty = await feesCollectionService.listMatrix(
+        [w.scopeA],
+        feeMatrixInputSchema.parse({ academicYearId: w.yearAId, search: `${RUN}-G13B` }),
+        true,
+      );
+      expect(empty?.rows[0]?.totals.lateFeePaidAmount).toBe("0.00");
+    } finally {
+      await db
+        .update(lateFeeRules)
+        .set({ isActive: false })
+        .where(and(eq(lateFeeRules.schoolId, w.schoolAId), eq(lateFeeRules.isActive, true)));
+    }
+  }, 90_000);
 
   it("gap 11: waivers stay as written but are receivables, never cash", async () => {
     const student = await freshStudent("G11");
