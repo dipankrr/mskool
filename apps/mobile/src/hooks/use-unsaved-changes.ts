@@ -20,23 +20,38 @@ import { copy } from "../lib/copy";
  * work. Discard is destructive-styled, but it only means "leave"; nothing has
  * been sent to the server.
  */
-export function useUnsavedChanges(dirty: boolean): void {
+export function useUnsavedChanges(
+  dirty: boolean,
+  messages?: {
+    title: string;
+    body: string;
+    keepEditing: string;
+    discard: string;
+  },
+): void {
   const navigation = useNavigation();
   const pendingAction = useRef<NavigationAction | null>(null);
   const [discarding, setDiscarding] = useState(false);
 
   usePreventRemove(dirty && !discarding, ({ data }) => {
-    Alert.alert(copy.forms.discardTitle, copy.forms.discardBody, [
-      { text: copy.forms.keepEditing, style: "cancel" },
-      {
-        text: copy.forms.discard,
-        style: "destructive",
-        onPress: () => {
-          pendingAction.current = data.action;
-          setDiscarding(true);
+    Alert.alert(
+      messages?.title ?? copy.forms.discardTitle,
+      messages?.body ?? copy.forms.discardBody,
+      [
+        {
+          text: messages?.keepEditing ?? copy.forms.keepEditing,
+          style: "cancel",
         },
-      },
-    ]);
+        {
+          text: messages?.discard ?? copy.forms.discard,
+          style: "destructive",
+          onPress: () => {
+            pendingAction.current = data.action;
+            setDiscarding(true);
+          },
+        },
+      ],
+    );
   });
 
   useEffect(() => {

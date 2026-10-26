@@ -3125,4 +3125,359 @@ export const copy = {
       },
     },
   },
+  /** Staff exams and marks entry (Step 7). */
+  exams: {
+    title: "Exams",
+    meta: (session: string | null, branch: string | null) =>
+      [session, branch].filter(Boolean).join(" · "),
+    noBranchTitle: "Choose a branch",
+    noBranchBody: "Exams belong to one branch. Pick one from More to continue.",
+    noYearTitle: "No running session",
+    noYearBody: "Exams belong to a session, and this branch has none running.",
+    deniedTitle: "Exams aren't in your account",
+    deniedBody:
+      "Your role doesn't include viewing exams. Ask your administrator if you need it.",
+    gone: "This exam is no longer available.",
+    goneBody: "It may have been removed or moved to another branch.",
+    refreshing: "Refreshing…",
+    stage: {
+      draft: "Draft",
+      scheduled: "Scheduled",
+      ongoing: "Ongoing",
+      marks_entry: "Marks entry",
+      under_verification: "Under verification",
+      published: "Published",
+      locked: "Locked",
+    },
+    type: {
+      regular: "Regular",
+      supplementary: "Supplementary",
+      improvement: "Improvement",
+      mock: "Mock",
+      test: "Class test",
+    },
+    list: {
+      segmentLabel: "Exam stage",
+      segments: {
+        open: "Open",
+        upcoming: "Upcoming",
+        published: "Published",
+        all: "All",
+      },
+      segmentA11y: (label: string, count: number) =>
+        `${label}, ${count} ${count === 1 ? "exam" : "exams"}`,
+      openA11y: "Open for marks",
+      classes: (scheduled: number, published: number) =>
+        `${scheduled} ${scheduled === 1 ? "class" : "classes"} scheduled · ${published} published`,
+      emptyTitle: "No exams in this session yet",
+      emptyBody:
+        "Exams appear here once the school office schedules them for this session.",
+      emptyOpenTitle: "No exams are open for marks",
+      emptyOpenBody:
+        "Marks entry opens when an exam moves to Marks entry. Check Upcoming for what is coming.",
+      emptyUpcomingTitle: "No upcoming exams",
+      emptyUpcomingBody: "Nothing is waiting to start in this session.",
+      emptyPublishedTitle: "No published exams yet",
+      emptyPublishedBody: "Results appear here once an exam is published.",
+      loadError: "Couldn't load the exams.",
+      hint: "Opens the exam",
+    },
+    hub: {
+      weight: (percent: string) => `${percent}% of term`,
+      notCounted: "Not counted in the term",
+      stageOf: (index: number, total: number) => `Stage ${index} of ${total}`,
+      next: (label: string) => `Next: ${label}`,
+      papers: "Papers",
+      classChipsLabel: "Class",
+      allSections: "All sections",
+      section: (name: string) => `Section ${name}`,
+      outOf: (total: string) => `Out of ${total}`,
+      duration: (minutes: number) => `${minutes} min`,
+      yourPaper: "Your paper",
+      notYourPaper: "Not your paper",
+      enter: "Enter marks",
+      view: "View marks",
+      waiting: "Opens when marks entry starts",
+      noPapersTitle: "No papers yet",
+      noPapersBody: "The office hasn't scheduled any papers for this exam.",
+      noClassPapersTitle: "No papers for this class",
+      review: {
+        classLine: (entered: number, expected: number) =>
+          `Entered ${entered} of ${expected}`,
+        classCounts: (verified: number, toVerify: number) =>
+          `${verified} verified · ${toVerify} to verify`,
+        orderHint: "needs review first",
+        paperCounts: (verified: number, toVerify: number, missing: number) =>
+          [
+            `${verified} verified`,
+            `${toVerify} to verify`,
+            missing > 0 ? `${missing} missing` : null,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        pillToVerify: "To verify",
+        pillVerified: "Verified",
+        pillNone: "No marks yet",
+        pillWaiting: "Waiting for marks",
+        action: "Review marks",
+        loading: "Checking marks…",
+      },
+      notStartedTitle: "Marks entry hasn't started",
+      notStartedBody:
+        "Papers open for marks once the exam reaches Marks entry. The schedule is below.",
+      noneMineTitle: "None of these papers are yours",
+      noneMineBody:
+        "You can still look at any paper. Entering marks is for the paper's assigned teacher.",
+      loadError: "Couldn't load this exam.",
+      options: "Options",
+      optionsTitle: "Exam options",
+      optionsHint: "Opens back-step and lock options",
+      moved: (stage: string) => `Exam moved to ${stage}.`,
+      confirmForward: "Move this exam forward?",
+      confirmBack: "Move this exam back?",
+      confirmLock: "Lock this exam?",
+      keep: "Not now",
+      couldntMove: "Couldn't move this exam",
+      transitions: {
+        scheduled: "Schedule exam",
+        ongoing: "Mark as ongoing",
+        marks_entry: "Open marks entry",
+        under_verification: "Start verification",
+        back_to_entry: "Back to marks entry",
+        back_to_draft: "Back to draft",
+        locked: "Lock exam",
+      },
+      consequences: {
+        scheduled:
+          "The blueprint is checked for coverage. Once marks entry opens, the schedule freezes.",
+        ongoing: "The exam is marked as in progress.",
+        marks_entry:
+          "Subject teachers can begin entering marks. The schedule freezes.",
+        // The web says "entry closes for editing", but the service keeps
+        // saving open in this stage (only VERIFIED rows lock), so say what is true.
+        under_verification:
+          "Verification of the entered marks begins. Marks stay editable until they are verified.",
+        back_to_entry:
+          "Verification found corrections — the exam returns to marks entry.",
+        back_to_draft:
+          "The exam returns to draft; its schedule can be restructured.",
+        locked: "The exam locks permanently. This cannot be undone.",
+      },
+    },
+    paper: {
+      meta: (exam: string, total: string, pass: string) =>
+        `${exam} · out of ${total} · pass ${pass}`,
+      sectionLabel: "Section",
+      sectionPlaceholder: "Choose section",
+      sectionSheetTitle: "Choose your section",
+      progress: (entered: number, total: number) =>
+        `Entered ${entered} of ${total}`,
+      progressA11y: (entered: number, total: number) =>
+        `${entered} of ${total} students have marks entered`,
+      componentLabel: "Component",
+      filterLabel: "Show",
+      filters: {
+        all: "All",
+        missing: "Missing",
+        absent: "Absent",
+        below: "Below pass",
+      },
+      filterA11y: (label: string, count: number) => `${label}, ${count}`,
+      filterEmptyTitle: "Nothing here",
+      filterEmptyBody: "No students match this filter right now.",
+      showAll: "Show all",
+      goToBlank: "Go to first blank",
+      noBlank: "Every student has a value.",
+      emptyTitle: "No students in this paper yet",
+      emptyBody:
+        "Students appear once they're enrolled in the class for this session.",
+      loadError: "Couldn't load this paper.",
+      notOpenTitle: "Marks entry isn't open",
+      notOpenBody:
+        "Entry opens when the exam moves to Marks entry. You can look, but not change anything.",
+      notAssignedTitle: "You're not the assigned teacher for this paper",
+      notAssignedBody:
+        "You can view these marks. Only the paper's subject teacher can enter them.",
+      noPermissionTitle: "Your role can't enter marks",
+      noPermissionBody:
+        "You can view these marks. Entering them needs the marks entry permission.",
+      pickSectionTitle: "Choose your section to start",
+      pickSectionBody:
+        "This paper is for the whole class. The section you pick is the one you're entering marks for.",
+      noSectionsTitle: "No section to enter for",
+      noSectionsBody:
+        "You aren't assigned to any section of this class for this subject.",
+      pickSection: "Choose section",
+      roll: (roll: string | null) => (roll ? roll : "–"),
+      absentChip: "AB",
+      absentOn: "Absent. Tap to clear.",
+      absentOff: "Mark absent",
+      exemptChip: "Exempt",
+      exemptHint: "Opens this student's details",
+      belowBar: "Below attendance bar",
+      belowBarAllowed: "Allowed despite attendance",
+      outOfMax: (max: string) => `Out of ${max}`,
+      enterNumber: "Enter a number",
+      noNegative: "Marks can't be negative",
+      notSaved: "Not saved · Tap to retry",
+      verified: "Verified",
+      rowLabel: (
+        roll: string | null,
+        name: string,
+        component: string | null,
+        max: string,
+        value: string,
+      ) =>
+        `${roll ? `Roll ${roll}, ` : ""}${name}${component ? `, ${component}` : ""}, out of ${max}${
+          value ? `, ${value}` : ", empty"
+        }`,
+      gradeLabel: (roll: string | null, name: string) =>
+        `${roll ? `Roll ${roll}, ` : ""}${name}, grade`,
+      gradePlaceholder: "Grade",
+      saveStatus: {
+        saved: "All changes saved",
+        saving: "Saving…",
+        unsaved: (n: number) =>
+          `${n} ${n === 1 ? "row isn't" : "rows aren't"} saved`,
+        typing: "Unsaved changes",
+      },
+      retryAll: "Retry all",
+      failedTitle: "That didn't save",
+      useSaved: "Use saved value",
+      tryAgain: "Try again",
+      keepEditing: "Keep editing",
+      leaveTitle: "Some marks aren't saved",
+      leaveBody:
+        "Leaving now loses the values you typed that haven't saved yet.",
+      leave: "Leave anyway",
+      next: "Next",
+      done: "Done",
+      sheet: {
+        position: (index: number, total: number) => `${index} of ${total}`,
+        previous: "Previous student",
+        next: "Next student",
+        absent: "Absent",
+        exempt: "Exempted",
+        exemptType: "Exemption type",
+        exemptTypeNote:
+          "A saved exemption's type isn't shown here. Choose one to change it.",
+        types: {
+          medical: "Medical",
+          disability: "Disability",
+          board_approved: "Board approved",
+          other: "Other",
+        },
+        rollAdmission: (roll: string | null, admission: string) =>
+          roll ? `Roll ${roll} · Adm. ${admission}` : `Adm. ${admission}`,
+        doneAction: "Done",
+        /** A verified row, shown to someone who can reopen it. */
+        lockedReviewer: "Verified. Reopen it to change the mark.",
+        /** A verified row, shown to someone who cannot. */
+        lockedTeacher: "This entry is verified. Ask a reviewer to reopen it.",
+        /** Published or locked: only the correction window (a later chunk) can change it. */
+        lockedSealed:
+          "This result is published. Corrections after publication need a correction window.",
+        reopenAction: "Reopen for correction",
+        reopenTitle: "Reopen for correction?",
+        reopenBody:
+          "This returns the mark to 'to verify' so it can be changed. You can verify it again afterwards.",
+        reopenConfirm: "Reopen",
+        reopenKeep: "Cancel",
+        reopenFailed: "Couldn't reopen",
+      },
+      review: {
+        modeLabel: "Mode",
+        modeEnter: "Enter",
+        modeReview: "Review",
+        meterLine: (verified: number, toVerify: number, missing: number) =>
+          `${verified} verified · ${toVerify} to verify · ${missing} missing`,
+        perMark: "Counted per mark, not per student.",
+        wholePaper: (verified: number, cells: number) =>
+          `Whole paper: ${verified} of ${cells} verified`,
+        meterA11y: (verified: number, toVerify: number, missing: number) =>
+          `${verified} verified, ${toVerify} to verify, ${missing} missing`,
+        filterLabel: "Review filter",
+        filters: {
+          toVerify: "To verify",
+          verified: "Verified",
+          missing: "Missing",
+          absent: "Absent",
+        },
+        filterEmptyTitle: "Nothing here",
+        filterEmptyBody: "No students match this filter right now.",
+        sectionScope: (name: string, students: number, sectionless: number) =>
+          `Verifying section ${name} · ${students} ${students === 1 ? "student" : "students"}` +
+          (sectionless > 0 ? ` (${sectionless} with no section yet)` : ""),
+        sectionNeeded: "Choose the section you're verifying",
+        verifiedWord: "Verified",
+        changedPill: "Changed",
+        changedLine: "Changed just now",
+        belowPass: "Below pass",
+        rowLabel: (
+          roll: string | null,
+          name: string,
+          value: string,
+          state: string,
+        ) => `${roll ? `Roll ${roll}, ` : ""}${name}, ${value}, ${state}`,
+        stateEntered: "entered, not yet verified",
+        stateVerified: "verified",
+        stateMissing: "no mark yet",
+        emptyTitle: "Nothing to review yet",
+        emptyBody: "Marks appear here once teachers enter them.",
+        goToEntry: "Go to entry",
+        allVerifiedTitle: (n: number) =>
+          `All ${n} ${n === 1 ? "entry is" : "entries are"} verified`,
+        allVerifiedBody: "Tap a student to reopen a mark that needs correcting.",
+        verify: (n: number) => `Verify ${n} ${n === 1 ? "entry" : "entries"}`,
+        why: {
+          unsaved: "Save or discard your edits first.",
+          noSection: "Choose the section you're verifying.",
+          nothingEntered: "Nothing has been entered yet.",
+          allVerified: "Everything entered is verified.",
+          onlyChanged: "Review the changed marks first.",
+          loading: "Checking the latest marks…",
+          noPartition: "Couldn't tell which students are in this section.",
+        },
+        changedBanner: (n: number) =>
+          `${n} ${n === 1 ? "mark" : "marks"} changed while you were reviewing.`,
+        reviewChanges: "Review changes",
+        sheetTitle: (n: number) =>
+          `Verify ${n} ${n === 1 ? "entry" : "entries"}?`,
+        sheetBody: (n: number, students: number, section: string | null) =>
+          `${n} ${n === 1 ? "mark" : "marks"} for ${students} ${students === 1 ? "student" : "students"}${section ? ` in section ${section}` : ""} will lock.`,
+        sheetExcluded: (n: number) =>
+          `${n} ${n === 1 ? "student has" : "students have"} no mark yet and ${n === 1 ? "is" : "are"} not included.`,
+        sheetHeld: (n: number) =>
+          `${n} changed ${n === 1 ? "mark is" : "marks are"} held back until you review ${n === 1 ? "it" : "them"}.`,
+        sheetConsequence:
+          "A reviewer can reopen them until results are published. This is recorded under your name.",
+        sheetConfirm: (n: number) =>
+          `Verify ${n} ${n === 1 ? "entry" : "entries"}`,
+        sheetKeep: "Not yet",
+        sheetFailed: "Couldn't verify",
+        staleMessage: (n: number) =>
+          `${n} ${n === 1 ? "mark" : "marks"} changed while you were reviewing. Review ${n === 1 ? "it" : "them"} first.`,
+        success: (n: number) =>
+          `Verified ${n} ${n === 1 ? "entry" : "entries"}.`,
+        reopenThese: "Reopen these",
+        reopened: (n: number) =>
+          `Reopened ${n} ${n === 1 ? "entry" : "entries"}.`,
+        reopenBatchTitle: (n: number) =>
+          `Reopen ${n} ${n === 1 ? "entry" : "entries"}?`,
+        reopenBatchBody:
+          "They return to 'to verify' so they can be changed. You can verify them again afterwards.",
+      },
+    },
+    home: {
+      title: "Marks to enter",
+      open: "Marks entry is open",
+      hint: "Opens the exam",
+      loadError: "Couldn't check for open exams.",
+    },
+    more: {
+      section: "Teaching",
+      detail: "Marks entry and results",
+      hint: "Opens the exams list",
+    },
+  },
 } as const;

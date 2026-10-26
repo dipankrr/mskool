@@ -86,6 +86,11 @@ const iconMap = {
   refund: { ios: "arrow.uturn.backward.circle.fill", android: "replay" },
   warningCircle: { ios: "exclamationmark.circle.fill", android: "error" },
   share: { ios: "square.and.arrow.up", android: "share" },
+  /** Exams — the assessment domain. */
+  exams: { ios: "list.clipboard.fill", android: "assignment" },
+  marks: { ios: "square.and.pencil", android: "edit-note" },
+  absent: { ios: "person.fill.xmark", android: "person-off" },
+  refresh: { ios: "arrow.clockwise", android: "refresh" },
 } as const satisfies Record<
   string,
   { ios: SFSymbol; android: keyof typeof MaterialIcons.glyphMap }

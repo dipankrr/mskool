@@ -18,7 +18,7 @@ import type { AppIconName } from "./app-icon";
 import { useTabBarSpace } from "./tab-bar";
 import { ThemedText } from "./themed-text";
 
-type HeaderAction = {
+export type HeaderAction = {
   /** Already-localised label; it is also the accessibility label. */
   label: string;
   onPress: () => void;
@@ -182,7 +182,7 @@ export function ScreenFrame({
  * label is always the accessibility label, so the glyph never stands alone for
  * a screen reader.
  */
-function HeaderActionButton({ action }: { action: HeaderAction }) {
+export function HeaderActionButton({ action }: { action: HeaderAction }) {
   return (
     <Pressable
       testID={action.testID}
