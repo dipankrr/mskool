@@ -8,6 +8,8 @@ import {
   createSubscriptionSchema,
   duesListSchema,
   assignFeeStructureSchema,
+  billClassOutputSchema,
+  billClassSchema,
   feeHeadSelectSchema,
   feeMatrixCellInputSchema,
   feeMatrixCellOutputSchema,
@@ -456,6 +458,22 @@ export const feesRouter = router({
       .output(studentFeeAssignmentSelectSchema)
       .mutation(({ ctx, input }) =>
         feesBillingService.assignFeeStructure(ctx.scope, input.data, ctx.userId),
+      ),
+
+    billClass: staffProcedure("student_fee_assignment:create")
+      .meta({
+        openapi: {
+          method: "POST",
+          path: "/fee-assignments/bill-class",
+          tags: ["fees"],
+          summary: "Bill every not-yet-billed student of a class (skips the billed)",
+          protect: true,
+        },
+      })
+      .input(z.object({ data: billClassSchema, ...schoolParent.shape }))
+      .output(billClassOutputSchema)
+      .mutation(({ ctx, input }) =>
+        feesBillingService.billClass(ctx.scope, input.data, ctx.userId),
       ),
 
     generateInstallments: staffProcedure("student_fee_assignment:update")

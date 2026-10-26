@@ -43,6 +43,8 @@ import {
   feeRefunds,
   paymentAllocations as paymentAllocationsTable,
   students as studentsTable,
+  studentEnrollments,
+  studentFeeAssignments,
   feeInstallments,
   feeStructureLines,
   feeStructures,
@@ -60,7 +62,7 @@ import {
   feesService,
   organizationService,
 } from "@repo/services";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 const RUN = `fees-itg-${Date.now()}`;
 
@@ -3114,5 +3116,208 @@ describe("fees: mobile backend gaps (ADR-049)", () => {
     const waiver = ledger.find((r) => r.transactionType === "waiver_applied");
     expect(waiver?.direction).toBe("debit"); // the immutable row is unchanged
     expect(waiver?.cashEffect).toBe("none");
+  });
+});
+
+describe("fees: bill a whole class (billClass)", () => {
+  let classId: string;
+  let sectionAId: string;
+  let sectionBId: string;
+  let bareClassId: string;
+  let preBilledAssignmentId: string;
+  const ids: Record<string, string> = {};
+
+  beforeAll(async () => {
+    const klass = await academicService.createClass(w.scopeA, {
+      name: `Fee Bulk ${RUN}`,
+      numericOrder: 90,
+    });
+    classId = klass.id;
+    const [sectionA, sectionB] = await Promise.all(
+      ["BK-A", "BK-B"].map((name) =>
+        academicService.createSection(w.scopeA, {
+          academicYearId: w.yearAId,
+          classId,
+          name,
+        }),
+      ),
+    );
+    if (!sectionA || !sectionB) throw new Error("Bulk sections missing.");
+    sectionAId = sectionA.id;
+    sectionBId = sectionB.id;
+
+    const structure = await feesService.createFeeStructure(
+      w.scopeA,
+      {
+        academicYearId: w.yearAId,
+        classId,
+        name: `Fee Bulk Structure ${RUN}`,
+        installmentMode: "monthly",
+      },
+      w.adminId,
+    );
+    await db.insert(feeStructureLines).values({
+      organizationId: w.orgAId,
+      schoolId: w.schoolAId,
+      feeStructureId: structure.id,
+      feeHeadId: w.tuitionHeadId,
+      annualAmount: "12000.00",
+      installmentFrequency: "monthly",
+    });
+
+    const enrollInto = async (tag: string, sectionId: string) => {
+      const student = await freshStudent(`BK-${tag}`);
+      ids[tag] = student.id;
+      return enrollmentService.createEnrollment(w.scopeA, {
+        studentId: student.id,
+        academicYearId: w.yearAId,
+        classId,
+        sectionId,
+        enrollmentDate: "2025-04-01",
+      });
+    };
+
+    // Section A: one already billed, one new, one who left.
+    const preBilled = await enrollInto("A-PRE", sectionAId);
+    const assignment = await feesBillingService.assignFeeStructure(
+      w.scopeA,
+      { enrollmentId: preBilled.id },
+      w.adminId,
+    );
+    await feesBillingService.generateInstallments(w.scopeA, assignment.id);
+    preBilledAssignmentId = assignment.id;
+    await enrollInto("A-NEW", sectionAId);
+    const left = await enrollInto("A-LEFT", sectionAId);
+    await db
+      .update(studentEnrollments)
+      .set({ enrollmentStatus: "withdrawn" })
+      .where(eq(studentEnrollments.id, left.id));
+
+    // Section B: two new.
+    await enrollInto("B-NEW1", sectionBId);
+    await enrollInto("B-NEW2", sectionBId);
+
+    const bare = await academicService.createClass(w.scopeA, {
+      name: `Fee Bulk Bare ${RUN}`,
+      numericOrder: 91,
+    });
+    bareClassId = bare.id;
+    const bareStudent = await freshStudent("BK-BARE");
+    await enrollmentService.createEnrollment(w.scopeA, {
+      studentId: bareStudent.id,
+      academicYearId: w.yearAId,
+      classId: bareClassId,
+      enrollmentDate: "2025-04-01",
+    });
+  });
+
+  it("section filter: bills only the section's unbilled, skips the billed, refuses the left", async () => {
+    const result = await feesBillingService.billClass(
+      w.scopeA,
+      { academicYearId: w.yearAId, classId, sectionId: sectionAId },
+      w.adminId,
+    );
+    expect(result.refusal).toBeNull();
+    expect(result.billed.map((s) => s.studentId)).toEqual([ids["A-NEW"]]);
+    expect(result.skipped.map((s) => [s.studentId, s.assignmentId])).toEqual([
+      [ids["A-PRE"], preBilledAssignmentId],
+    ]);
+    expect(result.refused).toEqual([
+      expect.objectContaining({
+        studentId: ids["A-LEFT"],
+        reason: "Not enrolled: withdrawn.",
+      }),
+    ]);
+    expect([result.billedCount, result.skippedCount, result.refusedCount]).toEqual([1, 1, 1]);
+
+    // The billed student got the full year's monthly dues in the same call.
+    const billed = result.billed[0];
+    expect(billed?.installmentsCreated).toBe(12);
+    const rows = await installmentsOf(billed?.assignmentId ?? "");
+    expect(rows).toHaveLength(12);
+    expect(rows.reduce((acc, r) => acc + paise(r.netAmount), 0n)).toBe(1_200_000n);
+
+    // Section B is untouched by a section-A run.
+    const sectionB = await db
+      .select({ id: studentFeeAssignments.id })
+      .from(studentFeeAssignments)
+      .where(
+        and(
+          eq(studentFeeAssignments.academicYearId, w.yearAId),
+          inArray(studentFeeAssignments.studentId, [ids["B-NEW1"]!, ids["B-NEW2"]!]),
+        ),
+      );
+    expect(sectionB).toHaveLength(0);
+  });
+
+  it("whole class: bills the rest; a second run bills nobody", async () => {
+    const first = await feesBillingService.billClass(
+      w.scopeA,
+      { academicYearId: w.yearAId, classId },
+      w.adminId,
+    );
+    expect(first.billed.map((s) => s.studentId).sort()).toEqual(
+      [ids["B-NEW1"], ids["B-NEW2"]].sort(),
+    );
+    expect(first.skippedCount).toBe(2); // A-PRE and A-NEW from the section run
+    expect(first.refusedCount).toBe(1);
+
+    const second = await feesBillingService.billClass(
+      w.scopeA,
+      { academicYearId: w.yearAId, classId },
+      w.adminId,
+    );
+    expect(second.billedCount).toBe(0);
+    expect(second.skippedCount).toBe(4);
+    expect(second.refusedCount).toBe(1);
+
+    // No duplicate dues: still exactly 12 per billed student.
+    for (const s of first.billed) {
+      expect(await installmentsOf(s.assignmentId)).toHaveLength(12);
+    }
+  });
+
+  it("a class with no active fee chart refuses as a whole", async () => {
+    const result = await feesBillingService.billClass(
+      w.scopeA,
+      { academicYearId: w.yearAId, classId: bareClassId },
+      w.adminId,
+    );
+    expect(result.refusal).toMatch(/no active fee chart/i);
+    expect(result.feeStructureId).toBeNull();
+    expect([result.billedCount, result.skippedCount, result.refusedCount]).toEqual([0, 0, 0]);
+  });
+
+  it("refuses a class of another school, billing nobody", async () => {
+    const outsider = await freshStudent("BK-X");
+    await enrollmentService.createEnrollment(w.scopeA, {
+      studentId: outsider.id,
+      academicYearId: w.yearAId,
+      classId,
+      sectionId: sectionBId,
+      enrollmentDate: "2025-04-01",
+    });
+    await expect(
+      feesBillingService.billClass(
+        w.scopeB,
+        { academicYearId: w.yearAId, classId },
+        w.adminId,
+      ),
+    ).rejects.toThrow(/^Class not found in this school/);
+    const assigned = await db
+      .select({ id: studentFeeAssignments.id })
+      .from(studentFeeAssignments)
+      .where(eq(studentFeeAssignments.studentId, outsider.id));
+    expect(assigned).toHaveLength(0);
+  });
+
+  it("refuses a section of a different class", async () => {
+    await expect(
+      feesBillingService.billClass(
+        w.scopeA,
+        { academicYearId: w.yearAId, classId: bareClassId, sectionId: sectionAId },
+        w.adminId,
+      ),
+    ).rejects.toThrow(/^The section is not in the class being billed/);
   });
 });

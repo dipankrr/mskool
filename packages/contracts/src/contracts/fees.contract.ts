@@ -378,6 +378,51 @@ export const assignFeeStructureSchema = z.object({
 });
 export type AssignFeeStructureInput = z.infer<typeof assignFeeStructureSchema>;
 
+/**
+ * "Bill all students in this class": for every enrollment of the class (and
+ * section, when given) in the year that has NO fee assignment yet, assign the
+ * class's active structure and generate its installments — one transaction
+ * per student. Already-billed students are skipped, so a second run bills
+ * nobody. Billing one student (`assignFeeStructureSchema`) stays for
+ * mid-year admissions and special cases.
+ */
+export const billClassSchema = z.object({
+  academicYearId: z.uuid(),
+  classId: z.uuid(),
+  sectionId: z.uuid().optional(),
+});
+export type BillClassInput = z.infer<typeof billClassSchema>;
+
+const billClassStudentSchema = z.object({
+  studentId: z.uuid(),
+  enrollmentId: z.uuid(),
+  studentName: z.string(),
+  admissionNumber: z.string(),
+});
+
+/**
+ * The outcome per student. `refusal` is set when the class refuses AS A WHOLE
+ * (no active fee chart) — then all three lists are empty. Otherwise each
+ * enrolled student lands in exactly one list; every refusal carries a
+ * plain-English reason.
+ */
+export const billClassOutputSchema = z.object({
+  feeStructureId: z.uuid().nullable(),
+  refusal: z.string().nullable(),
+  billedCount: z.number().int(),
+  skippedCount: z.number().int(),
+  refusedCount: z.number().int(),
+  billed: z.array(
+    billClassStudentSchema.extend({
+      assignmentId: z.uuid(),
+      installmentsCreated: z.number().int(),
+    }),
+  ),
+  skipped: z.array(billClassStudentSchema.extend({ assignmentId: z.uuid() })),
+  refused: z.array(billClassStudentSchema.extend({ reason: z.string() })),
+});
+export type BillClassOutput = z.infer<typeof billClassOutputSchema>;
+
 /** Which assignment to (re-)run the idempotent generator for. */
 export const generateInstallmentsSchema = z.object({
   studentFeeAssignmentId: z.uuid(),
