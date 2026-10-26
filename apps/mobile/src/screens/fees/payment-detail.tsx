@@ -138,11 +138,18 @@ export function PaymentDetailScreen() {
 
   const refunds = useMemo(
     () =>
+      // A refund's ledger row references the refund, not the payment; it
+      // carries the payment's receipt number. A reversal also writes
+      // `fee_refund` but references the payment itself, so the table tells
+      // the two apart.
       (ledger.data ?? []).filter(
         (row) =>
-          row.transactionType === "fee_refund" && row.referenceId === paymentId,
+          row.transactionType === "fee_refund" &&
+          row.referenceTable === "fee_refunds" &&
+          payment !== null &&
+          row.receiptNumber === payment.receiptNumber,
       ),
-    [ledger.data, paymentId],
+    [ledger.data, payment],
   );
 
   const refunded = useMemo(
@@ -806,7 +813,7 @@ function RefundSheet({
         utils.fees.assignment.byStudent.invalidate(),
       ]);
 
-      onDone(copy.fees.payment.refundDone(toMoneyString(parsed)));
+      onDone(copy.fees.payment.refundDone(formatMoney(toMoneyString(parsed))));
     } catch (cause) {
       setError(cause);
     }
