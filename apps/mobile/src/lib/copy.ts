@@ -2323,6 +2323,26 @@ export const copy = {
   fees: {
     title: "Fees",
     tabLabel: "Fees",
+    checklist: {
+      title: (year: string) => `Set up ${year}`,
+      hint: "Tap a step to do it",
+      heads: "Fee types",
+      headsTodo: "Add tuition, transport and the other fees you charge.",
+      headsDone: (count: number) => `${count} fee types`,
+      charts: "Fee charts",
+      chartsTodo: "Set what each class pays this session.",
+      chartsDone: (count: number) =>
+        count === 1 ? "1 fee chart" : `${count} fee charts`,
+      rule: "Late-fee rule (optional)",
+      ruleTodo: "Choose a late fee, or skip this step.",
+      ruleDone: "Late fee set",
+      bill: "Bill students",
+      billTodo: (count: number) =>
+        count === 1
+          ? "1 student has no bill yet. Open a fee chart and bill the class."
+          : `${count} students have no bill yet. Open a fee chart and bill the class.`,
+      billDone: "Everyone is billed",
+    },
     sessionClosed:
       "This session is closed. Fees can be viewed, but nothing new can be collected, billed or changed.",
     collectedLateFees: {

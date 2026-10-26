@@ -37,6 +37,7 @@ import { useCollectedIncludesLateFees } from "../../lib/fee-prefs";
 import { monthKeyOf, splitByMonth } from "../../lib/fees";
 import { useSessionOpen } from "../../hooks/use-session-open";
 import { Notice } from "../../components/notice";
+import { FeeSetupChecklist } from "./setup-checklist";
 
 type FeeView = "attention" | "overdue" | "paid" | "all";
 
@@ -149,6 +150,27 @@ export function FeesScreen({
         Boolean(organizationId) &&
         Boolean(academicYear?.id),
       placeholderData: keepPreviousData,
+    },
+  );
+
+  // Whole-cohort counts for the setup checklist: the list above is filtered
+  // by view and search, so it cannot say how many students are unbilled.
+  const cohort = trpc.fees.matrix.list.useQuery(
+    {
+      organizationId: organizationId ?? "",
+      academicYearId: academicYear?.id ?? "",
+      page: 1,
+      pageSize: 1,
+      view: "all",
+    },
+    {
+      enabled:
+        ready &&
+        canReadMatrix &&
+        canSetup &&
+        Boolean(organizationId) &&
+        Boolean(academicYear?.id),
+      staleTime: 60_000,
     },
   );
 
@@ -354,6 +376,13 @@ export function FeesScreen({
           testID="fees-session-closed"
         />
       ) : null}
+      {cohort.data ? (
+        <FeeSetupChecklist
+          studentCount={cohort.data.cohortTotals.studentCount}
+          billedCount={cohort.data.cohortTotals.assignedCount}
+        />
+      ) : null}
+
       <SegmentBar
         label={copy.fees.dues.periodLabel}
         value={period}
