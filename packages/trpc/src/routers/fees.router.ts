@@ -10,6 +10,10 @@ import {
   assignFeeStructureSchema,
   billClassOutputSchema,
   billClassSchema,
+  feeGenerationModeSchema,
+  feeIsoDateSchema,
+  generateThroughOutputSchema,
+  generateThroughSchema,
   feeHeadSelectSchema,
   feeMatrixCellInputSchema,
   feeMatrixCellOutputSchema,
@@ -78,6 +82,41 @@ const READ_HISTORY = "academic_year:read_history" as const;
 const schoolParent = z.object({ schoolId: z.uuid() });
 
 export const feesRouter = router({
+  // -------------------------------------------------------------------------
+  // School fee settings — fee.settings.* (ADR-051)
+  // -------------------------------------------------------------------------
+  settings: router({
+    get: staffProcedure("fee_structure:read")
+      .meta({
+        openapi: {
+          method: "GET",
+          path: "/fee-settings",
+          tags: ["fees"],
+          summary: "The school's fee settings (when dues are created)",
+          protect: true,
+        },
+      })
+      .input(schoolParent)
+      .output(z.object({ mode: feeGenerationModeSchema }))
+      .query(({ ctx }) => feesBillingService.getFeeGenerationMode(ctx.scope)),
+
+    setGenerationMode: staffProcedure("fee_structure:update")
+      .meta({
+        openapi: {
+          method: "PATCH",
+          path: "/fee-settings/generation-mode",
+          tags: ["fees"],
+          summary: "Choose all dues at billing, or month by month (auto or manual)",
+          protect: true,
+        },
+      })
+      .input(z.object({ mode: feeGenerationModeSchema, ...schoolParent.shape }))
+      .output(z.object({ mode: feeGenerationModeSchema }))
+      .mutation(({ ctx, input }) =>
+        feesBillingService.setFeeGenerationMode(ctx.scope, input.mode),
+      ),
+  }),
+
   // -------------------------------------------------------------------------
   // Heads — fee.head.*
   // -------------------------------------------------------------------------
@@ -486,10 +525,30 @@ export const feesRouter = router({
           protect: true,
         },
       })
-      .input(z.object({ id: z.uuid(), ...schoolParent.shape }))
-      .output(z.object({ inserted: z.number().int() }))
+      // `through` (ADR-051): write only dues due on or before this date —
+      // "pay ahead" in a monthly school. Left out, the school's mode decides.
+      .input(z.object({ id: z.uuid(), through: feeIsoDateSchema.optional(), ...schoolParent.shape }))
+      .output(z.object({ inserted: z.number().int(), through: feeIsoDateSchema.nullable() }))
       .mutation(({ ctx, input }) =>
-        feesBillingService.generateInstallments(ctx.scope, input.id),
+        feesBillingService.generateInstallments(ctx.scope, input.id, undefined, {
+          through: input.through,
+        }),
+      ),
+
+    generateThrough: staffProcedure("student_fee_assignment:update")
+      .meta({
+        openapi: {
+          method: "POST",
+          path: "/fee-assignments/generate-through",
+          tags: ["fees"],
+          summary: "Generate every billed student's dues up to a date (month by month)",
+          protect: true,
+        },
+      })
+      .input(z.object({ data: generateThroughSchema, ...schoolParent.shape }))
+      .output(generateThroughOutputSchema)
+      .mutation(({ ctx, input }) =>
+        feesBillingService.generateThrough(ctx.scope, input.data),
       ),
 
     recomputeConcessions: staffProcedure("student_fee_assignment:update")

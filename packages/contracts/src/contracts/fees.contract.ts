@@ -406,6 +406,34 @@ const billClassStudentSchema = z.object({
  * enrolled student lands in exactly one list; every refusal carries a
  * plain-English reason.
  */
+/**
+ * When a school's dues are created (ADR-051): the whole session at billing,
+ * or month by month — automatically by the API's daily sweep, or when staff
+ * generate them.
+ */
+export const feeGenerationModeSchema = z.enum(["all_now", "monthly_auto", "monthly_manual"]);
+export type FeeGenerationModeValue = z.infer<typeof feeGenerationModeSchema>;
+
+/** "Generate dues up to {date}" for a session, optionally one class. */
+/** A request-level ISO date, exported for routes that take one. */
+export const feeIsoDateSchema = isoDate;
+
+export const generateThroughSchema = z.object({
+  academicYearId: z.uuid(),
+  through: isoDate,
+  classId: z.uuid().nullish(),
+});
+export type GenerateThroughInput = z.infer<typeof generateThroughSchema>;
+
+export const generateThroughOutputSchema = z.object({
+  through: isoDate,
+  studentCount: z.number().int().nonnegative(),
+  studentsWithNewDues: z.number().int().nonnegative(),
+  inserted: z.number().int().nonnegative(),
+  failed: z.array(z.object({ assignmentId: z.uuid(), reason: z.string() })),
+});
+export type GenerateThroughOutput = z.infer<typeof generateThroughOutputSchema>;
+
 export const billClassOutputSchema = z.object({
   feeStructureId: z.uuid().nullable(),
   refusal: z.string().nullable(),

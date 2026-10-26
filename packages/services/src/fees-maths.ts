@@ -74,6 +74,12 @@ export function monthsBetween(
   return out;
 }
 
+/** The last day of the month an ISO date falls in: "2026-10-26" → "2026-10-31". */
+export function endOfMonthIso(isoDate: string): string {
+  const { year, month } = parseIso(isoDate);
+  return isoOf(year, month, daysInMonth(year, month));
+}
+
 export function daysInMonth(year: number, month: number): number {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }

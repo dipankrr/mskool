@@ -63,6 +63,7 @@ import {
   organizationService,
 } from "@repo/services";
 import { and, eq, inArray, sql } from "drizzle-orm";
+import { getRedis } from "@repo/authz";
 
 const RUN = `fees-itg-${Date.now()}`;
 
@@ -3322,4 +3323,154 @@ describe("fees: bill a whole class (billClass)", () => {
       ),
     ).rejects.toThrow(/^The section is not in the class being billed/);
   });
+});
+
+describe("fees: month-by-month generation (ADR-051)", () => {
+  async function assignOnly(studentId: string) {
+    const enrollment = await enroll(studentId);
+    return feesBillingService.assignFeeStructure(
+      w.scopeA,
+      { enrollmentId: enrollment.id },
+      w.adminId,
+    );
+  }
+
+  const endOfThisMonth = () => {
+    const now = new Date();
+    const last = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(last)}`;
+  };
+
+  it("generates a prefix, adds the rest later, and matches all-at-once to the paisa", async () => {
+    const once = await assignOnly((await freshStudent("MB1")).id);
+    const stepped = await assignOnly((await freshStudent("MB2")).id);
+    for (const id of [once.id, stepped.id]) {
+      await feesService.createConcession(
+        w.scopeA,
+        id,
+        {
+          concessionType: "merit_scholarship",
+          calculationType: "percentage",
+          value: "10",
+          validFrom: "2025-04-01",
+        },
+        w.adminId,
+      );
+    }
+
+    await feesBillingService.generateInstallments(w.scopeA, once.id, undefined, {
+      through: "all",
+    });
+
+    const first = await feesBillingService.generateInstallments(
+      w.scopeA,
+      stepped.id,
+      undefined,
+      { through: "2025-06-30" },
+    );
+    const early = await installmentsOf(stepped.id);
+    expect(early.length).toBeGreaterThan(0);
+    expect(early.every((r) => r.dueDate <= "2025-06-30")).toBe(true);
+    expect(first.inserted).toBe(early.length);
+
+    await feesBillingService.generateInstallments(w.scopeA, stepped.id, undefined, {
+      through: "2025-12-31",
+    });
+    await feesBillingService.generateInstallments(w.scopeA, stepped.id, undefined, {
+      through: "all",
+    });
+    const again = await feesBillingService.generateInstallments(
+      w.scopeA,
+      stepped.id,
+      undefined,
+      { through: "all" },
+    );
+    expect(again.inserted).toBe(0);
+
+    // Same rows, same amounts, same concession shares: generating month by
+    // month never piles a concession onto the first months.
+    const all = await installmentsOf(once.id);
+    const steppedRows = await installmentsOf(stepped.id);
+    expect(steppedRows).toHaveLength(all.length);
+    const key = (r: { feeHeadId: string; installmentNumber: number }) =>
+      `${r.feeHeadId}:${r.installmentNumber}`;
+    const byKey = new Map(all.map((r) => [key(r), r]));
+    for (const row of steppedRows) {
+      const twin = byKey.get(key(row));
+      expect(twin).toBeTruthy();
+      expect(row.dueDate).toBe(twin?.dueDate);
+      expect(row.amount).toBe(twin?.amount);
+      expect(row.concessionAmount).toBe(twin?.concessionAmount);
+    }
+  });
+
+  it("generateThrough brings a class up to a date; a second run adds nothing", async () => {
+    const student = await freshStudent("MB3");
+    const assignment = await assignOnly(student.id);
+
+    const result = await feesBillingService.generateThrough(w.scopeA, {
+      academicYearId: w.yearAId,
+      through: "2025-05-31",
+      classId: w.classId,
+    });
+    expect(result.failed).toHaveLength(0);
+    expect(result.inserted).toBeGreaterThan(0);
+    const rows = await installmentsOf(assignment.id);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.dueDate <= "2025-05-31")).toBe(true);
+
+    const again = await feesBillingService.generateThrough(w.scopeA, {
+      academicYearId: w.yearAId,
+      through: "2025-05-31",
+      classId: w.classId,
+    });
+    expect(again.inserted).toBe(0);
+  }, 180_000);
+
+  it("the school's mode decides the cut-off when none is asked", async () => {
+    try {
+      await feesBillingService.setFeeGenerationMode(w.scopeA, "monthly_manual");
+      expect(await feesBillingService.getFeeGenerationMode(w.scopeA)).toEqual({
+        mode: "monthly_manual",
+      });
+      expect(
+        await feesBillingService.resolveThrough(db, w.schoolAId, undefined),
+      ).toBe(endOfThisMonth());
+      expect(await feesBillingService.resolveThrough(db, w.schoolAId, "all")).toBeNull();
+
+      await feesBillingService.setFeeGenerationMode(w.scopeA, "all_now");
+      expect(
+        await feesBillingService.resolveThrough(db, w.schoolAId, undefined),
+      ).toBeNull();
+    } finally {
+      await feesBillingService.setFeeGenerationMode(w.scopeA, "all_now");
+    }
+  });
+
+  it("the sweep fills billed students of monthly_auto schools, and only those", async () => {
+    // A run killed mid-sweep (a timed-out test) leaves its lease until the
+    // TTL; clear it so this test exercises the sweep, not the lease.
+    await getRedis().del("lock:fees-monthly-sweep");
+    const student = await freshStudent("MB4");
+    const assignment = await assignOnly(student.id);
+    expect(await installmentsOf(assignment.id)).toHaveLength(0);
+
+    // all_now school: the sweep leaves it alone.
+    await feesBillingService.runMonthlySweep({ schoolIds: [w.schoolAId] });
+    expect(await installmentsOf(assignment.id)).toHaveLength(0);
+
+    try {
+      await feesBillingService.setFeeGenerationMode(w.scopeA, "monthly_auto");
+      const swept = await feesBillingService.runMonthlySweep({ schoolIds: [w.schoolAId] });
+      expect(swept.summary).not.toMatch(/^skipped/);
+      const rows = await installmentsOf(assignment.id);
+      // The fixture session ended before today, so "up to this month" is all
+      // of it.
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows.every((r) => r.dueDate <= endOfThisMonth())).toBe(true);
+    } finally {
+      await feesBillingService.setFeeGenerationMode(w.scopeA, "all_now");
+    }
+  }, 180_000);
 });

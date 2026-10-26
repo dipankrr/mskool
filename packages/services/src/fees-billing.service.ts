@@ -4,6 +4,7 @@ import {
   isoOf,
   monthsBetween,
   splitIntoBuckets,
+  endOfMonthIso,
   billedAmountCents,
   type SplitLineInput,
   toCents,
@@ -27,6 +28,7 @@ import {
   feeStructures,
   financialTransactions,
   openingBalances,
+  schools,
   sections,
   studentEnrollments,
   studentFeeAssignments,
@@ -35,6 +37,8 @@ import {
   terms,
 } from "@repo/db/schema";
 import { and, asc, eq, inArray } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { getRedis } from "@repo/authz";
 
 /**
  * FEES — the billing engine. Phase 4, chunk F4.
@@ -93,6 +97,19 @@ function isUniqueViolation(error: unknown): boolean {
     current = (current as { cause?: unknown }).cause;
   }
   return false;
+}
+
+/** Redis lease for the monthly sweep (ADR-051), as the homework sweeper. */
+const FEES_SWEEP_LEASE_KEY = "lock:fees-monthly-sweep";
+const FEES_SWEEP_LEASE_TTL_MS = 10 * 60_000;
+
+export type FeeGenerationMode = "all_now" | "monthly_auto" | "monthly_manual";
+
+/** The server's local calendar date as ISO, for month-by-month cut-offs. */
+function todayIso(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
 export class FeesBillingService {
@@ -395,6 +412,27 @@ export class FeesBillingService {
   }
 
   /**
+   * The cut-off date for a generation run (ADR-051): an explicit date, or
+   * `null` for the whole session — from `"all"`, or from the school's
+   * `fee_generation_mode` when nothing was asked. Monthly schools generate up
+   * to the end of the current month (the server's date).
+   */
+  async resolveThrough(
+    exec: Executor,
+    schoolId: string,
+    requested: string | "all" | undefined,
+  ): Promise<string | null> {
+    if (requested === "all") return null;
+    if (requested) return requested;
+    const [school] = await exec
+      .select({ mode: schools.feeGenerationMode })
+      .from(schools)
+      .where(eq(schools.id, schoolId));
+    if (!school || school.mode === "all_now") return null;
+    return endOfMonthIso(todayIso());
+  }
+
+  /**
    * Each structure line's split input for one student: the line, the
    * structure's mode, the year and its terms, and the student's effective
    * date. Assignment (the billed base), generation (the buckets) and
@@ -475,13 +513,23 @@ export class FeesBillingService {
    * never duplicate or rewrite what exists. A structure or concession change
    * reaches the student through `recomputeAssignmentConcessions` (for money)
    * — never by silent regeneration.
+   *
+   * `through` (ADR-051) limits which dues are written: only buckets due on or
+   * before that date. Left out, it follows the school's
+   * `fee_generation_mode`: `all_now` writes the whole session, the monthly
+   * modes write up to the end of the current month. `"all"` forces the whole
+   * session. Concession shares are always computed over the FULL set of
+   * buckets and only then filtered, so generating month by month gives every
+   * due exactly the share it would have had if written at once.
    */
   async generateInstallments(
     scope: DataScope,
     assignmentId: string,
     exec: Executor = db,
+    options: { through?: string | "all" } = {},
   ) {
     const schoolId = requireSchoolId(scope);
+    const through = await this.resolveThrough(exec, schoolId, options.through);
 
     const [assignment] = await exec
       .select()
@@ -617,12 +665,16 @@ export class FeesBillingService {
       });
     }
 
-    if (desired.length === 0) return { inserted: 0 };
+    // Month by month: write only what is due by `through`. Buckets are in
+    // date order, so this is a prefix and numbers stay stable as later
+    // months are added.
+    const due = through ? desired.filter((d) => d.dueDate <= through) : desired;
+    if (due.length === 0) return { inserted: 0, through };
 
     const inserted = await exec
       .insert(feeInstallments)
       .values(
-        desired.map((d) => ({
+        due.map((d) => ({
           organizationId: assignment.organizationId,
           schoolId: assignment.schoolId,
           studentFeeAssignmentId: assignment.id,
@@ -649,7 +701,7 @@ export class FeesBillingService {
       })
       .returning({ id: feeInstallments.id });
 
-    return { inserted: inserted.length };
+    return { inserted: inserted.length, through };
   }
 
   /**
@@ -885,6 +937,178 @@ export class FeesBillingService {
         ),
       )
       .orderBy(asc(openingBalances.createdAt));
+  }
+
+  // -------------------------------------------------------------------------
+  // Generation mode and month-by-month generation (ADR-051)
+  // -------------------------------------------------------------------------
+
+  /** The school's fee generation mode. */
+  async getFeeGenerationMode(scope: DataScope) {
+    const schoolId = requireSchoolId(scope);
+    const [school] = await db
+      .select({ mode: schools.feeGenerationMode })
+      .from(schools)
+      .where(
+        and(eq(schools.id, schoolId), eq(schools.organizationId, scope.organizationId)),
+      );
+    if (!school) throw new Error("School not found.");
+    return { mode: school.mode };
+  }
+
+  /**
+   * Changes when dues are created. Switching never removes or rewrites a
+   * due: moving to a monthly mode only stops FUTURE runs writing ahead, and
+   * moving to `all_now` writes nothing until the next billing or
+   * "Generate dues" run fills the rest of the session.
+   */
+  async setFeeGenerationMode(scope: DataScope, mode: FeeGenerationMode) {
+    const schoolId = requireSchoolId(scope);
+    const [school] = await db
+      .update(schools)
+      .set({ feeGenerationMode: mode })
+      .where(
+        and(eq(schools.id, schoolId), eq(schools.organizationId, scope.organizationId)),
+      )
+      .returning({ mode: schools.feeGenerationMode });
+    if (!school) throw new Error("School not found.");
+    return { mode: school.mode };
+  }
+
+  /**
+   * "Generate dues up to {month}" for every active assignment of a session
+   * (optionally one class). Each student runs in its own transaction, so one
+   * refusal never rolls back the rest; the generator's insert-only key makes
+   * a second run a no-op. `through` is an ISO date — dues due on or before it
+   * are written.
+   */
+  async generateThrough(
+    scope: DataScope,
+    input: { academicYearId: string; through: string; classId?: string | null },
+  ) {
+    const schoolId = requireSchoolId(scope);
+    const filters = [
+      eq(studentFeeAssignments.schoolId, schoolId),
+      eq(studentFeeAssignments.academicYearId, input.academicYearId),
+      eq(studentFeeAssignments.status, "active"),
+    ];
+    if (input.classId) filters.push(eq(studentEnrollments.classId, input.classId));
+    const rows = await db
+      .select({ id: studentFeeAssignments.id })
+      .from(studentFeeAssignments)
+      .innerJoin(
+        studentEnrollments,
+        eq(studentEnrollments.id, studentFeeAssignments.enrollmentId),
+      )
+      .where(and(...filters));
+
+    let inserted = 0;
+    let studentsWithNewDues = 0;
+    const failed: { assignmentId: string; reason: string }[] = [];
+    for (const row of rows) {
+      try {
+        const result = await db.transaction((tx) =>
+          this.generateInstallments(scope, row.id, tx, { through: input.through }),
+        );
+        inserted += result.inserted;
+        if (result.inserted > 0) studentsWithNewDues += 1;
+      } catch (error) {
+        failed.push({
+          assignmentId: row.id,
+          reason: error instanceof Error ? error.message : "Unknown error.",
+        });
+      }
+    }
+    return {
+      through: input.through,
+      studentCount: rows.length,
+      studentsWithNewDues,
+      inserted,
+      failed,
+    };
+  }
+
+  /**
+   * The daily sweep for `monthly_auto` schools (ADR-051): bring every billed
+   * student of the current session up to the end of this month. Safe to run
+   * any number of times — it only fills what is missing — so it runs daily
+   * rather than on the 1st, and catches up after downtime by itself.
+   *
+   * A best-effort Redis lease keeps N API instances from doing the same work
+   * at once; if Redis is down it sweeps anyway (idempotency makes a duplicate
+   * run harmless), the homework sweeper's rule.
+   *
+   * `schoolIds` narrows the sweep to those schools. Tests need it: a sweep is
+   * otherwise database-wide, so it would also process schools that another
+   * (killed) run left in monthly_auto.
+   */
+  async runMonthlySweep(
+    opts: { schoolIds?: string[] } = {},
+  ): Promise<{ schools: number; inserted: number; summary: string }> {
+    const holder = `fees-${randomUUID().slice(0, 8)}`;
+    let leaseHeld = false;
+    let redisAvailable = true;
+    try {
+      leaseHeld =
+        (await getRedis().set(FEES_SWEEP_LEASE_KEY, holder, "PX", FEES_SWEEP_LEASE_TTL_MS, "NX")) ===
+        "OK";
+    } catch {
+      redisAvailable = false;
+    }
+    if (redisAvailable && !leaseHeld) {
+      return { schools: 0, inserted: 0, summary: "skipped (another instance holds the lease)" };
+    }
+
+    try {
+      const through = endOfMonthIso(todayIso());
+      const targets = await db
+        .select({
+          organizationId: schools.organizationId,
+          schoolId: schools.id,
+          academicYearId: academicYears.id,
+        })
+        .from(schools)
+        .innerJoin(
+          academicYears,
+          and(eq(academicYears.schoolId, schools.id), eq(academicYears.isCurrent, true)),
+        )
+        .where(
+          and(
+            eq(schools.feeGenerationMode, "monthly_auto"),
+            eq(schools.isActive, true),
+            opts.schoolIds ? inArray(schools.id, opts.schoolIds) : undefined,
+          ),
+        );
+
+      let inserted = 0;
+      for (const target of targets) {
+        const scope: DataScope = {
+          organizationId: target.organizationId,
+          schoolId: target.schoolId,
+          classId: null,
+          sectionId: null,
+        };
+        const result = await this.generateThrough(scope, {
+          academicYearId: target.academicYearId,
+          through,
+        });
+        inserted += result.inserted;
+      }
+      return {
+        schools: targets.length,
+        inserted,
+        summary: `${targets.length} monthly school(s), ${inserted} due(s) added through ${through}`,
+      };
+    } finally {
+      if (leaseHeld) {
+        try {
+          const current = await getRedis().get(FEES_SWEEP_LEASE_KEY);
+          if (current === holder) await getRedis().del(FEES_SWEEP_LEASE_KEY);
+        } catch {
+          // Lease expiry is the fallback release path.
+        }
+      }
+    }
   }
 }
 

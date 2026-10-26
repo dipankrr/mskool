@@ -2288,3 +2288,38 @@ full year, so a 50% scholarship on a joiner could wipe out everything owed.
 compressed rows; the insert-only generator never rewrites an installment.
 Dev data was corrected by re-billing; a production school would need a
 one-off correction of unpaid joiner installments, reviewed before running.
+
+## ADR-051 - A school chooses when dues are created: all at billing, or month by month
+
+Date: 2026-10-26. Status: accepted (owner: "Generate all dues now / Generate
+monthly (automatic/manual)").
+
+**Context.** Billing a student wrote the whole session's dues at once. Most
+schools work month to month; a year of open dues is cognitive load for the
+counter, and a fee change mid-year cannot reach dues already written.
+
+**Decision.**
+1. `schools.fee_generation_mode` (migration 0032): `all_now` (default, the
+   old behaviour), `monthly_auto`, `monthly_manual`.
+2. The generator takes a cut-off (`through`): it computes the student's FULL
+   set of buckets and concession shares, then writes only those due on or
+   before the cut-off. Left out, the school's mode decides: `all_now` writes
+   everything, the monthly modes write up to the end of the current month
+   (server date). `"all"` forces everything. Because ADR-050 prices every
+   period over the whole year and shares are computed before filtering,
+   month-by-month generation gives each due exactly the amount and
+   concession it would have had if written at once (integration test).
+3. `fees.assignment.generateThrough` brings every active assignment of a
+   session (optionally a class) up to a date — the "Generate dues" button.
+   `generateInstallments` accepts `through` for one student — "pay ahead".
+4. `monthly_auto` schools are swept by an API host loop (`fees-worker.ts`),
+   hourly by default, off unless `FEES_WORKER_DISABLED=false`. The sweep is
+   idempotent (insert-only generator), so frequency only affects latency, and
+   a best-effort Redis lease keeps instances from duplicating work — the
+   homework sweeper's pattern (ADR-040).
+5. Switching modes never removes or rewrites a due; it changes only what
+   later runs write.
+
+**Rejected.** Generating on the 1st only (misses a day of downtime); a
+separate cron process (a second deployable for an idempotent fill); writing
+future dues as "draft" rows (a second state every read would have to filter).
