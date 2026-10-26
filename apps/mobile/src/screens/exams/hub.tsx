@@ -4,9 +4,11 @@ import { StyleSheet, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
 import { CapsuleButton } from "../../components/capsule-button";
+import { Card } from "../../components/card";
 import { ChoiceSheet } from "../../components/choice-sheet";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorCard } from "../../components/error-card";
+import { LinkRow } from "../../components/link-row";
 import { Notice } from "../../components/notice";
 import { ScreenFrame } from "../../components/screen-frame";
 import { SectionLabel } from "../../components/section-label";
@@ -35,6 +37,7 @@ import { PaperCard } from "./paper-card";
 import { StageTrack } from "./stage-track";
 import { HubReviewCard } from "./hub-review-card";
 import type { ExamPaper } from "./types";
+import { useResultActions } from "./use-results";
 import {
   useClassSubjectNames,
   useExamDetail,
@@ -69,6 +72,12 @@ export function ExamHubScreen() {
   const [pending, setPending] = useState<StageMove | null>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [moved, setMoved] = useState<string | null>(null);
+  const results = useResultActions(examId);
+  const [publishAllOpen, setPublishAllOpen] = useState(false);
+  const [publishOut, setPublishOut] = useState<{
+    published: number;
+    failed: string[];
+  } | null>(null);
 
   const exam = detail.data?.exam ?? null;
   const papers = detail.data?.schedules ?? [];
@@ -84,6 +93,9 @@ export function ExamHubScreen() {
 
   const entryOpen = exam ? isEntryOpen(exam.status) : false;
   const openable = exam ? entryOpen || isResultsStage(exam.status) : false;
+  // Results live from verification onward (D13): compute, publish, correct.
+  const resultsOpen =
+    exam !== null && (exam.status === "under_verification" || isResultsStage(exam.status));
   const moves = exam ? stageMoves(exam.status) : { primary: null, overflow: [] };
   const mineOf = (paper: ExamPaper): boolean | null =>
     pairs && !pairsPending ? isMyPaper(paper, pairs) : null;
@@ -295,6 +307,23 @@ export function ExamHubScreen() {
               />
             </View>
           ) : null}
+          {resultsOpen && activeClass ? (
+            <Card padless testID="exam-hub-results-row">
+              <LinkRow
+                title={copy.exams.results.rowTitle}
+                detail={copy.exams.results.rowBody}
+                icon="grade"
+                onPress={() =>
+                  router.push({
+                    pathname: "/exams/[examId]/class/[classId]",
+                    params: { examId, classId: activeClass },
+                  })
+                }
+                first
+                testID="exam-hub-results"
+              />
+            </Card>
+          ) : null}
           {reviewerView && readiness.data ? (
             <View style={styles.reviewCard}>
               <HubReviewCard
@@ -328,6 +357,27 @@ export function ExamHubScreen() {
         </View>
       )}
 
+      {publishOut ? (
+        <>
+          <Notice
+            tone="positive"
+            title={copy.exams.publication.publishAllDone(publishOut.published)}
+            icon="checkCircle"
+            testID="exam-hub-publish-all-done"
+          />
+          {publishOut.failed.length > 0 ? (
+            <Notice
+              tone="caution"
+              title={copy.exams.publication.publishAllFailed(
+                publishOut.failed.map((id) => names.className(id) ?? id).join(", "),
+              )}
+              icon="info"
+              testID="exam-hub-publish-all-failed"
+            />
+          ) : null}
+        </>
+      ) : null}
+
       {pending ? (
         <ConfirmSheet
           title={transitionTitle(pending.key)}
@@ -343,18 +393,61 @@ export function ExamHubScreen() {
         />
       ) : null}
 
+      {publishAllOpen ? (
+        <ConfirmSheet
+          title={copy.exams.publication.publishAllTitle}
+          body={copy.exams.publication.publishAllBody}
+          confirmLabel={copy.exams.publication.publishAll}
+          keepLabel={copy.exams.publication.publishKeep}
+          submitting={results.mutations.publishExam.isPending}
+          error={results.mutations.publishExam.error}
+          onConfirm={() => {
+            void results
+              .publishExam()
+              .then((out) => {
+                setPublishAllOpen(false);
+                setPublishOut({
+                  published: out.publishedClasses,
+                  failed: out.failedClassIds,
+                });
+              })
+              .catch(() => {
+                // The sheet keeps the server's refusal wording inline.
+              });
+          }}
+          onClose={() => setPublishAllOpen(false)}
+          testIDPrefix="exam-publish-all"
+        />
+      ) : null}
+
       <ChoiceSheet
         visible={optionsOpen}
         title={copy.exams.hub.optionsTitle}
-        options={moves.overflow.map((option) => ({
-          id: option.key,
-          label: transitionLabel(option.key),
-          detail: transitionConsequence(option.key),
-        }))}
+        options={[
+          ...moves.overflow.map((option) => ({
+            id: option.key,
+            label: transitionLabel(option.key),
+            detail: transitionConsequence(option.key),
+          })),
+          ...(scope.canPublish && resultsOpen
+            ? [
+                {
+                  id: "publishAll",
+                  label: copy.exams.publication.publishAll,
+                  detail: copy.exams.publication.publishAllBody,
+                },
+              ]
+            : []),
+        ]}
         currentId=""
         onSelect={(id) => {
-          const choice = moves.overflow.find((option) => option.key === id);
           setOptionsOpen(false);
+          if (id === "publishAll") {
+            results.mutations.publishExam.reset();
+            setPublishAllOpen(true);
+            return;
+          }
+          const choice = moves.overflow.find((option) => option.key === id);
           if (choice) {
             move.reset();
             setPending(choice);

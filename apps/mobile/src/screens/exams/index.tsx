@@ -3,9 +3,11 @@ import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 
+import { Card } from "../../components/card";
 import { EmptyState } from "../../components/empty-state";
 import { EntityCard } from "../../components/entity-card";
 import { ErrorCard } from "../../components/error-card";
+import { LinkRow } from "../../components/link-row";
 import { ScreenFrame } from "../../components/screen-frame";
 import { SegmentBar } from "../../components/segment-bar";
 import type { SegmentOption } from "../../components/segment-bar";
@@ -182,6 +184,18 @@ export function ExamsListScreen() {
         options={options}
         onChange={setPicked}
       />
+      {scope.canUpdate ? (
+        <Card padless testID="exams-final-row">
+          <LinkRow
+            title={copy.exams.final.title}
+            detail={copy.exams.final.rowBody}
+            icon="grade"
+            onPress={() => router.push("/exams/final")}
+            first
+            testID="exams-final"
+          />
+        </Card>
+      ) : null}
       {visible.length === 0 ? (
         <EmptyState
           icon="exams"
