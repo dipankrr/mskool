@@ -2565,6 +2565,7 @@ export const copy = {
         "The current academic session isn't set for this branch. Ask your administrator.",
       readOnly:
         "Read-only. Corrections appear as new rows; nothing here is ever edited.",
+      noCash: "Owed, not cash — not in money in or out.",
       studentMeta: (name: string) => `${name} · this session`,
     },
     collect: {
@@ -2602,6 +2603,7 @@ export const copy = {
       bankRequired: "Enter the bank name.",
       chequeDateRequired: "Choose the cheque date.",
       noAllocations: "Enter an amount for at least one installment.",
+      carriedForwardLine: "Carried forward from an earlier session",
       carriedForwardNotice: (amount: string) =>
         `${amount} carried forward from an earlier session is not collected here.`,
       clampedNotice:
@@ -2652,7 +2654,6 @@ export const copy = {
       bouncedNotice:
         "This payment bounced. The installments it covered were re-opened.",
       cancelledNotice: "This payment was cancelled. No money moved.",
-      lineFallback: (id: string) => `Installment ${id.slice(0, 8)}`,
       schoolFallback: "School fee receipt",
       shareTitle: "Fee receipt",
       serverIssued: "Receipt number issued by the school.",
@@ -2665,7 +2666,7 @@ export const copy = {
       summaryPending: "Awaiting approval",
       summaryPendingCount: (count: number) =>
         count === 1 ? "1 pending" : `${count} pending`,
-      searchPlaceholder: "Receipt number",
+      searchPlaceholder: "Receipt, name or admission no.",
       filterLabel: "Status",
       filterAll: "All",
       filterEmptyTitle: "No payments match",

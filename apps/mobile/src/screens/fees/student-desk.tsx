@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { AccessibilityInfo, Pressable, StyleSheet, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
@@ -51,7 +51,6 @@ import {
   MatrixStatusPill,
   SectionHead,
 } from "./status";
-import { rememberInstallmentLabels } from "../../lib/fees-receipt-cache";
 
 type MatrixOutput = inferRouterOutputs<AppRouter>["fees"]["matrix"]["list"];
 type MatrixRow = MatrixOutput["rows"][number];
@@ -230,13 +229,6 @@ export function StudentFeeDeskScreen() {
     },
   );
   const installments = useMemo(() => oldestFirst(dues.data ?? []), [dues.data]);
-  // Payment detail and receipts label their lines from these (allocation rows
-  // carry installment ids only — documented backend gap).
-  useEffect(() => {
-    rememberInstallmentLabels(
-      installments.map((row) => ({ id: row.id, label: installmentTitle(row) })),
-    );
-  }, [installments]);
   const openTotals = useMemo(
     () => outstandingTotals(installments),
     [installments],
@@ -966,7 +958,7 @@ export function StudentFeeDeskScreen() {
         />
       ) : null}
     </View>,
-    canCollect && isPositiveMoney(yearBalance) ? (
+    canCollect && isPositiveMoney(outstanding) ? (
       <CapsuleButton
         title={copy.fees.desk.collectAction}
         icon="collect"

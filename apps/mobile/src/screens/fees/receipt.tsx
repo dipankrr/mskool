@@ -18,12 +18,13 @@ import {
 import { usePermissions } from "../../hooks/use-permissions";
 import { copy } from "../../lib/copy";
 import {
+  allocationLabel,
   buildReceiptText,
+  openingBalanceLabel,
   PAYMENT_STATUS_NOTE,
   paymentModeLabel,
 } from "../../lib/fees";
 import type { PaymentStatus, ReceiptLine } from "../../lib/fees";
-import { recallInstallmentLabel } from "../../lib/fees-receipt-cache";
 import { formatReadableDate } from "../../lib/format";
 import { formatMoney, parseMoney } from "../../lib/money";
 import { trpc } from "../../lib/trpc";
@@ -80,6 +81,10 @@ export function ReceiptScreen() {
     () => detail.data?.allocations ?? [],
     [detail.data?.allocations],
   );
+  const openingAllocations = useMemo(
+    () => detail.data?.openingBalanceAllocations ?? [],
+    [detail.data?.openingBalanceAllocations],
+  );
 
   const student = trpc.student.byId.useQuery(
     { organizationId: organizationId ?? "", id: payment?.studentId ?? "" },
@@ -107,15 +112,21 @@ export function ReceiptScreen() {
       ? params.className
       : null;
 
+  // Labels and amounts are both the server's: carried-forward dues first
+  // (the oldest money), then installments in the order they were allocated.
   const lines: ReceiptLine[] = useMemo(() => {
     if (!payment) return [];
-    return allocations.map((allocation) => ({
-      label:
-        recallInstallmentLabel(allocation.installmentId) ??
-        copy.fees.receipt.lineFallback(allocation.installmentId),
-      amount: allocation.amountAllocated,
-    }));
-  }, [payment, allocations]);
+    return [
+      ...openingAllocations.map((allocation) => ({
+        label: openingBalanceLabel(allocation),
+        amount: allocation.amountAllocated,
+      })),
+      ...allocations.map((allocation) => ({
+        label: allocationLabel(allocation),
+        amount: allocation.amountAllocated,
+      })),
+    ];
+  }, [payment, allocations, openingAllocations]);
 
   const total = payment?.totalAmount ?? null;
   const lateFee = payment?.lateFeeAmount ?? "0.00";

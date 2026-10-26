@@ -17,6 +17,10 @@ export type PaymentRowData = {
   totalAmount: string | null;
   lateFeeAmount: string;
   paymentStatus: string;
+  /** Present on `payment.list` rows; shown only where the list spans students. */
+  studentName?: string | null;
+  className?: string | null;
+  sectionName?: string | null;
 };
 
 /**
@@ -31,12 +35,22 @@ export function PaymentRow({
   payment,
   onPress,
   first = false,
+  showStudent = false,
 }: {
   payment: PaymentRowData;
   onPress?: () => void;
   first?: boolean;
+  showStudent?: boolean;
 }) {
   const lateFee = isPositiveMoney(payment.lateFeeAmount);
+  const who = showStudent
+    ? [
+        payment.studentName,
+        [payment.className, payment.sectionName].filter(Boolean).join(" · "),
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
 
   const content = (
     <>
@@ -48,6 +62,11 @@ export function PaymentRow({
           {formatReadableDate(payment.paymentDate)} ·{" "}
           {paymentModeLabel(payment.paymentMode)}
         </ThemedText>
+        {who ? (
+          <ThemedText variant="meta" numberOfLines={1}>
+            {who}
+          </ThemedText>
+        ) : null}
         {lateFee ? (
           <FactChip
             label={copy.fees.desk.lateFeeChip(

@@ -17,7 +17,6 @@ import {
   outstandingTotals,
   paymentActions,
   paymentModeLabel,
-  prefillAllocations,
   referenceFields,
 } from "./fees";
 
@@ -225,21 +224,6 @@ describe("oldestFirst", () => {
   });
 });
 
-describe("prefillAllocations", () => {
-  it("offers each open balance in full and skips closed rows", () => {
-    expect(
-      prefillAllocations([
-        { id: "one", paymentStatus: "unpaid", balanceAmount: "500.00" },
-        { id: "two", paymentStatus: "paid", balanceAmount: "0.00" },
-        { id: "three", paymentStatus: "partial", balanceAmount: "250.50" },
-      ]),
-    ).toEqual([
-      { installmentId: "one", amount: "500.00" },
-      { installmentId: "three", amount: "250.50" },
-    ]);
-  });
-});
-
 describe("nextClientReference", () => {
   it("is unique per attempt and short enough for the column", () => {
     const first = nextClientReference(1_700_000_000_000, () => 0.5);
@@ -298,11 +282,11 @@ describe("buildReceiptText", () => {
 });
 
 describe("ledgerTotals", () => {
-  it("sums credits and debits in paise and nets them", () => {
+  it("sums cash in and out in paise and nets them", () => {
     const totals = ledgerTotals([
-      { direction: "credit", amount: "12500.00" },
-      { direction: "credit", amount: "250.50" },
-      { direction: "debit", amount: "1500.25" },
+      { cashEffect: "in", amount: "12500.00" },
+      { cashEffect: "in", amount: "250.50" },
+      { cashEffect: "out", amount: "1500.25" },
     ]);
     expect(totals.credit).toBe("12750.50");
     expect(totals.debit).toBe("1500.25");
@@ -311,17 +295,26 @@ describe("ledgerTotals", () => {
 
   it("lets the net go negative rather than flooring at zero", () => {
     const totals = ledgerTotals([
-      { direction: "credit", amount: "100.00" },
-      { direction: "debit", amount: "250.00" },
+      { cashEffect: "in", amount: "100.00" },
+      { cashEffect: "out", amount: "250.00" },
     ]);
     expect(totals.net).toBe("-150.00");
   });
 
+  it("leaves receivable movements out of money in and out", () => {
+    const totals = ledgerTotals([
+      { cashEffect: "none", amount: "4500.00" },
+      { cashEffect: "in", amount: "1000.00" },
+    ]);
+    expect(totals.credit).toBe("1000.00");
+    expect(totals.debit).toBe("0.00");
+  });
+
   it("ignores unparseable rows instead of zeroing the rest", () => {
     const totals = ledgerTotals([
-      { direction: "credit", amount: "100.00" },
-      { direction: "credit", amount: "not-money" },
-      { direction: "sideways", amount: "50.00" },
+      { cashEffect: "in", amount: "100.00" },
+      { cashEffect: "in", amount: "not-money" },
+      { cashEffect: "sideways", amount: "50.00" },
     ]);
     expect(totals.credit).toBe("100.00");
     expect(totals.debit).toBe("0.00");

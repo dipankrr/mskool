@@ -22,6 +22,8 @@ import { toFriendlyError } from "../../lib/errors";
 import {
   PAYMENT_STATUS_NOTE,
   paymentActions,
+  allocationLabel,
+  openingBalanceLabel,
   paymentModeLabel,
   referenceFields,
   REFUND_MODES,
@@ -44,7 +46,6 @@ import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { spacing } from "../../theme/tokens";
 import { PaymentStatusPill, SectionHead } from "./status";
-import { recallInstallmentLabel } from "../../lib/fees-receipt-cache";
 
 type SheetState =
   { kind: "transition"; spec: PaymentActionSpec } | { kind: "refund" } | null;
@@ -92,7 +93,20 @@ export function PaymentDetailScreen() {
   );
 
   const payment = detail.data?.payment ?? null;
-  const allocations = detail.data?.allocations ?? [];
+  // One list for the "Applied to" card: carried-forward dues, then
+  // installments — both labelled by the server.
+  const lines = [
+    ...(detail.data?.openingBalanceAllocations ?? []).map((allocation) => ({
+      key: allocation.openingBalanceId,
+      label: openingBalanceLabel(allocation),
+      amount: allocation.amountAllocated,
+    })),
+    ...(detail.data?.allocations ?? []).map((allocation) => ({
+      key: allocation.installmentId,
+      label: allocationLabel(allocation),
+      amount: allocation.amountAllocated,
+    })),
+  ];
 
   const student = trpc.student.byId.useQuery(
     { organizationId: organizationId ?? "", id: payment?.studentId ?? "" },
@@ -344,16 +358,16 @@ export function PaymentDetailScreen() {
         hint={copy.fees.payment.appliedHint}
       />
       <Card padless>
-        {allocations.length === 0 ? (
+        {lines.length === 0 ? (
           <View style={styles.emptyRow}>
             <ThemedText variant="meta">
               {copy.fees.payment.noAllocations}
             </ThemedText>
           </View>
         ) : (
-          allocations.map((allocation, index) => (
+          lines.map((line, index) => (
             <View
-              key={`${allocation.installmentId}-${index}`}
+              key={`${line.key}-${index}`}
               style={[styles.line, index === 0 ? null : styles.divider]}
             >
               <ThemedText
@@ -361,11 +375,10 @@ export function PaymentDetailScreen() {
                 numberOfLines={1}
                 style={styles.lineLabel}
               >
-                {recallInstallmentLabel(allocation.installmentId) ??
-                  copy.fees.receipt.lineFallback(allocation.installmentId)}
+                {line.label}
               </ThemedText>
               <ThemedText variant="numeric" numberOfLines={1}>
-                {formatMoney(allocation.amountAllocated)}
+                {formatMoney(line.amount)}
               </ThemedText>
             </View>
           ))

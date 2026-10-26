@@ -26,11 +26,9 @@ import {
   oldestFirst,
   PAYMENT_MODES,
   paymentModeLabel,
-  prefillAllocations,
   referenceFields,
 } from "../../lib/fees";
 import type { PaymentMode } from "../../lib/fees";
-import { rememberInstallmentLabels } from "../../lib/fees-receipt-cache";
 import { formatReadableDate, todayIso } from "../../lib/format";
 import {
   clampAllocation,
@@ -66,6 +64,18 @@ import { SectionHead } from "./status";
  * dropped response can therefore be retried safely: the server returns the
  * payment it already recorded instead of taking the money twice.
  */
+/** One amount box on collect: an installment or a carried-forward balance. */
+type PayableLine = {
+  kind: "installment" | "opening";
+  /** The amounts-map key; namespaced so the two kinds never collide. */
+  key: string;
+  id: string;
+  title: string;
+  paid: string | null;
+  net: string | null;
+  balance: string;
+};
+
 export function CollectPaymentScreen() {
   const params = useLocalSearchParams<{
     studentId?: string;
@@ -80,6 +90,9 @@ export function CollectPaymentScreen() {
   const studentId = params.studentId ?? "";
   const canCollect = has("fee_payment:create");
   const canReadDues = has("student_fee_assignment:read");
+  // Carried-forward balances are read through the setup grant; a cashier
+  // without it still collects installments and sees the notice instead.
+  const canReadOpenings = has("fee_structure:read");
 
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [clamped, setClamped] = useState<Record<string, string | null>>({});
@@ -127,35 +140,72 @@ export function CollectPaymentScreen() {
     },
   );
 
-  const installments = useMemo(
-    () => oldestFirst((dues.data ?? []).filter(isPayable)),
-    [dues.data],
+  const openings = trpc.fees.ledger.listOpeningBalances.useQuery(
+    {
+      organizationId: organizationId ?? "",
+      academicYearId: academicYear?.id ?? "",
+      studentId,
+    },
+    {
+      enabled:
+        ready &&
+        canReadOpenings &&
+        Boolean(organizationId) &&
+        Boolean(academicYear?.id) &&
+        Boolean(studentId),
+    },
   );
+  // Collect waits for the openings read only when it can make it.
+  const openingsSettled = !canReadOpenings || !openings.isPending;
 
-  useEffect(() => {
-    if (prefilled.current || !dues.data) return;
-    prefilled.current = true;
+  // Everything payable on one receipt, oldest money first: carried-forward
+  // balances (an earlier session), then installments oldest-due first.
+  const lines = useMemo<PayableLine[]>(() => {
+    const carried = (openings.data ?? [])
+      .filter((row) => isPositiveMoney(row.balanceAmount))
+      .map((row) => ({
+        kind: "opening" as const,
+        key: `opening:${row.id}`,
+        id: row.id,
+        title: row.description?.trim() || copy.fees.collect.carriedForwardLine,
+        paid: row.paidAmount,
+        net: row.amount,
+        balance: row.balanceAmount ?? "0.00",
+      }));
+    const due = oldestFirst((dues.data ?? []).filter(isPayable)).map((row) => ({
+      kind: "installment" as const,
+      key: row.id,
+      id: row.id,
+      title: installmentTitle(row),
+      paid: row.paidAmount,
+      net: row.netAmount,
+      balance: row.balanceAmount ?? "0.00",
+    }));
+    return [...carried, ...due];
+  }, [openings.data, dues.data]);
+
+  const fullAmounts = useMemo(() => {
     const next: Record<string, string> = {};
-    for (const row of dues.data) {
-      if (!isPayable(row)) continue;
-      const full = prefillAllocations([row])[0];
-      if (full) next[row.id] = full.amount;
-    }
-    setAmounts(next);
-  }, [dues.data]);
+    for (const line of lines) next[line.key] = line.balance;
+    return next;
+  }, [lines]);
+
+  // The common case is "pay everything": prefill once, after both reads.
+  useEffect(() => {
+    if (prefilled.current || !dues.data || !openingsSettled) return;
+    prefilled.current = true;
+    setAmounts(fullAmounts);
+  }, [dues.data, openingsSettled, fullAmounts]);
 
   const allocations = useMemo(
     () =>
-      installments
-        .map((row) => ({
-          row,
-          amount: clampAllocation(
-            amounts[row.id] ?? "",
-            row.balanceAmount ?? "0.00",
-          ),
+      lines
+        .map((line) => ({
+          line,
+          amount: clampAllocation(amounts[line.key] ?? "", line.balance),
         }))
         .filter((entry) => (parseMoney(entry.amount) ?? 0n) > 0n),
-    [installments, amounts],
+    [lines, amounts],
   );
 
   const total = useMemo(
@@ -163,8 +213,8 @@ export function CollectPaymentScreen() {
     [allocations],
   );
   const outstanding = useMemo(
-    () => sumMoney(installments.map((row) => row.balanceAmount)),
-    [installments],
+    () => sumMoney(lines.map((line) => line.balance)),
+    [lines],
   );
 
   const studentName =
@@ -231,12 +281,7 @@ export function CollectPaymentScreen() {
   };
 
   const payFull = () => {
-    const next: Record<string, string> = {};
-    for (const row of installments) {
-      const full = prefillAllocations([row])[0];
-      if (full) next[row.id] = full.amount;
-    }
-    setAmounts(next);
+    setAmounts(fullAmounts);
     setClamped({});
   };
 
@@ -265,10 +310,18 @@ export function CollectPaymentScreen() {
           academicYearId: academicYear.id,
           paymentDate,
           paymentMode: mode,
-          allocations: allocations.map((entry) => ({
-            installmentId: entry.row.id,
-            amount: entry.amount,
-          })),
+          allocations: allocations
+            .filter((entry) => entry.line.kind === "installment")
+            .map((entry) => ({
+              installmentId: entry.line.id,
+              amount: entry.amount,
+            })),
+          openingBalanceAllocations: allocations
+            .filter((entry) => entry.line.kind === "opening")
+            .map((entry) => ({
+              openingBalanceId: entry.line.id,
+              amount: entry.amount,
+            })),
           transactionReference: fields.reference ? reference.trim() : null,
           bankName: fields.bank ? bankName.trim() : null,
           chequeDate: fields.chequeDate ? chequeDate : null,
@@ -277,18 +330,9 @@ export function CollectPaymentScreen() {
         },
       });
 
-      // The receipt that follows labels its lines from this hand-off:
-      // `payment.detail` carries only installment ids (documented gap). The
-      // amounts it prints are the server's, never this attempt's split.
-      rememberInstallmentLabels(
-        installments.map((row) => ({
-          id: row.id,
-          label: installmentTitle(row),
-        })),
-      );
-
       await Promise.all([
         utils.fees.installment.dues.invalidate(),
+        utils.fees.ledger.listOpeningBalances.invalidate(),
         utils.fees.matrix.list.invalidate(),
         utils.fees.matrix.cell.invalidate(),
         utils.fees.payment.list.invalidate(),
@@ -311,7 +355,7 @@ export function CollectPaymentScreen() {
   };
 
   const footer =
-    installments.length > 0 ? (
+    lines.length > 0 ? (
       <View style={styles.footerRow}>
         <View style={styles.footerTotal}>
           <ThemedText variant="sectionLabel">
@@ -412,7 +456,7 @@ export function CollectPaymentScreen() {
     );
   }
 
-  if (dues.isPending && !dues.data) {
+  if ((dues.isPending && !dues.data) || !openingsSettled) {
     return frame(
       <View style={styles.skeletons}>
         <Skeleton height={120} />
@@ -422,7 +466,7 @@ export function CollectPaymentScreen() {
     );
   }
 
-  if (installments.length === 0) {
+  if (lines.length === 0) {
     return frame(
       <EmptyState
         icon="check"
@@ -464,7 +508,7 @@ export function CollectPaymentScreen() {
           <ThemedText variant="meta">{copy.fees.desk.lateFeeNote}</ThemedText>
         </Card>
 
-        {isPositiveMoney(params.carriedForward) ? (
+        {isPositiveMoney(params.carriedForward) && !canReadOpenings ? (
           <Notice
             tone="caution"
             message={copy.fees.collect.carriedForwardNotice(
@@ -491,13 +535,13 @@ export function CollectPaymentScreen() {
         </View>
 
         <Card padless>
-          {installments.map((row, index) => {
-            const title = installmentTitle(row);
-            const note = clamped[row.id];
-            const value = amounts[row.id] ?? "";
+          {lines.map((line, index) => {
+            const { title } = line;
+            const note = clamped[line.key];
+            const value = amounts[line.key] ?? "";
             return (
               <View
-                key={row.id}
+                key={line.key}
                 style={[styles.row, index === 0 ? null : styles.divider]}
               >
                 <View style={styles.rowText}>
@@ -506,8 +550,8 @@ export function CollectPaymentScreen() {
                   </ThemedText>
                   <ThemedText variant="meta" numberOfLines={2}>
                     {copy.fees.desk.paidOf(
-                      formatMoney(row.paidAmount),
-                      formatMoney(row.netAmount),
+                      formatMoney(line.paid),
+                      formatMoney(line.net),
                     )}
                   </ThemedText>
                   {note ? (
@@ -526,20 +570,20 @@ export function CollectPaymentScreen() {
                     </ThemedText>
                     <TextInput
                       value={value}
-                      onChangeText={(next) => setAmount(row.id, next)}
-                      onBlur={() => settleAmount(row.id, row.balanceAmount)}
+                      onChangeText={(next) => setAmount(line.key, next)}
+                      onBlur={() => settleAmount(line.key, line.balance)}
                       keyboardType="decimal-pad"
                       inputMode="decimal"
                       placeholder="0"
                       placeholderTextColor={colors.muted}
                       accessibilityLabel={copy.fees.collect.amountA11y(
                         title,
-                        formatMoney(row.balanceAmount),
+                        formatMoney(line.balance),
                       )}
                       selectTextOnFocus
                       maxFontSizeMultiplier={1.2}
                       style={styles.amountInput}
-                      testID={`fee-collect-amount-${row.id}`}
+                      testID={`fee-collect-amount-${line.id}`}
                     />
                   </View>
                   <Pressable
@@ -547,14 +591,14 @@ export function CollectPaymentScreen() {
                     accessibilityLabel={`${copy.fees.collect.clearRow} ${title}`}
                     hitSlop={8}
                     onPress={() => {
-                      setAmount(row.id, "");
+                      setAmount(line.key, "");
                       setClamped((current) => ({
                         ...current,
-                        [row.id]: null,
+                        [line.key]: null,
                       }));
                     }}
                     style={styles.clear}
-                    testID={`fee-collect-clear-${row.id}`}
+                    testID={`fee-collect-clear-${line.id}`}
                   >
                     <ThemedText variant="caption" color={colors.accentDeep}>
                       {copy.fees.collect.clearRow}
@@ -689,13 +733,13 @@ export function CollectPaymentScreen() {
 
               <View style={styles.reviewLines}>
                 {allocations.map((entry) => (
-                  <View key={entry.row.id} style={styles.reviewLine}>
+                  <View key={entry.line.key} style={styles.reviewLine}>
                     <ThemedText
                       variant="body"
                       numberOfLines={2}
                       style={styles.flex}
                     >
-                      {installmentTitle(entry.row)}
+                      {entry.line.title}
                     </ThemedText>
                     <ThemedText variant="numeric">
                       {formatMoney(entry.amount)}

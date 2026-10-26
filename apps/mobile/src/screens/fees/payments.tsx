@@ -118,7 +118,12 @@ export function PaymentsScreen() {
       ) {
         return false;
       }
-      if (needle && !payment.receiptNumber.toLowerCase().includes(needle)) {
+      if (
+        needle &&
+        ![payment.receiptNumber, payment.studentName, payment.admissionNumber]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(needle))
+      ) {
         return false;
       }
       return true;
@@ -320,6 +325,7 @@ export function PaymentsScreen() {
               key={payment.id}
               payment={payment}
               first={index === 0}
+              showStudent
               onPress={() =>
                 router.push({
                   pathname: "/fees/payments/[paymentId]",

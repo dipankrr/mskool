@@ -1,6 +1,7 @@
 import { StyleSheet, View } from "react-native";
 
 import { ThemedText } from "../../components/themed-text";
+import { copy } from "../../lib/copy";
 import { LEDGER_DIRECTION_LABEL, ledgerTypeLabel } from "../../lib/fees";
 import { formatReadableDate } from "../../lib/format";
 import { formatMoney } from "../../lib/money";
@@ -11,10 +12,15 @@ export type LedgerRowData = {
   id: string;
   transactionType: string;
   direction: string;
+  /** What the row does to cash (ADR-049); `none` is owed, not collected. */
+  cashEffect: string;
   amount: string;
   description: string | null;
   receiptNumber: string | null;
   transactionDate: string;
+  studentName: string | null;
+  className: string | null;
+  sectionName: string | null;
 };
 
 /**
@@ -31,10 +37,20 @@ export function LedgerRow({
   row: LedgerRowData;
   first: boolean;
 }) {
-  const inbound = row.direction === "credit";
-  const amountColor = inbound
-    ? colors.tone.positive.fg
-    : colors.tone.critical.fg;
+  const inbound = row.cashEffect === "in";
+  const noCash = row.cashEffect === "none";
+  const amountColor = noCash
+    ? colors.muted
+    : inbound
+      ? colors.tone.positive.fg
+      : colors.tone.critical.fg;
+  const sign = noCash ? "" : inbound ? "+" : "−";
+  const who = [
+    row.studentName,
+    [row.className, row.sectionName].filter(Boolean).join(" · "),
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const direction = LEDGER_DIRECTION_LABEL[row.direction] ?? row.direction;
 
   return (
@@ -51,6 +67,16 @@ export function LedgerRow({
           {formatReadableDate(row.transactionDate)}
           {row.receiptNumber ? ` · ${row.receiptNumber}` : ""}
         </ThemedText>
+        {who ? (
+          <ThemedText variant="meta" numberOfLines={1}>
+            {who}
+          </ThemedText>
+        ) : null}
+        {noCash ? (
+          <ThemedText variant="caption" color={colors.muted}>
+            {copy.fees.ledger.noCash}
+          </ThemedText>
+        ) : null}
         {row.description ? (
           <ThemedText
             variant="caption"
@@ -68,7 +94,7 @@ export function LedgerRow({
         maxFontSizeMultiplier={1.3}
         style={styles.amount}
       >
-        {`${inbound ? "+" : "−"}${formatMoney(row.amount)}`}
+        {`${sign}${formatMoney(row.amount)}`}
       </ThemedText>
     </View>
   );

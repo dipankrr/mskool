@@ -199,15 +199,17 @@ export type LedgerTotals = {
  * negative and the balance helpers floor at zero.
  */
 export function ledgerTotals(
-  rows: { direction: string; amount: string }[],
+  rows: { cashEffect: string; amount: string }[],
 ): LedgerTotals {
+  // Money in/out is cash only (ADR-049): an opening balance, concession or
+  // waiver changes what is owed and carries `cashEffect: "none"`.
   let credit = 0n;
   let debit = 0n;
   for (const row of rows) {
     const amount = parseMoney(row.amount);
     if (amount === null) continue;
-    if (row.direction === "credit") credit += amount;
-    else if (row.direction === "debit") debit += amount;
+    if (row.cashEffect === "in") credit += amount;
+    else if (row.cashEffect === "out") debit += amount;
   }
   return {
     credit: toMoneyString(credit),
@@ -483,6 +485,27 @@ export function installmentTitle(row: {
 }
 
 /**
+ * A receipt line for an installment, from the server's labelled allocation:
+ * its description ("Lab Fee — 2025-05"), else the fee head and number.
+ */
+export function allocationLabel(row: {
+  description: string | null;
+  feeHeadName: string;
+  installmentNumber: number;
+}): string {
+  const description = row.description?.trim();
+  if (description) return description;
+  return `${row.feeHeadName} · Installment ${row.installmentNumber}`;
+}
+
+/** A receipt line for a carried-forward balance. */
+export function openingBalanceLabel(row: {
+  originAcademicYearName: string;
+}): string {
+  return `Carried forward from ${row.originAcademicYearName}`;
+}
+
+/**
  * The concession form's value check, before the server sees it. A flat value
  * is rupees; a percentage is 0–100 with at most two decimals. The message is
  * the field's error line, so it says what to type, not what went wrong.
@@ -627,19 +650,6 @@ export function oldestFirst<
 /** True when every open row is settled — the desk's "nothing outstanding". */
 export function isSettled(totals: Pick<OutstandingTotals, "balance">): boolean {
   return (parseMoney(totals.balance) ?? 0n) <= 0n;
-}
-
-/**
- * The prefill for a collect attempt: each open installment at its full
- * balance. The cashier edits down from here; they never type a total.
- */
-export function prefillAllocations(
-  rows: (PayableInstallment & { id: string })[],
-): { installmentId: string; amount: string }[] {
-  return rows.filter(isPayable).map((row) => ({
-    installmentId: row.id,
-    amount: toMoneyString(parseMoney(row.balanceAmount) ?? 0n),
-  }));
 }
 
 // ---------------------------------------------------------------------------
