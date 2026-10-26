@@ -35,8 +35,8 @@ import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { fontFamily, fontSize, radius, spacing } from "../../theme/tokens";
 import { AssignmentCard } from "./assignment-card";
-import { SegmentBar } from "./segments";
-import type { SegmentOption } from "./segments";
+import { SegmentBar } from "../../components/segment-bar";
+import type { SegmentOption } from "../../components/segment-bar";
 import type { HomeworkRow } from "./types";
 import { WeekRail } from "./week-rail";
 

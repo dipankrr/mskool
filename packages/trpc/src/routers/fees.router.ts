@@ -8,19 +8,27 @@ import {
   createSubscriptionSchema,
   duesListSchema,
   assignFeeStructureSchema,
+  billClassOutputSchema,
+  billClassSchema,
+  feeGenerationModeSchema,
+  feeIsoDateSchema,
+  generateThroughOutputSchema,
+  generateThroughSchema,
   feeHeadSelectSchema,
   feeMatrixCellInputSchema,
   feeMatrixCellOutputSchema,
   feeMatrixInputSchema,
   feeMatrixOutputSchema,
   feeInstallmentSelectSchema,
+  feePaymentListRowSchema,
   feePaymentSelectSchema,
   feeRefundSelectSchema,
   feeStructureLineSelectSchema,
   feeStructureSelectSchema,
-  financialTransactionSelectSchema,
+  financialTransactionListRowSchema,
   lateFeeRuleSelectSchema,
   openingBalanceSelectSchema,
+  paymentDetailOutputSchema,
   paymentTransitionSchema,
   recordPaymentSchema,
   recordRefundSchema,
@@ -74,6 +82,41 @@ const READ_HISTORY = "academic_year:read_history" as const;
 const schoolParent = z.object({ schoolId: z.uuid() });
 
 export const feesRouter = router({
+  // -------------------------------------------------------------------------
+  // School fee settings — fee.settings.* (ADR-051)
+  // -------------------------------------------------------------------------
+  settings: router({
+    get: staffProcedure("fee_structure:read")
+      .meta({
+        openapi: {
+          method: "GET",
+          path: "/fee-settings",
+          tags: ["fees"],
+          summary: "The school's fee settings (when dues are created)",
+          protect: true,
+        },
+      })
+      .input(schoolParent)
+      .output(z.object({ mode: feeGenerationModeSchema }))
+      .query(({ ctx }) => feesBillingService.getFeeGenerationMode(ctx.scope)),
+
+    setGenerationMode: staffProcedure("fee_structure:update")
+      .meta({
+        openapi: {
+          method: "PATCH",
+          path: "/fee-settings/generation-mode",
+          tags: ["fees"],
+          summary: "Choose all dues at billing, or month by month (auto or manual)",
+          protect: true,
+        },
+      })
+      .input(z.object({ mode: feeGenerationModeSchema, ...schoolParent.shape }))
+      .output(z.object({ mode: feeGenerationModeSchema }))
+      .mutation(({ ctx, input }) =>
+        feesBillingService.setFeeGenerationMode(ctx.scope, input.mode),
+      ),
+  }),
+
   // -------------------------------------------------------------------------
   // Heads — fee.head.*
   // -------------------------------------------------------------------------
@@ -456,6 +499,22 @@ export const feesRouter = router({
         feesBillingService.assignFeeStructure(ctx.scope, input.data, ctx.userId),
       ),
 
+    billClass: staffProcedure("student_fee_assignment:create")
+      .meta({
+        openapi: {
+          method: "POST",
+          path: "/fee-assignments/bill-class",
+          tags: ["fees"],
+          summary: "Bill every not-yet-billed student of a class (skips the billed)",
+          protect: true,
+        },
+      })
+      .input(z.object({ data: billClassSchema, ...schoolParent.shape }))
+      .output(billClassOutputSchema)
+      .mutation(({ ctx, input }) =>
+        feesBillingService.billClass(ctx.scope, input.data, ctx.userId),
+      ),
+
     generateInstallments: staffProcedure("student_fee_assignment:update")
       .meta({
         openapi: {
@@ -466,10 +525,30 @@ export const feesRouter = router({
           protect: true,
         },
       })
-      .input(z.object({ id: z.uuid(), ...schoolParent.shape }))
-      .output(z.object({ inserted: z.number().int() }))
+      // `through` (ADR-051): write only dues due on or before this date —
+      // "pay ahead" in a monthly school. Left out, the school's mode decides.
+      .input(z.object({ id: z.uuid(), through: feeIsoDateSchema.optional(), ...schoolParent.shape }))
+      .output(z.object({ inserted: z.number().int(), through: feeIsoDateSchema.nullable() }))
       .mutation(({ ctx, input }) =>
-        feesBillingService.generateInstallments(ctx.scope, input.id),
+        feesBillingService.generateInstallments(ctx.scope, input.id, undefined, {
+          through: input.through,
+        }),
+      ),
+
+    generateThrough: staffProcedure("student_fee_assignment:update")
+      .meta({
+        openapi: {
+          method: "POST",
+          path: "/fee-assignments/generate-through",
+          tags: ["fees"],
+          summary: "Generate every billed student's dues up to a date (month by month)",
+          protect: true,
+        },
+      })
+      .input(z.object({ data: generateThroughSchema, ...schoolParent.shape }))
+      .output(generateThroughOutputSchema)
+      .mutation(({ ctx, input }) =>
+        feesBillingService.generateThrough(ctx.scope, input.data),
       ),
 
     recomputeConcessions: staffProcedure("student_fee_assignment:update")
@@ -623,27 +702,16 @@ export const feesRouter = router({
           method: "GET",
           path: "/fee-payments/{id}",
           tags: ["fees"],
-          summary: "Payment detail with allocations",
+          summary: "Payment detail with labelled installment and opening-balance lines",
           protect: true,
         },
       })
       .input(z.object({ id: z.uuid(), ...schoolParent.shape }))
-      .output(
-        z.object({
-          payment: feePaymentSelectSchema,
-          allocations: z.array(z.object({ installmentId: z.uuid(), amountAllocated: z.string() })),
-        }),
-      )
+      .output(paymentDetailOutputSchema)
       .query(async ({ ctx, input }) => {
         const detail = await feesCollectionService.getPaymentDetail(ctx.scope, input.id);
         if (!detail) throw notFound();
-        return {
-          payment: detail.payment,
-          allocations: detail.allocations.map((a) => ({
-            installmentId: a.installmentId,
-            amountAllocated: a.amountAllocated,
-          })),
-        };
+        return detail;
       }),
 
     list: staffListProcedure("fee_payment:read")
@@ -652,14 +720,14 @@ export const feesRouter = router({
           method: "GET",
           path: "/fee-payments",
           tags: ["fees"],
-          summary: "List a year's payments",
+          summary: "List a year's payments, each with its student label",
           protect: true,
         },
       })
       .input(
         z.object({ academicYearId: z.uuid(), studentId: z.uuid().optional() }),
       )
-      .output(z.array(feePaymentSelectSchema))
+      .output(z.array(feePaymentListRowSchema))
       .query(({ ctx, input }) =>
         feesCollectionService.listPayments(ctx.scopes, input.academicYearId, input.studentId),
       ),
@@ -730,7 +798,7 @@ export const feesRouter = router({
           method: "POST",
           path: "/fee-payments/{id}/cancel",
           tags: ["fees"],
-          summary: "Cancel a pending payment (no money moved, no ledger row)",
+          summary: "Cancel a pending payment (balances re-open, its credit is offset)",
           protect: true,
         },
       })
@@ -776,7 +844,7 @@ export const feesRouter = router({
         },
       })
       .input(z.object({ academicYearId: z.uuid(), studentId: z.uuid().optional() }))
-      .output(z.array(financialTransactionSelectSchema))
+      .output(z.array(financialTransactionListRowSchema))
       .query(({ ctx, input }) =>
         feesCollectionService.listLedger(ctx.scopes, input.academicYearId, input.studentId),
       ),

@@ -1,9 +1,10 @@
+import { useEffect } from "react";
 import { Alert, Button, StyleSheet, Text, View } from "react-native";
 import { Redirect } from "expo-router";
 
-import { logout } from "../lib/auth";
+import { discardDeadSession, logout } from "../lib/auth";
 import { copy } from "../lib/copy";
-import { thrownMessage } from "../lib/errors";
+import { thrownMessage, toFriendlyError } from "../lib/errors";
 import { useMe } from "../hooks/use-me";
 
 /**
@@ -25,6 +26,14 @@ export default function Index() {
     refetch,
   } = useMe();
 
+  // A stored session the server no longer accepts (expired, revoked, account
+  // removed) is not a connection problem: Retry can never succeed. Drop it
+  // so the session gate below redirects to sign-in.
+  const deadSession = isError && toFriendlyError(error).requiresSignIn;
+  useEffect(() => {
+    if (deadSession) void discardDeadSession();
+  }, [deadSession]);
+
   if (sessionPending || (session && !isFetched)) {
     return null; // splash gate in _layout covers this
   }
@@ -34,6 +43,9 @@ export default function Index() {
   // A failed `me.get` is a connection problem, not a family session. Without
   // this branch an offline boot (or any failed hydration) falls through to
   // the staff-only notice and strands a staff user there — 2026-10-19 walk.
+  if (deadSession) {
+    return null;
+  }
   if (isError) {
     return (
       <View style={styles.container}>
@@ -54,8 +66,8 @@ export default function Index() {
     <View style={styles.container}>
       <Text style={styles.title}>{copy.auth.appName}</Text>
       <Text style={styles.body}>
-        Signed in as {me?.user.name ?? me?.user.email ?? "a family login"}.
-        This preview build serves staff only — the family shell arrives later.
+        Signed in as {me?.user.name ?? me?.user.email ?? "a family login"}. This
+        preview build serves staff only — the family shell arrives later.
       </Text>
       <Button
         title={copy.auth.signOutAction}

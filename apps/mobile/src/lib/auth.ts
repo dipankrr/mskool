@@ -133,6 +133,34 @@ export async function logout() {
 }
 
 /**
+ * The server says the stored session is dead (UNAUTHORIZED: expired, revoked,
+ * or the account no longer exists). There is nothing to sign out of, so this
+ * never asks the server for permission: it sweeps the local auth material and
+ * cached data, then tells better-auth's session store to re-read — which now
+ * finds no session and lets the router send the user to sign-in. Without it a
+ * dead session strands the user on a Retry that can never succeed
+ * (2026-10-26 walk, after a demo reset).
+ */
+export async function discardDeadSession() {
+  try {
+    await withTimeout((signal) =>
+      authClient.signOut({ fetchOptions: { signal } }),
+    );
+  } catch {
+    // Expected to fail or no-op: the server has no session to end.
+  }
+  const keys = storageKeysFor(AUTH_STORAGE_BASE_KEYS);
+  try {
+    await Promise.all(keys.map((key) => SecureStore.deleteItemAsync(key)));
+  } catch {
+    // Best-effort, as in logout.
+  }
+  await queryClient.cancelQueries();
+  queryClient.clear();
+  authClient.$store.notify("$sessionSignal");
+}
+
+/**
  * The first-login change (ADR-007). better-auth's own changePassword endpoint:
  * it verifies the CURRENT (temporary) password, so the change is a proof of
  * possession, not a takeover. The server route clears must_change_password;

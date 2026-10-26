@@ -1,0 +1,1 @@
+ALTER TYPE "public"."financial_transaction_type" ADD VALUE 'payment_cancelled' BEFORE 'security_deposit_received';

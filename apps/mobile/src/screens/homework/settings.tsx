@@ -39,8 +39,8 @@ import { spacing } from "../../theme/tokens";
 import { CheckPills } from "./check-pills";
 import type { CheckPillOption } from "./check-pills";
 import { ConfirmSheet } from "./confirm-sheet";
-import { SegmentBar } from "./segments";
-import type { SegmentOption } from "./segments";
+import { SegmentBar } from "../../components/segment-bar";
+import type { SegmentOption } from "../../components/segment-bar";
 import type { EffectiveSettings } from "./types";
 
 const LATE_POLICY_OPTIONS: readonly SegmentOption<"allowed" | "not_allowed">[] = [

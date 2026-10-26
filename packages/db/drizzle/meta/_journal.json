@@ -218,6 +218,20 @@
       "when": 1792701788835,
       "tag": "0030_lazy_william_stryker",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1793003599185,
+      "tag": "0031_furry_sister_grimm",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793023609727,
+      "tag": "0032_brown_kingpin",
+      "breakpoints": true
     }
   ]
 }

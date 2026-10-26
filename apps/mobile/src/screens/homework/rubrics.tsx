@@ -18,8 +18,8 @@ import { dayKeyOf } from "../../lib/homework";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { radius, spacing } from "../../theme/tokens";
-import { SegmentBar } from "./segments";
-import type { SegmentOption } from "./segments";
+import { SegmentBar } from "../../components/segment-bar";
+import type { SegmentOption } from "../../components/segment-bar";
 import type { RubricRow } from "./types";
 
 type RubricFilter = "all" | "active" | "retired";

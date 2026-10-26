@@ -63,7 +63,7 @@ export type FeeAssignment = NonNullable<
   RouterOutputs["fees"]["assignment"]["byStudent"]
 >;
 export type FeeInstallment = RouterOutputs["fees"]["installment"]["dues"][number];
-export type FeePayment = RouterOutputs["fees"]["payment"]["list"][number];
+export type FeePayment = RouterOutputs["fees"]["payment"]["record"];
 export type PaymentDetail = RouterOutputs["fees"]["payment"]["detail"];
 export type LedgerTransaction = RouterOutputs["fees"]["ledger"]["list"][number];
 export type OpeningBalance = RouterOutputs["fees"]["ledger"]["listOpeningBalances"][number];

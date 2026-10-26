@@ -1,0 +1,2 @@
+CREATE TYPE "public"."fee_generation_mode" AS ENUM('all_now', 'monthly_auto', 'monthly_manual');--> statement-breakpoint
+ALTER TABLE "schools" ADD COLUMN "fee_generation_mode" "fee_generation_mode" DEFAULT 'all_now' NOT NULL;

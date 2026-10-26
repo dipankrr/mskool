@@ -1,10 +1,12 @@
 import { createServer } from "./server";
 import { env } from "./env";
 import { startHomeworkWorker, homeworkWorkerHealth } from "./homework-worker";
+import { startFeesWorker, feesWorkerHealth } from "./fees-worker";
 
 const app = createServer();
 
 const worker = startHomeworkWorker();
+const feesWorker = startFeesWorker();
 
 app.listen(env.PORT, () => {
   console.log(`🚀 API ready at         http://localhost:${env.PORT}`);
@@ -18,9 +20,10 @@ app.listen(env.PORT, () => {
 const shutdown = async (signal: string) => {
   console.log(`\n${signal} received — shutting down…`);
   if (worker) await worker.stop();
+  if (feesWorker) await feesWorker.stop();
   process.exit(0);
 };
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT", () => void shutdown("SIGINT"));
 
-export { homeworkWorkerHealth };
+export { homeworkWorkerHealth, feesWorkerHealth };

@@ -125,15 +125,41 @@ const SUBJECT_MATH_CODE = "MAT";
 const SUBJECT_PHYSICS_NAME = "Physics";
 const SUBJECT_PHYSICS_CODE = "PHY";
 
+/**
+ * The seed is written against 2025-26 as the current session. By default it
+ * stays there: the authz smoke and the web e2e pin dates and weekdays in that
+ * calendar. `--current-session` shifts every session date by whole years so
+ * the current session is the April–March one containing today — a demo where
+ * dues are past, current and future instead of all overdue. Run the smoke and
+ * e2e against a default seed.
+ */
+const REFERENCE_START_YEAR = 2025;
+const SHIFT_TO_TODAY = process.argv.includes("--current-session");
+const SESSION_START_YEAR = (() => {
+  if (!SHIFT_TO_TODAY) return REFERENCE_START_YEAR;
+  const now = new Date();
+  return now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+})();
+const YEAR_SHIFT = SESSION_START_YEAR - REFERENCE_START_YEAR;
+
+/** A 2025-26-calendar date, moved by the session shift. */
+function sd(iso: string): string {
+  return `${Number(iso.slice(0, 4)) + YEAR_SHIFT}${iso.slice(4)}`;
+}
+
+function sessionName(startYear: number): string {
+  return `${startYear}-${String((startYear + 1) % 100).padStart(2, "0")}`;
+}
+
 const YEAR_CURRENT = {
-  name: "2025-26",
-  startDate: "2025-04-01",
-  endDate: "2026-03-31",
+  name: sessionName(SESSION_START_YEAR),
+  startDate: sd("2025-04-01"),
+  endDate: sd("2026-03-31"),
 } as const;
 const YEAR_CLOSED = {
-  name: "2024-25",
-  startDate: "2024-04-01",
-  endDate: "2025-03-31",
+  name: sessionName(SESSION_START_YEAR - 1),
+  startDate: sd("2024-04-01"),
+  endDate: sd("2025-03-31"),
 } as const;
 
 /**
@@ -824,7 +850,7 @@ async function seedExamWorld(params: {
     examId,
     classId,
     subjectId: subjectMathId,
-    examDate: "2025-07-10",
+    examDate: sd("2025-07-10"),
     startTime: "09:00",
     durationMinutes: 180,
     venue: "Hall 1",
@@ -833,7 +859,7 @@ async function seedExamWorld(params: {
     examId,
     classId,
     subjectId: subjectPhysicsId,
-    examDate: "2025-07-12",
+    examDate: sd("2025-07-12"),
     startTime: "09:00",
     durationMinutes: 120,
     venue: "Hall 1",
@@ -1051,14 +1077,14 @@ async function seedExamWorld(params: {
         {
           classId,
           subjectId: subjectMathId,
-          examDate: "2025-08-04",
+          examDate: sd("2025-08-04"),
           startTime: "09:00",
           durationMinutes: 60,
         },
         {
           classId,
           subjectId: subjectPhysicsId,
-          examDate: "2025-08-06",
+          examDate: sd("2025-08-06"),
           startTime: "09:00",
           durationMinutes: 60,
         },
@@ -1552,29 +1578,29 @@ async function main() {
     academicYearId: currentYearA.id,
     name: TERM_1_NAME,
     sequenceNumber: 1,
-    startDate: "2025-04-01",
-    endDate: "2025-09-30",
+    startDate: sd("2025-04-01"),
+    endDate: sd("2025-09-30"),
   });
   const term2A = await findOrCreateTerm(scopeA, {
     academicYearId: currentYearA.id,
     name: TERM_2_NAME,
     sequenceNumber: 2,
-    startDate: "2025-10-01",
-    endDate: "2026-03-31",
+    startDate: sd("2025-10-01"),
+    endDate: sd("2026-03-31"),
   });
   const termFullClosedA = await findOrCreateTerm(scopeA, {
     academicYearId: closedYearA.id,
     name: TERM_FULL_NAME,
     sequenceNumber: 1,
-    startDate: "2024-04-01",
-    endDate: "2025-03-31",
+    startDate: sd("2024-04-01"),
+    endDate: sd("2025-03-31"),
   });
   const termFullB = await findOrCreateTerm(scopeB, {
     academicYearId: yearB.id,
     name: TERM_FULL_NAME,
     sequenceNumber: 1,
-    startDate: "2025-04-01",
-    endDate: "2026-03-31",
+    startDate: sd("2025-04-01"),
+    endDate: sd("2026-03-31"),
   });
 
   // --- Students + enrollments + the parent portal ------------------------------
@@ -1707,8 +1733,8 @@ async function main() {
     adminUser.id,
   );
   const holidays: { date: string; reason: string }[] = [
-    { date: "2025-08-15", reason: "Independence Day" },
-    { date: "2025-10-02", reason: "Gandhi Jayanti" },
+    { date: sd("2025-08-15"), reason: "Independence Day" },
+    { date: sd("2025-10-02"), reason: "Gandhi Jayanti" },
   ];
   for (const holiday of holidays) {
     await attendanceService.upsertCalendarDay(

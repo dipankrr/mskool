@@ -77,14 +77,18 @@ describe("splitIntoBuckets — monthly", () => {
     expect(buckets[2]?.amountCents).toBe(33_334n);
   });
 
-  it("mid-session effective date SKIPS earlier months and still sums exactly", () => {
+  it("a mid-session joiner pays the SAME monthly rate for the months left", () => {
     const buckets = splitIntoBuckets({
       ...baseLine,
       effectiveFrom: "2030-10-01", // joins in October of an Apr–Mar year
     });
     expect(buckets).toHaveLength(6);
     expect(buckets[0]?.periodMonth).toBe(10);
-    expect(sum(buckets)).toBe(1_200_000n);
+    // ₹1,000 a month like everyone else — not ₹12,000 squeezed into six.
+    expect(buckets.every((b) => b.amountCents === 100_000n)).toBe(true);
+    expect(sum(buckets)).toBe(600_000n);
+    // Numbering is the student's own, from 1.
+    expect(buckets[0]?.installmentNumber).toBe(1);
   });
 
   it("prorates the joining month when joiningMonthFullCharge is false", () => {
@@ -94,11 +98,11 @@ describe("splitIntoBuckets — monthly", () => {
       joiningMonthFullCharge: false,
     });
     expect(buckets).toHaveLength(6);
-    expect(sum(buckets)).toBeLessThan(1_200_000n);
-    // The joining month's share is floored to its day fraction of the
-    // six-month share (12000.00 / 6 = 2000.00 → × 16/31 = 1032.25).
+    // The joining month is the monthly rate × its day fraction, floored
+    // (1000.00 × 16/31 = 516.12); later months are the full rate.
     const remaining = 31 - 16 + 1;
-    expect(buckets[0]?.amountCents).toBe((200_000n * BigInt(remaining)) / 31n);
+    expect(buckets[0]?.amountCents).toBe((100_000n * BigInt(remaining)) / 31n);
+    expect(buckets[1]?.amountCents).toBe(100_000n);
   });
 
   it("charges the joining month IN FULL by default (the Indian rule)", () => {
@@ -107,7 +111,17 @@ describe("splitIntoBuckets — monthly", () => {
       effectiveFrom: "2030-10-30",
     });
     expect(buckets).toHaveLength(6);
-    expect(buckets[0]?.amountCents).toBe(200_000n);
+    expect(buckets[0]?.amountCents).toBe(100_000n);
+  });
+
+  it("a joiner after the last applicable month owes nothing for that line", () => {
+    const buckets = splitIntoBuckets({
+      ...baseLine,
+      applicableFromMonth: 7,
+      applicableToMonth: 9, // a July–September activity fee
+      effectiveFrom: "2030-10-01",
+    });
+    expect(buckets).toHaveLength(0);
   });
 
   it("respects the applicable month range", () => {
@@ -153,6 +167,19 @@ describe("splitIntoBuckets — term_wise", () => {
     expect(sum(buckets)).toBe(1_200_000n);
   });
 
+  it("a joiner skips terms that already ended and pays the year's share for the rest", () => {
+    const buckets = splitIntoBuckets({
+      ...baseLine,
+      frequency: "term_wise",
+      effectiveFrom: "2030-11-01", // Term 1 ended in September
+      terms,
+    });
+    expect(buckets).toHaveLength(1);
+    expect(buckets[0]?.termId).toBe("t2");
+    expect(buckets[0]?.amountCents).toBe(480_000n); // Term 2's 40%, not 100%
+    expect(buckets[0]?.dueDate).toBe("2030-11-01");
+  });
+
   it("renormalises across the terms that survive the applicable range", () => {
     const buckets = splitIntoBuckets({
       ...baseLine,
@@ -185,6 +212,28 @@ describe("splitIntoBuckets — upfront and quarterly", () => {
     });
     expect(buckets).toHaveLength(4);
     expect(sum(buckets)).toBe(1_200_000n);
+  });
+
+  it("a quarterly joiner pays full quarters ahead and the months left of the one they join", () => {
+    const buckets = splitIntoBuckets({
+      ...baseLine,
+      frequency: "quarterly",
+      effectiveFrom: "2030-11-01", // Q3 is Oct–Dec: two of its three months
+    });
+    expect(buckets).toHaveLength(2);
+    expect(buckets[0]?.amountCents).toBe(200_000n); // 3000.00 × 2/3
+    expect(buckets[1]?.amountCents).toBe(300_000n); // Q4 in full
+  });
+
+  it("upfront stays whole for a joiner: a one-time charge is owed in full", () => {
+    const buckets = splitIntoBuckets({
+      ...baseLine,
+      structureMode: "upfront",
+      effectiveFrom: "2030-10-01",
+    });
+    expect(buckets).toHaveLength(1);
+    expect(buckets[0]?.amountCents).toBe(1_200_000n);
+    expect(buckets[0]?.dueDate).toBe("2030-10-01");
   });
 });
 

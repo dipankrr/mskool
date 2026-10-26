@@ -378,6 +378,79 @@ export const assignFeeStructureSchema = z.object({
 });
 export type AssignFeeStructureInput = z.infer<typeof assignFeeStructureSchema>;
 
+/**
+ * "Bill all students in this class": for every enrollment of the class (and
+ * section, when given) in the year that has NO fee assignment yet, assign the
+ * class's active structure and generate its installments — one transaction
+ * per student. Already-billed students are skipped, so a second run bills
+ * nobody. Billing one student (`assignFeeStructureSchema`) stays for
+ * mid-year admissions and special cases.
+ */
+export const billClassSchema = z.object({
+  academicYearId: z.uuid(),
+  classId: z.uuid(),
+  sectionId: z.uuid().optional(),
+});
+export type BillClassInput = z.infer<typeof billClassSchema>;
+
+const billClassStudentSchema = z.object({
+  studentId: z.uuid(),
+  enrollmentId: z.uuid(),
+  studentName: z.string(),
+  admissionNumber: z.string(),
+});
+
+/**
+ * The outcome per student. `refusal` is set when the class refuses AS A WHOLE
+ * (no active fee chart) — then all three lists are empty. Otherwise each
+ * enrolled student lands in exactly one list; every refusal carries a
+ * plain-English reason.
+ */
+/**
+ * When a school's dues are created (ADR-051): the whole session at billing,
+ * or month by month — automatically by the API's daily sweep, or when staff
+ * generate them.
+ */
+export const feeGenerationModeSchema = z.enum(["all_now", "monthly_auto", "monthly_manual"]);
+export type FeeGenerationModeValue = z.infer<typeof feeGenerationModeSchema>;
+
+/** "Generate dues up to {date}" for a session, optionally one class. */
+/** A request-level ISO date, exported for routes that take one. */
+export const feeIsoDateSchema = isoDate;
+
+export const generateThroughSchema = z.object({
+  academicYearId: z.uuid(),
+  through: isoDate,
+  classId: z.uuid().nullish(),
+});
+export type GenerateThroughInput = z.infer<typeof generateThroughSchema>;
+
+export const generateThroughOutputSchema = z.object({
+  through: isoDate,
+  studentCount: z.number().int().nonnegative(),
+  studentsWithNewDues: z.number().int().nonnegative(),
+  inserted: z.number().int().nonnegative(),
+  failed: z.array(z.object({ assignmentId: z.uuid(), reason: z.string() })),
+});
+export type GenerateThroughOutput = z.infer<typeof generateThroughOutputSchema>;
+
+export const billClassOutputSchema = z.object({
+  feeStructureId: z.uuid().nullable(),
+  refusal: z.string().nullable(),
+  billedCount: z.number().int(),
+  skippedCount: z.number().int(),
+  refusedCount: z.number().int(),
+  billed: z.array(
+    billClassStudentSchema.extend({
+      assignmentId: z.uuid(),
+      installmentsCreated: z.number().int(),
+    }),
+  ),
+  skipped: z.array(billClassStudentSchema.extend({ assignmentId: z.uuid() })),
+  refused: z.array(billClassStudentSchema.extend({ reason: z.string() })),
+});
+export type BillClassOutput = z.infer<typeof billClassOutputSchema>;
+
 /** Which assignment to (re-)run the idempotent generator for. */
 export const generateInstallmentsSchema = z.object({
   studentFeeAssignmentId: z.uuid(),
@@ -410,6 +483,19 @@ export const paymentAllocationInputSchema = z.object({
 export type PaymentAllocationInput = z.infer<typeof paymentAllocationInputSchema>;
 
 /**
+ * One carried-forward balance (an `opening_balances` row of the payment's
+ * year) this payment pays, and how much of it. The link is the append-only
+ * `opening_balance_payment` ledger row written per portion — ADR-049.
+ */
+export const paymentOpeningBalanceAllocationInputSchema = z.object({
+  openingBalanceId: z.uuid(),
+  amount: money,
+});
+export type PaymentOpeningBalanceAllocationInput = z.infer<
+  typeof paymentOpeningBalanceAllocationInputSchema
+>;
+
+/**
  * A counter collection. The payment's `amount` is DERIVED as the sum of its
  * allocations — the cashier cannot type a total that disagrees with what the
  * money is FOR. Allocations may target ANY generated installment with a
@@ -417,13 +503,17 @@ export type PaymentAllocationInput = z.infer<typeof paymentAllocationInputSchema
  * normal Indian-school case; the Locked decision is that the ONLY refusal is
  * exceeding a balance). `clientReference` is the idempotency key: a retry
  * with the same key returns the original receipt instead of writing a second.
+ * `openingBalanceAllocations` pays carried-forward dues on the same receipt;
+ * either list may be empty, but together they must allocate a positive total
+ * (the service refuses otherwise).
  */
 export const recordPaymentSchema = z.object({
   studentId: z.uuid(),
   academicYearId: z.uuid(),
   paymentDate: isoDate,
   paymentMode: feeCounterPaymentModeSchema,
-  allocations: z.array(paymentAllocationInputSchema).min(1),
+  allocations: z.array(paymentAllocationInputSchema),
+  openingBalanceAllocations: z.array(paymentOpeningBalanceAllocationInputSchema).optional(),
   transactionReference: z.string().min(1).max(150).nullish(),
   bankName: z.string().min(1).max(100).nullish(),
   chequeDate: isoDate.nullish(),
@@ -485,6 +575,70 @@ export type StudentFeeAssignment = z.infer<typeof studentFeeAssignmentSelectSche
 
 export const openingBalanceSelectSchema = createSelectSchema(openingBalances);
 export type OpeningBalance = z.infer<typeof openingBalanceSelectSchema>;
+
+/** Who a payment or ledger row is about — joined so lists need no lookup. */
+const studentLabelShape = {
+  studentName: z.string(),
+  admissionNumber: z.string(),
+  // The student's enrollment in the row's academic year, when there is one.
+  className: z.string().nullable(),
+  sectionName: z.string().nullable(),
+};
+
+/** `payment.list` row: the payment plus its student label. */
+export const feePaymentListRowSchema = feePaymentSelectSchema.extend(studentLabelShape);
+export type FeePaymentListRow = z.infer<typeof feePaymentListRowSchema>;
+
+/**
+ * What a ledger row does to the school's cash (ADR-049). `in` and `out` are
+ * money that arrived or left; `none` is a receivable or memo movement
+ * (`opening_balance`, `concession_applied`, `waiver_applied`) that changes
+ * what is owed, not what was collected. Money in/out totals sum `in`/`out`.
+ */
+export const ledgerCashEffectSchema = z.enum(["in", "out", "none"]);
+export type LedgerCashEffect = z.infer<typeof ledgerCashEffectSchema>;
+
+/** `ledger.list` row. The student label is null on a non-student row. */
+export const financialTransactionListRowSchema = financialTransactionSelectSchema.extend({
+  cashEffect: ledgerCashEffectSchema,
+  studentName: z.string().nullable(),
+  admissionNumber: z.string().nullable(),
+  className: z.string().nullable(),
+  sectionName: z.string().nullable(),
+});
+export type FinancialTransactionListRow = z.infer<typeof financialTransactionListRowSchema>;
+
+/** One installment line of a receipt, labelled by the server. */
+export const paymentDetailAllocationSchema = z.object({
+  installmentId: z.uuid(),
+  amountAllocated: z.string(),
+  feeHeadId: z.uuid(),
+  feeHeadName: z.string(),
+  description: z.string().nullable(),
+  installmentNumber: z.number().int(),
+  dueDate: z.string(),
+});
+export type PaymentDetailAllocation = z.infer<typeof paymentDetailAllocationSchema>;
+
+/** One carried-forward line of a receipt. */
+export const paymentDetailOpeningBalanceAllocationSchema = z.object({
+  openingBalanceId: z.uuid(),
+  amountAllocated: z.string(),
+  description: z.string().nullable(),
+  originAcademicYearId: z.uuid(),
+  originAcademicYearName: z.string(),
+});
+export type PaymentDetailOpeningBalanceAllocation = z.infer<
+  typeof paymentDetailOpeningBalanceAllocationSchema
+>;
+
+/** `payment.detail`: the receipt's backing shape. */
+export const paymentDetailOutputSchema = z.object({
+  payment: feePaymentSelectSchema,
+  allocations: z.array(paymentDetailAllocationSchema),
+  openingBalanceAllocations: z.array(paymentDetailOpeningBalanceAllocationSchema),
+});
+export type PaymentDetailOutput = z.infer<typeof paymentDetailOutputSchema>;
 
 /** The accountant's due list — the collection screen's primary query. */
 export const duesListSchema = z.object({
@@ -596,6 +750,19 @@ export const feeMatrixAmountsSchema = z.object({
 });
 export type FeeMatrixAmounts = z.infer<typeof feeMatrixAmountsSchema>;
 
+/**
+ * A student's (or the cohort's) year totals. `paidAmount` is installment
+ * principal only; `lateFeePaidAmount` is the late fee frozen on the year's
+ * payments that still stand (pending or cleared — the same payments whose
+ * principal `paidAmount` counts), so "collected incl. late fees" is their sum.
+ * Bounced, reversed and cancelled payments are excluded: their late fee is
+ * offset in the ledger (ADR-049).
+ */
+export const feeMatrixTotalsSchema = feeMatrixAmountsSchema.extend({
+  lateFeePaidAmount: money,
+});
+export type FeeMatrixTotals = z.infer<typeof feeMatrixTotalsSchema>;
+
 export const feeMatrixMonthSchema = z.object({
   key: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
   year: z.number().int(),
@@ -655,7 +822,7 @@ export const feeMatrixRowSchema = z.object({
   generationState: feeMatrixGenerationStateSchema,
   generatedInstallmentCount: z.number().int().nonnegative(),
   cells: z.array(feeMatrixCellSchema),
-  totals: feeMatrixAmountsSchema,
+  totals: feeMatrixTotalsSchema,
   openingBalance: feeMatrixOpeningBalanceSchema,
   paymentState: feeMatrixPaymentStateSchema,
   timingState: feeMatrixTimingStateSchema,
@@ -677,7 +844,7 @@ export const feeMatrixMonthSummarySchema = z.object({
 });
 export type FeeMatrixMonthSummary = z.infer<typeof feeMatrixMonthSummarySchema>;
 
-export const feeMatrixCohortTotalsSchema = feeMatrixAmountsSchema.extend({
+export const feeMatrixCohortTotalsSchema = feeMatrixTotalsSchema.extend({
   studentCount: z.number().int().nonnegative(),
   assignedCount: z.number().int().nonnegative(),
   notGeneratedCount: z.number().int().nonnegative(),

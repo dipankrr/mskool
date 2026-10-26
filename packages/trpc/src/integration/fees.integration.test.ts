@@ -33,6 +33,7 @@ import {
   recordPaymentSchema,
   type FeeMatrixCellInput,
   type FeeMatrixInput,
+  type RecordPaymentInput,
 } from "@repo/contracts";
 import { db } from "@repo/db";
 import {
@@ -42,11 +43,14 @@ import {
   feeRefunds,
   paymentAllocations as paymentAllocationsTable,
   students as studentsTable,
+  studentEnrollments,
+  studentFeeAssignments,
   feeInstallments,
   feeStructureLines,
   feeStructures,
   financialTransactions,
   lateFeeRules,
+  openingBalances as openingBalancesTable,
   user,
 } from "@repo/db/schema";
 import {
@@ -58,7 +62,8 @@ import {
   feesService,
   organizationService,
 } from "@repo/services";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { getRedis } from "@repo/authz";
 
 const RUN = `fees-itg-${Date.now()}`;
 
@@ -153,6 +158,7 @@ async function assignAndGenerate(studentId: string, effectiveFrom?: string) {
 }
 
 const paise = (money: string) => BigInt(money.replace(".", ""));
+const fromPaise = (p: bigint) => `${p / 100n}.${String(p % 100n).padStart(2, "0")}`;
 
 const installmentsOf = (assignmentId: string) =>
   db
@@ -373,14 +379,16 @@ describe("fees: the generator", () => {
     expect(result.inserted).toBe(0);
   });
 
-  it("mid-session joiner: tuition starts October, term-wise lab collapses to T2", async () => {
+  it("mid-session joiner: tuition starts October at the monthly rate, lab is T2 only (ADR-050)", async () => {
     const midRows = await installmentsOf(w.assignmentMidId);
     const tuitionRows = midRows.filter((r) => r.feeHeadId === w.tuitionHeadId);
     const labRows = midRows.filter((r) => r.feeHeadId === w.labHeadId);
     expect(tuitionRows).toHaveLength(6); // Oct–Mar
     expect(tuitionRows[0]?.periodMonth).toBe(10);
+    // The same ₹1,000 a month as a full-year student, not 12000 / 6.
+    expect(tuitionRows.every((r) => r.amount === "1000.00")).toBe(true);
     expect(labRows).toHaveLength(1); // T1 ended before the joiner arrived
-    expect(labRows[0]?.amount).toBe("2400.00"); // the money follows the survivor
+    expect(labRows[0]?.amount).toBe("960.00"); // T2's 40% of 2400.00, not all of it
   });
 });
 
@@ -1196,7 +1204,7 @@ describe("fees: the remaining named transitions (H5)", () => {
     expect(after?.paymentStatus).toBe("paid");
   });
 
-  it("cancelPayment: pending → cancelled, balances RE-OPEN, NO ledger row", async () => {
+  it("cancelPayment: pending → cancelled, balances RE-OPEN, its credit is offset (gap 15)", async () => {
     const student = await freshStudent("TR2");
     const assignment = await assignAndGenerate(student.id);
     const rows = await installmentsOf(assignment.id);
@@ -1225,13 +1233,18 @@ describe("fees: the remaining named transitions (H5)", () => {
     expect(after?.paidAmount).toBe("0.00");
     expect(after?.paymentStatus).toBe("unpaid");
 
-    // No ledger row: no money moved. The audit trail is the payment's own
-    // status triple.
+    // No money moved, but the pending payment was credited at entry: the
+    // cancel offsets it with a payment_cancelled debit (ADR-049, gap 15).
     const ledgerAfter = await db
       .select()
       .from(financialTransactions)
       .where(eq(financialTransactions.referenceId, payment.id));
-    expect(ledgerAfter).toHaveLength(ledgerBefore.length);
+    expect(ledgerAfter).toHaveLength(ledgerBefore.length + 1);
+    const offset = ledgerAfter.find((r) => r.transactionType === "payment_cancelled");
+    expect(offset?.direction).toBe("debit");
+    expect(offset?.amount).toBe(payment.amount);
+    const cashRows = await feesCollectionService.listLedger([w.scopeA], w.yearAId, student.id);
+    expect(cashRows.find((r) => r.transactionType === "payment_cancelled")?.cashEffect).toBe("out");
 
     // Cancelling a CLEARED payment is refused — that money moved.
     const clearedPayment = await feesCollectionService.recordPayment(
@@ -2181,7 +2194,7 @@ describe("fees: student fee status matrix", () => {
       .get(matrix.midStudentId)
       ?.cells.find((cell) => cell.month === "2025-10");
     expect(october).toMatchObject({
-      assessedAmount: "4400.00",
+      assessedAmount: "1960.00", // tuition 1000.00 + T2 lab 960.00 (ADR-050)
       feeHeadCount: 2,
       month: "2025-10",
     });
@@ -2280,8 +2293,8 @@ describe("fees: student fee status matrix", () => {
     expect(october).toMatchObject({
       studentId: matrix.midStudentId,
       month: "2025-10",
-      assessedAmount: "4400.00",
-      balanceAmount: "4400.00",
+      assessedAmount: "1960.00",
+      balanceAmount: "1960.00",
       feeHeadCount: 2,
       paymentState: "unpaid",
     });
@@ -2294,15 +2307,15 @@ describe("fees: student fee status matrix", () => {
         expect.objectContaining({
           feeHeadId: w.tuitionHeadId,
           feeHeadName: "Tuition Fee",
-          amount: "2000.00",
-          balanceAmount: "2000.00",
+          amount: "1000.00",
+          balanceAmount: "1000.00",
           paymentStatus: "unpaid",
         }),
         expect.objectContaining({
           feeHeadId: w.labHeadId,
           feeHeadName: "Lab Fee",
-          amount: "2400.00",
-          balanceAmount: "2400.00",
+          amount: "960.00",
+          balanceAmount: "960.00",
           paymentStatus: "unpaid",
         }),
       ]),
@@ -2513,4 +2526,951 @@ describe("fees: student fee status matrix", () => {
     const result = await feesCollectionService.listMatrix([w.scopeB], query(), true);
     expect(result).toBeNull();
   });
+});
+
+describe("fees: mobile backend gaps (ADR-049)", () => {
+  /** The 2026-27 year the H5 test may already have made; overlap is refused, so reuse it. */
+  async function carryIntoYear() {
+    const [existing] = await db
+      .select()
+      .from(academicYears)
+      .where(and(eq(academicYears.schoolId, w.schoolAId), eq(academicYears.name, "2026-27")));
+    if (existing) return existing;
+    const [created] = await db
+      .insert(academicYears)
+      .values({
+        organizationId: w.orgAId,
+        schoolId: w.schoolAId,
+        name: "2026-27",
+        startDate: "2026-04-01",
+        endDate: "2027-03-31",
+        originalEndDate: "2027-03-31",
+        isCurrent: false,
+      })
+      .returning();
+    if (!created) throw new Error("Carry-into year fixture missing.");
+    return created;
+  }
+
+  async function balanceRow(id: string) {
+    const [row] = await db
+      .select()
+      .from(openingBalancesTable)
+      .where(eq(openingBalancesTable.id, id));
+    if (!row) throw new Error("Opening balance vanished.");
+    return row;
+  }
+
+  it("gap 2: payment detail labels every installment line from the server", async () => {
+    const student = await freshStudent("G2");
+    const assignment = await assignAndGenerate(student.id);
+    const rows = await installmentsOf(assignment.id);
+    const tuition = rows.find((r) => r.feeHeadId === w.tuitionHeadId);
+    const lab = rows.find((r) => r.feeHeadId === w.labHeadId);
+    if (!tuition || !lab) throw new Error("Fixture installments missing.");
+
+    const payment = await feesCollectionService.recordPayment(
+      w.scopeA,
+      {
+        studentId: student.id,
+        academicYearId: w.yearAId,
+        paymentDate: "2025-04-01",
+        paymentMode: "cash",
+        allocations: [
+          { installmentId: lab.id, amount: lab.netAmount },
+          { installmentId: tuition.id, amount: "400.00" },
+        ],
+      },
+      w.adminId,
+    );
+
+    const detail = await feesCollectionService.getPaymentDetail(w.scopeA, payment.id);
+    expect(detail?.openingBalanceAllocations).toEqual([]);
+    const byInstallment = new Map(detail?.allocations.map((a) => [a.installmentId, a]));
+    expect(byInstallment.get(tuition.id)).toEqual({
+      installmentId: tuition.id,
+      amountAllocated: "400.00",
+      feeHeadId: w.tuitionHeadId,
+      feeHeadName: "Tuition Fee",
+      description: tuition.description,
+      installmentNumber: tuition.installmentNumber,
+      dueDate: tuition.dueDate,
+    });
+    expect(byInstallment.get(lab.id)?.feeHeadName).toBe("Lab Fee");
+    expect(byInstallment.get(lab.id)?.amountAllocated).toBe(lab.netAmount);
+  });
+
+  it("gap 1: payment and ledger rows carry the student's name, admission number and class", async () => {
+    const student = await freshStudent("G1");
+    const assignment = await assignAndGenerate(student.id);
+    const [first] = await installmentsOf(assignment.id);
+    if (!first) throw new Error("Fixture installment missing.");
+    await feesCollectionService.recordPayment(
+      w.scopeA,
+      {
+        studentId: student.id,
+        academicYearId: w.yearAId,
+        paymentDate: "2025-04-01",
+        paymentMode: "cash",
+        allocations: [{ installmentId: first.id, amount: first.netAmount }],
+      },
+      w.adminId,
+    );
+
+    const label = {
+      studentName: "ItgFee G1",
+      admissionNumber: `${RUN}-G1`,
+      className: "Fee 6",
+      sectionName: null,
+    };
+    const payments = await feesCollectionService.listPayments([w.scopeA], w.yearAId, student.id);
+    expect(payments).toHaveLength(1);
+    expect(payments[0]).toMatchObject(label);
+    const ledger = await feesCollectionService.listLedger([w.scopeA], w.yearAId, student.id);
+    expect(ledger.length).toBeGreaterThan(0);
+    for (const row of ledger) expect(row).toMatchObject({ ...label, cashEffect: "in" });
+
+    // No enrollment in the row's year: the class is null, the row still lists.
+    const year2 = await carryIntoYear();
+    const loner = await freshStudent("G1B");
+    const balance = await feesBillingService.createOpeningBalance(
+      w.scopeA,
+      {
+        studentId: loner.id,
+        academicYearId: year2.id,
+        originAcademicYearId: w.yearAId,
+        amount: "10.00",
+      },
+      w.adminId,
+    );
+    const [obRow] = await feesCollectionService.listLedger([w.scopeA], year2.id, loner.id);
+    expect(obRow?.referenceId).toBe(balance.id);
+    expect(obRow).toMatchObject({
+      studentName: "ItgFee G1B",
+      className: null,
+      sectionName: null,
+      cashEffect: "none",
+    });
+
+    // The scope still clips: a foreign scope sees none of it.
+    expect(
+      await feesCollectionService.listPayments([w.scopeB], w.yearAId, student.id),
+    ).toEqual([]);
+    expect(await feesCollectionService.listLedger([w.scopeB], w.yearAId, student.id)).toEqual(
+      [],
+    );
+  });
+
+  it("gap 10: an opening balance is collected, refunded, and re-opened by a bounce", async () => {
+    const year2 = await carryIntoYear();
+    const student = await freshStudent("G10");
+    const balance = await feesBillingService.createOpeningBalance(
+      w.scopeA,
+      {
+        studentId: student.id,
+        academicYearId: year2.id,
+        originAcademicYearId: w.yearAId,
+        amount: "500.00",
+        description: "Carried forward from 2025-26",
+      },
+      w.adminId,
+    );
+    const payInput = (
+      amount: string,
+      extra: Partial<RecordPaymentInput> = {},
+    ): RecordPaymentInput => ({
+      studentId: student.id,
+      academicYearId: year2.id,
+      paymentDate: "2026-04-10",
+      paymentMode: "cash",
+      allocations: [],
+      openingBalanceAllocations: [{ openingBalanceId: balance.id, amount }],
+      ...extra,
+    });
+
+    // Refusals, worded, before any money moves.
+    await expect(
+      feesCollectionService.recordPayment(w.scopeA, payInput("500.01"), w.adminId),
+    ).rejects.toThrow(/exceeds the opening balance still owed. The outstanding amount is 500.00/);
+    await expect(
+      feesCollectionService.recordPayment(
+        w.scopeA,
+        payInput("10.00", { academicYearId: w.yearAId }),
+        w.adminId,
+      ),
+    ).rejects.toThrow(/carried into/);
+    const other = await freshStudent("G10X");
+    await expect(
+      feesCollectionService.recordPayment(
+        w.scopeA,
+        payInput("10.00", { studentId: other.id }),
+        w.adminId,
+      ),
+    ).rejects.toThrow(/belong to the paying student/);
+    await expect(
+      feesCollectionService.recordPayment(w.scopeB, payInput("10.00"), w.adminId),
+    ).rejects.toThrow();
+    expect((await balanceRow(balance.id)).paidAmount).toBe("0.00");
+
+    // Cash 200.00 against the carried-forward balance.
+    const cash = await feesCollectionService.recordPayment(
+      w.scopeA,
+      payInput("200.00"),
+      w.adminId,
+    );
+    expect(cash.amount).toBe("200.00");
+    expect(cash.paymentStatus).toBe("cleared");
+    let row = await balanceRow(balance.id);
+    expect(row.paidAmount).toBe("200.00");
+    expect(row.balanceAmount).toBe("300.00");
+    expect(row.status).toBe("partial");
+
+    // The link row: opening_balance_payment, referencing the balance, under the receipt.
+    const cashLedger = await db
+      .select()
+      .from(financialTransactions)
+      .where(
+        and(
+          eq(financialTransactions.schoolId, w.schoolAId),
+          eq(financialTransactions.receiptNumber, cash.receiptNumber),
+        ),
+      );
+    expect(cashLedger).toEqual([
+      expect.objectContaining({
+        transactionType: "opening_balance_payment",
+        direction: "credit",
+        amount: "200.00",
+        referenceId: balance.id,
+        referenceTable: "opening_balances",
+      }),
+    ]);
+
+    const detail = await feesCollectionService.getPaymentDetail(w.scopeA, cash.id);
+    expect(detail?.allocations).toEqual([]);
+    expect(detail?.openingBalanceAllocations).toEqual([
+      {
+        openingBalanceId: balance.id,
+        amountAllocated: "200.00",
+        description: "Carried forward from 2025-26",
+        originAcademicYearId: w.yearAId,
+        originAcademicYearName: "2025-26",
+      },
+    ]);
+
+    // A refund takes 50.00 back off the balance it paid.
+    await feesCollectionService.recordRefund(
+      w.scopeA,
+      {
+        originalPaymentId: cash.id,
+        refundAmount: "50.00",
+        refundDate: "2026-04-11",
+        refundMode: "cash",
+        reason: "Over-collected carry-forward",
+      },
+      w.adminId,
+    );
+    row = await balanceRow(balance.id);
+    expect(row.paidAmount).toBe("150.00");
+    expect(row.status).toBe("partial");
+
+    // A cheque for the rest settles it; its bounce re-opens exactly that much.
+    const cheque = await feesCollectionService.recordPayment(
+      w.scopeA,
+      payInput("350.00", { paymentMode: "cheque", transactionReference: "CHQ-G10" }),
+      w.adminId,
+    );
+    expect(cheque.paymentStatus).toBe("pending");
+    row = await balanceRow(balance.id);
+    expect(row.paidAmount).toBe("500.00");
+    expect(row.status).toBe("paid");
+    await expect(
+      feesCollectionService.recordPayment(w.scopeA, payInput("0.01"), w.adminId),
+    ).rejects.toThrow(/outstanding amount is 0.00/);
+
+    await feesCollectionService.bouncePayment(
+      w.scopeA,
+      { paymentId: cheque.id, reason: "Cheque returned" },
+      w.adminId,
+    );
+    row = await balanceRow(balance.id);
+    expect(row.paidAmount).toBe("150.00");
+    expect(row.status).toBe("partial");
+
+    // The student's year nets to the cash actually kept: the receivable row
+    // is `none`, so Money in/out see only the cash.
+    const ledger = await feesCollectionService.listLedger([w.scopeA], year2.id, student.id);
+    const effects = ledger.map((r) => [r.transactionType, r.cashEffect]);
+    expect(effects).toContainEqual(["opening_balance", "none"]);
+    expect(effects).toContainEqual(["opening_balance_payment", "in"]);
+    const cashIn = ledger
+      .filter((r) => r.cashEffect === "in")
+      .reduce((acc, r) => acc + paise(r.amount), 0n);
+    const cashOut = ledger
+      .filter((r) => r.cashEffect === "out")
+      .reduce((acc, r) => acc + paise(r.amount), 0n);
+    expect(cashIn - cashOut).toBe(paise("150.00"));
+    expect(cashIn - cashOut).toBe(paise(row.paidAmount));
+  });
+
+  it("gaps 12 and 15: bounce, reversal and cancel offset the late fee as well as the principal", async () => {
+    await db.insert(lateFeeRules).values({
+      organizationId: w.orgAId,
+      schoolId: w.schoolAId,
+      feeStructureId: null,
+      gracePeriodDays: 0,
+      calculationType: "flat",
+      value: "75.00",
+      maxLateFee: null,
+      isActive: true,
+      effectiveFrom: "2025-04-01",
+      effectiveTo: null,
+      createdBy: w.adminId,
+    });
+    try {
+      const student = await freshStudent("G12");
+      const assignment = await assignAndGenerate(student.id);
+      const tuition = (await installmentsOf(assignment.id))
+        .filter((r) => r.feeHeadId === w.tuitionHeadId)
+        .sort((a, b) => (a.dueDate < b.dueDate ? -1 : 1));
+      const [first, second, third] = tuition;
+      if (!first || !second || !third) throw new Error("Tuition installments missing.");
+
+      // Both paid long past due: the flat rule fires on each.
+      const cheque = await feesCollectionService.recordPayment(
+        w.scopeA,
+        {
+          studentId: student.id,
+          academicYearId: w.yearAId,
+          paymentDate: "2025-06-20",
+          paymentMode: "cheque",
+          transactionReference: "CHQ-G12",
+          allocations: [{ installmentId: first.id, amount: first.netAmount }],
+        },
+        w.adminId,
+      );
+      const cash = await feesCollectionService.recordPayment(
+        w.scopeA,
+        {
+          studentId: student.id,
+          academicYearId: w.yearAId,
+          paymentDate: "2025-06-20",
+          paymentMode: "cash",
+          allocations: [{ installmentId: second.id, amount: second.netAmount }],
+        },
+        w.adminId,
+      );
+      const withdrawn = await feesCollectionService.recordPayment(
+        w.scopeA,
+        {
+          studentId: student.id,
+          academicYearId: w.yearAId,
+          paymentDate: "2025-06-20",
+          paymentMode: "upi",
+          transactionReference: "UPI-G12",
+          allocations: [{ installmentId: third.id, amount: third.netAmount }],
+        },
+        w.adminId,
+      );
+      expect(cheque.lateFeeAmount).toBe("75.00");
+      expect(cash.lateFeeAmount).toBe("75.00");
+      expect(withdrawn.lateFeeAmount).toBe("75.00");
+      await feesCollectionService.cancelPayment(
+        w.scopeA,
+        { paymentId: withdrawn.id, reason: "Parent withdrew" },
+        w.adminId,
+      );
+
+      await feesCollectionService.bouncePayment(
+        w.scopeA,
+        { paymentId: cheque.id, reason: "Cheque returned" },
+        w.adminId,
+      );
+      await feesCollectionService.reversePayment(
+        w.scopeA,
+        { paymentId: cash.id, reason: "Duplicate entry" },
+        w.adminId,
+      );
+
+      for (const [payment, type] of [
+        [cheque, "cheque_bounce_charge"],
+        [cash, "fee_refund"],
+        [withdrawn, "payment_cancelled"],
+      ] as const) {
+        const debits = await db
+          .select()
+          .from(financialTransactions)
+          .where(
+            and(
+              eq(financialTransactions.referenceId, payment.id),
+              eq(financialTransactions.direction, "debit"),
+            ),
+          );
+        expect(debits.map((d) => `${d.transactionType}:${d.amount}`).sort()).toEqual(
+          [`${type}:${payment.amount}`, `${type}:75.00`].sort(),
+        );
+      }
+
+      // Nothing was kept, so the student's cash nets to zero — late fees included.
+      const ledger = await feesCollectionService.listLedger([w.scopeA], w.yearAId, student.id);
+      const net = ledger.reduce((acc, r) => {
+        if (r.cashEffect === "in") return acc + paise(r.amount);
+        if (r.cashEffect === "out") return acc - paise(r.amount);
+        return acc;
+      }, 0n);
+      expect(net).toBe(0n);
+    } finally {
+      await db
+        .update(lateFeeRules)
+        .set({ isActive: false })
+        .where(and(eq(lateFeeRules.schoolId, w.schoolAId), eq(lateFeeRules.isActive, true)));
+    }
+  }, 90_000);
+
+  /** A cleared cash payment covering the student's first two tuition months. */
+  async function twoLinePayment(tag: string) {
+    const student = await freshStudent(tag);
+    const assignment = await assignAndGenerate(student.id);
+    const [first, second] = (await installmentsOf(assignment.id))
+      .filter((r) => r.feeHeadId === w.tuitionHeadId)
+      .sort((a, b) => (a.dueDate < b.dueDate ? -1 : 1));
+    if (!first || !second) throw new Error("Tuition installments missing.");
+    // Listed second-first on purpose: the walk order is by due date, not input order.
+    const payment = await feesCollectionService.recordPayment(
+      w.scopeA,
+      {
+        studentId: student.id,
+        academicYearId: w.yearAId,
+        paymentDate: "2025-04-01",
+        paymentMode: "cash",
+        allocations: [
+          { installmentId: second.id, amount: second.netAmount },
+          { installmentId: first.id, amount: first.netAmount },
+        ],
+      },
+      w.adminId,
+    );
+    const paidOf = async (id: string) => {
+      const [row] = await db.select().from(feeInstallments).where(eq(feeInstallments.id, id));
+      return [row?.paidAmount, row?.paymentStatus];
+    };
+    const refund = (amount: string) =>
+      feesCollectionService.recordRefund(
+        w.scopeA,
+        {
+          originalPaymentId: payment.id,
+          refundAmount: amount,
+          refundDate: "2025-04-02",
+          refundMode: "cash",
+          reason: `Refund ${amount}`,
+        },
+        w.adminId,
+      );
+    return { student, first, second, payment, paidOf, refund };
+  }
+
+  it("gap 16: repeated partial refunds walk on from where the last one stopped", async () => {
+    const { first, second, payment, paidOf, refund } = await twoLinePayment("G16");
+    expect(first.netAmount).toBe("1000.00");
+    expect(second.netAmount).toBe("1000.00");
+    expect(payment.amount).toBe("2000.00");
+
+    await refund("300.00");
+    expect(await paidOf(first.id)).toEqual(["700.00", "partial"]);
+    expect(await paidOf(second.id)).toEqual(["1000.00", "paid"]);
+
+    // The old walk took this from the first line again (clamped at 0) and
+    // never touched the second.
+    await refund("1200.00");
+    expect(await paidOf(first.id)).toEqual(["0.00", "unpaid"]);
+    expect(await paidOf(second.id)).toEqual(["500.00", "partial"]);
+
+    await refund("500.00");
+    expect(await paidOf(second.id)).toEqual(["0.00", "unpaid"]);
+    await expect(refund("0.01")).rejects.toThrow(/Refundable: 0.00/);
+  });
+
+  it("gap 17: a reversal after a partial refund offsets only what the payment still holds", async () => {
+    const { student, first, second, payment, paidOf, refund } = await twoLinePayment("G17");
+    await refund("300.00");
+
+    await feesCollectionService.reversePayment(
+      w.scopeA,
+      { paymentId: payment.id, reason: "Disputed" },
+      w.adminId,
+    );
+    expect(await paidOf(first.id)).toEqual(["0.00", "unpaid"]);
+    expect(await paidOf(second.id)).toEqual(["0.00", "unpaid"]);
+
+    const [reversal] = await db
+      .select()
+      .from(financialTransactions)
+      .where(
+        and(
+          eq(financialTransactions.referenceId, payment.id),
+          eq(financialTransactions.direction, "debit"),
+        ),
+      );
+    expect(reversal?.transactionType).toBe("fee_refund");
+    expect(reversal?.amount).toBe("1700.00");
+
+    const ledger = await feesCollectionService.listLedger([w.scopeA], w.yearAId, student.id);
+    const net = ledger.reduce((acc, r) => {
+      if (r.cashEffect === "in") return acc + paise(r.amount);
+      if (r.cashEffect === "out") return acc - paise(r.amount);
+      return acc;
+    }, 0n);
+    expect(net).toBe(0n);
+
+    // A fully refunded payment has nothing left to reverse.
+    const full = await twoLinePayment("G17B");
+    await full.refund("2000.00");
+    await expect(
+      feesCollectionService.reversePayment(
+        w.scopeA,
+        { paymentId: full.payment.id, reason: "Too late" },
+        w.adminId,
+      ),
+    ).rejects.toThrow(/fully refunded/);
+  }, 90_000);
+
+  it("gap 13: the matrix reports late fees on standing payments beside paidAmount", async () => {
+    await db.insert(lateFeeRules).values({
+      organizationId: w.orgAId,
+      schoolId: w.schoolAId,
+      feeStructureId: null,
+      gracePeriodDays: 0,
+      calculationType: "flat",
+      value: "40.00",
+      maxLateFee: null,
+      isActive: true,
+      effectiveFrom: "2025-04-01",
+      effectiveTo: null,
+      createdBy: w.adminId,
+    });
+    try {
+      const student = await freshStudent("G13");
+      const assignment = await assignAndGenerate(student.id);
+      const [first, second, third] = (await installmentsOf(assignment.id))
+        .filter((r) => r.feeHeadId === w.tuitionHeadId)
+        .sort((a, b) => (a.dueDate < b.dueDate ? -1 : 1));
+      if (!first || !second || !third) throw new Error("Tuition installments missing.");
+      const pay = (installment: typeof first, mode: "cash" | "cheque") =>
+        feesCollectionService.recordPayment(
+          w.scopeA,
+          {
+            studentId: student.id,
+            academicYearId: w.yearAId,
+            paymentDate: "2025-06-20",
+            paymentMode: mode,
+            ...(mode === "cheque" ? { transactionReference: `CHQ-${installment.id.slice(0, 6)}` } : {}),
+            allocations: [{ installmentId: installment.id, amount: installment.netAmount }],
+          },
+          w.adminId,
+        );
+      await pay(first, "cash"); // cleared: counts
+      await pay(second, "cheque"); // pending: counts, like its principal
+      const bounced = await pay(third, "cheque");
+      await feesCollectionService.bouncePayment(
+        w.scopeA,
+        { paymentId: bounced.id, reason: "Cheque returned" },
+        w.adminId,
+      );
+
+      const result = feeMatrixOutputSchema.parse(
+        await feesCollectionService.listMatrix(
+          [w.scopeA],
+          feeMatrixInputSchema.parse({ academicYearId: w.yearAId, search: `${RUN}-G13` }),
+          true,
+        ),
+      );
+      const [row] = result.rows;
+      expect(result.rows).toHaveLength(1);
+      expect(row?.totals.lateFeePaidAmount).toBe("80.00");
+      // paidAmount stays principal only: the two standing installments.
+      expect(row?.totals.paidAmount).toBe(
+        fromPaise(paise(first.netAmount) + paise(second.netAmount)),
+      );
+      expect(result.cohortTotals.lateFeePaidAmount).toBe("80.00");
+
+      // A student with no payments reports zero, not a missing field.
+      const none = await freshStudent("G13B");
+      await assignAndGenerate(none.id);
+      const empty = await feesCollectionService.listMatrix(
+        [w.scopeA],
+        feeMatrixInputSchema.parse({ academicYearId: w.yearAId, search: `${RUN}-G13B` }),
+        true,
+      );
+      expect(empty?.rows[0]?.totals.lateFeePaidAmount).toBe("0.00");
+    } finally {
+      await db
+        .update(lateFeeRules)
+        .set({ isActive: false })
+        .where(and(eq(lateFeeRules.schoolId, w.schoolAId), eq(lateFeeRules.isActive, true)));
+    }
+  }, 90_000);
+
+  it("gap 11: waivers stay as written but are receivables, never cash", async () => {
+    const student = await freshStudent("G11");
+    const assignment = await assignAndGenerate(student.id);
+    const [first] = await installmentsOf(assignment.id);
+    if (!first) throw new Error("Fixture installment missing.");
+    await feesCollectionService.waiveInstallment(w.scopeA, first.id, w.adminId);
+    const ledger = await feesCollectionService.listLedger([w.scopeA], w.yearAId, student.id);
+    const waiver = ledger.find((r) => r.transactionType === "waiver_applied");
+    expect(waiver?.direction).toBe("debit"); // the immutable row is unchanged
+    expect(waiver?.cashEffect).toBe("none");
+  });
+});
+
+describe("fees: bill a whole class (billClass)", () => {
+  let classId: string;
+  let sectionAId: string;
+  let sectionBId: string;
+  let bareClassId: string;
+  let preBilledAssignmentId: string;
+  const ids: Record<string, string> = {};
+
+  beforeAll(async () => {
+    const klass = await academicService.createClass(w.scopeA, {
+      name: `Fee Bulk ${RUN}`,
+      numericOrder: 90,
+    });
+    classId = klass.id;
+    const [sectionA, sectionB] = await Promise.all(
+      ["BK-A", "BK-B"].map((name) =>
+        academicService.createSection(w.scopeA, {
+          academicYearId: w.yearAId,
+          classId,
+          name,
+        }),
+      ),
+    );
+    if (!sectionA || !sectionB) throw new Error("Bulk sections missing.");
+    sectionAId = sectionA.id;
+    sectionBId = sectionB.id;
+
+    const structure = await feesService.createFeeStructure(
+      w.scopeA,
+      {
+        academicYearId: w.yearAId,
+        classId,
+        name: `Fee Bulk Structure ${RUN}`,
+        installmentMode: "monthly",
+      },
+      w.adminId,
+    );
+    await db.insert(feeStructureLines).values({
+      organizationId: w.orgAId,
+      schoolId: w.schoolAId,
+      feeStructureId: structure.id,
+      feeHeadId: w.tuitionHeadId,
+      annualAmount: "12000.00",
+      installmentFrequency: "monthly",
+    });
+
+    const enrollInto = async (tag: string, sectionId: string) => {
+      const student = await freshStudent(`BK-${tag}`);
+      ids[tag] = student.id;
+      return enrollmentService.createEnrollment(w.scopeA, {
+        studentId: student.id,
+        academicYearId: w.yearAId,
+        classId,
+        sectionId,
+        enrollmentDate: "2025-04-01",
+      });
+    };
+
+    // Section A: one already billed, one new, one who left.
+    const preBilled = await enrollInto("A-PRE", sectionAId);
+    const assignment = await feesBillingService.assignFeeStructure(
+      w.scopeA,
+      { enrollmentId: preBilled.id },
+      w.adminId,
+    );
+    await feesBillingService.generateInstallments(w.scopeA, assignment.id);
+    preBilledAssignmentId = assignment.id;
+    await enrollInto("A-NEW", sectionAId);
+    const left = await enrollInto("A-LEFT", sectionAId);
+    await db
+      .update(studentEnrollments)
+      .set({ enrollmentStatus: "withdrawn" })
+      .where(eq(studentEnrollments.id, left.id));
+
+    // Section B: two new.
+    await enrollInto("B-NEW1", sectionBId);
+    await enrollInto("B-NEW2", sectionBId);
+
+    const bare = await academicService.createClass(w.scopeA, {
+      name: `Fee Bulk Bare ${RUN}`,
+      numericOrder: 91,
+    });
+    bareClassId = bare.id;
+    const bareStudent = await freshStudent("BK-BARE");
+    await enrollmentService.createEnrollment(w.scopeA, {
+      studentId: bareStudent.id,
+      academicYearId: w.yearAId,
+      classId: bareClassId,
+      enrollmentDate: "2025-04-01",
+    });
+  });
+
+  it("section filter: bills only the section's unbilled, skips the billed, refuses the left", async () => {
+    const result = await feesBillingService.billClass(
+      w.scopeA,
+      { academicYearId: w.yearAId, classId, sectionId: sectionAId },
+      w.adminId,
+    );
+    expect(result.refusal).toBeNull();
+    expect(result.billed.map((s) => s.studentId)).toEqual([ids["A-NEW"]]);
+    expect(result.skipped.map((s) => [s.studentId, s.assignmentId])).toEqual([
+      [ids["A-PRE"], preBilledAssignmentId],
+    ]);
+    expect(result.refused).toEqual([
+      expect.objectContaining({
+        studentId: ids["A-LEFT"],
+        reason: "Not enrolled: withdrawn.",
+      }),
+    ]);
+    expect([result.billedCount, result.skippedCount, result.refusedCount]).toEqual([1, 1, 1]);
+
+    // The billed student got the full year's monthly dues in the same call.
+    const billed = result.billed[0];
+    expect(billed?.installmentsCreated).toBe(12);
+    const rows = await installmentsOf(billed?.assignmentId ?? "");
+    expect(rows).toHaveLength(12);
+    expect(rows.reduce((acc, r) => acc + paise(r.netAmount), 0n)).toBe(1_200_000n);
+
+    // Section B is untouched by a section-A run.
+    const sectionB = await db
+      .select({ id: studentFeeAssignments.id })
+      .from(studentFeeAssignments)
+      .where(
+        and(
+          eq(studentFeeAssignments.academicYearId, w.yearAId),
+          inArray(studentFeeAssignments.studentId, [ids["B-NEW1"]!, ids["B-NEW2"]!]),
+        ),
+      );
+    expect(sectionB).toHaveLength(0);
+  });
+
+  it("whole class: bills the rest; a second run bills nobody", async () => {
+    const first = await feesBillingService.billClass(
+      w.scopeA,
+      { academicYearId: w.yearAId, classId },
+      w.adminId,
+    );
+    expect(first.billed.map((s) => s.studentId).sort()).toEqual(
+      [ids["B-NEW1"], ids["B-NEW2"]].sort(),
+    );
+    expect(first.skippedCount).toBe(2); // A-PRE and A-NEW from the section run
+    expect(first.refusedCount).toBe(1);
+
+    const second = await feesBillingService.billClass(
+      w.scopeA,
+      { academicYearId: w.yearAId, classId },
+      w.adminId,
+    );
+    expect(second.billedCount).toBe(0);
+    expect(second.skippedCount).toBe(4);
+    expect(second.refusedCount).toBe(1);
+
+    // No duplicate dues: still exactly 12 per billed student.
+    for (const s of first.billed) {
+      expect(await installmentsOf(s.assignmentId)).toHaveLength(12);
+    }
+  });
+
+  it("a class with no active fee chart refuses as a whole", async () => {
+    const result = await feesBillingService.billClass(
+      w.scopeA,
+      { academicYearId: w.yearAId, classId: bareClassId },
+      w.adminId,
+    );
+    expect(result.refusal).toMatch(/no active fee chart/i);
+    expect(result.feeStructureId).toBeNull();
+    expect([result.billedCount, result.skippedCount, result.refusedCount]).toEqual([0, 0, 0]);
+  });
+
+  it("refuses a class of another school, billing nobody", async () => {
+    const outsider = await freshStudent("BK-X");
+    await enrollmentService.createEnrollment(w.scopeA, {
+      studentId: outsider.id,
+      academicYearId: w.yearAId,
+      classId,
+      sectionId: sectionBId,
+      enrollmentDate: "2025-04-01",
+    });
+    await expect(
+      feesBillingService.billClass(
+        w.scopeB,
+        { academicYearId: w.yearAId, classId },
+        w.adminId,
+      ),
+    ).rejects.toThrow(/^Class not found in this school/);
+    const assigned = await db
+      .select({ id: studentFeeAssignments.id })
+      .from(studentFeeAssignments)
+      .where(eq(studentFeeAssignments.studentId, outsider.id));
+    expect(assigned).toHaveLength(0);
+  });
+
+  it("refuses a section of a different class", async () => {
+    await expect(
+      feesBillingService.billClass(
+        w.scopeA,
+        { academicYearId: w.yearAId, classId: bareClassId, sectionId: sectionAId },
+        w.adminId,
+      ),
+    ).rejects.toThrow(/^The section is not in the class being billed/);
+  });
+});
+
+describe("fees: month-by-month generation (ADR-051)", () => {
+  async function assignOnly(studentId: string) {
+    const enrollment = await enroll(studentId);
+    return feesBillingService.assignFeeStructure(
+      w.scopeA,
+      { enrollmentId: enrollment.id },
+      w.adminId,
+    );
+  }
+
+  const endOfThisMonth = () => {
+    const now = new Date();
+    const last = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(last)}`;
+  };
+
+  it("generates a prefix, adds the rest later, and matches all-at-once to the paisa", async () => {
+    const once = await assignOnly((await freshStudent("MB1")).id);
+    const stepped = await assignOnly((await freshStudent("MB2")).id);
+    for (const id of [once.id, stepped.id]) {
+      await feesService.createConcession(
+        w.scopeA,
+        id,
+        {
+          concessionType: "merit_scholarship",
+          calculationType: "percentage",
+          value: "10",
+          validFrom: "2025-04-01",
+        },
+        w.adminId,
+      );
+    }
+
+    await feesBillingService.generateInstallments(w.scopeA, once.id, undefined, {
+      through: "all",
+    });
+
+    const first = await feesBillingService.generateInstallments(
+      w.scopeA,
+      stepped.id,
+      undefined,
+      { through: "2025-06-30" },
+    );
+    const early = await installmentsOf(stepped.id);
+    expect(early.length).toBeGreaterThan(0);
+    expect(early.every((r) => r.dueDate <= "2025-06-30")).toBe(true);
+    expect(first.inserted).toBe(early.length);
+
+    await feesBillingService.generateInstallments(w.scopeA, stepped.id, undefined, {
+      through: "2025-12-31",
+    });
+    await feesBillingService.generateInstallments(w.scopeA, stepped.id, undefined, {
+      through: "all",
+    });
+    const again = await feesBillingService.generateInstallments(
+      w.scopeA,
+      stepped.id,
+      undefined,
+      { through: "all" },
+    );
+    expect(again.inserted).toBe(0);
+
+    // Same rows, same amounts, same concession shares: generating month by
+    // month never piles a concession onto the first months.
+    const all = await installmentsOf(once.id);
+    const steppedRows = await installmentsOf(stepped.id);
+    expect(steppedRows).toHaveLength(all.length);
+    const key = (r: { feeHeadId: string; installmentNumber: number }) =>
+      `${r.feeHeadId}:${r.installmentNumber}`;
+    const byKey = new Map(all.map((r) => [key(r), r]));
+    for (const row of steppedRows) {
+      const twin = byKey.get(key(row));
+      expect(twin).toBeTruthy();
+      expect(row.dueDate).toBe(twin?.dueDate);
+      expect(row.amount).toBe(twin?.amount);
+      expect(row.concessionAmount).toBe(twin?.concessionAmount);
+    }
+  });
+
+  it("generateThrough brings a class up to a date; a second run adds nothing", async () => {
+    const student = await freshStudent("MB3");
+    const assignment = await assignOnly(student.id);
+
+    const result = await feesBillingService.generateThrough(w.scopeA, {
+      academicYearId: w.yearAId,
+      through: "2025-05-31",
+      classId: w.classId,
+    });
+    expect(result.failed).toHaveLength(0);
+    expect(result.inserted).toBeGreaterThan(0);
+    const rows = await installmentsOf(assignment.id);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.dueDate <= "2025-05-31")).toBe(true);
+
+    const again = await feesBillingService.generateThrough(w.scopeA, {
+      academicYearId: w.yearAId,
+      through: "2025-05-31",
+      classId: w.classId,
+    });
+    expect(again.inserted).toBe(0);
+  }, 180_000);
+
+  it("the school's mode decides the cut-off when none is asked", async () => {
+    try {
+      await feesBillingService.setFeeGenerationMode(w.scopeA, "monthly_manual");
+      expect(await feesBillingService.getFeeGenerationMode(w.scopeA)).toEqual({
+        mode: "monthly_manual",
+      });
+      expect(
+        await feesBillingService.resolveThrough(db, w.schoolAId, undefined),
+      ).toBe(endOfThisMonth());
+      expect(await feesBillingService.resolveThrough(db, w.schoolAId, "all")).toBeNull();
+
+      await feesBillingService.setFeeGenerationMode(w.scopeA, "all_now");
+      expect(
+        await feesBillingService.resolveThrough(db, w.schoolAId, undefined),
+      ).toBeNull();
+    } finally {
+      await feesBillingService.setFeeGenerationMode(w.scopeA, "all_now");
+    }
+  });
+
+  it("the sweep fills billed students of monthly_auto schools, and only those", async () => {
+    // A run killed mid-sweep (a timed-out test) leaves its lease until the
+    // TTL; clear it so this test exercises the sweep, not the lease.
+    await getRedis().del("lock:fees-monthly-sweep");
+    const student = await freshStudent("MB4");
+    const assignment = await assignOnly(student.id);
+    expect(await installmentsOf(assignment.id)).toHaveLength(0);
+
+    // all_now school: the sweep leaves it alone.
+    await feesBillingService.runMonthlySweep({ schoolIds: [w.schoolAId] });
+    expect(await installmentsOf(assignment.id)).toHaveLength(0);
+
+    try {
+      await feesBillingService.setFeeGenerationMode(w.scopeA, "monthly_auto");
+      const swept = await feesBillingService.runMonthlySweep({ schoolIds: [w.schoolAId] });
+      expect(swept.summary).not.toMatch(/^skipped/);
+      const rows = await installmentsOf(assignment.id);
+      // The fixture session ended before today, so "up to this month" is all
+      // of it.
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows.every((r) => r.dueDate <= endOfThisMonth())).toBe(true);
+    } finally {
+      await feesBillingService.setFeeGenerationMode(w.scopeA, "all_now");
+    }
+  }, 180_000);
 });

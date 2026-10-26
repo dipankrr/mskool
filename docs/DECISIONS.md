@@ -2173,3 +2173,153 @@ proved.
 still pulls the schema graph). A `contracts/client` entry point exposing only
 zod-safe schemas (real work, no consumer yet - revisit only if a third client
 needs one). Validating on the client and trusting it (ADR-001: never).
+
+---
+
+## ADR-049 - Ledger rows carry a cash effect; offsets mirror every credit; opening balances are paid through the ledger link
+
+Date: 2026-10-26. Status: accepted. Refines ADR-009 and hard rule 3; does not
+rewrite any existing ledger row.
+
+**Context.** The mobile fees device walk found three ledger-semantics gaps
+(`.kilo/plans/2026-10-26-mobile-fees.md`, gaps 10-12). `financial_transactions`
+mixes two kinds of row under one `direction`: cash that arrived or left
+(`fee_payment`, `late_fee_charged`, `fee_refund`, `cheque_bounce_charge`) and
+movements of what is *owed* (`opening_balance` credit, `waiver_applied` /
+`concession_applied` debit). Summing credits as "Money in" counted a
+carried-forward receivable as income. A bounce or reversal offset only the
+principal, so the late fee frozen on a bounced cheque stayed as income. And no
+write could pay an `opening_balances` row: `payment_allocations.installment_id`
+is `NOT NULL`, so a carried-forward due could be shown but never collected.
+
+**Decision.**
+1. *Cash effect is derived, not rewritten.* Rows are immutable, so existing
+   directions stay. `fee.ledger.list` returns each row with
+   `cashEffect: "in" | "out" | "none"`: `none` for `opening_balance`,
+   `concession_applied` and `waiver_applied`; otherwise `credit` -> `in`,
+   `debit` -> `out`. Money in/out totals sum `in`/`out` only. New rows of the
+   non-cash types keep the direction they have always had, so history and
+   new rows read the same way.
+2. *An offset mirrors every credit the payment wrote.* `bounce` and `reverse`
+   write the principal debit (as before) **and**, when `late_fee_amount > 0`, a
+   second debit of the same type for the late fee. A bounced or reversed
+   payment therefore nets to zero cash, late fee included.
+3. *Opening balances are paid on an ordinary receipt.* `fee.payment.record`
+   accepts `openingBalanceAllocations: [{ openingBalanceId, amount }]` beside
+   the installment `allocations` (either may be empty; the total must be
+   positive). Inside the same transaction the balance is row-locked (after
+   installments, id order), re-checked (same student, the payment's year = the
+   year it was carried into, not waived, no more than still owed), its
+   `paid_amount`/`status` updated, and one `opening_balance_payment` credit is
+   written per portion with `reference_table = 'opening_balances'`,
+   `reference_id` = the balance, `receipt_number` = the payment. **That ledger
+   row is the payment <-> balance link**: it is append-only, which is exactly
+   the immutability `payment_allocations` promises, and the receipt number is
+   unique per school. Bounce, reverse and refund find the portions through it
+   and re-open them (refunds take installments first, then portions);
+   `payment.detail` returns them as `openingBalanceAllocations`. The
+   `fee_payment` credit now carries the installment principal only, so the
+   two credit types sum to `fee_payments.amount`.
+4. *Refunds and offsets act on what a payment still holds.* A payment's lines
+   are its installment allocations (by due date, then id) followed by its
+   carried-forward portions. A refund takes back greedily in that order, and
+   what earlier refunds took is found by replaying their **sum** through the
+   same walk (a greedy walk of a total equals the walks of its parts), so a
+   second partial refund continues where the first stopped. Bounce, reverse
+   and cancel re-open only what each line still holds and debit the principal
+   less earlier refunds; a fully refunded payment cannot be bounced or
+   reversed (worded refusal).
+
+**Consequences.** No migration: the change ships with the frozen schema and
+needs no backfill, because no opening balance was ever paid before. Old
+bounced payments that carried a late fee keep their one-sided late-fee credit;
+the derived figures are right from this change on, and a one-off offset for
+historical bounces is an accountant's correcting entry, not a code path.
+A cancelled pending payment is offset too: migration 0031 adds the
+`payment_cancelled` transaction type (a debit, `cashEffect` `out`), written by
+`cancelPayment` for the principal and the late fee exactly like a bounce. This
+reverses ADR-era wording that a cancellation "writes no ledger row": it still
+moves no money, but `recordPayment` credits a pending payment at entry, so the
+credit must be offset. Payments cancelled before 0031 keep their one-sided
+credit (same accountant-correction rule as old bounces).
+
+**Alternatives rejected.** Rewriting `opening_balance` rows to `debit`
+(violates hard rule 3, and "debit" means money out, which is just as wrong).
+A nullable `opening_balance_id` on `payment_allocations` (cleaner join, but a
+schema migration on a shared database for a link the ledger already holds
+immutably; revisit if allocation reporting needs a single table). A separate
+"collect opening balance" endpoint with its own receipt sequence (two receipts
+for one counter visit; duplicates the idempotency and locking discipline).
+
+## ADR-050 - A period's price never depends on when the student joined
+
+Date: 2026-10-26. Status: accepted (owner, "why would rohan pay full year?").
+Corrects the generator's split; supersedes the "buckets sum to the annual
+amount for every effective date" invariant.
+
+**Context.** `splitIntoBuckets` divided a line's annual amount across the
+periods a student attends. A Class 6 child joining in October was billed the
+year's ₹12,000 tuition as ₹2,000 a month for six months, while classmates
+paid ₹1,000. DOMAIN.md §5 says mid-session admission generates only the
+*remaining* installments; it never meant the remaining installments should
+carry the whole year. The same compression applied to quarterly, half-yearly
+and term-wise lines, and percentage concessions were taken of the chart's
+full year, so a 50% scholarship on a joiner could wipe out everything owed.
+
+**Decision.**
+1. Each period's share is computed over the whole year (floored, the last
+   period absorbing the remainder, so a full-year student still sums to the
+   annual amount exactly). A joiner is billed only the periods they attend:
+   months from the joining month; quarters/half-years ahead in full and the
+   one joined part-way through by months attended (floored); terms that have
+   not ended, at the year's weightage share. The joining-month day proration
+   (`joining_month_full_charge = false`) prorates the year's monthly rate.
+2. `upfront` / `annual` lines stay whole: they are one-time charges
+   (admission, annual fees), owed in full whenever the student joins.
+3. A student's money is read through one loader (`lineSplits`):
+   `base_annual_amount` is what the student is billed, the concession
+   apportionment budget is each head's billed amount, and a head-scoped
+   percentage concession is a share of that head's billed amount.
+4. `installment_number` still counts the student's own buckets from 1, so
+   regenerating an assignment made before this change matches its rows
+   instead of adding a second set.
+
+**Existing data.** Assignments generated before this change keep their
+compressed rows; the insert-only generator never rewrites an installment.
+Dev data was corrected by re-billing; a production school would need a
+one-off correction of unpaid joiner installments, reviewed before running.
+
+## ADR-051 - A school chooses when dues are created: all at billing, or month by month
+
+Date: 2026-10-26. Status: accepted (owner: "Generate all dues now / Generate
+monthly (automatic/manual)").
+
+**Context.** Billing a student wrote the whole session's dues at once. Most
+schools work month to month; a year of open dues is cognitive load for the
+counter, and a fee change mid-year cannot reach dues already written.
+
+**Decision.**
+1. `schools.fee_generation_mode` (migration 0032): `all_now` (default, the
+   old behaviour), `monthly_auto`, `monthly_manual`.
+2. The generator takes a cut-off (`through`): it computes the student's FULL
+   set of buckets and concession shares, then writes only those due on or
+   before the cut-off. Left out, the school's mode decides: `all_now` writes
+   everything, the monthly modes write up to the end of the current month
+   (server date). `"all"` forces everything. Because ADR-050 prices every
+   period over the whole year and shares are computed before filtering,
+   month-by-month generation gives each due exactly the amount and
+   concession it would have had if written at once (integration test).
+3. `fees.assignment.generateThrough` brings every active assignment of a
+   session (optionally a class) up to a date — the "Generate dues" button.
+   `generateInstallments` accepts `through` for one student — "pay ahead".
+4. `monthly_auto` schools are swept by an API host loop (`fees-worker.ts`),
+   hourly by default, off unless `FEES_WORKER_DISABLED=false`. The sweep is
+   idempotent (insert-only generator), so frequency only affects latency, and
+   a best-effort Redis lease keeps instances from duplicating work — the
+   homework sweeper's pattern (ADR-040).
+5. Switching modes never removes or rewrites a due; it changes only what
+   later runs write.
+
+**Rejected.** Generating on the 1st only (misses a day of downtime); a
+separate cron process (a second deployable for an idempotent fill); writing
+future dues as "draft" rows (a second state every read would have to filter).

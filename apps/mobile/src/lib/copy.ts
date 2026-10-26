@@ -13,6 +13,7 @@ const common = {
   ok: "OK",
   back: "Back",
   cancel: "Cancel",
+  dismiss: "Dismiss",
 } as const;
 
 export const copy = {
@@ -75,6 +76,7 @@ export const copy = {
     home: "Home",
     attendance: "Attendance",
     homework: "Homework",
+    fees: "Fees",
     more: "More",
   },
   home: {
@@ -2312,6 +2314,815 @@ export const copy = {
       createDeniedTitle: "You can't give homework",
       createDeniedBody:
         "Your role can see homework but not create it. Ask the school office if that is wrong.",
+    },
+  },
+  /**
+   * Fees (Step 5). The desk is an instrument: short labels, exact amounts,
+   * and consequences stated before an irreversible act. No celebratory copy.
+   */
+  fees: {
+    title: "Fees",
+    tabLabel: "Fees",
+    generation: {
+      title: "When dues are created",
+      hint: "Timing only; prices stay the same",
+      modeLabel: "Create dues",
+      modes: {
+        all_now: "All at once",
+        monthly_auto: "Monthly, automatic",
+        monthly_manual: "Monthly, by hand",
+      },
+      explain: {
+        all_now:
+          "Billing a student creates every due for the session straight away.",
+        monthly_auto:
+          "Billing creates dues up to this month. Each new month is added automatically on the 1st.",
+        monthly_manual:
+          "Billing creates dues up to this month. Add later months below when you are ready.",
+      },
+      throughLabel: "Create dues up to",
+      action: "Generate dues",
+      done: (dues: number, students: number, month: string, failed: number) =>
+        [
+          dues === 0
+            ? `Everyone already has dues up to ${month}.`
+            : `Added ${dues} ${dues === 1 ? "due" : "dues"} for ${students} ${students === 1 ? "student" : "students"}, up to ${month}.`,
+          failed > 0 ? `${failed} could not be updated.` : null,
+        ]
+          .filter(Boolean)
+          .join(" "),
+    },
+    checklist: {
+      title: (year: string) => `Set up ${year}`,
+      hint: "Tap a step to do it",
+      heads: "Fee types",
+      headsTodo: "Add tuition, transport and the other fees you charge.",
+      headsDone: (count: number) => `${count} fee types`,
+      charts: "Fee charts",
+      chartsTodo: "Set what each class pays this session.",
+      chartsDone: (count: number) =>
+        count === 1 ? "1 fee chart" : `${count} fee charts`,
+      rule: "Late-fee rule (optional)",
+      ruleTodo: "Choose a late fee, or skip this step.",
+      ruleDone: "Late fee set",
+      bill: "Bill students",
+      billTodo: (count: number) =>
+        count === 1
+          ? "1 student has no bill yet. Open a fee chart and bill the class."
+          : `${count} students have no bill yet. Open a fee chart and bill the class.`,
+      billDone: "Everyone is billed",
+    },
+    sessionClosed:
+      "This session is closed. Fees can be viewed, but nothing new can be collected, billed or changed.",
+    collectedLateFees: {
+      label: "Count late fees in Collected",
+      help: "On: all cash received. Off: fees only. Applies on this phone, here and on the Fees tab.",
+      included: "incl. late fees",
+      excluded: "fees only",
+    },
+    noAccessTitle: "Fees is not on your account",
+    noAccessBody:
+      "Your role does not include the fee desk. Ask your administrator if that is wrong.",
+    noReportTitle: "The dues list needs report access",
+    noReportBody:
+      "Your role can open payments, but the student dues list needs the fee report permission.",
+    openPayments: "Open payments",
+    noBranchTitle: "No branch selected",
+    noBranchBody: "Choose a branch before opening the fee desk.",
+    noYearTitle: "No session is set",
+    noYearBody:
+      "The current academic session isn't set for this branch. Ask your administrator.",
+    dues: {
+      periodLabel: "Show amounts for",
+      dueNowLabel: "Due now",
+      metaDueNow: (amount: string) => `${amount} due now`,
+      thisMonth: "This month",
+      overdue: "Overdue",
+      previousDues: (amount: string) => `Includes ${amount} previous dues`,
+      laterThisSession: (amount: string) => `${amount} later this session`,
+      monthsOverdue: (months: number) =>
+        months === 1 ? "1 month overdue" : `${months} months overdue`,
+      meta: (outstanding: string) => `${outstanding} outstanding`,
+      metaLoading: "Loading this session's dues…",
+      summaryLabel: "Outstanding across",
+      students: (count: number) =>
+        count === 1 ? "1 student" : `${count} students`,
+      assessed: "Assessed",
+      collected: "Collected",
+      attention: (count: number) =>
+        count === 1 ? "1 student needs attention" : `${count} students need attention`,
+      attentionHint: "Overdue, part-paid, carried forward or not generated",
+      searchPlaceholder: "Name or admission number",
+      searchHint: "Filters the list as you type",
+      clearSearch: "Clear search",
+      allClasses: "All classes",
+      allSections: "All sections",
+      filterHint: "Opens the class filter",
+      sectionHint: "Opens the section filter",
+      emptyTitle: "No students in this session",
+      emptyBody:
+        "Enroll students into the session, then set up the class fee structure.",
+      emptyAction: "Open fee setup",
+      filteredEmptyTitle: "No students match",
+      filteredEmptyBody: "Try another name, admission number or class.",
+      clearFilters: "Clear filters",
+      rowHint: "Opens this student's fee desk",
+      balance: "Balance",
+      settled: "Settled",
+      carriedForward: "Carried forward",
+      notGenerated: "Not generated",
+      notAssigned: "Not assigned",
+      openingBalance: "Previous dues",
+      loadMore: "Load more",
+      loadingMore: "Loading…",
+      count: (shown: number, total: number) => `${shown} of ${total}`,
+      loadError: "Couldn't load the dues list.",
+    },
+    desk: {
+      title: "Fee desk",
+      balanceLabel: "Outstanding",
+      assessedLabel: "Assessed",
+      paidLabel: "Paid",
+      concessionLabel: "Concession",
+      lateFeeLabel: "Late fee accruing",
+      progress: (percent: number) => `${percent}% collected`,
+      openingTitle: "Carried forward",
+      openingBody: (amount: string, balance: string) =>
+        `${amount} carried from an earlier session · ${balance} still open`,
+      nothingTitle: "Nothing outstanding",
+      nothingBody: "Every installment for this session is settled.",
+      outstandingTitle: "Outstanding installments",
+      outstandingHint: "Oldest first",
+      noInstallmentsTitle: "No dues yet",
+      noInstallmentsBody:
+        "This student is not billed yet, so there is nothing due.",
+      notAssignedTitle: "Not billed yet",
+      notAssignedBody:
+        "Bill this student to create their dues from the class fee chart.",
+      assignAction: "Bill this student",
+      generateAction: "Add missing dues",
+      recomputeAction: "Recompute concessions",
+      concessionAction: "Add concession",
+      waiverAction: "Waive",
+      waiveTitle: "Waive this installment?",
+      waiveBody: (label: string) =>
+        `${label} will be marked waived. This cannot be undone.`,
+      waiveConfirm: "Waive installment",
+      waiving: "Waiving…",
+      waiveOnlyUnpaid:
+        "Only a never-paid installment can be waived. Money already received must be refunded instead.",
+      monthsTitle: "Month by month",
+      monthsHint: "Tap a month for its breakdown",
+      monthSheetTitle: (label: string) => label,
+      monthEmpty: "Nothing is due in this month.",
+      paymentHistoryTitle: "Payment history",
+      paymentHistoryEmpty: "No payments recorded this session.",
+      viewAllPayments: "All payments",
+      ledgerLink: "This student's ledger",
+      collectAction: "Collect payment",
+      collectDisabled: "Nothing to collect",
+      lateFeeNote:
+        "Any late fee is calculated by the server when the payment is recorded.",
+      settledPill: "Settled",
+      unassignedPill: "Not assigned",
+      notGeneratedPill: "Not generated",
+      loadError: "Couldn't load this student's fees.",
+      missingTitle: "Student not in this session",
+      missingBody:
+        "They may have left the school, or the session changed. Go back and search again.",
+      actionsTitle: "Billing",
+      actionsHint: "Fee chart, dues and concessions",
+      assignmentTitle: "Assignment",
+      assignmentEffective: (date: string) => `Effective ${date}`,
+      installmentsOpen: (count: number) =>
+        count === 1 ? "1 open installment" : `${count} open installments`,
+      lateFeeChip: (amount: string) => `Late fee ${amount}`,
+      paidOf: (paid: string, net: string) => `${paid} of ${net} paid`,
+      assignSheetTitle: "Bill this student",
+      assignSheetBody: (className: string) =>
+        `Uses ${className}'s fee chart for this session, charged from the date below. Later changes to the chart do not change this bill.`,
+      assignStructureSummary: (name: string, mode: string) => `${name} · ${mode}`,
+      joiningFullCharge: "Charge the joining month in full",
+      joiningFullChargeHelp:
+        "For a student who joins mid-month. Off charges only the remaining part of that month.",
+      assignNoStructureTitle: "No structure for this class",
+      assignNoStructureBody:
+        "Create the class's fee structure for this session in Fee setup, then come back.",
+      assignNoEnrollment:
+        "This student has no enrollment in the selected session, so there is nothing to assign.",
+      assignConfirm: "Bill student",
+      assigning: "Billing…",
+      assignDone: (count: number) =>
+        count === 1
+          ? "Billed. 1 due created."
+          : `Billed. ${count} dues created.`,
+      generateTitle: "Add missing dues?",
+      generateBody:
+        "Runs the idempotent generator for this assignment. Existing installments are kept; only missing ones are added.",
+      generateConfirm: "Add dues",
+      generating: "Adding…",
+      generateDone: (count: number) =>
+        count === 1 ? "1 due added." : `${count} dues added.`,
+      generateUpToDate: "Nothing was missing; the dues were already complete.",
+      recomputeTitle: "Recompute concessions?",
+      recomputeBody:
+        "Re-apportions the recorded concessions across installments that have never been paid. Paid installments are untouched.",
+      recomputeConfirm: "Recompute",
+      recomputing: "Recomputing…",
+      recomputeDone: "Concessions were recomputed.",
+      concessionTitle: "Add concession",
+      concessionIntro:
+        "A concession reduces what this student owes. The amount is computed by the server and frozen for audit.",
+      concessionTypeLabel: "Reason",
+      concessionCalculationLabel: "Calculation",
+      concessionHeadLabel: "Applies to",
+      concessionAllHeads: "All fee heads",
+      concessionValueLabel: "Value",
+      concessionValueFlatHelp: "The rupee amount to discount.",
+      concessionValuePercentHelp: "A percentage from 0 to 100, rounded down.",
+      concessionFromLabel: "Starts",
+      concessionFromHelp:
+        "Applies to installments due on or after this date.",
+      concessionToLabel: "Ends",
+      concessionToHelp: "Leave empty to run for the whole session.",
+      concessionEndHelp:
+        "Applies to installments due on or before this date.",
+      concessionReasonLabel: "Note",
+      concessionReasonPlaceholder: "Why this concession was granted",
+      concessionSubmit: "Record concession",
+      concessionSaving: "Recording…",
+      concessionDone: (amount: string) => `Concession recorded: ${amount}.`,
+      concessionNoAssignment:
+        "Assign a fee structure before recording a concession.",
+      concessionNeedsReason: "Add a short note explaining the concession.",
+      concessionDurationLabel: "Duration",
+      concessionDurationSession: "Whole session",
+      concessionDurationDated: "Ends on a date",
+      concessionNeedsEnd: "Choose an end date.",
+      concessionHeadHelp: "A single head confines the discount to that fee.",
+      concessionNoHeads: "No fee heads are configured.",
+      waiverDone: "Installment waived.",
+      monthSheetEmptyTitle: "No fee this month",
+      monthNetLabel: "Net",
+      monthPaidLabel: "Paid",
+      monthBalanceLabel: "Balance",
+      monthLateFeeLabel: "Late fee",
+      monthDueLabel: "Due",
+      monthInstallments: (count: number) =>
+        count === 1 ? "1 installment" : `${count} installments`,
+      monthInstallmentsTitle: "Installments",
+      monthLoadError: "Couldn't load this month's fees.",
+      closeAction: "Done",
+      paymentHistoryHint: "Opens the payment detail",
+      paymentHistoryCount: (count: number) =>
+        count === 1 ? "1 payment" : `${count} payments`,
+      openingPaid: (paid: string, amount: string) => `${paid} of ${amount} paid`,
+      openingOrigins: (count: number) =>
+        count === 1 ? "from 1 earlier session" : `from ${count} earlier sessions`,
+      openingIncluded: "Included in due now.",
+      includesOpening: (amount: string) => `Includes ${amount} carried forward`,
+      thisSession: (amount: string) => `${amount} this session`,
+      notYetBilled: (amount: string) =>
+        `${amount} more will be billed as the months arrive.`,
+      wholeSession: (total: string, later: string) =>
+        `Whole session ${total} · ${later} not due yet`,
+      assignmentLoadError: "Couldn't load this student's assignment.",
+      enrollmentLoadError:
+        "Couldn't load this student's enrollment for the session.",
+      structureLoadError: "Couldn't load the class fee structures.",
+      assignmentBaseAnnual: (amount: string) => `Base ${amount}`,
+      assignmentNetAnnual: (amount: string) => `Net ${amount}`,
+      feeStatusTitle: "Fee status",
+      feeStatusBody:
+        "This session's bill at a glance. Open a month to see its installments.",
+      concessionRecordedNeedsRecompute: (amount: string) =>
+        `Concession recorded (${amount}), but it could not be applied to the installments. Use Recompute concessions.`,
+      recomputeHint:
+        "Use this after a concession changes what an unpaid installment should cost.",
+      paymentRowHint: "Opens the payment detail",
+      paymentsMore: (count: number) =>
+        count === 1 ? "1 earlier payment" : `${count} earlier payments`,
+      openPayments: "Open payments",
+      openLedger: "Open ledger",
+      openSetup: "Fee setup",
+      notGeneratedHint:
+        "Installments have not been generated for this assignment yet.",
+    },
+    ledger: {
+      title: "Ledger",
+      meta: (count: number) =>
+        count === 1 ? "1 entry this session" : `${count} entries this session`,
+      summaryIn: "Money in",
+      summaryOut: "Money out",
+      summaryNet: "Net",
+      filterTitle: "Entry type",
+      filterAll: "All entries",
+      count: (shown: number, total: number) =>
+        shown === total
+          ? total === 1
+            ? "1 entry"
+            : `${total} entries`
+          : `${shown} of ${total}`,
+      emptyTitle: "No entries yet",
+      emptyBody:
+        "The ledger fills as payments, concessions, waivers and refunds happen.",
+      filteredEmptyTitle: "No entries of this type",
+      filteredEmptyBody: "Try another entry type.",
+      clearFilter: "Show all entries",
+      loadError: "Couldn't load the ledger.",
+      deniedTitle: "The ledger isn't in your account",
+      deniedBody:
+        "Reading the fee ledger needs the fee report permission. Ask your administrator.",
+      noYearTitle: "No session is set",
+      noYearBody:
+        "The current academic session isn't set for this branch. Ask your administrator.",
+      readOnly:
+        "Read-only. Corrections appear as new rows; nothing here is ever edited.",
+      noCash: "Owed, not cash — not in money in or out.",
+      studentMeta: (name: string) => `${name} · this session`,
+    },
+    collect: {
+      title: "Collect payment",
+      balanceLabel: "Due now",
+      allocationTitle: "What is being paid",
+      allocationHint: "Oldest first. Edit an amount, or clear a line.",
+      payFull: "Pay all due now",
+      nothingDueNow: "Nothing is due yet this session. A parent can still pay ahead.",
+      payAheadTitle: "Pay ahead",
+      payAheadEmptyHint: "Later months are not billed yet",
+      addMonth: (month: string) => `Add ${month} dues`,
+      payAheadHint: (count: number, amount: string) =>
+        `${count} later ${count === 1 ? "due" : "dues"} · ${amount}`,
+      payAheadShow: "Show",
+      payAheadFill: "Fill all",
+      clearRow: "Clear",
+      amountA11y: (title: string, balance: string) =>
+        `Amount for ${title}, balance ${balance}`,
+      clamped: (balance: string) =>
+        `Capped at ${balance}, the outstanding balance.`,
+      totalLabel: "Collecting",
+      reviewAction: "Review payment",
+      reviewTitle: "Confirm this payment",
+      reviewIntro:
+        "Check the lines and the mode. The receipt number is issued by the server.",
+      reviewLines: "Installments",
+      reviewTotal: "Total",
+      reviewMode: "Mode",
+      reviewReference: "Reference",
+      reviewDate: "Date",
+      confirm: "Record payment",
+      recording: "Recording…",
+      paymentDateLabel: "Payment date",
+      paymentDateHelp: "The day the money was received.",
+      modeLabel: "Payment mode",
+      referenceLabel: "Reference",
+      bankLabel: "Bank",
+      chequeDateLabel: "Cheque date",
+      remarksLabel: "Remarks",
+      remarksPlaceholder: "Optional — printed on the receipt",
+      referenceRequired: "Enter the reference for this payment mode.",
+      bankRequired: "Enter the bank name.",
+      chequeDateRequired: "Choose the cheque date.",
+      noAllocations: "Enter an amount for at least one installment.",
+      carriedForwardLine: "Carried forward from an earlier session",
+      carriedForwardNotice: (amount: string) =>
+        `${amount} carried forward from an earlier session is not collected here.`,
+      clampedNotice:
+        "Some amounts were more than the balance. They were capped before review.",
+      loadError: "Couldn't load this student's open installments.",
+      emptyTitle: "Nothing to collect",
+      emptyBody: "Every installment for this session is settled.",
+      deniedTitle: "Collecting isn't in your account",
+      deniedBody:
+        "Recording a payment needs the fee counter permission. Ask your administrator.",
+      missingTitle: "Open installments aren't in your account",
+      missingBody:
+        "This student's open installments need the student fee assignment permission.",
+      backToDesk: "Back to the fee desk",
+      studentFallback: "Student",
+      modeHint:
+        "Cash clears immediately. Every other mode stays pending until a principal approves it.",
+      noFeeHeads: "The installment has no description.",
+      collectingOf: (collecting: string, outstanding: string) =>
+        `${collecting} of ${outstanding}`,
+    },
+    receipt: {
+      title: "Receipt",
+      loading: "Loading receipt…",
+      loadError: "Couldn't load this receipt.",
+      notFoundTitle: "Receipt not available",
+      notFoundBody:
+        "It may have been removed, or it belongs to another branch.",
+      heading: "Fee receipt",
+      receiptNumberLabel: "Receipt",
+      dateLabel: "Date",
+      studentLabel: "Student",
+      classLabel: "Class",
+      linesLabel: "Paid for",
+      amountLabel: "Amount",
+      lateFeeLabel: "Late fee",
+      totalLabel: "Total paid",
+      modeLabel: "Mode",
+      referenceLabel: "Reference",
+      collectedBy: (name: string) => `Collected by ${name}`,
+      share: "Share receipt",
+      shareError: "Couldn't open the share sheet.",
+      done: "Done",
+      pendingNotice:
+        "This payment is pending. The money is not confirmed until a principal approves it.",
+      reversedNotice:
+        "This payment no longer counts. The installments it covered were re-opened.",
+      bouncedNotice:
+        "This payment bounced. The installments it covered were re-opened.",
+      cancelledNotice: "This payment was cancelled. No money moved.",
+      schoolFallback: "School fee receipt",
+      shareTitle: "Fee receipt",
+      serverIssued: "Receipt number issued by the school.",
+    },
+    payments: {
+      title: "Payments",
+      meta: (count: number) =>
+        count === 1 ? "1 payment this session" : `${count} payments this session`,
+      summaryLabel: "Collected",
+      summaryPending: "Awaiting approval",
+      summaryPendingCount: (count: number) =>
+        count === 1 ? "1 pending" : `${count} pending`,
+      searchPlaceholder: "Receipt, name or admission no.",
+      filterLabel: "Status",
+      filterAll: "All",
+      filterEmptyTitle: "No payments match",
+      filterEmptyBody: "Try another status, or clear the receipt search.",
+      emptyTitle: "No payments yet",
+      emptyBody:
+        "Every collection recorded this session appears here, newest first.",
+      loadError: "Couldn't load this session's payments.",
+      deniedTitle: "Payments aren't in your account",
+      deniedBody:
+        "Reading the payment history needs the fee payment read permission. Ask your administrator.",
+      noYearTitle: "No session is set",
+      noYearBody:
+        "The current academic session isn't set for this branch. Ask your administrator.",
+      rowHint: "Opens the payment",
+      count: (shown: number, total: number) =>
+        shown === total
+          ? total === 1
+            ? "1 payment"
+            : `${total} payments`
+          : `${shown} of ${total}`,
+    },
+    payment: {
+      title: "Payment",
+      loading: "Loading payment…",
+      loadError: "Couldn't load this payment.",
+      notFoundTitle: "Payment not available",
+      notFoundBody:
+        "It may have been removed, or it belongs to another branch.",
+      receiptLink: "Open receipt",
+      studentLabel: "Student",
+      appliedTitle: "Applied to",
+      appliedHint: "Installments this payment covered",
+      noAllocations: "No allocation lines were returned for this payment.",
+      refundsTitle: "Refunds",
+      refundsHint: "Money returned against this payment",
+      noRefunds: "Nothing has been refunded from this payment.",
+      refundedOf: (refunded: string, amount: string) =>
+        `${refunded} of ${amount} refunded`,
+      refundableLabel: "Still refundable",
+      actionsTitle: "Actions",
+      actionsHint: "Only legal transitions appear",
+      noActions: "This payment is closed. No further action is possible.",
+      noActionsPending:
+        "Waiting for approval. The principal (or anyone given approval rights) clears, cancels or bounces it.",
+      noActionsCleared:
+        "Bounce and reversal need the principal's approval rights.",
+      statusReasonLabel: "Recorded reason",
+      reasonLabel: "Reason",
+      reasonPlaceholder: "What happened, and why",
+      reasonHelp: "Stored with the payment. The receipt is never edited.",
+      reasonRequired: "Add a reason before continuing.",
+      confirmTitle: (label: string) => label,
+      confirmAction: "Record it",
+      working: "Recording…",
+      done: (label: string) => `${label} recorded.`,
+      refundTitle: "Refund this payment",
+      refundIntro:
+        "Money goes back to the payer and the installments it covered re-open. The original receipt is not edited.",
+      refundAmountLabel: "Refund amount",
+      refundAmountHelp: (max: string) => `Up to ${max}, what this payment still holds.`,
+      refundAmountError: (max: string) => `Enter an amount up to ${max}.`,
+      refundDateLabel: "Refund date",
+      refundModeLabel: "Refund mode",
+      refundReferenceLabel: "Reference",
+      refundReferenceRequired: "Enter the reference for this refund mode.",
+      refundReasonLabel: "Reason",
+      refundReasonPlaceholder: "Why the money is going back",
+      refundReasonRequired: "Add a reason for the refund.",
+      refundSubmit: "Record refund",
+      refunding: "Recording…",
+      refundDone: (amount: string) => `Refund recorded: ${amount}.`,
+      refundsLoadError: "Couldn't check what has already been refunded.",
+      allRefunded: "This payment has been fully refunded.",
+    },
+    setup: {
+      title: "Fee setup",
+      meta: (session: string) => `Session ${session}`,
+      intro:
+        "What the school charges and how each class's bill is built. Changes here affect future assignments; existing bills keep the amounts they were created with.",
+      headsRow: "Fee heads",
+      headsDetail: (count: number) =>
+        count === 1 ? "1 head" : `${count} heads`,
+      headsHint: "What the school charges",
+      structuresRow: "Fee structures",
+      structuresDetail: (count: number) =>
+        count === 1 ? "1 structure" : `${count} structures`,
+      structuresHint: "Each class's bill for this session",
+      servicesRow: "Student services",
+      servicesDetail: "Optional services and carried-forward dues",
+      servicesHint: "Per student",
+      loadError: "Couldn't load the fee configuration.",
+      deniedTitle: "Fee setup isn't in your account",
+      deniedBody:
+        "Configuring fees needs the fee structure permission. Ask your administrator.",
+      heads: {
+        title: "Fee heads",
+        meta: (count: number) =>
+          count === 1 ? "1 head" : `${count} heads`,
+        add: "Add head",
+        emptyTitle: "No fee heads yet",
+        emptyBody:
+          "Add the first fee head — e.g. Tuition Fee — and build structures from it.",
+        nameLabel: "Name",
+        namePlaceholder: "Tuition Fee",
+        shortCodeLabel: "Short code",
+        shortCodePlaceholder: "TUIF",
+        shortCodeHelp: "Optional. Printed where the full name won't fit.",
+        categoryLabel: "Category",
+        categoryHelp: "Only optional heads can be subscribed to per student.",
+        descriptionLabel: "Note",
+        descriptionPlaceholder: "Optional description",
+        taxableLabel: "Taxable",
+        taxableHelp: "Tick if GST applies to this head.",
+        taxLabel: "Tax %",
+        taxPlaceholder: "18",
+        taxError: "Enter a tax rate between 0 and 100.",
+        nameRequired: "Enter a name.",
+        createTitle: "Add a fee head",
+        editTitle: "Edit fee head",
+        save: "Save head",
+        created: "Fee head added.",
+        updated: "Fee head updated.",
+        retireAction: "Retire",
+        retireTitle: "Retire this fee head?",
+        retireBody:
+          "It stops appearing in new structures. Existing bills, receipts and ledger rows keep it exactly as they are.",
+        retired: "Fee head retired.",
+        retireConfirm: "Retire head",
+        inactivePill: "Retired",
+        categories: {
+          regular: "Regular",
+          one_time: "One time",
+          optional: "Optional",
+          fine: "Fine",
+          refundable: "Refundable",
+        },
+        loadError: "Couldn't load the fee heads.",
+        taxableChip: "Taxable",
+      },
+      structures: {
+        title: "Fee structures",
+        meta: (count: number) =>
+          count === 1 ? "1 structure" : `${count} structures`,
+        add: "Add structure",
+        emptyTitle: "No structures yet",
+        emptyBody:
+          "A structure is one class's bill for the session. Add one, then give it its fee lines.",
+        showRetired: "Show retired",
+        retiredCount: (count: number) =>
+          count === 1 ? "1 retired" : `${count} retired`,
+        emptyActiveTitle: "No active structures",
+        emptyActiveBody:
+          "Every structure for this session is retired. Turn on Show retired to see them.",
+        nameLabel: "Name",
+        namePlaceholder: "Class 6 Fee Structure",
+        nameRequired: "Enter a name.",
+        classLabel: "Class",
+        classPlaceholder: "Choose a class",
+        classRequired: "Choose a class.",
+        classLocked: "The class can't change once a structure exists.",
+        modeLabel: "Installments",
+        modeHelp: "How the year's total splits into installments.",
+        modes: {
+          upfront: "Upfront",
+          term_wise: "Term-wise",
+          monthly: "Monthly",
+        },
+        createTitle: "Add a fee structure",
+        editTitle: "Edit structure",
+        save: "Save structure",
+        created: "Fee structure added.",
+        updated: "Fee structure updated.",
+        retireAction: "Retire",
+        retireTitle: "Retire this structure?",
+        retireBody:
+          "No student can be newly assigned to it. Students already on it keep their bills.",
+        retired: "Structure retired.",
+        retireConfirm: "Retire structure",
+        inactivePill: "Retired",
+        classNameUnknown: "Class",
+        linesDetail: (count: number) =>
+          count === 1 ? "1 fee line" : `${count} fee lines`,
+        loadError: "Couldn't load the fee structures.",
+      },
+      structure: {
+        title: "Structure",
+        loadError: "Couldn't load this structure.",
+        notFoundTitle: "Structure not available",
+        notFoundBody: "It may belong to another branch.",
+      billTitle: "Bill students",
+        billBody: (className: string) =>
+          `Give every student in ${className || "this class"} who has no bill yet this fee chart and their dues. Students already billed are left as they are.`,
+        billAction: "Bill all students in this class",
+        billConfirmTitle: "Bill this class?",
+        billConfirmBody: (className: string) =>
+          `Creates dues for every unbilled student in ${className || "this class"}. Students can still be billed one at a time from their page.`,
+        billConfirmAction: "Bill class",
+        billResult: (billed: number, skipped: number, refused: number) =>
+          billed === 0 && refused === 0
+            ? "Everyone in this class is already billed."
+            : [
+            `Billed ${billed} ${billed === 1 ? "student" : "students"}.`,
+            skipped > 0 ? `${skipped} already billed.` : null,
+            refused > 0 ? `${refused} not billed:` : null,
+          ]
+            .filter(Boolean)
+            .join(" "),
+          retiredNotice:
+          "This structure is retired. It still explains existing bills, but no student can be newly assigned to it.",
+        linesTitle: "Fee lines",
+        linesHint: (count: number) =>
+          count === 1 ? "1 line" : `${count} lines`,
+        addLine: "Add line",
+        noLinesTitle: "No fee lines",
+        noLinesBody: "Add what this class pays, head by head.",
+        allHeadsUsed: "Every active fee head is already in this structure.",
+        headUnknown: "Fee head",
+        lineFrequency: (frequency: string, months: string) =>
+          `${frequency} · ${months}`,
+        rulesTitle: "Late fee rules",
+        rulesHint: "Applied when a payment is late",
+        addRule: "Add rule",
+        noRulesTitle: "No late fee rules",
+        noRulesBody: "Without a rule, a late payment costs nothing extra.",
+        rulesImmutable:
+          "Rules are never edited. To change one, add a new rule from today.",
+        schoolWide: "All classes",
+        lineSheetAddTitle: "Add a fee line",
+        lineSheetEditTitle: "Edit fee line",
+        headLabel: "Fee head",
+        headPlaceholder: "Choose a head",
+        headRequired: "Choose a fee head.",
+        headAlreadyUsed: "Already in this structure",
+        annualAmountLabel: "Annual amount",
+        annualAmountError: "Enter an amount.",
+        frequencyLabel: "Installments",
+        frequencies: {
+          inherit: "Inherit",
+          monthly: "Monthly",
+          quarterly: "Quarterly",
+          half_yearly: "Half-yearly",
+          annual: "Annual",
+          term_wise: "Term-wise",
+        },
+        monthsLabel: "Applies",
+        fromMonth: "From",
+        toMonth: "To",
+        monthError: "The range cannot end before it starts.",
+        lineSave: "Save line",
+        lineCreated: "Fee line added.",
+        lineUpdated: "Fee line updated.",
+        ruleSheetTitle: "Add a late fee rule",
+        ruleTypeLabel: "Charged as",
+        ruleTypes: {
+          flat: "Flat",
+          percentage: "Percent",
+          per_day: "Per day",
+        },
+        ruleValueLabel: "Value",
+        ruleValueFlat: "Amount",
+        ruleValuePercent: "Percent",
+        ruleValuePerDay: "Amount per day",
+        ruleValueHelp:
+          "Rupees, percent, or rupees per day depending on the type.",
+        ruleValueError: "Enter a value greater than zero.",
+        graceLabel: "Grace days",
+        graceHelp: "Days after the due date before the fee starts.",
+        graceError: "Enter grace days between 0 and 365.",
+        maxLabel: "Maximum",
+        maxHelp: "Optional cap. Per-day rules need one.",
+        maxError: "Enter a maximum greater than zero, or leave it empty.",
+        effectiveFromLabel: "Starts",
+        effectiveToLabel: "Ends",
+        ruleHasEnd: "Set an end date",
+        ruleSave: "Save rule",
+        ruleCreated: "Late fee rule added.",
+        scopeLabel: "Applies to",
+        scopeThis: "This structure",
+        scopeSchool: "All classes",
+        scopeHelp:
+          "A school-wide rule applies wherever no structure rule overrides it.",
+        ruleDateError: "The rule cannot end before it starts.",
+        perDaySuffix: "per day",
+        valueSuffix: "%",
+        graceValue: (days: number) =>
+          days === 0
+            ? "No grace days"
+            : `${days} ${days === 1 ? "day" : "days"} of grace`,
+        maxValue: (amount: string) => `Max ${amount}`,
+        ruleDates: (from: string, to: string | null) =>
+          to ? `${from} – ${to}` : `From ${from}`,
+      },
+      services: {
+        title: "Student services",
+        meta: "Optional fees and carried-forward dues",
+        searchLabel: "Find a student",
+        searchPlaceholder: "Name or admission number",
+        searchHint: "Searches the active register",
+        pickTitle: "Choose a student",
+        noStudentTitle: "Choose a student",
+        noStudentBody:
+          "Search for a student to manage their optional services and carried-forward dues.",
+        changeStudent: "Change student",
+        subscriptionsTitle: "Optional services",
+        subscriptionsHint: "Transport, hostel, canteen",
+        addSubscription: "Subscribe",
+        noSubscriptions: "No optional services for this student.",
+        cancelAction: "Cancel service",
+        cancelTitle: "Cancel this service?",
+        cancelBody:
+          "It stops billing from today. Past installments stay on the student's statement.",
+        cancelConfirm: "Cancel service",
+        cancelled: "Service cancelled.",
+        activePill: "Active",
+        cancelledPill: "Cancelled",
+        monthlyLabel: (amount: string) => `${amount}/month`,
+        annualLabel: (amount: string) => `${amount}/year`,
+        fromTo: (from: string, to: string | null) =>
+          to ? `${from} – ${to}` : `From ${from}`,
+        subscriptionSheetTitle: "Subscribe to a service",
+        headLabel: "Service",
+        headPlaceholder: "Choose an optional head",
+        headRequired: "Choose an optional fee head.",
+        headEmpty: "No optional fee heads are configured.",
+        detailLabel: "Detail",
+        detailPlaceholder: "Route 3 · Dum Dum",
+        monthlyAmountLabel: "Monthly amount",
+        annualAmountLabel: "Annual amount",
+        amountError: "Enter an amount.",
+        fromLabel: "Starts",
+        toLabel: "Ends",
+        toHelp: "Optional. Leave empty for the full session.",
+        dateError: "The service cannot end before it starts.",
+        subscribe: "Subscribe",
+        subscribed: "Service added.",
+        subscribedBilled: "Service added and its installments generated.",
+        subscribedNotBilled:
+          "Service added. Its charge appears when this student's bill is generated.",
+        subscribedGenerateFailed:
+          "Service added, but its installments couldn't be generated. Open the student's fee desk to finish.",
+        openingTitle: "Carried-forward dues",
+        openingHint: "From an earlier session",
+        addOpening: "Record balance",
+        noOpening: "Nothing was carried into this session for this student.",
+        openingReadOnly:
+          "Carried-forward dues appear on the student's statement. Collecting them is not part of the counter flow yet.",
+        openingSheetTitle: "Record an opening balance",
+        originLabel: "Dues from",
+        originPlaceholder: "Choose the earlier session",
+        originRequired: "Choose the session the dues come from.",
+        originSame: "Choose a different session.",
+        originNone: "No other session is available to carry dues from.",
+        amountLabel: "Amount",
+        openingAmountError: "Enter an amount greater than zero.",
+        descriptionLabel: "Note",
+        descriptionPlaceholder: "Carried forward from 2025-26",
+        recordBalance: "Record balance",
+        recorded: "Opening balance recorded.",
+        paidOf: (paid: string, amount: string) => `${paid} of ${amount} paid`,
+        originOf: (label: string) => `From ${label}`,
+        statuses: {
+          unpaid: "Unpaid",
+          partial: "Part paid",
+          paid: "Paid",
+          waived: "Waived",
+        },
+        loadError: "Couldn't load this student's services.",
+        deniedTitle: "Student services aren't in your account",
+        deniedBody:
+          "Managing optional services needs the fee structure permission. Ask your administrator.",
+        searchEmptyTitle: "No students match",
+        searchEmptyBody: "Try another name or admission number.",
+        searchError: "Couldn't search the register.",
+      },
     },
   },
 } as const;

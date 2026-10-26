@@ -32,4 +32,11 @@ export const env = createEnv({
   // Scheduled-publish transactions per tick — a burst after downtime drains
   // at this cap per tick instead of one unbounded loop.
   HOMEWORK_WORKER_PUBLISH_BATCH: z.coerce.number().int().min(1).max(500).default(50),
+  /**
+   * ADR-051 — the monthly fees sweep for `monthly_auto` schools. Disabled by
+   * default like the homework sweeper (tests drive the sweep directly); the
+   * production .env enables it. Hourly is plenty: it only fills gaps.
+   */
+  FEES_WORKER_DISABLED: z.enum(["true", "false"]).default("true"),
+  FEES_WORKER_TICK_SECONDS: z.coerce.number().int().min(60).max(86400).default(3600),
 });
