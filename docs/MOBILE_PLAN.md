@@ -618,7 +618,7 @@ short, repeated teacher task before the more complex assignment workflow.
 | 4 | Homework manage (§9) | `homework.*` staff 28 | complete — staff slice device-walked 2026-10-25 (`88864ab`, `678c5dd`, `5ed3583`, `6198649`, `4ad81f3`); quiz-attempt grading not walked (no seeded attempts); family door at Step 9 |
 | 5 | Fees (§10) | `fees.*` 38 | open |
 | 6 | Staff + roles + ID cards + feed (§11) | `staff` 8 · `role` 8 · `idCard` 10 | open |
-| 7 | Exams + marks (§12) | `exam.*` staff 46 | open |
+| 7 | Exams + marks (§12) | `exam.*` staff 46 | **7A built + device-walked 2026-10-26; 7B (verify, reopen, readiness) built + device-walked 2026-10-27** on `feat/mobile-exams-7a` (plan: `.kilo/plans/2026-10-26-mobile-exams.md`); 7C–7F open |
 | 8 | Remaining staff parity closeout | Any mobile-scoped staff workflows found by route audit | open |
 | 9 | Family shell (§13) | `portalHomework` 12 · portal reads · `portalExam` 2 · full claim auth | open |
 
@@ -648,8 +648,8 @@ shell until those workflows are complete or explicitly deferred by the owner.
 | `/fees/counter`, `/fees/collect`, `/fees/payments`, `/fees/payments/[paymentId]`, `/fees/ledger` | 5 | Counter collection, allocation review, receipt, reversal/bounce recovery and ledger inspection |
 | `/staff`, `/staff/[staffId]`, `/roles`, `/roles/[roleType]` | 6 | Staff record and login lifecycle, role assignment and permission editing with safeguards |
 | `/students/id-cards`, `/students/id-cards/[templateId]/design` | 6 | Touch-capable template management/designer plus native PDF/share/print workflow, including duplex alignment guidance |
-| `/exams`, `/exams/setup`, `/exams/grades`, `/exams/[examId]` | 7 | Exam lifecycle, grading configuration, schedules and components |
-| `/exams/[examId]/entry`, `/exams/[examId]/results`, `/exams/[examId]/results/print` | 7 | Mobile marks-entry flow, verification/publication, report-card review and PDF/share/print |
+| `/exams`, `/exams/setup`, `/exams/grades`, `/exams/[examId]` | 7 | Exam lifecycle, grading configuration, schedules and components. **List + hub + stage moves are live (7A, walked 2026-10-26)**; create/edit/blueprint 7D, grading setup 7F |
+| `/exams/[examId]/entry`, `/exams/[examId]/results`, `/exams/[examId]/results/print` | 7 | Mobile marks-entry flow, verification/publication, report-card review and PDF/share/print. **Marks entry is live (7A, walked 2026-10-26)** as `/exams/[examId]/paper/[scheduleId]`; **verification is live (7B, walked 2026-10-27)** as Review mode on that same route; results/publish/print 7C |
 | `/site`, `(public)/sites/preview` | Deferred by owner (2026-10-13) | Keep site editing and admin preview on web; do not build these mobile routes now |
 | `(portal)/portal/fees`, `/portal/attendance`, `/portal/results` | 9 | Adult-first family shell, child switcher and owned-student reads |
 | `/sites/[slug]`, public not-found/layout routes | Web public surface | Public school websites remain web-hosted; the app may open their URL externally |
@@ -857,19 +857,26 @@ Source: `exam.router.ts`. Unpublished marks never reach family screens
 (hard rule 8); post-publish edits flow through revision windows (hard
 rule 7).
 
+Slice plan (actors, journeys, wireflow, states, chunk order, owner decisions):
+`.kilo/plans/2026-10-26-mobile-exams.md`. Built in chunks 7A–7F; the Screen column
+names the chunk that closes each row. 7A (find the paper, enter marks) and 7B (verify,
+reopen, readiness) are built, device-walked and COMMITTED on `feat/mobile-exams-7a`
+(unpushed); 7C–7F get a design addendum before their UI starts (7C's is written; the
+owner waived pre-review on 2026-10-27).
+
 | Group | Count | Screen | Done |
 |---|---|---|---|
-| subject-types list/byId/create/update/deactivate/apply-preset | 6 | — | ☐ |
-| grading-scales list/create/update/bands/make-default | 5 | — | ☐ |
-| pass-criteria get/create/update | 3 | — | ☐ |
-| exam list/byId/create/update/transition | 5 | — | ☐ |
-| schedules list/save + components list/save | 4 | — | ☐ |
-| eligibility list/recompute/override + readiness | 4 | — | ☐ |
-| marks entry grid / student entries / autosave / verify / unverify | 5 | — | ☐ |
-| results table / compute / term ranks / final results | 4 | — | ☐ |
-| publication list / publish-class / publish / revision open+close / apply revision | 6 | — | ☐ |
-| cards versions / class set + term-grades list / save | 4 | — | ☐ |
-| portal results list / card (step 9) | 2 | — | ☐ |
+| subject-types list/byId/create/update/deactivate/apply-preset | 6 | 7F | ☐ |
+| grading-scales list/create/update/bands/make-default | 5 | 7F | ☐ |
+| pass-criteria get/create/update | 3 | 7F | ☐ |
+| exam list/byId/create/update/transition | 5 | list/byId/transition 7A · create/update 7D | ◐ 3 of 5 (7A) |
+| schedules list/save + components list/save | 4 | 7D | ☐ |
+| eligibility list/recompute/override + readiness | 4 | list 7A · readiness 7B (moved from 7C, D9) · recompute/override 7D | ◐ 2 of 4 (7A, 7B) |
+| marks entry grid / student entries / autosave / verify / unverify | 5 | entry + autosave 7A · verify/unverify 7B · student entries 7C | ◐ 4 of 5 (7A, 7B) |
+| results table / compute / term ranks / final results | 4 | 7C | ☐ |
+| publication list / publish-class / publish / revision open+close / apply revision | 6 | 7C | ☐ |
+| cards versions / class set + term-grades list / save | 4 | cards 7C · term-grades 7E | ☐ |
+| portal results list / card (step 9) | 2 | — (Step 9) | ☐ |
 
 Acceptance: principal creates exam → papers inline → teacher enters marks
 with `canEnter` reasons → verify → publish → family sees the frozen card.
