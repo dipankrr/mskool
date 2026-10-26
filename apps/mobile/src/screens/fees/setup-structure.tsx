@@ -94,11 +94,19 @@ export function FeeStructureScreen() {
   const canUpdate = has("fee_structure:update");
   const canReadHeads = has("fee_head:read");
   const canReadClasses = has("class:read");
+  // Billing is the assignment grant, not the setup one.
+  const canBill = has("student_fee_assignment:create");
 
   const [sheet, setSheet] = useState<
     { mode: "edit" } | { mode: "line"; line?: Line } | { mode: "rule" } | null
   >(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [billResult, setBillResult] = useState<{
+    tone: "positive" | "caution" | "critical";
+    message: string;
+  } | null>(null);
+  const billClass = trpc.fees.assignment.billClass.useMutation();
+  const utils = trpc.useUtils();
 
   const enabled =
     ready &&
@@ -293,6 +301,69 @@ export function FeeStructureScreen() {
   const active = structure.data?.isActive ?? false;
   const canAddLine = canCreate && canReadHeads && active;
   const canAddRule = canCreate && active;
+  const canBillClass = canBill && active && lineRows.length > 0;
+
+  // "Bill all students in this class": a shortcut beside per-student billing.
+  // The server skips anyone already billed, so pressing it twice is harmless.
+  const runBillClass = async () => {
+    if (!structure.data) return;
+    setBillResult(null);
+    try {
+      const result = await billClass.mutateAsync({
+        organizationId: organizationId ?? "",
+        schoolId: schoolId ?? "",
+        data: {
+          academicYearId: structure.data.academicYearId,
+          classId: structure.data.classId,
+        },
+      });
+      await Promise.all([
+        utils.fees.matrix.list.invalidate(),
+        utils.fees.matrix.cell.invalidate(),
+        utils.fees.installment.dues.invalidate(),
+        utils.fees.assignment.byStudent.invalidate(),
+      ]);
+      if (result.refusal) {
+        setBillResult({ tone: "caution", message: result.refusal });
+        return;
+      }
+      const reasons = result.refused
+        .map((row) => `${row.studentName}: ${row.reason}`)
+        .join("\n");
+      setBillResult({
+        tone: result.refusedCount > 0 ? "caution" : "positive",
+        message: [
+          copy.fees.setup.structure.billResult(
+            result.billedCount,
+            result.skippedCount,
+            result.refusedCount,
+          ),
+          reasons,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      });
+    } catch (cause) {
+      setBillResult({
+        tone: "critical",
+        message: toFriendlyError(cause).message,
+      });
+    }
+  };
+
+  const confirmBillClass = () => {
+    Alert.alert(
+      copy.fees.setup.structure.billConfirmTitle,
+      copy.fees.setup.structure.billConfirmBody(className ?? ""),
+      [
+        { text: copy.common.cancel, style: "cancel" },
+        {
+          text: copy.fees.setup.structure.billConfirmAction,
+          onPress: () => void runBillClass(),
+        },
+      ],
+    );
+  };
 
   return frame(
     <View style={styles.body}>
@@ -302,6 +373,32 @@ export function FeeStructureScreen() {
           message={notice}
           testID="fee-structure-notice"
         />
+      ) : null}
+
+      {canBillClass ? (
+        <Card style={styles.billCard}>
+          <ThemedText variant="bodyStrong">
+            {copy.fees.setup.structure.billTitle}
+          </ThemedText>
+          <ThemedText variant="meta">
+            {copy.fees.setup.structure.billBody(className ?? "")}
+          </ThemedText>
+          <CapsuleButton
+            title={copy.fees.setup.structure.billAction}
+            icon="collect"
+            size="compact"
+            loading={billClass.isPending}
+            onPress={confirmBillClass}
+            testID="fee-structure-bill-class"
+          />
+          {billResult ? (
+            <Notice
+              tone={billResult.tone}
+              message={billResult.message}
+              testID="fee-structure-bill-result"
+            />
+          ) : null}
+        </Card>
       ) : null}
 
       {structure.data && !active ? (
@@ -1154,6 +1251,9 @@ function RuleSheet({
 }
 
 const styles = StyleSheet.create({
+  billCard: {
+    gap: spacing.sm,
+  },
   body: {
     gap: spacing.xl,
   },

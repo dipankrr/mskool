@@ -2874,7 +2874,25 @@ export const copy = {
         loadError: "Couldn't load this structure.",
         notFoundTitle: "Structure not available",
         notFoundBody: "It may belong to another branch.",
-        retiredNotice:
+      billTitle: "Bill students",
+        billBody: (className: string) =>
+          `Give every student in ${className || "this class"} who has no bill yet this fee chart and their dues. Students already billed are left as they are.`,
+        billAction: "Bill all students in this class",
+        billConfirmTitle: "Bill this class?",
+        billConfirmBody: (className: string) =>
+          `Creates dues for every unbilled student in ${className || "this class"}. Students can still be billed one at a time from their page.`,
+        billConfirmAction: "Bill class",
+        billResult: (billed: number, skipped: number, refused: number) =>
+          billed === 0 && refused === 0
+            ? "Everyone in this class is already billed."
+            : [
+            `Billed ${billed} ${billed === 1 ? "student" : "students"}.`,
+            skipped > 0 ? `${skipped} already billed.` : null,
+            refused > 0 ? `${refused} not billed:` : null,
+          ]
+            .filter(Boolean)
+            .join(" "),
+          retiredNotice:
           "This structure is retired. It still explains existing bills, but no student can be newly assigned to it.",
         linesTitle: "Fee lines",
         linesHint: (count: number) =>
