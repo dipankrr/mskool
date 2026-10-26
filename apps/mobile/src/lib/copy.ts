@@ -3468,6 +3468,189 @@ export const copy = {
           "They return to 'to verify' so they can be changed. You can verify them again afterwards.",
       },
     },
+    results: {
+      rowTitle: "Results & publication",
+      rowBody: "Totals, ranks, publishing and corrections",
+      loadError: "Couldn't load the results.",
+      nothingTitle: "Nothing computed yet",
+      nothingBody:
+        "Compute the results to see this class's totals, grades and ranks.",
+      readinessTitle: "Readiness",
+      enteredOf: (entered: number, expected: number) =>
+        `Entered ${entered} of ${expected}`,
+      verifiedOf: (verified: number) => `${verified} verified`,
+      belowBar: (n: number) =>
+        n === 1
+          ? "1 student below the attendance bar (advisory)"
+          : `${n} students below the attendance bar (advisory)`,
+      staleTitle: "Results are out of date",
+      staleBody:
+        "Marks changed after the last compute. Compute again before publishing.",
+      compute: "Compute results",
+      computing: "Computing…",
+      computed: (n: number) =>
+        `Computed ${n} ${n === 1 ? "student" : "students"}.`,
+      computeFailed: "Couldn't compute the results",
+      computeRanks: "Compute ranks",
+      ranksComputed: (n: number) =>
+        `Ranks updated for ${n} ${n === 1 ? "student" : "students"}.`,
+      ranksFailed: "Couldn't compute the ranks",
+      filterLabel: "Show",
+      filters: {
+        all: "All",
+        failed: "Failed",
+        attention: "Needs attention",
+        absent: "Absent",
+      },
+      filterEmptyTitle: "Nobody here",
+      filterEmptyBody: "No student matches this filter right now.",
+      notComputed: "Not computed",
+      gradeOnlyNote: "Graded course — ranked by grade",
+      absentOn: (n: number) =>
+        `Absent on ${n} ${n === 1 ? "paper" : "papers"}`,
+      pass: "Pass",
+      fail: "Fail",
+      absent: "Absent",
+      subjectsFailed: (n: number) =>
+        `${n} ${n === 1 ? "subject" : "subject failed"}`,
+      rankInClass: (rank: number) => `Rank ${rank} in class`,
+      rankInSection: (rank: number) => `Rank ${rank} in section`,
+      openStudent: "Opens this student's result",
+      rowLabel: (
+        roll: string | null,
+        name: string,
+        value: string,
+        state: string,
+      ) => `${roll ? `Roll ${roll}, ` : ""}${name}, ${value}, ${state}`,
+    },
+    publication: {
+      publishedOn: (date: string) => `Published ${date}`,
+      reIssuedOn: (date: string) => `Re-issued ${date}`,
+      windowOpenSince: (date: string) => `Correction window open since ${date}`,
+      publish: "Publish this class",
+      publishTitle: "Publish this class?",
+      publishBody: (entered: number, expected: number, verified: number) =>
+        `${entered} of ${expected} entries are in, ${verified} verified. ` +
+        "Entry can publish without full verification — the counts above are what you are standing behind.",
+      publishConsequence:
+        "Families see this class's report cards from that moment. Later corrections go through a recorded correction window.",
+      publishKeep: "Not yet",
+      published: "Published. Families can see this class's cards now.",
+      publishFailed: "Couldn't publish this class",
+      publishAll: "Publish all classes",
+      publishAllTitle: "Publish every class?",
+      publishAllBody:
+        "Each class publishes on its own: a class with incomplete entry does not stop the others.",
+      publishAllDone: (n: number) =>
+        `Published ${n} ${n === 1 ? "class" : "classes"}.`,
+      publishAllFailed: (names: string) =>
+        `Not published: ${names}. Open the class's results to see what it is missing.`,
+      windowOpenAction: "Open correction window",
+      windowOpenTitle: "Open a correction window?",
+      windowOpened: "Correction window open.",
+      windowOpenBody:
+        "While it is open, every corrected mark is recorded and applies when you close the window. Cards do not change until then.",
+      windowCloseAction: "Close window",
+      windowCloseTitle: "Close the correction window?",
+      windowCloseBody:
+        "The class's results recompute once, ranks run, and every card that changed is re-issued.",
+      windowClosed: (n: number) =>
+        n === 0
+          ? "Window closed. No card changed."
+          : `Window closed. ${n} ${n === 1 ? "card was" : "cards were"} re-issued.`,
+      windowNull: "Publish the class first — there is nothing to correct yet.",
+      windowFailed: "Couldn't change the correction window",
+    },
+    correction: {
+      entriesTitle: (name: string, subject: string) =>
+        `${name} · ${subject}`,
+      entriesEmptyTitle: "No entries yet",
+      entriesEmptyBody: "This subject has no marks recorded for this student.",
+      correctAction: "Correct this mark",
+      title: "Correct a published mark",
+      currentMarks: (value: string) => `Current: ${value}`,
+      currentGrade: (value: string) => `Current grade: ${value}`,
+      currentEmpty: "Current: empty",
+      revisedLabel: "Revised marks",
+      revisedGradeLabel: "Revised grade",
+      typeLabel: "Reason type",
+      types: {
+        marks_correction: "Marks correction",
+        re_evaluation: "Re-evaluation",
+        data_entry_error: "Data entry error",
+        other: "Other",
+      },
+      reasonLabel: "Reason",
+      reasonPlaceholder: "Why is this mark changing?",
+      windowNote:
+        "A correction window is open. This change is recorded now and applies when the window closes.",
+      directNote:
+        "This applies at once: the class's results recompute and every affected card is re-issued, under your name.",
+      confirm: "Apply correction",
+      keep: "Cancel",
+      applied: "Corrected. Results recomputed; changed cards were re-issued.",
+      windowApplied: "Recorded. It applies when the window closes.",
+      failed: "Couldn't apply the correction",
+      errors: {
+        format: "Enter a number",
+        range: (max: string) => `Marks can't be over ${max}`,
+        type: "Choose a reason type",
+        reason: "Write a reason of at least 3 characters",
+      },
+      notPublished:
+        "This entry isn't published yet — correct it in the paper screen.",
+      sealed: "This exam is locked — corrections are closed.",
+    },
+    cards: {
+      row: "Report cards",
+      loadError: "Couldn't load the cards.",
+      version: (n: number) => `v${n}`,
+      publishedOn: (date: string) => `Published ${date}`,
+      noCard: "No card",
+      noCardBody: "No published card for this term yet.",
+      unreadableTitle: "Card data unreadable",
+      unreadableBody:
+        "The stored card couldn't be read on this device. It still renders on the web.",
+      versionsTitle: "Version history",
+      current: "Current",
+      replaces: (n: number) => `Replaces v${n}`,
+      attendance: "Attendance",
+      attendanceLine: (present: number, working: number) =>
+        `${present} of ${working} days`,
+      areas: "Graded areas",
+      totalsLabel: "Term totals",
+      rankLine: (section: number | null, klass: number | null) =>
+        [
+          section !== null ? `Rank ${section} in section` : null,
+          klass !== null ? `Rank ${klass} in class` : null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+    },
+    final: {
+      title: "Final results",
+      rowBody: "Promotion verdicts for the year",
+      loadError: "Couldn't load the final results.",
+      nothingTitle: "Nothing computed yet",
+      nothingBody:
+        "Compute the year's final results to see promotion verdicts.",
+      compute: "Compute final results",
+      computing: "Computing…",
+      computed: (n: number) =>
+        `Final results for ${n} ${n === 1 ? "student" : "students"}.`,
+      computeFailed: "Couldn't compute the final results",
+      emptyTitle: "No term results this year",
+      emptyBody:
+        "Final results appear once at least one term's results exist.",
+      notComputed: "Not computed",
+      verdicts: {
+        promoted: "Promoted",
+        compartment: "Compartment",
+        detained: "Detained",
+      },
+      rowLabel: (name: string, percent: string, verdict: string) =>
+        `${name}, ${percent}, ${verdict}`,
+    },
     home: {
       title: "Marks to enter",
       open: "Marks entry is open",
