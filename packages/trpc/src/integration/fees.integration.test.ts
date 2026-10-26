@@ -378,14 +378,16 @@ describe("fees: the generator", () => {
     expect(result.inserted).toBe(0);
   });
 
-  it("mid-session joiner: tuition starts October, term-wise lab collapses to T2", async () => {
+  it("mid-session joiner: tuition starts October at the monthly rate, lab is T2 only (ADR-050)", async () => {
     const midRows = await installmentsOf(w.assignmentMidId);
     const tuitionRows = midRows.filter((r) => r.feeHeadId === w.tuitionHeadId);
     const labRows = midRows.filter((r) => r.feeHeadId === w.labHeadId);
     expect(tuitionRows).toHaveLength(6); // Oct–Mar
     expect(tuitionRows[0]?.periodMonth).toBe(10);
+    // The same ₹1,000 a month as a full-year student, not 12000 / 6.
+    expect(tuitionRows.every((r) => r.amount === "1000.00")).toBe(true);
     expect(labRows).toHaveLength(1); // T1 ended before the joiner arrived
-    expect(labRows[0]?.amount).toBe("2400.00"); // the money follows the survivor
+    expect(labRows[0]?.amount).toBe("960.00"); // T2's 40% of 2400.00, not all of it
   });
 });
 
@@ -2191,7 +2193,7 @@ describe("fees: student fee status matrix", () => {
       .get(matrix.midStudentId)
       ?.cells.find((cell) => cell.month === "2025-10");
     expect(october).toMatchObject({
-      assessedAmount: "4400.00",
+      assessedAmount: "1960.00", // tuition 1000.00 + T2 lab 960.00 (ADR-050)
       feeHeadCount: 2,
       month: "2025-10",
     });
@@ -2290,8 +2292,8 @@ describe("fees: student fee status matrix", () => {
     expect(october).toMatchObject({
       studentId: matrix.midStudentId,
       month: "2025-10",
-      assessedAmount: "4400.00",
-      balanceAmount: "4400.00",
+      assessedAmount: "1960.00",
+      balanceAmount: "1960.00",
       feeHeadCount: 2,
       paymentState: "unpaid",
     });
@@ -2304,15 +2306,15 @@ describe("fees: student fee status matrix", () => {
         expect.objectContaining({
           feeHeadId: w.tuitionHeadId,
           feeHeadName: "Tuition Fee",
-          amount: "2000.00",
-          balanceAmount: "2000.00",
+          amount: "1000.00",
+          balanceAmount: "1000.00",
           paymentStatus: "unpaid",
         }),
         expect.objectContaining({
           feeHeadId: w.labHeadId,
           feeHeadName: "Lab Fee",
-          amount: "2400.00",
-          balanceAmount: "2400.00",
+          amount: "960.00",
+          balanceAmount: "960.00",
           paymentStatus: "unpaid",
         }),
       ]),

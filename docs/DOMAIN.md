@@ -172,7 +172,10 @@ student_final_results       → promotion_status → next year's enrollment
 auto-generate `student_subject_enrollments` from `class_subject_mappings` → create
 `student_fee_assignments` from the class `fee_structures` → generate `fee_installments`
 from `fee_effective_from` onward. Mid-session admission generates only remaining
-installments; `joining_month_full_charge` decides whether the joining month is prorated.
+installments, each at the same per-period price as a full-year student (ADR-050):
+a student joining in October pays October–March at the monthly rate, not the year
+squeezed into six months. `joining_month_full_charge` decides whether the joining month
+is prorated.
 
 **Promotion (year rollover).** Read `student_final_results.promotion_status` → insert a
 **new** `student_enrollments` row for the next year (never mutate the old one) → carry

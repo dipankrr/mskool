@@ -96,7 +96,8 @@ describe("fees property: installment splits are exact", () => {
           const expectedCount =
             monthsBetween(effective, YEAR_END).length;
           expect(buckets).toHaveLength(expectedCount);
-          const base = annual / BigInt(expectedCount);
+          // The monthly rate is the YEAR's, whenever the student joins.
+          const base = annual / 12n;
           const dim = daysInMonth(effYear, effMonth);
           const remaining = daysBetweenInclusive(
             effective,
@@ -109,7 +110,7 @@ describe("fees property: installment splits are exact", () => {
           expect(joining?.amountCents).toBe(
             (base * BigInt(remaining)) / BigInt(dim),
           );
-          // The documented shrink: the shortfall is foregone, never inflated.
+          // A joiner never pays more than a full-year student.
           const sum = buckets.reduce((a, b) => a + b.amountCents, 0n);
           expect(sum <= annual).toBe(true);
         },

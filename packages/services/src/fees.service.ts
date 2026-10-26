@@ -3,7 +3,8 @@ import {
   requireSchoolId,
   yearVisibilityWhere,
 } from "./academic.service";
-import { fromCents, toCents } from "./fees-maths";
+import { billedAmountCents, fromCents, toCents } from "./fees-maths";
+import { feesBillingService } from "./fees-billing.service";
 import { scopeWhere, type DataScope, type ScopeColumns } from "@repo/authz";
 import type {
   CreateConcessionInput,
@@ -606,6 +607,9 @@ export class FeesService {
         id: studentFeeAssignments.id,
         baseAnnualAmount: studentFeeAssignments.baseAnnualAmount,
         feeStructureId: studentFeeAssignments.feeStructureId,
+        academicYearId: studentFeeAssignments.academicYearId,
+        feeEffectiveFrom: studentFeeAssignments.feeEffectiveFrom,
+        joiningMonthFullCharge: studentFeeAssignments.joiningMonthFullCharge,
       })
       .from(studentFeeAssignments)
       .where(
@@ -635,7 +639,16 @@ export class FeesService {
           "That fee head is not part of the assigned structure, so the concession has nothing to apply to.",
         );
       }
-      baseCents = toCents(line.annualAmount);
+      // What this head bills THIS student (a mid-session joiner owes only
+      // the periods they attend), so a percentage is a share of that.
+      const splits = await feesBillingService.lineSplits(db, {
+        structureId: assignment.feeStructureId,
+        academicYearId: assignment.academicYearId,
+        effectiveFrom: assignment.feeEffectiveFrom,
+        joiningMonthFullCharge: assignment.joiningMonthFullCharge,
+      });
+      const split = splits.find((l) => l.feeHeadId === input.feeHeadId);
+      baseCents = split ? billedAmountCents(split.input) : toCents(line.annualAmount);
     } else {
       baseCents = toCents(assignment.baseAnnualAmount);
     }

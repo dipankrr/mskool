@@ -124,18 +124,34 @@ export interface SplitLineInput {
 }
 
 /**
- * Splits one line's annual amount into installment buckets. Guarantees the
- * phase's exactness invariant: the amounts sum to `annualAmountCents`, with
- * the LAST bucket absorbing every rounding remainder (floored shares).
+ * Splits one line's annual amount into installment buckets.
  *
- * - `upfront` / `annual`: one bucket at the effective date.
- * - `monthly`: one bucket per applicable month, from the effective date;
- *   the joining month is prorated by remaining days unless
+ * **A period's price never depends on when the student joined.** Each
+ * period's share is worked out over the WHOLE year (floored shares, the last
+ * period absorbing the remainder, so a full-year student's buckets sum to the
+ * annual amount exactly), and a student who joins mid-session is billed only
+ * the periods they are enrolled for. A Class 6 child joining in October pays
+ * October–March at the same ₹1,000 a month as everyone else — not the year's
+ * ₹12,000 squeezed into six months (DOMAIN.md §5: "mid-session admission
+ * generates only remaining installments").
+ *
+ * - `upfront` / `annual`: one bucket for the full amount at the effective
+ *   date. These are one-time charges (admission, annual fees) and are owed in
+ *   full whenever the student joins.
+ * - `monthly`: one bucket per applicable month from the effective date; the
+ *   joining month is prorated by remaining days unless
  *   `joiningMonthFullCharge` (the common Indian full-month rule).
+ * - `quarterly` / `half_yearly`: the year's applicable months grouped into
+ *   consecutive 3-/6-month buckets anchored at the year's first month; a
+ *   bucket the student joins part-way through is charged for the months they
+ *   attend (floored).
  * - `term_wise`: the terms overlapping the applicable window, weighted by
- *   their weightage share (renormalised across the surviving terms).
- * - `quarterly` / `half_yearly`: the applicable months grouped into
- *   consecutive 3-/6-month buckets anchored at the year's first month.
+ *   their weightage share; terms that ended before the student joined are not
+ *   billed, and the term they join in is billed in full.
+ *
+ * `installmentNumber` counts the student's own buckets from 1, as before
+ * this rule changed, so regenerating an assignment billed earlier matches its
+ * existing rows instead of adding a second set.
  */
 export function splitIntoBuckets(input: SplitLineInput): Bucket[] {
   const resolved =
@@ -144,6 +160,8 @@ export function splitIntoBuckets(input: SplitLineInput): Bucket[] {
   const eff = parseIso(effective);
   const inWindow = (month: number) =>
     month >= input.applicableFromMonth && month <= input.applicableToMonth;
+  const attended = (m: { year: number; month: number }) =>
+    m.year > eff.year || (m.year === eff.year && m.month >= eff.month);
 
   const make = (
     n: number,
@@ -162,17 +180,21 @@ export function splitIntoBuckets(input: SplitLineInput): Bucket[] {
     termId,
   });
 
+  /** Equal floored shares of the annual amount; the last absorbs the rest. */
+  const equalShares = (count: number): bigint[] => {
+    const base = input.annualAmountCents / BigInt(count);
+    return Array.from({ length: count }, (_, i) =>
+      i === count - 1 ? input.annualAmountCents - base * BigInt(count - 1) : base,
+    );
+  };
+
   const yearMonths = monthsBetween(input.yearStart, input.yearEnd).filter((m) =>
     inWindow(m.month),
   );
-  const effectiveMonths = yearMonths.filter(
-    (m) => m.year > eff.year || (m.year === eff.year && m.month >= eff.month),
-  );
 
-  if (resolved === "upfront" || resolved === "annual" || effectiveMonths.length === 0) {
-    // One bucket, full amount, due at the effective date. The empty-window
-    // case (a range that misses the effective date entirely) still owes the
-    // money once — collapsing to a single due bucket is the honest answer.
+  if (resolved === "upfront" || resolved === "annual" || yearMonths.length === 0) {
+    // One bucket, full amount, due at the effective date: a one-time charge
+    // is owed whole whenever the student joins.
     return [
       make(
         1,
@@ -186,48 +208,44 @@ export function splitIntoBuckets(input: SplitLineInput): Bucket[] {
   }
 
   if (resolved === "monthly") {
-    const n = effectiveMonths.length;
-    const base = input.annualAmountCents / BigInt(n);
-    return effectiveMonths.map((m, i) => {
-      const isLast = i === n - 1;
+    const shares = equalShares(yearMonths.length);
+    const out: Bucket[] = [];
+    yearMonths.forEach((m, i) => {
+      if (!attended(m)) return;
+      let cents = shares[i] ?? 0n;
       const isJoiningMonth = m.year === eff.year && m.month === eff.month;
-      let cents = isLast ? input.annualAmountCents - base * BigInt(n - 1) : base;
       if (isJoiningMonth && !input.joiningMonthFullCharge) {
         // Prorate the joining month by its remaining days, floored. The
-        // remainder-absorption above already ran; prorating only ever
-        // SHRINKS a share, and the shortfall is the school's choice, not a
-        // rounding drift — the annual total is thereby honestly reduced.
+        // shortfall is the school's choice, never a rounding drift.
         const dim = daysInMonth(m.year, m.month);
-        const remaining = daysBetweenInclusive(
-          effective,
-          isoOf(m.year, m.month, dim),
-        );
-        cents = (base * BigInt(remaining)) / BigInt(dim);
+        const remaining = daysBetweenInclusive(effective, isoOf(m.year, m.month, dim));
+        cents = (cents * BigInt(remaining)) / BigInt(dim);
       }
-      return make(
-        i + 1,
-        cents,
-        isoOf(m.year, m.month, 1),
-        `${input.headName} — ${isoOf(m.year, m.month, 1).slice(0, 7)}`,
-        { month: m.month, year: m.year },
-        null,
+      out.push(
+        make(
+          out.length + 1,
+          cents,
+          isoOf(m.year, m.month, 1),
+          `${input.headName} — ${isoOf(m.year, m.month, 1).slice(0, 7)}`,
+          { month: m.month, year: m.year },
+          null,
+        ),
       );
     });
+    return out;
   }
 
   if (resolved === "term_wise") {
-    // Terms overlapping the applicable window (and the effective date),
-    // renormalised: the head's money follows the surviving terms' weightage
-    // share, not the year's.
-    const surviving = input.terms.filter((t) => {
-      const overlap = monthsBetween(
+    // Terms overlapping the applicable window, weighted by their share of
+    // the window — the head's money follows the window's terms, not the year's.
+    const windowTerms = input.terms.filter((t) =>
+      monthsBetween(
         t.startDate > input.yearStart ? t.startDate : input.yearStart,
         t.endDate < input.yearEnd ? t.endDate : input.yearEnd,
-      ).some((m) => inWindow(m.month));
-      if (!overlap) return false;
-      return t.endDate >= effective;
-    });
-    if (surviving.length === 0) {
+      ).some((m) => inWindow(m.month)),
+    );
+    if (windowTerms.length === 0) {
+      // No terms configured for the window: the money is still owed once.
       return [
         make(
           1,
@@ -239,59 +257,75 @@ export function splitIntoBuckets(input: SplitLineInput): Bucket[] {
         ),
       ];
     }
-    const totalWeightCents = surviving.reduce(
-      (acc, t) => acc + toCents(t.weightage),
-      0n,
-    );
-    // Floored weightage shares; the LAST term absorbs the remainder so the
-    // buckets sum to the annual amount exactly.
-    const shares = surviving.map(
+    const totalWeightCents = windowTerms.reduce((acc, t) => acc + toCents(t.weightage), 0n);
+    // Floored weightage shares; the LAST term absorbs the remainder.
+    const shares = windowTerms.map(
       (t) => (input.annualAmountCents * toCents(t.weightage)) / totalWeightCents,
     );
     const distributed = shares.reduce((a, b) => a + b, 0n);
     shares[shares.length - 1] =
       (shares[shares.length - 1] ?? 0n) + (input.annualAmountCents - distributed);
-    return surviving.map((t, i) => {
-      return make(
-        i + 1,
-        shares[i] ?? 0n,
-        t.startDate,
-        `${input.headName} — ${t.name}`,
-        { month: null, year: null },
-        t.id,
+    const out: Bucket[] = [];
+    windowTerms.forEach((t, i) => {
+      // A term that ended before the student joined is not theirs to pay.
+      if (t.endDate < effective) return;
+      out.push(
+        make(
+          out.length + 1,
+          shares[i] ?? 0n,
+          t.startDate > effective ? t.startDate : effective,
+          `${input.headName} — ${t.name}`,
+          { month: null, year: null },
+          t.id,
+        ),
       );
     });
+    return out;
   }
 
-  // quarterly / half_yearly: group the applicable months into consecutive
-  // buckets anchored at the year's first month. Each non-empty bucket gets
-  // an equal share; the last absorbs the remainder.
+  // quarterly / half_yearly: group the year's applicable months into
+  // consecutive buckets anchored at the year's first month. Every non-empty
+  // bucket gets an equal share of the year; the last absorbs the remainder.
   const size = resolved === "quarterly" ? 3 : 6;
   const yearStartMonth = parseIso(input.yearStart);
   const anchor = yearStartMonth.year * 12 + (yearStartMonth.month - 1);
   const groups = new Map<number, { year: number; month: number }[]>();
-  for (const m of effectiveMonths) {
+  for (const m of yearMonths) {
     const idx = Math.floor((m.year * 12 + (m.month - 1) - anchor) / size);
     const bucket = groups.get(idx) ?? [];
     bucket.push(m);
     groups.set(idx, bucket);
   }
-  const buckets = [...groups.entries()].sort(([a], [b]) => a - b);
-  const n = buckets.length;
-  const base = input.annualAmountCents / BigInt(n);
-  return buckets.map(([, months], i) => {
-    const isLast = i === n - 1;
-    const cents = isLast ? input.annualAmountCents - base * BigInt(n - 1) : base;
-    const first = months[0] ?? { year: parseIso(input.yearStart).year, month: parseIso(input.yearStart).month };
-    return make(
-      i + 1,
-      cents,
-      isoOf(first.year, first.month, 1),
-      `${input.headName} — ${resolved} ${i + 1}`,
-      { month: null, year: null },
-      null,
+  const ordered = [...groups.entries()].sort(([a], [b]) => a - b);
+  const shares = equalShares(ordered.length);
+  const out: Bucket[] = [];
+  ordered.forEach(([, months], i) => {
+    const present = months.filter(attended);
+    if (present.length === 0) return;
+    const full = shares[i] ?? 0n;
+    // Joined part-way through the period: pay for the months attended.
+    const cents =
+      present.length === months.length
+        ? full
+        : (full * BigInt(present.length)) / BigInt(months.length);
+    const first = present[0] ?? months[0] ?? yearStartMonth;
+    out.push(
+      make(
+        out.length + 1,
+        cents,
+        isoOf(first.year, first.month, 1),
+        `${input.headName} — ${resolved} ${i + 1}`,
+        { month: null, year: null },
+        null,
+      ),
     );
   });
+  return out;
+}
+
+/** What a line actually bills this student: the sum of their buckets. */
+export function billedAmountCents(input: SplitLineInput): bigint {
+  return splitIntoBuckets(input).reduce((acc, b) => acc + b.amountCents, 0n);
 }
 
 // ---------------------------------------------------------------------------

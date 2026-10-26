@@ -4,6 +4,8 @@ import {
   isoOf,
   monthsBetween,
   splitIntoBuckets,
+  billedAmountCents,
+  type SplitLineInput,
   toCents,
   windowedConcessionShares,
 } from "./fees-maths";
@@ -145,14 +147,20 @@ export class FeesBillingService {
       );
     }
 
-    const lines = await exec
-      .select({ annualAmount: feeStructureLines.annualAmount })
-      .from(feeStructureLines)
-      .where(eq(feeStructureLines.feeStructureId, structure.id));
-    const baseCents = lines.reduce((acc, l) => acc + toCents(l.annualAmount), 0n);
-
     const effectiveFrom =
       input.feeEffectiveFrom ?? (await this.enrollmentEffectiveFrom(enrollment.id, exec));
+    const joiningMonthFullCharge = input.joiningMonthFullCharge ?? true;
+
+    // The base is what THIS student is billed, not the chart's full year: a
+    // mid-session joiner owes only the periods they attend, and percentage
+    // concessions are taken of that.
+    const splits = await this.lineSplits(exec, {
+      structureId: structure.id,
+      academicYearId: enrollment.academicYearId,
+      effectiveFrom,
+      joiningMonthFullCharge,
+    });
+    const baseCents = splits.reduce((acc, l) => acc + billedAmountCents(l.input), 0n);
 
     const [assignment] = await exec
       .insert(studentFeeAssignments)
@@ -166,7 +174,7 @@ export class FeesBillingService {
         baseAnnualAmount: fromCents(baseCents),
         netAnnualAmount: fromCents(baseCents),
         feeEffectiveFrom: effectiveFrom,
-        joiningMonthFullCharge: input.joiningMonthFullCharge ?? true,
+        joiningMonthFullCharge,
         createdBy: actorId,
       })
       .returning();
@@ -387,6 +395,80 @@ export class FeesBillingService {
   }
 
   /**
+   * Each structure line's split input for one student: the line, the
+   * structure's mode, the year and its terms, and the student's effective
+   * date. Assignment (the billed base), generation (the buckets) and
+   * concessions (their base) all read a student's money through this, so the
+   * three can never disagree about what a joiner owes.
+   */
+  async lineSplits(
+    exec: Executor,
+    args: {
+      structureId: string;
+      academicYearId: string;
+      effectiveFrom: string;
+      joiningMonthFullCharge: boolean;
+    },
+  ): Promise<{ feeHeadId: string; headName: string; input: SplitLineInput }[]> {
+    const [structure] = await exec
+      .select()
+      .from(feeStructures)
+      .where(eq(feeStructures.id, args.structureId));
+    if (!structure) {
+      throw new Error("The assigned fee structure no longer exists.");
+    }
+    const [year] = await exec
+      .select()
+      .from(academicYears)
+      .where(eq(academicYears.id, args.academicYearId));
+    if (!year) {
+      throw new Error("The assignment's academic year no longer exists.");
+    }
+    const lines = await exec
+      .select({
+        feeHeadId: feeStructureLines.feeHeadId,
+        annualAmount: feeStructureLines.annualAmount,
+        installmentFrequency: feeStructureLines.installmentFrequency,
+        applicableFromMonth: feeStructureLines.applicableFromMonth,
+        applicableToMonth: feeStructureLines.applicableToMonth,
+        headName: feeHeads.name,
+      })
+      .from(feeStructureLines)
+      .innerJoin(feeHeads, eq(feeHeads.id, feeStructureLines.feeHeadId))
+      .where(eq(feeStructureLines.feeStructureId, structure.id));
+    const yearTerms = await exec
+      .select({
+        id: terms.id,
+        name: terms.name,
+        startDate: terms.startDate,
+        endDate: terms.endDate,
+        weightage: terms.weightage,
+      })
+      .from(terms)
+      .where(eq(terms.academicYearId, year.id))
+      .orderBy(asc(terms.sequenceNumber));
+
+    return lines.map((line) => ({
+      feeHeadId: line.feeHeadId,
+      headName: line.headName,
+      input: {
+        annualAmountCents: toCents(line.annualAmount),
+        frequency: line.installmentFrequency,
+        structureMode: structure.installmentMode,
+        applicableFromMonth: line.applicableFromMonth,
+        applicableToMonth: line.applicableToMonth,
+        yearStart: year.startDate,
+        yearEnd: year.endDate,
+        effectiveFrom: args.effectiveFrom,
+        joiningMonthFullCharge: args.joiningMonthFullCharge,
+        feeHeadId: line.feeHeadId,
+        headName: line.headName,
+        terms: yearTerms,
+      },
+    }));
+  }
+
+  /**
    * THE GENERATOR — idempotent by construction: it derives the full desired
    * installment set and inserts with ON CONFLICT DO NOTHING on the
    * (assignment, head, number) triple, so re-runs fill what is missing and
@@ -414,46 +496,22 @@ export class FeesBillingService {
       throw new Error("Fee assignment not found in this school.");
     }
 
-    const [structure] = await exec
-      .select()
-      .from(feeStructures)
-      .where(eq(feeStructures.id, assignment.feeStructureId));
-    if (!structure) {
-      throw new Error("The assigned fee structure no longer exists.");
+    const splits = await this.lineSplits(exec, {
+      structureId: assignment.feeStructureId,
+      academicYearId: assignment.academicYearId,
+      effectiveFrom: assignment.feeEffectiveFrom,
+      joiningMonthFullCharge: assignment.joiningMonthFullCharge,
+    });
+    const year = { startDate: splits[0]?.input.yearStart ?? "", endDate: splits[0]?.input.yearEnd ?? "" };
+    if (splits.length === 0) {
+      const [row] = await exec
+        .select()
+        .from(academicYears)
+        .where(eq(academicYears.id, assignment.academicYearId));
+      if (!row) throw new Error("The assignment's academic year no longer exists.");
+      year.startDate = row.startDate;
+      year.endDate = row.endDate;
     }
-
-    const lines = await exec
-      .select({
-        feeHeadId: feeStructureLines.feeHeadId,
-        annualAmount: feeStructureLines.annualAmount,
-        installmentFrequency: feeStructureLines.installmentFrequency,
-        applicableFromMonth: feeStructureLines.applicableFromMonth,
-        applicableToMonth: feeStructureLines.applicableToMonth,
-        headName: feeHeads.name,
-      })
-      .from(feeStructureLines)
-      .innerJoin(feeHeads, eq(feeHeads.id, feeStructureLines.feeHeadId))
-      .where(eq(feeStructureLines.feeStructureId, structure.id));
-
-    const [year] = await exec
-      .select()
-      .from(academicYears)
-      .where(eq(academicYears.id, assignment.academicYearId));
-    if (!year) {
-      throw new Error("The assignment's academic year no longer exists.");
-    }
-
-    const yearTerms = await exec
-      .select({
-        id: terms.id,
-        name: terms.name,
-        startDate: terms.startDate,
-        endDate: terms.endDate,
-        weightage: terms.weightage,
-      })
-      .from(terms)
-      .where(eq(terms.academicYearId, year.id))
-      .orderBy(asc(terms.sequenceNumber));
 
     const concessions = await exec
       .select({
@@ -477,10 +535,12 @@ export class FeesBillingService {
         ),
       );
 
-    // Per-head annuals for the windowed apportionment (S2/F5).
-    const headAnnuals = lines.map((l) => ({
+    // Per-head budgets for the windowed apportionment (S2/F5): what each
+    // head bills THIS student, so a joiner's concession is a share of what
+    // they owe, not of the chart's full year.
+    const headAnnuals = splits.map((l) => ({
       feeHeadId: l.feeHeadId,
-      annualCents: toCents(l.annualAmount),
+      annualCents: billedAmountCents(l.input),
     }));
     const concessionInputs = concessions.map((c) => ({
       feeHeadId: c.feeHeadId,
@@ -503,22 +563,8 @@ export class FeesBillingService {
     };
     const desired: Desired[] = [];
 
-    for (const line of lines) {
-      const annualCents = toCents(line.annualAmount);
-      const buckets = splitIntoBuckets({
-        annualAmountCents: annualCents,
-        frequency: line.installmentFrequency,
-        structureMode: structure.installmentMode,
-        applicableFromMonth: line.applicableFromMonth,
-        applicableToMonth: line.applicableToMonth,
-        yearStart: year.startDate,
-        yearEnd: year.endDate,
-        effectiveFrom: assignment.feeEffectiveFrom,
-        joiningMonthFullCharge: assignment.joiningMonthFullCharge,
-        feeHeadId: line.feeHeadId,
-        headName: line.headName,
-        terms: yearTerms,
-      });
+    for (const line of splits) {
+      const buckets = splitIntoBuckets(line.input);
       const shares = windowedConcessionShares(
         concessionInputs,
         line.feeHeadId,

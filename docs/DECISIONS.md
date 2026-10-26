@@ -2250,3 +2250,41 @@ schema migration on a shared database for a link the ledger already holds
 immutably; revisit if allocation reporting needs a single table). A separate
 "collect opening balance" endpoint with its own receipt sequence (two receipts
 for one counter visit; duplicates the idempotency and locking discipline).
+
+## ADR-050 - A period's price never depends on when the student joined
+
+Date: 2026-10-26. Status: accepted (owner, "why would rohan pay full year?").
+Corrects the generator's split; supersedes the "buckets sum to the annual
+amount for every effective date" invariant.
+
+**Context.** `splitIntoBuckets` divided a line's annual amount across the
+periods a student attends. A Class 6 child joining in October was billed the
+year's ₹12,000 tuition as ₹2,000 a month for six months, while classmates
+paid ₹1,000. DOMAIN.md §5 says mid-session admission generates only the
+*remaining* installments; it never meant the remaining installments should
+carry the whole year. The same compression applied to quarterly, half-yearly
+and term-wise lines, and percentage concessions were taken of the chart's
+full year, so a 50% scholarship on a joiner could wipe out everything owed.
+
+**Decision.**
+1. Each period's share is computed over the whole year (floored, the last
+   period absorbing the remainder, so a full-year student still sums to the
+   annual amount exactly). A joiner is billed only the periods they attend:
+   months from the joining month; quarters/half-years ahead in full and the
+   one joined part-way through by months attended (floored); terms that have
+   not ended, at the year's weightage share. The joining-month day proration
+   (`joining_month_full_charge = false`) prorates the year's monthly rate.
+2. `upfront` / `annual` lines stay whole: they are one-time charges
+   (admission, annual fees), owed in full whenever the student joins.
+3. A student's money is read through one loader (`lineSplits`):
+   `base_annual_amount` is what the student is billed, the concession
+   apportionment budget is each head's billed amount, and a head-scoped
+   percentage concession is a share of that head's billed amount.
+4. `installment_number` still counts the student's own buckets from 1, so
+   regenerating an assignment made before this change matches its rows
+   instead of adding a second set.
+
+**Existing data.** Assignments generated before this change keep their
+compressed rows; the insert-only generator never rewrites an installment.
+Dev data was corrected by re-billing; a production school would need a
+one-off correction of unpaid joiner installments, reviewed before running.
