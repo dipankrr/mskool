@@ -721,7 +721,7 @@ export const feesRouter = router({
           method: "POST",
           path: "/fee-payments/{id}/cancel",
           tags: ["fees"],
-          summary: "Cancel a pending payment (no money moved, no ledger row)",
+          summary: "Cancel a pending payment (balances re-open, its credit is offset)",
           protect: true,
         },
       })

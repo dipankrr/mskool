@@ -1198,7 +1198,7 @@ describe("fees: the remaining named transitions (H5)", () => {
     expect(after?.paymentStatus).toBe("paid");
   });
 
-  it("cancelPayment: pending → cancelled, balances RE-OPEN, NO ledger row", async () => {
+  it("cancelPayment: pending → cancelled, balances RE-OPEN, its credit is offset (gap 15)", async () => {
     const student = await freshStudent("TR2");
     const assignment = await assignAndGenerate(student.id);
     const rows = await installmentsOf(assignment.id);
@@ -1227,13 +1227,18 @@ describe("fees: the remaining named transitions (H5)", () => {
     expect(after?.paidAmount).toBe("0.00");
     expect(after?.paymentStatus).toBe("unpaid");
 
-    // No ledger row: no money moved. The audit trail is the payment's own
-    // status triple.
+    // No money moved, but the pending payment was credited at entry: the
+    // cancel offsets it with a payment_cancelled debit (ADR-049, gap 15).
     const ledgerAfter = await db
       .select()
       .from(financialTransactions)
       .where(eq(financialTransactions.referenceId, payment.id));
-    expect(ledgerAfter).toHaveLength(ledgerBefore.length);
+    expect(ledgerAfter).toHaveLength(ledgerBefore.length + 1);
+    const offset = ledgerAfter.find((r) => r.transactionType === "payment_cancelled");
+    expect(offset?.direction).toBe("debit");
+    expect(offset?.amount).toBe(payment.amount);
+    const cashRows = await feesCollectionService.listLedger([w.scopeA], w.yearAId, student.id);
+    expect(cashRows.find((r) => r.transactionType === "payment_cancelled")?.cashEffect).toBe("out");
 
     // Cancelling a CLEARED payment is refused — that money moved.
     const clearedPayment = await feesCollectionService.recordPayment(
@@ -2801,7 +2806,7 @@ describe("fees: mobile backend gaps (ADR-049)", () => {
     expect(cashIn - cashOut).toBe(paise(row.paidAmount));
   });
 
-  it("gap 12: a bounce and a reversal offset the late fee as well as the principal", async () => {
+  it("gaps 12 and 15: bounce, reversal and cancel offset the late fee as well as the principal", async () => {
     await db.insert(lateFeeRules).values({
       organizationId: w.orgAId,
       schoolId: w.schoolAId,
@@ -2821,8 +2826,8 @@ describe("fees: mobile backend gaps (ADR-049)", () => {
       const tuition = (await installmentsOf(assignment.id))
         .filter((r) => r.feeHeadId === w.tuitionHeadId)
         .sort((a, b) => (a.dueDate < b.dueDate ? -1 : 1));
-      const [first, second] = tuition;
-      if (!first || !second) throw new Error("Tuition installments missing.");
+      const [first, second, third] = tuition;
+      if (!first || !second || !third) throw new Error("Tuition installments missing.");
 
       // Both paid long past due: the flat rule fires on each.
       const cheque = await feesCollectionService.recordPayment(
@@ -2848,8 +2853,26 @@ describe("fees: mobile backend gaps (ADR-049)", () => {
         },
         w.adminId,
       );
+      const withdrawn = await feesCollectionService.recordPayment(
+        w.scopeA,
+        {
+          studentId: student.id,
+          academicYearId: w.yearAId,
+          paymentDate: "2025-06-20",
+          paymentMode: "upi",
+          transactionReference: "UPI-G12",
+          allocations: [{ installmentId: third.id, amount: third.netAmount }],
+        },
+        w.adminId,
+      );
       expect(cheque.lateFeeAmount).toBe("75.00");
       expect(cash.lateFeeAmount).toBe("75.00");
+      expect(withdrawn.lateFeeAmount).toBe("75.00");
+      await feesCollectionService.cancelPayment(
+        w.scopeA,
+        { paymentId: withdrawn.id, reason: "Parent withdrew" },
+        w.adminId,
+      );
 
       await feesCollectionService.bouncePayment(
         w.scopeA,
@@ -2865,6 +2888,7 @@ describe("fees: mobile backend gaps (ADR-049)", () => {
       for (const [payment, type] of [
         [cheque, "cheque_bounce_charge"],
         [cash, "fee_refund"],
+        [withdrawn, "payment_cancelled"],
       ] as const) {
         const debits = await db
           .select()
@@ -2894,7 +2918,7 @@ describe("fees: mobile backend gaps (ADR-049)", () => {
         .set({ isActive: false })
         .where(and(eq(lateFeeRules.schoolId, w.schoolAId), eq(lateFeeRules.isActive, true)));
     }
-  });
+  }, 90_000);
 
   /** A cleared cash payment covering the student's first two tuition months. */
   async function twoLinePayment(tag: string) {

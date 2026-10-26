@@ -2235,9 +2235,13 @@ needs no backfill, because no opening balance was ever paid before. Old
 bounced payments that carried a late fee keep their one-sided late-fee credit;
 the derived figures are right from this change on, and a one-off offset for
 historical bounces is an accountant's correcting entry, not a code path.
-`cancelPayment` still writes no row although `recordPayment` credits a
-pending payment at entry; offsetting it needs a new transaction type (a
-migration) and is recorded as an open gap in the plan.
+A cancelled pending payment is offset too: migration 0031 adds the
+`payment_cancelled` transaction type (a debit, `cashEffect` `out`), written by
+`cancelPayment` for the principal and the late fee exactly like a bounce. This
+reverses ADR-era wording that a cancellation "writes no ledger row": it still
+moves no money, but `recordPayment` credits a pending payment at entry, so the
+credit must be offset. Payments cancelled before 0031 keep their one-sided
+credit (same accountant-correction rule as old bounces).
 
 **Alternatives rejected.** Rewriting `opening_balance` rows to `debit`
 (violates hard rule 3, and "debit" means money out, which is just as wrong).

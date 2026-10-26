@@ -278,7 +278,7 @@ with a late fee net to zero (gap 12), waiver is `none` (gap 11).
 
 Still open, found while closing these (backend):
 
-15. `cancelPayment` writes no ledger row, but `recordPayment` already credited
+15. **[closed — migration 0031, `payment_cancelled` debit, cashEffect `out`; mobile label: "Payment cancelled"]** `cancelPayment` writes no ledger row, but `recordPayment` already credited
     the pending payment, so a cancelled payment stays in Money in. Needs a new
     `financial_transaction_type` value (migration) — ADR-049 consequences.
 16. **[closed — ADR-049 §4]** A second partial refund re-walks the allocations from the first one

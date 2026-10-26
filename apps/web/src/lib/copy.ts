@@ -1005,6 +1005,7 @@ export const copy = {
       opening_balance_payment: "Opening balance payment",
       advance_payment: "Advance payment",
       cheque_bounce_charge: "Cheque bounce charge",
+      payment_cancelled: "Payment cancelled",
       security_deposit_received: "Security deposit received",
       security_deposit_refunded: "Security deposit refunded",
     },

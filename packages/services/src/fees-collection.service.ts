@@ -68,9 +68,9 @@ import { and, asc, eq, ilike, inArray, or, sql } from "drizzle-orm";
  * validating the current state and recording `status_updated_*`. There is no
  * free-form status PATCH anywhere. A bounce and a reversal RE-OPEN the
  * installment balances the payment reduced (allocations stay — they are
- * history) and write their own ledger row; `cancelPayment` re-opens too but
- * writes NO ledger row, because a cancelled payment moved no money — the
- * audit trail is the payment row's own status triple.
+ * history) and write their own ledger rows; `cancelPayment` re-opens too and
+ * writes `payment_cancelled` debits — no money moved, but the pending payment
+ * was credited at entry, so the credit is offset (ADR-049).
  *
  * `recordGatewayPayment` is the ADR-009 `system` path: the webhook's signed
  * fact, not a session, is the authorization; the gateway's order id is the
@@ -989,8 +989,8 @@ export class FeesCollectionService {
    * status, flip it with the audit triple, and re-open the installments the
    * payment's allocations had reduced (the allocations themselves stay —
    * history), plus any opening-balance portions. `transactionType` decides
-   * whether offsetting rows are written: a bounce and a reversal are money
-   * events (principal AND frozen late fee, ADR-049); a cancellation is not.
+   * which offsetting debits are written: every transition mirrors the credits
+   * the payment wrote (principal still held AND frozen late fee, ADR-049).
    */
   private async transitionPayment(
     scope: DataScope,
@@ -999,7 +999,7 @@ export class FeesCollectionService {
     opts: {
       from: ("pending" | "cleared")[];
       to: "bounced" | "reversed" | "cancelled";
-      transactionType: "cheque_bounce_charge" | "fee_refund" | null;
+      transactionType: "cheque_bounce_charge" | "fee_refund" | "payment_cancelled";
     },
   ) {
     const schoolId = requireSchoolId(scope);
@@ -1053,7 +1053,7 @@ export class FeesCollectionService {
         throw new Error("Failed to update the payment.");
       }
 
-      if (opts.transactionType) {
+      if (heldCents > 0n) {
         await tx.insert(financialTransactions).values({
           organizationId: scope.organizationId,
           schoolId,
@@ -1070,26 +1070,26 @@ export class FeesCollectionService {
           transactionDate: new Date().toISOString().slice(0, 10),
           createdBy: actorId,
         });
-        // ADR-049: the late fee frozen on this payment never arrived either
-        // (bounce) or went back with it (reversal) — offset its credit too,
-        // as its own row so each debit mirrors one credit.
-        if (toCents(payment.lateFeeAmount) > 0n) {
-          await tx.insert(financialTransactions).values({
-            organizationId: scope.organizationId,
-            schoolId,
-            studentId: payment.studentId,
-            academicYearId: payment.academicYearId,
-            transactionType: opts.transactionType,
-            direction: "debit",
-            amount: payment.lateFeeAmount,
-            referenceId: payment.id,
-            referenceTable: "fee_payments",
-            receiptNumber: payment.receiptNumber,
-            description: `Late fee reversed: ${input.reason} (${payment.receiptNumber})`,
-            transactionDate: new Date().toISOString().slice(0, 10),
-            createdBy: actorId,
-          });
-        }
+      }
+      // ADR-049: the late fee frozen on this payment never arrived (bounce,
+      // cancel) or went back with it (reversal) — offset its credit too, as
+      // its own row so each debit mirrors one credit.
+      if (toCents(payment.lateFeeAmount) > 0n) {
+        await tx.insert(financialTransactions).values({
+          organizationId: scope.organizationId,
+          schoolId,
+          studentId: payment.studentId,
+          academicYearId: payment.academicYearId,
+          transactionType: opts.transactionType,
+          direction: "debit",
+          amount: payment.lateFeeAmount,
+          referenceId: payment.id,
+          referenceTable: "fee_payments",
+          receiptNumber: payment.receiptNumber,
+          description: `Late fee reversed: ${input.reason} (${payment.receiptNumber})`,
+          transactionDate: new Date().toISOString().slice(0, 10),
+          createdBy: actorId,
+        });
       }
 
       return updated;
@@ -1154,12 +1154,16 @@ export class FeesCollectionService {
     });
   }
 
-  /** A pending payment withdrawn before confirmation. No ledger row: no money moved. */
+  /**
+   * A pending payment withdrawn before confirmation. No money moved, but
+   * recordPayment credited it at entry, so the credits are offset with
+   * `payment_cancelled` debits (gap 15, ADR-049) and it nets to zero cash.
+   */
   async cancelPayment(scope: DataScope, input: PaymentTransitionInput, actorId: string) {
     return this.transitionPayment(scope, input, actorId, {
       from: ["pending"],
       to: "cancelled",
-      transactionType: null,
+      transactionType: "payment_cancelled",
     });
   }
 
