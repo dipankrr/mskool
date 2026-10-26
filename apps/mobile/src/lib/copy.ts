@@ -2424,12 +2424,12 @@ export const copy = {
       nothingBody: "Every installment for this session is settled.",
       outstandingTitle: "Outstanding installments",
       outstandingHint: "Oldest first",
-      noInstallmentsTitle: "No installments yet",
+      noInstallmentsTitle: "No dues yet",
       noInstallmentsBody:
-        "The fee structure is assigned, but the generator has not run.",
-      notAssignedTitle: "No fee assigned",
+        "This student is not billed yet, so there is nothing due.",
+      notAssignedTitle: "Not billed yet",
       notAssignedBody:
-        "Assign this class's fee structure to start billing this student.",
+        "Bill this student to create their dues from the class fee chart.",
       assignAction: "Bill this student",
       generateAction: "Add missing dues",
       recomputeAction: "Recompute concessions",
@@ -2471,7 +2471,7 @@ export const copy = {
       paidOf: (paid: string, net: string) => `${paid} of ${net} paid`,
       assignSheetTitle: "Bill this student",
       assignSheetBody: (className: string) =>
-        `Applies ${className}'s active fee structure for this session. The amounts are snapshotted, so later structure edits do not change this bill.`,
+        `Uses ${className}'s fee chart for this session, charged from the date below. Later changes to the chart do not change this bill.`,
       assignStructureSummary: (name: string, mode: string) => `${name} · ${mode}`,
       joiningFullCharge: "Charge the joining month in full",
       joiningFullChargeHelp:
