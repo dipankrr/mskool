@@ -2220,6 +2220,15 @@ is `NOT NULL`, so a carried-forward due could be shown but never collected.
    `payment.detail` returns them as `openingBalanceAllocations`. The
    `fee_payment` credit now carries the installment principal only, so the
    two credit types sum to `fee_payments.amount`.
+4. *Refunds and offsets act on what a payment still holds.* A payment's lines
+   are its installment allocations (by due date, then id) followed by its
+   carried-forward portions. A refund takes back greedily in that order, and
+   what earlier refunds took is found by replaying their **sum** through the
+   same walk (a greedy walk of a total equals the walks of its parts), so a
+   second partial refund continues where the first stopped. Bounce, reverse
+   and cancel re-open only what each line still holds and debit the principal
+   less earlier refunds; a fully refunded payment cannot be bounced or
+   reversed (worded refusal).
 
 **Consequences.** No migration: the change ships with the frozen schema and
 needs no backfill, because no opening balance was ever paid before. Old

@@ -129,6 +129,30 @@ function ledgerCashEffect(row: {
   return row.direction === "credit" ? "in" : "out";
 }
 
+type HeldLine = {
+  kind: "installment" | "opening_balance";
+  id: string;
+  heldCents: bigint;
+};
+
+/**
+ * Greedy walk: takes `cents` off the lines in order, mutating each line's
+ * `heldCents`, and returns what was taken from each.
+ */
+function takeFromLines(lines: HeldLine[], cents: bigint) {
+  let remaining = cents;
+  const takes: { line: HeldLine; cents: bigint }[] = [];
+  for (const line of lines) {
+    if (remaining <= 0n) break;
+    const take = line.heldCents < remaining ? line.heldCents : remaining;
+    if (take === 0n) continue;
+    line.heldCents -= take;
+    remaining -= take;
+    takes.push({ line, cents: take });
+  }
+  return takes;
+}
+
 function fullName(parts: {
   firstName: string;
   middleName: string | null;
@@ -870,6 +894,67 @@ export class FeesCollectionService {
   }
 
   /**
+   * What a payment still holds on each line it paid: installment allocations
+   * (due date, then id) followed by carried-forward portions (ledger order),
+   * less everything earlier refunds took back. Refunds always walk the lines
+   * greedily in this order, so replaying their SUM reproduces every earlier
+   * walk exactly — the answer does not depend on how the refunds were split.
+   */
+  private async heldLines(
+    tx: Tx,
+    payment: { id: string; schoolId: string; academicYearId: string; receiptNumber: string },
+  ): Promise<HeldLine[]> {
+    const allocations = await tx
+      .select({
+        installmentId: paymentAllocations.installmentId,
+        amountAllocated: paymentAllocations.amountAllocated,
+      })
+      .from(paymentAllocations)
+      .innerJoin(feeInstallments, eq(feeInstallments.id, paymentAllocations.installmentId))
+      .where(eq(paymentAllocations.paymentId, payment.id))
+      .orderBy(asc(feeInstallments.dueDate), asc(paymentAllocations.installmentId));
+    const portions = await this.openingBalancePortions(tx, payment);
+    const lines: HeldLine[] = [
+      ...allocations.map((a) => ({
+        kind: "installment" as const,
+        id: a.installmentId,
+        heldCents: toCents(a.amountAllocated),
+      })),
+      ...portions.map((p) => ({
+        kind: "opening_balance" as const,
+        id: p.openingBalanceId,
+        heldCents: toCents(p.amount),
+      })),
+    ];
+    const prior = await tx
+      .select({ refundAmount: feeRefunds.refundAmount })
+      .from(feeRefunds)
+      .where(eq(feeRefunds.originalPaymentId, payment.id));
+    takeFromLines(
+      lines,
+      prior.reduce((acc, r) => acc + toCents(r.refundAmount), 0n),
+    );
+    return lines;
+  }
+
+  /** Re-opens each line by the given amount (installment or opening balance). */
+  private async reopenLines(tx: Tx, takes: { line: HeldLine; cents: bigint }[]) {
+    const open = takes.filter((t) => t.cents > 0n);
+    await this.applyToInstallments(
+      tx,
+      open
+        .filter((t) => t.line.kind === "installment")
+        .map((t) => ({ installmentId: t.line.id, amount: `-${fromCents(t.cents)}` })),
+    );
+    await this.applyToOpeningBalances(
+      tx,
+      open
+        .filter((t) => t.line.kind === "opening_balance")
+        .map((t) => ({ openingBalanceId: t.line.id, amount: `-${fromCents(t.cents)}` })),
+    );
+  }
+
+  /**
    * The carried-forward portions of a payment, read from their
    * `opening_balance_payment` ledger rows (ADR-049) — the receipt number is
    * unique per school, so (school, year, receipt) names exactly one payment.
@@ -939,27 +1024,18 @@ export class FeesCollectionService {
         );
       }
 
-      const allocations = await tx
-        .select({
-          installmentId: paymentAllocations.installmentId,
-          amountAllocated: paymentAllocations.amountAllocated,
-        })
-        .from(paymentAllocations)
-        .where(eq(paymentAllocations.paymentId, payment.id));
-
-      // Re-open: every allocation's amount comes BACK OFF the installment,
-      // and every carried-forward portion back off its opening balance.
-      await this.applyToInstallments(
+      // Re-open what the payment STILL HOLDS on each line — a partial refund
+      // already took its share back, and must not be re-opened twice.
+      const lines = await this.heldLines(tx, payment);
+      const heldCents = lines.reduce((acc, l) => acc + l.heldCents, 0n);
+      if (heldCents === 0n && opts.to !== "cancelled") {
+        throw new Error(
+          `This payment has been fully refunded; there is nothing left to mark ${opts.to}.`,
+        );
+      }
+      await this.reopenLines(
         tx,
-        allocations.map((a) => ({
-          installmentId: a.installmentId,
-          amount: `-${a.amountAllocated}`,
-        })),
-      );
-      const portions = await this.openingBalancePortions(tx, payment);
-      await this.applyToOpeningBalances(
-        tx,
-        portions.map((p) => ({ openingBalanceId: p.openingBalanceId, amount: `-${p.amount}` })),
+        lines.map((l) => ({ line: l, cents: l.heldCents })),
       );
 
       const [updated] = await tx
@@ -985,7 +1061,8 @@ export class FeesCollectionService {
           academicYearId: payment.academicYearId,
           transactionType: opts.transactionType,
           direction: "debit",
-          amount: payment.amount,
+          // The principal less what refunds already debited (gap 17).
+          amount: fromCents(heldCents),
           referenceId: payment.id,
           referenceTable: "fee_payments",
           receiptNumber: payment.receiptNumber,
@@ -1117,53 +1194,18 @@ export class FeesCollectionService {
         );
       }
 
-      const priorRefunds = await tx
-        .select({ refundAmount: feeRefunds.refundAmount })
-        .from(feeRefunds)
-        .where(eq(feeRefunds.originalPaymentId, payment.id));
-      const alreadyRefunded = priorRefunds.reduce(
-        (acc, r) => acc + toCents(r.refundAmount),
-        0n,
-      );
-      const refundable = toCents(payment.amount) - alreadyRefunded;
+      const lines = await this.heldLines(tx, payment);
+      const refundable = lines.reduce((acc, l) => acc + l.heldCents, 0n);
       if (refundCents > refundable) {
         throw new Error(
           `The refund exceeds what this payment still holds. Refundable: ${fromCents(refundable)}.`,
         );
       }
 
-      const allocations = await tx
-        .select({
-          installmentId: paymentAllocations.installmentId,
-          amountAllocated: paymentAllocations.amountAllocated,
-        })
-        .from(paymentAllocations)
-        .where(eq(paymentAllocations.paymentId, payment.id));
-
-      // Walk the allocations oldest-first, taking back up to the refund;
-      // carried-forward portions come after the installments.
-      let remaining = refundCents;
-      const deltas: { installmentId: string; amount: string }[] = [];
-      for (const a of allocations) {
-        if (remaining <= 0n) break;
-        const allocCents = toCents(a.amountAllocated);
-        const take = allocCents < remaining ? allocCents : remaining;
-        deltas.push({
-          installmentId: a.installmentId,
-          amount: `-${fromCents(take)}`,
-        });
-        remaining -= take;
-      }
-      const openingDeltas: { openingBalanceId: string; amount: string }[] = [];
-      for (const p of await this.openingBalancePortions(tx, payment)) {
-        if (remaining <= 0n) break;
-        const portionCents = toCents(p.amount);
-        const take = portionCents < remaining ? portionCents : remaining;
-        openingDeltas.push({ openingBalanceId: p.openingBalanceId, amount: `-${fromCents(take)}` });
-        remaining -= take;
-      }
-      await this.applyToInstallments(tx, deltas);
-      await this.applyToOpeningBalances(tx, openingDeltas);
+      // Take the refund back off the lines in the same deterministic order
+      // the earlier refunds used (gap 16): installments by due date, then
+      // carried-forward portions.
+      await this.reopenLines(tx, takeFromLines(lines, refundCents));
 
       const [refund] = await tx
         .insert(feeRefunds)

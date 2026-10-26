@@ -281,11 +281,11 @@ Still open, found while closing these (backend):
 15. `cancelPayment` writes no ledger row, but `recordPayment` already credited
     the pending payment, so a cancelled payment stays in Money in. Needs a new
     `financial_transaction_type` value (migration) — ADR-049 consequences.
-16. A second partial refund re-walks the allocations from the first one
+16. **[closed — ADR-049 §4]** A second partial refund re-walks the allocations from the first one
     (`recordRefund` does not subtract what earlier refunds took back, and
     reads allocations unordered), so with two or more allocations it can
     over-reopen the first and never reopen the next (the clamp at 0 hides it).
-17. `reversePayment` after a partial refund re-opens the full allocations and
+17. **[closed — ADR-049 §4]** `reversePayment` after a partial refund re-opens the full allocations and
     debits the full principal again — the refunded part is offset twice.
 
 ## Docs / skills used

@@ -2896,6 +2896,113 @@ describe("fees: mobile backend gaps (ADR-049)", () => {
     }
   });
 
+  /** A cleared cash payment covering the student's first two tuition months. */
+  async function twoLinePayment(tag: string) {
+    const student = await freshStudent(tag);
+    const assignment = await assignAndGenerate(student.id);
+    const [first, second] = (await installmentsOf(assignment.id))
+      .filter((r) => r.feeHeadId === w.tuitionHeadId)
+      .sort((a, b) => (a.dueDate < b.dueDate ? -1 : 1));
+    if (!first || !second) throw new Error("Tuition installments missing.");
+    // Listed second-first on purpose: the walk order is by due date, not input order.
+    const payment = await feesCollectionService.recordPayment(
+      w.scopeA,
+      {
+        studentId: student.id,
+        academicYearId: w.yearAId,
+        paymentDate: "2025-04-01",
+        paymentMode: "cash",
+        allocations: [
+          { installmentId: second.id, amount: second.netAmount },
+          { installmentId: first.id, amount: first.netAmount },
+        ],
+      },
+      w.adminId,
+    );
+    const paidOf = async (id: string) => {
+      const [row] = await db.select().from(feeInstallments).where(eq(feeInstallments.id, id));
+      return [row?.paidAmount, row?.paymentStatus];
+    };
+    const refund = (amount: string) =>
+      feesCollectionService.recordRefund(
+        w.scopeA,
+        {
+          originalPaymentId: payment.id,
+          refundAmount: amount,
+          refundDate: "2025-04-02",
+          refundMode: "cash",
+          reason: `Refund ${amount}`,
+        },
+        w.adminId,
+      );
+    return { student, first, second, payment, paidOf, refund };
+  }
+
+  it("gap 16: repeated partial refunds walk on from where the last one stopped", async () => {
+    const { first, second, payment, paidOf, refund } = await twoLinePayment("G16");
+    expect(first.netAmount).toBe("1000.00");
+    expect(second.netAmount).toBe("1000.00");
+    expect(payment.amount).toBe("2000.00");
+
+    await refund("300.00");
+    expect(await paidOf(first.id)).toEqual(["700.00", "partial"]);
+    expect(await paidOf(second.id)).toEqual(["1000.00", "paid"]);
+
+    // The old walk took this from the first line again (clamped at 0) and
+    // never touched the second.
+    await refund("1200.00");
+    expect(await paidOf(first.id)).toEqual(["0.00", "unpaid"]);
+    expect(await paidOf(second.id)).toEqual(["500.00", "partial"]);
+
+    await refund("500.00");
+    expect(await paidOf(second.id)).toEqual(["0.00", "unpaid"]);
+    await expect(refund("0.01")).rejects.toThrow(/Refundable: 0.00/);
+  });
+
+  it("gap 17: a reversal after a partial refund offsets only what the payment still holds", async () => {
+    const { student, first, second, payment, paidOf, refund } = await twoLinePayment("G17");
+    await refund("300.00");
+
+    await feesCollectionService.reversePayment(
+      w.scopeA,
+      { paymentId: payment.id, reason: "Disputed" },
+      w.adminId,
+    );
+    expect(await paidOf(first.id)).toEqual(["0.00", "unpaid"]);
+    expect(await paidOf(second.id)).toEqual(["0.00", "unpaid"]);
+
+    const [reversal] = await db
+      .select()
+      .from(financialTransactions)
+      .where(
+        and(
+          eq(financialTransactions.referenceId, payment.id),
+          eq(financialTransactions.direction, "debit"),
+        ),
+      );
+    expect(reversal?.transactionType).toBe("fee_refund");
+    expect(reversal?.amount).toBe("1700.00");
+
+    const ledger = await feesCollectionService.listLedger([w.scopeA], w.yearAId, student.id);
+    const net = ledger.reduce((acc, r) => {
+      if (r.cashEffect === "in") return acc + paise(r.amount);
+      if (r.cashEffect === "out") return acc - paise(r.amount);
+      return acc;
+    }, 0n);
+    expect(net).toBe(0n);
+
+    // A fully refunded payment has nothing left to reverse.
+    const full = await twoLinePayment("G17B");
+    await full.refund("2000.00");
+    await expect(
+      feesCollectionService.reversePayment(
+        w.scopeA,
+        { paymentId: full.payment.id, reason: "Too late" },
+        w.adminId,
+      ),
+    ).rejects.toThrow(/fully refunded/);
+  }, 90_000);
+
   it("gap 11: waivers stay as written but are receivables, never cash", async () => {
     const student = await freshStudent("G11");
     const assignment = await assignAndGenerate(student.id);
