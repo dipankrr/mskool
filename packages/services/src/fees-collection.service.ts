@@ -1561,6 +1561,31 @@ export class FeesCollectionService {
           .orderBy(asc(openingBalances.createdAt))
       : [];
 
+    // Gap 13: the late fee frozen on the year's payments that still stand —
+    // pending or cleared, the same payments whose principal paidAmount
+    // counts. Bounced/reversed/cancelled ones are offset in the ledger.
+    const lateFeeRows = studentIds.length
+      ? await db
+          .select({
+            studentId: feePayments.studentId,
+            lateFee: sql<string>`coalesce(sum(${feePayments.lateFeeAmount}), 0)::text`,
+          })
+          .from(feePayments)
+          .where(
+            and(
+              eq(feePayments.academicYearId, year.id),
+              inArray(feePayments.studentId, studentIds),
+              inArray(feePayments.paymentStatus, ["pending", "cleared"]),
+              scopeWhere(scopes.map(atSchoolLevel), PAYMENT_SCOPE),
+            ),
+          )
+          .groupBy(feePayments.studentId)
+      : [];
+    const lateFeeCentsByStudent = new Map(
+      lateFeeRows.map((r) => [r.studentId, toCents(r.lateFee)]),
+    );
+    let cohortLateFeeCents = 0n;
+
     const installmentsByStudent = new Map<string, MatrixInstallment[]>();
     for (const installment of installmentRows) {
       const rows = installmentsByStudent.get(installment.studentId) ?? [];
@@ -1630,7 +1655,12 @@ export class FeesCollectionService {
         addOpeningBalance(rowOpeningAccumulator, openingRow);
       }
 
-      const totals = matrixAmounts(rowAccumulator, asOf);
+      const lateFeeCents = lateFeeCentsByStudent.get(cohortRow.studentId) ?? 0n;
+      cohortLateFeeCents += lateFeeCents;
+      const totals = {
+        ...matrixAmounts(rowAccumulator, asOf),
+        lateFeePaidAmount: fromCents(lateFeeCents),
+      };
       const assignmentState: FeeMatrixOutput["rows"][number]["assignmentState"] =
         cohortRow.assignmentId === null ? "unassigned" : (cohortRow.assignmentStatus ?? "active");
       const generationState: FeeMatrixOutput["rows"][number]["generationState"] =
@@ -1687,6 +1717,7 @@ export class FeesCollectionService {
     const cohortAmounts = matrixAmounts(cohortAccumulator, asOf);
     const cohortTotals = {
       ...cohortAmounts,
+      lateFeePaidAmount: fromCents(cohortLateFeeCents),
       studentCount: computedRows.length,
       assignedCount: computedRows.filter((row) => row.assignmentId !== null).length,
       notGeneratedCount: computedRows.filter((row) => row.generationState !== "generated").length,

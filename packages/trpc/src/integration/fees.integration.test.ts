@@ -155,6 +155,7 @@ async function assignAndGenerate(studentId: string, effectiveFrom?: string) {
 }
 
 const paise = (money: string) => BigInt(money.replace(".", ""));
+const fromPaise = (p: bigint) => `${p / 100n}.${String(p % 100n).padStart(2, "0")}`;
 
 const installmentsOf = (assignmentId: string) =>
   db
@@ -3025,6 +3026,82 @@ describe("fees: mobile backend gaps (ADR-049)", () => {
         w.adminId,
       ),
     ).rejects.toThrow(/fully refunded/);
+  }, 90_000);
+
+  it("gap 13: the matrix reports late fees on standing payments beside paidAmount", async () => {
+    await db.insert(lateFeeRules).values({
+      organizationId: w.orgAId,
+      schoolId: w.schoolAId,
+      feeStructureId: null,
+      gracePeriodDays: 0,
+      calculationType: "flat",
+      value: "40.00",
+      maxLateFee: null,
+      isActive: true,
+      effectiveFrom: "2025-04-01",
+      effectiveTo: null,
+      createdBy: w.adminId,
+    });
+    try {
+      const student = await freshStudent("G13");
+      const assignment = await assignAndGenerate(student.id);
+      const [first, second, third] = (await installmentsOf(assignment.id))
+        .filter((r) => r.feeHeadId === w.tuitionHeadId)
+        .sort((a, b) => (a.dueDate < b.dueDate ? -1 : 1));
+      if (!first || !second || !third) throw new Error("Tuition installments missing.");
+      const pay = (installment: typeof first, mode: "cash" | "cheque") =>
+        feesCollectionService.recordPayment(
+          w.scopeA,
+          {
+            studentId: student.id,
+            academicYearId: w.yearAId,
+            paymentDate: "2025-06-20",
+            paymentMode: mode,
+            ...(mode === "cheque" ? { transactionReference: `CHQ-${installment.id.slice(0, 6)}` } : {}),
+            allocations: [{ installmentId: installment.id, amount: installment.netAmount }],
+          },
+          w.adminId,
+        );
+      await pay(first, "cash"); // cleared: counts
+      await pay(second, "cheque"); // pending: counts, like its principal
+      const bounced = await pay(third, "cheque");
+      await feesCollectionService.bouncePayment(
+        w.scopeA,
+        { paymentId: bounced.id, reason: "Cheque returned" },
+        w.adminId,
+      );
+
+      const result = feeMatrixOutputSchema.parse(
+        await feesCollectionService.listMatrix(
+          [w.scopeA],
+          feeMatrixInputSchema.parse({ academicYearId: w.yearAId, search: `${RUN}-G13` }),
+          true,
+        ),
+      );
+      const [row] = result.rows;
+      expect(result.rows).toHaveLength(1);
+      expect(row?.totals.lateFeePaidAmount).toBe("80.00");
+      // paidAmount stays principal only: the two standing installments.
+      expect(row?.totals.paidAmount).toBe(
+        fromPaise(paise(first.netAmount) + paise(second.netAmount)),
+      );
+      expect(result.cohortTotals.lateFeePaidAmount).toBe("80.00");
+
+      // A student with no payments reports zero, not a missing field.
+      const none = await freshStudent("G13B");
+      await assignAndGenerate(none.id);
+      const empty = await feesCollectionService.listMatrix(
+        [w.scopeA],
+        feeMatrixInputSchema.parse({ academicYearId: w.yearAId, search: `${RUN}-G13B` }),
+        true,
+      );
+      expect(empty?.rows[0]?.totals.lateFeePaidAmount).toBe("0.00");
+    } finally {
+      await db
+        .update(lateFeeRules)
+        .set({ isActive: false })
+        .where(and(eq(lateFeeRules.schoolId, w.schoolAId), eq(lateFeeRules.isActive, true)));
+    }
   }, 90_000);
 
   it("gap 11: waivers stay as written but are receivables, never cash", async () => {

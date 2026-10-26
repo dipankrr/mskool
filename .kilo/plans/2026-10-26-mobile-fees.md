@@ -246,7 +246,7 @@ Further backend gaps found on the walk (no changes made):
     though it is a receivable, not cash.
 12. **[closed]** A bounce posts a debit for the allocated amount only; the late
     fee charged on the bounced payment stays in Money in.
-13. "Collected" differs by screen: the matrix excludes late fees, the payments
+13. **[closed server side — `fees.matrix.list` rows' `totals.lateFeePaidAmount` and `cohortTotals.lateFeePaidAmount`: late fee on the year's pending + cleared payments, so paidAmount + lateFeePaidAmount = collected incl. late fees; mobile toggle pending]** "Collected" differs by screen: the matrix excludes late fees, the payments
     list includes them. (Open.)
 14. **[closed]** Gap 2 is the most visible one left: after a restart, receipts
     and payment detail for fully paid installments show "Installment c1937743".

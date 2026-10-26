@@ -677,6 +677,19 @@ export const feeMatrixAmountsSchema = z.object({
 });
 export type FeeMatrixAmounts = z.infer<typeof feeMatrixAmountsSchema>;
 
+/**
+ * A student's (or the cohort's) year totals. `paidAmount` is installment
+ * principal only; `lateFeePaidAmount` is the late fee frozen on the year's
+ * payments that still stand (pending or cleared — the same payments whose
+ * principal `paidAmount` counts), so "collected incl. late fees" is their sum.
+ * Bounced, reversed and cancelled payments are excluded: their late fee is
+ * offset in the ledger (ADR-049).
+ */
+export const feeMatrixTotalsSchema = feeMatrixAmountsSchema.extend({
+  lateFeePaidAmount: money,
+});
+export type FeeMatrixTotals = z.infer<typeof feeMatrixTotalsSchema>;
+
 export const feeMatrixMonthSchema = z.object({
   key: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
   year: z.number().int(),
@@ -736,7 +749,7 @@ export const feeMatrixRowSchema = z.object({
   generationState: feeMatrixGenerationStateSchema,
   generatedInstallmentCount: z.number().int().nonnegative(),
   cells: z.array(feeMatrixCellSchema),
-  totals: feeMatrixAmountsSchema,
+  totals: feeMatrixTotalsSchema,
   openingBalance: feeMatrixOpeningBalanceSchema,
   paymentState: feeMatrixPaymentStateSchema,
   timingState: feeMatrixTimingStateSchema,
@@ -758,7 +771,7 @@ export const feeMatrixMonthSummarySchema = z.object({
 });
 export type FeeMatrixMonthSummary = z.infer<typeof feeMatrixMonthSummarySchema>;
 
-export const feeMatrixCohortTotalsSchema = feeMatrixAmountsSchema.extend({
+export const feeMatrixCohortTotalsSchema = feeMatrixTotalsSchema.extend({
   studentCount: z.number().int().nonnegative(),
   assignedCount: z.number().int().nonnegative(),
   notGeneratedCount: z.number().int().nonnegative(),
