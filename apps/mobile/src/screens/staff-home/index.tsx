@@ -20,6 +20,7 @@ import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { gutter, radius, spacing } from "../../theme/tokens";
 import { ClassCard } from "./class-card";
+import { OpenExamsCard } from "./open-exams";
 
 /**
  * Staff home (probe frame 01): branch chip, "Today" and the day line, then
@@ -92,6 +93,8 @@ export function StaffHomeScreen() {
             {formatLongWeekday(todayIso())}
           </ThemedText>
         </View>
+
+        <OpenExamsCard />
 
         <SectionLabel>{copy.home.classesLabel}</SectionLabel>
 

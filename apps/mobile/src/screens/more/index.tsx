@@ -82,6 +82,7 @@ export function MoreScreen() {
     null;
   const roles = Array.from(new Set(membership?.roleTypes ?? []));
 
+  const canReadExams = has("exam:read");
   const canManageStudents = has("student:read");
   const canManagePhotos = has("student:update");
   const canManageAcademic = [
@@ -178,6 +179,23 @@ export function MoreScreen() {
             testID="more-session"
           />
         </Card>
+
+        {canReadExams ? (
+          <>
+            <SectionLabel>{copy.exams.more.section}</SectionLabel>
+            <Card padless>
+              <LinkRow
+                title={copy.exams.title}
+                detail={copy.exams.more.detail}
+                icon="exams"
+                onPress={() => router.push("/exams")}
+                accessibilityHint={copy.exams.more.hint}
+                first
+                testID="more-exams"
+              />
+            </Card>
+          </>
+        ) : null}
 
         {showManage ? (
           <>
