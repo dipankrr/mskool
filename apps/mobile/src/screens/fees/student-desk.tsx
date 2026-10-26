@@ -53,6 +53,7 @@ import {
   MatrixStatusPill,
   SectionHead,
 } from "./status";
+import { useSessionOpen } from "../../hooks/use-session-open";
 
 type MatrixOutput = inferRouterOutputs<AppRouter>["fees"]["matrix"]["list"];
 type MatrixRow = MatrixOutput["rows"][number];
@@ -92,6 +93,7 @@ export function StudentFeeDeskScreen() {
   const { organizationId, schoolId, academicYear, yearPending, ready } =
     useActiveContext();
   const { has, hasAny } = usePermissions();
+  const sessionOpen = useSessionOpen();
 
   const studentId = params.studentId ?? "";
   const admissionParam =
@@ -102,12 +104,13 @@ export function StudentFeeDeskScreen() {
   const canReadDesk = hasAny("fee_report:read", "student_fee_assignment:read");
   const canReadMatrix = has("fee_report:read");
   const canReadAssignment = has("student_fee_assignment:read");
-  const canAssign = has("student_fee_assignment:create");
-  const canUpdateAssignment = has("student_fee_assignment:update");
-  const canCreateConcession = has("fee_waiver:create");
+  const canAssign = has("student_fee_assignment:create") && sessionOpen;
+  const canUpdateAssignment =
+    has("student_fee_assignment:update") && sessionOpen;
+  const canCreateConcession = has("fee_waiver:create") && sessionOpen;
   const canReadStructure = has("fee_structure:read");
   const canReadPayments = has("fee_payment:read");
-  const canCollect = has("fee_payment:create");
+  const canCollect = has("fee_payment:create") && sessionOpen;
 
   const [sheet, setSheet] = useState<DeskSheet | null>(null);
   const [notice, setNotice] = useState<DeskNotice | null>(null);
@@ -474,6 +477,13 @@ export function StudentFeeDeskScreen() {
 
   return frame(
     <View style={styles.body}>
+      {!sessionOpen ? (
+        <Notice
+          tone="caution"
+          message={copy.fees.sessionClosed}
+          testID="fees-session-closed"
+        />
+      ) : null}
       {notice ? (
         <Notice
           tone={notice.tone}

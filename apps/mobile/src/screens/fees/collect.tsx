@@ -51,6 +51,7 @@ import {
   touch,
 } from "../../theme/tokens";
 import { SectionHead } from "./status";
+import { useSessionOpen } from "../../hooks/use-session-open";
 
 /**
  * Take the money (Step 5B).
@@ -90,9 +91,10 @@ export function CollectPaymentScreen() {
   const { organizationId, schoolId, academicYear, ready, yearPending } =
     useActiveContext();
   const { has } = usePermissions();
+  const sessionOpen = useSessionOpen();
 
   const studentId = params.studentId ?? "";
-  const canCollect = has("fee_payment:create");
+  const canCollect = has("fee_payment:create") && sessionOpen;
   const canReadDues = has("student_fee_assignment:read");
   // Carried-forward balances are read through the setup grant; a cashier
   // without it still collects installments and sees the notice instead.

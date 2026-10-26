@@ -35,6 +35,8 @@ import { DuesRow } from "./dues-row";
 import { SectionHead } from "./status";
 import { useCollectedIncludesLateFees } from "../../lib/fee-prefs";
 import { monthKeyOf, splitByMonth } from "../../lib/fees";
+import { useSessionOpen } from "../../hooks/use-session-open";
+import { Notice } from "../../components/notice";
 
 type FeeView = "attention" | "overdue" | "paid" | "all";
 
@@ -76,6 +78,7 @@ export function FeesScreen({
     useActiveContext();
   const branchName = useActiveBranchName();
   const { has, hasAny } = usePermissions();
+  const sessionOpen = useSessionOpen();
 
   const canReadDesk = hasAny("fee_report:read", "student_fee_assignment:read");
   const canReadMatrix = has("fee_report:read");
@@ -344,6 +347,13 @@ export function FeesScreen({
 
   return frame(
     <View style={styles.body}>
+      {!sessionOpen ? (
+        <Notice
+          tone="caution"
+          message={copy.fees.sessionClosed}
+          testID="fees-session-closed"
+        />
+      ) : null}
       <SegmentBar
         label={copy.fees.dues.periodLabel}
         value={period}

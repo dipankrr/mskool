@@ -39,6 +39,7 @@ import type { Tone } from "../../theme/brand-admin";
 import { colors } from "../../theme/brand-admin";
 import { spacing, touch } from "../../theme/tokens";
 import { SectionHead } from "./status";
+import { useSessionOpen } from "../../hooks/use-session-open";
 
 type Student = inferRouterOutputs<AppRouter>["student"]["list"][number];
 type Subscription =
@@ -70,12 +71,13 @@ export function FeeServicesScreen() {
     useActiveContext();
   const branchName = useActiveBranchName();
   const { has } = usePermissions();
+  const sessionOpen = useSessionOpen();
 
   const canRead = has("fee_structure:read");
   const canReadStudents = has("student:read");
   const canReadHeads = has("fee_head:read");
-  const canCreate = has("fee_structure:create");
-  const canUpdate = has("fee_structure:update");
+  const canCreate = has("fee_structure:create") && sessionOpen;
+  const canUpdate = has("fee_structure:update") && sessionOpen;
   const canReadAssignment = has("student_fee_assignment:read");
   const canGenerate = has("student_fee_assignment:update");
 

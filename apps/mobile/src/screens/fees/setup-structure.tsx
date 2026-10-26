@@ -39,6 +39,7 @@ import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { spacing, touch } from "../../theme/tokens";
 import { FactChip, SectionHead } from "./status";
+import { useSessionOpen } from "../../hooks/use-session-open";
 
 type Structure = inferRouterOutputs<AppRouter>["fees"]["structure"]["byId"];
 type Line =
@@ -82,6 +83,7 @@ export function FeeStructureScreen() {
   const { organizationId, schoolId, ready, yearPending } = useActiveContext();
   const branchName = useActiveBranchName();
   const { has } = usePermissions();
+  const sessionOpen = useSessionOpen();
 
   const structureId =
     typeof params.structureId === "string" ? params.structureId : "";
@@ -91,12 +93,12 @@ export function FeeStructureScreen() {
       : null;
 
   const canRead = has("fee_structure:read");
-  const canCreate = has("fee_structure:create");
-  const canUpdate = has("fee_structure:update");
+  const canCreate = has("fee_structure:create") && sessionOpen;
+  const canUpdate = has("fee_structure:update") && sessionOpen;
   const canReadHeads = has("fee_head:read");
   const canReadClasses = has("class:read");
   // Billing is the assignment grant, not the setup one.
-  const canBill = has("student_fee_assignment:create");
+  const canBill = has("student_fee_assignment:create") && sessionOpen;
 
   const [sheet, setSheet] = useState<
     { mode: "edit" } | { mode: "line"; line?: Line } | { mode: "rule" } | null

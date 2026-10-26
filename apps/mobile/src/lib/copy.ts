@@ -2323,6 +2323,8 @@ export const copy = {
   fees: {
     title: "Fees",
     tabLabel: "Fees",
+    sessionClosed:
+      "This session is closed. Fees can be viewed, but nothing new can be collected, billed or changed.",
     collectedLateFees: {
       label: "Count late fees in Collected",
       help: "On: all cash received. Off: fees only. Applies on this phone, here and on the Fees tab.",

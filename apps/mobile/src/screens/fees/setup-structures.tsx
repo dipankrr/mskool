@@ -28,6 +28,7 @@ import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { spacing, touch } from "../../theme/tokens";
 import { SectionHead } from "./status";
+import { useSessionOpen } from "../../hooks/use-session-open";
 
 type Structure =
   inferRouterOutputs<AppRouter>["fees"]["structure"]["list"][number];
@@ -47,9 +48,10 @@ export function FeeStructuresScreen() {
   const { organizationId, schoolId, academicYear, ready, yearPending } =
     useActiveContext();
   const { has } = usePermissions();
+  const sessionOpen = useSessionOpen();
 
   const canRead = has("fee_structure:read");
-  const canCreate = has("fee_structure:create");
+  const canCreate = has("fee_structure:create") && sessionOpen;
   const canReadClasses = has("class:read");
 
   const [showRetired, setShowRetired] = useState(false);

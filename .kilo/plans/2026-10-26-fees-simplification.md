@@ -128,6 +128,22 @@ session from today (April–March containing today) and the previous one from
 it, then `pnpm reset:demo -- --yes` and `pnpm db:seed`. This wipes and
 recreates **only** the `demo-trust` org. Needs owner approval.
 
+## Progress (2026-10-26)
+
+Done: billClass endpoint (e471510) + "Bill all students in this class" on the
+fee chart; Fees tab month view; collect prefills up to this month with Pay
+ahead; student page leads with Due now; "Bill this student" is one action;
+whole rupees drop ".00"; dues named "Tuition Fee — November 2026"; closed
+session hides collect, billing, concessions and fee-chart edits.
+
+**Backend gap found:** the fee services never check the session's status, so
+a closed session still accepts collections, billing and concessions. The
+mobile guard (`useSessionOpen`) is the only one today; the server should
+refuse these writes for a closed year.
+
+Owner decision: the month-by-month strip stays on the student page (not
+behind More).
+
 ## Not in scope
 
 Parent/portal fees, receipt PDF, late-fee preview endpoint, the
