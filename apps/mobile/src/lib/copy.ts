@@ -2758,6 +2758,10 @@ export const copy = {
       actionsTitle: "Actions",
       actionsHint: "Only legal transitions appear",
       noActions: "This payment is closed. No further action is possible.",
+      noActionsPending:
+        "Waiting for approval. The principal (or anyone given approval rights) clears, cancels or bounces it.",
+      noActionsCleared:
+        "Bounce and reversal need the principal's approval rights.",
       statusReasonLabel: "Recorded reason",
       reasonLabel: "Reason",
       reasonPlaceholder: "What happened, and why",

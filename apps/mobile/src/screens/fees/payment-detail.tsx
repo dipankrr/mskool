@@ -506,7 +506,16 @@ export function PaymentDetailScreen() {
       />
       {actions.length === 0 ? (
         <Card>
-          <ThemedText variant="meta">{copy.fees.payment.noActions}</ThemedText>
+          <ThemedText variant="meta">
+            {/* Only a closed payment has no legal move at all; an open one
+                with no actions means this login may not make them. */}
+            {payment.paymentStatus === "pending" ||
+            payment.paymentStatus === "cleared"
+              ? payment.paymentStatus === "pending"
+                ? copy.fees.payment.noActionsPending
+                : copy.fees.payment.noActionsCleared
+              : copy.fees.payment.noActions}
+          </ThemedText>
         </Card>
       ) : (
         <View style={styles.actions}>
