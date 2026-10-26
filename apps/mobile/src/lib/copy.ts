@@ -2585,10 +2585,16 @@ export const copy = {
     },
     collect: {
       title: "Collect payment",
-      balanceLabel: "Outstanding",
+      balanceLabel: "Due now",
       allocationTitle: "What is being paid",
       allocationHint: "Oldest first. Edit an amount, or clear a line.",
-      payFull: "Pay full balance",
+      payFull: "Pay all due now",
+      nothingDueNow: "Nothing is due yet this session. A parent can still pay ahead.",
+      payAheadTitle: "Pay ahead",
+      payAheadHint: (count: number, amount: string) =>
+        `${count} later ${count === 1 ? "due" : "dues"} · ${amount}`,
+      payAheadShow: "Show",
+      payAheadFill: "Fill all",
       clearRow: "Clear",
       amountA11y: (title: string, balance: string) =>
         `Amount for ${title}, balance ${balance}`,

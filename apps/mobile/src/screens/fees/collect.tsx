@@ -27,6 +27,7 @@ import {
   PAYMENT_MODES,
   paymentModeLabel,
   referenceFields,
+  monthKeyOf,
 } from "../../lib/fees";
 import type { PaymentMode } from "../../lib/fees";
 import { formatReadableDate, todayIso } from "../../lib/format";
@@ -74,6 +75,8 @@ type PayableLine = {
   paid: string | null;
   net: string | null;
   balance: string;
+  /** Due after the current month: shown under "Pay ahead". */
+  ahead: boolean;
 };
 
 export function CollectPaymentScreen() {
@@ -105,6 +108,8 @@ export function CollectPaymentScreen() {
   const [review, setReview] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const [showAhead, setShowAhead] = useState(false);
+  const currentMonth = monthKeyOf(todayIso());
 
   // One key for this attempt. Kept for the component's life so a retry after
   // a network failure is idempotent rather than a second payment.
@@ -171,6 +176,7 @@ export function CollectPaymentScreen() {
         paid: row.paidAmount,
         net: row.amount,
         balance: row.balanceAmount ?? "0.00",
+        ahead: false,
       }));
     const due = oldestFirst((dues.data ?? []).filter(isPayable)).map((row) => ({
       kind: "installment" as const,
@@ -180,22 +186,28 @@ export function CollectPaymentScreen() {
       paid: row.paidAmount,
       net: row.netAmount,
       balance: row.balanceAmount ?? "0.00",
+      // Due after this month: offered under "Pay ahead", never prefilled.
+      ahead: monthKeyOf(row.dueDate) > currentMonth,
     }));
     return [...carried, ...due];
-  }, [openings.data, dues.data]);
+  }, [openings.data, dues.data, currentMonth]);
 
-  const fullAmounts = useMemo(() => {
+  const nowLines = useMemo(() => lines.filter((line) => !line.ahead), [lines]);
+  const aheadLines = useMemo(() => lines.filter((line) => line.ahead), [lines]);
+
+  // The common case is "pay everything due up to now": prefill once, after
+  // both reads. Future months start empty.
+  const dueNowAmounts = useMemo(() => {
     const next: Record<string, string> = {};
-    for (const line of lines) next[line.key] = line.balance;
+    for (const line of nowLines) next[line.key] = line.balance;
     return next;
-  }, [lines]);
+  }, [nowLines]);
 
-  // The common case is "pay everything": prefill once, after both reads.
   useEffect(() => {
     if (prefilled.current || !dues.data || !openingsSettled) return;
     prefilled.current = true;
-    setAmounts(fullAmounts);
-  }, [dues.data, openingsSettled, fullAmounts]);
+    setAmounts(dueNowAmounts);
+  }, [dues.data, openingsSettled, dueNowAmounts]);
 
   const allocations = useMemo(
     () =>
@@ -213,9 +225,19 @@ export function CollectPaymentScreen() {
     [allocations],
   );
   const outstanding = useMemo(
-    () => sumMoney(lines.map((line) => line.balance)),
-    [lines],
+    () => sumMoney(nowLines.map((line) => line.balance)),
+    [nowLines],
   );
+  const later = useMemo(
+    () => sumMoney(aheadLines.map((line) => line.balance)),
+    [aheadLines],
+  );
+  const aheadChosen = aheadLines.some(
+    (line) => (parseMoney(amounts[line.key] ?? "") ?? 0n) > 0n,
+  );
+  // Open when asked, when something is already chosen there, or when nothing
+  // is due yet (then pay ahead is the only thing to collect).
+  const aheadOpen = showAhead || aheadChosen || nowLines.length === 0;
 
   const studentName =
     (typeof params.studentName === "string" && params.studentName.length > 0
@@ -281,8 +303,16 @@ export function CollectPaymentScreen() {
   };
 
   const payFull = () => {
-    setAmounts(fullAmounts);
+    setAmounts((current) => ({ ...current, ...dueNowAmounts }));
     setClamped({});
+  };
+
+  const fillAhead = () => {
+    setAmounts((current) => {
+      const next = { ...current };
+      for (const line of aheadLines) next[line.key] = line.balance;
+      return next;
+    });
   };
 
   const openReview = () => {
@@ -485,6 +515,77 @@ export function CollectPaymentScreen() {
     );
   }
 
+  const renderLine = (line: PayableLine, index: number) => {
+    const { title } = line;
+    const note = clamped[line.key];
+    const value = amounts[line.key] ?? "";
+    return (
+      <View
+        key={line.key}
+        style={[styles.row, index === 0 ? null : styles.divider]}
+      >
+        <View style={styles.rowText}>
+          <ThemedText variant="bodyStrong" numberOfLines={2}>
+            {title}
+          </ThemedText>
+          <ThemedText variant="meta" numberOfLines={2}>
+            {copy.fees.desk.paidOf(
+              formatMoney(line.paid),
+              formatMoney(line.net),
+            )}
+          </ThemedText>
+          {note ? (
+            <ThemedText variant="caption" color={colors.tone.caution.fg}>
+              {copy.fees.collect.clamped(note)}
+            </ThemedText>
+          ) : null}
+        </View>
+        <View style={styles.rowTrailing}>
+          <View style={styles.amountBox}>
+            <ThemedText variant="body" color={colors.muted}>
+              ₹
+            </ThemedText>
+            <TextInput
+              value={value}
+              onChangeText={(next) => setAmount(line.key, next)}
+              onBlur={() => settleAmount(line.key, line.balance)}
+              keyboardType="decimal-pad"
+              inputMode="decimal"
+              placeholder="0"
+              placeholderTextColor={colors.muted}
+              accessibilityLabel={copy.fees.collect.amountA11y(
+                title,
+                formatMoney(line.balance),
+              )}
+              selectTextOnFocus
+              maxFontSizeMultiplier={1.2}
+              style={styles.amountInput}
+              testID={`fee-collect-amount-${line.id}`}
+            />
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${copy.fees.collect.clearRow} ${title}`}
+            hitSlop={8}
+            onPress={() => {
+              setAmount(line.key, "");
+              setClamped((current) => ({
+                ...current,
+                [line.key]: null,
+              }));
+            }}
+            style={styles.clear}
+            testID={`fee-collect-clear-${line.id}`}
+          >
+            <ThemedText variant="caption" color={colors.accentDeep}>
+              {copy.fees.collect.clearRow}
+            </ThemedText>
+          </Pressable>
+        </View>
+      </View>
+    );
+  };
+
   return frame(
     <>
       <View style={styles.body}>
@@ -505,6 +606,11 @@ export function CollectPaymentScreen() {
               formatMoney(outstanding),
             )}
           </ThemedText>
+          {isPositiveMoney(later) ? (
+            <ThemedText variant="meta">
+              {copy.fees.dues.laterThisSession(formatMoney(later))}
+            </ThemedText>
+          ) : null}
           <ThemedText variant="meta">{copy.fees.desk.lateFeeNote}</ThemedText>
         </Card>
 
@@ -534,81 +640,47 @@ export function CollectPaymentScreen() {
           />
         </View>
 
-        <Card padless>
-          {lines.map((line, index) => {
-            const { title } = line;
-            const note = clamped[line.key];
-            const value = amounts[line.key] ?? "";
-            return (
-              <View
-                key={line.key}
-                style={[styles.row, index === 0 ? null : styles.divider]}
-              >
-                <View style={styles.rowText}>
-                  <ThemedText variant="bodyStrong" numberOfLines={2}>
-                    {title}
-                  </ThemedText>
-                  <ThemedText variant="meta" numberOfLines={2}>
-                    {copy.fees.desk.paidOf(
-                      formatMoney(line.paid),
-                      formatMoney(line.net),
-                    )}
-                  </ThemedText>
-                  {note ? (
-                    <ThemedText
-                      variant="caption"
-                      color={colors.tone.caution.fg}
-                    >
-                      {copy.fees.collect.clamped(note)}
-                    </ThemedText>
-                  ) : null}
-                </View>
-                <View style={styles.rowTrailing}>
-                  <View style={styles.amountBox}>
-                    <ThemedText variant="body" color={colors.muted}>
-                      ₹
-                    </ThemedText>
-                    <TextInput
-                      value={value}
-                      onChangeText={(next) => setAmount(line.key, next)}
-                      onBlur={() => settleAmount(line.key, line.balance)}
-                      keyboardType="decimal-pad"
-                      inputMode="decimal"
-                      placeholder="0"
-                      placeholderTextColor={colors.muted}
-                      accessibilityLabel={copy.fees.collect.amountA11y(
-                        title,
-                        formatMoney(line.balance),
-                      )}
-                      selectTextOnFocus
-                      maxFontSizeMultiplier={1.2}
-                      style={styles.amountInput}
-                      testID={`fee-collect-amount-${line.id}`}
-                    />
-                  </View>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`${copy.fees.collect.clearRow} ${title}`}
-                    hitSlop={8}
-                    onPress={() => {
-                      setAmount(line.key, "");
-                      setClamped((current) => ({
-                        ...current,
-                        [line.key]: null,
-                      }));
-                    }}
-                    style={styles.clear}
-                    testID={`fee-collect-clear-${line.id}`}
-                  >
-                    <ThemedText variant="caption" color={colors.accentDeep}>
-                      {copy.fees.collect.clearRow}
-                    </ThemedText>
-                  </Pressable>
-                </View>
+        {nowLines.length > 0 ? (
+          <Card padless>{nowLines.map(renderLine)}</Card>
+        ) : (
+          <Notice
+            tone="neutral"
+            message={copy.fees.collect.nothingDueNow}
+            testID="fee-collect-nothing-due"
+          />
+        )}
+
+        {aheadLines.length > 0 ? (
+          <>
+            <View style={styles.sectionHead}>
+              <View style={styles.sectionHeadText}>
+                <SectionHead
+                  title={copy.fees.collect.payAheadTitle}
+                  hint={copy.fees.collect.payAheadHint(
+                    aheadLines.length,
+                    formatMoney(later),
+                  )}
+                />
               </View>
-            );
-          })}
-        </Card>
+              <CapsuleButton
+                title={
+                  aheadOpen
+                    ? copy.fees.collect.payAheadFill
+                    : copy.fees.collect.payAheadShow
+                }
+                variant="secondary"
+                size="mini"
+                onPress={() =>
+                  aheadOpen ? fillAhead() : setShowAhead(true)
+                }
+                testID="fee-collect-pay-ahead"
+              />
+            </View>
+            {aheadOpen ? (
+              <Card padless>{aheadLines.map(renderLine)}</Card>
+            ) : null}
+          </>
+        ) : null}
 
         {anyClamped ? (
           <Notice
