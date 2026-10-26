@@ -10,11 +10,14 @@ import {
 import { scopeWhere, type DataScope, type ScopeColumns } from "@repo/authz";
 import type {
   AssignFeeStructureInput,
+  BillClassInput,
+  BillClassOutput,
   CreateOpeningBalanceInput,
 } from "@repo/contracts";
 import { db } from "@repo/db";
 import {
   academicYears,
+  classes,
   feeConcessions,
   feeHeads,
   feeInstallments,
@@ -22,12 +25,14 @@ import {
   feeStructures,
   financialTransactions,
   openingBalances,
+  sections,
   studentEnrollments,
   studentFeeAssignments,
   studentOptionalFeeSubscriptions,
+  students,
   terms,
 } from "@repo/db/schema";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 /**
  * FEES — the billing engine. Phase 4, chunk F4.
@@ -67,6 +72,27 @@ const OPENING_BALANCE_SCOPE: ScopeColumns = {
   schoolId: openingBalances.schoolId,
 };
 
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+/** The pool or an open transaction — billClass runs each student in one. */
+type Executor = typeof db | Tx;
+
+/** Enrollment states that mean the student has left the class for the year. */
+const NOT_ENROLLED_REASONS: Record<string, string> = {
+  transferred_out: "Not enrolled: transferred out.",
+  withdrawn: "Not enrolled: withdrawn.",
+  passed_out: "Not enrolled: passed out.",
+};
+
+/** Postgres unique_violation, wherever drizzle nested it in the cause chain. */
+function isUniqueViolation(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; current && depth < 5; depth++) {
+    if ((current as { code?: unknown }).code === "23505") return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
 export class FeesBillingService {
   /**
    * Resolves the enrollment's class structure onto the student: the unique
@@ -80,10 +106,11 @@ export class FeesBillingService {
     scope: DataScope,
     input: AssignFeeStructureInput,
     actorId: string,
+    exec: Executor = db,
   ) {
     const schoolId = requireSchoolId(scope);
 
-    const [enrollment] = await db
+    const [enrollment] = await exec
       .select({
         id: studentEnrollments.id,
         studentId: studentEnrollments.studentId,
@@ -101,7 +128,7 @@ export class FeesBillingService {
       throw new Error("Enrollment not found in this school.");
     }
 
-    const [structure] = await db
+    const [structure] = await exec
       .select({ id: feeStructures.id })
       .from(feeStructures)
       .where(
@@ -118,16 +145,16 @@ export class FeesBillingService {
       );
     }
 
-    const lines = await db
+    const lines = await exec
       .select({ annualAmount: feeStructureLines.annualAmount })
       .from(feeStructureLines)
       .where(eq(feeStructureLines.feeStructureId, structure.id));
     const baseCents = lines.reduce((acc, l) => acc + toCents(l.annualAmount), 0n);
 
     const effectiveFrom =
-      input.feeEffectiveFrom ?? (await this.enrollmentEffectiveFrom(enrollment.id));
+      input.feeEffectiveFrom ?? (await this.enrollmentEffectiveFrom(enrollment.id, exec));
 
-    const [assignment] = await db
+    const [assignment] = await exec
       .insert(studentFeeAssignments)
       .values({
         organizationId: scope.organizationId,
@@ -150,8 +177,209 @@ export class FeesBillingService {
     return assignment;
   }
 
-  private async enrollmentEffectiveFrom(enrollmentId: string): Promise<string> {
-    const [row] = await db
+  /**
+   * "Bill all students in this class" — the bulk form of assign + generate.
+   * Class, year and section are RE-READ through the caller's school first
+   * (their FKs never mention school_id), so a caller cannot bill another
+   * branch's class. Then every enrollment of the class (and section) in the
+   * year is sorted into exactly one bucket:
+   *
+   *   skipped   it already has an active assignment — a second run bills
+   *             nobody, which is what makes the button safe to press twice
+   *   refused   it has left (transferred out / withdrawn / passed out), or
+   *             its assignment is suspended or cancelled (the one-per-year
+   *             index forbids a second; restoring it is a per-student call)
+   *   billed    assign + generate in ONE transaction, so a student is never
+   *             left assigned without dues
+   *
+   * A class with no active structure refuses as a whole. A concurrent run
+   * that billed a student first trips the unique index; that student rolls
+   * back and is reported as skipped.
+   */
+  async billClass(
+    scope: DataScope,
+    input: BillClassInput,
+    actorId: string,
+  ): Promise<BillClassOutput> {
+    const schoolId = requireSchoolId(scope);
+
+    const [klass] = await db
+      .select({ id: classes.id })
+      .from(classes)
+      .where(and(eq(classes.id, input.classId), eq(classes.schoolId, schoolId)));
+    if (!klass) {
+      throw new Error("Class not found in this school.");
+    }
+
+    const [year] = await db
+      .select({ id: academicYears.id })
+      .from(academicYears)
+      .where(
+        and(
+          eq(academicYears.id, input.academicYearId),
+          eq(academicYears.schoolId, schoolId),
+        ),
+      );
+    if (!year) {
+      throw new Error("Academic year not found in this school.");
+    }
+
+    if (input.sectionId) {
+      const [section] = await db
+        .select({ classId: sections.classId })
+        .from(sections)
+        .where(and(eq(sections.id, input.sectionId), eq(sections.schoolId, schoolId)));
+      if (!section) {
+        throw new Error("Section not found in this school.");
+      }
+      if (section.classId !== input.classId) {
+        throw new Error("The section is not in the class being billed.");
+      }
+    }
+
+    const result: BillClassOutput = {
+      feeStructureId: null,
+      refusal: null,
+      billedCount: 0,
+      skippedCount: 0,
+      refusedCount: 0,
+      billed: [],
+      skipped: [],
+      refused: [],
+    };
+
+    const [structure] = await db
+      .select({ id: feeStructures.id })
+      .from(feeStructures)
+      .where(
+        and(
+          eq(feeStructures.schoolId, schoolId),
+          eq(feeStructures.academicYearId, input.academicYearId),
+          eq(feeStructures.classId, input.classId),
+          eq(feeStructures.isActive, true),
+        ),
+      );
+    if (!structure) {
+      result.refusal =
+        "No active fee chart for this class this session, so there is nothing to bill.";
+      return result;
+    }
+    result.feeStructureId = structure.id;
+
+    const enrollments = await db
+      .select({
+        enrollmentId: studentEnrollments.id,
+        studentId: studentEnrollments.studentId,
+        enrollmentStatus: studentEnrollments.enrollmentStatus,
+        firstName: students.firstName,
+        middleName: students.middleName,
+        lastName: students.lastName,
+        admissionNumber: students.admissionNumber,
+      })
+      .from(studentEnrollments)
+      .innerJoin(students, eq(students.id, studentEnrollments.studentId))
+      .where(
+        and(
+          eq(studentEnrollments.schoolId, schoolId),
+          eq(studentEnrollments.academicYearId, input.academicYearId),
+          eq(studentEnrollments.classId, input.classId),
+          input.sectionId ? eq(studentEnrollments.sectionId, input.sectionId) : undefined,
+        ),
+      )
+      .orderBy(asc(students.firstName), asc(students.lastName));
+
+    const existing =
+      enrollments.length === 0
+        ? []
+        : await db
+            .select({
+              id: studentFeeAssignments.id,
+              studentId: studentFeeAssignments.studentId,
+              status: studentFeeAssignments.status,
+            })
+            .from(studentFeeAssignments)
+            .where(
+              and(
+                eq(studentFeeAssignments.schoolId, schoolId),
+                eq(studentFeeAssignments.academicYearId, input.academicYearId),
+                inArray(
+                  studentFeeAssignments.studentId,
+                  enrollments.map((e) => e.studentId),
+                ),
+              ),
+            );
+    const assignmentOf = new Map(existing.map((a) => [a.studentId, a]));
+
+    for (const e of enrollments) {
+      const who = {
+        studentId: e.studentId,
+        enrollmentId: e.enrollmentId,
+        studentName: [e.firstName, e.middleName, e.lastName]
+          .filter((part): part is string => Boolean(part))
+          .join(" "),
+        admissionNumber: e.admissionNumber,
+      };
+
+      const notEnrolled = NOT_ENROLLED_REASONS[e.enrollmentStatus];
+      if (notEnrolled) {
+        result.refused.push({ ...who, reason: notEnrolled });
+        continue;
+      }
+
+      const prior = assignmentOf.get(e.studentId);
+      if (prior?.status === "active") {
+        result.skipped.push({ ...who, assignmentId: prior.id });
+        continue;
+      }
+      if (prior) {
+        result.refused.push({
+          ...who,
+          reason: `Fee billing is ${prior.status} for this student. Restore it from the student's page.`,
+        });
+        continue;
+      }
+
+      try {
+        const billed = await db.transaction(async (tx) => {
+          const assignment = await this.assignFeeStructure(
+            scope,
+            { enrollmentId: e.enrollmentId },
+            actorId,
+            tx,
+          );
+          const { inserted } = await this.generateInstallments(scope, assignment.id, tx);
+          return { assignmentId: assignment.id, installmentsCreated: inserted };
+        });
+        result.billed.push({ ...who, ...billed });
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+        // Billed by a concurrent run between our read and our insert.
+        const [winner] = await db
+          .select({ id: studentFeeAssignments.id })
+          .from(studentFeeAssignments)
+          .where(
+            and(
+              eq(studentFeeAssignments.schoolId, schoolId),
+              eq(studentFeeAssignments.studentId, e.studentId),
+              eq(studentFeeAssignments.academicYearId, input.academicYearId),
+            ),
+          );
+        if (!winner) throw error;
+        result.skipped.push({ ...who, assignmentId: winner.id });
+      }
+    }
+
+    result.billedCount = result.billed.length;
+    result.skippedCount = result.skipped.length;
+    result.refusedCount = result.refused.length;
+    return result;
+  }
+
+  private async enrollmentEffectiveFrom(
+    enrollmentId: string,
+    exec: Executor = db,
+  ): Promise<string> {
+    const [row] = await exec
       .select({ enrollmentDate: studentEnrollments.enrollmentDate })
       .from(studentEnrollments)
       .where(eq(studentEnrollments.id, enrollmentId));
@@ -166,10 +394,14 @@ export class FeesBillingService {
    * reaches the student through `recomputeAssignmentConcessions` (for money)
    * — never by silent regeneration.
    */
-  async generateInstallments(scope: DataScope, assignmentId: string) {
+  async generateInstallments(
+    scope: DataScope,
+    assignmentId: string,
+    exec: Executor = db,
+  ) {
     const schoolId = requireSchoolId(scope);
 
-    const [assignment] = await db
+    const [assignment] = await exec
       .select()
       .from(studentFeeAssignments)
       .where(
@@ -182,7 +414,7 @@ export class FeesBillingService {
       throw new Error("Fee assignment not found in this school.");
     }
 
-    const [structure] = await db
+    const [structure] = await exec
       .select()
       .from(feeStructures)
       .where(eq(feeStructures.id, assignment.feeStructureId));
@@ -190,7 +422,7 @@ export class FeesBillingService {
       throw new Error("The assigned fee structure no longer exists.");
     }
 
-    const lines = await db
+    const lines = await exec
       .select({
         feeHeadId: feeStructureLines.feeHeadId,
         annualAmount: feeStructureLines.annualAmount,
@@ -203,7 +435,7 @@ export class FeesBillingService {
       .innerJoin(feeHeads, eq(feeHeads.id, feeStructureLines.feeHeadId))
       .where(eq(feeStructureLines.feeStructureId, structure.id));
 
-    const [year] = await db
+    const [year] = await exec
       .select()
       .from(academicYears)
       .where(eq(academicYears.id, assignment.academicYearId));
@@ -211,7 +443,7 @@ export class FeesBillingService {
       throw new Error("The assignment's academic year no longer exists.");
     }
 
-    const yearTerms = await db
+    const yearTerms = await exec
       .select({
         id: terms.id,
         name: terms.name,
@@ -223,7 +455,7 @@ export class FeesBillingService {
       .where(eq(terms.academicYearId, year.id))
       .orderBy(asc(terms.sequenceNumber));
 
-    const concessions = await db
+    const concessions = await exec
       .select({
         feeHeadId: feeConcessions.feeHeadId,
         concessionAmount: feeConcessions.concessionAmount,
@@ -234,7 +466,7 @@ export class FeesBillingService {
       .where(eq(feeConcessions.studentFeeAssignmentId, assignment.id))
       .orderBy(asc(feeConcessions.createdAt));
 
-    const subscriptions = await db
+    const subscriptions = await exec
       .select()
       .from(studentOptionalFeeSubscriptions)
       .where(
@@ -341,7 +573,7 @@ export class FeesBillingService {
 
     if (desired.length === 0) return { inserted: 0 };
 
-    const inserted = await db
+    const inserted = await exec
       .insert(feeInstallments)
       .values(
         desired.map((d) => ({

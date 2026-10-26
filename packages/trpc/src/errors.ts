@@ -475,6 +475,14 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
       "That student is not at this branch. Choose a student from the branch you are working in.",
   },
   {
+    // billClass (fees-billing.service.ts): a section of another class would
+    // silently bill nobody, so it is refused in words instead.
+    match: /^The section is not in the class being billed/i,
+    code: "BAD_REQUEST",
+    message:
+      "That section belongs to a different class. Choose a section of the class you are billing.",
+  },
+  {
     match: /^Enrollment not found in this school/i,
     code: "NOT_FOUND",
     message: "That enrollment could not be found.",
