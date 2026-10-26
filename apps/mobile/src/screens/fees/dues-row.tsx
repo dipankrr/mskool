@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { StatusPill } from "../../components/status-pill";
 import { ThemedText } from "../../components/themed-text";
 import { copy } from "../../lib/copy";
-import { dueLabel, dueTiming } from "../../lib/fees";
+import { dueLabel, dueTiming, splitByMonth } from "../../lib/fees";
 import { formatMoney, isPositiveMoney, sumMoney } from "../../lib/money";
 import { colors } from "../../theme/brand-admin";
 import { radius, spacing } from "../../theme/tokens";
@@ -22,6 +22,7 @@ export type DuesRowData = {
   oldestDueDate: string | null;
   totals: { balanceAmount: string };
   openingBalance: { balance: string };
+  cells: { month: string; balanceAmount: string }[];
 };
 
 /**
@@ -32,16 +33,28 @@ export type DuesRowData = {
 export function DuesRow({
   row,
   today,
+  currentMonth,
+  period = "month",
   onPress,
 }: {
   row: DuesRowData;
   today: string;
+  /** "2026-10": the month the row's amount is measured up to. */
+  currentMonth: string;
+  /** "month" leads with what is due now; "session" with the whole year. */
+  period?: "month" | "session";
   onPress: () => void;
 }) {
   const overdue = row.timingState === "overdue";
   const balance = row.totals.balanceAmount;
   const opening = row.openingBalance.balance;
-  const total = sumMoney([balance, opening]);
+  const split = splitByMonth(row.cells, currentMonth, opening);
+  const total =
+    period === "month" ? split.dueNow : sumMoney([balance, opening]);
+  const laterOnly =
+    period === "month" &&
+    !isPositiveMoney(split.dueNow) &&
+    isPositiveMoney(split.later);
   const carriedOnly = !isPositiveMoney(balance) && isPositiveMoney(opening);
   const settled = !isPositiveMoney(total);
   const notGenerated = row.generationState !== "generated";
@@ -54,12 +67,20 @@ export function DuesRow({
     .filter(Boolean)
     .join(" · ");
 
+  // Month view counts months, which is how a parent hears it ("3 months
+  // overdue"); the session view keeps the oldest due date.
   const due =
     settled || notGenerated
       ? null
-      : row.oldestDueDate
-        ? dueLabel(row.oldestDueDate, today)
-        : null;
+      : period === "month" && split.overdueMonths > 0
+        ? copy.fees.dues.monthsOverdue(split.overdueMonths)
+        : row.oldestDueDate
+          ? dueLabel(row.oldestDueDate, today)
+          : null;
+  const dueCritical =
+    period === "month"
+      ? split.overdueMonths > 0
+      : dueTiming(row.oldestDueDate ?? today, today) === "overdue";
 
   const label = [
     row.studentName,
@@ -100,7 +121,7 @@ export function DuesRow({
         <View style={styles.trailing}>
           <RowAmount
             tone={
-              settled
+              settled || laterOnly
                 ? "positive"
                 : overdue || carriedOnly
                   ? "critical"
@@ -125,7 +146,7 @@ export function DuesRow({
         </View>
       </View>
 
-      {notGenerated || isPositiveMoney(opening) || due ? (
+      {notGenerated || isPositiveMoney(opening) || due || laterOnly ? (
         <View style={styles.facts}>
           {notGenerated ? (
             <FactChip label={copy.fees.dues.notGenerated} tone="caution" />
@@ -137,13 +158,11 @@ export function DuesRow({
             />
           ) : null}
           {due ? (
+            <FactChip label={due} tone={dueCritical ? "critical" : "neutral"} />
+          ) : null}
+          {period === "month" && isPositiveMoney(split.later) ? (
             <FactChip
-              label={due}
-              tone={
-                dueTiming(row.oldestDueDate, today) === "overdue"
-                  ? "critical"
-                  : "neutral"
-              }
+              label={copy.fees.dues.laterThisSession(formatMoney(split.later))}
             />
           ) : null}
         </View>

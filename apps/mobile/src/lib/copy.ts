@@ -2342,6 +2342,15 @@ export const copy = {
     noYearBody:
       "The current academic session isn't set for this branch. Ask your administrator.",
     dues: {
+      periodLabel: "Show amounts for",
+      dueNowLabel: "Due now",
+      metaDueNow: (amount: string) => `${amount} due now`,
+      thisMonth: "This month",
+      overdue: "Overdue",
+      previousDues: (amount: string) => `Includes ${amount} previous dues`,
+      laterThisSession: (amount: string) => `${amount} later this session`,
+      monthsOverdue: (months: number) =>
+        months === 1 ? "1 month overdue" : `${months} months overdue`,
       meta: (outstanding: string) => `${outstanding} outstanding`,
       metaLoading: "Loading this session's dues…",
       summaryLabel: "Outstanding across",
@@ -2372,7 +2381,7 @@ export const copy = {
       carriedForward: "Carried forward",
       notGenerated: "Not generated",
       notAssigned: "Not assigned",
-      openingBalance: "Opening balance",
+      openingBalance: "Previous dues",
       loadMore: "Load more",
       loadingMore: "Loading…",
       count: (shown: number, total: number) => `${shown} of ${total}`,

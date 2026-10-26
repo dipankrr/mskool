@@ -11,6 +11,7 @@ import {
   ledgerTotals,
   ledgerTypeLabel,
   monthLabel,
+  monthKeyOf,
   monthRangeLabel,
   nextClientReference,
   oldestFirst,
@@ -18,6 +19,7 @@ import {
   paymentActions,
   paymentModeLabel,
   referenceFields,
+  splitByMonth,
 } from "./fees";
 
 const ALLOW_ALL = () => true;
@@ -337,5 +339,41 @@ describe("monthRangeLabel", () => {
     expect(monthRangeLabel(1, 12)).toBe("All year");
     expect(monthRangeLabel(6, 9)).toBe("June – September");
     expect(monthLabel(13)).toBe("13");
+  });
+});
+
+describe("splitByMonth", () => {
+  const cells = [
+    { month: "2026-08", balanceAmount: "1200.00" },
+    { month: "2026-09", balanceAmount: "0.00" },
+    { month: "2026-10", balanceAmount: "1200.00" },
+    { month: "2026-11", balanceAmount: "1200.00" },
+  ];
+
+  it("separates overdue, this month and later", () => {
+    const split = splitByMonth(cells, "2026-10", "4500.00");
+    expect(split.overdue).toBe("1200.00");
+    expect(split.thisMonth).toBe("1200.00");
+    expect(split.later).toBe("1200.00");
+    expect(split.previous).toBe("4500.00");
+    expect(split.dueNow).toBe("6900.00");
+  });
+
+  it("counts only earlier months that still owe something", () => {
+    expect(splitByMonth(cells, "2026-10").overdueMonths).toBe(1);
+    expect(splitByMonth(cells, "2026-12").overdueMonths).toBe(3);
+  });
+
+  it("treats a missing balance as nothing owed", () => {
+    const split = splitByMonth(
+      [{ month: "2026-10", balanceAmount: null }],
+      "2026-10",
+      null,
+    );
+    expect(split.dueNow).toBe("0.00");
+  });
+
+  it("reads the month key from a date", () => {
+    expect(monthKeyOf("2026-10-26")).toBe("2026-10");
   });
 });

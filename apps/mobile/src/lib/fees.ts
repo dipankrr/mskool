@@ -775,3 +775,65 @@ export function monthRangeLabel(from: number, to: number): string {
     ? monthLabel(from)
     : `${monthLabel(from)} – ${monthLabel(to)}`;
 }
+
+// ---------------------------------------------------------------------------
+// Month view — what a counter asks: "what is due up to now?"
+// ---------------------------------------------------------------------------
+
+/** "2026-10" for an ISO date. */
+export function monthKeyOf(isoDate: string): string {
+  return isoDate.slice(0, 7);
+}
+
+export type MonthSplit = {
+  /** Unpaid in months before the current one. */
+  overdue: string;
+  /** Unpaid in the current month. */
+  thisMonth: string;
+  /** Unpaid in months after the current one — not yet due. */
+  later: string;
+  /** Carried in from an earlier session, always due. */
+  previous: string;
+  /** overdue + thisMonth + previous: what a parent should pay today. */
+  dueNow: string;
+  /** How many earlier months still have something unpaid. */
+  overdueMonths: number;
+};
+
+/**
+ * Split a student's (or the cohort's) per-month balances around the current
+ * month. The year is still generated in full; this only decides what the
+ * screens lead with.
+ */
+export function splitByMonth(
+  cells: { month: string; balanceAmount: string | null }[],
+  currentMonth: string,
+  previousDues: string | null = "0.00",
+): MonthSplit {
+  const before: string[] = [];
+  const now: string[] = [];
+  const after: string[] = [];
+  let overdueMonths = 0;
+  for (const cell of cells) {
+    const balance = cell.balanceAmount ?? "0.00";
+    if (cell.month < currentMonth) {
+      before.push(balance);
+      if ((parseMoney(balance) ?? 0n) > 0n) overdueMonths += 1;
+    } else if (cell.month === currentMonth) {
+      now.push(balance);
+    } else {
+      after.push(balance);
+    }
+  }
+  const overdue = sumMoney(before);
+  const thisMonth = sumMoney(now);
+  const previous = sumMoney([previousDues]);
+  return {
+    overdue,
+    thisMonth,
+    later: sumMoney(after),
+    previous,
+    dueNow: sumMoney([overdue, thisMonth, previous]),
+    overdueMonths,
+  };
+}

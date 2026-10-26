@@ -34,6 +34,7 @@ import { fontFamily, fontSize, radius, spacing } from "../../theme/tokens";
 import { DuesRow } from "./dues-row";
 import { SectionHead } from "./status";
 import { useCollectedIncludesLateFees } from "../../lib/fee-prefs";
+import { monthKeyOf, splitByMonth } from "../../lib/fees";
 
 type FeeView = "attention" | "overdue" | "paid" | "all";
 
@@ -45,6 +46,12 @@ const VIEW_OPTIONS: readonly SegmentOption<FeeView>[] = [
 ];
 
 const PAGE_SIZE = 25;
+
+type Period = "month" | "session";
+const PERIOD_OPTIONS: readonly SegmentOption<Period>[] = [
+  { value: "month", label: "This month", testID: "fees-period-month" },
+  { value: "session", label: "Whole session", testID: "fees-period-session" },
+];
 
 /**
  * The Fees tab root — the accountant's working list.
@@ -77,6 +84,8 @@ export function FeesScreen({
   const canFilter = has("class:read") && has("section:read");
 
   const [view, setView] = useState<FeeView>("attention");
+  // Month first: a counter's question is "what is due up to now?".
+  const [period, setPeriod] = useState<Period>("month");
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
   const [classId, setClassId] = useState<string | null>(null);
@@ -178,6 +187,19 @@ export function FeesScreen({
       : totals.paidAmount
     : null;
   const percent = totals ? paidPercent(totals.paidAmount, totals.netAmount) : 0;
+  const currentMonth = monthKeyOf(today);
+  const monthSplit = useMemo(
+    () =>
+      splitByMonth(
+        (list.data?.monthSummaries ?? []).map((summary) => ({
+          month: summary.month,
+          balanceAmount: summary.balanceAmount,
+        })),
+        currentMonth,
+        totals?.openingBalance.balance,
+      ),
+    [list.data?.monthSummaries, currentMonth, totals?.openingBalance.balance],
+  );
 
   const resetFilters = () => {
     setQuery("");
@@ -212,7 +234,11 @@ export function FeesScreen({
     <ScreenFrame
       title={copy.fees.title}
       meta={
-        list.data ? copy.fees.dues.meta(formatMoney(outstanding)) : branchName
+        list.data
+          ? period === "month"
+            ? copy.fees.dues.metaDueNow(formatMoney(monthSplit.dueNow))
+            : copy.fees.dues.meta(formatMoney(outstanding))
+          : branchName
       }
       backAccessibilityLabel={
         variant === "pushed" ? copy.common.back : undefined
@@ -318,22 +344,49 @@ export function FeesScreen({
 
   return frame(
     <View style={styles.body}>
-      <Card style={styles.summary}>
-        <ThemedText variant="sectionLabel">
-          {copy.fees.dues.summaryLabel} ·{" "}
-          {copy.fees.dues.students(totals?.studentCount ?? 0)}
-        </ThemedText>
-        <ThemedText
-          variant="hero"
-          numberOfLines={1}
-          maxFontSizeMultiplier={1.15}
-          testID="fees-outstanding"
-        >
-          {formatMoney(outstanding)}
-        </ThemedText>
-        <View style={styles.summaryFacts}>
+      <SegmentBar
+        label={copy.fees.dues.periodLabel}
+        value={period}
+        options={PERIOD_OPTIONS}
+        onChange={setPeriod}
+      />
+
+      {period === "month" ? (
+        <Card style={styles.summary}>
+          <ThemedText variant="sectionLabel">
+            {copy.fees.dues.dueNowLabel} ·{" "}
+            {copy.fees.dues.students(totals?.studentCount ?? 0)}
+          </ThemedText>
+          <ThemedText
+            variant="hero"
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.15}
+            testID="fees-due-now"
+          >
+            {formatMoney(monthSplit.dueNow)}
+          </ThemedText>
+          <View style={styles.summaryFacts}>
+            <ThemedText variant="meta">
+              {copy.fees.dues.thisMonth} {formatMoney(monthSplit.thisMonth)}
+            </ThemedText>
+            <ThemedText
+              variant="meta"
+              color={
+                isPositiveMoney(monthSplit.overdue)
+                  ? colors.tone.critical.fg
+                  : undefined
+              }
+            >
+              {copy.fees.dues.overdue} {formatMoney(monthSplit.overdue)}
+            </ThemedText>
+          </View>
+          {isPositiveMoney(monthSplit.previous) ? (
+            <ThemedText variant="meta">
+              {copy.fees.dues.previousDues(formatMoney(monthSplit.previous))}
+            </ThemedText>
+          ) : null}
           <ThemedText variant="meta">
-            {copy.fees.dues.assessed} {formatMoney(totals?.netAmount)}
+            {copy.fees.dues.laterThisSession(formatMoney(monthSplit.later))}
           </ThemedText>
           <ThemedText variant="meta">
             {copy.fees.dues.collected} {formatMoney(collected)}
@@ -342,24 +395,51 @@ export function FeesScreen({
               ? copy.fees.collectedLateFees.included
               : copy.fees.collectedLateFees.excluded}
           </ThemedText>
-        </View>
-        {isPositiveMoney(carriedForward) ? (
-          <ThemedText variant="meta">
-            {copy.fees.desk.includesOpening(formatMoney(carriedForward))}
+        </Card>
+      ) : (
+        <Card style={styles.summary}>
+          <ThemedText variant="sectionLabel">
+            {copy.fees.dues.summaryLabel} ·{" "}
+            {copy.fees.dues.students(totals?.studentCount ?? 0)}
           </ThemedText>
-        ) : null}
-        <View
-          style={styles.track}
-          accessibilityRole="progressbar"
-          accessibilityValue={{ min: 0, max: 100, now: percent }}
-          accessibilityLabel={copy.fees.desk.progress(percent)}
-        >
-          <View style={[styles.fill, { width: `${percent}%` }]} />
-        </View>
-        <ThemedText variant="meta">
-          {copy.fees.desk.progress(percent)}
-        </ThemedText>
-      </Card>
+          <ThemedText
+            variant="hero"
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.15}
+            testID="fees-outstanding"
+          >
+            {formatMoney(outstanding)}
+          </ThemedText>
+          <View style={styles.summaryFacts}>
+            <ThemedText variant="meta">
+              {copy.fees.dues.assessed} {formatMoney(totals?.netAmount)}
+            </ThemedText>
+            <ThemedText variant="meta">
+              {copy.fees.dues.collected} {formatMoney(collected)}
+              {" · "}
+              {includeLateFees
+                ? copy.fees.collectedLateFees.included
+                : copy.fees.collectedLateFees.excluded}
+            </ThemedText>
+          </View>
+          {isPositiveMoney(carriedForward) ? (
+            <ThemedText variant="meta">
+              {copy.fees.desk.includesOpening(formatMoney(carriedForward))}
+            </ThemedText>
+          ) : null}
+          <View
+            style={styles.track}
+            accessibilityRole="progressbar"
+            accessibilityValue={{ min: 0, max: 100, now: percent }}
+            accessibilityLabel={copy.fees.desk.progress(percent)}
+          >
+            <View style={[styles.fill, { width: `${percent}%` }]} />
+          </View>
+          <ThemedText variant="meta">
+            {copy.fees.desk.progress(percent)}
+          </ThemedText>
+        </Card>
+      )}
 
       <SegmentBar
         label={copy.fees.title}
@@ -457,6 +537,8 @@ export function FeesScreen({
                 key={row.studentId}
                 row={row}
                 today={today}
+                currentMonth={currentMonth}
+                period={period}
                 onPress={() =>
                   router.push({
                     pathname: "/fees/student/[studentId]",
