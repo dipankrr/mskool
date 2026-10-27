@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 
 import { AppIcon } from "../../components/app-icon";
 import { CapsuleButton } from "../../components/capsule-button";
@@ -18,7 +18,7 @@ import { useUnsavedChanges } from "../../hooks/use-unsaved-changes";
 import { copy } from "../../lib/copy";
 import { errorMessage } from "../../lib/errors";
 import { isEntryOpen } from "../../lib/exams";
-import { newPaper, paperSubjects } from "../../lib/exam-setup";
+import { DEFAULT_COMPONENT, newPaper, paperSubjects } from "../../lib/exam-setup";
 import type { MappingRow } from "../../lib/exam-setup";
 import { colors } from "../../theme/brand-admin";
 import { radius, spacing } from "../../theme/tokens";
@@ -228,7 +228,20 @@ export function ExamSetupScreen() {
     }
     void actions
       .saveSchedules({ schedules, removeClassIds: removed })
-      .then(() => {
+      .then(async () => {
+        // D19 kept honest: a paper saved without parts carries the CBSE
+        // default part immediately, so scheduling never trips the
+        // empty-paper refusal for papers the office never opened.
+        const { data } = await detail.refetch();
+        const bare = (data?.schedules ?? []).filter(
+          (row) => row.components.length === 0,
+        );
+        for (const row of bare) {
+          await actions.saveComponents({
+            scheduleId: row.id,
+            components: [{ ...DEFAULT_COMPONENT, sequenceNumber: 1 }],
+          });
+        }
         setDrafts({});
         setRemoved([]);
         setTouched(false);
@@ -449,6 +462,14 @@ export function ExamSetupScreen() {
           subjectName={
             names.subjectName(editingRow.subjectId) ?? copy.exams.hub.classChipsLabel
           }
+          examId={examId}
+          scheduleId={
+            serverPapers.find(
+              (candidate) =>
+                candidate.classId === editingRow.classId &&
+                candidate.subjectId === editingRow.subjectId,
+            )?.id ?? null
+          }
           onChange={(patch) =>
             updateRow(editingRow.classId, editingRow.subjectId, patch)
           }
@@ -494,11 +515,16 @@ export function ExamSetupScreen() {
 function PaperSheet({
   row,
   subjectName,
+  examId,
+  scheduleId,
   onChange,
   onClose,
 }: {
   row: PaperDraft | undefined;
   subjectName: string;
+  examId: string;
+  /** The server row's id — present once the papers batch has been saved. */
+  scheduleId: string | null;
   onChange: (patch: Partial<PaperDraft>) => void;
   onClose: () => void;
 }) {
@@ -509,12 +535,32 @@ function PaperSheet({
       onClose={onClose}
       testIDPrefix="paper-sheet"
       footer={
-        <CapsuleButton
-          title={copy.exams.paper.sheet.doneAction}
-          size="compact"
-          onPress={onClose}
-          testID="paper-sheet-done"
-        />
+        <>
+          {scheduleId ? (
+            <CapsuleButton
+              title={copy.exams.setup.editParts}
+              onPress={() => {
+                onClose();
+                router.push({
+                  pathname: "/exams/[examId]/setup/[scheduleId]",
+                  params: { examId, scheduleId },
+                });
+              }}
+              testID="paper-sheet-parts"
+            />
+          ) : (
+            <ThemedText variant="meta" color={colors.muted}>
+              {copy.exams.setup.partsAfterSave}
+            </ThemedText>
+          )}
+          <CapsuleButton
+            title={copy.exams.paper.sheet.doneAction}
+            variant="secondary"
+            size="compact"
+            onPress={onClose}
+            testID="paper-sheet-done"
+          />
+        </>
       }
     >
       <FormField

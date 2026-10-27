@@ -3728,6 +3728,7 @@ export const copy = {
       keepEditing: "Keep editing",
       parts: (n: number) => `${n} ${n === 1 ? "part" : "parts"}`,
       editParts: "Edit parts",
+      partsAfterSave: "Save the papers first — then this sheet offers the parts editor.",
       noPapersTitle: "No papers yet",
       noPapersBody:
         "Add a class to generate its papers from the mapped subjects.",
