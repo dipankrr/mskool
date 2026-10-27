@@ -859,20 +859,21 @@ rule 7).
 
 Slice plan (actors, journeys, wireflow, states, chunk order, owner decisions):
 `.kilo/plans/2026-10-26-mobile-exams.md`. Built in chunks 7A–7F; the Screen column
-names the chunk that closes each row. 7A (find the paper, enter marks) and 7B (verify,
-reopen, readiness) are built, device-walked and COMMITTED on `feat/mobile-exams-7a`
-(unpushed); 7C (results, publish, correct) is designed (addendum; the owner waived
-pre-review 2026-10-27) and BUILT the same day — committed, not yet device-walked.
-7D–7F still get a design addendum before their UI starts.
+names the chunk that closes each row. 7A (find the paper, enter marks), 7B (verify,
+reopen, readiness) and 7C (results, publish, correct) are built, device-walked
+(7C's core arc) and COMMITTED on `feat/mobile-exams-7a` (unpushed). 7D (exam
+lifecycle + blueprint) is designed (addendum; the owner waived pre-review) and
+BUILT the same day — committed, not yet device-walked. 7E/7F still get a design
+addendum before their UI starts.
 
 | Group | Count | Screen | Done |
 |---|---|---|---|
 | subject-types list/byId/create/update/deactivate/apply-preset | 6 | 7F | ☐ |
 | grading-scales list/create/update/bands/make-default | 5 | 7F | ☐ |
 | pass-criteria get/create/update | 3 | 7F | ☐ |
-| exam list/byId/create/update/transition | 5 | list/byId/transition 7A · create/update 7D | ◐ 3 of 5 (7A) |
-| schedules list/save + components list/save | 4 | 7D | ☐ |
-| eligibility list/recompute/override + readiness | 4 | list 7A · readiness 7B (moved from 7C, D9) · recompute/override 7D | ◐ 2 of 4 (7A, 7B) |
+| exam list/byId/create/update/transition | 5 | list/byId/transition 7A · create/update 7D built 2026-10-27 (walk pending) | ◐ 5 of 5 |
+| schedules list/save + components list/save | 4 | schedules/components save built 7D 2026-10-27 (walk pending) | ◐ 4 of 4 |
+| eligibility list/recompute/override + readiness | 4 | list 7A · readiness 7B (moved from 7C, D9) · recompute/override 7D built 2026-10-27 (walk pending) | ◐ 4 of 4 |
 | marks entry grid / student entries / autosave / verify / unverify | 5 | entry + autosave 7A · verify/unverify 7B · student entries 7C (walk pending) | ◐ 5 of 5 (7A–7C) |
 | results table / compute / term ranks / final results | 4 | 7C built 2026-10-27 (walk pending) | ◐ 4 of 4 |
 | publication list / publish-class / publish / revision open+close / apply revision | 6 | 7C built 2026-10-27 (walk pending) | ◐ 6 of 6 |

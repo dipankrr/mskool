@@ -1270,3 +1270,148 @@ publish), the read-only teacher, the offline act failure, 1.3× text, TalkBack, 
 Fixture left in the dev DB: UT3 published with a 4-version card on Aditi (walk data,
 labelled "(walk)"); the walk's SQL fixes touched only walk-fixture rows and the
 flip of UT3 to counts_toward_term_result. Walk scripts deleted.
+
+---
+
+# Chunk 7D — Exam lifecycle + blueprint (design addendum, 2026-10-27) — BUILDING
+
+Owner waiver stands ("no need to get review from me. finish the 7D"); decisions below
+are taken under it, labelled D17–D21, reopenable at any walk. Where this addendum and
+the short "7D" sketch above differ, this wins.
+
+## What the server actually does (read from `exam-config.service.ts` / `exam-marks.service.ts`, not assumed)
+
+6 endpoints close here (`exam.create`, `exam.update`, `schedules.save`,
+`components.save`, `eligibility.recompute`, `eligibility.override`); the stage moves
+are 7A's and stay.
+
+- **`exam.create`** (`exam:create`): the year is DERIVED from the term — the client
+  never sends it. `mock`/`test` force `countsTowardTermResult: false` server-side; a
+  supplementary/improvement exam REQUIRES `linkedExamId` (contract refine). Term must
+  belong to the caller's school and year ("Term not found in this school and year.").
+- **`exam.update`** (`exam:update`): partial; term/type/linked-exam are NOT editable
+  (the contract omits them). Weight-in-term, the counting flag and the negative-mark
+  floor freeze the moment ANY component result exists — "This exam already has marks —
+  its weight in the term can no longer change." The counting flip is frozen in BOTH
+  directions; the negative floor freezes independently.
+- **`schedules.save`** (`exam:update`): frozen once entry opens ("Marks entry has
+  opened — the exam blueprint is frozen."); a class whose schedules carry marks cannot
+  be restructured ("Marks exist for this exam's schedules…"). Removal is EXPLICIT per
+  class (`removeClassIds`) and cannot be mixed with saving that class. Identity is
+  (class, subject, section): an edit updates in place, only vanished identities are
+  deleted. `passMarks: "0.00"` means not-yet-snapshotted default.
+- **`components.save`** (`exam:update`): refuses a locked schedule ("This schedule is
+  locked — marks entry has begun.") and any existing marks. Weightages must sum to
+  exactly 100 ("Component weightages must sum to exactly 100 (currently X)."). The
+  save REPLACES all components of the paper and snapshots the subject pass mark from
+  the weighted default while the paper still carries the un-snapshotted default.
+- **`exam.transition → scheduled`** (7A's move, preconditions that matter for 7D's
+  screens): at least one paper; every paper at least one component ("Every scheduled
+  paper needs at least one component — add the parts (e.g. Theory, Internal) for
+  X, Y."); strict coverage ("Coverage incomplete: N counted subject(s)…"); counting
+  exams of the term must weigh exactly 100 ("Counting exams of this term weigh X —
+  they must sum to exactly 100. Adjust the weightages first.").
+- **`eligibility.recompute` / `eligibility.override`** (`exam:update`): the recompute
+  walks the scheduled classes' cohorts, reading the term attendance row (annual as
+  fallback) against the year's pass criteria, and upserts one row per student. The
+  override is cohort-bound and scope-checked; it records the verdict, the reason
+  (≥ 3 chars), who and when.
+
+## Actor, task, context
+
+The office — whoever holds `exam:create`/`exam:update` (principal, VP, org admin) —
+setting up next term's exams at a desk, a week or two before they run. Teachers never
+see these acts. **Task:** "Create the Unit Test cycle, give every class its papers
+and parts, and keep the attendance bar advisory honest." Frequency: a handful of
+times per term, then only edits. **Stakes:** the blueprint is the denominator of
+every result that follows — freezing rules exist because a late change restates
+history, so the UI's core job is making the freeze legible, not fighting it.
+
+Design read: *the calm admin form — the Step 1B form kit (FormField, ChoicePills,
+SwitchRow, DateField, SelectField), bottom sheets for pickers, one decision per
+screen, freeze reasons printed where the frozen control sits.* Dials: variance 1,
+motion 1, density 5.
+
+## Journeys
+
+- **D1 — Create an exam.** Exams list → **New exam** row (`exam:create`) → the form:
+  name, term picker (the running session's terms), type pills, weightage, counted
+  switch (auto-off and locked for mock/test with the server's reason printed),
+  negative-marking switch; a supplementary/improvement pick demands the linked exam.
+  Save → the new exam's hub at Draft.
+- **D2 — Build the blueprint.** Hub (draft/scheduled, `exam:update`) → **Papers &
+  components** → the setup screen, grouped by class: **Add class** → class picker →
+  the class's mapped COUNTED exam-mode subjects become paper rows with the web's
+  prefilled defaults (09:30 · 180 min · sequential dates from the first paper day)
+  and the CBSE default component (Theory 100, pass 33, weight 100, mandatory).
+  Per-paper row edits date/time/duration/venue and the pass-mark override; Remove
+  class behind a confirm; Save batches the class's grid — the freeze/marks refusals
+  print inline.
+- **D3 — Edit a paper's parts.** Paper row → the components editor: one row per part
+  (name, max, pass, weight, mandatory switch), add/remove, a running weight sum with
+  the gap to 100 shown before the save, the pass ≤ max check client-side. Frozen
+  (locked or marks exist) → read-only rows with the reason.
+- **D4 — Edit exam details.** Hub → **Edit exam**: name, weightage, counted flag,
+  negative-marking — each frozen control disabled with its reason once marks exist;
+  term and type are facts, shown uneditable.
+- **D5 — Attendance eligibility.** Hub → **Attendance eligibility** → the screen:
+  recompute button with the honest count, Below-bar / Allowed groups, per-student
+  override sheet (allow or rescind, reason required), **Allow all** with one shared
+  recorded reason (the web's parity).
+- **D6 — The freeze.** At `marks_entry` and beyond the setup screen reads papers
+  read-only with the server's freeze line; the same for locked papers' components.
+  No dialog fights the freeze — the screen just stops offering the acts.
+
+## Wireflow
+
+```
+List ─ New exam ─► Exam form ─► hub (draft)
+Hub (draft/scheduled) ─ "Papers & components" ─► Setup ─┬─ Add class ─► Class sheet
+                                                        ├─ paper row edits (date/time/venue/pass)
+                                                        ├─ Remove class ─► confirm
+Hub options ─ Edit exam ─► Exam form (edit)             └─ paper ─► Components editor
+Hub options ─ Attendance eligibility ─► Eligibility ─ student ─► Override sheet
+```
+
+## Files
+
+`lib/exam-setup.ts` (pure, tested: paper generation from mappings, weight-sum and
+pass≤max checks, the frozen-field logic, the CBSE default row) + tests; `copy.ts`
+(`exams.form.*`, `exams.setup.*`, `exams.eligibility.*`); `use-exam-form.ts`,
+`use-setup.ts` hooks; screens `exam-form.tsx`, `exam-setup.tsx`,
+`components-editor.tsx`, `eligibility.tsx`; routes `/exams/exam-form` (static),
+`/exams/[examId]/setup`, `/exams/[examId]/setup/[scheduleId]`,
+`/exams/[examId]/eligibility`; the list's New exam row and the hub's three new
+options entries.
+
+## Decisions (waived, reopenable)
+
+- **D17 — One setup screen per exam** (the web's "papers section" parity), not a
+  wizard: all classes' papers on one scroll, grouped by class.
+- **D18 — "Add class" generates papers from the class's mapped counted exam-mode
+  subjects** with the web's defaults (09:30 · 180 min · sequential dates); term-grade
+  subjects are never papers.
+- **D19 — New papers carry the CBSE default component** (Theory 100 / pass 33 /
+  weight 100 / mandatory) exactly as the web prefills, so scheduling never trips the
+  empty-paper refusal by surprise.
+- **D20 — The eligibility screen exists from `marks_entry` onward** (the transition
+  recomputes there anyway) and "Allow all" loops the per-student override with one
+  shared reason.
+- **D21 — The edit form renders frozen controls disabled with the reason line** once
+  marks exist; term and type are always facts, never controls.
+
+## Backend gaps (design-time)
+
+31. `exam.create` returns the bare row; the client navigates with the id only —
+    enough for the hub, but a create-that-returns-the-hub-shape would save a read.
+32. The eligibility override is one call per student: "Allow all" is a client-side
+    loop (the web's choice too). A batch endpoint would make it atomic; not built.
+
+## Acceptance (what the walk must show)
+
+Create an exam → add a class (papers generated with defaults) → edit a paper's
+date → open the components editor, watch the weight sum, save → schedule the exam
+(all four preconditions; each refusal verbatim: empty papers, coverage, weightage
+sum) → eligibility recompute + override + allow-all. Freeze: at marks_entry the
+setup screen is read-only with the freeze line; a locked paper's editor likewise.
+Every refusal prints inline; nothing optimistic.
