@@ -28,6 +28,7 @@ export function useExamScope() {
     /** The caller can address an org + a running session. */
     addressable: ready && Boolean(organizationId) && Boolean(academicYear?.id),
     canRead: has("exam:read"),
+    canCreate: has("exam:create"),
     canUpdate: has("exam:update"),
     canEnter: has("marks:create"),
     canReadMarks: has("marks:read"),
