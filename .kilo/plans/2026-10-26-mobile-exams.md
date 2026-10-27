@@ -1217,3 +1217,56 @@ fake success. Filters, GPA-branch grade-only rows, "Not computed" and "No card" 
 all real. 1.3× text and TalkBack labels on the three new screens; Android first, iOS
 stays parked.
 
+
+## 7C device walk record (2026-10-27, emulator-5554 against the REMOTE dev DB)
+
+The dev environment moved under this walk: Postgres is now Neon and Redis Upstash
+(remote), so every heavy act pays network latency. Walked as org admin; fixtures as
+left by 7B (UT3 at under_verification; the owner's earlier data shows Aditi 172 from
+the Entrance Test era).
+
+**What the walk verified (all on-device):**
+- Results screen: readiness strip (62 of 63 · 34 verified), below-bar advisory line,
+  filters, ranked list with real totals, verdict pills, "1 subject" and "Absent on 1
+  paper" lines, GPA-ready rows, honest "—" for the roll-less.
+- Compute results + compute ranks: server counts honest ("Ranks updated for 15
+  students."), banner pattern.
+- Publish refusals, verbatim inline in the sheet: incomplete entry (Aditi's draft
+  Written row) and stale compute (the SQL fix landed after the compute).
+- Publish success: exam flipped to Published (stage track, Home card dropped it, list
+  moved it to the Published segment), publication card "Published 27/10/2026".
+- Correction outside the window (auto-window-of-one): the ledger sheet's direct-note
+  wording, validation ("Choose a reason type"), then "Corrected. Results recomputed;
+  changed cards were re-issued." — totals 128.5 → 133.5, rank 9 → 5, card v2 → v3.
+- Card view + version history: v4 "revision window re-issue" / v3 "correction:
+  Rechecked the script totals" with real change diffs ("Total 128.50 → 133.50 · Rank
+  in class 9 → 5 · Mathematics 78.50 → 83.50"), v2 "re-issue", v1. The whole
+  hard-rule-7 chain on one screen.
+- Correction window: open confirm, the publication card's "Correction window open
+  since…", the entries sheet's window note, then Close window → the class recomputed
+  (Aditi 138.5 with the 18 mark) and the state is re_issued in the DB.
+
+**Findings fixed during the walk:**
+1. Timestamps rendered as em dashes on the publication card — `formatIsoDate` only
+   accepts date-only strings; `formatTimestampDate` added and the four screens
+   switched to it.
+2. Mutation deadline: compute measured ~45–75 s server-side against Neon; the 15 s
+   global deadline aborted the client while the work landed ("Couldn't reach the
+   server" after real success). Mutations now take a 120 s leash (`with-timeout.ts`);
+   reads keep 15 s. The real fix is server-side — gap 29 below.
+
+**Findings recorded, not fixed:**
+29. The compute's per-student loop is sequential and slow on a remote DB (~45–75 s
+    for 17 students); publish ≈ 60 s, window close ≈ 100 s. Needs server-side
+    batching; the client leash is a bandage, and even 120 s raced the compute once
+    (the false-failure-while-successful case was hit twice).
+30. Post-publish readiness is misleading: published rows are not counted as verified
+    ("Entered 63 of 63 · 0 verified") and the stale banner says "Compute again before
+    publishing" on a class that is already published (where the server refuses
+    recompute). The readiness read needs post-publish semantics.
+
+**Not walked (recorded, do not claim):** the vice-principal split (correct without
+publish), the read-only teacher, the offline act failure, 1.3× text, TalkBack, iOS.
+Fixture left in the dev DB: UT3 published with a 4-version card on Aditi (walk data,
+labelled "(walk)"); the walk's SQL fixes touched only walk-fixture rows and the
+flip of UT3 to counts_toward_term_result. Walk scripts deleted.
