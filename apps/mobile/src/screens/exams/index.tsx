@@ -196,6 +196,18 @@ export function ExamsListScreen() {
           />
         </Card>
       ) : null}
+      {scope.canCreate ? (
+        <Card padless testID="exams-new-row">
+          <LinkRow
+            title={copy.exams.form.newRow}
+            detail={copy.exams.form.newRowDetail}
+            icon="exams"
+            onPress={() => router.push("/exams/exam-form")}
+            first
+            testID="exams-new"
+          />
+        </Card>
+      ) : null}
       {visible.length === 0 ? (
         <EmptyState
           icon="exams"

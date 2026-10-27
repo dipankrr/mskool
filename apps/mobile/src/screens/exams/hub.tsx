@@ -424,6 +424,36 @@ export function ExamHubScreen() {
         visible={optionsOpen}
         title={copy.exams.hub.optionsTitle}
         options={[
+          ...(scope.canUpdate && !isResultsStage(exam?.status ?? "draft")
+            ? [
+                {
+                  id: "editExam",
+                  label: copy.exams.hub.optionEdit,
+                  detail: copy.exams.hub.optionEditDetail,
+                },
+              ]
+            : []),
+          ...(scope.canUpdate &&
+          exam !== null &&
+          !isEntryOpen(exam.status) &&
+          !isResultsStage(exam.status)
+            ? [
+                {
+                  id: "setup",
+                  label: copy.exams.hub.optionSetup,
+                  detail: copy.exams.hub.optionSetupDetail,
+                },
+              ]
+            : []),
+          ...(scope.canUpdate && exam !== null && isEntryOpen(exam.status)
+            ? [
+                {
+                  id: "eligibility",
+                  label: copy.exams.hub.optionEligibility,
+                  detail: copy.exams.hub.optionEligibilityDetail,
+                },
+              ]
+            : []),
           ...moves.overflow.map((option) => ({
             id: option.key,
             label: transitionLabel(option.key),
@@ -442,6 +472,27 @@ export function ExamHubScreen() {
         currentId=""
         onSelect={(id) => {
           setOptionsOpen(false);
+          if (id === "editExam") {
+            router.push({
+              pathname: "/exams/exam-form",
+              params: { examId },
+            });
+            return;
+          }
+          if (id === "setup") {
+            router.push({
+              pathname: "/exams/[examId]/setup",
+              params: { examId },
+            });
+            return;
+          }
+          if (id === "eligibility") {
+            router.push({
+              pathname: "/exams/[examId]/eligibility",
+              params: { examId },
+            });
+            return;
+          }
           if (id === "publishAll") {
             results.mutations.publishExam.reset();
             setPublishAllOpen(true);
