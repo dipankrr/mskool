@@ -3199,7 +3199,8 @@ export const copy = {
       view: "View marks",
       waiting: "Opens when marks entry starts",
       noPapersTitle: "No papers yet",
-      noPapersBody: "The office hasn't scheduled any papers for this exam.",
+      noPapersBody: "Add a class to generate its papers from the mapped subjects.",
+      addPapers: "Add papers",
       noClassPapersTitle: "No papers for this class",
       review: {
         classLine: (entered: number, expected: number) =>

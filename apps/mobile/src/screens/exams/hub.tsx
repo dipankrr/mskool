@@ -178,7 +178,7 @@ export function ExamHubScreen() {
       backTestID="exam-hub-back"
       titleTestID="exam-hub-title"
       action={
-        scope.canUpdate && moves.overflow.length > 0
+        scope.canUpdate && exam !== null
           ? {
               label: copy.exams.hub.options,
               icon: "manage",
@@ -284,7 +284,23 @@ export function ExamHubScreen() {
           title={copy.exams.hub.noPapersTitle}
           message={copy.exams.hub.noPapersBody}
           testID="exam-hub-no-papers"
-        />
+        >
+          {scope.canUpdate && !isEntryOpen(exam?.status ?? "draft") ? (
+            <CapsuleButton
+              title={copy.exams.hub.addPapers}
+              variant="secondary"
+              size="compact"
+              onPress={() =>
+                router.push({
+                  pathname: "/exams/[examId]/setup",
+                  params: { examId },
+                })
+              }
+              testID="exam-hub-add-papers"
+              style={styles.cta}
+            />
+          ) : null}
+        </EmptyState>
       ) : (
         <View>
           <SectionLabel style={styles.label}>
