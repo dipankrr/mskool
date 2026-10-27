@@ -53,6 +53,19 @@ export async function bestEffort(
 export const API_REQUEST_TIMEOUT_MS = 15_000;
 
 /**
+ * Mutations get a longer leash (2026-10-27 7C walk finding): the heavy acts —
+ * compute, publish, window close — run many sequential server-side queries,
+ * and against a remote database the whole act can honestly take past the 15 s
+ * read bound while the work lands. A false "Couldn't reach the server" after
+ * a real success is worse than a slower failure: the teacher retypes, or
+ * trusts the failure and walks away. Reads keep the tight bound. Walk
+ * reality: compute measured ~60-75 s against the remote dev DB — the real
+ * fix is server-side batching (plan gap 29); the leash is a bandage whose
+ * final value follows that fix.
+ */
+export const API_MUTATION_TIMEOUT_MS = 120_000;
+
+/**
  * Fuse an optional external signal (React Query cancellation) with a deadline
  * into one signal. `AbortSignal.any` is not available on Hermes, so this is
  * hand-rolled; call `release()` once the request settles to clear the timer

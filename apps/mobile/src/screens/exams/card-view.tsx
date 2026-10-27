@@ -19,7 +19,7 @@ import {
 } from "../../lib/exam-results";
 import type { CardVersion } from "../../lib/exam-results";
 import type { ReportCardSnapshotV1 } from "@repo/contracts";
-import { formatIsoDate } from "../../lib/format";
+import { formatTimestampDate } from "../../lib/format";
 import { colors } from "../../theme/brand-admin";
 import { radius, spacing } from "../../theme/tokens";
 import { useCardVersions } from "./use-results";
@@ -307,7 +307,7 @@ function VersionRow({
             .join(" · ")}
         </ThemedText>
         <ThemedText variant="meta" color={colors.muted}>
-          {formatIsoDate(isoOf(version.publishedAt))}
+          {formatTimestampDate(isoOf(version.publishedAt))}
         </ThemedText>
       </View>
       {version.revisionReason ? (

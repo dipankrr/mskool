@@ -16,7 +16,7 @@ import { ThemedText } from "../../components/themed-text";
 import { ConfirmSheet } from "../homework/confirm-sheet";
 import { copy } from "../../lib/copy";
 import { errorMessage } from "../../lib/errors";
-import { formatIsoDate } from "../../lib/format";
+import { formatTimestampDate } from "../../lib/format";
 import {
   isoOf,
   matchesResultFilter,
@@ -367,16 +367,16 @@ export function ClassResultsScreen() {
           <ThemedText variant="bodyStrong">
             {windowOpen
               ? copy.exams.publication.windowOpenSince(
-                  formatIsoDate(isoOf(publication.row.revisionOpenedAt)),
+                  formatTimestampDate(isoOf(publication.row.revisionOpenedAt)),
                 )
               : publication.state === "re_issued"
                 ? copy.exams.publication.reIssuedOn(
-                    formatIsoDate(
+                    formatTimestampDate(
                       isoOf(publication.row.reIssuedAt ?? publication.row.publishedAt),
                     ),
                   )
                 : copy.exams.publication.publishedOn(
-                    formatIsoDate(isoOf(publication.row.publishedAt)),
+                    formatTimestampDate(isoOf(publication.row.publishedAt)),
                   )}
           </ThemedText>
           {scope.canCorrect ? (
@@ -412,7 +412,7 @@ export function ClassResultsScreen() {
             title={copy.exams.cards.row}
             detail={
               publication.row?.publishedAt
-                ? copy.exams.cards.publishedOn(formatIsoDate(isoOf(publication.row.publishedAt)))
+                ? copy.exams.cards.publishedOn(formatTimestampDate(isoOf(publication.row.publishedAt)))
                 : undefined
             }
             icon="grade"

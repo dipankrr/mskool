@@ -14,7 +14,7 @@ import { ThemedText } from "../../components/themed-text";
 import { copy } from "../../lib/copy";
 import { displayMarks, fullName } from "../../lib/exams";
 import { displayPercent, isoOf, rankLine } from "../../lib/exam-results";
-import { formatIsoDate } from "../../lib/format";
+import { formatTimestampDate } from "../../lib/format";
 import { colors } from "../../theme/brand-admin";
 import type { Tone } from "../../theme/brand-admin";
 import { radius, spacing } from "../../theme/tokens";
@@ -243,7 +243,7 @@ export function ResultDetailScreen() {
           <LinkRow
             title={copy.exams.cards.row}
             detail={`${copy.exams.cards.version(currentCard.version)} · ${copy.exams.cards.publishedOn(
-              formatIsoDate(isoOf(currentCard.publishedAt)),
+              formatTimestampDate(isoOf(currentCard.publishedAt)),
             )}`}
             icon="grade"
             onPress={() =>

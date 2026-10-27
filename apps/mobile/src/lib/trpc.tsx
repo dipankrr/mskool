@@ -11,7 +11,7 @@ import type { AppRouter } from "@repo/trpc";
 
 import { authClient } from "./auth";
 import { queryClient } from "./query";
-import { withDeadline } from "./with-timeout";
+import { withDeadline, API_MUTATION_TIMEOUT_MS } from "./with-timeout";
 import { env } from "../env";
 
 export const trpc = createTRPCReact<AppRouter>();
@@ -45,7 +45,14 @@ export function TrpcProvider({ children }: { children: ReactNode }) {
             // dead-zone network must fail into the screens' retry copy, not
             // spin forever. Fused with React Query's cancellation signal so
             // unmounts still abort; `release` drops the timer + listener.
-            const { signal, release } = withDeadline(options?.signal);
+            // Mutations (POST) take the longer leash — a heavy act like
+            // compute or publish can honestly outlast the read bound on a
+            // remote database (2026-10-27 walk finding), and a false failure
+            // after real success is worse than a slower one.
+            const { signal, release } = withDeadline(
+              options?.signal,
+              options?.method === "POST" ? API_MUTATION_TIMEOUT_MS : undefined,
+            );
             return fetch(url, { ...options, credentials: "omit", signal }).finally(
               release,
             );

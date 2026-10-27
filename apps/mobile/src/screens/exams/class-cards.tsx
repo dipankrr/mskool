@@ -12,7 +12,7 @@ import { ThemedText } from "../../components/themed-text";
 import { copy } from "../../lib/copy";
 import { fullName } from "../../lib/exams";
 import { isoOf } from "../../lib/exam-results";
-import { formatIsoDate } from "../../lib/format";
+import { formatTimestampDate } from "../../lib/format";
 import { colors } from "../../theme/brand-admin";
 import { radius, spacing } from "../../theme/tokens";
 import { useClassCards, useClassResults } from "./use-results";
@@ -133,7 +133,7 @@ export function ClassCardsScreen() {
               <ThemedText variant="meta" color={colors.muted} numberOfLines={1}>
                 {card
                   ? `${copy.exams.cards.version(card.version)} · ${copy.exams.cards.publishedOn(
-                      formatIsoDate(isoOf(card.publishedAt)),
+                      formatTimestampDate(isoOf(card.publishedAt)),
                     )}`
                   : copy.exams.cards.noCardBody}
               </ThemedText>

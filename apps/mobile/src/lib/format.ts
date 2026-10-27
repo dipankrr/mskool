@@ -94,6 +94,17 @@ export function formatIsoDate(iso: string | null | undefined): string {
 }
 
 /**
+ * A full ISO timestamp (`2026-10-27T16:56:03.727Z`) → `27/10/2026` — the
+ * publication card's "Published 27/10/2026" and the card versions' dates.
+ * Only the date part: a correction window's day is what a reader acts on,
+ * and `formatIsoDate`'s calendar guard rejects timestamps whole.
+ */
+export function formatTimestampDate(iso: string | null | undefined): string {
+  if (typeof iso !== "string") return EMPTY_VALUE;
+  return formatIsoDate(iso.slice(0, 10));
+}
+
+/**
  * ISO `2026-04-01` → `1 Apr 2026` — the reading format for entity cards,
  * where a slash date makes the eye decode three numbers before it knows what
  * it is looking at. Unparseable input → empty value.
