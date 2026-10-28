@@ -200,6 +200,18 @@ export function ExamsListScreen() {
           />
         </Card>
       ) : null}
+      {scope.canCreate || scope.canUpdate ? (
+        <Card padless testID="exams-grading-row">
+          <LinkRow
+            title={copy.exams.grading.row}
+            detail={copy.exams.grading.rowBody}
+            icon="settings"
+            onPress={() => router.push("/exams/setup")}
+            first
+            testID="exams-grading"
+          />
+        </Card>
+      ) : null}
       {rows.length === 0 ? (
         <EmptyState
           icon="exams"
