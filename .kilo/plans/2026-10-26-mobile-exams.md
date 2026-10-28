@@ -1,6 +1,6 @@
 # Mobile Exams + Results — staff (Step 7)
 
-Status: **7A built and walked 2026-10-26; 7B (verify, reopen, readiness) approved (D6–D11), built and walked 2026-10-27. Both are COMMITTED on the branch 2026-10-27 — `2380fab`, `f335a0e`, `ace7f75` (the owner's three, which absorbed the lib/copy/hub groups), then `7820672` (entry rows, student sheet, verify hooks), `e678b4b` (paper screen + route), `968f778` (Home/More entry points) + the docs commit — see the notes at the two "Commits (hand-off)" sections for how the original grouping landed.** 7C (results, publish, correct): designed the same day under the owner's pre-review waiver and BUILT, gate-green, **not yet device-walked** — see the addendum below.
+Status: **7A built and walked 2026-10-26; 7B (verify, reopen, readiness) approved (D6–D11), built and walked 2026-10-27. Both are COMMITTED on the branch 2026-10-27 — `2380fab`, `f335a0e`, `ace7f75` (the owner's three, which absorbed the lib/copy/hub groups), then `7820672` (entry rows, student sheet, verify hooks), `e678b4b` (paper screen + route), `968f778` (Home/More entry points) + the docs commit — see the notes at the two "Commits (hand-off)" sections for how the original grouping landed.** 7C (results, publish, correct): designed the same day under the owner's pre-review waiver and BUILT, gate-green, **not yet device-walked** — see the addendum below. 7D (lifecycle, blueprint) BUILT, not yet walked. 7E (term grades) and 7F (grading setup) BUILT and ANDROID-DEVICE-WALKED 2026-10-28; iOS not walked — see their addenda and build records.
 Branch: `feat/mobile-exams-7a`, cut from `main` @ `dbc0a7a`. Committed, NOT pushed, NOT merged.
 Backend is frozen for this step, as for homework and fees; gaps are recorded at the bottom.
 Source of truth for the endpoint list: `exam.router.ts` (46 staff + 2 portal). The portal
@@ -470,9 +470,335 @@ field is focused — the row's own retry glyph is reachable, the bulk retry need
 A+ · B · A (+ "Great team player") · C · D for the first five students by roll.
 
 ## 7F — Grading setup
-Hub with three lists (subject types with presets, grading scales with band editor and
-make-default, pass criteria). Band editor is a vertical list of bands with min/max/grade/points —
-not a table; overlap/gap validation is shown inline before save, the server remains the referee.
+
+### Actor, task, context
+
+**Who:** the school's exam administrator (org admin, principal, exam coordinator) — the people who
+own `exam:create` / `exam:update`. A class teacher never opens this screen; they feel its effects
+in 7E (which subjects appear in Term grades) and in 7A/7D (which subjects generate papers).
+
+**When:** setup week before a session, and the rare mid-year policy fork — a new scale because the
+old one locked, a class override because Class 10 is judged differently, a subject type that was
+created as "Exam" when it should have been "Term grade". This is a **configuration** surface: low
+frequency, high consequence, no undo. It must read like a policy document, not a CRUD table.
+
+**The one sentence the hub answers:** *"Where do I change how this school grades?"*
+
+### Information architecture
+
+```
+Exams list  ──► "Grading setup" row (exam:update or exam:create)
+                        │
+                        ▼
+              Grading setup hub (/exams/setup)
+              ├── Subject types      /exams/setup/subject-types       list + sheet
+              ├── Grading scales     /exams/setup/grading-scales      list
+              │     ├── new          …/grading-scales/new             pushed editor
+              │     └── one scale    …/grading-scales/[scaleId]       pushed editor
+              └── Pass criteria      /exams/setup/pass-criteria       list (per session)
+                    ├── new          …/pass-criteria/new               pushed editor
+                    └── one rule     …/pass-criteria/[criteriaId]      pushed editor
+```
+
+**Entry point.** The Exams list gains one `LinkRow` after "New exam": *Grading setup — Subject
+types, grading scales and pass rules*, icon `settings`. It is gated on `exam:update || exam:create`
+(the same "this is an admin act" reasoning as "Final results"), so a teacher's list stays a
+teacher's list. It renders in the empty state too. No row on the exam hub: these rules are
+school-wide, not exam-wide, and putting them under one exam would imply otherwise.
+
+**Why a hub of three destinations, not a segmented screen (the web's tabs).** Each list has its
+own states, its own writes and its own shape (a sheet, a band editor, a policy form). A hub lets
+one screen stay one thing, and mirrors the fee setup hub already in the app. The three rows carry
+live counts so the hub itself answers "is anything missing?" before a tap.
+
+**Why the editors are pushed screens, not sheets.** A subject type (5 fields) fits a sheet. A scale
+is 1–10 band cards; pass criteria are 9 controls. Both need a real scroll body, a sticky save,
+and an unsaved-work guard. Sheets are for two- or three-field edits; these are policy forms.
+
+### What the data actually allows (so the UI does not promise more)
+
+| Thing | Server truth | Consequence for the screen |
+|---|---|---|
+| `subjectTypes.list` | active only, ordered by `sequence`, then name; carries `hasAssessmentData` | a retired type disappears everywhere; there is no "show retired" list (gap 41) |
+| Type flags | `countsTowardResult`, `isGradedOnly`, `assessmentMode` lock once **any** component result **or** term assessment exists for a mapping of that type | list chip "In use"; sheet keeps name + card order editable, disables the three behaviour controls, shows why |
+| `gradingScales.list` | active only, with bands ordered by `sequenceNumber`; `isDefault`, `isLocked` | locked scales are readable but their bands are immutable; name/description still editable |
+| Bands | contiguous 0–100, no gaps/overlaps; first must start at 0, last end at 100; `gradeLabel` ≤10 chars and unique per scale; service validates exact hundredths | client validates the same rules *before* the call and paints the gap/overlap on the row; server stays the referee |
+| Scale create | scale + bands atomic; `isDefault` swap inside the same transaction | one call, one failure surface |
+| Scale update | name/description/`isActive` only; locked scales refuse deactivation | editor sends only what changed; retire is hidden on a locked scale |
+| `makeDefault` | allowed on a locked scale (steers future computes only) | shown on locked scales too |
+| `passCriteria` | one school default (classId null) + one row per class, per year; no delete | create picks a scope that is still free; no retire action; a wrong rule is corrected, not removed |
+| Criteria validation | grace on ⇒ both caps; compartment on ⇒ cap ≥ 1 | mirrored inline; disable-independent, the server is still the last word |
+
+### Journeys
+
+**A1 — Setup week (org admin, desktop-free).** Opens Exams → Grading setup. No scales exist, no
+types. Hub says so in three quiet details. → Subject types → empty state offers *Use the CBSE
+starter set*; confirm → three types appear, `Personality` reads *Term grades · Grade only · Not
+counted*. → Back, Grading scales → *Add scale* → name "CBSE 10-point", the editor opens with one
+band 0–100; type A1 91–100 → **Add band** prefills 0–90 → set A 81–90 → repeat down to E 0–32.
+The coverage bar fills left to right, the status line goes from "Gap 0–80" to "Covers 0–100".
+"Check a score" 87 → *A1 · 9 points*. Save → back on the list, the new scale wears **Default**
+because it was the first. → Pass criteria → *Add rule* → scope *School default* only (no default
+exists) → leave min subjects blank, grace off, compartment off, attendance 75 → save. Total: three
+screens, no dead ends, every refusal explained.
+
+**A2 — The scale locked itself (principal, mid-year).** Opens a scale with results against it. The
+editor opens read-only for bands with a neutral notice: *results have been graded with this scale*.
+Name and description still save; *Make school default* is offered; *Retire* is not. The way out is
+stated: create a new scale. The new-scale editor is the same screen, so nothing new to learn.
+
+**A3 — Class 10 is judged differently (admin).** Pass criteria already has the school default. Add
+rule → scope sheet lists only classes **without** a rule; Class 10 is there, Class 6 is not (it
+already overrides). Editor opens with the default's values as a starting point, not blanks, so the
+override is a delta the admin can see. The "In short" card rewrites as grace/compartment flip.
+
+**A4 — Refusals the user must understand.** A gap in the bands, a duplicate grade label, a locked
+type's behaviour toggle, a default that cannot be retired, a locked scale that cannot be retired, a
+class that already has a rule (never offered), a session-less pass-criteria screen, a server wording
+that the client did not predict (shown verbatim, form stays open, nothing lost).
+
+### Screen 1 — Grading setup hub (`/exams/setup`)
+
+- **Header:** "Grading setup"; meta `session · branch`; back.
+- Neutral intro notice: *How this school turns marks into grades and decides what passes. These
+  rules are school-wide and rarely change.*
+- One `Card` with three `LinkRow`s, each with a live detail:
+  - **Subject types** — `3 types · 1 in use` / `None yet`. Detail `How each kind of subject is entered and counted`.
+  - **Grading scales** — `2 scales · CBSE 10-point is default` / `No default scale yet`. Detail `Percentage bands that become grades`.
+  - **Pass criteria** — `2026-27 · School default + 2 class rules` / `No rules for this session`. Detail `What passing a year means`.
+- **States:** denied (`exam:read` absent) → lock empty state; no branch → school empty state;
+  loading → three skeleton rows; any of the three reads failing → one `ErrorCard` with retry
+  (the hub is a summary, a half-summary is a lie); no session → the first two rows still work,
+  the criteria row reads *Needs a running session* and is not pressable.
+
+### Screen 2 — Subject types (`/exams/setup/subject-types`)
+
+**List.** Active types in card order. Row:
+- Title: the name; trailing quiet chip **In use** when `hasAssessmentData`.
+- Meta: one plain sentence built from the flags —
+  - `term_grade` → *Term grades · Grade only · Not counted*
+  - exam, counted, not graded-only → *Exam papers · Marks · Counted in the result*
+  - exam, not counted, graded-only → *Exam papers · Grade only · Not counted* (the co-curricular case)
+  - any other legal combination is stated just as plainly.
+- Tap → the type sheet (edit). No trailing chevron noise; the row is a button.
+- Header action **Add type** (`exam:create`).
+- Below the list, when `exam:create`: a quiet secondary `CapsuleButton` **Use the CBSE starter set**
+  with one line of help. Empty state offers the same two actions. Preset runs behind an `Alert`
+  confirm that says exactly what it does and that existing types are left alone; its result is a
+  positive `Notice` (`Added 2 subject types.` / `The starter set is already in place.`).
+- **Empty:** *No subject types yet* — types group subjects on the report card and decide how they
+  are graded; start from the CBSE set or add your own.
+- **States:** denied, no branch, loading skeleton, error + retry, empty, pull-to-refresh.
+
+**Sheet (create / edit).** Lives in `FormSheet`; five fields and a live summary.
+- **In short** line at the top, rebuilt as the controls change: *"Personality — entered at term
+  end, shown as a grade, not counted in totals."* This is the anti-wall-of-switches device.
+- Name (`FormField`, required, ≤100).
+- **Assessed by** `ChoicePills`: *Exam papers* / *Term grades*. Help explains both in school words.
+- **Counts toward the result** `SwitchRow` + help.
+- **Grade only** `SwitchRow` + help.
+- **Card order** numeric field + help (*lower sits higher*).
+- When term-grade + counts is chosen, a caution line: term grades carry no marks, so counting them
+  has no effect — most schools leave it off. It does not block the save.
+- Locked type: behaviour controls `disabled`, a neutral notice with the server's reason; name and
+  card order stay editable; the save still works.
+- Retire: a destructive text action in the sheet footer (edit only), behind an `Alert`. When the
+  type is in use the body says the extra truth: grades already recorded stay, but the type leaves
+  the pickers **and Term grades**, and there is no restore list on mobile (gap 41).
+- **States:** submitting (footer loading, fields stay), server refusal in a critical `Notice`
+  above the footer with the form intact, success closes the sheet and shows a positive notice on
+  the list.
+
+### Screen 3 — Grading scales (`/exams/setup/grading-scales`)
+
+**List.** Row:
+- Title: name; chips **Default** and **Locked — in use**.
+- Meta: description when present, then the band sentence `A1 91–100 · A2 81–90 · …` on up to two
+  lines (never a table).
+- Tap → the editor. Header action **Add scale** (`exam:create`).
+- **Empty:** *No grading scales yet* — add a scale so computed results can show grades.
+
+**Editor (`new` / `[scaleId]`).**
+- Title: *New grading scale* / the scale's name. Meta: `Default · Locked — in use` or `N bands`.
+- Name, Description.
+- New only: `SwitchRow` **School default**, pre-checked when the school has none, with the reason
+  in the help.
+- Locked only: neutral notice — results have been graded with this scale; bands can't change;
+  create a new scale for a new policy. Bands render as a read-only list.
+- **Bands section**
+  - `SectionHead` "Bands" + status: *Covers 0–100* (positive) or *1 gap · 2 to fix* (critical).
+  - **Coverage bar**: one horizontal strip of the 0–100 range, one segment per band (width by
+    range), gaps painted critical. Decorative (`accessible={false}`); the sentence carries the
+    meaning.
+  - **Band card**, one per band, in display order:
+    - header `Band 1` + remove (trash). Removing extends the band below (or above, for the bottom
+      band) so a delete never invents a gap.
+    - `Grade` (≤10, upper-cased) + `Points` (optional, 0–100) on one line.
+    - `From %` + `To %` on the next line.
+    - inline error under the card when this band is the problem.
+  - **Add band** prefills the largest uncovered interval (0–100 when empty; 0–90 after 91–100;
+    0–80 after 91–100 + 81–90). When the scale already covers 0–100 the action is replaced by a
+    quiet line: *Every percentage already lands in a band.*
+- **Check a score** (only when the bands are valid): a small numeric field, live result
+  `87% → A1 · 9 points`. This is the proof the whole screen exists for.
+- Secondary actions below the form: **Make school default** (non-default, behind an `Alert`) and
+  **Retire this scale** (not default, not locked; destructive, behind an `Alert` that says past
+  results keep grading as they did). A default scale shows no retire action and one line why.
+- **Footer:** primary **Save scale**, plus the first validation problem as a one-line caption
+  above it whenever the form is invalid — so the reason is visible from the bottom of a long
+  scroll. Save is only enabled when something changed.
+- **Save order:** bands first, then name/description (the likely refusal is a band rule; a failed
+  name write must not leave new bands with an old name). Only dirty parts are sent. Success →
+  invalidate the list and go back. Failure → critical notice with the server's wording, form
+  intact.
+- **Unsaved guard:** `useUnsavedChanges` on any local change (bands, name, description, default).
+
+**Gap / overlap wording** (client, mirroring the service):
+- *Bands must start at 0.*
+- *Bands must end at 100.*
+- *Gap: nothing covers 71–80.*
+- *A2 and B1 overlap at 81.*
+- *The band ends before it starts.*
+- *Two bands can't share a grade.*
+- *Enter a number from 0 to 100.*
+
+### Screen 4 — Pass criteria (`/exams/setup/pass-criteria`)
+
+**List**, per running session. Row:
+- Title: *School default* or the class name; quiet chip **Default** on the school row.
+- Meta line 1: `Pass 5 of 6 · Grace 5 / 10 · Compartment 2` / `All counted subjects · No grace ·
+  No compartment`.
+- Meta line 2: `Attendance 75% flags only · Absence can fail · Exempt papers score zero`.
+- Header action **Add rule** (`exam:create`), hidden when every scope is taken.
+- **Empty:** *No pass rules for this session* — add the school-wide default; classes can override
+  it later.
+- No session: honest empty state with the session's role explained.
+
+**Editor (`new` / `[criteriaId]`).**
+- Title: *New pass rule* / *Pass rule · Class 6*. Meta: session · *School default* / class name.
+- Create only: **Applies to** row opening a `ChoiceSheet` — *School default* (hidden when one
+  exists) plus every class **without** a rule. The choice is required before save.
+  Edit: the scope is printed, not editable (moving a row would collide with the unique index).
+- **In short** card at the top, four lines, rewritten live:
+  1. pass rule (`All counted subjects` / `At least 5 of 6 counted subjects` / `… including Maths`)
+  2. grace (`Grace up to 5 per subject, 10 in total`)
+  3. compartment (`Up to 2 failed subjects`, `No compartment`)
+  4. attendance (`Below 75% is flagged, never blocked`)
+- **Promotion**: min subjects numeric (blank = all); **Must-pass subjects** row opening a
+  multi-select `FormSheet` (name + check, Done; “None” when empty).
+- **Grace marks**: switch; when on, per-subject and total fields.
+- **Compartment**: switch; when on, the failed-subject cap.
+- **Attendance**: percent field, help says advisory.
+- **Absence & exemption**: two switches with the web's plain-language help.
+- **Footer:** **Save rule**, caption with the first invalid field. Save is enabled only when
+  changed. New rows start from the school default's values when one exists — an override is a
+  delta, not a blank page.
+- **Unsaved guard** on any change.
+
+### Every surface's states
+
+| State | Hub | Lists | Editors |
+|---|---|---|---|
+| Permission denied | lock + who to ask | lock + who to ask | not reachable (row hidden) |
+| No branch | school empty | school empty | not reachable |
+| No session | criteria row says so; others work | criteria empty state | criteria editor not reachable |
+| Loading | 3 skeletons | 3 row skeletons | centred spinner? No — screen skeleton with name field disabled |
+| Empty | counts read "None yet" | designed empty state with the create action | n/a |
+| Read error | one ErrorCard, retry all | ErrorCard, retry | ErrorCard, retry the row read |
+| Submitting | n/a | n/a | footer loading; fields stay editable? **No** — reads are cheap, but a double-submit is not: disable the footer only |
+| Save refused | n/a | n/a | critical Notice above the footer, form intact, nothing typed is lost |
+| Saved | n/a | positive Notice after the sheet closes | go back to the list; the row is already refreshed |
+| Locked / in use | n/a | chip | notice + disabled behaviour controls; name/order still save |
+| Unsaved | n/a | n/a | `useUnsavedChanges` on back, Android back and swipe |
+| Offline | ErrorCard when the read fails | ErrorCard | save failure wording; the draft stays |
+
+Keyboard: numeric fields use `decimal-pad`/`number-pad`; sheets are `KeyboardAvoidingView` already;
+the band editor is a pushed screen (no `InputAccessoryView` needed — Save is a button, not the IME);
+"Add band" scrolls nothing and does not steal focus.
+
+### Data and hooks
+
+New `screens/exams/grading/use-grading.ts`:
+- `useGradingScope()` → active context (`organizationId`, `schoolId`, running year, permissions).
+  Every class/subject read carries `schoolId`.
+- `useSubjectTypesAdmin()` / `useSubjectTypeActions()` (create, update, deactivate, applyPreset).
+- `useGradingScalesAdmin()` / `useGradingScaleActions()` (create, update, replaceBands, makeDefault).
+- `usePassCriteriaAdmin(yearId)` / `usePassCriteriaActions()` (create, update).
+- `useCriteriaClasses()`, `useCriteriaSubjects()`.
+- Invalidation: types → `subjectTypes.list`, `subjectMapping.list` (all), `termGrades.list`;
+  scales → `gradingScales.list`; criteria → `passCriteria.list`, `eligibility.list`.
+
+Pure logic (unit-tested, no React):
+- `lib/grading-scale.ts` — hundredth parsing, band validation + coverage (gaps/overlaps with the
+  offending band), largest-uncovered-interval prefill for Add, remove-and-extend, grade lookup for
+  the score check, list-row band sentence.
+- `lib/pass-criteria.ts` — draft → summary lines, validation mirrored from the contract, list-row
+  meta, default-copy for an override.
+- `lib/subject-types.ts` — flag sentence, validation, and the "term grades carry no marks" caution.
+
+### Backend endpoints used
+
+| Act | Procedure | Count |
+|---|---|---|
+| read types / create / update / deactivate / preset | `subjectTypes.list/create/update/deactivate/applyPreset` | 5 |
+| read scales / create / rename+retire / replace bands / make default | `gradingScales.list/create/update/replaceBands/makeDefault` | 5 |
+| read / create / update rules | `passCriteria.list/create/update` | 3 |
+
+13 of 7F's 14 procedures. `subjectTypes.byId` is not called: a list row already carries the whole
+row (the web's tables do the same). No backend change.
+
+### Acceptance (7F)
+
+1. From Exams, an admin reaches all three lists in two taps; a teacher without `exam:update` never
+   sees the row.
+2. The hub's three details are true counts, including the default scale's name.
+3. A type can be created with only a name (server defaults fill the rest), edited, and retired;
+   an in-use type locks its behaviour controls and says why, while name/order still save.
+4. The preset is idempotent, states what it will do before doing it, and reports what it added.
+5. A scale cannot be saved with a gap, overlap, missing 0/100 edge, duplicate label, or a range
+   that ends before it starts — each problem is shown on the row *and* above the save.
+6. A saved scale is contiguous by construction, the first may be the default without a second
+   call, and a locked scale's bands are visibly immutable while its name still saves.
+7. “Check a score” resolves against the edited bands before save.
+8. Pass criteria creates a school default, then only offers uncovered classes; an override starts
+   from the default's values; grace/compartment caps are required exactly when their switch is on.
+9. Every screen handles loading, empty, error, denied, no-branch, no-session, submitting, refused,
+   saved, locked, and unsaved changes.
+10. No write is optimistic; nothing reports success before the server answers.
+
+### Deliberate non-builds / new gaps (no backend change)
+
+39. **No reactivation.** `subjectTypes.list` and `gradingScales.list` return active rows only, so a
+    retired type or scale has no screen to come back from, although both `update` routes accept
+    `isActive: true`. Add an inactive filter (or a `includeInactive` flag) before promising undo.
+40. **No scale clone.** "Create a new scale" is a blank editor; a locked scale cannot be copied
+    band-for-band, so a policy fork re-types every band. A `clone` route would remove the chore.
+41. **No pass-criteria delete.** A class override that should not exist can only be edited into
+    something harmless. The unique index also means a mistaken scope cannot be moved.
+42. **Band `descriptor` has no editor** (same shape as gap 37). The editor preserves an existing
+    descriptor when replacing bands, but cannot set one.
+43. **Config rows have no `expectedUpdatedAt`.** Two admins editing the same scale last-write-wins,
+    silently. Marks and term grades have the same hole (gap 33).
+44. **No audit read.** The tables carry `createdBy`/`updatedAt`, but no screen can answer "who
+    changed the pass rule in July?".
+45. **Term-grade flag combinations are not enforced server-side.** `assessmentMode: term_grade`
+    with `countsTowardResult: true` is accepted; the app explains the contradiction but cannot
+    refuse it.
+46. **`subjectTypes.list`'s lock flag is tenant-wide, not branch-wide** (`schoolIds` union across
+    scopes). A type used in another campus reads "In use" here. Correct for shared types, noisy
+    when the branches are meant to be independent.
+
+### Docs and skills (7F)
+
+Read before coding: `mobile-design` (forms, screen-patterns: sheets for short edits, pushed forms
+for long ones, one primary action per screen, states before styling) and the repo's existing
+patterns in `screens/fees/setup-heads.tsx` (list + sheet + retire) and
+`screens/exams/components-editor.tsx` (pushed form, inline validation, unsaved guard). No new
+dependency, no new native module, no new Expo API: `FormSheet` / `ScreenFrame` / `ChoiceSheet` /
+`SwitchRow` / `ChoicePills` / `Notice` / `CapsuleButton` are already used on this branch.
+`TextInput` numeric/decimal behaviour and `usePreventRemove` were verified for 7A/7D (see the 7A
+table above); nothing here re-opens them. The only platform question left is visual (coverage bar
+at large text), checked on the device walk.
 
 ---
 
@@ -1517,3 +1843,116 @@ date → open the components editor, watch the weight sum, save → schedule the
 sum) → eligibility recompute + override + allow-all. Freeze: at marks_entry the
 setup screen is read-only with the freeze line; a locked paper's editor likewise.
 Every refusal prints inline; nothing optimistic.
+
+---
+
+# 7F build record (2026-10-28)
+
+Built on `feat/mobile-exams-7a` on top of 7E (`61b6c93`, unpushed). No backend change: the 14
+procedures in §7F already existed and were read from `exam.router.ts` / `exam-config.service.ts`
+before any screen was written.
+
+## What shipped
+
+- **Entry + hub.** One `LinkRow` on the Exams list ("Grading setup", `testID` `exams-grading`),
+  gated on `exam:update || exam:create`, rendered in the empty state too. The hub answers the three
+  questions with live counts: types ("4 types · 2 in use"), scales ("1 scale · Demo Grading Scale is
+  default"), rules ("2026-27 · School default + 1 class rule").
+- **Subject types** (`/exams/setup/subject-types`): list + `FormSheet`. The sheet is name, card
+  order, the three behaviour controls, and the plain-language sentence the flags produce. An in-use
+  type hides the behaviour controls behind a lock notice and still saves name/order. The CBSE
+  starter set sits behind a confirm that says it adds only what is missing, and reports the count.
+- **Grading scales** (`/exams/setup/grading-scales`): list rows stack name → chips (`Default`,
+  `Locked — in use`) → the band sentence; a locked scale is a fact, not a control. Pushed band
+  editor (`new`, `[scaleId]`) with direct min/max entry, a live 0–100 coverage strip, per-row
+  validation, "Add band" prefilling the largest uncovered interval, removing a band extending its
+  neighbour, and "Check a score" resolving against the *unsaved* bands.
+- **Pass criteria** (`/exams/setup/pass-criteria`): the school default plus per-class overrides,
+  the "In short" read-back above the controls, a scope picker offering only uncovered scopes, the
+  must-pass multi-select, and grace/compartment caps that are required exactly when their switch
+  is on. A saved scope cannot move (the unique indexes name it), so the editor renders it read-only.
+- **Pure layer.** `lib/grading-scale.ts` (37 tests), `lib/pass-criteria.ts` (27),
+  `lib/subject-types.ts` (17). Band contiguity mirrors the server exactly: shared edges are
+  contiguous, the higher band owns a boundary value, only gaps and overlaps are refused — the note
+  under the coverage bar says so in words ("91% counts as A1").
+- **Shared fix.** `ScreenFrame` now pads for the IME on Android as well (`behavior="padding"` plus
+  `flex: 1` on the scroll body). On the pinned SDK Android is edge-to-edge, `adjustResize` no longer
+  shrinks the window, and every form's sticky footer sat behind the keyboard. Re-walked on the New
+  exam form, the scale editor and the pass-rule editor: the footer rides above the IME and the
+  focused field stays reachable.
+
+## Decisions taken during the build (each reopenable)
+
+- **The editors are pushed screens, the subject type is a sheet.** A scale is 1–10 band cards and a
+  pass rule is 9 controls; both need a scroll body, a sticky save and an unsaved-work guard.
+- **Save stays enabled and reveals the reason.** Nothing is red before the first press; the footer
+  repeats the first problem only after a save attempt, exactly like `fees/setup-heads.tsx`. A
+  disabled button with no explanation was the failure mode the owner flagged.
+- **Action results live in the footer, not the top of the body.** "Make school default" and
+  "Retire" are at the bottom of a long form; a notice at the top is off-screen exactly when it is
+  needed. The scale editor's footer now carries error → notice → validation caption in that order.
+- **A new pass rule opens as a copy of the school default.** The only missing thing is the scope,
+  and the empty picker already says so, so the form does not open on a red caption.
+- **The must-pass multi-select is a sheet with the counted subjects only**, because a must-pass
+  subject that is not counted cannot fail anything.
+- **The list row names must-pass subjects** (up to three, then `+N`; "1 must-pass subject" when the
+  subject read failed). "At least 5 subjects · Must pass Mathematics · Grace 5 / 15 · Compartment 2"
+  reads as the policy it is.
+
+## Walk record — emulator-5554, Metro :8081, API :4000, 2026-10-28
+
+Admin, session 2026-27, Demo Public School — Main Campus.
+
+- Hub: all three counts true; the default scale named; the row opens from the Exams list.
+- Subject types: list order, "In use" chips, the locked sheet (behaviour controls replaced by the
+  reason, name and order still save), create → sheet → save, retire behind a confirm.
+- Scales: list row, locked editor (bands read-only, name saves, make-default still offered), the
+  new-scale flow end to end (blank → one 0–100 band → split, coverage strip, gap and overlap
+  refused on the row *and* above the save, "Check a score", unsaved guard on back), make-default →
+  "Default scale switched." in the footer → restored the Demo default, and retired the test scale.
+- Pass criteria: list, create (Class 6 override, min 5, compartment 2, must-pass Mathematics), the
+  live "In short" card while typing, the scope sheet listing only uncovered scopes, the single
+  remaining scope auto-picked, the must-pass sheet, the edit flow with the read-only scope, and the
+  row meta naming the subject.
+- Keyboard: New exam form, scale editor and pass-rule editor with the IME open — footer visible,
+  no double padding, focused field reachable.
+
+Findings fixed during the walk: the pristine new-rule form painted a red caption before any press;
+the grace-total field had no error slot; the retire body repeated a sentence it could not need; the
+scale editor's status line was at the top of a long form (moved to the footer); the band sentence
+ran label and range together (ranges dropped to regular weight); the list row did not name the
+must-pass subject.
+
+## Not walked (say so, do not claim)
+
+iOS entirely; the starter-set confirm on a school that already has one of the three types (the call
+is idempotent and unit-covered, the sheet copy not re-read); a 10-band scale at 1.3× text; the
+coverage strip at 1.3× (it is decorative, the sentence carries the meaning); TalkBack on the new
+rows and sheets; a second admin editing the same scale (no `expectedUpdatedAt`, gap 43).
+
+## Fixture and environment (left in the dev DB)
+
+Demo school, session 2026-27: one grading scale ("Demo Grading Scale", default, locked), four
+subject types, and a deliberate Class 6 pass-criteria override (min 5 subjects, grace 5 / 15,
+compartment 2, must-pass Mathematics). The test scale created during the walk was retired. No
+`tmp-*` script was added for this chunk.
+
+## Gates
+
+Mobile `tsc --noEmit` clean; `eslint` on the new and changed files: 0 problems; jest 37 suites /
+587 tests (+81: grading scale 37, pass criteria 27, subject types 17). Root `pnpm check-types`:
+every package green except `@repo/api`, whose only errors are in the pre-existing untracked
+`scripts/tmp-seed-fees-demo.ts`.
+
+## Backend gaps added during the build
+
+None new — 39–46 in §7F were written at design time and all still hold. Two are worth repeating
+because the walk felt them: **40** (no scale clone: a policy fork re-types every band) and **41**
+(no pass-criteria delete: a mistaken override can only be edited into something harmless).
+
+## Commits (hand-off — local only, never pushed)
+
+The owner asked for small local commits on the branch. Suggested split if the grouping needs to be
+redone with `git add -p`: (1) pure logic + tests, (2) `copy.ts` + the `ScreenFrame` keyboard fix +
+the icon, (3) the eight routes and the hub, (4) subject types, (5) scales + band editor,
+(6) pass criteria, (7) docs.

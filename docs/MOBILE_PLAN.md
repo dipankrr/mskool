@@ -618,7 +618,7 @@ short, repeated teacher task before the more complex assignment workflow.
 | 4 | Homework manage (§9) | `homework.*` staff 28 | complete — staff slice device-walked 2026-10-25 (`88864ab`, `678c5dd`, `5ed3583`, `6198649`, `4ad81f3`); quiz-attempt grading not walked (no seeded attempts); family door at Step 9 |
 | 5 | Fees (§10) | `fees.*` 38 | open |
 | 6 | Staff + roles + ID cards + feed (§11) | `staff` 8 · `role` 8 · `idCard` 10 | open |
-| 7 | Exams + marks (§12) | `exam.*` staff 46 | **7A built + device-walked 2026-10-26; 7B (verify, reopen, readiness) built + device-walked 2026-10-27** on `feat/mobile-exams-7a` (plan: `.kilo/plans/2026-10-26-mobile-exams.md`); 7C–7F open |
+| 7 | Exams + marks (§12) | `exam.*` staff 46 | **7A + 7B built and device-walked 2026-10-26/27; 7C (core arc) and 7D built; 7E + 7F built and Android-walked 2026-10-28** on `feat/mobile-exams-7a` (plan: `.kilo/plans/2026-10-26-mobile-exams.md`); 7C/7D walk remainders and iOS open |
 | 8 | Remaining staff parity closeout | Any mobile-scoped staff workflows found by route audit | open |
 | 9 | Family shell (§13) | `portalHomework` 12 · portal reads · `portalExam` 2 · full claim auth | open |
 
@@ -648,7 +648,7 @@ shell until those workflows are complete or explicitly deferred by the owner.
 | `/fees/counter`, `/fees/collect`, `/fees/payments`, `/fees/payments/[paymentId]`, `/fees/ledger` | 5 | Counter collection, allocation review, receipt, reversal/bounce recovery and ledger inspection |
 | `/staff`, `/staff/[staffId]`, `/roles`, `/roles/[roleType]` | 6 | Staff record and login lifecycle, role assignment and permission editing with safeguards |
 | `/students/id-cards`, `/students/id-cards/[templateId]/design` | 6 | Touch-capable template management/designer plus native PDF/share/print workflow, including duplex alignment guidance |
-| `/exams`, `/exams/setup`, `/exams/grades`, `/exams/[examId]` | 7 | Exam lifecycle, grading configuration, schedules and components. **List + hub + stage moves are live (7A, walked 2026-10-26)**; create/edit/blueprint 7D, term grades 7E (built 2026-10-28, walk pending), grading setup 7F |
+| `/exams`, `/exams/setup`, `/exams/grades`, `/exams/[examId]` | 7 | Exam lifecycle, grading configuration, schedules and components. **List + hub + stage moves are live (7A, walked 2026-10-26)**; create/edit/blueprint 7D built (walk pending), term grades 7E (built + Android-walked 2026-10-28), grading setup 7F (built + Android-walked 2026-10-28) |
 | `/exams/[examId]/entry`, `/exams/[examId]/results`, `/exams/[examId]/results/print` | 7 | Mobile marks-entry flow, verification/publication, report-card review and PDF/share/print. **Marks entry is live (7A, walked 2026-10-26)** as `/exams/[examId]/paper/[scheduleId]`; **verification is live (7B, walked 2026-10-27)** as Review mode on that same route; results/publish/print 7C |
 | `/site`, `(public)/sites/preview` | Deferred by owner (2026-10-13) | Keep site editing and admin preview on web; do not build these mobile routes now |
 | `(portal)/portal/fees`, `/portal/attendance`, `/portal/results` | 9 | Adult-first family shell, child switcher and owned-student reads |
@@ -865,14 +865,15 @@ reopen, readiness) and 7C (results, publish, correct) are built, device-walked
 lifecycle + blueprint) is designed (addendum; the owner waived pre-review) and
 BUILT the same day — committed, not yet device-walked. **7E (term grades) is
 designed (addendum in §7E), BUILT, and ANDROID-DEVICE-WALKED 2026-10-28 —
-uncommitted; iOS accessory bar not walked.** 7F still gets a design addendum
-before its UI starts.
+uncommitted; iOS accessory bar not walked.** **7F (grading setup) is designed
+(addendum in §7F), BUILT, and ANDROID-DEVICE-WALKED 2026-10-28 — uncommitted;
+iOS not walked.** Every staff exam endpoint now has a screen.
 
 | Group | Count | Screen | Done |
 |---|---|---|---|
-| subject-types list/byId/create/update/deactivate/apply-preset | 6 | 7F | ☐ |
-| grading-scales list/create/update/bands/make-default | 5 | 7F | ☐ |
-| pass-criteria get/create/update | 3 | 7F | ☐ |
+| subject-types list/byId/create/update/deactivate/apply-preset | 6 | 7F, Android-walked 2026-10-28 (`byId` unused: a list row carries the whole row) | ◐ 5 of 6 called |
+| grading-scales list/create/update/bands/make-default | 5 | 7F, Android-walked 2026-10-28 | ◐ 5 of 5 |
+| pass-criteria get/create/update | 3 | 7F, Android-walked 2026-10-28 | ◐ 3 of 3 |
 | exam list/byId/create/update/transition | 5 | list/byId/transition 7A · create/update 7D built 2026-10-27 (walk pending) | ◐ 5 of 5 |
 | schedules list/save + components list/save | 4 | schedules/components save built 7D 2026-10-27 (walk pending) | ◐ 4 of 4 |
 | eligibility list/recompute/override + readiness | 4 | list 7A · readiness 7B (moved from 7C, D9) · recompute/override 7D built 2026-10-27 (walk pending) | ◐ 4 of 4 |
