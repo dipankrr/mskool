@@ -1,6 +1,5 @@
 import {
   KeyboardAvoidingView,
-  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -101,9 +100,17 @@ export function ScreenFrame({
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <KeyboardAvoidingView
         style={styles.safe}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        /**
+         * Android is edge-to-edge on the pinned SDK, so `adjustResize` no
+         * longer shrinks the window: the IME floats over the footer and over
+         * any field low in the scroll. Padding the frame by the keyboard
+         * height is what keeps the save bar and the focused field reachable
+         * on both platforms.
+         */
+        behavior="padding"
       >
         <ScrollView
+          style={styles.scroll}
           contentContainerStyle={[
             styles.content,
             { paddingBottom: footer ? spacing.xl : bottom },
@@ -218,6 +225,14 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: colors.canvas,
+  },
+  /**
+   * The scroll body must take the space the keyboard leaves and no more:
+   * without `flex: 1` a short form keeps its intrinsic height, pushes the
+   * footer past the padded frame and the one action disappears behind the IME.
+   */
+  scroll: {
+    flex: 1,
   },
   content: {
     paddingHorizontal: gutter,
