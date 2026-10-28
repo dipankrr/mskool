@@ -165,25 +165,16 @@ export function ExamsListScreen() {
     );
   }
 
-  if (rows.length === 0) {
-    return frame(
-      <EmptyState
-        icon="exams"
-        title={copy.exams.list.emptyTitle}
-        message={copy.exams.list.emptyBody}
-        testID="exams-empty"
-      />,
-    );
-  }
-
   return frame(
     <View style={styles.body}>
-      <SegmentBar
-        label={copy.exams.list.segmentLabel}
-        value={segment}
-        options={options}
-        onChange={setPicked}
-      />
+      {rows.length > 0 ? (
+        <SegmentBar
+          label={copy.exams.list.segmentLabel}
+          value={segment}
+          options={options}
+          onChange={setPicked}
+        />
+      ) : null}
       {scope.canUpdate ? (
         <Card padless testID="exams-final-row">
           <LinkRow
@@ -196,6 +187,7 @@ export function ExamsListScreen() {
           />
         </Card>
       ) : null}
+      <TermGradesShortcut />
       {scope.canCreate ? (
         <Card padless testID="exams-new-row">
           <LinkRow
@@ -208,7 +200,14 @@ export function ExamsListScreen() {
           />
         </Card>
       ) : null}
-      {visible.length === 0 ? (
+      {rows.length === 0 ? (
+        <EmptyState
+          icon="exams"
+          title={copy.exams.list.emptyTitle}
+          message={copy.exams.list.emptyBody}
+          testID="exams-empty"
+        />
+      ) : visible.length === 0 ? (
         <EmptyState
           icon="exams"
           title={
@@ -246,6 +245,21 @@ export function ExamsListScreen() {
         </View>
       )}
     </View>,
+  );
+}
+
+function TermGradesShortcut() {
+  return (
+    <Card padless testID="exams-term-grades-row">
+      <LinkRow
+        title={copy.exams.termGrades.row}
+        detail={copy.exams.termGrades.rowBody}
+        icon="rubric"
+        onPress={() => router.push("/exams/term-grades")}
+        first
+        testID="exams-term-grades"
+      />
+    </Card>
   );
 }
 

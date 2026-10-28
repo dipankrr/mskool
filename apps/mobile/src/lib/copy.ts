@@ -13,6 +13,7 @@ const common = {
   ok: "OK",
   back: "Back",
   cancel: "Cancel",
+  close: "Close",
   dismiss: "Dismiss",
 } as const;
 
@@ -3657,6 +3658,95 @@ export const copy = {
       },
       rowLabel: (name: string, percent: string, verdict: string) =>
         `${name}, ${percent}, ${verdict}`,
+    },
+    termGrades: {
+      title: "Term grades",
+      row: "Term grades",
+      rowBody: "End-of-term grades for areas without a paper",
+      meta: (
+        term: string | null,
+        klass: string | null,
+        section: string | null,
+        subject: string | null,
+      ) => [term, klass, section, subject].filter(Boolean).join(" · "),
+      termLabel: "Term",
+      classLabel: "Class",
+      sectionLabel: "Section",
+      sectionChip: (name: string) => `Section ${name}`,
+      subjectLabel: "Subject",
+      pickTermTitle: "Choose the term",
+      pickTermBody: "Term grades belong to one term. Pick the term you're grading.",
+      pickSectionTitle: "Choose the section",
+      pickSectionBody:
+        "Every grade is saved against one section. Pick the section you're grading.",
+      noTermsTitle: "No terms this session",
+      noTermsBody:
+        "Terms divide the session for results. The school office sets them up.",
+      noClassesTitle: "No classes in this branch",
+      noClassesBody:
+        "Classes appear once the school office adds them for this session.",
+      noSubjectsTitle: "No term-grade subjects in this class",
+      noSubjectsBody:
+        "Every subject mapped to this class is entered through exam marks, not term-end grades.",
+      noSectionsTitle: "No sections in this class",
+      noSectionsBody: "Add a section to this class before entering term grades.",
+      noRosterTitle: "No students in this section",
+      noRosterBody:
+        "Students appear once they're enrolled in this section for the session.",
+      progress: (graded: number, total: number) => `Graded ${graded} of ${total}`,
+      progressA11y: (graded: number, total: number) =>
+        `${graded} of ${total} students have a saved grade`,
+      filterLabel: "Show",
+      filters: {
+        all: "All",
+        missing: "Missing",
+        graded: "Graded",
+      },
+      filterA11y: (label: string, count: number) => `${label}, ${count}`,
+      filterEmptyTitle: "Nothing here",
+      filterEmptyBody: "No students match this filter right now.",
+      showAll: "Show all",
+      goToBlank: "Go to first blank",
+      noBlank: "Every student has a grade.",
+      readOnlyTitle: "Read-only",
+      readOnlyBody:
+        "Your role can view term grades but not change them. Entering them needs the marks entry permission.",
+      notAssignedTitle: "This subject isn't yours to grade",
+      notAssignedBody:
+        "You can view these grades. Entering them is for the subject's assigned teacher.",
+      gradePlaceholder: "Grade",
+      gradeLabel: (roll: string | null, name: string) =>
+        `${roll ? `Roll ${roll}, ` : ""}${name}, grade`,
+      remarksHint: "Remarks added",
+      changedElsewhere: "Changed on the server",
+      emptyGrade: "Type a grade before saving — a saved grade can't be cleared.",
+      notSaved: "Not saved · Tap to retry",
+      failedTitle: "That didn't save",
+      useSaved: "Use saved value",
+      tryAgain: "Try again",
+      keepEditing: "Keep editing",
+      saveStatus: {
+        saved: "All changes saved",
+        saving: "Saving…",
+        unsaved: (n: number) =>
+          `${n} ${n === 1 ? "row isn't" : "rows aren't"} saved`,
+        typing: "Unsaved changes",
+      },
+      retryAll: "Retry all",
+      leaveTitle: "Some grades aren't saved",
+      leaveBody:
+        "Leaving now loses the grades you typed that haven't saved yet.",
+      leave: "Leave anyway",
+      sheet: {
+        gradeLabel: "Grade",
+        gradeHelp: "Up to 10 characters, e.g. A, B+, 9.",
+        openLabel: (name: string) => `Open grade and remarks for ${name}`,
+        openHint: "Edit the grade and add a remark for this student.",
+        remarksLabel: "Remarks",
+        remarksPlaceholder: "Optional note for this student",
+        save: "Save grade",
+        needGrade: "Type a grade before saving.",
+      },
     },
     form: {
       newRow: "New exam",

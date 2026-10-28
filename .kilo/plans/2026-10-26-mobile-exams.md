@@ -367,6 +367,108 @@ Blueprint edits only in `draft/scheduled` (the server freezes later; the UI says
 Reuses the entry list: students × one graded subject per term, grade or marks per the mapping's
 type, same queue/guard/state glyphs, `termGrades.list/save` with the same `subjectGate`.
 
+Design addendum (2026-10-28, before code; the owner asked for the chunk directly).
+
+**Job.** At term end a teacher gives an area grade — Art, Music, PE, Value Education, the
+term_grade subjects that never sit a paper — to every student of a section. The web screen is a
+web table; mobile keeps the 7A rhythm: subject chosen once, one grade field per row, the
+keyboard's Next key moves down, a tick appears only when the server has the value.
+
+**Entry.** `/exams/term-grades` (route exists in §Route map). Two doors:
+1. **Exams list** — a "Term grades" shortcut row beside "Final results"/"New exam", shown for
+   `exam:read` (read-only callers enter with inputs disabled, like the web). The shortcut card now
+   renders in the EMPTY state too (a school with term-grade areas but no exams still has grades to
+   enter); the old early return hid every shortcut then.
+2. No hub row. Term grades are term-wide, not exam-wide; the hub stays about one exam.
+
+**Screen.**
+- Anchor order: term → class → section → subject. Each is a `ChipRow`; a row hides when there is
+  one choice (`Full Year`, one section). Term defaults to the `termId` route param (none passed
+  today), else the single term, else the term containing today, else nothing — the screen asks.
+- Class defaults to the first visible class (hub pattern). **Section does not**: with more than one
+  section nothing is preselected and the list shows "Choose the section" — a grade written to the
+  wrong section is silent data corruption, and the context line already proves the save target.
+- Subject defaults to the first term_grade mapping of the class (the chip is highlighted and the
+  header names it). The mapping's `subjectTypeId` must resolve to a type with
+  `assessmentMode = "term_grade"`; every other mapping is excluded exactly as the web does.
+- Header: chosen-context line (`Term 1 · Class 6 · A · Art`), read-only notices
+  (`!marks:create`; a subject_teacher whose pairs don't include section+subject), a progress card
+  (`Graded N of M` + meter) and a filter row `All / Missing / Graded`.
+- Rows: roll · name (+ remarks hint) · grade field (10 chars, upper-cased) · state glyph.
+  Tap the name for the sheet: grade + remarks (≤500), Save commits both; the row stays one field.
+- Commit on Next (`submitBehavior="submit"`, keyboard stays up) and on blur. A cleared field never
+  deletes a saved grade — the row says so instead of pretending; the server has no delete.
+- Footer: `All changes saved` / `Saving…` / `Unsaved changes` / `N rows aren't saved · Retry all`.
+  Leave guard on any unsaved cell, and the context chips ask the same live store before they remount
+  the entry (term/class/section/subject switches must not throw typed work away). Pull-to-refresh
+  re-reads the term's rows; the draft keeps typed work and flags a server value that moved
+  (`Changed on the server`).
+- States: permission denial, loading skeletons, roster/subject/term/class empty states, read-only,
+  not-assigned, error + retry (both reads), offline (failed row + retry), submitting, saved.
+
+**Data.** `academic.term.list`, `academic.class.list`, `academic.section.list`,
+`assignment.subjectMapping.list` + `exam.subjectTypes.list` (area filter), `enrollment.list`
+(section roster, roll order), `exam.termGrades.list` (term rows joined to students client-side),
+`exam.termGrades.save` per student. No backend change.
+
+**Gaps recorded, not fixed here.**
+33. `termGrades.save` has no `expectedUpdatedAt`/version — two writers are last-write-wins; the
+    draft detects a moved server value on refetch but cannot prevent the overwrite. Marks has the
+    token; term grades should adopt it if concurrency matters.
+34. `termGrades.save` never checks publication — term grades stay editable after a report card is
+    frozen (the card itself is immutable). The web has the same hole. Decide whether entry freezes
+    at publication.
+35. `termGrades.list` returns the whole school's rows for the term; the screen filters to the
+    active mapping client-side. A `mappingId`/`sectionId` filter would shrink the payload.
+36. No `subjectName` on the mapping row; names come from `subject.list` (and the type filter from
+    `subjectTypes.list`), two extra reads the web also pays.
+37. `term_assessments.descriptor` (≤100 chars) has no editor in either client, so every save sends
+    no descriptor and the service writes `descriptor: null` — a value written by another tool
+    would be erased. Decide whether the column is dropped or the sheet should edit it.
+38. `termGrades.save` returns `null` (not a typed refusal) when the student is no longer enrolled in
+    the term, the section is not the mapping's class, or the mapping is not in the branch. The app
+    can only say "Not saved · Tap to retry", which is wrong for a student who moved section; a
+    refusal code would let the row say why.
+
+**Walk record (2026-10-28, emulator-5554, 1080×2400 / 393 dp, admin `admin@demo-trust.test`,
+session 2026-27).** Walked the real dev client against the running API/Neon DB.
+
+*Walked and correct.* Exams list → "Term grades" shortcut; the same shortcut renders in the EMPTY
+state (checked on North Campus, which has no exams in the session) with the segments bar hidden.
+Term/class default as designed; with two sections **none is preselected** and "Choose the section"
+holds the list. Roster in roll order (12 students), `Graded N of M`, `All/Missing/Graded` counts,
+"Go to first blank" offered on All/Missing and hidden on Graded. Typing upper-cases (`a+` → `A+`);
+the IME's next arrow saves, moves focus down and **keeps the keyboard up**; tapping away
+(blur) saves too. Remark sheet: empty grade refused with "Type a grade before saving.", grade +
+remark save, row then reads "Remarks added". Failed save: API stopped mid-entry → row goes
+"Not saved · Tap to retry" with the caution border and refresh glyph, footer "1 row isn't saved ·
+Retry all"; the alert offers Keep editing / Use saved value / Try again, and Try again after the
+API returned wrote the row. Context chips with typed work raised "Some grades aren't saved" and
+Keep editing preserved the typed value; switching with nothing unsaved remounted onto Section B's
+own 3-student roster with 0 graded (no cross-section leakage). Class 7 (no sections) and North
+Campus (no term-grade subject) both showed their honest empty states.
+
+*Findings — all three fixed in this chunk, then re-walked.*
+1. Section chips printed bare `A` / `B` under rows that print `Term 1`, `Class 6` — a letter with
+   no noun, on the one row that decides where a write lands. Now `Section A` / `Section B`
+   (`copy.exams.termGrades.sectionChip`).
+2. The row's second line was painted `critical` for every tone, so a harmless "Remarks added" read
+   as an error. `lineFor` now returns text + tone (failed → caution, problem → critical,
+   changed-elsewhere → caution, remarks → muted) and the row paints what it means.
+3. Closing the remark sheet left the keyboard up over the roster with nothing to type into (the
+   sheet's input owned it). Opening and closing the sheet now dismisses it, verified with
+   `dumpsys input_method` showing `mInputShown=false` after both Close and Save.
+
+*Not walked.* iOS entirely — the accessory bar (prev/next/done above the keyboard) is
+`InputAccessoryView`, Android-only verification cannot cover it. The two-writer conflict (the
+server has no `expectedUpdatedAt`, gap 33). A 100+ roster. Read-only and not-assigned notices
+(the walk used an org admin, `pairs === null`); both are one branch each and were verified by
+typecheck only. The footer row ("N rows aren't saved · Retry all") sits under the keyboard while a
+field is focused — the row's own retry glyph is reachable, the bulk retry needs the keyboard down.
+
+*Walk fixture left in the dev DB:* Main Campus · Class 6 · Section A · Term 2 · Personality —
+A+ · B · A (+ "Great team player") · C · D for the first five students by roll.
+
 ## 7F — Grading setup
 Hub with three lists (subject types with presets, grading scales with band editor and
 make-default, pass criteria). Band editor is a vertical list of bands with min/max/grade/points —

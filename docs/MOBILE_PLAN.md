@@ -648,7 +648,7 @@ shell until those workflows are complete or explicitly deferred by the owner.
 | `/fees/counter`, `/fees/collect`, `/fees/payments`, `/fees/payments/[paymentId]`, `/fees/ledger` | 5 | Counter collection, allocation review, receipt, reversal/bounce recovery and ledger inspection |
 | `/staff`, `/staff/[staffId]`, `/roles`, `/roles/[roleType]` | 6 | Staff record and login lifecycle, role assignment and permission editing with safeguards |
 | `/students/id-cards`, `/students/id-cards/[templateId]/design` | 6 | Touch-capable template management/designer plus native PDF/share/print workflow, including duplex alignment guidance |
-| `/exams`, `/exams/setup`, `/exams/grades`, `/exams/[examId]` | 7 | Exam lifecycle, grading configuration, schedules and components. **List + hub + stage moves are live (7A, walked 2026-10-26)**; create/edit/blueprint 7D, grading setup 7F |
+| `/exams`, `/exams/setup`, `/exams/grades`, `/exams/[examId]` | 7 | Exam lifecycle, grading configuration, schedules and components. **List + hub + stage moves are live (7A, walked 2026-10-26)**; create/edit/blueprint 7D, term grades 7E (built 2026-10-28, walk pending), grading setup 7F |
 | `/exams/[examId]/entry`, `/exams/[examId]/results`, `/exams/[examId]/results/print` | 7 | Mobile marks-entry flow, verification/publication, report-card review and PDF/share/print. **Marks entry is live (7A, walked 2026-10-26)** as `/exams/[examId]/paper/[scheduleId]`; **verification is live (7B, walked 2026-10-27)** as Review mode on that same route; results/publish/print 7C |
 | `/site`, `(public)/sites/preview` | Deferred by owner (2026-10-13) | Keep site editing and admin preview on web; do not build these mobile routes now |
 | `(portal)/portal/fees`, `/portal/attendance`, `/portal/results` | 9 | Adult-first family shell, child switcher and owned-student reads |
@@ -863,8 +863,10 @@ names the chunk that closes each row. 7A (find the paper, enter marks), 7B (veri
 reopen, readiness) and 7C (results, publish, correct) are built, device-walked
 (7C's core arc) and COMMITTED on `feat/mobile-exams-7a` (unpushed). 7D (exam
 lifecycle + blueprint) is designed (addendum; the owner waived pre-review) and
-BUILT the same day — committed, not yet device-walked. 7E/7F still get a design
-addendum before their UI starts.
+BUILT the same day — committed, not yet device-walked. **7E (term grades) is
+designed (addendum in §7E), BUILT, and ANDROID-DEVICE-WALKED 2026-10-28 —
+uncommitted; iOS accessory bar not walked.** 7F still gets a design addendum
+before its UI starts.
 
 | Group | Count | Screen | Done |
 |---|---|---|---|
@@ -877,7 +879,7 @@ addendum before their UI starts.
 | marks entry grid / student entries / autosave / verify / unverify | 5 | entry + autosave 7A · verify/unverify 7B · student entries 7C (walk pending) | ◐ 5 of 5 (7A–7C) |
 | results table / compute / term ranks / final results | 4 | 7C built 2026-10-27 (walk pending) | ◐ 4 of 4 |
 | publication list / publish-class / publish / revision open+close / apply revision | 6 | 7C built 2026-10-27 (walk pending) | ◐ 6 of 6 |
-| cards versions / class set + term-grades list / save | 4 | cards built 7C 2026-10-27 (walk pending; print/share deferred, D15) · term-grades 7E | ◐ 2 of 4 |
+| cards versions / class set + term-grades list / save | 4 | cards built 7C 2026-10-27 (walk pending; print/share deferred, D15) · term-grades list/save built 7E, Android-walked 2026-10-28 (iOS bar pending) | ◐ 4 of 4 |
 | portal results list / card (step 9) | 2 | — (Step 9) | ☐ |
 
 Acceptance: principal creates exam → papers inline → teacher enters marks
