@@ -3882,6 +3882,387 @@ export const copy = {
       emptyTitle: "Nothing to check yet",
       emptyBody: "The attendance bar fills in once the exam's cohort is known.",
     },
+    /**
+     * GRADING SETUP (chunk 7F) — the school-wide policy surface: subject
+     * types, grading scales and pass criteria. Words mirror the web's Exam
+     * Setup tabs; "retire" is the app's word for the server's deactivate.
+     */
+    grading: {
+      row: "Grading setup",
+      rowBody: "Subject types, grading scales and pass rules",
+      title: "Grading setup",
+      intro:
+        "How this school turns marks into grades and decides what passes. These rules are school-wide and rarely change.",
+      loadError: "Couldn't load the grading setup.",
+      deniedTitle: "Grading setup isn't in your account",
+      deniedBody:
+        "Your role doesn't include changing exam setup. Ask your administrator if you need it.",
+      noBranchTitle: "Choose a branch",
+      noBranchBody:
+        "Grading rules belong to one branch. Pick one from More to continue.",
+      hub: {
+        subjectTypes: "Subject types",
+        subjectTypesDetail: "How each kind of subject is entered and counted",
+        subjectTypesMeta: (total: number, inUse: number) =>
+          total === 0
+            ? "None yet"
+            : `${total} ${total === 1 ? "type" : "types"}${
+                inUse > 0 ? ` · ${inUse} in use` : ""
+              }`,
+        scales: "Grading scales",
+        scalesDetail: "Percentage bands that become grades",
+        scalesMeta: (total: number, defaultName: string | null) =>
+          total === 0
+            ? "None yet"
+            : defaultName
+              ? `${total} ${total === 1 ? "scale" : "scales"} · ${defaultName} is default`
+              : `${total} ${total === 1 ? "scale" : "scales"} · No default`,
+        criteria: "Pass criteria",
+        criteriaDetail: "What passing a year means",
+        criteriaMeta: (year: string, defaults: number, classes: number) => {
+          const parts: string[] = [];
+          if (defaults > 0) parts.push("School default");
+          if (classes > 0) {
+            parts.push(`${classes} class ${classes === 1 ? "rule" : "rules"}`);
+          }
+          return `${year} · ${parts.length > 0 ? parts.join(" + ") : "No rules"}`;
+        },
+        criteriaNoSession: "Needs a running session",
+      },
+      types: {
+        title: "Subject types",
+        meta: (total: number) =>
+          total === 1 ? "1 type" : `${total} types`,
+        add: "Add type",
+        createTitle: "New subject type",
+        editTitle: "Edit subject type",
+        nameLabel: "Name",
+        namePlaceholder: "e.g. Co-curricular",
+        nameRequired: "Give the type a name.",
+        modeLabel: "Assessed by",
+        modes: {
+          exam: "Exam papers",
+          term_grade: "Term grades",
+        },
+        modeHelp:
+          "Exam papers are marked subject by subject. Term grades are one grade at the end of the term.",
+        countsLabel: "Counts toward the result",
+        countsHelp:
+          "Excluded subjects still appear on the card but never touch totals or pass/fail.",
+        gradedLabel: "Grade only",
+        gradedHelp:
+          "Grade-only subjects take a letter grade instead of marks.",
+        sequenceLabel: "Card order",
+        sequenceHelp: "Lower numbers sit higher on the report card.",
+        sequenceError: "Use a whole number from 0 to 999.",
+        summary: (
+          name: string,
+          entered: string,
+          shown: string,
+          counted: string,
+        ) => `${name.trim() || "This type"} — ${entered}, ${shown}, ${counted}.`,
+        summaryParts: {
+          exam: "entered through exam papers",
+          termGrade: "entered at term end",
+          marks: "shown as marks",
+          grade: "shown as a grade",
+          counted: "counted in totals",
+          notCounted: "not counted in totals",
+        },
+        termCountsCaution:
+          "Term grades carry no marks, so counting them has no effect. Most schools leave this off.",
+        lockedTitle: "This type is in use",
+        lockedBody:
+          "Grades have been recorded against it, so how it is assessed and counted can't change. You can still rename it and change its card order.",
+        inUseChip: "In use",
+        retireAction: "Retire this type",
+        retireTitle: (name: string) => `Retire ${name}?`,
+        retireBody:
+          "It disappears from the pickers and from Term grades. Grades already recorded stay. There is no restore list in this app.",
+        retireConfirm: "Retire",
+        retired: "Subject type retired.",
+        created: "Subject type added.",
+        updated: "Subject type saved.",
+        save: "Save type",
+        preset: "Use the CBSE starter set",
+        presetHelp:
+          "Main Subjects, Co-curricular and Personality, with the flags a CBSE report card expects.",
+        presetTitle: "Add the CBSE starter set?",
+        presetBody:
+          "Three types are added if they're missing: Main Subjects (counted), Co-curricular (grade only) and Personality (term grades). Existing types are left alone.",
+        presetConfirm: "Add them",
+        presetAdded: (count: number) =>
+          count === 0
+            ? "The starter set is already in place."
+            : `Added ${count} ${count === 1 ? "subject type" : "subject types"}.`,
+        presetFailed: "Couldn't add the starter set",
+        emptyTitle: "No subject types yet",
+        emptyBody:
+          "Types group subjects on the report card and decide how they are graded. Start from the CBSE set, or add your own.",
+        loadError: "Couldn't load the subject types.",
+        flags: {
+          exam: "Exam papers",
+          termGrade: "Term grades",
+          marks: "Marks",
+          grade: "Grade only",
+          counted: "Counted in the result",
+          notCounted: "Not counted",
+        },
+      },
+      scales: {
+        title: "Grading scales",
+        meta: (total: number, defaultName: string | null) =>
+          total === 1
+            ? defaultName
+              ? `1 scale · ${defaultName} is default`
+              : "1 scale"
+            : defaultName
+              ? `${total} scales · ${defaultName} is default`
+              : `${total} scales`,
+        add: "Add scale",
+        createTitle: "New grading scale",
+        editTitle: "Edit grading scale",
+        nameLabel: "Name",
+        namePlaceholder: "e.g. CBSE 10-point",
+        nameRequired: "Give the scale a name.",
+        descriptionLabel: "Description",
+        descriptionPlaceholder: "What this scale is for (optional)",
+        defaultLabel: "School default",
+        defaultHelp:
+          "Results use this scale unless a paper overrides it.",
+        defaultFirstHelp:
+          "This is the school's only scale, so it becomes the default.",
+        defaultChip: "Default",
+        lockedChip: "Locked — in use",
+        lockedTitle: "Results have used this scale",
+        lockedBody:
+          "Bands can't change once results have been graded with them. Rename it if you like; create a new scale for a new policy.",
+        bandsTitle: "Bands",
+        bandsHint: (total: number) =>
+          total === 1 ? "1 band" : `${total} bands`,
+        covers: "Covers 0–100",
+        edgeNote: (value: string, grade: string) =>
+          `${value}% counts as ${grade} — where two bands meet, the higher band wins.`,
+        problemCount: (total: number) =>
+          total === 1 ? "1 to fix" : `${total} to fix`,
+        bandLabel: (index: number) => `Band ${index + 1}`,
+        removeBand: (index: number) => `Remove band ${index + 1}`,
+        gradeLabel: "Grade",
+        gradePlaceholder: "A1",
+        pointsLabel: "Grade point",
+        pointsPlaceholder: "9",
+        fromLabel: "From %",
+        toLabel: "To %",
+        addBand: "Add band",
+        allCovered:
+          "Every percentage already lands in a band. Narrow a band to make room for another.",
+        coverageLabel: "Coverage",
+        checkLabel: "Check a score",
+        checkPlaceholder: "e.g. 87",
+        checkHelp:
+          "Tries a percentage against the bands above, before you save.",
+        checkResult: (score: string, grade: string, point: string | null) =>
+          `${score}% → ${grade}${point ? ` · ${point} points` : ""}`,
+        checkNoBand: (score: string) =>
+          `${score}% doesn't land in a band yet.`,
+        checkFormat: "Enter a percentage from 0 to 100.",
+        makeDefault: "Make school default",
+        makeDefaultTitle: "Make this the school default?",
+        makeDefaultBody:
+          "Future results grade against this scale. Results already computed keep the grades they have.",
+        madeDefault: "Default scale switched.",
+        retireAction: "Retire this scale",
+        retireTitle: (name: string) => `Retire ${name}?`,
+        retireBody:
+          "It disappears from the pickers. Past results keep grading as they did.",
+        retireConfirm: "Retire",
+        retired: "Grading scale retired.",
+        defaultNoRetire:
+          "A default scale can't be retired. Make another scale the default first.",
+        lockedNoRetire:
+          "A locked scale can't be retired — results reference it.",
+        save: "Save scale",
+        saving: "Saving…",
+        created: "Grading scale created.",
+        saved: "Grading scale saved.",
+        failed: "Couldn't save the scale",
+        unsavedTitle: "Scale not saved",
+        unsavedBody:
+          "Leaving now loses the bands you added and the edits you made.",
+        leave: "Leave anyway",
+        keepEditing: "Keep editing",
+        emptyTitle: "No grading scales yet",
+        emptyBody:
+          "Add a scale — for example 91–100 A1 — so computed results can show grades.",
+        loadError: "Couldn't load the grading scales.",
+        gone: "This scale is no longer available.",
+        goneBody: "It may have been retired or moved to another branch.",
+        problems: {
+          empty: "A scale needs at least one band.",
+          startsAtZero: "Bands must start at 0.",
+          endsAtHundred: "Bands must end at 100.",
+          gap: (from: string, to: string) =>
+            `Gap: nothing covers ${from}–${to}.`,
+          gapBetween: (from: string, to: string) =>
+            `Gap: nothing covers between ${from} and ${to}.`,
+          overlapAt: (upper: string, lower: string, point: string) =>
+            `${upper} and ${lower} overlap at ${point}.`,
+          overlapRange: (
+            upper: string,
+            lower: string,
+            from: string,
+            to: string,
+          ) => `${upper} and ${lower} overlap from ${from} to ${to}.`,
+          endsBeforeStarts: "The band ends before it starts.",
+          duplicateGrade: "Two bands can't share a grade.",
+          gradeRequired: "Give the band a grade.",
+          gradeTooLong: "Keep the grade to 10 characters.",
+          percentFormat: "Enter a number from 0 to 100.",
+          pointFormat: "Enter a grade point from 0 to 100.",
+        },
+      },
+      criteria: {
+        title: "Pass criteria",
+        meta: (year: string) => year,
+        ruleCount: (defaults: number, classes: number) => {
+          const parts: string[] = [];
+          if (defaults > 0) parts.push("School default");
+          if (classes > 0) {
+            parts.push(`${classes} class ${classes === 1 ? "rule" : "rules"}`);
+          }
+          return parts.length > 0 ? parts.join(" + ") : "No rules";
+        },
+        add: "Add rule",
+        createTitle: "New pass rule",
+        editTitle: "Pass rule",
+        defaultChip: "Default",
+        classChip: "Class override",
+        appliesLabel: "Applies to",
+        appliesHelp:
+          "The school default, or one class's override of it.",
+        appliesSchool: "School default",
+        appliesSchoolDetail: "Every class without its own rule",
+        appliesClassDetail: "This class's own rule",
+        appliesTitle: "Where does this rule apply?",
+        appliesPlaceholder: "Choose a scope",
+        appliesRequired: "Choose where this rule applies.",
+        classFallback: "Class rule",
+        classNamesTitle: "Class names didn't load",
+        scopeLocked:
+          "The scope of an existing rule can't move. Edit this one, or add a rule for another class.",
+        summaryTitle: "In short",
+        summary: {
+          all: "All counted subjects must pass",
+          atLeast: (count: string) =>
+            `At least ${count} counted subjects must pass`,
+          minSubjectsIncomplete: "Minimum subjects still needed",
+          including: (base: string, names: string) =>
+            `${base}, including ${names}`,
+          grace: (perSubject: string, total: string) =>
+            `Grace up to ${perSubject} per subject, ${total} in total`,
+          noGrace: "No grace marks",
+          graceIncomplete: "Grace marks — both caps still needed",
+          compartment: (cap: string) =>
+            cap === "1"
+              ? "1 failed subject can be compartmented"
+              : `Up to ${cap} failed subjects can be compartmented`,
+          noCompartment: "No compartment",
+          compartmentIncomplete: "Compartment — cap still needed",
+          attendance: (pct: string) =>
+            `Below ${pct}% is flagged, never blocked`,
+          attendanceIncomplete: "Attendance bar still needed",
+        },
+        minSubjectsLabel: "Minimum subjects to pass",
+        minSubjectsHelp:
+          "Leave blank to require every counted subject.",
+        minSubjectsPlaceholder: "All",
+        promotionTitle: "Promotion",
+        graceTitle: "Grace marks",
+        mandatoryLabel: "Must-pass subjects",
+        mandatoryHelp:
+          "Grace marks rescue these subjects first. Empty means none named.",
+        mandatoryNone: "None",
+        mandatoryCount: (count: number) =>
+          count === 1 ? "1 subject" : `${count} subjects`,
+        mandatoryTitle: "Must-pass subjects",
+        mandatoryBody:
+          "Pick the subjects a student cannot fail, even under the minimum.",
+        mandatoryDone: "Done",
+        graceLabel: "Allow grace marks",
+        graceHelp:
+          "Grace rescues a failing subject up to the pass line, within both caps.",
+        gracePerSubjectLabel: "Max grace per subject",
+        graceTotalLabel: "Max grace total",
+        graceNeedsCaps:
+          "Grace marks need both a per-subject cap and a total cap.",
+        compartmentLabel: "Allow compartment",
+        compartmentHelp:
+          "A failed subject can earn one re-exam instead of repeating the year.",
+        compartmentCapLabel: "Max failed subjects for compartment",
+        compartmentTitle: "Compartment",
+        compartmentCapError:
+          "Enter a whole number from 1 to 20.",
+        attendanceTitle: "Attendance",
+        attendanceLabel: "Min attendance % (advisory)",
+        attendanceHelp:
+          "Below this bar a student is flagged for review; entry and promotion are never blocked.",
+        behaviourTitle: "Absence and exemption",
+        absentLabel: "Skipped mandatory paper fails the subject",
+        absentHelp:
+          "Off for low-stakes tests: absence then only scores zero, never an automatic fail.",
+        exemptLabel: "Exempt papers leave the total",
+        exemptHelp:
+          "On: an exempt paper is excluded, and the total is over what the student sat. Off: it scores zero.",
+        defaultRule: "School default",
+        classRule: (name: string) => `${name} override`,
+        save: "Save rule",
+        saving: "Saving…",
+        created: "Pass rule created.",
+        updated: "Pass rule saved.",
+        failed: "Couldn't save the pass rule",
+        unsavedTitle: "Pass rule not saved",
+        unsavedBody:
+          "Leaving now loses the choices you made on this rule.",
+        leave: "Leave anyway",
+        keepEditing: "Keep editing",
+        emptyTitle: "No pass rules for this session",
+        emptyBody:
+          "Add the school-wide default — classes can override it later.",
+        allScopesTitle: "Every class already has a rule",
+        allScopesBody:
+          "Edit an existing rule below. A new rule needs an uncovered class or the school default.",
+        noSessionTitle: "No running session",
+        noSessionBody:
+          "Pass rules belong to a session. Start one in Academic setup to set what passing this year means.",
+        loadError: "Couldn't load the pass rules.",
+        gone: "This pass rule is no longer available.",
+        goneBody: "It may have been removed or moved to another branch.",
+        minSubjectsError:
+          "Enter a whole number from 1 to 50, or leave it blank.",
+        graceCapError: "Enter a grace cap from 0 to 100.",
+        attendanceError: "Enter a percentage from 0 to 100.",
+        listMeta: {
+          all: "All counted subjects",
+          atLeast: (count: number) => `At least ${count} subjects`,
+          mustPass: (names: string) => `Must pass ${names}`,
+          mustPassMore: (names: string, rest: number) =>
+            `Must pass ${names} +${rest}`,
+          mustPassCount: (count: number) =>
+            count === 1 ? "1 must-pass subject" : `${count} must-pass subjects`,
+          grace: (perSubject: string, total: string) =>
+            `Grace ${perSubject} / ${total}`,
+          noGrace: "No grace",
+          compartment: (cap: number) => `Compartment ${cap}`,
+          noCompartment: "No compartment",
+          attendance: (pct: string) =>
+            `Attendance ${pct}% flags only`,
+          absenceCanFail: "Absence can fail",
+          absenceNeverFails: "Absence never auto-fails",
+          exemptExcluded: "Exempt papers leave the total",
+          exemptZero: "Exempt papers score zero",
+        },
+      },
+    },
     home: {
       title: "Marks to enter",
       open: "Marks entry is open",
