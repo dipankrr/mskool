@@ -38,7 +38,9 @@ import {
   evaluatePass,
   componentFailed,
   computeRanks,
+  describeSchedulePartitionViolations,
   examWeightedSubjectScore,
+  findSchedulePartitionViolations,
   fromHundredths,
   gpaAggregate,
   gradeFor,
@@ -61,10 +63,12 @@ import {
  * (frozen photographs, hard rule 8) -> corrections through revision windows
  * (hard rule 7).
  *
- * THE RESOLVER SEAM (ADR-032 §12): every per-student subject set comes from
- * `resolveSubjectSet` — v1 returns all counted exam-mode mappings of the
- * class. When `student_subject_enrollments` lands, only this function
- * changes.
+ * THE RESOLVER SEAM (ADR-032 §12, amended by ADR-052): the subject set comes
+ * from `resolveSubjectSet` — all counted exam-mode mappings of the class —
+ * and each (student, subject) resolves to the PAPER whose cohort holds the
+ * student: the section paper they sit, or the class-wide one. A student no
+ * paper covers is not computed at all. When `student_subject_enrollments`
+ * lands, only resolveSubjectSet changes.
  *
  * PUBLISHED ROWS GET REFRESHED, not rewritten — and only inside the
  * ledger-owning flows: `computeClassResults` refuses published/locked exams
@@ -200,10 +204,10 @@ export class ExamResultsService {
     return db.transaction((inner) => this.computeClassResultsTx(inner, scope, examId, classId, opts));
   }
 
-  // NOTE: the engine body below sits in a bare block on purpose — it is the
-  // old transaction callback verbatim, so `git blame` still points at the
-  // original authorship instead of a reindent. Do not "clean" it without
-  // keeping the body identical.
+  // NOTE: the engine body below sits in a bare block kept from the original
+  // transaction callback — the engine's edits happen inside it; the block
+  // scopes its locals and keeps the diff blame-friendly. Do not reindent
+  // casually.
   private async computeClassResultsTx(
     tx: Tx,
     scope: DataScope,
@@ -247,7 +251,59 @@ export class ExamResultsService {
       const criteria = await this.resolvePassCriteria(tx, schoolId, exam.academicYearId, classId);
       const scale = await this.resolveDefaultScale(tx, schoolId);
       const subjectSet = await this.resolveSubjectSet(tx, classId, exam.academicYearId);
-      const cohort = await this.cohortOf(tx, classId, exam.academicYearId, null);
+
+      // THE PAPER EACH (STUDENT, SUBJECT) SITS (ADR-052). A section paper
+      // cohorts its own section; a class-wide paper cohorts the whole
+      // class, sectionless students included. The blueprint save refuses
+      // ambiguous shapes; this defense refuses them at compute with words —
+      // the old engine's section-blind .find() ran the whole class against
+      // whichever paper it saw first, zeroing the section whose marks
+      // lived on the other row.
+      const violations = findSchedulePartitionViolations(schedules);
+      if (violations.length > 0) {
+        const names = await tx
+          .select({ id: subjects.id, name: subjects.name })
+          .from(subjects)
+          .where(inArray(subjects.id, [...new Set(violations.map((v) => v.subjectId))]));
+        const nameOf = new Map(names.map((n) => [n.id, n.name]));
+        throw new Error(
+          `Ambiguous date sheet: ${describeSchedulePartitionViolations(
+            violations,
+            (id) => nameOf.get(id) ?? "a subject",
+          )}. Fix the papers before computing.`,
+        );
+      }
+
+      // One cohort load per DISTINCT scope: every class-wide paper shares
+      // the whole-class cohort; each section loads its own once.
+      const cohortByScope = new Map<string, string[]>();
+      const cohortFor = async (sectionId: string | null) => {
+        const key = sectionId ?? "*class";
+        const hit = cohortByScope.get(key);
+        if (hit) return hit;
+        const rows = await this.cohortOf(tx, classId, exam.academicYearId, sectionId);
+        const ids = rows.map((r) => r.studentId);
+        cohortByScope.set(key, ids);
+        return ids;
+      };
+      const paperOf = new Map<string, Map<string, (typeof schedules)[number]>>();
+      for (const schedule of schedules) {
+        for (const studentId of await cohortFor(schedule.sectionId)) {
+          let bySubject = paperOf.get(studentId);
+          if (!bySubject) {
+            bySubject = new Map();
+            paperOf.set(studentId, bySubject);
+          }
+          bySubject.set(schedule.subjectId, schedule);
+        }
+      }
+      // The compute population: every student at least one paper covers. A
+      // student no paper covers — a section that doesn't sit — gets NO row,
+      // never a computed zero-fail (ADR-052).
+      const allStudentIds = new Set<string>();
+      for (const ids of cohortByScope.values()) {
+        for (const id of ids) allStudentIds.add(id);
+      }
 
       // The per-component scale overrides (the ICSE case): a component with
       // its own scale gets its own grade — the reference SQL's "this
@@ -279,7 +335,7 @@ export class ExamResultsService {
         : [];
 
       const processed: { studentId: string }[] = [];
-      for (const { studentId } of cohort) {
+      for (const studentId of allStudentIds) {
         const outcomes: {
           subjectId: string;
           marks: bigint | null;
@@ -295,7 +351,7 @@ export class ExamResultsService {
         }[] = [];
 
         for (const mapping of subjectSet) {
-          const schedule = schedules.find((s) => s.subjectId === mapping.subjectId);
+          const schedule = paperOf.get(studentId)?.get(mapping.subjectId);
           if (!schedule) continue;
           const scheduleComponents = components.filter((c) => c.scheduleId === schedule.id);
           const studentRows = componentRows.filter(
@@ -407,7 +463,7 @@ export class ExamResultsService {
                   subjectId: s.subjectId,
                   finalMarks: s.marks ?? 0n,
                   passMark: toHundredths(
-                    schedules.find((sc) => sc.subjectId === s.subjectId)?.passMarks ?? "0.00",
+                    paperOf.get(studentId)?.get(s.subjectId)?.passMarks ?? "0.00",
                   ),
                   isMustPass: (criteria?.mandatoryPassSubjectIds ?? []).includes(s.subjectId),
                 })),
@@ -422,7 +478,7 @@ export class ExamResultsService {
           const grace = allocations.get(outcome.subjectId) ?? 0n;
           const final = (outcome.marks ?? 0n) + grace;
           const passMark = toHundredths(
-            schedules.find((sc) => sc.subjectId === outcome.subjectId)?.passMarks ?? "0.00",
+            paperOf.get(studentId)?.get(outcome.subjectId)?.passMarks ?? "0.00",
           );
           const isPassed = outcome.isGradedOnly
             ? true
@@ -484,6 +540,43 @@ export class ExamResultsService {
           }
         }
         processed.push({ studentId });
+      }
+
+      // Stale draft cleanup: recompute is idempotent, so a (student,
+      // subject) pair no paper covers must not keep its row from an
+      // earlier compute — a paper restructured between computes (legal
+      // while nothing is entered) would otherwise leave zero-fail rows
+      // behind. Draft rows are disposable computed math; published/locked
+      // rows are frozen and left alone.
+      const classCohort = await this.cohortOf(tx, classId, exam.academicYearId, null);
+      const classStudentIds = classCohort.map((c) => c.studentId);
+      if (classStudentIds.length > 0) {
+        const existingRows = await tx
+          .select({
+            id: studentSubjectResults.id,
+            studentId: studentSubjectResults.studentId,
+            subjectId: studentSubjectResults.subjectId,
+            resultStatus: studentSubjectResults.resultStatus,
+          })
+          .from(studentSubjectResults)
+          .where(
+            and(
+              eq(studentSubjectResults.examId, examId),
+              inArray(studentSubjectResults.studentId, classStudentIds),
+            ),
+          );
+        const staleIds = existingRows
+          .filter(
+            (r) =>
+              r.resultStatus === "draft" &&
+              !paperOf.get(r.studentId)?.has(r.subjectId),
+          )
+          .map((r) => r.id);
+        if (staleIds.length > 0) {
+          await tx
+            .delete(studentSubjectResults)
+            .where(inArray(studentSubjectResults.id, staleIds));
+        }
       }
 
       // The term result folds in every counted exam of the term.

@@ -2323,3 +2323,54 @@ counter, and a fee change mid-year cannot reach dues already written.
 **Rejected.** Generating on the 1st only (misses a day of downtime); a
 separate cron process (a second deployable for an idempotent fill); writing
 future dues as "draft" rows (a second state every read would have to filter).
+
+---
+
+## ADR-052 - A student computes against the paper they sat; a section that does not sit gets no result
+
+Date: 2026-10-30. Status: accepted (owner-directed fix; amends ADR-032 §12's
+"v1: every counted mapping applies" to every counted mapping applies to every
+student IN THE PAPER'S COHORT).
+
+**Context.** The compute engine resolved each (class, subject) to ONE schedule
+with a section-blind `find()` and computed the whole class against it. The
+schema and the entry layer were already section-aware — per-section schedule
+rows, per-schedule components, per-schedule pass marks — so three legitimate
+configurations computed wrongly: different date/time per section, different
+max marks per section, different component blueprints per section. Whichever
+section's row the query returned first silently zeroed the other's students
+(missing rows roll up as 0, failed, and not flagged absent). A section with
+no paper for a subject fared the same: a phantom zero-fail that flowed into
+term aggregates and could compartment students at final-result time.
+
+**Decision.**
+1. THE PARTITION RULE — per (exam, class, subject), an exam's papers are
+   either exactly one class-wide row (`section_id` null) or section rows with
+   distinct sections. Never both, never a section twice. Refused at
+   `schedules.save` with subject names; re-checked defensively at compute
+   (rows can predate the validator). The pure rule lives in exams-maths
+   (`findSchedulePartitionViolations`), tested hermetically.
+2. PER-PAPER COHORTS — each schedule computes against `cohortOf(class, year,
+   schedule.sectionId)`; each (student, subject) resolves to the paper whose
+   cohort holds the student, and its components, max marks and pass marks.
+   Max marks stay normalized: every subject score lands on the 0–100
+   weighted scale whatever the paper's raw maximum, so a /80 paper and a
+   /100 paper grade and rank comparably. Sectionless students sit class-wide
+   papers (their legal state) and carry a class rank, never a section rank.
+3. SKIP, NEVER ZERO-FAIL — a student no paper covers for a counted subject
+   gets NO `student_subject_results` row; their term aggregate renormalizes
+   over the papers they sat (the same choice as `exempt_renormalizes`). The
+   card prints only the subjects sat. Recompute deletes stale DRAFT rows for
+   uncovered pairs; published rows are frozen and left alone.
+4. Consequences accepted: a renormalized student's percentage is not
+   denominator-comparable with students who sat everything (rank effects are
+   possible); an unsat subject never enters `subjects_failed`, so it cannot
+   fail or compartment anyone. "Unsat = fail" would be a future
+   `pass_criteria` toggle, not this engine's default.
+
+**Rejected.** Per-section subject rows (the unique index on
+student+exam+subject is the term aggregate's contract — one vote per paper);
+a section-grain hard coverage gate (a section legitimately not sitting must
+stay expressible; an advisory warning on the readiness panel is deferred);
+zero-with-absent-flag for non-sitting sections ("absent" accuses a paper the
+student was never given).
