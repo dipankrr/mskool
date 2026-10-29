@@ -304,6 +304,23 @@ export function PaperScreen() {
       .inScope;
   }, [classWide, effectiveSection, fullRoster, sectionMap.sectionByStudent]);
   const rosterIds = useMemo(() => roster.map((row) => row.studentId), [roster]);
+  // Blank cells per component drive the ✓ on a finished component and the
+  // "next component" handoff. Recomputed every render on purpose: a hand
+  // useMemo over the store went stale under the React Compiler and painted ✓
+  // on unfinished components, and studentsMatching skips students without a
+  // draft cell — so until the draft has loaded the counts are simply unknown
+  // and neither the ✓ nor the chip may render.
+  const blanksKnown = draft.loaded && rosterIds.length > 0;
+  const blanksByComponent = new Map<string, number>();
+  if (blanksKnown) {
+    for (const component of components) {
+      blanksByComponent.set(
+        component.id,
+        studentsMatching(draft, rosterIds, component.id, component.pass, "missing")
+          .size,
+      );
+    }
+  }
   const visible = filter.ids
     ? roster.filter((row) => filter.ids?.has(row.studentId))
     : roster;
@@ -489,9 +506,32 @@ export function PaperScreen() {
 
   const componentOptions: readonly SegmentOption<string>[] = components.map((c) => ({
     value: c.id,
-    label: `${c.name} /${displayMarks(c.max)}`,
+    label: `${c.name} /${displayMarks(c.max)}${
+      blanksByComponent.get(c.id) === 0 ? " ✓" : ""
+    }`,
     testID: `paper-component-${c.id}`,
   }));
+
+  // A finished component hands the teacher to the next one with blanks —
+  // multi-component papers otherwise cost a full roster pass per component
+  // with nothing saying one is done.
+  const nextComponent =
+    editable &&
+    active &&
+    blanksKnown &&
+    blanksByComponent.get(active.id) === 0
+      ? (() => {
+          const candidate =
+            others.find((c) => (blanksByComponent.get(c.id) ?? 0) > 0) ?? null;
+          if (!candidate) return null;
+          return {
+            id: candidate.id,
+            name: candidate.name,
+            blanks: blanksByComponent.get(candidate.id) ?? 0,
+            doneName: active.name,
+          };
+        })()
+      : null;
 
   const sectionLabel = (id: string | null) =>
     sectionOptions.find((row) => row.id === id)?.name ??
@@ -599,6 +639,30 @@ export function PaperScreen() {
 
       {roster.length > 0 ? (
         <ChipRow label={copy.exams.paper.filterLabel} value={filter.kind} options={filterOptions} onChange={selectFilter} />
+      ) : null}
+
+      {nextComponent ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${copy.exams.paper.componentDone(nextComponent.doneName)} ${copy.exams.paper.nextComponent(nextComponent.name, nextComponent.blanks)}`}
+          onPress={() => {
+            setComponentId(nextComponent.id);
+            setFilter({ kind: "all", ids: null });
+          }}
+          style={({ pressed }) => [styles.nextComponent, pressed ? styles.pressed : null]}
+          testID="paper-next-component"
+        >
+          <AppIcon name="check" size={18} color={colors.tone.positive.fg} />
+          <View style={styles.nextComponentText}>
+            <ThemedText variant="bodyStrong">
+              {copy.exams.paper.componentDone(nextComponent.doneName)}
+            </ThemedText>
+            <ThemedText variant="meta" color={colors.muted}>
+              {copy.exams.paper.nextComponent(nextComponent.name, nextComponent.blanks)}
+            </ThemedText>
+          </View>
+          <AppIcon name="chevronRight" size={18} color={colors.muted} />
+        </Pressable>
       ) : null}
     </View>
   ) : null;
@@ -861,6 +925,19 @@ const styles = StyleSheet.create({
   sectionNeeded: {
     borderWidth: 1.5,
     borderColor: colors.accent,
+  },
+  nextComponent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    minHeight: 56,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+  },
+  nextComponentText: {
+    flex: 1,
   },
   sectionText: {
     flex: 1,

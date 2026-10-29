@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
@@ -21,6 +21,9 @@ import {
   stageMoves,
 } from "../../lib/exams";
 import type { StageMove } from "../../lib/exams";
+import { isoOf, publicationState } from "../../lib/exam-results";
+import type { PublicationRow } from "../../lib/exam-results";
+import { formatTimestampDate } from "../../lib/format";
 import { trpc } from "../../lib/trpc";
 import { spacing } from "../../theme/tokens";
 import { ConfirmSheet } from "../homework/confirm-sheet";
@@ -37,7 +40,7 @@ import { PaperCard } from "./paper-card";
 import { StageTrack } from "./stage-track";
 import { HubReviewCard } from "./hub-review-card";
 import type { ExamPaper } from "./types";
-import { useResultActions } from "./use-results";
+import { useResultActions, usePublications } from "./use-results";
 import {
   useClassSubjectNames,
   useExamDetail,
@@ -47,6 +50,25 @@ import {
 } from "./use-exam-data";
 import { useClassReadiness, usePaperCounts } from "./use-review-counts";
 import type { PaperCounts } from "./use-review-counts";
+
+/** The publication line under a class's Results row — one row per class. */
+function resultsDetailLine(
+  state: ReturnType<typeof publicationState>,
+  pub: PublicationRow | null,
+): string {
+  if (!pub || !state) return copy.exams.hub.resultsNotPublished;
+  if (state === "revision_open")
+    return copy.exams.publication.windowOpenSince(
+      formatTimestampDate(isoOf(pub.revisionOpenedAt)),
+    );
+  if (state === "re_issued")
+    return copy.exams.publication.reIssuedOn(
+      formatTimestampDate(isoOf(pub.reIssuedAt ?? pub.publishedAt)),
+    );
+  return copy.exams.publication.publishedOn(
+    formatTimestampDate(isoOf(pub.publishedAt)),
+  );
+}
 
 /**
  * One exam (Step 7A): where it is in its life, its papers by class, and the
@@ -96,17 +118,59 @@ export function ExamHubScreen() {
   // Results live from verification onward (D13): compute, publish, correct.
   const resultsOpen =
     exam !== null && (exam.status === "under_verification" || isResultsStage(exam.status));
+  // One Results row per class, each naming where that class stands — the
+  // publish-all follow-up ("Not published: Class 7") lands here without
+  // chip-switching.
+  const publications = usePublications(examId, resultsOpen);
+  const pubByClass = useMemo(
+    () =>
+      new Map<string, PublicationRow>(
+        (publications.data ?? []).map((row) => [row.classId, row]),
+      ),
+    [publications.data],
+  );
   const moves = exam ? stageMoves(exam.status) : { primary: null, overflow: [] };
   const mineOf = (paper: ExamPaper): boolean | null =>
     pairs && !pairsPending ? isMyPaper(paper, pairs) : null;
 
   // Reviewers (marks:verify) at an entry stage see review progress: the class
   // line from one readiness read, and each paper's own counts. A teacher's hub
-  // never pays for either.
+  // now pays for the same per-paper counts, but only for the papers the
+  // caller owns during entry — bounded by their teaching assignments — so
+  // "Enter marks" cards carry live progress and the continue row knows what
+  // is left.
+  const ownPapers = papers.filter((paper) => mineOf(paper) === true);
   const reviewerView = scope.canVerify && entryOpen;
   const classPapersRaw = papers.filter((paper) => paper.classId === activeClass);
   const readiness = useClassReadiness(examId, activeClass, reviewerView);
-  const paperCounts = usePaperCounts(examId, classPapersRaw, reviewerView);
+  const countsPapers = reviewerView ? classPapersRaw : entryOpen ? ownPapers : [];
+  const paperCounts = usePaperCounts(
+    examId,
+    countsPapers,
+    reviewerView || (entryOpen && ownPapers.length > 0),
+  );
+
+  // The teacher's next unfinished paper, in schedule order: the one tap that
+  // answers "where was I?" without reading the papers list.
+  const continuePaper = (() => {
+    if (!entryOpen || reviewerView) return null;
+    const candidate = ownPapers
+      .map((paper) => ({ paper, counts: paperCounts.counts.get(paper.id) }))
+      .filter(
+        (entry): entry is { paper: ExamPaper; counts: PaperCounts } =>
+          entry.counts != null && entry.counts.entered < entry.counts.expected,
+      )
+      .sort((a, b) =>
+        `${a.paper.examDate}${a.paper.startTime}`.localeCompare(
+          `${b.paper.examDate}${b.paper.startTime}`,
+        ),
+      )[0];
+    if (!candidate) return null;
+    return {
+      paper: candidate.paper,
+      left: candidate.counts.expected - candidate.counts.entered,
+    };
+  })();
   const needsReview = (paper: ExamPaper): boolean => {
     const counts = paperCounts.counts.get(paper.id);
     return Boolean(counts && counts.entered - counts.verified > 0);
@@ -189,7 +253,13 @@ export function ExamHubScreen() {
           : undefined
       }
       footer={footer}
-      onRefresh={() => void detail.refetch()}
+      // The paper counts ride the same marks.entry cache the paper screen
+      // writes through; a refresh that skipped them would show pre-entry
+      // numbers after a round of typing.
+      onRefresh={() => {
+        void detail.refetch();
+        void utils.exam.marks.entry.invalidate();
+      }}
       refreshing={detail.isRefetching}
     >
       {children}
@@ -278,6 +348,54 @@ export function ExamHubScreen() {
         />
       ) : null}
 
+      {resultsOpen ? (
+        <View style={styles.resultsRows}>
+          {classIds.map((classId) => {
+            const pub = pubByClass.get(classId) ?? null;
+            return (
+              <Card padless key={classId} testID={`exam-hub-results-${classId}`}>
+                <LinkRow
+                  title={copy.exams.hub.resultsRowTitle(
+                    names.className(classId) ?? copy.exams.hub.classChipsLabel,
+                  )}
+                  detail={resultsDetailLine(publicationState(pub ?? undefined), pub)}
+                  icon="grade"
+                  onPress={() =>
+                    router.push({
+                      pathname: "/exams/[examId]/class/[classId]",
+                      params: { examId, classId },
+                    })
+                  }
+                  first
+                  testID={`exam-hub-results-row-${classId}`}
+                />
+              </Card>
+            );
+          })}
+        </View>
+      ) : null}
+
+      {continuePaper ? (
+        <Card padless testID="exam-hub-continue">
+          <LinkRow
+            title={copy.exams.hub.continueTitle}
+            detail={copy.exams.hub.continueDetail(
+              names.subjectName(continuePaper.paper.subjectId) ?? "",
+              continuePaper.left,
+            )}
+            icon="marks"
+            onPress={() =>
+              router.push({
+                pathname: "/exams/[examId]/paper/[scheduleId]",
+                params: { examId, scheduleId: continuePaper.paper.id },
+              })
+            }
+            first
+            testID="exam-hub-continue-row"
+          />
+        </Card>
+      ) : null}
+
       {papers.length === 0 ? (
         <EmptyState
           icon="exams"
@@ -323,23 +441,6 @@ export function ExamHubScreen() {
               />
             </View>
           ) : null}
-          {resultsOpen && activeClass ? (
-            <Card padless testID="exam-hub-results-row">
-              <LinkRow
-                title={copy.exams.results.rowTitle}
-                detail={copy.exams.results.rowBody}
-                icon="grade"
-                onPress={() =>
-                  router.push({
-                    pathname: "/exams/[examId]/class/[classId]",
-                    params: { examId, classId: activeClass },
-                  })
-                }
-                first
-                testID="exam-hub-results"
-              />
-            </Card>
-          ) : null}
           {reviewerView && readiness.data ? (
             <View style={styles.reviewCard}>
               <HubReviewCard
@@ -359,6 +460,9 @@ export function ExamHubScreen() {
                 mine={mineOf(paper)}
                 reviewer={reviewerView}
                 counts={paperCounts.counts.get(paper.id) as PaperCounts | null | undefined}
+                showEntryProgress={
+                  !reviewerView && entryOpen && openable && mineOf(paper) === true
+                }
                 openable={openable}
                 entryOpen={entryOpen}
                 onPress={() =>
@@ -451,13 +555,15 @@ export function ExamHubScreen() {
             : []),
           ...(scope.canUpdate &&
           exam !== null &&
-          !isEntryOpen(exam.status) &&
           !isResultsStage(exam.status)
             ? [
                 {
                   id: "setup",
                   label: copy.exams.hub.optionSetup,
-                  detail: copy.exams.hub.optionSetupDetail,
+                  detail:
+                    isEntryOpen(exam.status) || exam.status === "ongoing"
+                      ? copy.exams.hub.optionSetupFrozenDetail
+                      : copy.exams.hub.optionSetupDetail,
                 },
               ]
             : []),
@@ -538,6 +644,9 @@ const styles = StyleSheet.create({
   },
   chips: {
     marginBottom: spacing.md,
+  },
+  resultsRows: {
+    gap: spacing.md,
   },
   papers: {
     gap: spacing.md,

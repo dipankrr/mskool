@@ -13,7 +13,13 @@ import { StatusPill } from "../../components/status-pill";
 import { ThemedText } from "../../components/themed-text";
 import { copy } from "../../lib/copy";
 import { displayMarks, fullName } from "../../lib/exams";
-import { displayPercent, isoOf, rankLine } from "../../lib/exam-results";
+import {
+  displayPercent,
+  isoOf,
+  publicationState,
+  rankLine,
+} from "../../lib/exam-results";
+import type { PublicationRow } from "../../lib/exam-results";
 import { formatTimestampDate } from "../../lib/format";
 import { colors } from "../../theme/brand-admin";
 import type { Tone } from "../../theme/brand-admin";
@@ -62,9 +68,15 @@ export function ResultDetailScreen() {
   const [correcting, setCorrecting] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
 
-  const windowOpen =
-    (publications.data ?? []).find((row) => row.classId === classId)?.state ===
-    "revision_open";
+  const publication = useMemo(
+    () =>
+      (publications.data ?? []).find(
+        (row: PublicationRow) => row.classId === classId,
+      ) ?? null,
+    [publications.data, classId],
+  );
+  const windowOpen = publication?.state === "revision_open";
+  const publicationStateNow = publication ? publicationState(publication) : null;
 
   const rows = useMemo(() => {
     const data = table.data;
@@ -216,6 +228,28 @@ export function ResultDetailScreen() {
           <ThemedText variant="body">{copy.exams.results.notComputed}</ThemedText>
         )}
       </Card>
+
+      {publication && publicationStateNow ? (
+        <ThemedText
+          variant="meta"
+          color={colors.muted}
+          testID="exam-result-publication"
+        >
+          {publicationStateNow === "revision_open"
+            ? copy.exams.publication.windowOpenSince(
+                formatTimestampDate(isoOf(publication.revisionOpenedAt)),
+              )
+            : publicationStateNow === "re_issued"
+              ? copy.exams.publication.reIssuedOn(
+                  formatTimestampDate(
+                    isoOf(publication.reIssuedAt ?? publication.publishedAt),
+                  ),
+                )
+              : copy.exams.publication.publishedOn(
+                  formatTimestampDate(isoOf(publication.publishedAt)),
+                )}
+        </ThemedText>
+      ) : null}
 
       <View style={styles.subjects}>
         {rows.lines.map((line) => (

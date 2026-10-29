@@ -51,11 +51,16 @@ const FILTERS: readonly {
 /**
  * One class's results, publication and corrections (chunk 7C) — the
  * principal's decision surface, one decision per screen: compute first, then
- * publish, then (after publication) correct through the ledger. The list is a
- * photograph of the last compute; the readiness strip and the stale banner
- * say when to re-take it. A teacher gets the same screen with every act
- * hidden, and nothing here is optimistic — publish and the window buttons
- * seal only after the server answers.
+ * publish, then (after publication) correct through the ledger. The screen
+ * wears two shapes keyed to that journey: before publication it is the
+ * readiness strip plus one compute act (results and ranks in that order);
+ * after, the publication card and the report cards lead and the ranked list
+ * becomes reference. Post-publish the readiness read is not asked for at all
+ * (gap 30 — it would report "0 verified" and stale on a published class). The
+ * list is a photograph of the last compute; the stale banner says when to
+ * re-take it. A teacher gets the same screen with every act hidden, and
+ * nothing here is optimistic — publish and the window buttons seal only after
+ * the server answers.
  */
 export function ClassResultsScreen() {
   const { examId = "", classId = "" } = useLocalSearchParams<{
@@ -67,7 +72,20 @@ export function ClassResultsScreen() {
   const names = useClassSubjectNames();
   const table = useClassResults(examId, classId);
   const publications = usePublications(examId);
-  const readiness = useClassReadiness(examId, classId, true);
+  const publication = useMemo(() => {
+    const row = (publications.data ?? []).find(
+      (candidate: PublicationRow) => candidate.classId === classId,
+    );
+    return { row, state: publicationState(row) };
+  }, [publications.data, classId]);
+  // Published, re-issued or mid-window, the readiness read has no post-publish
+  // semantics (gap 30 — it reports "0 verified" and stale), so the screen
+  // stops asking for it and leads with the publication card instead. Until
+  // the publication read answers, the shape is unknown: neither the publish
+  // CTA nor the readiness strip may flash for a class that is already out.
+  const publicationKnown = !publications.isPending;
+  const isPublished = publication.state !== null;
+  const readiness = useClassReadiness(examId, classId, publicationKnown && !isPublished);
   const actions = useResultActions(examId);
 
   const [filter, setFilter] = useState<ResultFilter>("all");
@@ -99,15 +117,41 @@ export function ClassResultsScreen() {
     [rows, filter],
   );
 
-  const publication = useMemo(() => {
-    const row = (publications.data ?? []).find(
-      (candidate: PublicationRow) => candidate.classId === classId,
-    );
-    return { row, state: publicationState(row) };
-  }, [publications.data, classId]);
-
   const className = names.className(classId) ?? copy.exams.hub.classChipsLabel;
   const windowOpen = publication.state === "revision_open";
+  const computing =
+    actions.mutations.compute.isPending ||
+    actions.mutations.computeRanks.isPending;
+
+  /** Compute, then ranks — one decision instead of two, in the right order. */
+  const runCompute = () => {
+    setBanner(null);
+    setActError(null);
+    void actions
+      .compute(classId)
+      .then((computed) => {
+        const line = copy.exams.results.computed(computed?.length ?? 0);
+        if (!exam?.termId) {
+          setBanner({ tone: "positive", text: line });
+          return;
+        }
+        void actions
+          .computeRanks(exam.termId)
+          .then((ranks) =>
+            setBanner({
+              tone: "positive",
+              text: `${line} ${copy.exams.results.ranksComputed(ranks.updated)}`,
+            }),
+          )
+          .catch(() =>
+            setBanner({
+              tone: "caution",
+              text: `${line} ${copy.exams.results.ranksFailed}`,
+            }),
+          );
+      })
+      .catch((error: unknown) => setActError(errorMessage(error)));
+  };
 
   const frame = (children: ReactNode, footer?: ReactNode) => (
     <ScreenFrame
@@ -176,7 +220,8 @@ export function ClassResultsScreen() {
     testID: `result-filter-${entry.value}`,
   }));
 
-  const publishFooter = scope.canPublish ? (
+  const publishFooter =
+    scope.canPublish && publicationKnown && !isPublished ? (
     <CapsuleButton
       title={copy.exams.publication.publish}
       onPress={() => {
@@ -212,114 +257,159 @@ export function ClassResultsScreen() {
         />
       ) : null}
 
-      <Card testID="exam-results-readiness">
-        <ThemedText variant="meta" color={colors.muted}>
-          {copy.exams.results.readinessTitle}
-        </ThemedText>
-        {readiness.data ? (
-          <>
-            <ThemedText variant="bodyStrong">
-              {[
-                copy.exams.results.enteredOf(
-                  readiness.data.enteredEntries,
-                  readiness.data.expectedEntries,
-                ),
-                copy.exams.results.verifiedOf(readiness.data.verifiedEntries),
-              ].join(" · ")}
-            </ThemedText>
-            <StatusMeter
-              segments={[
-                {
-                  key: "verified",
-                  value: readiness.data.verifiedEntries,
-                  tone: "positive",
-                },
-                {
-                  key: "toVerify",
-                  value: Math.max(
-                    0,
-                    readiness.data.enteredEntries - readiness.data.verifiedEntries,
-                  ),
-                  tone: "positive",
-                  opacity: 0.35,
-                },
-                {
-                  key: "missing",
-                  value: Math.max(
-                    0,
-                    readiness.data.expectedEntries - readiness.data.enteredEntries,
-                  ),
-                  tone: "neutral",
-                  opacity: 0.2,
-                },
-              ]}
-              style={styles.meter}
-              testID="exam-results-readiness-meter"
-            />
-            {readiness.data.belowBar.length > 0 ? (
-              <ThemedText variant="meta" color={colors.tone.caution.fg}>
-                {copy.exams.results.belowBar(readiness.data.belowBar.length)}
-              </ThemedText>
-            ) : null}
-            {readiness.data.staleCompute ? (
-              <Notice
-                tone="caution"
-                title={copy.exams.results.staleTitle}
-                message={copy.exams.results.staleBody}
-                icon="info"
-                testID="exam-results-stale"
-              />
-            ) : null}
-          </>
-        ) : (
-          <ThemedText variant="body">{copy.exams.results.loadError}</ThemedText>
-        )}
-      </Card>
+      {computing ? (
+        <Notice
+          tone="neutral"
+          title={copy.exams.results.computingTitle}
+          message={copy.exams.results.computingBody}
+          icon="info"
+          testID="exam-results-computing"
+        />
+      ) : null}
 
-      {scope.canUpdate ? (
-        <View style={styles.actions}>
-          <CapsuleButton
-            title={copy.exams.results.compute}
-            variant="secondary"
-            onPress={() => {
-              setBanner(null);
-              setActError(null);
-              void actions
-                .compute(classId)
-                .then((computed) => {
-                  setBanner({
-                    tone: "positive",
-                    text: copy.exams.results.computed(computed?.length ?? 0),
-                  });
-                })
-                .catch((error: unknown) => setActError(errorMessage(error)));
-            }}
-            loading={actions.pending}
-            disabled={actions.pending}
-            testID="exam-results-compute"
-          />
-          <CapsuleButton
-            title={copy.exams.results.computeRanks}
-            variant="secondary"
-            onPress={() => {
-              if (!exam?.termId) return;
-              setBanner(null);
-              setActError(null);
-              void actions
-                .computeRanks(exam.termId)
-                .then((result) => {
-                  setBanner({
-                    tone: "positive",
-                    text: copy.exams.results.ranksComputed(result.updated),
-                  });
-                })
-                .catch((error: unknown) => setActError(errorMessage(error)));
-            }}
-            loading={actions.pending}
-            disabled={actions.pending}
-            testID="exam-results-ranks"
-          />
-        </View>
+      {isPublished && publication.row ? (
+        <>
+          <Card testID="exam-results-publication">
+            <ThemedText variant="bodyStrong">
+              {windowOpen
+                ? copy.exams.publication.windowOpenSince(
+                    formatTimestampDate(isoOf(publication.row.revisionOpenedAt)),
+                  )
+                : publication.state === "re_issued"
+                  ? copy.exams.publication.reIssuedOn(
+                      formatTimestampDate(
+                        isoOf(publication.row.reIssuedAt ?? publication.row.publishedAt),
+                      ),
+                    )
+                  : copy.exams.publication.publishedOn(
+                      formatTimestampDate(isoOf(publication.row.publishedAt)),
+                    )}
+            </ThemedText>
+            {scope.canCorrect ? (
+              <View style={styles.windowActions}>
+                <CapsuleButton
+                  title={
+                    windowOpen
+                      ? copy.exams.publication.windowCloseAction
+                      : copy.exams.publication.windowOpenAction
+                  }
+                  variant={windowOpen ? "destructive" : "secondary"}
+                  size="compact"
+                  onPress={() => {
+                    actions.mutations.openWindow.reset();
+                    actions.mutations.closeWindow.reset();
+                    setBanner(null);
+                    setConfirm(windowOpen ? "closeWindow" : "openWindow");
+                  }}
+                  loading={actions.pending}
+                  disabled={actions.pending}
+                  testID={
+                    windowOpen ? "exam-results-close-window" : "exam-results-open-window"
+                  }
+                />
+              </View>
+            ) : null}
+          </Card>
+
+          {scope.canReadCards ? (
+            <Card padless testID="exam-results-cards-row">
+              <LinkRow
+                title={copy.exams.cards.row}
+                detail={copy.exams.publication.publishedOn(
+                  formatTimestampDate(isoOf(publication.row.publishedAt)),
+                )}
+                icon="grade"
+                onPress={() =>
+                  router.push({
+                    pathname: "/exams/[examId]/class/[classId]/cards",
+                    params: { examId, classId },
+                  })
+                }
+                first
+                testID="exam-results-cards"
+              />
+            </Card>
+          ) : null}
+        </>
+      ) : publicationKnown ? (
+        <>
+          <Card testID="exam-results-readiness">
+            <ThemedText variant="meta" color={colors.muted}>
+              {copy.exams.results.readinessTitle}
+            </ThemedText>
+            {readiness.isPending ? null : readiness.data ? (
+              <>
+                <ThemedText variant="bodyStrong">
+                  {[
+                    copy.exams.results.enteredOf(
+                      readiness.data.enteredEntries,
+                      readiness.data.expectedEntries,
+                    ),
+                    copy.exams.results.verifiedOf(readiness.data.verifiedEntries),
+                  ].join(" · ")}
+                </ThemedText>
+                <StatusMeter
+                  segments={[
+                    {
+                      key: "verified",
+                      value: readiness.data.verifiedEntries,
+                      tone: "positive",
+                    },
+                    {
+                      key: "toVerify",
+                      value: Math.max(
+                        0,
+                        readiness.data.enteredEntries - readiness.data.verifiedEntries,
+                      ),
+                      tone: "positive",
+                      opacity: 0.35,
+                    },
+                    {
+                      key: "missing",
+                      value: Math.max(
+                        0,
+                        readiness.data.expectedEntries - readiness.data.enteredEntries,
+                      ),
+                      tone: "neutral",
+                      opacity: 0.2,
+                    },
+                  ]}
+                  style={styles.meter}
+                  testID="exam-results-readiness-meter"
+                />
+                {readiness.data.belowBar.length > 0 ? (
+                  <ThemedText variant="meta" color={colors.tone.caution.fg}>
+                    {copy.exams.results.belowBar(readiness.data.belowBar.length)}
+                  </ThemedText>
+                ) : null}
+                {readiness.data.staleCompute ? (
+                  <Notice
+                    tone="caution"
+                    title={copy.exams.results.staleTitle}
+                    message={copy.exams.results.staleBody}
+                    icon="info"
+                    testID="exam-results-stale"
+                  />
+                ) : null}
+              </>
+            ) : (
+              <ThemedText variant="body">{copy.exams.results.loadError}</ThemedText>
+            )}
+          </Card>
+
+          {scope.canUpdate ? (
+            <View style={styles.actions}>
+              <CapsuleButton
+                title={copy.exams.results.computeAll}
+                variant="secondary"
+                onPress={runCompute}
+                loading={actions.pending}
+                disabled={actions.pending}
+                testID="exam-results-compute"
+              />
+            </View>
+          ) : null}
+        </>
       ) : null}
 
       {rows.length === 0 ? (
@@ -361,72 +451,6 @@ export function ClassResultsScreen() {
           </View>
         </View>
       )}
-
-      {publication.state && publication.row ? (
-        <Card testID="exam-results-publication">
-          <ThemedText variant="bodyStrong">
-            {windowOpen
-              ? copy.exams.publication.windowOpenSince(
-                  formatTimestampDate(isoOf(publication.row.revisionOpenedAt)),
-                )
-              : publication.state === "re_issued"
-                ? copy.exams.publication.reIssuedOn(
-                    formatTimestampDate(
-                      isoOf(publication.row.reIssuedAt ?? publication.row.publishedAt),
-                    ),
-                  )
-                : copy.exams.publication.publishedOn(
-                    formatTimestampDate(isoOf(publication.row.publishedAt)),
-                  )}
-          </ThemedText>
-          {scope.canCorrect ? (
-            <View style={styles.windowActions}>
-              <CapsuleButton
-                title={
-                  windowOpen
-                    ? copy.exams.publication.windowCloseAction
-                    : copy.exams.publication.windowOpenAction
-                }
-                variant={windowOpen ? "destructive" : "secondary"}
-                size="compact"
-                onPress={() => {
-                  actions.mutations.openWindow.reset();
-                  actions.mutations.closeWindow.reset();
-                  setBanner(null);
-                  setConfirm(windowOpen ? "closeWindow" : "openWindow");
-                }}
-                loading={actions.pending}
-                disabled={actions.pending}
-                testID={
-                  windowOpen ? "exam-results-close-window" : "exam-results-open-window"
-                }
-              />
-            </View>
-          ) : null}
-        </Card>
-      ) : null}
-
-      {scope.canReadCards ? (
-        <Card padless testID="exam-results-cards-row">
-          <LinkRow
-            title={copy.exams.cards.row}
-            detail={
-              publication.row?.publishedAt
-                ? copy.exams.cards.publishedOn(formatTimestampDate(isoOf(publication.row.publishedAt)))
-                : undefined
-            }
-            icon="grade"
-            onPress={() =>
-              router.push({
-                pathname: "/exams/[examId]/class/[classId]/cards",
-                params: { examId, classId },
-              })
-            }
-            first
-            testID="exam-results-cards"
-          />
-        </Card>
-      ) : null}
 
       {confirm === "publish" ? (
         <ConfirmSheet

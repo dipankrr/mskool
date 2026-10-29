@@ -39,6 +39,7 @@ export function PaperCard({
   mine,
   reviewer,
   counts,
+  showEntryProgress,
   openable,
   entryOpen,
   onPress,
@@ -53,6 +54,8 @@ export function PaperCard({
   reviewer: boolean;
   /** `undefined` while loading; `null` when the paper could not be read. */
   counts: PaperCounts | null | undefined;
+  /** The caller's own paper during entry: show how much is left, not just "Enter marks". */
+  showEntryProgress: boolean;
   openable: boolean;
   entryOpen: boolean;
   onPress: () => void;
@@ -93,12 +96,21 @@ export function PaperCard({
         ? copy.exams.hub.enter
         : copy.exams.hub.view
       : copy.exams.hub.waiting;
+  // The teacher's own paper during entry: a live count instead of a bare
+  // "Enter marks", so the card says what is still owed before it is opened.
+  const entryProgress =
+    !review && showEntryProgress && counts && counts.expected > 0
+      ? counts.entered >= counts.expected
+        ? copy.exams.hub.entryDone
+        : copy.exams.hub.review.classLine(counts.entered, counts.expected)
+      : null;
 
   const label = [
     subject,
     when,
     scope,
     how,
+    entryProgress,
     review?.pill ? review.pill.label : null,
     mine === true
       ? copy.exams.hub.yourPaper
@@ -127,6 +139,18 @@ export function PaperCard({
       </View>
       <ThemedText variant="meta">{when}</ThemedText>
       <ThemedText variant="meta">{[scope, how].filter(Boolean).join(" · ")}</ThemedText>
+      {entryProgress ? (
+        <ThemedText
+          variant="meta"
+          color={
+            entryProgress === copy.exams.hub.entryDone
+              ? colors.tone.positive.fg
+              : colors.muted
+          }
+        >
+          {entryProgress}
+        </ThemedText>
+      ) : null}
       <View style={styles.action}>
         <ThemedText
           variant="bodyStrong"

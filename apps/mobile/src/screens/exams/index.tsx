@@ -3,12 +3,14 @@ import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 
+import { CapsuleButton } from "../../components/capsule-button";
 import { Card } from "../../components/card";
 import { EmptyState } from "../../components/empty-state";
 import { EntityCard } from "../../components/entity-card";
 import { ErrorCard } from "../../components/error-card";
 import { LinkRow } from "../../components/link-row";
 import { ScreenFrame } from "../../components/screen-frame";
+import { SectionLabel } from "../../components/section-label";
 import { SegmentBar } from "../../components/segment-bar";
 import type { SegmentOption } from "../../components/segment-bar";
 import { Skeleton } from "../../components/skeleton";
@@ -109,6 +111,16 @@ export function ExamsListScreen() {
       backAccessibilityLabel={copy.common.back}
       backTestID="exams-back"
       titleTestID="exams-title"
+      action={
+        scope.canRead && scope.canCreate
+          ? {
+              label: copy.exams.form.newAction,
+              icon: "add",
+              onPress: () => router.push("/exams/exam-form"),
+              testID: "exams-new-action",
+            }
+          : undefined
+      }
       onRefresh={scope.canRead && scope.addressable ? () => void list.refetch() : undefined}
       refreshing={list.isRefetching}
     >
@@ -175,50 +187,23 @@ export function ExamsListScreen() {
           onChange={setPicked}
         />
       ) : null}
-      {scope.canUpdate ? (
-        <Card padless testID="exams-final-row">
-          <LinkRow
-            title={copy.exams.final.title}
-            detail={copy.exams.final.rowBody}
-            icon="grade"
-            onPress={() => router.push("/exams/final")}
-            first
-            testID="exams-final"
-          />
-        </Card>
-      ) : null}
-      <TermGradesShortcut />
-      {scope.canCreate ? (
-        <Card padless testID="exams-new-row">
-          <LinkRow
-            title={copy.exams.form.newRow}
-            detail={copy.exams.form.newRowDetail}
-            icon="exams"
-            onPress={() => router.push("/exams/exam-form")}
-            first
-            testID="exams-new"
-          />
-        </Card>
-      ) : null}
-      {scope.canCreate || scope.canUpdate ? (
-        <Card padless testID="exams-grading-row">
-          <LinkRow
-            title={copy.exams.grading.row}
-            detail={copy.exams.grading.rowBody}
-            icon="settings"
-            onPress={() => router.push("/exams/setup")}
-            first
-            testID="exams-grading"
-          />
-        </Card>
-      ) : null}
       {rows.length === 0 ? (
         <EmptyState
           icon="exams"
           title={copy.exams.list.emptyTitle}
           message={copy.exams.list.emptyBody}
           testID="exams-empty"
-        />
+        >
+          {scope.canCreate ? (
+            <CapsuleButton
+              title={copy.exams.list.createFirst}
+              variant="secondary"
+              size="compact"
+              onPress={() => router.push("/exams/exam-form")}
+              testID="exams-empty-create"
+            />
+          ) : null}
+        </EmptyState>
       ) : visible.length === 0 ? (
         <EmptyState
           icon="exams"
@@ -256,6 +241,46 @@ export function ExamsListScreen() {
           ))}
         </View>
       )}
+      <View style={styles.tools}>
+        <SectionLabel>{copy.exams.list.toolsLabel}</SectionLabel>
+        {scope.canCreate && rows.length > 0 ? (
+          <Card padless testID="exams-new-row">
+            <LinkRow
+              title={copy.exams.form.newRow}
+              detail={copy.exams.form.newRowDetail}
+              icon="exams"
+              onPress={() => router.push("/exams/exam-form")}
+              first
+              testID="exams-new"
+            />
+          </Card>
+        ) : null}
+        <TermGradesShortcut />
+        {scope.canUpdate ? (
+          <Card padless testID="exams-final-row">
+            <LinkRow
+              title={copy.exams.final.title}
+              detail={copy.exams.final.rowBody}
+              icon="grade"
+              onPress={() => router.push("/exams/final")}
+              first
+              testID="exams-final"
+            />
+          </Card>
+        ) : null}
+        {scope.canCreate || scope.canUpdate ? (
+          <Card padless testID="exams-grading-row">
+            <LinkRow
+              title={copy.exams.grading.row}
+              detail={copy.exams.grading.rowBody}
+              icon="settings"
+              onPress={() => router.push("/exams/setup")}
+              first
+              testID="exams-grading"
+            />
+          </Card>
+        ) : null}
+      </View>
     </View>,
   );
 }
@@ -291,6 +316,9 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   cards: {
+    gap: spacing.md,
+  },
+  tools: {
     gap: spacing.md,
   },
 });

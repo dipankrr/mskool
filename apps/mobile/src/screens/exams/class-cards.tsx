@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
+import { AppIcon } from "../../components/app-icon";
 import { Card } from "../../components/card";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorCard } from "../../components/error-card";
@@ -14,7 +15,7 @@ import { fullName } from "../../lib/exams";
 import { isoOf } from "../../lib/exam-results";
 import { formatTimestampDate } from "../../lib/format";
 import { colors } from "../../theme/brand-admin";
-import { radius, spacing } from "../../theme/tokens";
+import { fontFamily, radius, spacing } from "../../theme/tokens";
 import { useClassCards, useClassResults } from "./use-results";
 import { useExamScope } from "./use-exam-data";
 
@@ -32,6 +33,7 @@ export function ClassCardsScreen() {
   const scope = useExamScope();
   const table = useClassResults(examId, classId);
   const cards = useClassCards(examId, classId);
+  const [query, setQuery] = useState("");
 
   const rows = useMemo(() => {
     const byStudent = new Map(
@@ -43,6 +45,16 @@ export function ClassCardsScreen() {
       card: byStudent.get(student.studentId) ?? null,
     }));
   }, [cards.data, table.data]);
+
+  // Client-side: the whole roster is already in memory; the read cohorts on
+  // all enrollments (gap 24) and a 100-student class scrolls.
+  const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return rows;
+    return rows.filter(({ student }) =>
+      fullName(student).toLowerCase().includes(needle),
+    );
+  }, [rows, query]);
 
   const frame = (children: ReactNode) => (
     <ScreenFrame
@@ -101,8 +113,49 @@ export function ClassCardsScreen() {
 
   return frame(
     <View style={styles.body}>
-      <Card padless testID="exam-cards-list">
-        {rows.map(({ student, card }, index) => (
+      <View style={styles.searchWrap}>
+        <AppIcon
+          name="search"
+          size={18}
+          color={colors.muted}
+          style={styles.searchIcon}
+        />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder={copy.exams.cards.searchPlaceholder}
+          placeholderTextColor={colors.muted}
+          autoCorrect={false}
+          autoCapitalize="words"
+          returnKeyType="search"
+          accessibilityLabel={copy.exams.cards.searchPlaceholder}
+          accessibilityHint={copy.exams.cards.searchHint}
+          style={styles.searchInput}
+          testID="exam-cards-search"
+        />
+        {query.length > 0 ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={copy.exams.cards.searchClear}
+            hitSlop={8}
+            onPress={() => setQuery("")}
+            style={({ pressed }) => [pressed ? styles.pressed : null]}
+            testID="exam-cards-search-clear"
+          >
+            <AppIcon name="closeCircle" size={18} color={colors.muted} />
+          </Pressable>
+        ) : null}
+      </View>
+      {visible.length === 0 ? (
+        <EmptyState
+          icon="students"
+          title={copy.exams.cards.searchEmptyTitle}
+          message={copy.exams.cards.searchEmptyBody}
+          testID="exam-cards-search-empty"
+        />
+      ) : (
+        <Card padless testID="exam-cards-list">
+          {visible.map(({ student, card }, index) => (
           <Pressable
             key={student.studentId}
             accessibilityRole={card ? "button" : "text"}
@@ -142,8 +195,9 @@ export function ClassCardsScreen() {
               {card ? copy.exams.cards.version(card.version) : copy.exams.cards.noCard}
             </ThemedText>
           </Pressable>
-        ))}
-      </Card>
+          ))}
+        </Card>
+      )}
     </View>,
   );
 }
@@ -151,6 +205,26 @@ export function ClassCardsScreen() {
 const styles = StyleSheet.create({
   body: {
     gap: spacing.md,
+  },
+  searchWrap: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 12,
+    backgroundColor: colors.field,
+  },
+  searchIcon: {},
+  searchInput: {
+    flex: 1,
+    color: colors.ink,
+    paddingVertical: spacing.sm,
+    fontSize: 16,
+    fontFamily: fontFamily.regular,
+  },
+  pressed: {
+    opacity: 0.6,
   },
   row: {
     minHeight: 60,

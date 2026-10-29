@@ -12,6 +12,8 @@ import { ThemedText } from "../../components/themed-text";
 import { copy } from "../../lib/copy";
 import { errorMessage } from "../../lib/errors";
 import { fullName } from "../../lib/exams";
+import { isoOf } from "../../lib/exam-results";
+import { formatTimestampDate } from "../../lib/format";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import type { Tone } from "../../theme/brand-admin";
@@ -25,6 +27,19 @@ const VERDICT_PILL: Record<string, { label: string; tone: Tone }> = {
   compartment: { label: copy.exams.final.verdicts.compartment, tone: "caution" },
   detained: { label: copy.exams.final.verdicts.detained, tone: "critical" },
 };
+
+/**
+ * The compute endpoint has no read (gap 28) — its response is the only place
+ * the verdicts exist. This module-level cache keeps the last compute alive
+ * across navigation, so coming back shows the verdicts instead of a roster of
+ * "Not computed". Keyed by organization and year and always labelled with the
+ * date it was taken; the real fix is a read endpoint.
+ */
+let lastCompute: {
+  key: string;
+  verdicts: ReadonlyMap<string, string>;
+  computedAt: Date;
+} | null = null;
 
 /**
  * The year's final results (chunk 7C, D16) — one lean surface for a year-end
@@ -45,7 +60,15 @@ export function FinalResultsScreen() {
 
   const compute = trpc.exam.results.computeFinal.useMutation({
     onSuccess: (rows) => {
-      setVerdicts(new Map(rows.map((row) => [row.studentId, row.promotionStatus])));
+      const map = new Map(rows.map((row) => [row.studentId, row.promotionStatus]));
+      setVerdicts(map);
+      if (scope.organizationId && scope.academicYear) {
+        lastCompute = {
+          key: `${scope.organizationId}:${scope.academicYear.id}`,
+          verdicts: map,
+          computedAt: new Date(),
+        };
+      }
       setBanner(copy.exams.final.computed(rows.length));
       setError(null);
     },
@@ -82,6 +105,34 @@ export function FinalResultsScreen() {
     label: names.className(id) ?? copy.exams.hub.classChipsLabel,
     testID: `final-class-${id}`,
   }));
+
+  // Fresh verdicts win; otherwise the session's last compute for THIS
+  // organization and year, shown with its date so it never reads as current.
+  const cacheKey =
+    scope.organizationId && scope.academicYear
+      ? `${scope.organizationId}:${scope.academicYear.id}`
+      : null;
+  const cached = cacheKey && lastCompute?.key === cacheKey ? lastCompute : null;
+  const shown = verdicts ?? cached?.verdicts ?? null;
+  const showingCache = verdicts === null && cached !== null;
+
+  // The year at a glance, counted for the CLASS ON SCREEN — the verdicts map
+  // is year-wide, and a year total over a class list would read as a lie.
+  const verdictCounts = useMemo(() => {
+    if (!shown || !activeClass) return null;
+    const rosterRows = roster.data ?? [];
+    if (rosterRows.length === 0) return null;
+    let promoted = 0;
+    let compartment = 0;
+    let detained = 0;
+    for (const row of rosterRows) {
+      const verdict = shown.get(row.student.id);
+      if (verdict === "promoted") promoted += 1;
+      else if (verdict === "compartment") compartment += 1;
+      else if (verdict === "detained") detained += 1;
+    }
+    return { promoted, compartment, detained };
+  }, [shown, activeClass, roster.data]);
 
   const frame = (children: ReactNode, footer?: ReactNode) => (
     <ScreenFrame
@@ -122,6 +173,16 @@ export function FinalResultsScreen() {
         />
       ) : null}
 
+      {showingCache && cached ? (
+        <Notice
+          tone="neutral"
+          title={copy.exams.final.cachedOn(formatTimestampDate(isoOf(cached.computedAt)))}
+          message={copy.exams.final.cachedBody}
+          icon="info"
+          testID="exam-final-cached"
+        />
+      ) : null}
+
       {chips.length > 1 ? (
         <ChipRow
           label={copy.exams.hub.classChipsLabel}
@@ -129,6 +190,23 @@ export function FinalResultsScreen() {
           options={chips}
           onChange={setPicked}
         />
+      ) : null}
+
+      {verdictCounts &&
+      verdictCounts.promoted + verdictCounts.compartment + verdictCounts.detained > 0 ? (
+        <ThemedText variant="meta" color={colors.muted} testID="exam-final-counts">
+          {[
+            copy.exams.final.countPromoted(verdictCounts.promoted),
+            verdictCounts.compartment > 0
+              ? copy.exams.final.countCompartment(verdictCounts.compartment)
+              : null,
+            verdictCounts.detained > 0
+              ? copy.exams.final.countDetained(verdictCounts.detained)
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </ThemedText>
       ) : null}
 
       {roster.isPending && activeClass ? (
@@ -154,7 +232,7 @@ export function FinalResultsScreen() {
       ) : (
         <View style={styles.rows}>
           {(roster.data ?? []).map((row) => {
-            const verdict = verdicts?.get(row.student.id) ?? null;
+            const verdict = shown?.get(row.student.id) ?? null;
             const pill = verdict ? VERDICT_PILL[verdict] ?? null : null;
             return (
               <View key={row.student.id} style={styles.row} testID={`final-row-${row.student.id}`}>
@@ -176,7 +254,13 @@ export function FinalResultsScreen() {
     </View>,
     <CapsuleButton
       key="compute-final"
-      title={compute.isPending ? copy.exams.final.computing : copy.exams.final.compute}
+      title={
+        compute.isPending
+          ? copy.exams.final.computing
+          : shown
+            ? copy.exams.final.recompute
+            : copy.exams.final.compute
+      }
       onPress={() =>
         scope.academicYear &&
         compute.mutate({

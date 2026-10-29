@@ -3182,6 +3182,8 @@ export const copy = {
       emptyPublishedBody: "Results appear here once an exam is published.",
       loadError: "Couldn't load the exams.",
       hint: "Opens the exam",
+      toolsLabel: "More tools",
+      createFirst: "Create the first exam",
     },
     hub: {
       weight: (percent: string) => `${percent}% of term`,
@@ -3199,6 +3201,12 @@ export const copy = {
       enter: "Enter marks",
       view: "View marks",
       waiting: "Opens when marks entry starts",
+      entryDone: "All entered",
+      continueTitle: "Continue entering",
+      continueDetail: (subject: string, left: number) =>
+        `${subject} · ${left} ${left === 1 ? "entry" : "entries"} left`,
+      resultsRowTitle: (klass: string) => `Results — ${klass}`,
+      resultsNotPublished: "Not published yet",
       noPapersTitle: "No papers yet",
       noPapersBody: "Add a class to generate its papers from the mapped subjects.",
       addPapers: "Add papers",
@@ -3238,6 +3246,7 @@ export const copy = {
       optionEditDetail: "Name, weight and counting",
       optionSetup: "Papers & components",
       optionSetupDetail: "Add classes, edit dates and parts",
+      optionSetupFrozenDetail: "Read-only — the schedule is frozen",
       optionEligibility: "Attendance eligibility",
       optionEligibilityDetail: "Recheck the advisory bar and record exceptions",
       moved: (stage: string) => `Exam moved to ${stage}.`,
@@ -3327,6 +3336,8 @@ export const copy = {
       outOfMax: (max: string) => `Out of ${max}`,
       enterNumber: "Enter a number",
       noNegative: "Marks can't be negative",
+      componentDone: (name: string) => `${name} is complete.`,
+      nextComponent: (name: string, n: number) => `Next: ${name} · ${n} to enter`,
       notSaved: "Not saved · Tap to retry",
       verified: "Verified",
       rowLabel: (
@@ -3495,7 +3506,11 @@ export const copy = {
       staleBody:
         "Marks changed after the last compute. Compute again before publishing.",
       compute: "Compute results",
+      computeAll: "Compute results & ranks",
       computing: "Computing…",
+      computingTitle: "Computing the results…",
+      computingBody:
+        "This can take a minute or two. The list below is the last compute; it refreshes when this finishes.",
       computed: (n: number) =>
         `Computed ${n} ${n === 1 ? "student" : "students"}.`,
       computeFailed: "Couldn't compute the results",
@@ -3616,6 +3631,11 @@ export const copy = {
       publishedOn: (date: string) => `Published ${date}`,
       noCard: "No card",
       noCardBody: "No published card for this term yet.",
+      searchPlaceholder: "Find a student",
+      searchHint: "Filters the list by name",
+      searchClear: "Clear search",
+      searchEmptyTitle: "Nobody here",
+      searchEmptyBody: "No student in this class matches that name.",
       unreadableTitle: "Card data unreadable",
       unreadableBody:
         "The stored card couldn't be read on this device. It still renders on the web.",
@@ -3643,7 +3663,10 @@ export const copy = {
       nothingBody:
         "Compute the year's final results to see promotion verdicts.",
       compute: "Compute final results",
+      recompute: "Recompute final results",
       computing: "Computing…",
+      cachedOn: (date: string) => `Computed ${date}`,
+      cachedBody: "From the last compute on this device. Recompute for the latest verdicts.",
       computed: (n: number) =>
         `Final results for ${n} ${n === 1 ? "student" : "students"}.`,
       computeFailed: "Couldn't compute the final results",
@@ -3651,6 +3674,9 @@ export const copy = {
       emptyBody:
         "Final results appear once at least one term's results exist.",
       notComputed: "Not computed",
+      countPromoted: (n: number) => `${n} promoted`,
+      countCompartment: (n: number) => `${n} compartment`,
+      countDetained: (n: number) => `${n} detained`,
       verdicts: {
         promoted: "Promoted",
         compartment: "Compartment",
@@ -3818,6 +3844,7 @@ export const copy = {
       keepEditing: "Keep editing",
       parts: (n: number) => `${n} ${n === 1 ? "part" : "parts"}`,
       editParts: "Edit parts",
+      editPaper: "Edit",
       partsAfterSave: "Save the papers first — then this sheet offers the parts editor.",
       noPapersTitle: "No papers yet",
       noPapersBody:
