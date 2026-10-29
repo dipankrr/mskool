@@ -1956,3 +1956,192 @@ The owner asked for small local commits on the branch. Suggested split if the gr
 redone with `git add -p`: (1) pure logic + tests, (2) `copy.ts` + the `ScreenFrame` keyboard fix +
 the icon, (3) the eight routes and the hub, (4) subject types, (5) scales + band editor,
 (6) pass criteria, (7) docs.
+
+---
+
+## UX revision (2026-10-29) — UI-only pass, owner-directed
+
+The owner reviewed the finished 7A–7F flow: "not liking the UX and flow… UI changes which
+will improve UX are welcome." Scope held to UI-layer edits; no endpoint, route, permission
+or schema change, and the marks-entry rhythm untouched.
+
+1. **Exams list leads with exams** (`screens/exams/index.tsx`): the exam cards follow the
+   segment bar directly; "New exam", "Term grades", "Final results" and "Grading setup"
+   moved under a "More tools" label below the cards (order: New exam, Term grades, Final
+   results, Grading setup; the New exam row hides while the list is empty). Creation also
+   gets a `+ New` header action (gated `exam:create`, hidden without read) and the
+   session-empty state carries a "Create the first exam" button. Copy: `list.toolsLabel`,
+   `list.createFirst`, `form.newAction`.
+2. **Class results wears two shapes** (`results.tsx`): once the class is published
+   (`publication.list` state non-null) the publication card and the Report cards row lead,
+   the ranked list becomes reference, the publish footer disappears, and the readiness read
+   is not requested at all (gap 30 masking — the read reports "0 verified" + stale on a
+   published class). Pre-publication the readiness strip and compute stay, and "Compute
+   results" + "Compute ranks" are one button ("Compute results & ranks") that runs compute,
+   then term ranks, and answers "Computed N students. Ranks updated for M." — a ranks
+   failure downgrades the banner to caution instead of hiding the compute success. While
+   either runs, a neutral notice says it can take a minute or two and that the list below is
+   the last compute. Copy: `results.computeAll`, `computingTitle`, `computingBody`.
+3. **Result detail names its publication state** (`result-detail.tsx`): a muted line under
+   the term totals — Published/Re-issued/Correction window open since {date} — so the
+   corrector knows the window state before opening any subject. Reuses the publication
+   copy; no new strings.
+4. **Final results survives navigation** (`final-results.tsx`): a module-level cache keyed
+   organization+year keeps the last successful compute so returning to the screen shows the
+   verdicts (labelled "Computed {date}" with "Recompute for the latest verdicts") instead of
+   a roster of "Not computed"; the button reads "Recompute final results" once anything is
+   shown. This is a bandage over gap 28 (the compute response is the only source of
+   verdicts; no read endpoint), not a fix.
+
+Walk (emulator-5554, 1080×2400, admin, remote Neon dev DB, session 2026-27): the list's new
+order, `+ New` and More tools group; UT3 (walk) published class results — publication card
+with "Open correction window", Report cards row, no readiness, no publish footer; result
+detail's "Published 27/10/2026" line; UT1 (walk) hub — the verification move refused
+inline ("Some marks are still missing…"), leaving the fixture untouched. Screenshots in
+`apps/mobile/.expo/walk/ux-*.png`.
+
+Not walked, owed: the pre-publication results shape with the merged compute button and the
+computing notice (no fixture exam sits at under_verification with complete entry — UT1's
+move was refused, and no marks were fabricated for a walk fixture); the final-results cache
+round-trip (`results.computeFinal` failed twice at ~2 minutes with the friendly error in
+this environment — pre-existing server-side condition in the Neon-latency family; the error
+path itself was walked); the empty-state create button; iOS; TalkBack; 1.3× text.
+
+Gates: mobile tsc clean, jest 37 suites / 587 tests, lint 0 errors; root `pnpm check-types`
+green except the pre-existing untracked `apps/api/scripts/tmp-seed-fees-demo.ts`.
+
+New backend gap: none — but 28 and 29 graduate from "recorded" to "felt": the final-results
+dead end and the two-minute compute are exactly what the owner's UX complaint pointed at.
+
+### UX revision, round 2 (2026-10-29, later the same day)
+
+The owner pushed back on round 1's timidity ("i expected better… many places we can do"). Five
+more UI-only changes, same constraints:
+
+- **Hub, one Results row per class** (`hub.tsx`): the single active-class row became a list —
+  every class gets `Results — {class}` with its publication state as the detail line
+  (Published / Re-issued / Correction window open since {date} / "Not published yet") from the
+  existing `publication.list` read. The publish-all follow-up ("Not published: Class 7") lands
+  on the right screen without chip-switching.
+- **The teacher's hub now carries progress** (`hub.tsx` + `paper-card.tsx`): the per-paper
+  counts read reviewers already pay for is enabled for the CALLER'S OWN papers during entry
+  (bounded by teaching assignments). Own PaperCards show "Entered N of M" → "All entered", and
+  a pinned "Continue entering · {subject} · N entries left" row deep-links to the first own
+  paper with gaps in schedule order. Reviewers keep their view; nobody else pays.
+- **Component completion on the marks grid** (`paper.tsx`): finished components get a ✓ in the
+  component bar, and when the active component has no blanks a handoff chip offers
+  "{Component} is complete. / Next: {other} · N to enter" — one tap switches component and
+  resets the filter. Multi-component papers no longer cost a silent extra roster pass.
+- **Final results count line** (`final-results.tsx`): "12 promoted · 2 compartment · 1
+  detained" derived client-side from the verdicts (fresh or cached); zero segments omitted.
+- **Report-cards search** (`class-cards.tsx`): a client-side name filter over the already-loaded
+  roster, reusing the students screen's search-field pattern; empty result gets its own state.
+
+Walked on emulator-5554 (admin): the per-class Results row with its publication detail on UT3;
+the report-cards search end-to-end ("jai" → one row + clear button); the uniform login-refusal
+copy while attempting a teacher sign-in (subject-teacher@demo-trust.test and
+teacher@demo-trust.test both refused with the seeded passwords — the teacher-gated pieces
+(Continue row, entry progress, ✓ + handoff) share the reviewer counts read that IS walked, but
+need a teacher session with a teaching assignment to be seen on-device). Also: Metro died
+mid-walk and the dev client hit the known `UnsatisfiedLinkError` teardown race on force-stop —
+recovered by restarting Metro and relaunching; both are environment, not app.
+
+Gates re-run after round 2: mobile tsc clean, jest 37/587, lint 0; root check-types green
+except the pre-existing untracked `apps/api/scripts/tmp-seed-fees-demo.ts`.
+
+### UX revision round 2 — the owed walk, completed (2026-10-29, same day)
+
+The verifier's bar was the repo's own: a UI slice is not done until its screens render on a
+phone. The teacher session was unblocked by reading the seed (`Password123!` for all demo
+users) and proving the pair against the running API with curl — the earlier on-device failures
+were adb input mangling, not wrong passwords. `subject-teacher@demo-trust.test` owns BOTH the
+single-component Mathematics 6-A paper and the class-wide two-component Physics paper of UT1
+(walk), which made every teacher-gated piece reachable.
+
+Walked on emulator-5554 (subject teacher, UT1 at marks_entry):
+
+- **Hub, teacher view:** the pinned "Continue entering — Mathematics · 6 entries left" row;
+  "Your paper" pills on Mathematics and Physics; live entry lines "Entered 6 of 12" /
+  "Entered 1 of 34"; nothing on Personality ("Not your paper"). The Continue row deep-links
+  into the paper.
+- **Marks entry:** typed 11 Theory marks for section 6-A through the IME-Next rhythm
+  (focus auto-advanced, save queue drained to "All changes saved").
+- **Component ✓ + handoff:** with Theory complete the bar shows "Theory /40 ✓" (Practical
+  unmarked), Missing 0, and the chip "Theory is complete. / Next: Practical · 12 to enter";
+  tapping it switched to Practical, dropped the chip, and the rows flipped to "Theory: N"
+  context with empty /10 inputs.
+
+Two walk-fixes came out of it (both in the round-2 code, found live):
+
+1. **The ✓/handoff computation was stale** (`paper.tsx`): the hand `useMemo` over the draft
+   store kept its first (pre-load, empty-roster) result under the React Compiler, painting ✓
+   on unfinished components while the non-memoized summary on the same screen said Missing 11.
+   The blanks map is now recomputed every render (the file's own `summarizePaper` idiom) and
+   gated on `draft.loaded && roster.length > 0` — `studentsMatching` skips students without a
+   draft cell, so an unloaded draft must read as "unknown", never as zero blanks.
+2. **The hub's refresh skipped the counts** (`hub.tsx`): pull-to-refresh refetched `detail`
+   only, so after a round of typing the hub kept showing pre-entry numbers ("Entered 1 of 34"
+   while 11 saves had landed). `onRefresh` now also invalidates `exam.marks.entry`, and the
+   same pull showed "Entered 12 of 34".
+
+Fixture note: UT1 Physics Theory for section 6-A is now fully entered (12 cells, values
+19–35) and the hub counts reflect it; UT1 stays at marks_entry.
+
+**Final results is now precisely diagnosed:** `results.computeFinal` failed three times on
+device (~2 min each, the friendly "Couldn't compute the final results" banner — the error path
+itself walked thrice). The DB shows `student_final_results` untouched since the Oct 27 walk
+(2 stale "promoted" rows), so the server fails before writing — this is a server-side fault
+in the gap 28/29 family, not the 120 s client leash alone. Until the compute succeeds, the
+verdict count line and the cache round-trip cannot render real data on any client.
+
+Remaining owed from the whole revision: the pre-publication results shape (needs an exam at
+under_verification with complete entry — UT1 now has Physics Theory complete for 6-A but
+Mathematics is still 6 of 12 and Personality untouched), the empty-state create button, iOS,
+TalkBack, 1.3×.
+
+Gates re-run after the two fixes: mobile tsc clean, jest 37 suites / 587 tests, lint 0 errors;
+root `pnpm check-types` green except the pre-existing untracked
+`apps/api/scripts/tmp-seed-fees-demo.ts`. Walk screenshots: `apps/mobile/.expo/walk/ux-60…75`.
+
+### UX revision round 3 — the "find more" audit (2026-10-29, same day)
+
+The owner asked for more. A screen-by-screen audit of the surfaces the earlier rounds had not
+re-read (entry-row, student-sheet, review-panel, verify-sheet, exam-setup, use-exam-data,
+eligibility, components-editor, result-row) plus fresh eyes on the revision's own code found
+four real defects, all fixed; one suspected defect was a misdiagnosis and was reverted before
+it shipped.
+
+1. **Class results flashed the wrong shape while the publication read was in flight**
+   (`results.tsx`): `isPublished` starts false, so a PUBLISHED class briefly rendered the
+   pre-publication shape — readiness strip and the publish CTA — until `publication.list`
+   landed. The screen now waits for the read: `publicationKnown` gates both branches and the
+   publish footer (unknown renders neither), and the readiness fetch is not started for a
+   class that may already be published.
+2. **Readiness "Couldn't load" while merely loading** (`results.tsx`): with the readiness
+   query enabled, `readiness.data` is undefined during the fetch and the card printed the
+   load-error copy. The card renders nothing while `readiness.isPending`.
+3. **Final-results count line mixed year-wide numbers into a class list**
+   (`final-results.tsx`): the verdicts map is year-wide, so "12 promoted" above a Class 6
+   roster counted other classes. The counts now intersect the verdicts with the active
+   class's roster (already in hand from the enrollment read).
+4. **Exam setup's unsaved-changes guard hung on a `touched` flag** (`exam-setup.tsx`): add a
+   class then remove it — or edit a field back to its original value — and leaving was still
+   blocked with nothing pending; the flag also false-positived off any server row carrying a
+   pass override. `dirty` is now a real diff of the drafts against `exam.byId`'s schedules
+   (new rows, or any field diverging), and the `touched` state is gone.
+5. **The eligibility override sheet hid the server's refusal** (`eligibility.tsx`): the apply
+   failure wrote to the screen-level error Notice, which renders BEHIND the still-open sheet —
+   the user saw nothing. The refusal now lands in the sheet's own problem slot.
+
+**Reverted, recorded honestly:** a suspected review-mode dead tap (sheet lookups against the
+section-narrowed roster while the panel lists the full roster) turned out to be impossible —
+the panel renders `scope.students`, which is the same partition the entry `roster` narrows to,
+so the lookup always matched. The on-device "no sheet" that suggested it was fast-refresh
+residue after many hot reloads: a cold restart opened the sheet from the same tap
+(`ux-103`). The paper.tsx navigation change was reverted; the shipped code keeps 7B's
+section-scoped sheet navigation.
+
+Gates after round 3: mobile tsc clean, jest 37 suites / 587 tests, lint 0 errors; root
+`pnpm check-types` green except the pre-existing untracked
+`apps/api/scripts/tmp-seed-fees-demo.ts`. Walk screenshots `ux-90…103` (review scope line,
+section sheet, the student sheet on a cold start).

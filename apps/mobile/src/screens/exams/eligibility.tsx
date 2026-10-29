@@ -147,7 +147,13 @@ export function EligibilityScreen() {
         setAllowAll(false);
         setBanner(copy.exams.eligibility.allowed(studentIds.length));
       })
-      .catch((cause: unknown) => setError(errorMessage(cause)));
+      .catch((cause: unknown) => {
+        // The sheet is still open — a screen-level error Notice would render
+        // underneath it, unseen. The sheet's own problem slot carries the
+        // server's refusal.
+        setError(null);
+        setProblem(errorMessage(cause));
+      });
   };
 
   const frame = (children: ReactNode) => (

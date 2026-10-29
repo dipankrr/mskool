@@ -119,7 +119,7 @@ export function ComponentsEditorScreen() {
       .catch((cause: unknown) => setError(errorMessage(cause)));
   };
 
-  const frame = (children: ReactNode) => (
+  const frame = (children: ReactNode, footer?: ReactNode) => (
     <ScreenFrame
       title={copy.exams.components.title(subjectName)}
       meta={
@@ -130,6 +130,7 @@ export function ComponentsEditorScreen() {
       backAccessibilityLabel={copy.common.back}
       backTestID="exam-parts-back"
       titleTestID="exam-parts-title"
+      footer={footer}
     >
       {children}
     </ScreenFrame>
@@ -177,16 +178,21 @@ export function ComponentsEditorScreen() {
     );
   }
 
-  return frame(
-    <View style={styles.body}>
-      {frozen ? (
-        <Notice
-          tone="caution"
-          title={copy.exams.components.frozen}
-          icon="lock"
-          testID="exam-parts-frozen"
-        />
-      ) : null}
+  const sumLine = (
+    <ThemedText
+      variant="bodyStrong"
+      color={sum === 100 ? colors.accentDeep : colors.tone.caution.fg}
+      testID="exam-parts-sum"
+    >
+      {sum === 100 ? copy.exams.components.weightOk : copy.exams.components.weightLine(sum)}
+    </ThemedText>
+  );
+
+  // The save bar owns the feedback: Save sits at the bottom of a list that can
+  // grow past the fold, so a problem at the top of the body would be off-screen
+  // exactly when the office taps it.
+  const footer = frozen ? undefined : (
+    <View style={styles.footer}>
       {problem ? (
         <Notice tone="critical" title={problem} icon="info" testID="exam-parts-problem" />
       ) : null}
@@ -199,16 +205,30 @@ export function ComponentsEditorScreen() {
           testID="exam-parts-error"
         />
       ) : null}
+      <View style={styles.sumRow}>{sumLine}</View>
+      <CapsuleButton
+        title={actions.componentsPending ? copy.exams.components.saving : copy.exams.components.save}
+        onPress={save}
+        loading={actions.componentsPending}
+        disabled={actions.componentsPending}
+        testID="exam-parts-save"
+        style={styles.cta}
+      />
+    </View>
+  );
 
-      <View style={styles.sumRow}>
-        <ThemedText
-          variant="bodyStrong"
-          color={sum === 100 ? colors.accentDeep : colors.tone.caution.fg}
-          testID="exam-parts-sum"
-        >
-          {sum === 100 ? copy.exams.components.weightOk : copy.exams.components.weightLine(sum)}
-        </ThemedText>
-      </View>
+  return frame(
+    <View style={styles.body}>
+      {frozen ? (
+        <Notice
+          tone="caution"
+          title={copy.exams.components.frozen}
+          icon="lock"
+          testID="exam-parts-frozen"
+        />
+      ) : null}
+
+      {frozen ? <View style={styles.sumRow}>{sumLine}</View> : null}
 
       {drafts.map((component, index) => (
         <View key={index} style={styles.part}>
@@ -296,17 +316,10 @@ export function ComponentsEditorScreen() {
             }}
             testID="exam-parts-add"
           />
-          <CapsuleButton
-            title={actions.componentsPending ? copy.exams.components.saving : copy.exams.components.save}
-            onPress={save}
-            loading={actions.componentsPending}
-            disabled={actions.componentsPending}
-            testID="exam-parts-save"
-            style={styles.cta}
-          />
         </>
       )}
     </View>,
+    footer,
   );
 }
 
@@ -314,6 +327,9 @@ const styles = StyleSheet.create({
   body: {
     gap: spacing.md,
     paddingBottom: spacing.lg,
+  },
+  footer: {
+    gap: spacing.sm,
   },
   sumRow: {
     alignItems: "flex-end",

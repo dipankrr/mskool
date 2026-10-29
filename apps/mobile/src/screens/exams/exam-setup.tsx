@@ -64,7 +64,6 @@ export function ExamSetupScreen() {
 
   const [drafts, setDrafts] = useState<Record<string, PaperDraft[]>>({});
   const [removed, setRemoved] = useState<string[]>([]);
-  const [touched, setTouched] = useState(false);
   const [classSheetOpen, setClassSheetOpen] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
   const [editingRow, setEditingRow] = useState<{
@@ -87,12 +86,35 @@ export function ExamSetupScreen() {
     return [...ids];
   }, [serverPapers, drafts, removed]);
 
-  const dirty =
-    touched ||
-    removed.length > 0 ||
-    Object.values(drafts).some((rows) =>
-      rows.some((row) => row.isNew || row.passMarks !== null),
+  // Dirty is a real diff against the server rows, not a "was touched" flag:
+  // a teacher who adds a class and then removes it (or edits a field back to
+  // its original value) has nothing pending and must be able to leave. A
+  // draft row without a server twin is either new this session or the twin
+  // vanished under us — either way, unsaved.
+  const dirty = useMemo(() => {
+    if (removed.length > 0) return true;
+    return Object.entries(drafts).some(([classId, rows]) =>
+      rows.some((row) => {
+        if (row.isNew) return true;
+        const server = serverPapers.find(
+          (candidate) =>
+            candidate.classId === classId &&
+            candidate.subjectId === row.subjectId,
+        );
+        if (!server) return true;
+        return (
+          row.examDate !== server.examDate.slice(0, 10) ||
+          row.startTime !== server.startTime.slice(0, 5) ||
+          row.durationMinutes !== server.durationMinutes ||
+          row.venue !== (server.venue ?? "") ||
+          row.passMarks !==
+            (server.passMarks && server.passMarks !== "0.00"
+              ? server.passMarks
+              : null)
+        );
+      }),
     );
+  }, [drafts, removed, serverPapers]);
   useUnsavedChanges(dirty && !frozen, {
     title: copy.exams.setup.unsavedTitle,
     body: copy.exams.setup.unsavedBody,
@@ -171,7 +193,6 @@ export function ExamSetupScreen() {
       } satisfies PaperDraft;
     });
     setDrafts((current) => ({ ...current, [classId]: [...rowsOf(classId), ...rows] }));
-    setTouched(true);
     if (generated.length === 0) setBanner(copy.exams.setup.allMapped);
   };
 
@@ -186,7 +207,6 @@ export function ExamSetupScreen() {
         row.subjectId === subjectId ? { ...row, ...patch } : row,
       ),
     }));
-    setTouched(true);
   };
 
   const removeClass = (classId: string) => {
@@ -201,7 +221,6 @@ export function ExamSetupScreen() {
       delete next[classId];
       return next;
     });
-    setTouched(true);
     setRemoving(null);
   };
 
@@ -244,7 +263,6 @@ export function ExamSetupScreen() {
         }
         setDrafts({});
         setRemoved([]);
-        setTouched(false);
         setBanner(copy.exams.setup.saved);
       })
       .catch((cause: unknown) => setError(errorMessage(cause)));
@@ -412,9 +430,7 @@ export function ExamSetupScreen() {
                           `${row.durationMinutes} min`,
                           schedule
                             ? copy.exams.setup.parts(schedule.components.length)
-                            : row.isNew
-                              ? copy.exams.components.title("")
-                              : null,
+                            : null,
                         ]
                           .filter(Boolean)
                           .join(" · ")}
@@ -424,7 +440,7 @@ export function ExamSetupScreen() {
                       <AppIcon name="chevronRight" size={20} color={colors.chevron} />
                     ) : (
                       <ThemedText variant="meta" color={colors.accentDeep}>
-                        {copy.exams.setup.editParts}
+                        {copy.exams.setup.editPaper}
                       </ThemedText>
                     )}
                   </Pressable>
