@@ -376,3 +376,79 @@ export function computeRanks(
   }
   return ranks;
 }
+
+// ---------------------------------------------------------------------------
+// Schedule partition — per-section papers (ADR-052)
+// ---------------------------------------------------------------------------
+
+export interface SchedulePartitionRow {
+  classId: string;
+  subjectId: string;
+  /** Missing, null, and undefined all mean the class-wide paper. */
+  sectionId?: string | null;
+}
+
+export type SchedulePartitionViolation =
+  | { classId: string; subjectId: string; kind: "mixed_class_wide_and_section" }
+  | { classId: string; subjectId: string; kind: "duplicate_section" };
+
+/**
+ * For one (class, subject), an exam's papers are either exactly ONE
+ * class-wide row (sectionId null) or section rows with distinct sections —
+ * never both, never a section twice (ADR-052). Anything else is ambiguous:
+ * compute could not tell which paper a student sat, and picking one
+ * arbitrarily zeroes out the section whose marks live elsewhere. The
+ * blueprint save refuses these shapes; compute re-checks defensively
+ * (rows can predate the validator).
+ */
+export function findSchedulePartitionViolations(
+  allRows: SchedulePartitionRow[],
+): SchedulePartitionViolation[] {
+  // undefined and null sectionId are the same class-wide shape; normalize
+  // before grouping so neither bucket misfiles the other.
+  const rows = allRows.map((r) => ({ ...r, sectionId: r.sectionId ?? null }));
+  const byPaper = new Map<string, { classId: string; subjectId: string; rows: SchedulePartitionRow[] }>();
+  for (const row of rows) {
+    const key = `${row.classId}|${row.subjectId}`;
+    const group = byPaper.get(key) ?? { classId: row.classId, subjectId: row.subjectId, rows: [] };
+    group.rows.push(row);
+    byPaper.set(key, group);
+  }
+  const violations: SchedulePartitionViolation[] = [];
+  for (const group of byPaper.values()) {
+    const classWide = group.rows.filter((r) => r.sectionId === null);
+    const sectioned = group.rows.filter((r) => r.sectionId !== null);
+    if (classWide.length > 0 && sectioned.length > 0) {
+      violations.push({
+        classId: group.classId,
+        subjectId: group.subjectId,
+        kind: "mixed_class_wide_and_section",
+      });
+      continue;
+    }
+    const sectionIds = new Set(sectioned.map((r) => r.sectionId));
+    if (sectionIds.size !== sectioned.length) {
+      violations.push({
+        classId: group.classId,
+        subjectId: group.subjectId,
+        kind: "duplicate_section",
+      });
+    }
+  }
+  return violations;
+}
+
+/** One shared wording for the refusal — the blueprint save and the compute
+ * defense must say the same thing about the same broken shape. */
+export function describeSchedulePartitionViolations(
+  violations: SchedulePartitionViolation[],
+  subjectName: (subjectId: string) => string,
+): string {
+  return violations
+    .map((v) =>
+      v.kind === "mixed_class_wide_and_section"
+        ? `${subjectName(v.subjectId)} has both a class-wide paper and per-section papers`
+        : `${subjectName(v.subjectId)} has two papers for the same section`,
+    )
+    .join("; ");
+}

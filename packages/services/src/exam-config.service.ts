@@ -5,7 +5,7 @@ import {
 } from "./academic.service";
 import { examMarksService } from "./exam-marks.service";
 import { scopeWhere, type DataScope } from "@repo/authz";
-import { fromHundredths, toHundredths, weightedDefaultPassMark } from "./exams-maths";
+import { fromHundredths, toHundredths, weightedDefaultPassMark, describeSchedulePartitionViolations, findSchedulePartitionViolations } from "./exams-maths";
 import type {
   CreateExamInput,
   CreateGradingScaleInput,
@@ -1062,6 +1062,29 @@ export class ExamConfigService {
       if (removeClassIds.some((id) => input.schedules.some((s) => s.classId === id))) {
         throw new Error(
           "A class cannot be both removed and saved in one pass — remove it, then re-add its papers.",
+        );
+      }
+      // One shape per (class, subject): one class-wide paper or one paper
+      // per section — never both, never a section twice (ADR-052). Mixed
+      // shapes are what made the old compute pick a schedule arbitrarily,
+      // so they are refused here, at the write, with names.
+      const partitionViolations = findSchedulePartitionViolations(input.schedules);
+      if (partitionViolations.length > 0) {
+        const names = await tx
+          .select({ id: subjects.id, name: subjects.name })
+          .from(subjects)
+          .where(
+            inArray(
+              subjects.id,
+              [...new Set(partitionViolations.map((v) => v.subjectId))],
+            ),
+          );
+        const nameOf = new Map(names.map((n) => [n.id, n.name]));
+        throw new Error(
+          `Ambiguous date sheet: ${describeSchedulePartitionViolations(
+            partitionViolations,
+            (id) => nameOf.get(id) ?? "a subject",
+          )}. A subject is either one class-wide paper or one paper per section — never both.`,
         );
       }
       const classIds = [...new Set([...input.schedules.map((s) => s.classId), ...removeClassIds])];
