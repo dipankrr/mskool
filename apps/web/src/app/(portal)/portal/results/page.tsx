@@ -14,9 +14,9 @@ import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { Spinner } from "@/components/ui/spinner";
 import {
-  parseCardSnapshot,
-  ReportCardView,
-} from "@/features/exams/report-card-view";
+  AnyReportCardView,
+  parseAnyCardSnapshot,
+} from "@/features/exams/annual-card-view";
 import { copy } from "@/lib/copy";
 import { errorMessage } from "@/lib/errors";
 import { formatIsoDate } from "@/lib/format";
@@ -54,14 +54,14 @@ export default function PortalResultsPage() {
     // a multi-child login can tell the cards apart without another call.
     const map = new Map<string, string>();
     for (const row of list) {
-      const snapshot = parseCardSnapshot(row.snapshotData);
+      const snapshot = parseAnyCardSnapshot(row.snapshotData);
       if (snapshot) map.set(row.id, snapshot.student.name);
     }
     return map;
   }, [list]);
 
   const snapshot = useMemo(
-    () => (card.data ? parseCardSnapshot(card.data.snapshotData) : null),
+    () => (card.data ? parseAnyCardSnapshot(card.data.snapshotData) : null),
     [card.data],
   );
 
@@ -148,7 +148,7 @@ export default function PortalResultsPage() {
           </Button>
         </div>
       ) : snapshot ? (
-        <ReportCardView snapshot={snapshot} />
+        <AnyReportCardView snapshot={snapshot} />
       ) : (
         <p className="text-muted-foreground text-sm">{copy.exams.portal.loadFailed}</p>
       )}
