@@ -326,7 +326,7 @@ describe("annual integration: generate, review, publish", () => {
 
     const table = await examAnnualService.table(scopeOf(), w.academicYearId, w.classId);
     expect(table!.status).toBe("draft");
-    const by = Object.fromEntries(table!.students.map((s) => [s.name.split(" ")[0], s]));
+    const by = Object.fromEntries(table!.students.map((s) => [s.name.split(" ")[0]!, s]));
     const sub = (name: string, subjectId: string) => by[name]!.subjects.find((x) => x.subjectId === subjectId)!;
 
     expect(sub("Asha", w.maths).percentage).toBe("83.00");
