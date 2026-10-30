@@ -833,17 +833,15 @@ export class ExamResultsService {
       bySection.set(row.sectionId, list);
     }
 
-    let updated = 0;
+    // Ranks are written in bulk (one statement per column), not a statement
+    // per student.
     const now = new Date();
+    const sectionRanks = new Map<string, number>();
     for (const entries of bySection.values()) {
-      for (const [id, rank] of computeRanks(entries)) {
-        await tx
-          .update(studentTermResults)
-          .set({ rankInSection: rank, rankComputedAt: now })
-          .where(eq(studentTermResults.id, id));
-        updated += 1;
-      }
+      for (const [id, rank] of computeRanks(entries)) sectionRanks.set(id, rank);
     }
+    await setRanks(tx, "rank_in_section", sectionRanks, now);
+    const updated = sectionRanks.size;
 
     // rankInClass across the class: one batched section→class map (not a
     // query per student), then one ranking per class. Sectionless students
@@ -882,14 +880,11 @@ export class ExamResultsService {
       list.push({ id: row.id, score: scoreOf(row) });
       byClass.set(classId, list);
     }
+    const classRanks = new Map<string, number>();
     for (const entries of byClass.values()) {
-      for (const [id, rank] of computeRanks(entries)) {
-        await tx
-          .update(studentTermResults)
-          .set({ rankInClass: rank, rankComputedAt: now })
-          .where(eq(studentTermResults.id, id));
-      }
+      for (const [id, rank] of computeRanks(entries)) classRanks.set(id, rank);
     }
+    await setRanks(tx, "rank_in_class", classRanks, now);
     return { updated };
   }
 
@@ -903,15 +898,39 @@ export class ExamResultsService {
     studentId: string,
     termId: string,
   ): Promise<import("@repo/contracts").ReportCardSnapshotV1> {
-    const [student] = await tx
+    const snapshots = await this.assembleSnapshots(tx, [studentId], termId);
+    return snapshots.get(studentId)!;
+  }
+
+  /**
+   * The v1 snapshots of many students' term cards, from frozen facts.
+   *
+   * SET-BASED: the term, year, scale and exams are read once, and every
+   * per-student fact (identity, enrollment, subject rows, term result,
+   * assessments, attendance) is one bulk read for the whole list - the
+   * per-student version spent about ten round trips on each card, which is
+   * what made publishing a class take a minute on the remote database
+   * (plan gap 29, gap 51).
+   */
+  private async assembleSnapshots(
+    tx: Tx,
+    studentIds: string[],
+    termId: string,
+  ): Promise<Map<string, import("@repo/contracts").ReportCardSnapshotV1>> {
+    const out = new Map<string, import("@repo/contracts").ReportCardSnapshotV1>();
+    if (studentIds.length === 0) return out;
+
+    const studentRows = await tx
       .select({
+        id: studentsTable.id,
         firstName: studentsTable.firstName,
         lastName: studentsTable.lastName,
         admissionNumber: studentsTable.admissionNumber,
         schoolId: studentsTable.schoolId,
       })
       .from(studentsTable)
-      .where(eq(studentsTable.id, studentId));
+      .where(inArray(studentsTable.id, studentIds));
+    const studentOf = new Map(studentRows.map((s) => [s.id, s]));
     const [termRow] = await tx.select().from(terms).where(eq(terms.id, termId));
     const [year] = termRow
       ? await tx
@@ -922,9 +941,10 @@ export class ExamResultsService {
 
     // Identity is FROZEN, not referenced: a reprint in 2032 shows the
     // class/section/roll/school as they were, even if the student moved.
-    const [enrollment] = termRow
+    const enrollmentRows = termRow
       ? await tx
           .select({
+            studentId: studentEnrollments.studentId,
             classId: studentEnrollments.classId,
             sectionId: studentEnrollments.sectionId,
             rollNumber: studentEnrollments.rollNumber,
@@ -932,23 +952,36 @@ export class ExamResultsService {
           .from(studentEnrollments)
           .where(
             and(
-              eq(studentEnrollments.studentId, studentId),
+              inArray(studentEnrollments.studentId, studentIds),
               eq(studentEnrollments.academicYearId, termRow.academicYearId),
             ),
           )
       : [];
-    const [klass] = enrollment
-      ? await tx.select({ name: classes.name }).from(classes).where(eq(classes.id, enrollment.classId))
+    const enrollmentOf = new Map<string, (typeof enrollmentRows)[number]>();
+    for (const e of enrollmentRows) if (!enrollmentOf.has(e.studentId)) enrollmentOf.set(e.studentId, e);
+
+    const classIds = [...new Set(enrollmentRows.map((e) => e.classId))];
+    const classRows = classIds.length
+      ? await tx.select({ id: classes.id, name: classes.name }).from(classes).where(inArray(classes.id, classIds))
       : [];
-    const [section] = enrollment?.sectionId
-      ? await tx.select({ name: sections.name }).from(sections).where(eq(sections.id, enrollment.sectionId))
+    const className = new Map(classRows.map((c) => [c.id, c.name]));
+    const sectionIds = [...new Set(enrollmentRows.map((e) => e.sectionId).filter((s): s is string => s != null))];
+    const sectionRows = sectionIds.length
+      ? await tx
+          .select({ id: sections.id, name: sections.name })
+          .from(sections)
+          .where(inArray(sections.id, sectionIds))
       : [];
-    const [school] = student?.schoolId
-      ? await tx.select({ name: schools.name }).from(schools).where(eq(schools.id, student.schoolId))
+    const sectionName = new Map(sectionRows.map((s) => [s.id, s.name]));
+    const schoolIds = [...new Set(studentRows.map((s) => s.schoolId).filter((s): s is string => !!s))];
+    const schoolRows = schoolIds.length
+      ? await tx.select({ id: schools.id, name: schools.name }).from(schools).where(inArray(schools.id, schoolIds))
       : [];
-    const scale = student?.schoolId
-      ? await this.resolveDefaultScale(tx, student.schoolId)
-      : null;
+    const schoolName = new Map(schoolRows.map((s) => [s.id, s.name]));
+    const scaleBySchool = new Map<string, Awaited<ReturnType<typeof this.resolveDefaultScale>>>();
+    for (const schoolId of schoolIds) {
+      scaleBySchool.set(schoolId, await this.resolveDefaultScale(tx, schoolId));
+    }
 
     const termExamIds = (
       await tx
@@ -959,6 +992,7 @@ export class ExamResultsService {
     const subjectRows = termExamIds.length
       ? await tx
           .select({
+            studentId: studentSubjectResults.studentId,
             subjectId: studentSubjectResults.subjectId,
             subjectName: subjects.name,
             countsTowardResult: studentSubjectResults.countsTowardResult,
@@ -978,56 +1012,59 @@ export class ExamResultsService {
           .innerJoin(exams, eq(studentSubjectResults.examId, exams.id))
           .where(
             and(
-              eq(studentSubjectResults.studentId, studentId),
+              inArray(studentSubjectResults.studentId, studentIds),
               inArray(studentSubjectResults.examId, termExamIds),
             ),
           )
       : [];
-
-    // One row per subject: exam-weighted term score (same maths as compute).
-    const bySubject = new Map<string, typeof subjectRows>();
+    type SubjectRow = (typeof subjectRows)[number];
+    const rowsOf = new Map<string, Map<string, SubjectRow[]>>();
     for (const row of subjectRows) {
+      const bySubject = rowsOf.get(row.studentId) ?? new Map<string, SubjectRow[]>();
       const list = bySubject.get(row.subjectId) ?? [];
       list.push(row);
       bySubject.set(row.subjectId, list);
+      rowsOf.set(row.studentId, bySubject);
     }
 
-    const [termResult] = await tx
+    const termResultRows = await tx
       .select()
       .from(studentTermResults)
-      .where(and(eq(studentTermResults.studentId, studentId), eq(studentTermResults.termId, termId)));
+      .where(and(inArray(studentTermResults.studentId, studentIds), eq(studentTermResults.termId, termId)));
+    const termResultOf = new Map(termResultRows.map((t) => [t.studentId, t]));
 
-    const typeBySubject = new Map<string, { id: string; name: string; sequence: number }>();
-    for (const [subjectId] of bySubject) {
-      // Class-scoped: the same subject can be typed differently in two
-      // classes — the student's own class/year wins. Subject-only is the
-      // fallback for cards whose enrollment is gone (never borrowed across
-      // classes when the enrollment exists but the mapping doesn't).
-      let resolved: { id: string; name: string; sequence: number } | undefined;
-      if (enrollment && termRow) {
-        [resolved] = await tx
-          .select({ id: subjectTypes.id, name: subjectTypes.name, sequence: subjectTypes.sequence })
+    // Class-scoped: the same subject can be typed differently in two
+    // classes - the student's own class/year wins. Subject-only is the
+    // fallback for cards whose enrollment is gone (never borrowed across
+    // classes when the enrollment exists but the mapping doesn't).
+    type SubjectType = { id: string; name: string; sequence: number };
+    const subjectIdsUsed = [...new Set(subjectRows.map((r) => r.subjectId))];
+    const mappingRows = subjectIdsUsed.length
+      ? await tx
+          .select({
+            subjectId: classSubjectMappings.subjectId,
+            classId: classSubjectMappings.classId,
+            academicYearId: classSubjectMappings.academicYearId,
+            id: subjectTypes.id,
+            name: subjectTypes.name,
+            sequence: subjectTypes.sequence,
+          })
           .from(classSubjectMappings)
           .innerJoin(subjectTypes, eq(classSubjectMappings.subjectTypeId, subjectTypes.id))
-          .where(
-            and(
-              eq(classSubjectMappings.subjectId, subjectId),
-              eq(classSubjectMappings.classId, enrollment.classId),
-              eq(classSubjectMappings.academicYearId, termRow.academicYearId),
-            ),
-          );
-      } else {
-        [resolved] = await tx
-          .select({ id: subjectTypes.id, name: subjectTypes.name, sequence: subjectTypes.sequence })
-          .from(classSubjectMappings)
-          .innerJoin(subjectTypes, eq(classSubjectMappings.subjectTypeId, subjectTypes.id))
-          .where(eq(classSubjectMappings.subjectId, subjectId));
-      }
-      if (resolved) typeBySubject.set(subjectId, resolved);
+          .where(inArray(classSubjectMappings.subjectId, subjectIdsUsed))
+      : [];
+    const typeInClass = new Map<string, SubjectType>();
+    const typeAnywhere = new Map<string, SubjectType>();
+    for (const m of mappingRows) {
+      const type = { id: m.id, name: m.name, sequence: m.sequence };
+      const key = `${m.classId}|${m.academicYearId}|${m.subjectId}`;
+      if (!typeInClass.has(key)) typeInClass.set(key, type);
+      if (!typeAnywhere.has(m.subjectId)) typeAnywhere.set(m.subjectId, type);
     }
 
-    const assessments = await tx
+    const assessmentRows = await tx
       .select({
+        studentId: termAssessments.studentId,
         mappingId: termAssessments.mappingId,
         grade: termAssessments.grade,
         remarks: termAssessments.teacherRemarks,
@@ -1037,113 +1074,180 @@ export class ExamResultsService {
       .from(termAssessments)
       .innerJoin(classSubjectMappings, eq(termAssessments.mappingId, classSubjectMappings.id))
       .innerJoin(subjectTypes, eq(classSubjectMappings.subjectTypeId, subjectTypes.id))
-      .where(and(eq(termAssessments.studentId, studentId), eq(termAssessments.termId, termId)));
+      .where(and(inArray(termAssessments.studentId, studentIds), eq(termAssessments.termId, termId)));
 
-    const [attendance] = await tx
-      .select({
-        workingDays: attendanceSummary.workingDays,
-        daysPresent: attendanceSummary.daysPresent,
-        pct: attendanceSummary.attendancePercentage,
-      })
-      .from(attendanceSummary)
-      .where(
-        termRow
-          ? and(
-              eq(attendanceSummary.studentId, studentId),
+    const attendanceRows = termRow
+      ? await tx
+          .select({
+            studentId: attendanceSummary.studentId,
+            workingDays: attendanceSummary.workingDays,
+            daysPresent: attendanceSummary.daysPresent,
+            pct: attendanceSummary.attendancePercentage,
+          })
+          .from(attendanceSummary)
+          .where(
+            and(
+              inArray(attendanceSummary.studentId, studentIds),
               eq(attendanceSummary.academicYearId, termRow.academicYearId),
               eq(attendanceSummary.periodType, "term"),
               eq(attendanceSummary.termId, termId),
-            )
-          : sql`false`,
-      );
+            ),
+          )
+      : [];
+    const attendanceOf = new Map<string, (typeof attendanceRows)[number]>();
+    for (const a of attendanceRows) if (!attendanceOf.has(a.studentId)) attendanceOf.set(a.studentId, a);
 
-    return {
-      snapshotVersion: 1,
-      student: {
-        name: `${student?.firstName ?? ""} ${student?.lastName ?? ""}`.trim(),
-        admissionNumber: student?.admissionNumber ?? "",
-        className: klass?.name ?? "",
-        sectionName: section?.name ?? null,
-        rollNumber: enrollment?.rollNumber ?? null,
-      },
-      school: { name: school?.name ?? "" },
-      academicYear: { name: year?.name ?? "" },
-      term: { id: termId, name: termRow?.name ?? "" },
-      // Print order, not UUID order: the school's own widget sequence,
-      // then subject name.
-      subjects: [...bySubject.entries()]
-        .sort(([aId, aRows], [bId, bRows]) => {
-          const aType = typeBySubject.get(aId);
-          const bType = typeBySubject.get(bId);
-          const aSeq = aType?.sequence ?? 999;
-          const bSeq = bType?.sequence ?? 999;
-          if (aSeq !== bSeq) return aSeq - bSeq;
-          return (aRows[0]?.subjectName ?? "").localeCompare(bRows[0]?.subjectName ?? "");
-        })
-        .map(([subjectId, rows]) => {
-        // The same derivation the term compute uses (ADR-053 §4): the card
-        // and the total can no longer disagree. A subject excused from every
-        // exam prints blank; graded-only subjects print no marks.
-        const outcome = termSubjectScore(
-          rows.map((r) => ({
-            marks: r.marksObtained ? toHundredths(r.marksObtained) : null,
-            weightage: toHundredths(r.weightage),
-            isPassed: r.isPassed,
-            passMark: toHundredths(r.passMarks),
-            isExempted: r.isExempted,
-            gradePoint: r.gradePoint ? toHundredths(r.gradePoint) : null,
+    for (const studentId of studentIds) {
+      const student = studentOf.get(studentId);
+      const enrollment = enrollmentOf.get(studentId);
+      const scale = student?.schoolId ? (scaleBySchool.get(student.schoolId) ?? null) : null;
+      const bySubject = rowsOf.get(studentId) ?? new Map<string, SubjectRow[]>();
+      const termResult = termResultOf.get(studentId);
+      const attendance = attendanceOf.get(studentId);
+
+      const typeBySubject = new Map<string, SubjectType>();
+      for (const [subjectId] of bySubject) {
+        const resolved =
+          enrollment && termRow
+            ? typeInClass.get(`${enrollment.classId}|${termRow.academicYearId}|${subjectId}`)
+            : typeAnywhere.get(subjectId);
+        if (resolved) typeBySubject.set(subjectId, resolved);
+      }
+
+      out.set(studentId, {
+        snapshotVersion: 1,
+        student: {
+          name: `${student?.firstName ?? ""} ${student?.lastName ?? ""}`.trim(),
+          admissionNumber: student?.admissionNumber ?? "",
+          className: (enrollment ? className.get(enrollment.classId) : undefined) ?? "",
+          sectionName: (enrollment?.sectionId ? sectionName.get(enrollment.sectionId) : undefined) ?? null,
+          rollNumber: enrollment?.rollNumber ?? null,
+        },
+        school: { name: (student?.schoolId ? schoolName.get(student.schoolId) : undefined) ?? "" },
+        academicYear: { name: year?.name ?? "" },
+        term: { id: termId, name: termRow?.name ?? "" },
+        // Print order, not UUID order: the school's own widget sequence,
+        // then subject name.
+        subjects: [...bySubject.entries()]
+          .sort(([aId, aRows], [bId, bRows]) => {
+            const aSeq = typeBySubject.get(aId)?.sequence ?? 999;
+            const bSeq = typeBySubject.get(bId)?.sequence ?? 999;
+            if (aSeq !== bSeq) return aSeq - bSeq;
+            return (aRows[0]?.subjectName ?? "").localeCompare(bRows[0]?.subjectName ?? "");
+          })
+          .map(([subjectId, rows]) => {
+            // The same derivation the term compute uses (ADR-053 §4): the card
+            // and the total can no longer disagree. A subject excused from every
+            // exam prints blank; graded-only subjects print no marks.
+            const outcome = termSubjectScore(
+              rows.map((r) => ({
+                marks: r.marksObtained ? toHundredths(r.marksObtained) : null,
+                weightage: toHundredths(r.weightage),
+                isPassed: r.isPassed,
+                passMark: toHundredths(r.passMarks),
+                isExempted: r.isExempted,
+                gradePoint: r.gradePoint ? toHundredths(r.gradePoint) : null,
+              })),
+              { isGradedOnly: rows.some((r) => r.isGradedOnly) },
+            );
+            const exempted = outcome.kind === "exempt";
+            const score = outcome.kind === "scored" ? outcome.score : null;
+            const type = typeBySubject.get(subjectId);
+            // The TERM grade of the term score - not the first exam's grade.
+            const termGrade = score !== null && scale ? gradeFor(score, scale.bands) : null;
+            return {
+              subjectId,
+              subjectName: rows[0]!.subjectName,
+              subjectTypeId: type?.id ?? null,
+              widgetName: type?.name ?? null,
+              widgetSequence: type?.sequence ?? null,
+              marksObtained:
+                score === null || (score === 0n && rows.every((r) => r.isAbsent)) ? null : fromHundredths(score),
+              maxMarks: "100.00",
+              grade: termGrade?.gradeLabel ?? rows.find((r) => r.grade != null)?.grade ?? null,
+              gradePoint:
+                termGrade?.gradePoint != null
+                  ? fromHundredths(termGrade.gradePoint)
+                  : (rows.find((r) => r.gradePoint != null)?.gradePoint ?? null),
+              isAbsent: rows.some((r) => r.isAbsent),
+              isExempted: exempted,
+              countsTowardResult: rows.some((r) => r.countsTowardResult),
+            };
+          }),
+        totals: {
+          totalMarks: termResult?.totalMarks ?? null,
+          maxMarks: termResult?.maxMarks ?? null,
+          percentage: termResult?.percentage ?? null,
+          grade: termResult?.grade ?? null,
+          gradePoint: termResult?.gradePoint ?? null,
+          isPassed: termResult?.isPassed ?? null,
+          rankInSection: termResult?.rankInSection ?? null,
+          rankInClass: termResult?.rankInClass ?? null,
+        },
+        attendance: attendance
+          ? {
+              workingDays: attendance.workingDays,
+              daysPresent: attendance.daysPresent,
+              percentage: attendance.pct,
+            }
+          : null,
+        termAssessments: assessmentRows
+          .filter((a) => a.studentId === studentId)
+          .map((a) => ({
+            mappingId: a.mappingId,
+            areaName: a.typeName,
+            widgetName: a.typeName,
+            grade: a.grade,
+            remarks: a.remarks,
           })),
-          { isGradedOnly: rows.some((r) => r.isGradedOnly) },
-        );
-        const exempted = outcome.kind === "exempt";
-        const score = outcome.kind === "scored" ? outcome.score : null;
-        const type = typeBySubject.get(subjectId);
-        // The TERM grade of the term score — not the first exam's grade.
-        const termGrade = score !== null && scale ? gradeFor(score, scale.bands) : null;
-        return {
-          subjectId,
-          subjectName: rows[0]!.subjectName,
-          subjectTypeId: type?.id ?? null,
-          widgetName: type?.name ?? null,
-          widgetSequence: type?.sequence ?? null,
-          marksObtained: score === null || (score === 0n && rows.every((r) => r.isAbsent)) ? null : fromHundredths(score),
-          maxMarks: "100.00",
-          grade: termGrade?.gradeLabel ?? rows.find((r) => r.grade != null)?.grade ?? null,
-          gradePoint:
-            termGrade?.gradePoint != null
-              ? fromHundredths(termGrade.gradePoint)
-              : (rows.find((r) => r.gradePoint != null)?.gradePoint ?? null),
-          isAbsent: rows.some((r) => r.isAbsent),
-          isExempted: exempted,
-          countsTowardResult: rows.some((r) => r.countsTowardResult),
-        };
-      }),
-      totals: {
-        totalMarks: termResult?.totalMarks ?? null,
-        maxMarks: termResult?.maxMarks ?? null,
-        percentage: termResult?.percentage ?? null,
-        grade: termResult?.grade ?? null,
-        gradePoint: termResult?.gradePoint ?? null,
-        isPassed: termResult?.isPassed ?? null,
-        rankInSection: termResult?.rankInSection ?? null,
-        rankInClass: termResult?.rankInClass ?? null,
-      },
-      attendance: attendance
-        ? {
-            workingDays: attendance.workingDays,
-            daysPresent: attendance.daysPresent,
-            percentage: attendance.pct,
-          }
-        : null,
-      termAssessments: assessments.map((a) => ({
-        mappingId: a.mappingId,
-        areaName: a.typeName,
-        widgetName: a.typeName,
-        grade: a.grade,
-        remarks: a.remarks,
+        generatedAt: new Date().toISOString(),
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Re-photographs the given current cards: every card whose frozen data
+   * moved gets a new version (the old one stops being current); unchanged
+   * cards keep their version. Snapshots are assembled for the whole list at
+   * once and the writes are two statements. Returns the number re-issued.
+   */
+  private async reissueChangedCards(
+    tx: Tx,
+    currentCards: (typeof publishedReportCards.$inferSelect)[],
+    termId: string,
+    userId: string,
+    reason: string,
+  ) {
+    if (currentCards.length === 0) return 0;
+    const fresh = await this.assembleSnapshots(
+      tx,
+      currentCards.map((c) => c.studentId),
+      termId,
+    );
+    const changed = currentCards.filter((c) => !sameSnapshot(fresh.get(c.studentId), c.snapshotData));
+    if (changed.length === 0) return 0;
+    await tx
+      .update(publishedReportCards)
+      .set({ isCurrent: false })
+      .where(inArray(publishedReportCards.id, changed.map((c) => c.id)));
+    await insertCards(
+      tx,
+      changed.map((card) => ({
+        organizationId: card.organizationId,
+        schoolId: card.schoolId,
+        studentId: card.studentId,
+        academicYearId: card.academicYearId,
+        termId: card.termId,
+        version: card.version + 1,
+        replacesVersion: card.version,
+        snapshotData: fresh.get(card.studentId)!,
+        templateId: card.templateId,
+        revisionReason: reason,
+        publishedBy: userId,
       })),
-      generatedAt: new Date().toISOString(),
-    };
+    );
+    return changed.length;
   }
 
   /**
@@ -1265,60 +1369,58 @@ export class ExamResultsService {
           ),
         );
 
-      for (const studentId of cohortIds) {
-        const [termResult] = await tx
-          .select()
-          .from(studentTermResults)
-          .where(and(eq(studentTermResults.studentId, studentId), eq(studentTermResults.termId, termId)));
-        if (!termResult) continue;
+      // The term results that exist flip to published in one statement; a
+      // student without one has no card to freeze.
+      const flipped = cohortIds.length
+        ? await tx
+            .update(studentTermResults)
+            .set({ resultStatus: "published", publishedBy: userId, publishedAt: new Date() })
+            .where(and(inArray(studentTermResults.studentId, cohortIds), eq(studentTermResults.termId, termId)))
+            .returning({ studentId: studentTermResults.studentId })
+        : [];
+      const cardStudentIds = [...new Set(flipped.map((r) => r.studentId))];
+      const snapshots = await this.assembleSnapshots(tx, cardStudentIds, termId);
+      const existingCards = cardStudentIds.length
+        ? await tx
+            .select({
+              id: publishedReportCards.id,
+              studentId: publishedReportCards.studentId,
+              version: publishedReportCards.version,
+            })
+            .from(publishedReportCards)
+            .where(
+              and(
+                inArray(publishedReportCards.studentId, cardStudentIds),
+                eq(publishedReportCards.termId, termId),
+                eq(publishedReportCards.isCurrent, true),
+              ),
+            )
+        : [];
+      const existingOf = new Map(existingCards.map((c) => [c.studentId, c]));
+      if (existingCards.length > 0) {
         await tx
-          .update(studentTermResults)
-          .set({ resultStatus: "published", publishedBy: userId, publishedAt: new Date() })
-          .where(eq(studentTermResults.id, termResult.id));
-
-        const snapshot = await this.assembleSnapshot(tx, studentId, termId);
-        const [existingCard] = await tx
-          .select({ id: publishedReportCards.id, version: publishedReportCards.version })
-          .from(publishedReportCards)
-          .where(
-            and(
-              eq(publishedReportCards.studentId, studentId),
-              eq(publishedReportCards.termId, termId),
-              eq(publishedReportCards.isCurrent, true),
-            ),
-          );
-        if (existingCard) {
-          await tx
-            .update(publishedReportCards)
-            .set({ isCurrent: false })
-            .where(eq(publishedReportCards.id, existingCard.id));
-          await tx.insert(publishedReportCards).values({
-            organizationId: scope.organizationId,
-            schoolId,
-            studentId,
-            academicYearId: exam.academicYearId,
-            termId,
-            version: existingCard.version + 1,
-            replacesVersion: existingCard.version,
-            snapshotData: snapshot,
-            templateId: template?.id ?? null,
-            revisionReason: "re-issue",
-            publishedBy: userId,
-          });
-        } else {
-          await tx.insert(publishedReportCards).values({
-            organizationId: scope.organizationId,
-            schoolId,
-            studentId,
-            academicYearId: exam.academicYearId,
-            termId,
-            version: 1,
-            snapshotData: snapshot,
-            templateId: template?.id ?? null,
-            publishedBy: userId,
-          });
-        }
+          .update(publishedReportCards)
+          .set({ isCurrent: false })
+          .where(inArray(publishedReportCards.id, existingCards.map((c) => c.id)));
       }
+      await insertCards(
+        tx,
+        cardStudentIds.map((studentId) => {
+          const existing = existingOf.get(studentId);
+          return {
+            organizationId: scope.organizationId,
+            schoolId,
+            studentId,
+            academicYearId: exam.academicYearId,
+            termId,
+            version: existing ? existing.version + 1 : 1,
+            ...(existing ? { replacesVersion: existing.version, revisionReason: "re-issue" } : {}),
+            snapshotData: snapshots.get(studentId)!,
+            templateId: template?.id ?? null,
+            publishedBy: userId,
+          };
+        }),
+      );
 
       await tx
         .insert(examClassPublication)
@@ -1704,29 +1806,13 @@ export class ExamResultsService {
             ),
           ),
         );
-      let reIssued = 0;
-      for (const card of currentCards) {
-        const fresh = await this.assembleSnapshot(tx, card.studentId, exam.termId);
-        if (sameSnapshot(fresh, card.snapshotData)) continue;
-        await tx
-          .update(publishedReportCards)
-          .set({ isCurrent: false })
-          .where(eq(publishedReportCards.id, card.id));
-        await tx.insert(publishedReportCards).values({
-          organizationId: card.organizationId,
-          schoolId: card.schoolId,
-          studentId: card.studentId,
-          academicYearId: card.academicYearId,
-          termId: card.termId,
-          version: card.version + 1,
-          replacesVersion: card.version,
-          snapshotData: fresh,
-          templateId: card.templateId,
-          revisionReason: "revision window re-issue",
-          publishedBy: userId,
-        });
-        reIssued += 1;
-      }
+      const reIssued = await this.reissueChangedCards(
+        tx,
+        currentCards,
+        exam.termId,
+        userId,
+        "revision window re-issue",
+      );
       const [row] = await tx
         .update(examClassPublication)
         .set({ state: "re_issued", reIssuedBy: userId, reIssuedAt: new Date() })
@@ -1918,32 +2004,41 @@ export class ExamResultsService {
             ),
           ),
         );
-      for (const card of currentCards) {
-        const fresh = await this.assembleSnapshot(tx, card.studentId, exam.termId);
-        if (sameSnapshot(fresh, card.snapshotData)) continue;
-        await tx
-          .update(publishedReportCards)
-          .set({ isCurrent: false })
-          .where(eq(publishedReportCards.id, card.id));
-        await tx.insert(publishedReportCards).values({
-          organizationId: card.organizationId,
-          schoolId: card.schoolId,
-          studentId: card.studentId,
-          academicYearId: card.academicYearId,
-          termId: card.termId,
-          version: card.version + 1,
-          replacesVersion: card.version,
-          snapshotData: fresh,
-          templateId: card.templateId,
-          revisionReason: `correction: ${input.reason}`,
-          publishedBy: userId,
-        });
-      }
+      await this.reissueChangedCards(tx, currentCards, exam.termId, userId, `correction: ${input.reason}`);
       return { componentResultId: result.id, applied: true };
     });
   }
 }
 
+
+/** Card rows in chunks, so one statement never carries a whole school's snapshots. */
+async function insertCards(tx: Tx, rows: (typeof publishedReportCards.$inferInsert)[]) {
+  for (let i = 0; i < rows.length; i += 100) {
+    await tx.insert(publishedReportCards).values(rows.slice(i, i + 100));
+  }
+}
+
+/** Sets one rank column for many term results in a single statement. */
+async function setRanks(
+  tx: DbLike,
+  column: "rank_in_section" | "rank_in_class",
+  ranks: Map<string, number>,
+  now: Date,
+) {
+  const entries = [...ranks];
+  for (let i = 0; i < entries.length; i += 500) {
+    const values = sql.join(
+      entries.slice(i, i + 500).map(([id, rank]) => sql`(${id}::uuid, ${rank}::smallint)`),
+      sql`, `,
+    );
+    await tx.execute(sql`
+      UPDATE student_term_results AS t
+      SET ${sql.raw(column)} = v.rank, rank_computed_at = ${now.toISOString()}::timestamptz
+      FROM (VALUES ${values}) AS v(id, rank)
+      WHERE t.id = v.id
+    `);
+  }
+}
 
 /**
  * Two snapshots are the same card when everything but generatedAt matches.
