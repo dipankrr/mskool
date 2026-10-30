@@ -11,7 +11,6 @@ import { FormField } from "../../components/form-field";
 import { Notice } from "../../components/notice";
 import { ScreenFrame } from "../../components/screen-frame";
 import { SectionLabel } from "../../components/section-label";
-import { SelectField } from "../../components/select-field";
 import { useActiveContext } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
 import { useUnsavedChanges } from "../../hooks/use-unsaved-changes";
@@ -27,13 +26,10 @@ import {
   termUpdatePayload,
   validateTermForm,
   type TermForm,
-  type TermResultMode,
 } from "./form-logic";
 import { AcademicFormGates } from "./form-frame";
 
 type TermRow = inferRouterOutputs<AppRouter>["academic"]["term"]["byId"];
-
-const RESULT_MODES = ["cumulative", "terminal"] as const;
 
 /**
  * Add or edit a term of the running session. The term's year is not patchable
@@ -239,19 +235,6 @@ function TermFormBody({
           error={fieldError("endDate")}
           disabled={!canWrite}
           testID="term-end"
-        />
-        <SelectField
-          label={copy.academic.terms.fields.resultMode}
-          valueLabel={copy.academic.terms.resultModes[form.resultMode]}
-          placeholder={copy.academic.terms.resultModes.cumulative}
-          options={RESULT_MODES.map((mode) => ({
-            id: mode,
-            label: copy.academic.terms.resultModes[mode],
-          }))}
-          currentId={form.resultMode}
-          onSelect={(mode) => set("resultMode", mode as TermResultMode)}
-          disabled={!canWrite}
-          testID="term-result-mode"
         />
         <FormField
           label={copy.academic.terms.fields.weightage}

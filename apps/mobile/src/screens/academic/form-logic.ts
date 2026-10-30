@@ -21,7 +21,6 @@ import { copy } from "../../lib/copy";
  */
 
 export type SectionShift = NonNullable<CreateSectionInput["shift"]>;
-export type TermResultMode = NonNullable<CreateTermInput["resultMode"]>;
 
 const INT = /^-?\d+$/;
 
@@ -240,7 +239,6 @@ export type TermForm = {
   sequence: string;
   startDate: string | null;
   endDate: string | null;
-  resultMode: TermResultMode;
   weightage: string;
 };
 
@@ -250,7 +248,6 @@ export function emptyTermForm(): TermForm {
     sequence: "",
     startDate: null,
     endDate: null,
-    resultMode: "cumulative",
     weightage: "100",
   };
 }
@@ -260,7 +257,6 @@ export function termFormFrom(row: {
   sequenceNumber: number;
   startDate: string;
   endDate: string;
-  resultMode: TermResultMode;
   weightage: string;
 }): TermForm {
   return {
@@ -268,7 +264,6 @@ export function termFormFrom(row: {
     sequence: String(row.sequenceNumber),
     startDate: row.startDate,
     endDate: row.endDate,
-    resultMode: row.resultMode,
     // numeric(5,2) reads back as "100.00" — the editor shows the plain number.
     weightage: String(Number(row.weightage)),
   };
@@ -315,7 +310,6 @@ export function termPayload(form: TermForm, academicYearId: string): CreateTermI
     sequenceNumber: Number(form.sequence.trim()),
     startDate: form.startDate ?? "",
     endDate: form.endDate ?? "",
-    resultMode: form.resultMode,
     weightage: weightageWire(form),
   };
 }
@@ -326,7 +320,6 @@ export function termUpdatePayload(form: TermForm): UpdateTermInput {
     sequenceNumber: Number(form.sequence.trim()),
     startDate: form.startDate ?? "",
     endDate: form.endDate ?? "",
-    resultMode: form.resultMode,
     weightage: weightageWire(form),
   };
 }

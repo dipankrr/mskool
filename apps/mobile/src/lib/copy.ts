@@ -619,22 +619,18 @@ export const copy = {
         sequenceHelp: "Order within the session, 1–50.",
         startDate: "Starts on",
         endDate: "Ends on",
-        resultMode: "Result mode",
-        weightage: "Weightage %",
+        weightage: "Fee share %",
         weightageHelp:
-          "Its share of the year's result. A single term is 100.",
+          "Used only when fees are billed term by term: this term's share of the year's fees. The year's result is set under Annual rules. A single term is 100.",
       },
-      resultModes: {
-        cumulative: "Cumulative — counts toward the year",
-        terminal: "Terminal — stands alone",
-      },
+      feeShare: (percent: number) => `Fee share ${percent}%`,
       errors: {
         name: "Give the term a name (1–100 characters).",
         sequence: "Enter a sequence between 1 and 50.",
         startDate: "Choose a start date.",
         endDate: "Choose an end date.",
         dateOrder: "The term cannot end before it starts.",
-        weightage: "Enter a weightage between 0 and 100.",
+        weightage: "Enter a fee share between 0 and 100.",
       },
     },
     mappings: {

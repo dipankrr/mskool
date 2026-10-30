@@ -517,11 +517,6 @@ export const sectionTeacherAssignments = pgTable(
   ],
 );
 
-export const termResultModeEnum = pgEnum("term_result_mode", [
-  "cumulative",
-  "terminal",
-]);
-
 /**
  * The enrollment's life cycle (reference table 21, lowercased to house style).
  * ADMITTED — accepted, section not yet assigned (sectionId is nullable
@@ -560,8 +555,9 @@ export const promotionStatusEnum = pgEnum("promotion_status", [
  * note), because a database version would make a year impossible to create
  * before its terms.
  *
- * The exam computation chain reads `result_mode` (DOMAIN.md): cumulative
- * terms roll up into the annual result, terminal terms stand alone.
+ * How the terms make the YEAR's result is an annual policy
+ * (`annual_result_policies`, ADR-053), not a property of the term row;
+ * `weightage` below is the FEE share only.
  *
  * A term's dates must sit INSIDE its parent year's dates. That is a
  * cross-table rule, which no CHECK constraint can express, so it lives in
@@ -593,9 +589,9 @@ export const terms = pgTable(
     startDate: date().notNull(),
     endDate: date().notNull(),
 
-    // How this term contributes to the annual result.
-    resultMode: termResultModeEnum().notNull().default("cumulative"),
-    // Percentage weight toward the annual result (reference: DECIMAL(5,2)).
+    // This term's share of the year's FEES when installments are term-wise
+    // (fees-maths splitIntoBuckets). It never feeds the academic result - the
+    // annual policy owns that (ADR-053). (reference: DECIMAL(5,2)).
     // All terms of a year summing to 100 is a SOFT invariant no single-row
     // constraint can express: a CHECK that demanded it would make adding the
     // second term impossible. The term UI owns the sum; the row-level bound

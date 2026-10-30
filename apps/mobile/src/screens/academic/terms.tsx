@@ -84,8 +84,7 @@ export function TermsScreen() {
             title={row.name}
             meta={[
               formatReadableDateRange(row.startDate, row.endDate),
-              copy.academic.terms.resultModes[row.resultMode],
-              `${Number(row.weightage)}%`,
+              copy.academic.terms.feeShare(Number(row.weightage)),
             ]
               .filter(Boolean)
               .join(" · ")}

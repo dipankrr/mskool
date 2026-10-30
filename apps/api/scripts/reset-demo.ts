@@ -81,11 +81,14 @@ import {
   exams,
   gradingScaleBands,
   gradingScales,
+  annualResultPolicies,
+  annualResultPolicyTerms,
   passCriteria,
   publishedReportCards,
   studentComponentResultRevisions,
   studentComponentResults,
   studentFinalResults,
+  studentFinalSubjectResults,
   studentSubjectResults,
   studentTermResults,
   subjectTypes,
@@ -304,6 +307,8 @@ async function main() {
       db.delete(studentComponentResults).where(inArray(studentComponentResults.organizationId, orgIds)).returning());
     await wipe("student_subject_results", () =>
       db.delete(studentSubjectResults).where(inArray(studentSubjectResults.organizationId, orgIds)).returning());
+    await wipe("student_final_subject_results", () =>
+      db.delete(studentFinalSubjectResults).where(inArray(studentFinalSubjectResults.organizationId, orgIds)).returning());
     await wipe("student_final_results", () =>
       db.delete(studentFinalResults).where(inArray(studentFinalResults.organizationId, orgIds)).returning());
     await wipe("student_term_results", () =>
@@ -316,6 +321,11 @@ async function main() {
       db.delete(reportCardTemplates).where(inArray(reportCardTemplates.organizationId, orgIds)).returning());
     await wipe("exam_class_publication", () =>
       db.delete(examClassPublication).where(inArray(examClassPublication.organizationId, orgIds)).returning());
+    // The annual policies: final results (above) reference them, so they go after.
+    await wipe("annual_result_policy_terms", () =>
+      db.delete(annualResultPolicyTerms).where(inArray(annualResultPolicyTerms.organizationId, orgIds)).returning());
+    await wipe("annual_result_policies", () =>
+      db.delete(annualResultPolicies).where(inArray(annualResultPolicies.organizationId, orgIds)).returning());
     await wipe("pass_criteria", () =>
       db.delete(passCriteria).where(inArray(passCriteria.organizationId, orgIds)).returning());
     await wipe("exam_eligibility", () =>
