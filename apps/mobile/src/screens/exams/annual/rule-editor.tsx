@@ -16,6 +16,7 @@ import { FormSheet } from "../../../components/form-sheet";
 import { Notice } from "../../../components/notice";
 import { ScreenFrame } from "../../../components/screen-frame";
 import { SelectField } from "../../../components/select-field";
+import { Slider } from "../../../components/slider";
 import { Skeleton } from "../../../components/skeleton";
 import { SwitchRow } from "../../../components/switch-row";
 import { ThemedText } from "../../../components/themed-text";
@@ -31,8 +32,10 @@ import {
   firstAnnualError,
   formatWeightTotal,
   hasAnnualErrors,
+  splitEvenly,
   togglePick,
   uncoveredPolicyScopes,
+  weightStep,
   weightTotal,
   withPreset,
 } from "../../../lib/annual";
@@ -371,23 +374,28 @@ function RuleForm({
                   <ThemedText variant="bodyStrong" style={styles.termName} numberOfLines={2}>
                     {term.name}
                   </ThemedText>
+                  {draft.preset === "weighted" && on ? (
+                    <ThemedText variant="bodyStrong" testID={`annual-weight-value-${term.id}`}>
+                      {`${draft.weights[term.id] || "0"}%`}
+                    </ThemedText>
+                  ) : null}
                 </Pressable>
                 {draft.preset === "weighted" && on ? (
                   <View style={styles.weight}>
-                    <FormField
-                      label={`${termName(term.id)} ${c.weightLabel.toLowerCase()}`}
-                      value={draft.weights[term.id] ?? ""}
-                      onChangeText={(next) =>
-                        change({
-                          ...draft,
-                          weights: { ...draft.weights, [term.id]: next.replace(/[^0-9.]/g, "") },
-                        })
+                    <Slider
+                      value={weightStep(draft.weights[term.id])}
+                      max={100}
+                      onChange={(next) =>
+                        change({ ...draft, weights: { ...draft.weights, [term.id]: String(next) } })
                       }
-                      keyboardType="decimal-pad"
-                      suffix="%"
-                      maxLength={6}
+                      accessibilityLabel={`${termName(term.id)} ${c.weightLabel.toLowerCase()}`}
                       testID={`annual-weight-${term.id}`}
                     />
+                    <View style={styles.ticks} accessible={false} importantForAccessibility="no-hide-descendants">
+                      <ThemedText variant="meta">0%</ThemedText>
+                      <ThemedText variant="meta">50%</ThemedText>
+                      <ThemedText variant="meta">100%</ThemedText>
+                    </View>
                   </View>
                 ) : null}
               </View>
@@ -395,20 +403,36 @@ function RuleForm({
           })}
         </Card>
         {draft.preset === "weighted" && draft.picked.length > 0 ? (
-          <ThemedText
-            variant="meta"
-            color={totalOk ? colors.accentDeep : colors.tone.critical.fg}
-            accessibilityLiveRegion="polite"
-            style={styles.hint}
-            testID="annual-weight-total"
-          >
-            {totalOk ? `Total ${formatWeightTotal(total)}% ✓` : `Total ${formatWeightTotal(total)}% - must be 100%`}
-          </ThemedText>
+          <View style={styles.totalRow}>
+            <ThemedText
+              variant="meta"
+              color={totalOk ? colors.accentDeep : colors.tone.critical.fg}
+              accessibilityLiveRegion="polite"
+              style={styles.totalText}
+              testID="annual-weight-total"
+            >
+              {totalOk
+                ? c.weightTotalOk(formatWeightTotal(total))
+                : c.weightTotalBad(formatWeightTotal(total))}
+            </ThemedText>
+            <CapsuleButton
+              title={c.splitEvenly}
+              size="compact"
+              variant="secondary"
+              onPress={() => change(splitEvenly(draft))}
+              testID="annual-split-evenly"
+            />
+          </View>
         ) : (
           <ThemedText variant="meta" style={styles.hint}>
             {c.termsHelp}
           </ThemedText>
         )}
+        {draft.preset === "weighted" && draft.picked.length > 0 ? (
+          <ThemedText variant="meta" style={styles.hint}>
+            {c.weightsHelp}
+          </ThemedText>
+        ) : null}
         {submitted && errors.terms ? (
           <ThemedText variant="meta" color={colors.tone.critical.fg} style={styles.hint}>
             {errors.terms}
@@ -635,6 +659,15 @@ const styles = StyleSheet.create({
   },
   termName: { flex: 1 },
   weight: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+  ticks: { flexDirection: "row", justifyContent: "space-between", marginTop: -spacing.xs },
+  totalRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+    paddingHorizontal: spacing.xs,
+  },
+  totalText: { flex: 1 },
   pressed: { backgroundColor: colors.field },
   checkBox: {
     width: 22,

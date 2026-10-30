@@ -2437,3 +2437,22 @@ and Generate overwrites them.
     was made set-based; `publishClass` / `closeRevisionWindow` / `assembleSnapshot` are unchanged and are the next candidates.
 52. `annual.generate` / `publishClass` return no per-student reasons when they refuse; the class screen shows the
     server's sentence verbatim.
+
+## 7G after first device use (2026-10-30, same day)
+
+The owner ran the screens and reported four things; each was reproduced before it was changed.
+
+| Report | Cause | Fix |
+|---|---|---|
+| Final results shows "Something went wrong on our side" | `annual.overview`'s SQL lost its quotes (`<> draft`) - not the absence of a rule | quoted; the list answers before any rule or year exists |
+| Rule cannot be saved ("Some details need fixing") | the policy's `classId` (null = school default) collided with the staff builders' reserved scope field of the same name | renamed `appliesToClassId` |
+| (same family) refusals read as generic server errors | plain `Error`s are only translated when their text matches a regex in `trpc/errors.ts` | `ServiceRefusal` (coded Error) recognised by the transport; the annual service uses it |
+| "Why is the year pass mark mandatory?" | it was a second number beside each paper's own pass mark | optional; blank = the papers' pass marks weighted as the score is (ADR-053 amended, migration 0035); the bar used is stored and shown |
+| Weights as sliders | text fields | the existing `Slider` (owner's untracked `components/slider.tsx`, committed unchanged with this work) per picked term, 0-100, whole percents, `0% / 50% / 100%` marks, a live total ("Total configured weight: 115% - must equal 100%") and "Split evenly" |
+
+Why the earlier tests missed 1-3: the service tests called the service directly. The new
+`exam-annual-conformance.integration.test.ts` sends the phone's payloads through `appRouter.createCaller`
+(real input schemas, builders and error translation). 8 tests; 22 annual integration tests in all, plus 7
+unit tests for the refusal translation.
+
+Still not walked on a device (the new slider layout has only been type-checked and linted).

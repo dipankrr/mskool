@@ -12,6 +12,8 @@ import {
   firstAnnualError,
   hasAnnualErrors,
   presetOf,
+  splitEvenly,
+  weightStep,
   policyCounts,
   policyPromotionLine,
   renormalizedNote,
@@ -60,10 +62,16 @@ function row(over: Partial<AnnualPolicyRowLike> = {}): AnnualPolicyRowLike {
 const where = { academicYearId: "y1", classId: null };
 
 describe("equalWeights", () => {
-  it("splits to exactly 100 with the remainder on the last term", () => {
-    expect(equalWeights(3)).toEqual(["33.33", "33.33", "33.34"]);
+  it("splits into whole percents that total exactly 100, the leftover on the last terms", () => {
+    expect(equalWeights(3)).toEqual(["33", "33", "34"]);
     expect(equalWeights(2)).toEqual(["50", "50"]);
+    expect(equalWeights(4)).toEqual(["25", "25", "25", "25"]);
+    expect(equalWeights(6)).toEqual(["16", "16", "17", "17", "17", "17"]);
+    expect(equalWeights(1)).toEqual(["100"]);
     expect(equalWeights(0)).toEqual([]);
+    for (let n = 1; n <= 12; n += 1) {
+      expect(equalWeights(n).reduce((a, w) => a + Number(w), 0)).toBe(100);
+    }
   });
 });
 
@@ -89,6 +97,23 @@ describe("annualDraft", () => {
     const draft = annualDraft(null, terms, row({ annualSubjectPassPercent: "35.00" }));
     expect(draft.passPercent).toBe("35");
     expect(draft.weights.t3).toBe("50");
+  });
+});
+
+describe("splitEvenly and weightStep", () => {
+  it("resets the picked terms to an even split and leaves the others alone", () => {
+    const draft = { ...annualDraft(null, terms), picked: ["t1", "t3"], weights: { t1: "80", t2: "7", t3: "13" } };
+    const out = splitEvenly(draft);
+    expect(out.weights).toEqual({ t1: "50", t2: "7", t3: "50" });
+    expect(weightTotal(out)).toBe(10000);
+  });
+
+  it("maps a weight text to a slider step, rounding an old decimal and clamping", () => {
+    expect(weightStep("35")).toBe(35);
+    expect(weightStep("33.34")).toBe(33);
+    expect(weightStep("")).toBe(0);
+    expect(weightStep(undefined)).toBe(0);
+    expect(weightStep("140")).toBe(100);
   });
 });
 
@@ -152,9 +177,9 @@ describe("annualPayload", () => {
     const p = annualPayload(draft(), where);
     expect(p).toMatchObject({ method: "weighted", bestN: null, totalDisplay: "average", annualSubjectPassPercent: "33" });
     expect(p.terms).toEqual([
-      { termId: "t1", weightage: "33.33" },
-      { termId: "t2", weightage: "33.33" },
-      { termId: "t3", weightage: "33.34" },
+      { termId: "t1", weightage: "33" },
+      { termId: "t2", weightage: "33" },
+      { termId: "t3", weightage: "34" },
     ]);
   });
 

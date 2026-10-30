@@ -73,13 +73,31 @@ function percentText(value: string | null): string {
   return h === null ? value : formatPercent(h);
 }
 
-/** Weights that total exactly 100.00 for n terms (the remainder lands on the last). */
+/**
+ * Whole-percent weights that total exactly 100 for n terms: everyone gets the
+ * floor and the leftover points go one each to the LAST terms (3 terms: 33,
+ * 33, 34) - the sliders move in whole percents, so an even split should too.
+ */
 export function equalWeights(n: number): string[] {
   if (n <= 0) return [];
-  const each = Math.floor(10000 / n);
-  const out = Array.from({ length: n }, () => each);
-  out[n - 1] = 10000 - each * (n - 1);
-  return out.map((h) => formatPercent(h));
+  const each = Math.floor(100 / n);
+  const extra = 100 - each * n;
+  return Array.from({ length: n }, (_, i) => String(each + (i >= n - extra ? 1 : 0)));
+}
+
+/** "Split evenly": the picked terms share 100 equally, whatever was dragged before. */
+export function splitEvenly(draft: AnnualDraft): AnnualDraft {
+  const split = equalWeights(draft.picked.length);
+  return {
+    ...draft,
+    weights: { ...draft.weights, ...Object.fromEntries(draft.picked.map((id, i) => [id, split[i] ?? ""])) },
+  };
+}
+
+/** A slider position (0-100) from a weight text; decimals from an older rule round to the nearest. */
+export function weightStep(text: string | undefined): number {
+  const n = Math.round(Number(text ?? "") || 0);
+  return Math.min(100, Math.max(0, n));
 }
 
 export function presetOf(row: AnnualPolicyRowLike): AnnualPreset {

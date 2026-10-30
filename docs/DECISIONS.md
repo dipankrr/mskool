@@ -2545,3 +2545,27 @@ these deliberate differences:
 18 exam + 8 conformance integration tests against Postgres; mobile 38 suites /
 633 tests; `db:verify` passes. **Not walked on a device** (see the 7G build
 record in `.kilo/plans/2026-10-26-mobile-exams.md`).
+
+**Amended after first device use (2026-10-30).**
+- §5 changes: the year pass mark is OPTIONAL. Left blank (the default) a subject
+  passes the year when its year score reaches the pass marks of the papers
+  behind it, weighted exactly as the score is (the terms that counted, each by
+  its effective weight; renormalized for a missing term; best-N by the terms
+  chosen). A value sets one fixed bar for every subject instead. The bar a
+  subject was judged against is stored (`student_final_subject_results.pass_mark`)
+  so screens say "31 against 40". Migration 0035. Rejected as the default: a
+  second mandatory number the school must keep in step with its papers' own.
+- The save input names the policy's class `appliesToClassId`, not `classId`:
+  the staff builders reserve `classId` for the scope node (a string or absent,
+  never null), so the old name made every school-default save fail validation.
+- Services throw `ServiceRefusal` (a coded Error, `service-error.ts`) for
+  refusals a user should read; the transport passes its code and sentence
+  through. Before, every annual refusal reached the phone as a generic 500,
+  because plain Errors are only translated when their text matches a regex in
+  the transport's list. Other domains should adopt it instead of appending
+  regexes.
+- Term weights are set with sliders in whole percents (an even split is
+  33/33/34), with a live total that must equal 100.
+- The Final results list and rule Save were broken on first use (a SQL typo
+  and the name collision above); they are now covered by a router-level
+  conformance suite that sends the phone's exact payloads.
