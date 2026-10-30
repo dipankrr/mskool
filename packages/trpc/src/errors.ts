@@ -1036,6 +1036,17 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
  * error is read by constraint name, a known service `Error` by message, and
  * everything else becomes a 500 that says nothing.
  */
+const REFUSAL_CODES = new Set<TrpcErrorCode>(["BAD_REQUEST", "CONFLICT", "NOT_FOUND"]);
+
+function asServiceRefusal(
+  value: unknown,
+): { code: TrpcErrorCode; message: string } | null {
+  if (!(value instanceof Error) || value.name !== "ServiceRefusal") return null;
+  const code = (value as { code?: unknown }).code;
+  if (typeof code !== "string" || !REFUSAL_CODES.has(code as TrpcErrorCode)) return null;
+  return { code: code as TrpcErrorCode, message: value.message };
+}
+
 export function translateError(thrown: unknown): TRPCError {
   /**
    * NOT_FOUND from a router, FORBIDDEN from the permission gate, UNAUTHORIZED
@@ -1050,6 +1061,14 @@ export function translateError(thrown: unknown): TRPCError {
   }
 
   const cause = thrown instanceof TRPCError ? (thrown.cause ?? thrown) : thrown;
+
+  // A refusal the service wrote for the user (services/service-error.ts):
+  // the code and the sentence pass through untouched. Duck-typed on the name,
+  // like the driver error below, so this file imports nothing from services.
+  const refusal = asServiceRefusal(cause);
+  if (refusal) {
+    return new TRPCError({ code: refusal.code, message: refusal.message, cause });
+  }
 
   const postgresError = findPostgresError(cause);
 

@@ -50,6 +50,7 @@ import {
   resolvePapers,
   type DbLike,
 } from "./exam-shared";
+import { refuse } from "./service-error";
 import {
   annualPolicySummary,
   termSubjectScore,
@@ -236,13 +237,13 @@ export class ExamAnnualService {
         .select({ id: academicYears.id })
         .from(academicYears)
         .where(and(eq(academicYears.id, input.academicYearId), eq(academicYears.schoolId, schoolId)));
-      if (!year) throw new Error("That academic year was not found.");
-      if (input.classId) {
+      if (!year) throw refuse("NOT_FOUND", "That academic year was not found.");
+      if (input.appliesToClassId) {
         const [klass] = await tx
           .select({ id: classes.id })
           .from(classes)
-          .where(and(eq(classes.id, input.classId), eq(classes.schoolId, schoolId)));
-        if (!klass) throw new Error("That class was not found.");
+          .where(and(eq(classes.id, input.appliesToClassId), eq(classes.schoolId, schoolId)));
+        if (!klass) throw refuse("NOT_FOUND", "That class was not found.");
       }
       const termIds = input.terms.map((t) => t.termId);
       const found = await tx
@@ -256,7 +257,7 @@ export class ExamAnnualService {
           ),
         );
       if (found.length !== termIds.length) {
-        throw new Error("Every picked term must belong to this academic year.");
+        throw refuse("BAD_REQUEST", "Every picked term must belong to this academic year.");
       }
 
       const existing = await tx
@@ -268,18 +269,19 @@ export class ExamAnnualService {
             eq(annualResultPolicies.academicYearId, input.academicYearId),
           ),
         );
-      const sameScope = existing.find((r) => (r.classId ?? null) === (input.classId ?? null));
+      const sameScope = existing.find((r) => (r.classId ?? null) === (input.appliesToClassId ?? null));
       if (!input.id && sameScope) {
-        throw new Error(
-          input.classId
+        throw refuse(
+          "CONFLICT",
+          input.appliesToClassId
             ? "This class already has its own annual rule - edit it instead."
             : "The school already has a default annual rule for this year - edit it instead.",
         );
       }
       const target = input.id ? existing.find((r) => r.id === input.id) : undefined;
-      if (input.id && !target) throw new Error("That annual rule was not found.");
-      if (target && (target.classId ?? null) !== (input.classId ?? null)) {
-        throw new Error("A rule cannot move to another class - create a new one.");
+      if (input.id && !target) throw refuse("NOT_FOUND", "That annual rule was not found.");
+      if (target && (target.classId ?? null) !== (input.appliesToClassId ?? null)) {
+        throw refuse("BAD_REQUEST", "A rule cannot move to another class - create a new one.");
       }
 
       // The own-rules block is stored only when it is in use; a switched-off
@@ -316,7 +318,7 @@ export class ExamAnnualService {
             organizationId: scope.organizationId,
             schoolId,
             academicYearId: input.academicYearId,
-            classId: input.classId,
+            classId: input.appliesToClassId,
             createdBy: userId,
           })
           .returning();
@@ -354,7 +356,7 @@ export class ExamAnnualService {
         .where(eq(studentFinalResults.policyId, id))
         .limit(1);
       if (used) {
-        throw new Error("Results were generated with this rule - edit it instead of deleting it.");
+        throw refuse("CONFLICT", "Results were generated with this rule - edit it instead of deleting it.");
       }
       await tx.delete(annualResultPolicies).where(eq(annualResultPolicies.id, id));
       return true;
@@ -565,7 +567,7 @@ export class ExamAnnualService {
       .select({
         classId: studentFinalResults.classId,
         students: sql<number>`count(*)::int`,
-        publishedStudents: sql<number>`count(*) filter (where ${studentFinalResults.resultStatus} <> draft)::int`,
+        publishedStudents: sql<number>`count(*) filter (where ${studentFinalResults.resultStatus} <> 'draft')::int`,
         computedAt: sql<Date>`max(${studentFinalResults.computedAt})`,
       })
       .from(studentFinalResults)
@@ -602,10 +604,10 @@ export class ExamAnnualService {
       if (!ctx) return null;
       const governing = await this.resolveGoverning(tx, schoolId, academicYearId, classId);
       if (!governing) {
-        throw new Error("Set the annual rules for this class first (Grading setup, Annual rules).");
+        throw refuse("CONFLICT", "Set the annual rules for this class first (Grading setup, Annual rules).");
       }
       const roster = await this.loadRoster(tx, classId, academicYearId);
-      if (roster.length === 0) throw new Error("This class has no enrolled students for the year.");
+      if (roster.length === 0) throw refuse("CONFLICT", "This class has no enrolled students for the year.");
       const studentIds = roster.map((r) => r.studentId);
 
       const [published] = await tx
@@ -620,7 +622,8 @@ export class ExamAnnualService {
         )
         .limit(1);
       if (published) {
-        throw new Error(
+        throw refuse(
+          "CONFLICT",
           "This class's annual results are published and frozen - generating again is closed.",
         );
       }
@@ -1502,11 +1505,11 @@ export class ExamAnnualService {
       const ctx = await this.requireClassYear(tx, schoolId, academicYearId, classId);
       if (!ctx) return null;
       const readiness = await this.readinessTx(tx, schoolId, academicYearId, classId);
-      if (readiness.publishBlockedReason) throw new Error(readiness.publishBlockedReason);
+      if (readiness.publishBlockedReason) throw refuse("CONFLICT", readiness.publishBlockedReason);
 
       const snapshots = await this.buildSnapshots(tx, schoolId, academicYearId, classId);
       const studentIds = [...snapshots.keys()];
-      if (studentIds.length === 0) throw new Error("Generate the year first.");
+      if (studentIds.length === 0) throw refuse("CONFLICT", "Generate the year first.");
 
       const [template] = await tx
         .select({ id: reportCardTemplates.id })

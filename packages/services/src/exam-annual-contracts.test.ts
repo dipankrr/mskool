@@ -13,7 +13,7 @@ const T3 = "22222222-2222-4222-8222-222222222223";
 
 const base = {
   academicYearId: YEAR,
-  classId: null,
+  appliesToClassId: null,
   method: "weighted" as const,
   annualSubjectPassPercent: "33",
   terms: [

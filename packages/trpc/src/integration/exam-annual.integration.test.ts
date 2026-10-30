@@ -234,7 +234,7 @@ async function seedResults(
 const policyInput = (over: Record<string, unknown> = {}) =>
   ({
     academicYearId: w.academicYearId,
-    classId: null,
+    appliesToClassId: null,
     method: "weighted" as const,
     annualSubjectPassPercent: "33.00",
     terms: [
@@ -278,7 +278,7 @@ describe("annual integration: the policy", () => {
       examAnnualService.savePolicy(
         scopeOf(),
         PRINCIPAL,
-        policyInput({ id: undefined, classId: w.classId, terms: [{ termId: crypto.randomUUID(), weightage: "100.00" }] }),
+        policyInput({ id: undefined, appliesToClassId: w.classId, terms: [{ termId: crypto.randomUUID(), weightage: "100.00" }] }),
       ),
     ).rejects.toThrow(/must belong to this academic year/);
     const list = await examAnnualService.listPolicies([scopeOf()], w.academicYearId);
@@ -354,6 +354,13 @@ describe("annual integration: generate, review, publish", () => {
       .where(eq(studentFinalSubjectResults.academicYearId, w.academicYearId));
     expect(finals).toHaveLength(3);
     expect(subjectRows).toHaveLength(6);
+  });
+
+  it("lists the class in the Final results overview with how far along it is", async () => {
+    const overview = await examAnnualService.overview([scopeOf()], w.academicYearId);
+    expect(overview).toHaveLength(1);
+    expect(overview[0]).toMatchObject({ classId: w.classId, students: 3, publishedStudents: 0 });
+    expect(overview[0]!.computedAt).toBeInstanceOf(Date);
   });
 
   it("will not publish while the term exams are unpublished, and says which", async () => {

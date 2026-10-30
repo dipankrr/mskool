@@ -42,8 +42,12 @@ export const saveAnnualPolicyInput = z
     /** Present = edit this policy; absent = create (refused if the scope already has one). */
     id: z.uuid().optional(),
     academicYearId: z.uuid(),
-    /** NULL = the school's default for the year; set = that class's own policy. */
-    classId: z.uuid().nullable(),
+    /**
+     * NULL = the school's default for the year; set = that class's own policy.
+     * NOT named `classId`: the staff builders reserve that field for the scope
+     * node being addressed, which must be a string or absent - never null.
+     */
+    appliesToClassId: z.uuid().nullable(),
     method: z.enum(annualMethodValues),
     /** best_n only: how many of the included terms count. */
     bestN: z.number().int().min(1).max(12).nullable().optional(),

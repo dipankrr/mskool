@@ -246,7 +246,8 @@ export function firstAnnualError(errors: AnnualErrors): string | null {
 export type AnnualPayload = {
   id?: string;
   academicYearId: string;
-  classId: string | null;
+  /** NULL = the school default. Not `classId`: the server reserves that name for the scope node. */
+  appliesToClassId: string | null;
   method: "weighted" | "single_term" | "best_n";
   bestN: number | null;
   totalDisplay: "average" | "sum";
@@ -278,7 +279,7 @@ export function annualPayload(
   return {
     ...(where.id ? { id: where.id } : {}),
     academicYearId: where.academicYearId,
-    classId: where.classId,
+    appliesToClassId: where.classId,
     method,
     bestN,
     totalDisplay: draft.preset === "sum" ? "sum" : "average",

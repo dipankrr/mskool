@@ -68,6 +68,7 @@ export * from "./exam-config.service";
 export * from "./exam-marks.service";
 export * from "./exam-results.service";
 export * from "./exam-annual.service";
+export * from "./service-error";
 
 // Portal access: the family login's credential lifecycle (ADR-007) —
 // activation, password reset, and the phone change (audit + revocation).
