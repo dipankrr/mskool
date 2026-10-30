@@ -471,14 +471,6 @@ export const examRouter = router({
       .input(z.object({ termId: z.uuid() }))
       .output(z.object({ updated: z.number().int() }))
       .mutation(({ ctx, input }) => examResultsService.computeTermRanks(ctx.scope, input.termId)),
-
-    computeFinal: staffProcedure("exam:update")
-      .meta({ openapi: { method: "POST", path: "/exam/years/{academicYearId}/final-results", tags: ["results"], summary: "Compute a year's final results", protect: true } })
-      .input(z.object({ academicYearId: z.uuid() }))
-      .output(z.array(z.object({ studentId: z.uuid(), promotionStatus: z.string() })))
-      .mutation(({ ctx, input }) =>
-        examResultsService.computeFinalResults(ctx.scope, input.academicYearId),
-      ),
   }),
 
   // THE ANNUAL RESULT (ADR-053). Class-scoped: the year, the class and the

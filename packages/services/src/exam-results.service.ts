@@ -20,7 +20,6 @@ import {
   schools,
   studentComponentResultRevisions,
   studentComponentResults,
-  studentFinalResults,
   studentEnrollments,
   studentSubjectResults,
   studentTermResults,
@@ -40,13 +39,11 @@ import {
   resolvePapers,
 } from "./exam-shared";
 import {
-  annualWeighted,
   applyGrace,
   evaluatePass,
   componentFailed,
   computeRanks,
   describeSchedulePartitionViolations,
-  examWeightedSubjectScore,
   findSchedulePartitionViolations,
   fromHundredths,
   gpaAggregate,
@@ -56,7 +53,6 @@ import {
   termAggregate,
   termSubjectScore,
   toHundredths,
-  weightedAverage,
   weightedComponentRollup,
 } from "./exams-maths";
 
@@ -787,142 +783,6 @@ export class ExamResultsService {
       }
     }
     return { updated };
-  }
-
-  // -------------------------------------------------------------------------
-  // Final results + promotion (year end)
-  // -------------------------------------------------------------------------
-
-  async computeFinalResults(scope: DataScope, academicYearId: string) {
-    const schoolId = requireSchoolId(scope);
-    const organizationId = scope.organizationId;
-    const yearTerms = await db
-      .select()
-      .from(terms)
-      .where(and(eq(terms.academicYearId, academicYearId), eq(terms.schoolId, schoolId)))
-      .orderBy(asc(terms.sequenceNumber));
-    const termIds = yearTerms.map((t) => t.id);
-    if (termIds.length === 0) return [];
-
-    const termResults = await db
-      .select()
-      .from(studentTermResults)
-      .where(inArray(studentTermResults.termId, termIds));
-    const byStudent = new Map<string, typeof termResults>();
-    for (const row of termResults) {
-      const list = byStudent.get(row.studentId) ?? [];
-      list.push(row);
-      byStudent.set(row.studentId, list);
-    }
-
-    const scale = await this.resolveDefaultScale(db, schoolId);
-    const criteria = await this.resolvePassCriteria(db, schoolId, academicYearId, null);
-    const out: { studentId: string; promotionStatus: string }[] = [];
-
-    for (const [studentId, rows] of byStudent) {
-      const ordered = rows
-        .map((r) => ({ row: r, term: yearTerms.find((t) => t.id === r.termId)! }))
-        .sort((a, b) => a.term.sequenceNumber - b.term.sequenceNumber);
-      const last = ordered[ordered.length - 1]!.row;
-      // result_mode (cumulative = feeds the annual, terminal = stands
-      // alone): any cumulative term makes the annual a weighted average;
-      // a year of only terminal terms reads the last one verbatim.
-      const cumulative = ordered.filter((o) => o.term.resultMode === "cumulative");
-      const isCumulative = cumulative.length > 0;
-      if (isCumulative) {
-        const weightSum = cumulative.reduce(
-          (acc, o) => acc + toHundredths(o.term.weightage),
-          0n,
-        );
-        if (weightSum !== 10000n) {
-          throw new Error(
-            `The year's cumulative terms weigh ${fromHundredths(weightSum)} — they must sum to exactly 100. Adjust the term weightages first.`,
-          );
-        }
-      }
-      const weighted = annualWeighted(
-        (isCumulative ? cumulative : ordered).map((o) => ({
-          percentage: toHundredths(o.row.percentage ?? "0.00"),
-          weightage: toHundredths(o.term.weightage),
-        })),
-      );
-      const lastOnly = toHundredths(last.percentage ?? "0.00");
-      // The policy: cumulative terms fold into the annual; a terminal last
-      // term IS the annual.
-      const percentage = isCumulative ? weighted : lastOnly;
-      const grade = scale ? gradeFor(percentage, scale.bands) : null;
-      // DISTINCT failed subjects across the year — one subject failed in
-      // two terms is one failing subject against the compartment cap, not
-      // two. (Summing per-term counts parked compartment students at
-      // `detained` for a single weak subject.)
-      const failedSubjects = [
-        ...new Set(ordered.flatMap((o) => o.row.subjectsFailed ?? [])),
-      ];
-      // Promotion: every term passed, or the last term passed (the final
-      // say — a recovery in T2 promotes). Otherwise compartment within the
-      // cap, else detained. Students with no term rows at all get no final
-      // row — a verdict nobody computed must not be fabricated.
-      const promotionStatus: "promoted" | "detained" | "compartment" =
-        isPassedAll(ordered) || last.isPassed
-          ? "promoted"
-          : criteria?.compartmentAllowed &&
-              failedSubjects.length <= (criteria.maxSubjectsForCompartment ?? 0)
-            ? "compartment"
-            : "detained";
-      const isPassed = promotionStatus === "promoted";
-
-      const values = {
-        totalMarks: fromHundredths(percentage),
-        maxMarks: "100.00",
-        percentage: fromHundredths(percentage),
-        grade: grade?.gradeLabel ?? null,
-        gradePoint: grade?.gradePoint ? fromHundredths(grade.gradePoint) : null,
-        isPassed,
-        subjectsFailedCount: failedSubjects.length,
-        subjectsFailed: failedSubjects,
-        compartmentSubjects:
-          promotionStatus === "compartment" ? failedSubjects : [],
-        attendancePercentage: last.attendancePercentage,
-        promotionStatus,
-        passPolicySnapshot: criteria
-          ? {
-              minSubjectsToPass: criteria.minSubjectsToPass,
-              mandatoryPassSubjectIds: criteria.mandatoryPassSubjectIds,
-              graceMarksAllowed: criteria.graceMarksAllowed,
-              maxGracePerSubject: criteria.maxGracePerSubject,
-              maxGraceTotal: criteria.maxGraceTotal,
-              compartmentAllowed: criteria.compartmentAllowed,
-              maxSubjectsForCompartment:
-                criteria.maxSubjectsForCompartment,
-              minAttendancePct: criteria.minAttendancePct,
-            }
-          : null,
-        computedAt: new Date(),
-      };
-
-      const [existing] = await db
-        .select({ id: studentFinalResults.id })
-        .from(studentFinalResults)
-        .where(
-          and(
-            eq(studentFinalResults.studentId, studentId),
-            eq(studentFinalResults.academicYearId, academicYearId),
-          ),
-        );
-      if (existing) {
-        await db.update(studentFinalResults).set(values).where(eq(studentFinalResults.id, existing.id));
-      } else {
-        await db.insert(studentFinalResults).values({
-          organizationId,
-          schoolId,
-          studentId,
-          academicYearId,
-          ...values,
-        });
-      }
-      out.push({ studentId, promotionStatus });
-    }
-    return out;
   }
 
   // -------------------------------------------------------------------------
@@ -2000,12 +1860,6 @@ function sameSnapshot(a: unknown, b: unknown): boolean {
     return canonicalize(copy);
   };
   return strip(a) === strip(b);
-}
-
-function isPassedAll(
-  ordered: { row: { isPassed: boolean } }[],
-): boolean {
-  return ordered.every((o) => o.row.isPassed);
 }
 
 export const examResultsService = new ExamResultsService();

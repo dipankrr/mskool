@@ -1,3 +1,5 @@
+import type { ReportCardSnapshotV2 } from "@repo/contracts";
+
 import { annualCopy } from "./annual-copy";
 import { canonicalPercent, formatPercent, hundredthsOf } from "./grading-scale";
 
@@ -515,4 +517,36 @@ export function statusTone(status: StatusKind): "neutral" | "caution" | "positiv
   if (status === "published") return "positive";
   if (status === "stale") return "caution";
   return "neutral";
+}
+
+// ---------------------------------------------------------------------------
+// The annual card (snapshot version 2) - a structural guard, ADR-048
+// ---------------------------------------------------------------------------
+
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
+
+/** What version a stored card is, without trusting the rest of it. */
+export function snapshotVersionOf(data: unknown): number | null {
+  return isObject(data) && typeof data.snapshotVersion === "number" ? data.snapshotVersion : null;
+}
+
+/**
+ * Hand-rolled guard for `reportCardSnapshotV2` (the mobile bundle takes no
+ * runtime schema from the server, ADR-048). Checks the shape the screen reads;
+ * anything else is "I cannot show this", never a half-drawn card.
+ */
+export function asAnnualSnapshot(data: unknown): ReportCardSnapshotV2 | null {
+  if (!isObject(data) || data.snapshotVersion !== 2 || data.kind !== "annual") return null;
+  const ok =
+    isObject(data.student) &&
+    isObject(data.school) &&
+    isObject(data.academicYear) &&
+    isObject(data.policy) &&
+    isObject(data.totals) &&
+    isObject(data.verdict) &&
+    Array.isArray(data.terms) &&
+    Array.isArray(data.subjects) &&
+    data.subjects.every((s) => isObject(s) && Array.isArray(s.byTerm)) &&
+    Array.isArray((data.verdict as Record<string, unknown>).failedSubjects);
+  return ok ? (data as ReportCardSnapshotV2) : null;
 }

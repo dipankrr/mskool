@@ -4,6 +4,8 @@ import {
   annualErrors,
   annualPayload,
   annualSummary,
+  asAnnualSnapshot,
+  snapshotVersionOf,
   equalWeights,
   filterCounts,
   filterStudents,
@@ -349,5 +351,38 @@ describe("renormalizedNote", () => {
     ];
     const name = (id: string) => ({ t1: "Term 1", t2: "Term 2", t3: "Term 3" })[id] ?? id;
     expect(renormalizedNote(sources, name, 3)).toBe("Counted from 2 of 3 terms (Term 1 28.57%, Term 3 71.43%).");
+  });
+});
+
+describe("asAnnualSnapshot", () => {
+  const card = {
+    snapshotVersion: 2,
+    kind: "annual",
+    student: {},
+    school: {},
+    academicYear: {},
+    policy: {},
+    totals: {},
+    verdict: { failedSubjects: [] },
+    terms: [],
+    subjects: [{ byTerm: [] }],
+  };
+
+  it("accepts a version-2 annual card", () => {
+    expect(asAnnualSnapshot(card)).not.toBeNull();
+  });
+
+  it("refuses a term card, a newer version, and anything malformed", () => {
+    expect(asAnnualSnapshot({ ...card, snapshotVersion: 1 })).toBeNull();
+    expect(asAnnualSnapshot({ ...card, snapshotVersion: 3 })).toBeNull();
+    expect(asAnnualSnapshot({ ...card, subjects: [{}] })).toBeNull();
+    expect(asAnnualSnapshot(null)).toBeNull();
+    expect(asAnnualSnapshot("card")).toBeNull();
+  });
+
+  it("reads the version without trusting the rest", () => {
+    expect(snapshotVersionOf({ snapshotVersion: 3 })).toBe(3);
+    expect(snapshotVersionOf({})).toBeNull();
+    expect(snapshotVersionOf(undefined)).toBeNull();
   });
 });
