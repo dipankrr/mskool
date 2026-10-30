@@ -452,3 +452,282 @@ export function describeSchedulePartitionViolations(
     )
     .join("; ");
 }
+
+// ---------------------------------------------------------------------------
+// Term subject score - the ONE derivation (ADR-053 §4)
+// ---------------------------------------------------------------------------
+
+/**
+ * One counting exam's vote for a subject: a `student_subject_results` row and
+ * its exam's weight inside the term.
+ */
+export interface TermSubjectVote {
+  /** Exam-grain final marks on the 0-100 scale (hundredths); null when none. */
+  marks: bigint | null;
+  /** `exams.weightage_in_term` (hundredths of a percent). */
+  weightage: bigint;
+  isPassed: boolean;
+  /** The paper was excused ENTIRELY (every component exempt, ADR-053 §7). */
+  isExempted: boolean;
+  gradePoint: bigint | null;
+}
+
+export type TermSubjectOutcome =
+  | { kind: "scored"; score: bigint; isPassed: boolean; gradePoint: bigint | null }
+  | { kind: "graded"; gradePoint: bigint | null }
+  | { kind: "exempt" };
+
+/**
+ * One subject's TERM outcome across the term's counting exams - the single
+ * place it is derived (term compute, the term card and the annual engine all
+ * call this; a bare score cannot reproduce the term pass).
+ *
+ * Exams the student was excused from drop out of the weighting (the weights
+ * renormalize over the papers sat, as ADR-052 does for whole papers); a
+ * subject excused in EVERY exam is `exempt` - not scored, not failed. A term
+ * subject passes when every exam it sat passed (there is no term-level pass
+ * mark). Graded-only subjects never score or fail; their grade point is the
+ * exam-weighted mean of the points that exist. Absent marks arrive as 0 (the
+ * exam row already carries the absence; zero is its effect).
+ *
+ * Callers pass at least one vote: "no votes" means "no paper", which is not
+ * this function's question.
+ */
+export function termSubjectScore(
+  votes: TermSubjectVote[],
+  opts: { isGradedOnly: boolean },
+): TermSubjectOutcome {
+  const sat = votes.filter((v) => !v.isExempted);
+  if (sat.length === 0) return { kind: "exempt" };
+  const withPoint = sat.filter((v) => v.gradePoint !== null);
+  const gradePoint =
+    withPoint.length > 0
+      ? weightedAverage(withPoint.map((v) => ({ value: v.gradePoint!, weightage: v.weightage })))
+      : null;
+  if (opts.isGradedOnly) return { kind: "graded", gradePoint };
+  const score = examWeightedSubjectScore(
+    sat.map((v) => ({ marks: v.marks ?? 0n, maxMarks: 10000n, weightage: v.weightage })),
+  );
+  return { kind: "scored", score, isPassed: sat.every((v) => v.isPassed), gradePoint };
+}
+
+// ---------------------------------------------------------------------------
+// The annual engines - weighted, single term, best N (ADR-053 §2, §5)
+// ---------------------------------------------------------------------------
+
+export type AnnualMethod = "weighted" | "single_term" | "best_n";
+
+export interface AnnualPolicyTerm {
+  termId: string;
+  /** The term's `sequence_number` - orders ties and the display. */
+  sequence: number;
+  /** Hundredths of a percent; only the weighted method reads it. */
+  weightage: bigint | null;
+}
+
+export interface AnnualPolicyShape {
+  method: AnnualMethod;
+  /** Required for `best_n`; null means every included term. */
+  bestN: number | null;
+  terms: AnnualPolicyTerm[];
+}
+
+/** A student's score for one subject in one term (a percentage, or a grade point). */
+export interface AnnualTermCell {
+  termId: string;
+  score: bigint;
+}
+
+export interface AnnualSourceTerm {
+  termId: string;
+  /** The term's score for this subject; null when the student has none (no paper). */
+  score: bigint | null;
+  /** The policy's configured weight; null off the weighted method. */
+  nominalWeight: bigint | null;
+  /** What the term contributed after renormalization (hundredths of a percent). */
+  effectiveWeight: bigint;
+  used: boolean;
+}
+
+export interface AnnualPick {
+  score: bigint;
+  /** One entry per included term, in term order - the audit trail. */
+  sources: AnnualSourceTerm[];
+  /** Counted from fewer terms than the policy selects. */
+  renormalized: boolean;
+  usedCount: number;
+}
+
+/**
+ * The annual score of one subject from the terms the student actually has.
+ * Every method divides by what it was GIVEN and rounds half-up ONCE at the
+ * end (no per-term rounding). Null when no included term has a score for
+ * the student - there is no annual result to fabricate.
+ */
+export function annualScore(
+  cells: AnnualTermCell[],
+  policy: AnnualPolicyShape,
+): AnnualPick | null {
+  const cellOf = new Map(cells.map((c) => [c.termId, c.score]));
+  const ordered = [...policy.terms].sort((a, b) => a.sequence - b.sequence);
+  const present = ordered.filter((t) => cellOf.has(t.termId));
+  if (present.length === 0) return null;
+
+  const source = (t: AnnualPolicyTerm, used: boolean, effective: bigint): AnnualSourceTerm => ({
+    termId: t.termId,
+    score: cellOf.get(t.termId) ?? null,
+    nominalWeight: policy.method === "weighted" ? t.weightage : null,
+    effectiveWeight: used ? effective : 0n,
+    used,
+  });
+
+  if (policy.method === "single_term") {
+    const only = ordered[0];
+    if (!only || !cellOf.has(only.termId)) return null;
+    return {
+      score: cellOf.get(only.termId)!,
+      sources: [source(only, true, 10000n)],
+      renormalized: false,
+      usedCount: 1,
+    };
+  }
+
+  if (policy.method === "weighted") {
+    const weightSum = present.reduce((acc, t) => acc + (t.weightage ?? 0n), 0n);
+    if (weightSum === 0n) return null;
+    const score = annualWeighted(
+      present.map((t) => ({ percentage: cellOf.get(t.termId)!, weightage: t.weightage ?? 0n })),
+    );
+    return {
+      score,
+      sources: ordered.map((t) => {
+        const isPresent = cellOf.has(t.termId);
+        return source(t, isPresent, isPresent ? mulDivHalfUp(t.weightage ?? 0n, 10000n, weightSum) : 0n);
+      }),
+      renormalized: present.length < ordered.length,
+      usedCount: present.length,
+    };
+  }
+
+  // best_n: the N highest, ties broken by term order; fewer than N available
+  // averages the available.
+  const wanted = Math.min(policy.bestN ?? ordered.length, ordered.length);
+  const take = Math.min(wanted, present.length);
+  const ranked = [...present].sort((a, b) => {
+    const sa = cellOf.get(a.termId)!;
+    const sb = cellOf.get(b.termId)!;
+    if (sa !== sb) return sa > sb ? -1 : 1;
+    return a.sequence - b.sequence;
+  });
+  const picked = new Set(ranked.slice(0, take).map((t) => t.termId));
+  let sum = 0n;
+  for (const id of picked) sum += cellOf.get(id)!;
+  const each = mulDivHalfUp(10000n, 1n, BigInt(take));
+  return {
+    score: mulDivHalfUp(sum, 1n, BigInt(take)),
+    sources: ordered.map((t) => source(t, picked.has(t.termId), each)),
+    renormalized: present.length < wanted,
+    usedCount: take,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The annual verdict (ADR-053 §6)
+// ---------------------------------------------------------------------------
+
+export interface AnnualVerdictSubject {
+  subjectId: string;
+  /** `exempt` subjects are excused: never counted, never failed. */
+  kind: "scored" | "graded" | "exempt";
+  countsTowardResult: boolean;
+  isPassed: boolean;
+}
+
+export interface AnnualVerdictRules {
+  /** Null = every counted subject must pass. */
+  minSubjectsToPass: number | null;
+  mandatoryPassSubjectIds: string[];
+  compartmentAllowed: boolean;
+  maxSubjectsForCompartment: number | null;
+}
+
+export interface AnnualVerdict {
+  isPassed: boolean;
+  failedSubjectIds: string[];
+  promotionStatus: "promoted" | "compartment" | "detained";
+  /** Every counted subject is graded-only: no marks to fail. */
+  gpaBranch: boolean;
+  countedSubjects: number;
+}
+
+/**
+ * Same shape as the term result: must-pass subjects, a minimum number of
+ * passed subjects (null = all), then promoted / compartment (allowed and the
+ * failed subjects fit the cap) / detained. A GPA-branch class has nothing to
+ * fail on marks and is promoted. Null when nothing counts - a verdict nobody
+ * can compute is not fabricated.
+ */
+export function annualVerdict(
+  subjects: AnnualVerdictSubject[],
+  rules: AnnualVerdictRules,
+): AnnualVerdict | null {
+  const counted = subjects.filter((s) => s.countsTowardResult && s.kind !== "exempt");
+  if (counted.length === 0) return null;
+  const gpaBranch = counted.every((s) => s.kind === "graded");
+  if (gpaBranch) {
+    return {
+      isPassed: true,
+      failedSubjectIds: [],
+      promotionStatus: "promoted",
+      gpaBranch: true,
+      countedSubjects: counted.length,
+    };
+  }
+  const failed = counted.filter((s) => !s.isPassed).map((s) => s.subjectId);
+  const passedCount = counted.length - failed.length;
+  const mustPassFailed = rules.mandatoryPassSubjectIds.some((id) => failed.includes(id));
+  const needed = rules.minSubjectsToPass ?? counted.length;
+  const isPassed = !mustPassFailed && passedCount >= needed;
+  const promotionStatus = isPassed
+    ? "promoted"
+    : rules.compartmentAllowed &&
+        failed.length >= 1 &&
+        failed.length <= (rules.maxSubjectsForCompartment ?? 0)
+      ? "compartment"
+      : "detained";
+  return {
+    isPassed,
+    failedSubjectIds: failed,
+    promotionStatus,
+    gpaBranch: false,
+    countedSubjects: counted.length,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The policy in words (ADR-053 §1) - one wording for the card and the screens
+// ---------------------------------------------------------------------------
+
+export function annualPolicySummary(input: {
+  method: AnnualMethod;
+  bestN: number | null;
+  totalDisplay: "average" | "sum";
+  terms: { name: string; weightage: bigint | null; sequence: number }[];
+  annualSubjectPassPercent: bigint;
+}): string {
+  const terms = [...input.terms].sort((a, b) => a.sequence - b.sequence);
+  const pass = `subject pass ${fromHundredths(input.annualSubjectPassPercent).replace(/\.00$/, "")}%`;
+  let how: string;
+  if (input.method === "weighted") {
+    how = `Weighted: ${terms
+      .map((t) => `${t.name} ${fromHundredths(t.weightage ?? 0n).replace(/\.00$/, "")}%`)
+      .join(" · ")}`;
+  } else if (input.method === "single_term") {
+    how = `${terms[0]?.name ?? "One term"} only`;
+  } else if (input.bestN !== null && input.bestN < terms.length) {
+    how = `Best ${input.bestN} of ${terms.length} terms`;
+  } else {
+    how = `${input.totalDisplay === "sum" ? "Sum" : "Average"} of ${terms.length} term${terms.length === 1 ? "" : "s"}`;
+  }
+  return `${how} · ${pass}`;
+}

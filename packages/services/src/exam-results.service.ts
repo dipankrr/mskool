@@ -33,6 +33,13 @@ import {
 } from "@repo/db/schema";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
+  loadCohort,
+  loadDefaultScale,
+  loadPassCriteria,
+  loadSubjectSet,
+  resolvePapers,
+} from "./exam-shared";
+import {
   annualWeighted,
   applyGrace,
   evaluatePass,
@@ -47,6 +54,7 @@ import {
   mulDivHalfUp,
   percentageOf,
   termAggregate,
+  termSubjectScore,
   toHundredths,
   weightedAverage,
   weightedComponentRollup,
@@ -99,85 +107,23 @@ export class ExamResultsService {
   // -------------------------------------------------------------------------
 
   /** Pass criteria for a year: the class row wins over the school default. */
-  private async resolvePassCriteria(
-    tx: DbLike,
-    schoolId: string,
-    academicYearId: string,
-    classId: string | null,
-  ) {
-    const rows = await tx
-      .select()
-      .from(passCriteria)
-      .where(
-        and(eq(passCriteria.schoolId, schoolId), eq(passCriteria.academicYearId, academicYearId)),
-      );
-    const classRow = classId ? rows.find((c) => c.classId === classId) : undefined;
-    return classRow ?? rows.find((c) => c.classId === null) ?? null;
+  private resolvePassCriteria(tx: DbLike, schoolId: string, academicYearId: string, classId: string | null) {
+    return loadPassCriteria(tx, schoolId, academicYearId, classId);
   }
 
-  /** The school's default scale + bands (component overrides resolved by callers). */
-  private async resolveDefaultScale(tx: DbLike, schoolId: string) {
-    const [scale] = await tx
-      .select()
-      .from(gradingScales)
-      .where(and(eq(gradingScales.schoolId, schoolId), eq(gradingScales.isDefault, true)));
-    if (!scale) return null;
-    const bands = await tx
-      .select()
-      .from(gradingScaleBands)
-      .where(eq(gradingScaleBands.gradingScaleId, scale.id))
-      .orderBy(asc(gradingScaleBands.sequenceNumber));
-    return {
-      scale,
-      bands: bands.map((b) => ({
-        minMarks: toHundredths(b.minMarks),
-        maxMarks: toHundredths(b.maxMarks),
-        gradeLabel: b.gradeLabel,
-        gradePoint: b.gradePoint ? toHundredths(b.gradePoint) : null,
-      })),
-    };
+  /** The school default scale + bands (component overrides resolved by callers). */
+  private resolveDefaultScale(tx: DbLike, schoolId: string) {
+    return loadDefaultScale(tx, schoolId);
   }
 
-  /**
-   * THE RESOLVER SEAM. The class's counted, exam-mode mappings — v1 returns
-   * every counted exam-mode mapping (every student takes every mapped
-   * subject). Elective machinery later swaps this one function for a read
-   * of `student_subject_enrollments`.
-   */
-  private async resolveSubjectSet(tx: DbLike, classId: string, academicYearId: string) {
-    return tx
-      .select({
-        mappingId: classSubjectMappings.id,
-        subjectId: classSubjectMappings.subjectId,
-        countsTowardResult: subjectTypes.countsTowardResult,
-        isGradedOnly: subjectTypes.isGradedOnly,
-      })
-      .from(classSubjectMappings)
-      .innerJoin(subjectTypes, eq(classSubjectMappings.subjectTypeId, subjectTypes.id))
-      .where(
-        and(
-          eq(classSubjectMappings.classId, classId),
-          eq(classSubjectMappings.academicYearId, academicYearId),
-          eq(subjectTypes.assessmentMode, "exam"),
-        ),
-      );
+  /** THE RESOLVER SEAM (see exam-shared.ts). */
+  private resolveSubjectSet(tx: DbLike, classId: string, academicYearId: string) {
+    return loadSubjectSet(tx, classId, academicYearId);
   }
 
   /** The cohort: active enrollments of the class (or one section) for the year. */
-  private async cohortOf(tx: DbLike, classId: string, academicYearId: string, sectionId: string | null) {
-    const base = [
-      eq(studentEnrollments.classId, classId),
-      eq(studentEnrollments.academicYearId, academicYearId),
-      inArray(studentEnrollments.enrollmentStatus, ["active", "admitted", "section_assigned"]),
-    ];
-    return tx
-      .selectDistinct({ studentId: studentEnrollments.studentId })
-      .from(studentEnrollments)
-      .where(
-        sectionId
-          ? and(...base, eq(studentEnrollments.sectionId, sectionId))
-          : and(...base),
-      );
+  private cohortOf(tx: DbLike, classId: string, academicYearId: string, sectionId: string | null) {
+    return loadCohort(tx, classId, academicYearId, sectionId);
   }
 
   // -------------------------------------------------------------------------
@@ -252,58 +198,14 @@ export class ExamResultsService {
       const scale = await this.resolveDefaultScale(tx, schoolId);
       const subjectSet = await this.resolveSubjectSet(tx, classId, exam.academicYearId);
 
-      // THE PAPER EACH (STUDENT, SUBJECT) SITS (ADR-052). A section paper
-      // cohorts its own section; a class-wide paper cohorts the whole
-      // class, sectionless students included. The blueprint save refuses
-      // ambiguous shapes; this defense refuses them at compute with words —
-      // the old engine's section-blind .find() ran the whole class against
-      // whichever paper it saw first, zeroing the section whose marks
-      // lived on the other row.
-      const violations = findSchedulePartitionViolations(schedules);
-      if (violations.length > 0) {
-        const names = await tx
-          .select({ id: subjects.id, name: subjects.name })
-          .from(subjects)
-          .where(inArray(subjects.id, [...new Set(violations.map((v) => v.subjectId))]));
-        const nameOf = new Map(names.map((n) => [n.id, n.name]));
-        throw new Error(
-          `Ambiguous date sheet: ${describeSchedulePartitionViolations(
-            violations,
-            (id) => nameOf.get(id) ?? "a subject",
-          )}. Fix the papers before computing.`,
-        );
-      }
-
-      // One cohort load per DISTINCT scope: every class-wide paper shares
-      // the whole-class cohort; each section loads its own once.
-      const cohortByScope = new Map<string, string[]>();
-      const cohortFor = async (sectionId: string | null) => {
-        const key = sectionId ?? "*class";
-        const hit = cohortByScope.get(key);
-        if (hit) return hit;
-        const rows = await this.cohortOf(tx, classId, exam.academicYearId, sectionId);
-        const ids = rows.map((r) => r.studentId);
-        cohortByScope.set(key, ids);
-        return ids;
-      };
-      const paperOf = new Map<string, Map<string, (typeof schedules)[number]>>();
-      for (const schedule of schedules) {
-        for (const studentId of await cohortFor(schedule.sectionId)) {
-          let bySubject = paperOf.get(studentId);
-          if (!bySubject) {
-            bySubject = new Map();
-            paperOf.set(studentId, bySubject);
-          }
-          bySubject.set(schedule.subjectId, schedule);
-        }
-      }
-      // The compute population: every student at least one paper covers. A
-      // student no paper covers — a section that doesn't sit — gets NO row,
-      // never a computed zero-fail (ADR-052).
-      const allStudentIds = new Set<string>();
-      for (const ids of cohortByScope.values()) {
-        for (const id of ids) allStudentIds.add(id);
-      }
+      // Which paper each (student, subject) sits, and who is computed at all
+      // (ADR-052) - the same resolver the annual readiness uses.
+      const { paperOf, allStudentIds } = await resolvePapers(
+        tx,
+        schedules,
+        classId,
+        exam.academicYearId,
+      );
 
       // The per-component scale overrides (the ICSE case): a component with
       // its own scale gets its own grade — the reference SQL's "this
@@ -395,7 +297,7 @@ export class ExamResultsService {
               isPassed: true, // graded-only subjects never fail on marks
               failedComponents: [],
               isAbsent: studentRows.length > 0 && studentRows.every((r) => r.isAbsent),
-              isExempted: studentRows.some((r) => r.isExempted),
+              isExempted: studentRows.length > 0 && studentRows.every((r) => r.isExempted),
               grade: overall?.gradeObtained ?? null,
               gradePoint: null,
               countsTowardResult: mapping.countsTowardResult,
@@ -422,6 +324,26 @@ export class ExamResultsService {
               absent: (row?.isAbsent ?? false) && !exempted,
             };
           });
+          // A paper the student is excused from ENTIRELY (every component
+          // exempt) is excused at every level (ADR-053 §7): no marks, no
+          // failure, no grace - the term and the year leave it out. A partial
+          // exemption keeps following `exemptRenormalizes`, unchanged.
+          if (inputs.length > 0 && inputs.every((c) => c.exempted)) {
+            outcomes.push({
+              subjectId: mapping.subjectId,
+              marks: null,
+              max: 10000n,
+              isPassed: true,
+              failedComponents: [],
+              isAbsent: false,
+              isExempted: true,
+              grade: null,
+              gradePoint: null,
+              countsTowardResult: mapping.countsTowardResult,
+              isGradedOnly: false,
+            });
+            continue;
+          }
           const marks = weightedComponentRollup(inputs, { renormalizeExempt });
           // The failed COMPONENT's own id — the pre-filter index pointed at
           // innocent components whenever an earlier one passed.
@@ -445,7 +367,7 @@ export class ExamResultsService {
             isPassed,
             failedComponents,
             isAbsent: studentRows.length > 0 && studentRows.every((r) => r.isAbsent),
-            isExempted: studentRows.some((r) => r.isExempted),
+            isExempted: false,
             grade: grade?.gradeLabel ?? null,
             gradePoint: grade?.gradePoint ?? null,
             countsTowardResult: mapping.countsTowardResult,
@@ -480,10 +402,12 @@ export class ExamResultsService {
           const passMark = toHundredths(
             paperOf.get(studentId)?.get(outcome.subjectId)?.passMarks ?? "0.00",
           );
-          const isPassed = outcome.isGradedOnly
+          // Graded-only and fully-excused papers carry no marks and never fail.
+          const unscored = outcome.isGradedOnly || outcome.isExempted;
+          const isPassed = unscored
             ? true
             : evaluatePass({ finalMarks: final, passMark, mandatoryComponentFailed: outcome.failedComponents.length > 0 });
-          const gradeObj = outcome.isGradedOnly
+          const gradeObj = unscored
             ? null
             : scale
               ? gradeFor(percentageOfSafe(final, 10000n), scale.bands)
@@ -495,7 +419,7 @@ export class ExamResultsService {
             passMarks: fromHundredths(passMark),
             marksBeforeGrace: outcome.marks === null ? null : fromHundredths(outcome.marks),
             graceMarksApplied: fromHundredths(grace),
-            finalMarks: outcome.isGradedOnly ? null : fromHundredths(final),
+            finalMarks: unscored ? null : fromHundredths(final),
             isPassed,
             failedComponents: outcome.failedComponents,
             isAbsent: outcome.isAbsent,
@@ -652,45 +576,31 @@ export class ExamResultsService {
     for (const setType of subjectSet) {
       const votes = subjectResults.filter((sr) => sr.subjectId === setType.subjectId);
       if (votes.length === 0) continue;
-      const gradedOnly = setType.isGradedOnly;
-      const score = gradedOnly
-        ? 0n
-        : examWeightedSubjectScore(
-            votes.map((v) => {
-              const weight = toHundredths(
-                termExams.find((e) => e.id === v.examId)?.weightageInTerm ?? "0.00",
-              );
-              return {
-                marks: v.finalMarks ? toHundredths(v.finalMarks) : 0n,
-                maxMarks: 10000n,
-                weightage: weight,
-              };
-            }),
-          );
-      const isPassed = gradedOnly ? true : votes.every((v) => v.isPassed);
-      // Every counting exam's grade point counts, weighted by its term
-      // weightage exactly like the marks — the first vote is just the
-      // first row the query happened to return, never the answer.
-      const gpVotes = votes.filter((v) => v.gradePoint != null);
-      const gradePoint =
-        gpVotes.length > 0
-          ? weightedAverage(
-              gpVotes.map((v) => ({
-                value: toHundredths(v.gradePoint!),
-                weightage: toHundredths(
-                  termExams.find((e) => e.id === v.examId)?.weightageInTerm ?? "0.00",
-                ),
-              })),
-            )
-          : null;
+      // THE one derivation (ADR-053 §4): exam-weighted score, every-exam
+      // pass, and every counting exam's grade point weighted like the marks.
+      const outcome = termSubjectScore(
+        votes.map((v) => ({
+          marks: v.finalMarks ? toHundredths(v.finalMarks) : null,
+          weightage: toHundredths(
+            termExams.find((e) => e.id === v.examId)?.weightageInTerm ?? "0.00",
+          ),
+          isPassed: v.isPassed,
+          isExempted: v.isExempted,
+          gradePoint: v.gradePoint != null ? toHundredths(v.gradePoint) : null,
+        })),
+        { isGradedOnly: setType.isGradedOnly },
+      );
+      // Excused from every exam of the subject: not scored, not failed, out
+      // of the denominator (ADR-053 §7).
+      if (outcome.kind === "exempt") continue;
       scores.push({
         subjectId: setType.subjectId,
-        termScore: score,
+        termScore: outcome.kind === "scored" ? outcome.score : 0n,
         maxScore: 10000n,
         countsTowardResult: setType.countsTowardResult,
-        isPassed,
-        gradePoint,
-        isGradedOnly: gradedOnly,
+        isPassed: outcome.kind === "scored" ? outcome.isPassed : true,
+        gradePoint: outcome.gradePoint,
+        isGradedOnly: outcome.kind === "graded",
       });
     }
 
@@ -1088,6 +998,8 @@ export class ExamResultsService {
             maxMarks: studentSubjectResults.maxMarks,
             grade: studentSubjectResults.grade,
             gradePoint: studentSubjectResults.gradePoint,
+            isPassed: studentSubjectResults.isPassed,
+            isGradedOnly: studentSubjectResults.isGradedOnly,
             isAbsent: studentSubjectResults.isAbsent,
             isExempted: studentSubjectResults.isExempted,
             weightage: exams.weightageInTerm,
@@ -1200,20 +1112,21 @@ export class ExamResultsService {
           return (aRows[0]?.subjectName ?? "").localeCompare(bRows[0]?.subjectName ?? "");
         })
         .map(([subjectId, rows]) => {
-        // An exemption in ANY exam excuses the subject on the card — the
-        // first row is just query order, never the term's answer.
-        const exempted = rows.some((r) => r.isExempted);
-        const score = exempted
-          ? null
-          : examWeightedSubjectScore(
-              rows.map((r) => ({
-                // Absent is null, never a folded zero: the helper skips
-                // nulls exactly like the compute path does.
-                marks: r.marksObtained ? toHundredths(r.marksObtained) : null,
-                maxMarks: 10000n,
-                weightage: toHundredths(r.weightage),
-              })),
-            );
+        // The same derivation the term compute uses (ADR-053 §4): the card
+        // and the total can no longer disagree. A subject excused from every
+        // exam prints blank; graded-only subjects print no marks.
+        const outcome = termSubjectScore(
+          rows.map((r) => ({
+            marks: r.marksObtained ? toHundredths(r.marksObtained) : null,
+            weightage: toHundredths(r.weightage),
+            isPassed: r.isPassed,
+            isExempted: r.isExempted,
+            gradePoint: r.gradePoint ? toHundredths(r.gradePoint) : null,
+          })),
+          { isGradedOnly: rows.some((r) => r.isGradedOnly) },
+        );
+        const exempted = outcome.kind === "exempt";
+        const score = outcome.kind === "scored" ? outcome.score : null;
         const type = typeBySubject.get(subjectId);
         // The TERM grade of the term score — not the first exam's grade.
         const termGrade = score !== null && scale ? gradeFor(score, scale.bands) : null;
