@@ -13,10 +13,13 @@ import { ScreenFrame } from "../../../components/screen-frame";
 import { Skeleton } from "../../../components/skeleton";
 import { ThemedText } from "../../../components/themed-text";
 import { useActiveBranchName } from "../../../hooks/use-active-context";
+import { annualCopy } from "../../../lib/annual-copy";
+import { policyCounts } from "../../../lib/annual";
 import { copy } from "../../../lib/copy";
 import { criteriaCounts } from "../../../lib/pass-criteria";
 import { colors } from "../../../theme/brand-admin";
 import { spacing } from "../../../theme/tokens";
+import { useAnnualPolicies } from "../annual/use-annual";
 import { useExamScope } from "../use-exam-data";
 import {
   useGradingScalesAdmin,
@@ -40,6 +43,7 @@ export function GradingHubScreen() {
   const types = useSubjectTypesAdmin();
   const scales = useGradingScalesAdmin();
   const criteria = usePassCriteriaAdmin();
+  const annual = useAnnualPolicies();
 
   const typeRows = types.data ?? [];
   const scaleRows = scales.data ?? [];
@@ -49,19 +53,23 @@ export function GradingHubScreen() {
   const defaultScale =
     scaleRows.find((row) => row.isDefault)?.name ?? null;
   const counts = criteriaCounts(criteriaRows);
+  const annualCounts = policyCounts(annual.data ?? []);
 
   const year = scope.academicYear;
   const meta = copy.exams.meta(year?.name ?? null, branchName);
   const pending =
     types.isPending ||
     scales.isPending ||
-    (Boolean(year) && criteria.isPending);
-  const failure = types.error ?? scales.error ?? criteria.error ?? null;
+    (Boolean(year) && (criteria.isPending || annual.isPending));
+  const failure = types.error ?? scales.error ?? criteria.error ?? annual.error ?? null;
 
   const refetchAll = () => {
     void types.refetch();
     void scales.refetch();
-    if (year) void criteria.refetch();
+    if (year) {
+      void criteria.refetch();
+      void annual.refetch();
+    }
   };
 
   const shell = (children: ReactNode) => (
@@ -164,6 +172,20 @@ export function GradingHubScreen() {
             year ? () => router.push("/exams/setup/pass-criteria") : undefined
           }
           testID="grading-criteria"
+        />
+        <HubRow
+          title={annualCopy.setup.rowTitle}
+          meta={
+            year
+              ? annualCounts.defaults + annualCounts.classes === 0
+                ? annualCopy.setup.rowNone
+                : annualCopy.setup.rowMeta(year.name, annualCounts.defaults, annualCounts.classes)
+              : copy.exams.grading.hub.criteriaNoSession
+          }
+          detail={annualCopy.setup.rowDetail}
+          icon="exams"
+          onPress={year ? () => router.push("/exams/setup/annual-rules") : undefined}
+          testID="grading-annual-rules"
         />
       </Card>
     </View>,
