@@ -1,4 +1,15 @@
 import {
+  annualCardOutputSchema,
+  annualClassInput,
+  annualGenerateOutputSchema,
+  annualPolicyOutputSchema,
+  annualPublishOutputSchema,
+  annualReadinessOutputSchema,
+  annualStudentInput,
+  annualTableOutputSchema,
+  deleteAnnualPolicyInput,
+  listAnnualPoliciesInput,
+  saveAnnualPolicyInput,
   componentResultSelectSchema,
   createExamSchema,
   createGradingScaleSchema,
@@ -36,6 +47,7 @@ import {
   classSetOutputSchema,
 } from "@repo/contracts";
 import {
+  examAnnualService,
   examConfigService,
   examMarksService,
   examResultsService,
@@ -464,6 +476,75 @@ export const examRouter = router({
       .output(z.array(z.object({ studentId: z.uuid(), promotionStatus: z.string() })))
       .mutation(({ ctx, input }) =>
         examResultsService.computeFinalResults(ctx.scope, input.academicYearId),
+      ),
+  }),
+
+  // THE ANNUAL RESULT (ADR-053). Class-scoped: the year, the class and the
+  // caller's school are checked in the service (a term/year/class is not a
+  // scope node, the same stance as computeTermRanks). Publishing is the
+  // school-level act `exam:publish`; the policy is configuration
+  // (`exam:create`), generating is a compute (`exam:update`).
+  annual: router({
+    policies: router({
+      list: staffListProcedure("exam:read")
+        .meta({ openapi: { method: "GET", path: "/exam/annual/policies", tags: ["annual"], summary: "One year's annual result policies", protect: true } })
+        .input(listAnnualPoliciesInput)
+        .output(z.array(annualPolicyOutputSchema))
+        .query(({ ctx, input }) => examAnnualService.listPolicies(ctx.scopes, input.academicYearId)),
+
+      save: staffProcedure("exam:create")
+        .meta({ openapi: { method: "PUT", path: "/exam/annual/policies", tags: ["annual"], summary: "Create or edit an annual result policy", protect: true } })
+        .input(saveAnnualPolicyInput)
+        .output(annualPolicyOutputSchema)
+        .mutation(({ ctx, input }) => examAnnualService.savePolicy(ctx.scope, ctx.userId, input)),
+
+      delete: staffProcedure("exam:update")
+        .meta({ openapi: { method: "DELETE", path: "/exam/annual/policies/{id}", tags: ["annual"], summary: "Delete an unused annual result policy", protect: true } })
+        .input(deleteAnnualPolicyInput)
+        .output(z.object({ deleted: z.boolean() }))
+        .mutation(async ({ ctx, input }) => ({
+          deleted: await examAnnualService.deletePolicy(ctx.scope, input.id),
+        })),
+    }),
+
+    readiness: staffProcedure("exam:read")
+      .meta({ openapi: { method: "GET", path: "/exam/annual/readiness", tags: ["annual"], summary: "Can this class's year be generated and published?", protect: true } })
+      .input(annualClassInput)
+      .output(annualReadinessOutputSchema.nullable())
+      .query(({ ctx, input }) =>
+        examAnnualService.readiness(ctx.scope, input.academicYearId, input.classId),
+      ),
+
+    generate: staffProcedure("exam:update")
+      .meta({ openapi: { method: "POST", path: "/exam/annual/generate", tags: ["annual"], summary: "Generate one class's annual results (a draft)", protect: true } })
+      .input(annualClassInput)
+      .output(annualGenerateOutputSchema.nullable())
+      .mutation(({ ctx, input }) =>
+        examAnnualService.generate(ctx.scope, input.academicYearId, input.classId),
+      ),
+
+    table: staffProcedure("exam:read")
+      .meta({ openapi: { method: "GET", path: "/exam/annual/table", tags: ["annual"], summary: "One class's annual results", protect: true } })
+      .input(annualClassInput)
+      .output(annualTableOutputSchema.nullable())
+      .query(({ ctx, input }) =>
+        examAnnualService.table(ctx.scope, input.academicYearId, input.classId),
+      ),
+
+    card: staffProcedure("report_card:read")
+      .meta({ openapi: { method: "GET", path: "/exam/annual/card", tags: ["annual"], summary: "One student's annual card (draft preview or published)", protect: true } })
+      .input(annualStudentInput)
+      .output(annualCardOutputSchema)
+      .query(({ ctx, input }) =>
+        examAnnualService.card(ctx.scope, input.academicYearId, input.classId, input.studentId),
+      ),
+
+    publishClass: staffProcedure("exam:publish")
+      .meta({ openapi: { method: "POST", path: "/exam/annual/publish", tags: ["annual"], summary: "Publish one class's annual cards", protect: true } })
+      .input(annualClassInput)
+      .output(annualPublishOutputSchema.nullable())
+      .mutation(({ ctx, input }) =>
+        examAnnualService.publishClass(ctx.scope, ctx.userId, input.academicYearId, input.classId),
       ),
   }),
 

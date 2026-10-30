@@ -923,11 +923,217 @@ export const studentTermResults = pgTable(
   ],
 );
 
+export const annualMethodEnum = pgEnum("annual_method", [
+  "weighted", // Σ term score × weight, renormalized over the terms the student has
+  "single_term", // one chosen term IS the year
+  "best_n", // the best N term scores, averaged (N = all included = the average)
+]);
+
+export const annualTotalDisplayEnum = pgEnum("annual_total_display", [
+  "average", // printed out of 100
+  "sum", // printed as Σ used term scores out of 100 × terms used (best_n only)
+]);
+
 /**
- * The year's verdict — percentage from the per-term policy
- * (`terms.resultMode`), or the GPA branch, ending in `promotionStatus`,
- * which the future rollover reads to create next year's enrollment row
- * (hard rule 6 — this row influences, that row is new).
+ * THE ANNUAL RESULT POLICY (ADR-053) — how a year's terms become the year's
+ * result, per (school, year, class-or-default): the `pass_criteria` shape,
+ * a school-year default row plus class rows, ONE row governing a class (a
+ * class row is a full replacement, never a field-by-field merge).
+ *
+ * `annualSubjectPassPercent` is the bar an annual subject score must clear.
+ * `useOwnPassRules` switches the promotion rules (minimum subjects,
+ * must-pass, compartment, attendance flag) from the class's `pass_criteria`
+ * to this row's own block — a whole-block override, because a pass_criteria
+ * NULL already means "every subject" and cannot also mean "inherit".
+ * Terms live in `annual_result_policy_terms`; `terms.weightage` (the fee
+ * share) is never read here.
+ */
+export const annualResultPolicies = pgTable(
+  "annual_result_policies",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    organizationId: uuid()
+      .notNull()
+      .references(() => organizations.id),
+    schoolId: uuid()
+      .notNull()
+      .references(() => schools.id),
+    academicYearId: uuid()
+      .notNull()
+      .references(() => academicYears.id),
+    // NULL = the school-year default row; set = the class's own policy.
+    classId: uuid().references(() => classes.id),
+
+    method: annualMethodEnum().notNull(),
+    // Required for best_n (N ≥ 1), forbidden otherwise (CHECK below).
+    bestN: smallint(),
+    totalDisplay: annualTotalDisplayEnum().notNull().default("average"),
+
+    annualSubjectPassPercent: numeric({ precision: 5, scale: 2 }).notNull(),
+
+    useOwnPassRules: boolean().notNull().default(false),
+    // The own-rules block — same meaning as pass_criteria, read only when
+    // `useOwnPassRules`. NULL minSubjectsToPass = every counted subject.
+    minSubjectsToPass: smallint(),
+    mandatoryPassSubjectIds: uuid().array().notNull().default(sql`'{}'::uuid[]`),
+    compartmentAllowed: boolean().notNull().default(false),
+    maxSubjectsForCompartment: smallint(),
+    minAttendancePct: numeric({ precision: 5, scale: 2 }).notNull().default("75.00"),
+
+    createdBy: text().references(() => user.id),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex("annual_result_policies_school_year_default_uq")
+      .on(t.schoolId, t.academicYearId)
+      .where(sql`class_id IS NULL`),
+    uniqueIndex("annual_result_policies_school_year_class_uq")
+      .on(t.schoolId, t.academicYearId, t.classId)
+      .where(sql`class_id IS NOT NULL`),
+    index("annual_result_policies_school_year_idx").on(t.schoolId, t.academicYearId),
+    index("annual_result_policies_org_idx").on(t.organizationId),
+    check(
+      "annual_result_policies_pass_range",
+      sql`annual_subject_pass_percent >= 0 AND annual_subject_pass_percent <= 100`,
+    ),
+    check(
+      "annual_result_policies_attendance_range",
+      sql`min_attendance_pct >= 0 AND min_attendance_pct <= 100`,
+    ),
+    check(
+      "annual_result_policies_best_n_shape",
+      sql`(method = 'best_n' AND best_n IS NOT NULL AND best_n >= 1) OR (method <> 'best_n' AND best_n IS NULL)`,
+    ),
+    check(
+      "annual_result_policies_sum_needs_best_n",
+      sql`total_display = 'average' OR method = 'best_n'`,
+    ),
+    check(
+      "annual_result_policies_compartment_cap_present",
+      sql`NOT compartment_allowed OR max_subjects_for_compartment IS NOT NULL`,
+    ),
+  ],
+);
+
+/**
+ * The terms a policy counts — exactly the included ones. `weightage` is the
+ * policy's own academic weight (NULL off the weighted method); the service
+ * validates the cross-row rules (weighted totals 100.00, single_term has one
+ * term, best_n fits N), which a CHECK cannot see.
+ */
+export const annualResultPolicyTerms = pgTable(
+  "annual_result_policy_terms",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    organizationId: uuid()
+      .notNull()
+      .references(() => organizations.id),
+    schoolId: uuid()
+      .notNull()
+      .references(() => schools.id),
+    policyId: uuid()
+      .notNull()
+      .references(() => annualResultPolicies.id, { onDelete: "cascade" }),
+    termId: uuid()
+      .notNull()
+      .references(() => terms.id),
+    weightage: numeric({ precision: 5, scale: 2 }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("annual_result_policy_terms_policy_term_uq").on(t.policyId, t.termId),
+    index("annual_result_policy_terms_policy_idx").on(t.policyId),
+    index("annual_result_policy_terms_school_idx").on(t.schoolId),
+    index("annual_result_policy_terms_org_idx").on(t.organizationId),
+    check(
+      "annual_result_policy_terms_weightage_range",
+      sql`weightage IS NULL OR (weightage >= 0 AND weightage <= 100)`,
+    ),
+  ],
+);
+
+/**
+ * One subject, one year, one student — the annual layer's subject grain
+ * (ADR-053 §8), derived from the term-subject scores by the policy's engine.
+ * `sourceTerms` is the audit trail: every included term with its score,
+ * nominal and effective weight and whether it counted. `renormalized` says
+ * the student was counted from fewer terms than the policy selects.
+ * Graded-only subjects carry a grade and no percentage; an excused subject
+ * carries neither and never fails.
+ */
+export const studentFinalSubjectResults = pgTable(
+  "student_final_subject_results",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    organizationId: uuid()
+      .notNull()
+      .references(() => organizations.id),
+    schoolId: uuid()
+      .notNull()
+      .references(() => schools.id),
+    studentId: uuid()
+      .notNull()
+      .references(() => students.id),
+    academicYearId: uuid()
+      .notNull()
+      .references(() => academicYears.id),
+    subjectId: uuid()
+      .notNull()
+      .references(() => subjects.id),
+    // Where the student sat when the year was generated (mid-year moves must
+    // not rewrite history).
+    classId: uuid()
+      .notNull()
+      .references(() => classes.id),
+    sectionId: uuid().references(() => sections.id),
+
+    finalPercentage: numeric({ precision: 5, scale: 2 }),
+    grade: varchar({ length: 10 }),
+    gradePoint: numeric({ precision: 4, scale: 2 }),
+
+    isPassed: boolean().notNull(),
+    isExempted: boolean().notNull().default(false),
+    countsTowardResult: boolean().notNull(),
+    isGradedOnly: boolean().notNull(),
+    renormalized: boolean().notNull().default(false),
+
+    sourceTerms: jsonb().notNull().default(sql`'[]'::jsonb`),
+
+    computedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+
+    resultStatus: aggregateResultStatusEnum().notNull().default("draft"),
+    publishedAt: timestamp({ withTimezone: true }),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex("student_final_subject_results_student_year_subject_uq").on(
+      t.studentId,
+      t.academicYearId,
+      t.subjectId,
+    ),
+    index("student_final_subject_results_year_class_idx").on(t.academicYearId, t.classId),
+    index("student_final_subject_results_status_idx").on(t.resultStatus),
+    index("student_final_subject_results_school_idx").on(t.schoolId),
+    index("student_final_subject_results_org_idx").on(t.organizationId),
+  ],
+);
+
+/**
+ * The year's verdict — the annual policy's percentage (ADR-053), or the GPA
+ * branch, ending in `promotionStatus`, which the future rollover reads to
+ * create next year's enrollment row (hard rule 6 — this row influences,
+ * that row is new). `policyId` names the policy that produced it;
+ * `passPolicySnapshot` freezes the resolved rules.
  */
 export const studentFinalResults = pgTable(
   "student_final_results",
@@ -945,6 +1151,11 @@ export const studentFinalResults = pgTable(
     academicYearId: uuid()
       .notNull()
       .references(() => academicYears.id),
+    // Where the student sat when the year was generated; NULL on rows that
+    // predate the annual policy (ADR-053).
+    classId: uuid().references(() => classes.id),
+    sectionId: uuid().references(() => sections.id),
+    policyId: uuid().references(() => annualResultPolicies.id),
 
     totalMarks: numeric({ precision: 8, scale: 2 }),
     maxMarks: numeric({ precision: 8, scale: 2 }),
@@ -960,7 +1171,10 @@ export const studentFinalResults = pgTable(
 
     promotionStatus: promotionStatusEnum().notNull().default("pending"),
     compartmentSubjects: uuid().array().notNull().default(sql`'{}'::uuid[]`),
+    // Counted from fewer terms than the policy selects (any subject).
+    renormalized: boolean().notNull().default(false),
 
+    rankInSection: smallint(),
     rankInClass: smallint(),
     rankComputedAt: timestamp({ withTimezone: true }),
 

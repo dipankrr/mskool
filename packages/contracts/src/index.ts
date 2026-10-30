@@ -59,6 +59,10 @@ export * from "./contracts/fees.contract";
 // publication + the versioned snapshot. Phase 5 (ADR-032).
 export * from "./contracts/exam.contract";
 
+// The annual result: the saved policy, readiness / table / generate / publish
+// shapes, and the annual card (snapshot version 2). ADR-053.
+export * from "./contracts/exam-annual.contract";
+
 // Portal access: the family login's credential lifecycle (ADR-007).
 export * from "./contracts/portal-access.contract";
 

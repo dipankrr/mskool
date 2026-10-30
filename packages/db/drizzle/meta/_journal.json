@@ -232,6 +232,13 @@
       "when": 1793023609727,
       "tag": "0032_brown_kingpin",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793355774083,
+      "tag": "0033_aspiring_killer_shrike",
+      "breakpoints": true
     }
   ]
 }
