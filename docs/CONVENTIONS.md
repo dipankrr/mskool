@@ -270,3 +270,12 @@ shared; the staff and family shells resolve different palettes through the
 same component API. Components promote inline → screen-colocated →
 `components/` on second use only. Mobile `env.ts` validates `EXPO_PUBLIC_*`
 with literals, mirroring the `NEXT_PUBLIC_*` rule above.
+
+**Screen footers: `bar` by default, `floating` for a lone button.** `ScreenFrame`'s
+`footer` is the form action bar (white strip, hairline) because footers carry
+more than a button - save status, a retry, a second button. `footerVariant=
+"floating"` drops the strip and rule for a footer that is exactly one primary
+button. Never restyle the shared frame for one screen: add or pick a variant.
+Header controls: `action` (the screen's one labelled act), `secondaryAction`
+(a quieter utility, left of it) and `overflowAction` (a vertical three-dots
+menu, always rightmost).

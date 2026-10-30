@@ -22,6 +22,8 @@ const iconMap = {
   home: { ios: "house.fill", android: "home" },
   attendance: { ios: "checklist", android: "checklist" },
   more: { ios: "ellipsis", android: "more-horiz" },
+  /** The overflow menu in a header: three dots, stacked. */
+  moreVertical: { ios: "ellipsis", android: "more-vert" },
   school: { ios: "graduationcap.fill", android: "school" },
   students: { ios: "person.2.fill", android: "people" },
   person: { ios: "person.fill", android: "person" },
@@ -121,7 +123,13 @@ export function AppIcon({
         name={icon.ios}
         size={size}
         tintColor={color}
-        style={style as StyleProp<ViewStyle>}
+        // SF Symbols has no vertical ellipsis: the horizontal one, turned.
+        style={
+          [
+            name === "moreVertical" ? { transform: [{ rotate: "90deg" }] } : null,
+            style,
+          ] as StyleProp<ViewStyle>
+        }
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
       />

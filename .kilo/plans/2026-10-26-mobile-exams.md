@@ -2297,13 +2297,23 @@ bulk edit; the web grid is unchanged (it already has a per-row section picker).
 
 UI-only, `exams/[examId]` hub. (1) The header's "Options" pill is now "Edit exam" (pre-results);
 "Papers & components" is an "Edit papers" / "View papers" (frozen) button on the Papers list
-header. (2) The stage card owns the stage's acts: "Back to X" beside the Next line, and a gear
-that opens what is left (eligibility, lock, publish all) - no gear when nothing is left.
-(3) Section chips under the class chips, shown only when the class has section-scoped papers; a
-section shows its own papers plus the class-wide ones it inherits. (4) Paper card: a date tile,
-icon facts (time, who sits it, how it is marked), no "Opens when marks entry starts" line.
-(5) `ScreenFrame` gains `floatingFooter` (no white strip or rule; the button sits on the canvas),
-used by the hub only. Gates: tsc clean, lint 0, jest 38 / 655. Not device-walked.
+header. (2) The stage card owns the stage's own act: "Back to X" beside the Next line. What is
+left (eligibility, the lock, publish all) sits behind a vertical three-dots menu, the rightmost
+header control after "Edit exam" (`ScreenFrame`'s new `overflowAction`; absent when nothing is
+left). (3) Section chips under the class chips, shown only when the class has section-scoped
+papers; a section shows its own papers plus the class-wide ones it inherits. (4) Paper card: a
+date tile, icon facts (time, who sits it, how it is marked), no "Opens when marks entry starts"
+line. (5) `ScreenFrame` gains `footerVariant: "bar" | "floating"`; the hub uses `floating`.
+
+**Why the footer is a white bar (checked, not assumed).** It is the form action bar: it holds
+more than a button. Marks entry's footer carries the save status ("All changes saved" / "3
+unsaved" with Retry); many sheets stack a primary and a secondary button. A bar with a rule keeps
+that legible over scrolling content. So `bar` stays the default, and `floating` (no strip or
+rule, a soft five-step fade over the scroll body, canvas behind the button) is for a footer that
+is ONE primary button - the hub's was. No hub info was lost: its footer was only the button. Not
+a true overlay (no gradient library; the fade is inside the footer so keyboard layout is
+unchanged). iOS has no vertical-ellipsis SF Symbol, so `moreVertical` rotates the horizontal one.
+Gates: tsc clean, lint 0, jest 38 / 655. Not device-walked.
 
 ---
 

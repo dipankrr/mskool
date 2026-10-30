@@ -313,11 +313,11 @@ export function ExamHubScreen() {
             }
           : undefined
       }
-      secondaryAction={
+      overflowAction={
         exam !== null && sheetOptions.length > 0
           ? {
               label: copy.exams.hub.moreOptions,
-              icon: "more",
+              icon: "moreVertical",
               iconOnly: true,
               onPress: () => setOptionsOpen(true),
               accessibilityHint: copy.exams.hub.optionsHint,

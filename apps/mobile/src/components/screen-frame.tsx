@@ -64,6 +64,7 @@ export function ScreenFrame({
   padForTabBar = false,
   action,
   secondaryAction,
+  overflowAction,
   footer,
   footerVariant = "bar",
   onRefresh,
@@ -80,11 +81,15 @@ export function ScreenFrame({
   action?: HeaderAction;
   /** A quieter utility action to the left of `action` (settings gear). */
   secondaryAction?: HeaderAction;
+  /** A three-dots menu: always the rightmost control, after `action`. */
+  overflowAction?: HeaderAction;
   /** Sticky bottom content; the body yields its bottom padding to it. */
   footer?: ReactNode;
   /**
-   * The footer is one primary button, not a form's action bar: it sits on the
-   * canvas with no white strip or rule, so the button reads as floating.
+   * `bar` (default) is the form action bar: a white strip with a rule, with
+   * room for status text or a second button. `floating` is for a LONE primary
+   * button: it sits on the canvas with no strip or rule and a soft fade over
+   * the scroll body. A footer with text or a second control wants `bar`.
    */
   footerVariant?: "bar" | "floating";
   /** Passing this enables pull-to-refresh. */
@@ -99,7 +104,7 @@ export function ScreenFrame({
   // gesture bar. Under the tabs the bar's space already carries the inset.
   const bottom = padForTabBar ? tabSpace : insets.bottom + spacing.xl;
   const showTopRow = Boolean(
-    backAccessibilityLabel || action || secondaryAction,
+    backAccessibilityLabel || action || secondaryAction || overflowAction,
   );
 
   return (
@@ -152,12 +157,15 @@ export function ScreenFrame({
               ) : (
                 <View style={styles.topSpacer} />
               )}
-              {action || secondaryAction ? (
+              {action || secondaryAction || overflowAction ? (
                 <View style={styles.actions}>
                   {secondaryAction ? (
                     <HeaderActionButton action={secondaryAction} />
                   ) : null}
                   {action ? <HeaderActionButton action={action} /> : null}
+                  {overflowAction ? (
+                    <HeaderActionButton action={overflowAction} />
+                  ) : null}
                 </View>
               ) : null}
             </View>
@@ -182,11 +190,31 @@ export function ScreenFrame({
               { paddingBottom: Math.max(insets.bottom, spacing.md) },
             ]}
           >
+            {footerVariant === "floating" ? <FooterFade /> : null}
             {footer}
           </View>
         ) : null}
       </KeyboardAvoidingView>
     </SafeAreaView>
+  );
+}
+
+/**
+ * The soft edge of the floating footer: strips of canvas that fade in over the
+ * last of the scroll body, so content tucks under the button instead of being
+ * cut by a hard line. Drawn above the footer's box and inert to touch, so the
+ * footer's own height and the keyboard layout are unchanged.
+ */
+const FADE_STEPS = [0.1, 0.25, 0.45, 0.65, 0.85] as const;
+const FADE_STEP_HEIGHT = 5;
+
+function FooterFade() {
+  return (
+    <View pointerEvents="none" style={styles.fade}>
+      {FADE_STEPS.map((opacity) => (
+        <View key={opacity} style={[styles.fadeStep, { opacity }]} />
+      ))}
+    </View>
   );
 }
 
@@ -301,6 +329,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: gutter,
     paddingTop: spacing.md,
     gap: spacing.sm,
+  },
+  fade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: -FADE_STEPS.length * FADE_STEP_HEIGHT,
+  },
+  fadeStep: {
+    height: FADE_STEP_HEIGHT,
+    backgroundColor: colors.canvas,
   },
   footerFloating: {
     borderTopWidth: 0,
