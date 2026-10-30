@@ -559,6 +559,34 @@ export class ExamAnnualService {
     };
   }
 
+  /** Which classes have a generated year, and how far along - one grouped read. */
+  async overview(scopes: DataScope[], academicYearId: string) {
+    const rows = await db
+      .select({
+        classId: studentFinalResults.classId,
+        students: sql<number>`count(*)::int`,
+        publishedStudents: sql<number>`count(*) filter (where ${studentFinalResults.resultStatus} <> draft)::int`,
+        computedAt: sql<Date>`max(${studentFinalResults.computedAt})`,
+      })
+      .from(studentFinalResults)
+      .where(
+        and(
+          eq(studentFinalResults.academicYearId, academicYearId),
+          sql`${studentFinalResults.policyId} IS NOT NULL`,
+          scopeWhere(scopes.map(atSchoolLevel), {
+            organizationId: studentFinalResults.organizationId,
+            schoolId: studentFinalResults.schoolId,
+          }),
+        ),
+      )
+      .groupBy(studentFinalResults.classId);
+    return rows.flatMap((r) =>
+      r.classId
+        ? [{ classId: r.classId, students: r.students, publishedStudents: r.publishedStudents, computedAt: new Date(r.computedAt) }]
+        : [],
+    );
+  }
+
   // -------------------------------------------------------------------------
   // Generate - one class, one transaction, set-based
   // -------------------------------------------------------------------------

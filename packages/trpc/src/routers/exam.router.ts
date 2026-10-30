@@ -2,6 +2,8 @@ import {
   annualCardOutputSchema,
   annualClassInput,
   annualGenerateOutputSchema,
+  annualOverviewInput,
+  annualOverviewOutputSchema,
   annualPolicyOutputSchema,
   annualPublishOutputSchema,
   annualReadinessOutputSchema,
@@ -506,6 +508,12 @@ export const examRouter = router({
           deleted: await examAnnualService.deletePolicy(ctx.scope, input.id),
         })),
     }),
+
+    overview: staffListProcedure("exam:read")
+      .meta({ openapi: { method: "GET", path: "/exam/annual/overview", tags: ["annual"], summary: "Which classes have a generated year", protect: true } })
+      .input(annualOverviewInput)
+      .output(annualOverviewOutputSchema)
+      .query(({ ctx, input }) => examAnnualService.overview(ctx.scopes, input.academicYearId)),
 
     readiness: staffProcedure("exam:read")
       .meta({ openapi: { method: "GET", path: "/exam/annual/readiness", tags: ["annual"], summary: "Can this class's year be generated and published?", protect: true } })

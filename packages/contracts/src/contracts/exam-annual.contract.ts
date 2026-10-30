@@ -120,6 +120,19 @@ export type AnnualClassInput = z.infer<typeof annualClassInput>;
 
 export const annualStudentInput = annualClassInput.extend({ studentId: z.uuid() });
 
+export const annualOverviewInput = z.object({ academicYearId: z.uuid() });
+
+/** One row per class that has a generated year - the class list's status chips. */
+export const annualOverviewOutputSchema = z.array(
+  z.object({
+    classId: z.uuid(),
+    students: z.number().int(),
+    publishedStudents: z.number().int(),
+    computedAt: z.date(),
+  }),
+);
+export type AnnualOverviewOutput = z.infer<typeof annualOverviewOutputSchema>;
+
 const governingPolicySchema = z
   .object({
     id: z.uuid(),
