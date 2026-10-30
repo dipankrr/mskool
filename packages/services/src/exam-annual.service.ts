@@ -94,7 +94,8 @@ interface Governing {
   policy: PolicyWithTerms;
   scope: "class" | "default";
   shape: AnnualPolicyShape;
-  passPercent: bigint;
+  /** NULL: the papers' own pass marks decide. */
+  passPercent: bigint | null;
 }
 interface RosterRow {
   studentId: string;
@@ -164,7 +165,8 @@ export class ExamAnnualService {
         sequence: t.sequence,
         weightage: t.weightage === null ? null : toHundredths(t.weightage),
       })),
-      annualSubjectPassPercent: toHundredths(p.row.annualSubjectPassPercent),
+      annualSubjectPassPercent:
+        p.row.annualSubjectPassPercent === null ? null : toHundredths(p.row.annualSubjectPassPercent),
     });
   }
 
@@ -222,7 +224,8 @@ export class ExamAnnualService {
           weightage: t.weightage === null ? null : toHundredths(t.weightage),
         })),
       },
-      passPercent: toHundredths(row.annualSubjectPassPercent),
+      passPercent:
+        row.annualSubjectPassPercent === null ? null : toHundredths(row.annualSubjectPassPercent),
     };
   }
 
@@ -291,7 +294,7 @@ export class ExamAnnualService {
         method: input.method,
         bestN: input.method === "best_n" ? (input.bestN ?? null) : null,
         totalDisplay: input.totalDisplay,
-        annualSubjectPassPercent: input.annualSubjectPassPercent,
+        annualSubjectPassPercent: input.annualSubjectPassPercent ?? null,
         useOwnPassRules: own,
         minSubjectsToPass: own ? (input.minSubjectsToPass ?? null) : null,
         mandatoryPassSubjectIds: own ? input.mandatoryPassSubjectIds : [],
@@ -463,6 +466,7 @@ export class ExamAnnualService {
         examId: studentSubjectResults.examId,
         finalMarks: studentSubjectResults.finalMarks,
         isPassed: studentSubjectResults.isPassed,
+        passMarks: studentSubjectResults.passMarks,
         isExempted: studentSubjectResults.isExempted,
         gradePoint: studentSubjectResults.gradePoint,
         grade: studentSubjectResults.grade,
@@ -494,6 +498,7 @@ export class ExamAnnualService {
           marks: r.finalMarks ? toHundredths(r.finalMarks) : null,
           weightage: toHundredths(examById.get(r.examId)!.weightage),
           isPassed: r.isPassed,
+          passMark: toHundredths(r.passMarks),
           isExempted: r.isExempted,
           gradePoint: r.gradePoint ? toHundredths(r.gradePoint) : null,
         })),
@@ -697,6 +702,7 @@ export class ExamAnnualService {
         classId,
         sectionId: roster.find((r) => r.studentId === s.studentId)?.sectionId ?? null,
         finalPercentage: s.finalPercentage,
+        passMark: s.passMark,
         grade: s.grade,
         gradePoint: s.gradePoint,
         isPassed: s.isPassed,
@@ -722,6 +728,7 @@ export class ExamAnnualService {
               classId: sql`excluded.class_id`,
               sectionId: sql`excluded.section_id`,
               finalPercentage: sql`excluded.final_percentage`,
+              passMark: sql`excluded.pass_mark`,
               grade: sql`excluded.grade`,
               gradePoint: sql`excluded.grade_point`,
               isPassed: sql`excluded.is_passed`,
@@ -1241,6 +1248,7 @@ export class ExamAnnualService {
           return {
             subjectId: s.subjectId,
             percentage: s.finalPercentage,
+            passMark: s.passMark,
             grade: s.grade,
             gradePoint: s.gradePoint,
             isPassed: s.isPassed,
@@ -1415,6 +1423,7 @@ export class ExamAnnualService {
             widgetName: widget?.name ?? null,
             widgetSequence: widget?.sequence ?? null,
             percentage: s.finalPercentage,
+            passMark: s.passMark,
             displayMarks: sum?.marks ?? null,
             displayMax: sum?.max ?? null,
             grade: s.grade,

@@ -11,7 +11,7 @@ import { Notice } from "../../../components/notice";
 import { ScreenFrame } from "../../../components/screen-frame";
 import { Skeleton } from "../../../components/skeleton";
 import { ThemedText } from "../../../components/themed-text";
-import { renormalizedNote, verdictInWords } from "../../../lib/annual";
+import { renormalizedNote, scoreAgainstBar, verdictInWords } from "../../../lib/annual";
 import { annualCopy } from "../../../lib/annual-copy";
 import { copy } from "../../../lib/copy";
 import { colors } from "../../../theme/brand-admin";
@@ -85,7 +85,10 @@ export function StudentAnnualScreen() {
           <VerdictPill status={student.promotionStatus} testID="student-annual-pill" />
         </View>
         <ThemedText variant="body" style={styles.verdictText} testID="student-annual-verdict-text">
-          {verdictInWords(student, subjectName)}
+          {verdictInWords(student, subjectName, (id) => {
+            const s = student.subjects.find((x) => x.subjectId === id);
+            return s ? scoreAgainstBar(s.percentage, s.passMark) : null;
+          })}
         </ThemedText>
         <View style={styles.facts}>
           {student.percentage ? (
@@ -155,6 +158,11 @@ export function StudentAnnualScreen() {
               {subject.displayMarks ? (
                 <ThemedText variant="meta">
                   {pct(subject.displayMarks)}/{pct(subject.displayMax)}
+                </ThemedText>
+              ) : null}
+              {subject.passMark ? (
+                <ThemedText variant="meta" testID={`student-annual-bar-${subject.subjectId}`}>
+                  {`${c.passBar} ${pct(subject.passMark)}`}
                 </ThemedText>
               ) : null}
             </View>

@@ -940,7 +940,9 @@ export const annualTotalDisplayEnum = pgEnum("annual_total_display", [
  * a school-year default row plus class rows, ONE row governing a class (a
  * class row is a full replacement, never a field-by-field merge).
  *
- * `annualSubjectPassPercent` is the bar an annual subject score must clear.
+ * `annualSubjectPassPercent` is OPTIONAL: NULL means a subject passes the year
+ * when its year score reaches the pass marks of the papers behind it (weighted
+ * as the score is); a value sets one fixed bar instead.
  * `useOwnPassRules` switches the promotion rules (minimum subjects,
  * must-pass, compartment, attendance flag) from the class's `pass_criteria`
  * to this row's own block — a whole-block override, because a pass_criteria
@@ -969,7 +971,7 @@ export const annualResultPolicies = pgTable(
     bestN: smallint(),
     totalDisplay: annualTotalDisplayEnum().notNull().default("average"),
 
-    annualSubjectPassPercent: numeric({ precision: 5, scale: 2 }).notNull(),
+    annualSubjectPassPercent: numeric({ precision: 5, scale: 2 }),
 
     useOwnPassRules: boolean().notNull().default(false),
     // The own-rules block — same meaning as pass_criteria, read only when
@@ -1093,6 +1095,9 @@ export const studentFinalSubjectResults = pgTable(
     sectionId: uuid().references(() => sections.id),
 
     finalPercentage: numeric({ precision: 5, scale: 2 }),
+    // The bar this score was judged against (the policy's fixed percentage or
+    // the papers' own pass marks); NULL for excused and graded-only subjects.
+    passMark: numeric({ precision: 5, scale: 2 }),
     grade: varchar({ length: 10 }),
     gradePoint: numeric({ precision: 4, scale: 2 }),
 

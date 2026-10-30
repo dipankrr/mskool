@@ -52,7 +52,12 @@ export const saveAnnualPolicyInput = z
     /** best_n only: how many of the included terms count. */
     bestN: z.number().int().min(1).max(12).nullable().optional(),
     totalDisplay: z.enum(annualTotalDisplayValues).optional().default("average"),
-    annualSubjectPassPercent: pct100,
+    /**
+     * OPTIONAL. Blank: a subject passes the year when its year score reaches the
+     * pass marks of the papers behind it, weighted as the score is. A value sets
+     * ONE fixed bar for the whole year instead.
+     */
+    annualSubjectPassPercent: pct100.nullable().optional(),
     useOwnPassRules: z.boolean().optional().default(false),
     minSubjectsToPass: z.number().int().min(1).max(50).nullable().optional(),
     mandatoryPassSubjectIds: z.array(z.uuid()).optional().default([]),
@@ -204,6 +209,8 @@ export type AnnualSourceTerm = z.infer<typeof annualSourceTermSchema>;
 export const annualSubjectRowSchema = z.object({
   subjectId: z.uuid(),
   percentage: z.string().nullable(),
+  /** The bar this score was judged against; null for excused and graded-only subjects. */
+  passMark: z.string().nullable(),
   grade: z.string().nullable(),
   gradePoint: z.string().nullable(),
   isPassed: z.boolean(),
@@ -283,7 +290,8 @@ export const reportCardSnapshotV2 = z.object({
   policy: z.object({
     method: z.enum(annualMethodValues),
     totalDisplay: z.enum(annualTotalDisplayValues),
-    annualSubjectPassPercent: z.string(),
+    /** null: the papers' own pass marks decided. */
+    annualSubjectPassPercent: z.string().nullable(),
     /** The same sentence the staff screens print. */
     summary: z.string(),
   }),
@@ -306,6 +314,7 @@ export const reportCardSnapshotV2 = z.object({
       widgetName: z.string().nullable(),
       widgetSequence: z.number().int().nullable(),
       percentage: z.string().nullable(),
+      passMark: z.string().nullable().optional(),
       displayMarks: z.string().nullable(),
       displayMax: z.string().nullable(),
       grade: z.string().nullable(),

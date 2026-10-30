@@ -1,4 +1,5 @@
 import {
+  annualPassMark,
   annualScore,
   annualVerdict,
   computeRanks,
@@ -30,8 +31,11 @@ export interface AnnualCellInput {
 
 export interface AnnualComputeInput {
   policy: AnnualPolicyShape;
-  /** The bar an annual subject score must clear (hundredths of a percent). */
-  passPercent: bigint;
+  /**
+   * A fixed bar an annual subject score must clear (hundredths of a percent),
+   * or NULL: then the papers' own pass marks, weighted as the score is, decide.
+   */
+  passPercent: bigint | null;
   rules: AnnualVerdictRules;
   subjects: { subjectId: string; countsTowardResult: boolean; isGradedOnly: boolean }[];
   students: { studentId: string; sectionId: string | null }[];
@@ -56,6 +60,8 @@ export interface AnnualSubjectOut {
   finalPercentage: string | null;
   grade: string | null;
   gradePoint: string | null;
+  /** The bar this score was judged against; null for excused and graded-only subjects. */
+  passMark: string | null;
   isPassed: boolean;
   isExempted: boolean;
   countsTowardResult: boolean;
@@ -134,6 +140,7 @@ export function computeAnnual(input: AnnualComputeInput): AnnualComputeOutput {
           finalPercentage: null,
           grade: null,
           gradePoint: null,
+          passMark: null,
           isPassed: true,
           isExempted: true,
           renormalized: false,
@@ -169,6 +176,7 @@ export function computeAnnual(input: AnnualComputeInput): AnnualComputeOutput {
           finalPercentage: null,
           grade: latest?.cell.grade ?? null,
           gradePoint: pick ? fromHundredths(pick.score) : null,
+          passMark: null,
           isPassed: true,
           isExempted: false,
           renormalized: false,
@@ -194,12 +202,27 @@ export function computeAnnual(input: AnnualComputeInput): AnnualComputeOutput {
       if (!pick) continue;
       const band = input.scaleBands ? gradeFor(pick.score, input.scaleBands) : null;
       if (pick.renormalized) anyRenormalized = true;
+      // The bar: the policy's fixed percentage if it set one, else the pass
+      // marks of the papers behind the terms that counted.
+      const termBar = new Map(
+        cellsHere.flatMap((c) =>
+          c.cell.outcome.kind === "scored" ? [[c.term.termId, c.cell.outcome.passMark] as const] : [],
+        ),
+      );
+      const bar =
+        input.passPercent ??
+        annualPassMark(
+          pick.sources
+            .filter((s) => s.used)
+            .map((s) => ({ effectiveWeight: s.effectiveWeight, passMark: termBar.get(s.termId) ?? 0n })),
+        );
       rows.push({
         ...base,
         finalPercentage: fromHundredths(pick.score),
         grade: band?.gradeLabel ?? null,
         gradePoint: band?.gradePoint != null ? fromHundredths(band.gradePoint) : null,
-        isPassed: pick.score >= input.passPercent,
+        passMark: fromHundredths(bar),
+        isPassed: pick.score >= bar,
         isExempted: false,
         renormalized: pick.renormalized,
         sourceTerms: pick.sources.map((s) => ({

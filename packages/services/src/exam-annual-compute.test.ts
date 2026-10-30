@@ -26,8 +26,8 @@ const bands: GradeBand[] = [
   { minMarks: 8000n, maxMarks: 10000n, gradeLabel: "A", gradePoint: 1000n },
 ];
 
-const scored = (score: bigint, isPassed = true): AnnualCellInput => ({
-  outcome: { kind: "scored", score, isPassed, gradePoint: null },
+const scored = (score: bigint, isPassed = true, passMark = 3300n): AnnualCellInput => ({
+  outcome: { kind: "scored", score, isPassed, passMark, gradePoint: null },
   grade: null,
 });
 const exempt = (): AnnualCellInput => ({ outcome: { kind: "exempt" }, grade: null });
@@ -305,5 +305,92 @@ describe("computeAnnual - ranks", () => {
     );
     const ranks = Object.fromEntries(out.students.map((s) => [s.studentId, [s.rankInClass, s.rankInSection]]));
     expect(ranks).toEqual({ a: [3, 1], b: [1, 1], c: [3, 2], d: [1, null] });
+  });
+});
+
+describe("computeAnnual - the year's pass mark", () => {
+  const year = (t1: bigint, t2: bigint, t3: bigint, bar: bigint) => ({
+    asha: {
+      [MATHS]: {
+        [T1]: scored(t1, true, bar),
+        [T2]: scored(t2, true, bar),
+        [T3]: scored(t3, true, bar),
+      },
+    },
+  });
+  const subjects = [{ subjectId: MATHS, countsTowardResult: true, isGradedOnly: false }];
+
+  it("with no fixed bar, judges the year by the papers' own pass marks", () => {
+    // Papers pass at 40; the year score is 36 -> fails against 40, though 36 clears a generic 33.
+    const out = computeAnnual(base({ subjects, passPercent: null, cells: year(3600n, 3600n, 3600n, 4000n) }));
+    expect(subjectOf(out, "asha", MATHS)).toMatchObject({ finalPercentage: "36.00", passMark: "40.00", isPassed: false });
+  });
+
+  it("passes the same score when the papers' bar is lower", () => {
+    const out = computeAnnual(base({ subjects, passPercent: null, cells: year(3600n, 3600n, 3600n, 3300n) }));
+    expect(subjectOf(out, "asha", MATHS)).toMatchObject({ passMark: "33.00", isPassed: true });
+  });
+
+  it("weights the terms' bars like the scores (20/30/50 over bars 30/40/50)", () => {
+    // (30*20 + 40*30 + 50*50) / 100 = 43.00
+    const cells = {
+      asha: { [MATHS]: { [T1]: scored(5000n, true, 3000n), [T2]: scored(5000n, true, 4000n), [T3]: scored(5000n, true, 5000n) } },
+    };
+    const out = computeAnnual(base({ subjects, passPercent: null, cells }));
+    expect(subjectOf(out, "asha", MATHS)?.passMark).toBe("43.00");
+  });
+
+  it("renormalizes the bar over the terms the student has", () => {
+    // T1 bar 30 (20) and T3 bar 50 (50), T2 missing: (30*20 + 50*50) / 70 = 44.29
+    const cells = { asha: { [MATHS]: { [T1]: scored(6000n, true, 3000n), [T3]: scored(6000n, true, 5000n) } } };
+    const out = computeAnnual(base({ subjects, passPercent: null, cells }));
+    expect(subjectOf(out, "asha", MATHS)?.passMark).toBe("44.29");
+  });
+
+  it("uses only the best-N terms' bars", () => {
+    const cells = {
+      asha: { [MATHS]: { [T1]: scored(2000n, true, 6000n), [T2]: scored(8000n, true, 3000n), [T3]: scored(9000n, true, 5000n) } },
+    };
+    const out = computeAnnual(
+      base({
+        subjects,
+        passPercent: null,
+        policy: {
+          method: "best_n",
+          bestN: 2,
+          terms: [1, 2, 3].map((n) => ({ termId: "t" + n, sequence: n, weightage: null })),
+        },
+        cells,
+      }),
+    );
+    // Terms 2 and 3 counted: (30 + 50) / 2 = 40.00; Term 1's bar of 60 is ignored.
+    expect(subjectOf(out, "asha", MATHS)?.passMark).toBe("40.00");
+  });
+
+  it("a fixed bar wins over the papers' and is what is recorded", () => {
+    const out = computeAnnual(base({ subjects, passPercent: 2500n, cells: year(3000n, 3000n, 3000n, 5000n) }));
+    expect(subjectOf(out, "asha", MATHS)).toMatchObject({ passMark: "25.00", isPassed: true });
+  });
+
+  it("records no bar for an excused or graded-only subject", () => {
+    const out = computeAnnual(
+      base({
+        subjects: [
+          { subjectId: MATHS, countsTowardResult: true, isGradedOnly: false },
+          { subjectId: ART, countsTowardResult: false, isGradedOnly: true },
+          { subjectId: SCIENCE, countsTowardResult: true, isGradedOnly: false },
+        ],
+        passPercent: null,
+        cells: {
+          asha: {
+            [MATHS]: { [T1]: exempt() },
+            [ART]: { [T1]: graded("A") },
+            [SCIENCE]: { [T1]: scored(6000n) },
+          },
+        },
+      }),
+    );
+    expect(subjectOf(out, "asha", MATHS)?.passMark).toBeNull();
+    expect(subjectOf(out, "asha", ART)?.passMark).toBeNull();
   });
 });

@@ -15,6 +15,7 @@ import {
   policyCounts,
   policyPromotionLine,
   renormalizedNote,
+  scoreAgainstBar,
   sortPolicies,
   sortStudents,
   togglePick,
@@ -108,9 +109,12 @@ describe("annualErrors", () => {
     expect(annualErrors(draft).weights).toBe("Give every picked term a weight.");
   });
 
-  it("needs a pass mark", () => {
-    expect(annualErrors({ ...base(), passPercent: "" }).pass).toBeTruthy();
-    expect(annualErrors({ ...base(), passPercent: "101" }).pass).toBeTruthy();
+  it("treats the year pass mark as optional, but refuses a nonsense one", () => {
+    expect(annualErrors({ ...base(), passPercent: "" }).pass).toBeUndefined();
+    expect(annualErrors({ ...base(), passPercent: "101" }).pass).toBe(
+      "Enter a pass mark between 0 and 100, or leave it blank.",
+    );
+    expect(annualErrors({ ...base(), passPercent: "abc" }).pass).toBeTruthy();
   });
 
   it("needs best-N to fit the picked terms", () => {
@@ -175,6 +179,11 @@ describe("annualPayload", () => {
     expect(annualPayload(best, where)).toMatchObject({ method: "best_n", bestN: 2 });
   });
 
+  it("sends no pass mark when it is left blank, so the papers' own pass marks decide", () => {
+    expect(annualPayload({ ...draft(), passPercent: "" }, where).annualSubjectPassPercent).toBeNull();
+    expect(annualPayload({ ...draft(), passPercent: "  " }, where).annualSubjectPassPercent).toBeNull();
+  });
+
   it("sends an own-rules block only when it is on", () => {
     const off = annualPayload({ ...draft(), rules: { ...draft().rules, minSubjectsToPass: "4" } }, where);
     expect(off).toMatchObject({ useOwnPassRules: false, minSubjectsToPass: null, compartmentAllowed: false });
@@ -237,6 +246,13 @@ describe("annualSummary", () => {
       "A subject passes with 33% or more for the year.",
       "Pass 5 of 6",
     ]);
+  });
+
+  it("says the papers' pass marks decide when no fixed pass mark is set", () => {
+    const draft = { ...annualDraft(null, terms), passPercent: "" };
+    expect(annualSummary(draft, terms, null)[1]).toBe(
+      "A subject passes the year when it reaches the pass marks of its own papers.",
+    );
   });
 
   it("describes the other methods and its own rules", () => {
@@ -339,6 +355,24 @@ describe("verdictInWords", () => {
       "Did not pass Maths, Science and English. The promotion rules do not allow moving up.",
     );
     expect(verdictInWords(student({ promotionStatus: "detained" }), name)).toBe("Did not meet the promotion rules.");
+  });
+});
+
+describe("verdictInWords - with the bars", () => {
+  const name = (id: string) => ({ m: "Maths", s: "Science" })[id] ?? "a subject";
+  const detail = (id: string) => scoreAgainstBar(id === "m" ? "31.00" : "29.50", "33.00");
+
+  it("says what each failed subject scored against its bar", () => {
+    expect(
+      verdictInWords({ promotionStatus: "detained", failedSubjectIds: ["m", "s"] }, name, detail),
+    ).toBe(
+      "Did not pass Maths (31 against 33) and Science (29.5 against 33). The promotion rules do not allow moving up.",
+    );
+  });
+
+  it("has no detail when a bar is unknown", () => {
+    expect(scoreAgainstBar(null, "33.00")).toBeNull();
+    expect(scoreAgainstBar("31.00", null)).toBeNull();
   });
 });
 

@@ -467,13 +467,22 @@ export interface TermSubjectVote {
   /** `exams.weightage_in_term` (hundredths of a percent). */
   weightage: bigint;
   isPassed: boolean;
+  /** The paper's own pass mark on the same 0-100 scale as `marks` (hundredths). */
+  passMark: bigint;
   /** The paper was excused ENTIRELY (every component exempt, ADR-053 §7). */
   isExempted: boolean;
   gradePoint: bigint | null;
 }
 
 export type TermSubjectOutcome =
-  | { kind: "scored"; score: bigint; isPassed: boolean; gradePoint: bigint | null }
+  | {
+      kind: "scored";
+      score: bigint;
+      isPassed: boolean;
+      /** The papers' own pass marks, weighted exactly as the score is. */
+      passMark: bigint;
+      gradePoint: bigint | null;
+    }
   | { kind: "graded"; gradePoint: bigint | null }
   | { kind: "exempt" };
 
@@ -508,7 +517,8 @@ export function termSubjectScore(
   const score = examWeightedSubjectScore(
     sat.map((v) => ({ marks: v.marks ?? 0n, maxMarks: 10000n, weightage: v.weightage })),
   );
-  return { kind: "scored", score, isPassed: sat.every((v) => v.isPassed), gradePoint };
+  const passMark = weightedAverage(sat.map((v) => ({ value: v.passMark, weightage: v.weightage })));
+  return { kind: "scored", score, isPassed: sat.every((v) => v.isPassed), passMark, gradePoint };
 }
 
 // ---------------------------------------------------------------------------
@@ -631,6 +641,26 @@ export function annualScore(
   };
 }
 
+/**
+ * The year's pass mark for a subject when the policy sets none: the pass
+ * marks of the terms that COUNTED, weighted exactly as the score was (each
+ * term's effective weight). A paper with a pass mark of 40 in Term 3 and 33
+ * in Term 1, weighted 70/30, makes a year bar of 37.90 - so the year is judged
+ * by the very standard the school already set on its papers, not by a second
+ * number someone has to keep in step.
+ */
+export function annualPassMark(
+  used: { effectiveWeight: bigint; passMark: bigint }[],
+): bigint {
+  let num = 0n;
+  let den = 0n;
+  for (const u of used) {
+    num += u.passMark * u.effectiveWeight;
+    den += u.effectiveWeight;
+  }
+  return den === 0n ? 0n : mulDivHalfUp(num, 1n, den);
+}
+
 // ---------------------------------------------------------------------------
 // The annual verdict (ADR-053 §6)
 // ---------------------------------------------------------------------------
@@ -713,10 +743,14 @@ export function annualPolicySummary(input: {
   bestN: number | null;
   totalDisplay: "average" | "sum";
   terms: { name: string; weightage: bigint | null; sequence: number }[];
-  annualSubjectPassPercent: bigint;
+  /** NULL = the papers' own pass marks decide (the default). */
+  annualSubjectPassPercent: bigint | null;
 }): string {
   const terms = [...input.terms].sort((a, b) => a.sequence - b.sequence);
-  const pass = `subject pass ${fromHundredths(input.annualSubjectPassPercent).replace(/\.00$/, "")}%`;
+  const pass =
+    input.annualSubjectPassPercent === null
+      ? "papers' own pass marks"
+      : `subject pass ${fromHundredths(input.annualSubjectPassPercent).replace(/\.00$/, "")}%`;
   let how: string;
   if (input.method === "weighted") {
     how = `Weighted: ${terms

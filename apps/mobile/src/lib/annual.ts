@@ -55,7 +55,8 @@ export type AnnualPolicyRowLike = {
   method: "weighted" | "single_term" | "best_n";
   bestN: number | null;
   totalDisplay: "average" | "sum";
-  annualSubjectPassPercent: string;
+  /** NULL: the papers' own pass marks decide. */
+  annualSubjectPassPercent: string | null;
   useOwnPassRules: boolean;
   minSubjectsToPass: number | null;
   mandatoryPassSubjectIds: string[];
@@ -213,7 +214,8 @@ export function annualErrors(draft: AnnualDraft): AnnualErrors {
     if (!/^\d{1,2}$/.test(draft.bestN.trim()) || n < 1) errors.bestN = p.bestNMissing;
     else if (n > draft.picked.length) errors.bestN = p.bestNTooMany(draft.picked.length);
   }
-  if (hundredths(draft.passPercent) === null || draft.passPercent.trim() === "") errors.pass = p.passMissing;
+  // The year pass mark is OPTIONAL: blank = the papers' own pass marks decide.
+  if (draft.passPercent.trim() !== "" && hundredths(draft.passPercent) === null) errors.pass = p.passInvalid;
 
   if (draft.useOwnRules) {
     const min = draft.rules.minSubjectsToPass.trim();
@@ -251,7 +253,7 @@ export type AnnualPayload = {
   method: "weighted" | "single_term" | "best_n";
   bestN: number | null;
   totalDisplay: "average" | "sum";
-  annualSubjectPassPercent: string;
+  annualSubjectPassPercent: string | null;
   useOwnPassRules: boolean;
   minSubjectsToPass: number | null;
   mandatoryPassSubjectIds: string[];
@@ -283,7 +285,10 @@ export function annualPayload(
     method,
     bestN,
     totalDisplay: draft.preset === "sum" ? "sum" : "average",
-    annualSubjectPassPercent: canonicalPercent(draft.passPercent) ?? draft.passPercent.trim(),
+    annualSubjectPassPercent:
+      draft.passPercent.trim() === ""
+        ? null
+        : (canonicalPercent(draft.passPercent) ?? draft.passPercent.trim()),
     useOwnPassRules: own,
     minSubjectsToPass: own && min !== "" ? Number(min) : null,
     mandatoryPassSubjectIds: own ? draft.rules.mandatoryPassSubjectIds : [],
@@ -341,7 +346,7 @@ export function annualSummary(
   }
   const pass = draft.passPercent.trim()
     ? `A subject passes with ${draft.passPercent.trim()}% or more for the year.`
-    : c.rules.problems.passMissing;
+    : c.rules.passFromPapers;
   const promotion = draft.useOwnRules ? ownRulesLine(draft.rules) : (termRuleLine ?? c.rules.sameRulesNone);
   return [how, pass, promotion];
 }
@@ -479,12 +484,26 @@ export function listText(names: readonly string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
+/** "31 against 40": what a subject scored and the bar it was judged against. */
+export function scoreAgainstBar(percentage: string | null, passMark: string | null): string | null {
+  if (percentage === null || passMark === null) return null;
+  const trim = (v: string) => v.replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
+  return `${trim(percentage)} against ${trim(passMark)}`;
+}
+
 /** The verdict explained in a sentence a principal can say to a parent. */
 export function verdictInWords(
   student: Pick<AnnualStudentLike, "promotionStatus" | "failedSubjectIds">,
   subjectName: (id: string) => string,
+  /** Optional: what each failed subject scored against its bar. */
+  detail?: (id: string) => string | null,
 ): string {
-  const failed = listText(student.failedSubjectIds.map(subjectName));
+  const failed = listText(
+    student.failedSubjectIds.map((id) => {
+      const d = detail?.(id);
+      return d ? `${subjectName(id)} (${d})` : subjectName(id);
+    }),
+  );
   switch (student.promotionStatus) {
     case "promoted":
       return student.failedSubjectIds.length === 0

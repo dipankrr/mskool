@@ -356,6 +356,26 @@ describe("annual integration: generate, review, publish", () => {
     expect(subjectRows).toHaveLength(6);
   });
 
+  it("with the year pass mark left blank, judges each subject by its papers' own pass marks", async () => {
+    const [existing] = await examAnnualService.listPolicies([scopeOf()], w.academicYearId);
+    const saved = await examAnnualService.savePolicy(
+      scopeOf(),
+      PRINCIPAL,
+      policyInput({ id: existing!.id, annualSubjectPassPercent: null }),
+    );
+    expect(saved.annualSubjectPassPercent).toBeNull();
+    expect(saved.summary).toMatch(/papers' own pass marks/);
+
+    await examAnnualService.generate(scopeOf(), w.academicYearId, w.classId);
+    const table = await examAnnualService.table(scopeOf(), w.academicYearId, w.classId);
+    const ravi = table!.students.find((s) => s.name.startsWith("Ravi"))!;
+    const maths = ravi.subjects.find((s) => s.subjectId === w.maths)!;
+    // The seeded papers pass at 33; Ravi's year Maths is 26.50 against that bar.
+    expect(maths).toMatchObject({ percentage: "26.50", passMark: "33.00", isPassed: false });
+    const asha = table!.students.find((s) => s.name.startsWith("Asha"))!;
+    expect(asha.subjects.find((s) => s.subjectId === w.maths)).toMatchObject({ passMark: "33.00", isPassed: true });
+  });
+
   it("lists the class in the Final results overview with how far along it is", async () => {
     const overview = await examAnnualService.overview([scopeOf()], w.academicYearId);
     expect(overview).toHaveLength(1);

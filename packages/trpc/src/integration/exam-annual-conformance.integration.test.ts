@@ -221,10 +221,14 @@ describe("annual router conformance - the phone's payloads through the real rout
         appliesToClassId: classId,
         method: "best_n",
         bestN: 2,
+        annualSubjectPassPercent: null,
         terms: three,
       }),
     );
     expect(classRule.summary).toMatch(/Best 2 of 3 terms/);
+    // The year pass mark is optional: left blank, the papers' own pass marks decide.
+    expect(classRule.summary).toMatch(/papers' own pass marks/);
+    expect(classRule.annualSubjectPassPercent).toBeNull();
     const list = await call("exam.annual.policies.list", { ...scopeArgs(), academicYearId });
     expect(list).toHaveLength(2);
   });

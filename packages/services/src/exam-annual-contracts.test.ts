@@ -93,6 +93,13 @@ describe("saveAnnualPolicyInput", () => {
     ).toBe(true);
   });
 
+  it("treats the year pass mark as optional: blank or null means the papers' own pass marks", () => {
+    expect(saveAnnualPolicyInput.safeParse({ ...base, annualSubjectPassPercent: null }).success).toBe(true);
+    const { annualSubjectPassPercent, ...without } = base;
+    void annualSubjectPassPercent;
+    expect(saveAnnualPolicyInput.safeParse(without).success).toBe(true);
+  });
+
   it("refuses a pass mark outside 0-100", () => {
     expect(messages({ ...base, annualSubjectPassPercent: "101" })).toContain("Use a percentage between 0 and 100.");
   });

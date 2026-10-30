@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  annualPassMark,
   annualPolicySummary,
   annualScore,
   annualVerdict,
@@ -18,6 +19,7 @@ const vote = (over: Partial<TermSubjectVote> = {}): TermSubjectVote => ({
   marks: 8000n,
   weightage: 10000n,
   isPassed: true,
+  passMark: 3300n,
   isExempted: false,
   gradePoint: null,
   ...over,
@@ -35,6 +37,23 @@ describe("termSubjectScore", () => {
   it("renormalizes over the exams provided", () => {
     const out = termSubjectScore([vote({ marks: 8000n, weightage: 5000n })], { isGradedOnly: false });
     expect(out).toMatchObject({ kind: "scored", score: 8000n });
+  });
+
+  it("carries the papers' own pass marks, weighted exactly like the score", () => {
+    // 40 on the 30% exam and 50 on the 70% exam: (40*30 + 50*70) / 100 = 47.00
+    const out = termSubjectScore(
+      [vote({ weightage: 3000n, passMark: 4000n }), vote({ weightage: 7000n, passMark: 5000n })],
+      { isGradedOnly: false },
+    );
+    expect(out).toMatchObject({ kind: "scored", passMark: 4700n });
+  });
+
+  it("leaves an excused exam's pass mark out too", () => {
+    const out = termSubjectScore(
+      [vote({ weightage: 5000n, passMark: 4000n }), vote({ weightage: 5000n, passMark: 9000n, isExempted: true, marks: null })],
+      { isGradedOnly: false },
+    );
+    expect(out).toMatchObject({ kind: "scored", passMark: 4000n });
   });
 
   it("scores a missing mark as zero's effect (absence is already on the exam row)", () => {
@@ -317,5 +336,35 @@ describe("annualPolicySummary", () => {
     expect(annualPolicySummary({ ...base, method: "best_n", bestN: 3, terms: three })).toBe("Average of 3 terms · subject pass 33.50%");
     expect(annualPolicySummary({ ...base, method: "best_n", bestN: 3, totalDisplay: "sum", terms: three })).toBe("Sum of 3 terms · subject pass 33.50%");
     expect(annualPolicySummary({ ...base, method: "single_term", bestN: null, terms: three.slice(2) })).toBe("T3 only · subject pass 33.50%");
+  });
+});
+
+describe("annualPassMark", () => {
+  it("weights the counted terms' pass marks as the score was", () => {
+    // 40 in Term 3 (70%) and 33 in Term 1 (30%) -> 37.90
+    expect(
+      annualPassMark([
+        { effectiveWeight: 7000n, passMark: 4000n },
+        { effectiveWeight: 3000n, passMark: 3300n },
+      ]),
+    ).toBe(3790n);
+  });
+
+  it("is zero when nothing counted", () => {
+    expect(annualPassMark([])).toBe(0n);
+  });
+});
+
+describe("annualPolicySummary - no fixed pass mark", () => {
+  it("says the papers' own pass marks decide", () => {
+    expect(
+      annualPolicySummary({
+        method: "best_n",
+        bestN: 3,
+        totalDisplay: "average",
+        terms: [1, 2, 3].map((n) => ({ name: "T" + n, weightage: null, sequence: n })),
+        annualSubjectPassPercent: null,
+      }),
+    ).toBe("Average of 3 terms · papers' own pass marks");
   });
 });
