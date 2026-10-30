@@ -2145,3 +2145,295 @@ Gates after round 3: mobile tsc clean, jest 37 suites / 587 tests, lint 0 errors
 `pnpm check-types` green except the pre-existing untracked
 `apps/api/scripts/tmp-seed-fees-demo.ts`. Walk screenshots `ux-90…103` (review scope line,
 section sheet, the student sheet on a cold start).
+
+
+---
+
+# Chunk 7G - Annual results (design addendum, 2026-10-30) - APPROVED ("do whatever is best"), BUILT; see "7G build record" below
+
+Backs onto **ADR-053** (accepted and built, same day) - read it first; this addendum is only the
+phone side and the build order. It replaces the lean year-wide screen of C8/D16
+(`/exams/final`, gaps 28 and 29). **Built the same day** - see the 7G build record at the end.
+
+## What the server does today (read from code, not run)
+
+- `results.computeFinal` ({ academicYearId }, `exam:update`) loops every student of the
+  year sequentially, no transaction, returns `{ studentId, promotionStatus }` only. On
+  device it failed three times at about two minutes and wrote nothing (the table is
+  untouched since Oct 27) - a server-side fault, cause not yet isolated. The term class
+  compute it sits on is separately measured at 45-75 s for 17 students (gap 29).
+- The year is decided by `terms.result_mode` + `terms.weightage`; the weights must total
+  100 or the whole run throws part-way; class pass rules are ignored; a graded-only class
+  is detained; ranks are never written.
+- No annual published card can be written; `cards.classSet` already tolerates a null term.
+- `/exams/final` shows name + verdict pills from a module-level cache and, after a year-wide
+  compute, a year-wide count ("12 promoted" above a Class 6 list - walk finding).
+
+## Actor, task, context
+
+The principal or exam head at year end, at a desk or between meetings, on a phone. One
+class at a time. Two questions, in this order: *is this class safe to publish?* and *who is
+held back, and why, in words I can say to a parent?* A teacher with `exam:read` reads the
+same screens with every act affordance hidden (the 7B pattern). The numbers are public to
+parents the moment they publish, so the screen's job is certainty, not speed.
+
+## Information architecture
+
+```
+Grading setup (7F hub)
+  + Annual rules  ->  list  ->  editor            (new; sits beside Pass criteria)
+Exams list header -> Final results  ->  class list (rework of /exams/final)
+        class row -> Class annual  ->  Student annual  ->  Annual card
+```
+
+Routes (all under `app/(staff)/exams/`): `final.tsx` (rework), `final/[classId].tsx`,
+`final/[classId]/student/[studentId].tsx`, `final/[classId]/card/[studentId].tsx`,
+`setup/annual-rules.tsx`, `setup/annual-rules/new.tsx`, `setup/annual-rules/[policyId].tsx`.
+
+## Journeys
+
+- **G1 - First time (school default).** Grading setup -> *Annual rules* ("Not set up") ->
+  Add rule -> pick *How the year is counted* -> tick terms (weights if weighted) -> *Subject
+  pass mark* -> *Promotion rules: same as term pass rules* (default on) -> Save.
+- **G2 - One class counts differently.** Add rule -> Applies to a class (the editor starts
+  from the default's values - an override is a delta, not a blank page) -> change -> Save.
+- **G3 - Generate a class.** Final results -> class row -> readiness card says *Ready* ->
+  **Generate** -> the list fills: % - verdict - rank per student -> chips *Detained*,
+  *Compartment*, *Flagged* narrow it.
+- **G4 - Blocked.** Readiness lists what is missing in plain words ("Maths - 2B - Term 2:
+  3 students have no result"); each line opens that class's term results screen, where
+  the 7C readiness already explains how to fix it. Generate stays enabled (it is a
+  preview); Publish says why not.
+- **G5 - Why is she detained?** Student row -> a verdict card in words ("Failed Maths 31 and
+  Science 29 against a 33 pass mark. Compartment allows 2 subjects, so: Compartment in
+  Maths and Science.") above the subject x term grid.
+- **G6 - A late joiner.** Row carries *2 of 3 terms*; the detail says "No Term 2 paper -
+  the year was counted from Term 1 and Term 3 (weights 29% and 71%)".
+- **G7 - Publish a class.** Publish -> confirm sheet (counts: students, held back, flagged,
+  renormalized) -> banner. A published class shows *Published*, Generate is gone, and a
+  *predates a Term 2 correction* note appears if an input changed afterwards.
+- **G8 - The read-only teacher.** Same screens, no Generate/Publish/Add rule.
+
+## Screens
+
+### 1. Annual rules list (`/exams/setup/annual-rules`)
+Per running session, the pass-criteria list shape. Row title: *School default* or the class
+name (quiet **Default** chip). Meta 1: `Weighted - T1 20 - T2 30 - T3 50` / `Best 2 of 3
+terms` / `Term 3 only` / `Average of 3 terms`. Meta 2: `Subject pass 33% - Uses the term pass
+rules` / `Own rules: 5 of 6, compartment 2`. Header **Add rule** (`exam:create`) hidden when
+every scope is taken. Empty: *No annual rules for this session - add the school-wide
+default; classes can override it later.* The 7F hub gains a row **Annual rules**
+(`2026-27 - Weighted - 3 terms` / `Not set up`).
+
+### 2. Annual rules editor (`new` / `[policyId]`)
+Title *New annual rule* / *Annual rule - Class 6*. Create only: **Applies to** (ChoiceSheet:
+School default if free, else classes without a rule); edit prints the scope.
+- **In short** card, live, three sentences: how the year is counted / what passes a subject
+  / what decides promotion.
+- **How the year is counted** - ChoiceSheet with the five labels (ADR-053 §2), each with a
+  one-line example. Below it a term list: tick a term; weighted shows a weight field per
+  ticked term and a live chip `Total 100 ✓` / `Total 90 - must be 100`; best-N shows a
+  stepper (1..ticked); single-term shows radio rows. Terms come from the session's terms.
+- **Subject pass mark** - percent field, help *A subject passes when its year score is at
+  least this.*
+- **Promotion rules** - switch *Same as the term pass rules* (default on) with the
+  resolved summary underneath (`Pass 5 of 6 - Compartment 2`). Off reveals the pass-criteria
+  fields (min subjects, must-pass multi-select, compartment, attendance) prefilled from the
+  resolved rules.
+- Footer **Save rule** + caption with the first invalid field; enabled only when changed;
+  `useUnsavedChanges`; save refusals render as a critical Notice with the form intact.
+- No grace and no absence/exemption switches: they belong to marks, not the year (ADR-053 §5).
+
+### 3. Final results (`/exams/final`, rework)
+Session header. **One row per class** (replaces the year-wide verdict map and its year-wide
+count): class name - status chip - one meta line. Chips: *Not generated*, *Blocked (2)*,
+*Ready*, *Draft - generated 2h ago*, *Stale*, *Published*. No year-wide Compute button; the
+action lives on the class. Pull to refresh.
+
+### 4. Class annual (`/exams/final/[classId]`)
+- Header class name; subtitle = the policy sentence (taps through to Annual rules).
+- **Readiness card.** Blockers (critical Notice, one line each, each pressable) and warnings
+  (neutral: *3 students counted from fewer terms - 1 subject has no paper in 2B*). Empty
+  readiness reads *Ready - every paper that should have a result has one.*
+- **Action bar:** **Generate** (`exam:update`; label *Generate again* with a draft) and
+  **Publish** (`exam:publish`; disabled with its reason on the button's caption).
+- **List.** Section chips (as the 7C class screen), then rows: name, roll, `%`, grade, rank,
+  verdict pill, and a quiet `2 of 3 terms` tag when renormalized. Filter chips *All /
+  Detained / Compartment / Flagged*. Count line is class-scoped and filter-aware.
+- Generating shows `Generating 2B - 41 students...` as a single indeterminate state; a lost
+  connection ends in *Could not confirm - check the list, generating again is safe*.
+
+### 5. Student annual (`/exams/final/[classId]/student/[studentId]`)
+Verdict card in words (G5) -> grid, one row per subject: `T1 T2 T3 | Year | Pass` with the
+terms used in the year bolded and the others dimmed (best-N shows which two counted);
+exempt subjects read *Excused*; graded-only read the per-term grades -> attendance (year) ->
+ranks (section, class) -> **View card** (when generated) -> renormalization note (G6).
+
+### 6. Annual card (`.../card/[studentId]`)
+The V2 snapshot rendered in the existing card view (a sibling component, not a fork of
+the V1 layout): subjects with the term strip, totals, verdict, ranks, attendance, and the
+one-line policy summary. Honours the same *Draft preview - not yet published* banner
+as the term cards.
+
+## Every surface's states
+
+| State | Final results | Class annual | Rules list/editor |
+|---|---|---|---|
+| Denied (`exam:read`) | lock + who to ask | lock | row hidden |
+| No branch / no session | school or session empty state | not reachable | empty state |
+| Loading | class-row skeletons | readiness + list skeletons | row skeletons |
+| No annual rules | every class *Blocked: set the annual rules* -> link | blocker, link to rules | designed empty state |
+| Blocked | chip with count | critical Notice, pressable lines | n/a |
+| Generating | row spinner | action bar loading, list kept | n/a |
+| Stale | *Stale* chip | warning *Term 2 changed since this was generated* + Generate again | n/a |
+| Published | *Published* | Generate hidden, banner, ranks shown | n/a |
+| Read error / offline | ErrorCard, retry | ErrorCard, retry; a failed generate keeps the old list | save failure wording, draft kept |
+| Read-only | no actions | no Generate/Publish | no Add rule |
+
+## Data and hooks
+
+New tRPC surface (`exam.annual.*`, types only on mobile per ADR-048):
+`policies.list` / `policies.save` / `policies.delete`; `readiness({ classId, academicYearId })`;
+`generate({ classId, academicYearId })`; `table({ classId, academicYearId })` (the whole class:
+subject rows, term strips, verdict, ranks - the student screen reads the cached row, there is
+no per-student endpoint); `publishClass({ classId, academicYearId })`. Cards come from the
+existing `cards.classSet` (null term) once V2 exists. **Retired:** `results.computeFinal`
+and the module-level cache in `final-results.tsx`. Hooks follow the 7F pattern (one query
+per read, invalidate on save/generate/publish). Pure helpers with tests in
+`apps/mobile/src/lib/`: policy sentence, weight-total chip, preset <-> stored shape,
+verdict-in-words, blocker wording.
+
+## Build order (each step green on its own; I stop after 7G-0 and after 7G-2 for review)
+
+- **7G-0 Groundwork, backend only, no schema.** Extract `termSubjectScore` and the paper
+  resolver; pin today's behavior in tests (including a fully-exempt paper and a graded-only
+  class); then the fully-exempt fix (ADR-053 §7). Then gap 29: batch the term class compute
+  (and `computeTermResult`'s per-student queries) behind those pinning tests, because the
+  year rides on fresh term rows; **time it before and after** on the dev DB and keep the
+  change only if the number moves. The new annual generate is set-based from the start and
+  does not inherit the loop.
+- **7G-1 Schema + engine, backend.** Policy tables, `student_final_subject_results`, the new
+  `student_final_results` columns, drop `terms.result_mode` (+ term form and copy), the pure
+  engines (weighted / single / best-N, renormalization, GPA, graded-only, ties, rounding),
+  `exam.annual.*` service + router, `verify-schema` and openapi clean.
+- **7G-2 Mobile.** Annual rules (list, editor, hub row), Final results rework, Class annual,
+  Student annual; device walk on a fixture class (3 terms, a late joiner, a fully-exempt
+  student, a section with no paper, a graded-only class).
+- **7G-3 Publish + V2.** Snapshot union and V2 builder, `publishClass`, mobile card view V2,
+  **web portal + print V2 reader before the first V2 card exists**.
+
+## Acceptance (what the walk must show)
+
+1. A school with no annual rules cannot generate and is told where to set them.
+2. Weighted 20/30/50, Average, Sum, One term, Best 2 of 3 each give the hand-calculated
+   numbers on the fixture (the engine tests carry the same cases).
+3. A late joiner is counted from the terms they have, flagged `2 of 3 terms`, and publish
+   warns; no run throws and nothing is half-written when a term is missing.
+4. A graded-only class is promoted, not detained; a fully-exempt student is not failed for
+   the excused subject; the term card and the term total agree about it.
+5. Detained/compartment reads in words that match the class's pass rules; a class rule
+   overrides the school rule; "same as term pass rules" follows a later pass-criteria edit.
+6. Ranks (section and class) exist after Generate and tie correctly (1,2,2,4).
+7. A Term 2 correction after Generate shows *Stale*; after Publish it shows *predates a
+   correction* and the published card is unchanged.
+8. Generate on a 40-student class completes well inside the request limit (the number is
+   recorded in the build record, from the 7G-0 measurement).
+
+## Decisions taken under the owner's waiver ("do whatever is best", 2026-10-30), reopenable
+
+- **D-G1 - Annual subject pass.** A score threshold in the policy, with an optional own
+  promotion-rules block that overrides `pass_criteria` as a whole (not field by field).
+  Not "every term passed" (contradicts best-N) and not "last term" (ignores the method).
+- **D-G2 - No coverage floor.** A student with fewer terms is counted from the terms they
+  have, flagged on the row and counted in the publish warning; never blocked. Reopen if a
+  school wants "at least half the year's weight" - it is an additive column.
+- **D-G3 - Exemption.** A fully-exempt paper is excused everywhere, which also corrects the
+  term card/total mismatch; partial exemption is untouched. This is the one change to term
+  output; it is pinned by tests first and affects only fully-exempt students.
+- **D-G4 - Ranks inside Generate.** The term flow keeps ranks as a separate explicit step;
+  for the year they are written in the same transaction because class generation is the
+  unit, so ranks can never be stale against the rows.
+- **D-G5 - Class-first Final results.** The year-wide compute and its year-wide count go;
+  every action is on a class.
+- **D-G6 - Presets.** Average and Sum are stored as best-N over all included terms (equal
+  weights without 33.33% rounding); only the printed total differs.
+- **D-G7 - Corrections after publish are not in 7G.** Stale/predates warnings only.
+
+## Backend gaps recorded (no changes made)
+
+47. Web portal and print have no annual reader; 7G-3 must add it before any V2 publish.
+48. `results.computeFinal` has no tests today; the retired path leaves none behind.
+49. A published annual card cannot be corrected (D-G7) - needs its own window design.
+50. `schedules.save` wipes derived pass marks when `passMarks` is omitted (the existing
+    TASKS finding) - unrelated to 7G, still open.
+
+---
+
+# 7G build record (2026-10-30)
+
+Built on `feat/mobile-exams-7a`, **committed locally in small commits, not pushed, branch unchanged** (the owner's
+instruction for this chunk: "finish the work and keep committing"). The owner approved the design with "do whatever is
+best"; D-G1..D-G7 stand as written, plus the ADR-053 §7 refinement noted below.
+
+## What shipped
+
+| Step | Where | Commit |
+|---|---|---|
+| 7G-0 | `termSubjectScore` + the pure annual engines (weighted / single / best-N, verdict, sentence) in `exams-maths`; the paper resolver, subject set, cohorts, criteria and scale moved to `exam-shared`; fully-excused paper rule | `refactor(exams): one term-subject function…` |
+| 7G-1 | Migration 0033 (policies, policy terms, `student_final_subject_results`, `student_final_results` + class/section/policy/rank-in-section/renormalized); `exam-annual.service` + `exam-annual-compute` (pure) + `exam.annual.*` router; contracts incl. the v2 card | `feat(exams): the annual result as a saved policy…`, `…annual.overview` |
+| 7G-2 | Mobile: Annual rules (list, editor, hub row); Final results by class; class screen (readiness, generate, publish, filters); student screen; v2 card screen; `computeFinal` retired | `feat(mobile): annual rules…`, `feat(mobile): final results by class…` |
+| 7G-2b | Migration 0034 drops `terms.result_mode`; mobile term form loses the field and calls the weight "Fee share %" | `refactor(exams): the term row no longer decides…` |
+| 7G-3 | Web family portal reads v1 and v2 cards (`annual-card-view`) | `feat(web): the family portal reads the annual card…` |
+| gap 29 | Set-based term class compute: **63.0 s → 4.0 s** for 20 students × 3 subjects | `perf(exams): the class compute is set-based…` |
+
+Tests added: 33 maths + 15 compute-scenario + 13 contract unit tests (services), 28→31 mobile logic tests, 12 annual
++ 2 exemption integration tests against Postgres. Existing suites still green: services 169, mobile 38 suites / 633
+tests, integration exam 18 + conformance 8.
+
+## Deviations from the design above (each deliberate)
+
+- **Class list chips**: Not generated / Draft / Published only, from one grouped read (`exam.annual.overview`, added
+  during the build). A readiness chip per class would cost a readiness call per class; the Blocked / Ready / Stale
+  states live on the class screen, where readiness is fetched.
+- **Excused papers at the term** (ADR-053 §7 refined): a paper excused in one exam of a term leaves that exam out of the
+  weighting; the SUBJECT is excused only when excused in every exam. An old integration expectation encoding "any
+  exemption blanks the subject" was corrected (35.00 now, not the zero's-effect blend 21.00).
+- **Readiness warnings**: `no_paper_for_section` is a warning, never a blocker (a section that does not sit is legal).
+- **Web**: the portal reader shipped in 7G (it had to land before any v2 publish). The staff print set for annual cards
+  is NOT built (see gaps).
+- **`annual.policies.delete`** exists on the server and is not used by mobile (a wrong rule is edited, as pass criteria).
+
+## Walk record
+
+**Not walked on a device or emulator, and not claimed.** Backend behavior is covered by the integration tests above;
+the mobile screens by `tsc`, lint and the pure-logic tests only. The walk needs: a session with 3 terms and published
+term exams for a class; a late joiner / a section that did not sit a paper; a fully-excused student; a graded-only class;
+then Annual rules (create default, class override, weights not totalling 100, best-N, own promotion rules), Final
+results → class → Generate → filters → student → card → Publish (confirm sheet, then frozen), and the family portal.
+Also not checked: iOS, TalkBack, 1.3× text, keyboard-over-footer on the editor.
+
+## Gates
+
+`tsc --noEmit` green for db, contracts, services, trpc, web and mobile; `apps/api` fails only on the owner's untracked
+`scripts/tmp-seed-fees-demo.ts` (pre-existing). `pnpm db:verify` passes. `pnpm check:openapi` lists the new routes.
+`pnpm check:builders` reports 3 violations in `public_site.router.ts` (`publicProcedure`) — pre-existing, not touched.
+Mobile lint on the new files: 0 errors.
+
+## Environment left behind
+
+Migrations 0033 and 0034 are applied to the dev database (the shared Neon DB): other branches that select
+`terms.result_mode` will fail against it until they merge this. Integration runs leave their own orgs
+(`annual-itg-*`, `exempt-itg-*`, `exams-itg-*`, and two `perf-itg-*` orgs with 20 students each) by design (hard rule 2).
+Two stale `student_final_results` rows from the 2026-10-27 walk remain (policy_id NULL); the annual screens ignore them
+and Generate overwrites them.
+
+## Backend gaps added by 7G (no further changes made)
+
+47. **No staff print set for annual cards** (the web print page is per exam); the portal prints its own card.
+48. **Term-grade areas have no annual representation** — they stay on the term cards, as they are out of the term result.
+49. **A published annual card cannot be corrected** (D-G7); readiness says "predates a correction" and the cards stay frozen.
+50. `schedules.save` wipes derived pass marks when `passMarks` is omitted (existing finding), still open.
+51. **Publish (term) and window close still loop per student** (gap 29 measured ~60 s and ~100 s). Only the class compute
+    was made set-based; `publishClass` / `closeRevisionWindow` / `assembleSnapshot` are unchanged and are the next candidates.
+52. `annual.generate` / `publishClass` return no per-student reasons when they refuse; the class screen shows the
+    server's sentence verbatim.

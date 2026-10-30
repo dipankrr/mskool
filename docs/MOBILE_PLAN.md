@@ -878,7 +878,8 @@ iOS not walked.** Every staff exam endpoint now has a screen.
 | schedules list/save + components list/save | 4 | schedules/components save built 7D 2026-10-27 (walk pending) | ◐ 4 of 4 |
 | eligibility list/recompute/override + readiness | 4 | list 7A · readiness 7B (moved from 7C, D9) · recompute/override 7D built 2026-10-27 (walk pending) | ◐ 4 of 4 |
 | marks entry grid / student entries / autosave / verify / unverify | 5 | entry + autosave 7A · verify/unverify 7B · student entries 7C (walk pending) | ◐ 5 of 5 (7A–7C) |
-| results table / compute / term ranks / final results | 4 | 7C built 2026-10-27 (walk pending) | ◐ 4 of 4 |
+| results table / compute / term ranks | 3 | 7C built 2026-10-27 (walk pending); `computeFinal` retired by 7G | ◐ 3 of 3 |
+| annual rules list/save/delete · overview · readiness · generate · table · card · publish-class | 9 | 7G built 2026-10-30 (device walk pending; delete not used on mobile) | ◐ 8 of 9 called |
 | publication list / publish-class / publish / revision open+close / apply revision | 6 | 7C built 2026-10-27 (walk pending) | ◐ 6 of 6 |
 | cards versions / class set + term-grades list / save | 4 | cards built 7C 2026-10-27 (walk pending; print/share deferred, D15) · term-grades list/save built 7E, Android-walked 2026-10-28 (iOS bar pending) | ◐ 4 of 4 |
 | portal results list / card (step 9) | 2 | — (Step 9) | ☐ |

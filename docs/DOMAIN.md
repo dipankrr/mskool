@@ -146,7 +146,9 @@ student_component_results   raw entered marks — the ground truth
 student_subject_results     + grace, pass/fail, grade
       ↓ weighted by exams.weightage_in_term
 student_term_results
-      ↓ per terms.result_mode (cumulative | terminal)
+      ↓ term subject scores, per annual_result_policies (ADR-053)
+student_final_subject_results  one subject, one year (audit trail in source_terms)
+      ↓ the policy's pass mark + promotion rules
 student_final_results       → promotion_status → next year's enrollment
 ```
 
@@ -194,7 +196,8 @@ student creates a payment *intent* only; the gateway webhook, running as
 arrived.
 
 **Result publication.** Enter marks (`draft`) → `entered` → `verified` → compute subject,
-term, and final results → publish, which writes `published_report_cards` snapshots. Only
+term, and annual results (generated per class from the saved annual policy) → publish,
+which writes `published_report_cards` snapshots (term cards v1, annual cards v2). Only
 then is anything visible to a student (hard rule 8). Post-publish corrections insert a
 `student_component_result_revisions` row first (hard rule 7) and produce a new report card
 version rather than editing the old one.

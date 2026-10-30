@@ -2374,3 +2374,174 @@ a section-grain hard coverage gate (a section legitimately not sitting must
 stay expressible; an advisory warning on the readiness panel is deferred);
 zero-with-absent-flag for non-sitting sections ("absent" accuses a paper the
 student was never given).
+
+## ADR-053 - The annual result is a policy applied to term subject scores, not a mode on the term row
+
+Date: 2026-10-30. Status: ACCEPTED - owner-directed ("finish the work"); BUILT.
+Supersedes ADR-032 §6 (it documents `weighted | last_term`; the code has always
+run `cumulative | terminal`) and replaces `computeFinalResults`.
+
+**Context.** The year's result is driven by `terms.result_mode` and
+`terms.weightage` and writes one student-level row, no per-subject annual
+result. Read against the code (not run): `terms.weightage` is also the fee
+installment share, so one field answers two questions (the mobile term form
+calls it "its share of the year's result"); one cumulative term drops every
+terminal term from the year; a graded-only class has a null term percentage
+that is read as 0% and detained; a student missing one cumulative term row
+makes the weights not sum to 100 and the run throws half-way with no
+transaction; the class's own pass criteria are ignored (school-level only);
+attendance is the LAST term's; `rank_in_class` is never written and there is
+no section rank; nothing writes a `term_id IS NULL` published card; and the
+term-subject maths exists twice (`computeTermResult`, `assembleSnapshot`) and
+already disagrees on exemption and graded-only subjects. Generating the year
+is also one sequential-await loop against a remote DB: on device it failed
+three times at about two minutes and wrote nothing (cause not yet isolated),
+and the term class compute it rests on is measured at 45-75 s for 17 students
+(mobile-exams plan, gap 29).
+
+**Decision.**
+1. THE POLICY - `annual_result_policies`, one per (school, academic year,
+   class-or-default), the `pass_criteria` shape: a school-year default row
+   plus class rows, two partial unique indexes. ONE row governs a class (the
+   class row, else the default); a class row is a full replacement, never a
+   field-by-field merge. Fields: `method` (`weighted | single_term | best_n`),
+   `best_n`, `total_display` (`average | sum`; `sum` only with `best_n`),
+   `annual_subject_pass_percent` (required), and `use_own_pass_rules` with its
+   block (`min_subjects_to_pass`, `mandatory_pass_subject_ids`,
+   `compartment_allowed`, `max_subjects_for_compartment`, `min_attendance_pct`,
+   same meaning and checks as `pass_criteria`). Terms live in
+   `annual_result_policy_terms (policy_id, term_id, weightage)` - exactly the
+   included terms. The service validates across rows: `weighted` weights total
+   exactly 100.00; `single_term` has one term; `best_n` has 1 <= N <= terms.
+2. THREE ENGINES, FIVE LABELS - the UI offers Weighted terms, Average of terms,
+   Sum of terms, One term only, Best N terms. They store as: weighted;
+   best_n with N = all included terms and `average` display; best_n with N =
+   all included terms and `sum` display; single_term; best_n. Every
+   term-subject score is already on 0-100, so sum and average are the same
+   percentage and differ only in the printed total (240/300 vs 80/100). Every
+   engine divides by what it was given and rounds half-up ONCE (the
+   `annualWeighted` exact accumulation); best_n ties break by term order;
+   fewer than N available averages the available (at least one).
+3. THE FEES FIELD STAYS - `terms.weightage` keeps meaning "share of the year's
+   fees" and the annual engine never reads it; the mobile copy is relabelled.
+   `terms.result_mode` and its enum are dropped (its readers are the old annual
+   code and the term form). No data migration: no annual card was ever
+   published and the old rows are drafts; a school sets its annual rules once,
+   and generate refuses until it has (no silent default).
+4. ONE TERM-SUBJECT FUNCTION - `termSubjectScore` in `exams-maths` is the only
+   place a term's subject score is derived from exam-grain rows, used by term
+   compute, the term card builder and the annual engine. It returns the score,
+   the pass verdict (today: every counting exam passed), the grade point and
+   whether the subject is scored, exempt or graded-only - a bare number cannot
+   reproduce the term pass. No `student_term_subject_results` table: it would
+   hold only derived values and add a staleness surface. Revisit if a
+   term-trend report needs SQL.
+5. THE ANNUAL SUBJECT - read from `student_subject_results` for the class in
+   one bulk read, never from `student_term_results` (no subject grain). Per
+   ADR-052 a (term, subject) cell exists only if the student sat a paper; no
+   row means no paper, never a zero. The engine runs over the cells the
+   student has, renormalizes the weights over them, and records that it did
+   (`renormalized`, plus every term's nominal and effective weight in
+   `source_terms`). A subject passes when its annual percentage is at least
+   `annual_subject_pass_percent`; "every term passed" contradicts best_n, and
+   "last term passed" ignores the method. No grace is re-applied annually
+   (the rescue happened once, at exam grain). Accepted: a mandatory-component
+   failure judged at exam grain does not resurface in the annual.
+   Graded-only subjects are never aggregated numerically: the annual grade is
+   the latest included term's, the per-term grades ride in `source_terms`, and
+   the subject never fails. When every counted subject is graded-only the same
+   engine runs over grade points (the GPA branch).
+6. THE VERDICT - totals over counted, scored subjects; rules from the
+   governing row's own block when `use_own_pass_rules`, else the class's
+   `pass_criteria` (class row, then default). Same shape as the term result:
+   must-pass subjects, minimum subjects (NULL = all), compartment cap.
+   `promoted` when passed; `compartment` when allowed and failed <= cap; else
+   `detained`. A GPA-branch class has no marks to fail: `promoted`, attendance
+   flagged. Attendance is the year's `attendance_summary` `annual` row, null
+   when absent. The resolved rules are frozen in `pass_policy_snapshot`.
+7. EXEMPTION - a paper the student is excused from entirely (every component
+   exempt) is excused at every level: not scored, not failed, out of the
+   denominator. This needs the row flag to mean "every component exempt"
+   (today `some`) and the term compute and card to honour it. A partial
+   exemption keeps following `pass_criteria.exempt_renormalizes`, unchanged.
+   Tests pin the current behavior first; only students with a fully-exempt
+   paper change.
+8. ROWS AND LIFECYCLE - `student_final_subject_results` (student, year,
+   subject): annual percentage, grade, grade point, pass, exempt, the
+   counted/graded-only snapshots, `renormalized`, `source_terms` jsonb,
+   section snapshot, status, computed-at. `student_final_results` gains
+   `section_id`, `rank_in_section`, `policy_id`, and `rank_in_class` is
+   written. Generate is per class, ONE transaction, set-based (bulk read, bulk
+   upserts), ranks (competition, class and section) computed inside it: a
+   failure writes nothing, a retry is safe. A class with published annual rows
+   is refused; stale DRAFT rows for uncovered pairs are deleted, published rows
+   never.
+9. READINESS - per class, from the same paper resolver the compute uses
+   (extracted from `computeClassResultsTx` unchanged, so they agree by
+   construction). Blockers: no governing policy; a student/term/subject the
+   resolver says a paper covers but with no computed row; inputs newer than the
+   draft. Warnings: renormalized students, subjects with no paper for a
+   section, exempt subjects, included terms not yet published. Generate may
+   run on computed drafts (it is a preview); PUBLISH needs every included
+   term's exams published for the class and a fresh draft.
+10. PUBLICATION - class-scoped, explicit, never automatic; one
+    `published_report_cards` row with `term_id` NULL (the table's existing
+    annual indexes). `reportCardSnapshot` becomes a union discriminated on
+    `snapshotVersion`; V1 is never touched. V2 carries the annual subject
+    lines with a per-term strip, the term list, totals, verdict, ranks,
+    attendance and a one-line policy summary. Every reader (web portal, print,
+    mobile card view) must accept both versions BEFORE the first V2 card is
+    published.
+11. CORRECTIONS AFTER PUBLISH are deferred. Published annual cards stay
+    immutable; readiness shows "predates a term correction" by comparing
+    computed-at timestamps (no stored flag).
+12. PERFORMANCE - annual generation is O(1) queries per class in the student
+    count and does not inherit the per-student loop. The term class compute
+    (`computeTermResult`: about a dozen queries per student, rerun for every
+    student on each class compute) is batched behind pinning tests because the
+    year rides on fresh term rows; it is timed before and after and the change
+    is kept only if the number moves.
+
+**Rejected.** A persisted term-subject table (4); five engines; per-field
+inheritance between the annual policy and `pass_criteria` (a `pass_criteria`
+NULL already means "all subjects", so NULL cannot also mean "inherit" - one
+switch instead); using `terms.weightage` as default weights; a hard coverage
+floor (a late joiner legitimately has fewer terms; flagged, not blocked - a
+floor is an additive column later); a `previewFinal` endpoint (a draft generate
+is the preview); generating the annual when the last exam publishes.
+
+**Consequences.** Fee billing is untouched. The mobile term form loses the
+result-mode field and relabels weightage. Web portal and print need a V2
+reader. A renormalized student's percentage is not denominator-comparable with
+a full-year student's (the ADR-052 §4 trade, now visible on the row). The
+`results.computeFinal` endpoint is retired once the mobile final screen moves
+(its only client).
+
+**Built (2026-10-30, branch `feat/mobile-exams-7a`, committed locally, not pushed).**
+Migrations 0033 (additive) and 0034 (drops `terms.result_mode` and its enum -
+all 394 dev rows held the default). Everything above shipped as written, with
+these deliberate differences:
+- §7 reads at the term too: a paper excused in ONE exam of a term leaves that
+  exam out of the term's weighting (renormalized over the exams sat); the
+  SUBJECT is excused only when it is excused in EVERY exam. One existing
+  integration expectation ("an exemption in any exam blanks the subject")
+  changed with it: a student excused from the second exam now scores the
+  first exam's mark (35.00) instead of the old zero's-effect blend (21.00).
+- §9 readiness warns, not blocks, on `no_paper_for_section`; the class list
+  shows only Not generated / Draft / Published from one grouped read
+  (`annual.overview`) - per-class readiness chips would cost a readiness
+  call per class.
+- Term-grade (areas) subjects stay out of the annual, as they are out of the
+  term result; they remain on the term cards.
+- §12: the term class compute is now set-based. Measured on the same
+  20-student, 3-subject class against the dev database: 63.0 s before, 4.0 s
+  after; the second run 64.1 s -> 3.9 s. The year generate never inherited the
+  loop. Bulk upserts name only computed columns, so status, ranks and
+  publication stamps are never touched.
+- The mobile term form lost the result-mode field and calls `terms.weightage`
+  "Fee share %"; fee billing is untouched.
+
+**Verified:** 33 + 15 + 13 pure tests; 12 annual + 2 exemption + the existing
+18 exam + 8 conformance integration tests against Postgres; mobile 38 suites /
+633 tests; `db:verify` passes. **Not walked on a device** (see the 7G build
+record in `.kilo/plans/2026-10-26-mobile-exams.md`).
