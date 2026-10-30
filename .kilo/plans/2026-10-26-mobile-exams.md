@@ -2146,6 +2146,164 @@ Gates after round 3: mobile tsc clean, jest 37 suites / 587 tests, lint 0 errors
 `apps/api/scripts/tmp-seed-fees-demo.ts`. Walk screenshots `ux-90…103` (review scope line,
 section sheet, the student sheet on a cold start).
 
+### Weight slider on the exam form (2026-10-29, owner-directed)
+
+The owner asked for the create form's weight field to become a slider whose ceiling knows the
+term: "if the previous exam had 100% already then it should not slide above 0% and if it was
+50% then not above 50%. just do it."
+
+- **`lib/exam-setup.ts` gains `weightHeadroom`** (+6 tests, suite 16/16): 100 minus the sum of
+  the term's OTHER counting exams — non-counting exams never consume the aggregate, and the
+  exam being edited does not consume its own weight (it is replacing it). Over-committed
+  terms clamp to 0. The source is `exam.list`, which already carries every field the sum
+  needs; no new endpoint.
+- **`components/slider.tsx`**: a dependency-free RN slider (PanResponder, whole steps,
+  tap-to-jump + drag, adjustable a11y role with increment/decrement actions, disabled state)
+  so no dev-client rebuild rides on a native slider package. The React-Compiler lint shaped it
+  twice: render-phase ref writes and ref-capturing closures inside `PanResponder.create` are
+  refused, so the responder is rebuilt from current props per render (the week-rail's own
+  trade) and reads state through closures.
+- **`exam-form.tsx`**: the weight FormField becomes the slider with a big `{n}%` readout and a
+  caption — "Available: {n}% of the term", or the caution "The counting exams of this term
+  already total 100%." when headroom is 0. Create rests the thumb on the headroom (the common
+  case is "everything left"); the value clamps when the term or the list shifts under it. A
+  counted exam slid to (or pinned at) zero refuses on save with the honest line — the DB
+  requires `weightage_in_term > 0`, so zero is never a valid counted weight. A SWITCHED-OFF
+  counted flag now hides the slider with "Not counted in the term — no weight applies." and
+  omits the weight from the payload (inert either way; the DB default 100 fills it), and the
+  edit path skips the weight in the update for the same reason. A frozen weight keeps the
+  disabled fact field. `weightHelp`/`weightPlaceholder` copy retired.
+
+**Walked (emulator-5554, admin):** the form's slider at 100 with no term picked; Term 1
+(counting exams over-committed by the fixture) pinned at 0 with the caution caption; the drag
+on a partially-used term following the finger and clamping at 49 under a 50 headroom; and the
+end-to-end create — "UX Walk" at the slider's 49% landed in the DB as
+`weightage_in_term 49.00, counted true`, then deleted as walk junk. Two fixture notes: the
+walk-leftover counted draft exams ("New Exam", "New Exam Test", "0000", "00000000", "New term
+1 exam" — 7D-era junk that made every term read as over-committed) were deleted with their
+schedules/components, leaving Term 2 empty and "Term test" at a genuine 50; and the form's
+headroom reads the exam list fetched at mount, so database-level changes while the form sits
+open are seen on re-entry (the server remains the referee on save).
+
+### Papers & components rework — the owner's audit, verified then fixed (2026-10-30)
+
+The owner called the papers/components setup "very bad… does not properly implement all the
+features available" and listed five claims, ordering verification against the system before
+any fix. Each claim was checked against the contracts and services first; **all five are true
+at the UI layer, and the server already supports every fix** — no backend change was needed:
+
+1. **Section-specific papers had no UI.** `examScheduleInput` is the raw table insert and
+   carries `sectionId` (null = class-wide); ADR-052 (owner-directed, this week) made the
+   compute honor per-section rows, per-schedule components and pass marks. `newPaper`
+   hardcoded `sectionId: null` — the UI could never create what the compute had just learned
+   to respect.
+2. **A subject's paper could not be removed.** The server's schedule save is an
+   identity-keyed sync on `(classId, subjectId, sectionId)`: rows absent from a present
+   class's payload are DELETED, components first. The UI only offered whole-class removal.
+3. **Different sections can carry different paper/component configs** — the partition rule
+   (ADR-052) allows a subject to be class-wide OR a subset of sections (partial legitimate,
+   duplicates refused), each paper with its own parts and pass marks. The UI assumed
+   class-wide rows everywhere (draft rows keyed by subjectId alone — two sections of one
+   subject would collide).
+4. **Components navigation hell:** reaching a paper's parts was hub → Options → Papers &
+   components → row → sheet → "Edit parts" → editor.
+5. General flow/UX debt — addressed by the same rework.
+
+**What shipped (mobile-only, existing endpoints):**
+
+- **Per-paper removal**: a ✕ on every row behind a confirm ("Remove Physics? — The paper and
+  its parts are deleted when you save…"); the class's draft snapshot becomes the full
+  intended grid, so a save omits the row and the server's identity sync deletes it.
+- **"Add paper" per class** (fetch-then-open like Add class, so an all-mapped class answers
+  with the banner instead of an empty sheet): subject sheet listing only mapped counted
+  exam-mode subjects a partition shape remains for, then a section sheet — "All sections
+  (one paper)" plus the untaken sections. `paperAddChoices`/`paperKey`/
+  `schedulePartitionViolations` are new pure helpers (+9 tests, suite 25/25) mirroring the
+  server's partition rule; save runs the guard client-side (names the subjects) before the
+  server's own refusal.
+- **Section visibility**: rows and the paper sheet title carry "· Section {name}" from the
+  sections read; the hub already printed section papers.
+- **Parts in one hop**: every saved row carries a live "N parts ›" chip that pushes the parts
+  editor directly — no sheet hop. New rows show "Parts after save" (the D19 default still
+  lands on save).
+- **Draft model**: rows keyed by the (subject, section) identity; the dirty diff extended to
+  removal-by-omission (a server row missing from a touched class's snapshot is unsaved).
+
+Two walk-fixes found on device: the row layout starved the name block to zero width (RN
+flexShrink defaults to 0 — the long "Save the papers first…" chip consumed the row), fixed by
+a short "Parts after save" in-row note with the full sentence kept in the sheet; and the
+create form's Save button sat below the fold on tall content (found by uiautomator bounds —
+the taps were hitting a switch), reached by scrolling.
+
+**Walk (emulator-5554, admin, draft exam "UX Setup Walk" created for the walk then deleted
+with its schedules/components):** Add class → generate → Save ("Papers saved.", D19 default
+parts); remove Physics → Save → DB shows only Mathematics (section null); Add paper →
+subject sheet offers Physics only (Mathematics correctly excluded) → Section A → Save → DB
+shows `Physics, section = 5b708ecf…` beside class-wide Mathematics (the mixed shape ADR-052
+allows); parts chip on Mathematics opens the editor in one hop. Screenshots ux-120…145.
+
+Gates: mobile tsc clean, jest 37 suites / 602 tests (+9 partition tests), lint 0 errors;
+root `pnpm check-types` green except the pre-existing untracked
+`apps/api/scripts/tmp-seed-fees-demo.ts`.
+
+
+### Papers & components, round 2 - section-aware flow, one class at a time (2026-10-30)
+
+The owner's device walk of the rework above: section papers exist but are unreachable. With
+every subject on a class-wide paper, "Add paper" offers nothing (the partition rule forbids
+mixing shapes), the footer said "Every mapped subject already has a paper" (it was really the
+all-classes-added line), rows never mention sections, and every class sat in one long scroll.
+UI-only; no server, contract or schema change.
+
+**Design.**
+
+1. CLASS CHIPS - one class at a time (`ChipRow`, shown from two classes up); adding a class
+   focuses it.
+2. SECTION LENS - a class with two or more sections shows "Show papers for: All sections | A |
+   B". On All sections a subject is one row with a scope tag ("All sections", "Differs by
+   section", "Only A, B") and one line per section when split. On a section's lens each subject
+   is that section's own paper ("Only B"), the class paper it inherits ("Same as all"), or "Not
+   sat" with "Add back for Section B".
+3. SPLIT IS IMPLICIT - tapping an inherited row on a section's lens splits that subject (one copy
+   per section) and opens the sheet on that section; the x on a section's lens means "this
+   section doesn't sit it" (split, then drop that section's row). Add paper on a section's lens
+   adds for that section with no second question.
+4. THE SHEET - one subject per sheet: "Applies to: All sections | Different per section", a card
+   per section (collapsible; "Same as Section A" when identical) with date, time, minutes,
+   venue, pass marks and a "Sits this subject" switch (the last sitting section cannot be
+   switched off - remove the paper instead). Switching back keeps the first section's settings.
+5. PARTS TRAVEL - the server deletes a vanished row's parts, so a split/merge row carries
+   `partsFrom` and, after the papers save, the screen writes those parts onto the row the server
+   just created (bare rows still get the default part).
+6. NEVER A PILE OF COPIES - class-wide stays the default shape; section rows exist only where
+   the office made them differ. At save, a subject touched this session whose section papers
+   cover every section and are identical (timing, venue, pass marks, parts) is folded back to one
+   class paper, and the banner says so. Partial sets ("only 6-A sits it"), genuine differences,
+   one-section classes and untouched legacy grids are never folded.
+7. NO MARKS GUARD NEEDED - `saveSchedules` refuses once entry opens or any component result
+   exists, and the screen is read-only from marks entry, so split/merge can never orphan marks.
+8. FOOTER FIXED - "Every class already has its papers" (classes) vs "Every mapped subject already
+   has a paper. Tap a paper to set it per section." (Add paper).
+
+**Built.** Pure helpers in `lib/exam-setup.ts` (`splitClassWide`, `mergeToClassWide`,
+`collapsibleSubject`, `samePaper`, `sectionLens`, `subjectShape`, `subjectOrder`; `PaperDraft`
+and `PartCopy` moved here) with +16 tests; `screens/exams/paper-sheet.tsx` (new); the screen
+rewired (`exam-setup.tsx`); copy. **Deferred:** "set one time for all of Section B's papers"
+bulk edit; the web grid is unchanged (it already has a per-row section picker).
+
+**Gates:** mobile tsc clean, lint clean, jest 38 suites / 655 tests. **Not device-walked.**
+
+### Exam hub redesign (2026-10-31)
+
+UI-only, `exams/[examId]` hub. (1) The header's "Options" pill is now "Edit exam" (pre-results);
+"Papers & components" is an "Edit papers" / "View papers" (frozen) button on the Papers list
+header. (2) The stage card owns the stage's acts: "Back to X" beside the Next line, and a gear
+that opens what is left (eligibility, lock, publish all) - no gear when nothing is left.
+(3) Section chips under the class chips, shown only when the class has section-scoped papers; a
+section shows its own papers plus the class-wide ones it inherits. (4) Paper card: a date tile,
+icon facts (time, who sits it, how it is marked), no "Opens when marks entry starts" line.
+(5) `ScreenFrame` gains `floatingFooter` (no white strip or rule; the button sits on the canvas),
+used by the hub only. Gates: tsc clean, lint 0, jest 38 / 655. Not device-walked.
 
 ---
 

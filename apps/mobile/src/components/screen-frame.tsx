@@ -65,6 +65,7 @@ export function ScreenFrame({
   action,
   secondaryAction,
   footer,
+  footerVariant = "bar",
   onRefresh,
   refreshing = false,
   children,
@@ -81,6 +82,11 @@ export function ScreenFrame({
   secondaryAction?: HeaderAction;
   /** Sticky bottom content; the body yields its bottom padding to it. */
   footer?: ReactNode;
+  /**
+   * The footer is one primary button, not a form's action bar: it sits on the
+   * canvas with no white strip or rule, so the button reads as floating.
+   */
+  footerVariant?: "bar" | "floating";
   /** Passing this enables pull-to-refresh. */
   onRefresh?: () => void;
   refreshing?: boolean;
@@ -172,6 +178,7 @@ export function ScreenFrame({
           <View
             style={[
               styles.footer,
+              footerVariant === "floating" ? styles.footerFloating : null,
               { paddingBottom: Math.max(insets.bottom, spacing.md) },
             ]}
           >
@@ -294,5 +301,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: gutter,
     paddingTop: spacing.md,
     gap: spacing.sm,
+  },
+  footerFloating: {
+    borderTopWidth: 0,
+    backgroundColor: colors.canvas,
+    paddingTop: spacing.xs,
   },
 });

@@ -1,5 +1,6 @@
-import { StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 
+import { AppIcon } from "../../components/app-icon";
 import { Card } from "../../components/card";
 import { StatusPill } from "../../components/status-pill";
 import { ThemedText } from "../../components/themed-text";
@@ -15,8 +16,18 @@ import { stageLabel, stageTone } from "./meta";
  * lifecycle track "the good part"; on a phone it is one quiet card rather than
  * a seven-label stepper that would not fit. The bar is decorative — the words
  * carry the meaning, so it is hidden from screen readers.
+ *
+ * The card also owns the stage's own acts: "Back to X" (the step back, when
+ * the stage allows one) sits beside the "Next" line.
  */
-export function StageTrack({ status }: { status: string }) {
+export function StageTrack({
+  status,
+  back,
+}: {
+  status: string;
+  /** The step back this stage allows, already worded ("Back to draft"). */
+  back?: { label: string; onPress: () => void };
+}) {
   const index = stageIndex(status);
   const total = EXAM_STATUSES.length;
   const nextStatus = index >= 0 && index < total - 1 ? EXAM_STATUSES[index + 1] : null;
@@ -24,16 +35,20 @@ export function StageTrack({ status }: { status: string }) {
   const next = nextStatus ? copy.exams.hub.next(stageLabel(nextStatus)) : null;
 
   return (
-    <Card
-      accessible
-      accessibilityLabel={[stageLabel(status), position, next]
-        .filter(Boolean)
-        .join(". ")}
-      testID="exam-stage-track"
-    >
+    <Card testID="exam-stage-track">
       <View style={styles.top}>
-        <StatusPill label={stageLabel(status)} tone={stageTone(status)} />
-        <ThemedText variant="meta">{position}</ThemedText>
+        <View
+          style={styles.stageInfo}
+          accessible
+          accessibilityLabel={[stageLabel(status), position, next]
+            .filter(Boolean)
+            .join(". ")}
+        >
+          <StatusPill label={stageLabel(status)} tone={stageTone(status)} />
+          <ThemedText variant="meta" style={styles.position}>
+            {position}
+          </ThemedText>
+        </View>
       </View>
       <View
         style={styles.bar}
@@ -51,7 +66,32 @@ export function StageTrack({ status }: { status: string }) {
           />
         ))}
       </View>
-      {next ? <ThemedText variant="meta">{next}</ThemedText> : null}
+      {next || back ? (
+        <View style={styles.bottom}>
+          {next ? (
+            <ThemedText variant="meta" style={styles.next}>
+              {next}
+            </ThemedText>
+          ) : (
+            <View style={styles.next} />
+          )}
+          {back ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={back.label}
+              hitSlop={8}
+              onPress={back.onPress}
+              style={({ pressed }) => [styles.back, pressed ? styles.backPressed : null]}
+              testID="exam-hub-back-step"
+            >
+              <AppIcon name="chevronLeft" size={14} color={colors.accentDeep} />
+              <ThemedText variant="caption" color={colors.accentDeep} numberOfLines={1}>
+                {back.label}
+              </ThemedText>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
     </Card>
   );
 }
@@ -60,8 +100,20 @@ const styles = StyleSheet.create({
   top: {
     flexDirection: "row",
     alignItems: "center",
+    gap: spacing.md,
+  },
+  stageInfo: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: spacing.md,
+  },
+  position: {
+    textAlign: "right",
+  },
+  backPressed: {
+    backgroundColor: colors.field,
   },
   bar: {
     flexDirection: "row",
@@ -79,5 +131,24 @@ const styles = StyleSheet.create({
   },
   pieceNow: {
     backgroundColor: colors.accent,
+  },
+  bottom: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  next: {
+    flex: 1,
+  },
+  back: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xxs,
+    minHeight: 32,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: colors.field,
+    flexShrink: 1,
   },
 });

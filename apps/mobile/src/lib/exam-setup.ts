@@ -231,3 +231,303 @@ export function createExamPayload(args: {
       : {}),
   };
 }
+
+/**
+ * The weight a NEW counting exam may still take in a term: 100 minus what the
+ * term's other counting exams already hold. Non-counting exams (practice
+ * papers, switch-off) never consume the aggregate, and an exam being EDITED
+ * does not consume its own current weight — it is replacing it. Over-committed
+ * terms (more than 100 was stored) clamp to 0; the server stays the referee.
+ */
+export type WeightContribution = {
+  id: string;
+  termId: string;
+  countsTowardTermResult: boolean;
+  /** The DB numeric arrives as a string ("50.00"). */
+  weightageInTerm: string | null;
+};
+
+export function weightHeadroom(
+  exams: readonly WeightContribution[],
+  termId: string | null,
+  editingExamId?: string | null,
+): number {
+  if (!termId) return 100;
+  const used = exams
+    .filter(
+      (exam) =>
+        exam.id !== editingExamId &&
+        exam.termId === termId &&
+        exam.countsTowardTermResult,
+    )
+    .reduce((sum, exam) => sum + Number(exam.weightageInTerm ?? 0), 0);
+  return Math.max(0, Math.min(100, 100 - used));
+}
+
+// ---------------------------------------------------------------------------
+// Paper identity + the section partition (ADR-052)
+// ---------------------------------------------------------------------------
+
+/**
+ * A paper IS its (subject, section) within a class — the same identity the
+ * server's schedule sync keys on (a null section is one class-wide paper).
+ * The partition rule (ADR-052): a subject is either ONE class-wide paper or
+ * papers for a subset of the class's sections — never both shapes, never a
+ * section twice. Partial section sets are legitimate ("only 6-A sits
+ * Mathematics this week").
+ */
+export function paperKey(subjectId: string, sectionId: string | null): string {
+  return `${subjectId}|${sectionId ?? "*"}`;
+}
+
+export type PartitionRow = { subjectId: string; sectionId: string | null };
+
+/**
+ * The sectioned rows a save would refuse, mirroring the server's
+ * `findSchedulePartitionViolations` so the setup screen can name the problem
+ * before the server does: a sectioned row under a subject that also has a
+ * class-wide paper, or a section appearing twice for one subject.
+ */
+export function schedulePartitionViolations(
+  rows: readonly PartitionRow[],
+): PartitionRow[] {
+  const bySubject = new Map<string, PartitionRow[]>();
+  for (const row of rows) {
+    const group = bySubject.get(row.subjectId) ?? [];
+    group.push(row);
+    bySubject.set(row.subjectId, group);
+  }
+  const violations: PartitionRow[] = [];
+  for (const [subjectId, group] of bySubject) {
+    const hasClassWide = group.some((r) => r.sectionId === null);
+    const seen = new Set<string>();
+    for (const row of group) {
+      if (row.sectionId === null) continue;
+      if (hasClassWide || seen.has(row.sectionId)) {
+        violations.push({ subjectId, sectionId: row.sectionId });
+      }
+      seen.add(row.sectionId);
+    }
+  }
+  return violations;
+}
+
+// ---------------------------------------------------------------------------
+// The setup screen's draft rows: split, merge and the section lens
+// ---------------------------------------------------------------------------
+
+/** One part of a paper, as the parts editor saves it. */
+export type PartCopy = {
+  name: string;
+  maxMarks: string;
+  passMarks: string;
+  weightagePercentage: string;
+  isMandatoryPass: boolean;
+  sequenceNumber: number;
+};
+
+/** One editable paper row on the setup screen. */
+export type PaperDraft = {
+  subjectId: string;
+  /** Null = one paper for the whole class; otherwise this section only. */
+  sectionId: string | null;
+  examDate: string;
+  startTime: string;
+  durationMinutes: number;
+  venue: string;
+  passMarks: string | null;
+  /** A row the server has not seen yet. */
+  isNew: boolean;
+  /**
+   * Parts to copy onto this row once the save has created it — a split or a
+   * merge carries the old paper's parts across, because the server deletes
+   * them with the row. Null = the default part (or, for a saved row, whatever
+   * the server already holds).
+   */
+  partsFrom: readonly PartCopy[] | null;
+};
+
+const timingOf = (row: PaperDraft) =>
+  [
+    row.examDate,
+    row.startTime,
+    row.durationMinutes,
+    row.venue.trim(),
+    row.passMarks ?? "",
+  ].join("|");
+
+const partsSignature = (parts: readonly PartCopy[] | null): string =>
+  JSON.stringify(
+    (parts ?? [{ ...DEFAULT_COMPONENT, sequenceNumber: 1 }]).map((part) => [
+      part.name.trim(),
+      Number(part.maxMarks),
+      Number(part.passMarks),
+      Number(part.weightagePercentage),
+      part.isMandatoryPass,
+    ]),
+  );
+
+/** Two papers a sitting apart only by their section: same timing, venue, pass marks and parts. */
+export function samePaper(
+  a: PaperDraft,
+  b: PaperDraft,
+  partsOf: (row: PaperDraft) => readonly PartCopy[] | null,
+): boolean {
+  return (
+    timingOf(a) === timingOf(b) &&
+    partsSignature(partsOf(a)) === partsSignature(partsOf(b))
+  );
+}
+
+/**
+ * Class-wide → per-section: the subject's class-wide row becomes one copy per
+ * section, in place, each carrying the paper's parts. The user then changes
+ * only what differs. A subject that is not class-wide is returned untouched.
+ */
+export function splitClassWide(
+  rows: readonly PaperDraft[],
+  subjectId: string,
+  sectionIds: readonly string[],
+  parts: readonly PartCopy[] | null,
+): PaperDraft[] {
+  const at = rows.findIndex(
+    (row) => row.subjectId === subjectId && row.sectionId === null,
+  );
+  if (at < 0 || sectionIds.length === 0) return [...rows];
+  const source = rows[at]!;
+  const copies = sectionIds.map(
+    (sectionId): PaperDraft => ({
+      ...source,
+      sectionId,
+      isNew: true,
+      partsFrom: parts,
+    }),
+  );
+  return [...rows.slice(0, at), ...copies, ...rows.slice(at + 1)];
+}
+
+/**
+ * Per-section → class-wide, keeping one section's settings for everyone. The
+ * class-wide row takes the place of the subject's first section row.
+ */
+export function mergeToClassWide(
+  rows: readonly PaperDraft[],
+  subjectId: string,
+  keepSectionId: string,
+  partsOf: (row: PaperDraft) => readonly PartCopy[] | null,
+): PaperDraft[] {
+  const kept = rows.find(
+    (row) => row.subjectId === subjectId && row.sectionId === keepSectionId,
+  );
+  if (!kept) return [...rows];
+  const merged: PaperDraft = {
+    ...kept,
+    sectionId: null,
+    isNew: true,
+    partsFrom: partsOf(kept),
+  };
+  const next: PaperDraft[] = [];
+  let placed = false;
+  for (const row of rows) {
+    if (row.subjectId !== subjectId) {
+      next.push(row);
+    } else if (!placed) {
+      next.push(merged);
+      placed = true;
+    }
+  }
+  return next;
+}
+
+/**
+ * The subject's section papers when they cover EVERY section of the class and
+ * are all identical — the shape that is really one class-wide paper. Null when
+ * the subject is not in that shape, so a deliberate partial ("only 6-A sits
+ * it") or a genuine difference is never collapsed.
+ */
+export function collapsibleSubject(
+  rows: readonly PaperDraft[],
+  subjectId: string,
+  classSectionIds: readonly string[],
+  partsOf: (row: PaperDraft) => readonly PartCopy[] | null,
+): string | null {
+  if (classSectionIds.length < 2) return null;
+  const own = rows.filter((row) => row.subjectId === subjectId);
+  if (own.length !== classSectionIds.length) return null;
+  if (own.some((row) => row.sectionId === null)) return null;
+  const sections = new Set(own.map((row) => row.sectionId));
+  if (!classSectionIds.every((id) => sections.has(id))) return null;
+  const first = own[0]!;
+  return own.every((row) => samePaper(first, row, partsOf))
+    ? (first.sectionId as string)
+    : null;
+}
+
+/** The distinct subjects of a class's rows, in the order they first appear. */
+export function subjectOrder(rows: readonly PaperDraft[]): string[] {
+  return [...new Set(rows.map((row) => row.subjectId))];
+}
+
+export type SectionLensState = "own" | "inherited" | "notSat";
+
+/**
+ * What one section sits for one subject: its own paper, the class-wide paper it
+ * inherits, or nothing (the subject is sectioned and this section has no row).
+ */
+export function sectionLens(
+  rows: readonly PaperDraft[],
+  subjectId: string,
+  sectionId: string,
+): { state: SectionLensState; row: PaperDraft | null } {
+  const own = rows.filter((row) => row.subjectId === subjectId);
+  const classWide = own.find((row) => row.sectionId === null);
+  if (classWide) return { state: "inherited", row: classWide };
+  const mine = own.find((row) => row.sectionId === sectionId);
+  if (mine) return { state: "own", row: mine };
+  return { state: "notSat", row: null };
+}
+
+export type SubjectShape =
+  | { kind: "classWide" }
+  | { kind: "differs" }
+  | { kind: "subset"; sectionIds: string[] };
+
+/**
+ * How the all-sections view should label a subject: one class-wide paper; a
+ * subset of the class's sections; or every section with its own paper.
+ */
+export function subjectShape(
+  own: readonly PaperDraft[],
+  classSectionIds: readonly string[],
+): SubjectShape {
+  if (own.some((row) => row.sectionId === null)) return { kind: "classWide" };
+  const ids = own.map((row) => row.sectionId as string);
+  if (classSectionIds.length > 0 && ids.length < classSectionIds.length) {
+    return { kind: "subset", sectionIds: ids };
+  }
+  return { kind: "differs" };
+}
+
+/**
+ * What the "Add paper" sheet may offer for one subject, given its existing
+ * rows: a class-wide paper only when the subject has none, and a section
+ * only when it is untaken and no class-wide paper stands in the way. The
+ * caller compares `takenSections` with the class's own section list.
+ */
+export function paperAddChoices(rows: readonly PartitionRow[]): {
+  /** The subject has no papers yet — "All sections" is on the table. */
+  canAddClassWide: boolean;
+  takenSections: ReadonlySet<string>;
+  /** False once a class-wide paper exists (the partition forbids mixing). */
+  canAddSections: boolean;
+} {
+  const classWide = rows.some((r) => r.sectionId === null);
+  const takenSections = new Set(
+    rows.filter((r) => r.sectionId !== null).map((r) => r.sectionId as string),
+  );
+  return {
+    canAddClassWide: rows.length === 0,
+    takenSections,
+    canAddSections: !classWide,
+  };
+}

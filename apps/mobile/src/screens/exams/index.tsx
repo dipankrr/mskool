@@ -1,8 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
+import {
+  BottomSheetModal,
+  BottomSheetView,
+} from "@expo/ui/community/bottom-sheet";
 
+import type { AppIconName } from "../../components/app-icon";
 import { CapsuleButton } from "../../components/capsule-button";
 import { Card } from "../../components/card";
 import { EmptyState } from "../../components/empty-state";
@@ -22,6 +27,7 @@ import {
   sortExams,
 } from "../../lib/exams";
 import type { ExamSegment } from "../../lib/exams";
+import { colors } from "../../theme/brand-admin";
 import { spacing } from "../../theme/tokens";
 import { examTypeLabel, stageLabel, stageTone } from "./meta";
 import { useExamList, useExamScope } from "./use-exam-data";
@@ -59,6 +65,7 @@ export function ExamsListScreen() {
   const branchName = useActiveBranchName();
   const list = useExamList();
   const [picked, setPicked] = useState<ExamSegment | null>(null);
+  const [toolsOpen, setToolsOpen] = useState(false);
 
   const rows = useMemo(() => sortExams(list.data ?? []), [list.data]);
   const counts = useMemo(() => countBySegment(rows), [rows]);
@@ -121,10 +128,28 @@ export function ExamsListScreen() {
             }
           : undefined
       }
+      secondaryAction={
+        scope.canRead && scope.addressable
+          ? {
+              label: copy.exams.list.toolsLabel,
+              icon: "settings",
+              iconOnly: true,
+              onPress: () => setToolsOpen(true),
+              accessibilityHint: copy.exams.list.toolsHint,
+              testID: "exams-tools-action",
+            }
+          : undefined
+      }
       onRefresh={scope.canRead && scope.addressable ? () => void list.refetch() : undefined}
       refreshing={list.isRefetching}
     >
       {children}
+      <ExamToolsSheet
+        visible={toolsOpen}
+        canCreate={scope.canCreate}
+        canUpdate={scope.canUpdate}
+        onClose={() => setToolsOpen(false)}
+      />
     </ScreenFrame>
   );
 
@@ -241,62 +266,102 @@ export function ExamsListScreen() {
           ))}
         </View>
       )}
-      <View style={styles.tools}>
-        <SectionLabel>{copy.exams.list.toolsLabel}</SectionLabel>
-        {scope.canCreate && rows.length > 0 ? (
-          <Card padless testID="exams-new-row">
-            <LinkRow
-              title={copy.exams.form.newRow}
-              detail={copy.exams.form.newRowDetail}
-              icon="exams"
-              onPress={() => router.push("/exams/exam-form")}
-              first
-              testID="exams-new"
-            />
-          </Card>
-        ) : null}
-        <TermGradesShortcut />
-        {scope.canUpdate ? (
-          <Card padless testID="exams-final-row">
-            <LinkRow
-              title={copy.exams.final.title}
-              detail={copy.exams.final.rowBody}
-              icon="grade"
-              onPress={() => router.push("/exams/final")}
-              first
-              testID="exams-final"
-            />
-          </Card>
-        ) : null}
-        {scope.canCreate || scope.canUpdate ? (
-          <Card padless testID="exams-grading-row">
-            <LinkRow
-              title={copy.exams.grading.row}
-              detail={copy.exams.grading.rowBody}
-              icon="settings"
-              onPress={() => router.push("/exams/setup")}
-              first
-              testID="exams-grading"
-            />
-          </Card>
-        ) : null}
-      </View>
     </View>,
   );
 }
 
-function TermGradesShortcut() {
+function ExamToolsSheet({
+  visible,
+  canCreate,
+  canUpdate,
+  onClose,
+}: {
+  visible: boolean;
+  canCreate: boolean;
+  canUpdate: boolean;
+  onClose: () => void;
+}) {
+  const ref = useRef<BottomSheetModal>(null);
+
+  useEffect(() => {
+    if (visible) ref.current?.present();
+    else ref.current?.dismiss();
+  }, [visible]);
+
+  const tools: {
+    id: string;
+    title: string;
+    detail: string;
+    icon: AppIconName;
+    open: () => void;
+  }[] = [];
+
+  if (canCreate) {
+    tools.push({
+      id: "new",
+      title: copy.exams.form.newRow,
+      detail: copy.exams.form.newRowDetail,
+      icon: "exams",
+      open: () => router.push("/exams/exam-form"),
+    });
+  }
+  tools.push({
+    id: "term-grades",
+    title: copy.exams.termGrades.row,
+    detail: copy.exams.termGrades.rowBody,
+    icon: "rubric",
+    open: () => router.push("/exams/term-grades"),
+  });
+  if (canUpdate) {
+    tools.push({
+      id: "final",
+      title: copy.exams.final.title,
+      detail: copy.exams.final.rowBody,
+      icon: "grade",
+      open: () => router.push("/exams/final"),
+    });
+  }
+  if (canCreate || canUpdate) {
+    tools.push({
+      id: "grading",
+      title: copy.exams.grading.row,
+      detail: copy.exams.grading.rowBody,
+      icon: "settings",
+      open: () => router.push("/exams/setup"),
+    });
+  }
+
   return (
-    <Card padless testID="exams-term-grades-row">
-      <LinkRow
-        title={copy.exams.termGrades.row}
-        detail={copy.exams.termGrades.rowBody}
-        icon="rubric"
-        onPress={() => router.push("/exams/term-grades")}
-        first
-        testID="exams-term-grades"
-      />
-    </Card>
+    <BottomSheetModal
+      ref={ref}
+      enablePanDownToClose
+      onDismiss={onClose}
+      backgroundStyle={{ backgroundColor: colors.surface }}
+      handleIndicatorStyle={{ backgroundColor: colors.grabber }}
+    >
+      <BottomSheetView style={styles.toolsSheet}>
+        <SectionLabel style={styles.toolsTitle}>
+          {copy.exams.list.toolsLabel}
+        </SectionLabel>
+        <Card padless testID="exams-tools-sheet">
+          {tools.map((tool, index) => (
+            <LinkRow
+              key={tool.id}
+              title={tool.title}
+              detail={tool.detail}
+              icon={tool.icon}
+              onPress={() => {
+                onClose();
+                tool.open();
+              }}
+              accessibilityHint={tool.detail}
+              first={index === 0}
+              testID={`exams-tool-${tool.id}`}
+            />
+          ))}
+        </Card>
+      </BottomSheetView>
+    </BottomSheetModal>
   );
 }
 
@@ -318,7 +383,13 @@ const styles = StyleSheet.create({
   cards: {
     gap: spacing.md,
   },
-  tools: {
-    gap: spacing.md,
+  toolsSheet: {
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.huge,
+  },
+  toolsTitle: {
+    marginTop: 0,
   },
 });

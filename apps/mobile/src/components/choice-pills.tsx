@@ -9,6 +9,8 @@ type ChoicePillOption<T extends string> = {
   label: string;
   /** A quiet second line inside the pill ("Already added"). */
   note?: string;
+  /** In grid layout, let the primary choice span both columns. */
+  wide?: boolean;
   disabled?: boolean;
 };
 
@@ -26,6 +28,7 @@ export function ChoicePills<T extends string>({
   value,
   options,
   onChange,
+  layout = "wrap",
   help,
   error,
   testIDPrefix,
@@ -35,6 +38,8 @@ export function ChoicePills<T extends string>({
   value: T | null;
   options: ChoicePillOption<T>[];
   onChange: (next: T) => void;
+  /** `grid` gives descriptive choices equal card widths instead of content-sized pills. */
+  layout?: "wrap" | "grid";
   help?: string;
   error?: string;
   testIDPrefix: string;
@@ -47,7 +52,7 @@ export function ChoicePills<T extends string>({
         </ThemedText>
       ) : null}
       <View
-        style={styles.pills}
+        style={[styles.pills, layout === "grid" ? styles.grid : null]}
         accessibilityRole="radiogroup"
         accessibilityLabel={label}
       >
@@ -69,6 +74,8 @@ export function ChoicePills<T extends string>({
               onPress={() => onChange(option.value)}
               style={({ pressed }) => [
                 styles.pill,
+                layout === "grid" ? styles.gridCard : null,
+                layout === "grid" && option.wide ? styles.gridCardWide : null,
                 selected ? styles.pillOn : null,
                 option.disabled ? styles.pillDisabled : null,
                 pressed ? styles.pillPressed : null,
@@ -77,7 +84,7 @@ export function ChoicePills<T extends string>({
               <ThemedText
                 variant="bodyStrong"
                 color={selected ? colors.accentDeep : colors.ink}
-                numberOfLines={1}
+                numberOfLines={layout === "grid" ? 2 : 1}
                 maxFontSizeMultiplier={1.4}
               >
                 {option.label}
@@ -85,7 +92,7 @@ export function ChoicePills<T extends string>({
               {option.note ? (
                 <ThemedText
                   variant="meta"
-                  numberOfLines={1}
+                  numberOfLines={layout === "grid" ? 2 : 1}
                   maxFontSizeMultiplier={1.4}
                 >
                   {option.note}
@@ -125,6 +132,9 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: spacing.sm,
   },
+  grid: {
+    alignItems: "stretch",
+  },
   pill: {
     minHeight: 44,
     justifyContent: "center",
@@ -134,6 +144,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.hairline,
     backgroundColor: colors.surface,
+  },
+  gridCard: {
+    flexBasis: "45%",
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 0,
+    minHeight: 76,
+    alignItems: "flex-start",
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+  },
+  gridCardWide: {
+    flexBasis: "100%",
   },
   pillOn: {
     borderColor: colors.accent,

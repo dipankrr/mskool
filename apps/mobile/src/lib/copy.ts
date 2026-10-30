@@ -3179,6 +3179,7 @@ export const copy = {
       loadError: "Couldn't load the exams.",
       hint: "Opens the exam",
       toolsLabel: "More tools",
+      toolsHint: "Opens exam setup, grades and results tools",
       createFirst: "Create the first exam",
     },
     hub: {
@@ -3187,6 +3188,12 @@ export const copy = {
       stageOf: (index: number, total: number) => `Stage ${index} of ${total}`,
       next: (label: string) => `Next: ${label}`,
       papers: "Papers",
+      editExam: "Edit exam",
+      editExamHint: "Change the name, weight and counting",
+      editPapers: "Edit papers",
+      viewPapers: "View papers",
+      moreOptions: "More options",
+      sectionChipsLabel: "Section",
       classChipsLabel: "Class",
       allSections: "All sections",
       section: (name: string) => `Section ${name}`,
@@ -3773,6 +3780,7 @@ export const copy = {
     form: {
       newRow: "New exam",
       newRowDetail: "Create an exam for this session",
+      newAction: "New",
       createTitle: "New exam",
       editTitle: "Edit exam",
       nameLabel: "Exam name",
@@ -3780,21 +3788,34 @@ export const copy = {
       termLabel: "Term",
       termPlaceholder: "Choose the term",
       typeLabel: "Exam type",
+      typeNotes: {
+        regular: "The term's main exam",
+        mock: "Practice, not counted",
+        test: "Short test, not counted",
+        supplementary: "Second chance at a fail",
+        improvement: "Retake for a better mark",
+      },
       weightLabel: "Weight in term",
-      weightHelp:
-        "Percent of the term's result. Counting exams of a term must sum to exactly 100.",
-      weightPlaceholder: "100",
+      weightAvailable: (n: number) => `Available: ${n}% of the term`,
+      weightNone: "The counting exams of this term already total 100%.",
+      weightNeeded: "A counted exam needs a weight above zero.",
+      weightNotCounted: "Not counted in the term — no weight applies.",
       countedLabel: "Counts toward the term result",
-      countedAutoNote:
-        "Mocks and class tests never count toward the term result — the school office sets that.",
+      practiceNote:
+        "Mocks and class tests stay out of the term result: there is no weight to set and nothing to count.",
       negativeLabel: "Allow negative marks",
       negativeHelp:
         "Wrong answers can carry negative marks, e.g. objective papers.",
-      linkedLabel: "Redeems exam",
-      linkedHelp: "A supplementary or improvement exam must name the exam it redeems.",
-      linkedPlaceholder: "Choose the exam",
+      linkedLabel: "Earlier exam",
+      linkedHelp:
+        "A supplementary or improvement exam is a second chance at an earlier exam — name that exam here.",
+      linkedPlaceholder: "Choose the exam this one follows",
+      linkedNone:
+        "No earlier exams this year yet. Create the regular exam first, then come back.",
       frozenNote:
         "This exam has marks — its weight in the term and the negative-mark setting can no longer change.",
+      frozenNotePractice:
+        "This exam has marks — the negative-mark setting can no longer change.",
       save: "Create exam",
       saveEdit: "Save changes",
       saving: "Saving…",
@@ -3803,7 +3824,7 @@ export const copy = {
       failed: "Couldn't save the exam",
       needName: "Give the exam a name.",
       needTerm: "Choose the term.",
-      needLinked: "Choose the exam this one redeems.",
+      needLinked: "Choose the earlier exam this one follows.",
     },
     setup: {
       row: "Papers & components",
@@ -3815,7 +3836,34 @@ export const copy = {
       noMappingsTitle: "No mapped subjects",
       noMappingsBody:
         "This class has no counted subjects mapped for this session. Map subjects first (Academic setup).",
-      allMapped: "Every mapped subject already has a paper.",
+      allMapped:
+        "Every mapped subject already has a paper. Tap a paper to set it per section.",
+      removeClassAction: (name: string) => `Remove ${name}`,
+      classChipsLabel: "Class",
+      lensLabel: "Show papers for",
+      lensAll: "All sections",
+      tagAll: "All sections",
+      tagDiffers: "Differs by section",
+      tagOnly: (names: string) => `Only ${names}`,
+      tagSameAsAll: "Same as all",
+      notSat: "Not sat",
+      addBack: (section: string) => `Add back for ${section}`,
+      notSatLabel: (section: string) => `${section} doesn't sit this`,
+      lensHint: (section: string) =>
+        `Changing a paper here changes ${section} only.`,
+      appliesTo: "Applies to",
+      appliesAll: "All sections",
+      appliesPer: "Different per section",
+      splitHelp:
+        "Each section starts with the same settings. Change only what differs.",
+      mergeHelp: (section: string) =>
+        `Switching back keeps ${section}'s settings for every section.`,
+      sitsLabel: "Sits this subject",
+      sitsLast: "At least one section has to sit it.",
+      sameAs: (section: string) => `Same as ${section}`,
+      partsCopied: "Parts are copied when you save",
+      savedMerged: (names: string) =>
+        `Papers saved. ${names} is the same in every section, so it is one class paper.`,
       dateLabel: "Date",
       timeLabel: "Starts",
       durationLabel: "Minutes",
@@ -3830,6 +3878,16 @@ export const copy = {
       removeKeep: "Keep",
       removeConfirm: "Remove",
       removed: "Class removed. Save to apply.",
+      addPaper: "Add paper",
+      addPaperSubjectTitle: "Add a paper — choose the subject",
+      addPaperSectionTitle: (subject: string) => `${subject} — which sections sit it?`,
+      sectionAll: "All sections (one paper)",
+      removePaperTitle: (subject: string, section: string | null) =>
+        section ? `Remove ${subject} — Section ${section}?` : `Remove ${subject}?`,
+      removePaperBody:
+        "The paper and its parts are deleted when you save. An exam with entered marks cannot be restructured.",
+      partitionRefuse: (names: string) =>
+        `Ambiguous date sheet: ${names} cannot have both a class-wide paper and per-section papers, and no section twice.`,
       save: "Save papers",
       saving: "Saving…",
       saved: "Papers saved.",
@@ -3840,7 +3898,7 @@ export const copy = {
       keepEditing: "Keep editing",
       parts: (n: number) => `${n} ${n === 1 ? "part" : "parts"}`,
       editParts: "Edit parts",
-      editPaper: "Edit",
+      partsNew: "Parts after save",
       partsAfterSave: "Save the papers first — then this sheet offers the parts editor.",
       noPapersTitle: "No papers yet",
       noPapersBody:
@@ -3851,7 +3909,9 @@ export const copy = {
       title: (subject: string) => `${subject} · parts`,
       weightLine: (sum: number) => `Weights sum to ${sum} of 100`,
       weightOk: "Weights sum to 100",
+      passMeta: (marks: string) => `Pass ${marks}`,
       addPart: "Add part",
+      removePart: "Remove this part",
       nameLabel: "Part name",
       maxLabel: "Maximum",
       passLabel: "Pass marks",

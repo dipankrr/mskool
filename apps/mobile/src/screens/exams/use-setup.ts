@@ -58,7 +58,11 @@ export function useClassMappings(classId: string | null, enabled: boolean) {
   );
 }
 
-/** The exams a supplementary/improvement paper can redeem. */
+/**
+ * The exams a supplementary/improvement paper can redeem. Only counting exams
+ * are offered: redeeming a mock or a class test would point a real second
+ * chance at a paper that never entered the term result.
+ */
 export function useLinkedExamOptions(excludeExamId: string | null) {
   const scope = useExamScope();
   const list = trpc.exam.exam.list.useQuery(
@@ -69,7 +73,9 @@ export function useLinkedExamOptions(excludeExamId: string | null) {
     },
     { enabled: scope.addressable, staleTime: THIRTY_SECONDS },
   );
-  const rows = (list.data ?? []).filter((row) => row.id !== excludeExamId);
+  const rows = (list.data ?? []).filter(
+    (row) => row.id !== excludeExamId && row.countsTowardTermResult,
+  );
   return { rows, pending: list.isPending };
 }
 

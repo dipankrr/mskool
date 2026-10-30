@@ -10,7 +10,7 @@ import { EmptyState } from "../../components/empty-state";
 import { ErrorCard } from "../../components/error-card";
 import { LinkRow } from "../../components/link-row";
 import { Notice } from "../../components/notice";
-import { ScreenFrame } from "../../components/screen-frame";
+import { HeaderActionButton, ScreenFrame } from "../../components/screen-frame";
 import { SectionLabel } from "../../components/section-label";
 import { Skeleton } from "../../components/skeleton";
 import { copy } from "../../lib/copy";
@@ -91,6 +91,7 @@ export function ExamHubScreen() {
   const move = trpc.exam.exam.transition.useMutation();
 
   const [pickedClass, setPickedClass] = useState<string | null>(null);
+  const [pickedSection, setPickedSection] = useState<string>("all");
   const [pending, setPending] = useState<StageMove | null>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [moved, setMoved] = useState<string | null>(null);
@@ -176,7 +177,25 @@ export function ExamHubScreen() {
     return Boolean(counts && counts.entered - counts.verified > 0);
   };
 
+  // Section papers under a class (ADR-052): when the class has any paper that
+  // is section-scoped, a second chip row narrows the list to what ONE section
+  // sits — its own papers plus the class-wide ones it inherits.
+  const sectionIds = [
+    ...new Set(
+      classPapersRaw
+        .map((paper) => paper.sectionId)
+        .filter((id): id is string => id !== null),
+    ),
+  ];
+  const sectionPick =
+    pickedSection !== "all" && sectionIds.includes(pickedSection) ? pickedSection : "all";
   const classPapers = classPapersRaw
+    .filter(
+      (paper) =>
+        sectionPick === "all" ||
+        paper.sectionId === null ||
+        paper.sectionId === sectionPick,
+    )
     .sort(
       (a, b) =>
         (reviewerView ? Number(needsReview(b)) - Number(needsReview(a)) : 0) ||
@@ -234,6 +253,44 @@ export function ExamHubScreen() {
         .join(" · ")
     : null;
 
+  // The step back lives on the stage card; the three-dots menu beside "Edit
+  // exam" holds only what is left (eligibility, the lock, publish all), and
+  // is absent when nothing is left.
+  const backMove = scope.canUpdate
+    ? (moves.overflow.find(
+        (option) => option.key === "back_to_draft" || option.key === "back_to_entry",
+      ) ?? null)
+    : null;
+  const sheetOptions = [
+    ...(scope.canUpdate && exam !== null && isEntryOpen(exam.status)
+      ? [
+          {
+            id: "eligibility",
+            label: copy.exams.hub.optionEligibility,
+            detail: copy.exams.hub.optionEligibilityDetail,
+          },
+        ]
+      : []),
+    ...(scope.canUpdate
+      ? moves.overflow
+          .filter((option) => option !== backMove)
+          .map((option) => ({
+            id: option.key,
+            label: transitionLabel(option.key),
+            detail: transitionConsequence(option.key),
+          }))
+      : []),
+    ...(scope.canPublish && resultsOpen
+      ? [
+          {
+            id: "publishAll",
+            label: copy.exams.publication.publishAll,
+            detail: copy.exams.publication.publishAllBody,
+          },
+        ]
+      : []),
+  ];
+
   const frame = (children: ReactNode, footer?: ReactNode) => (
     <ScreenFrame
       title={exam?.name ?? copy.exams.title}
@@ -242,10 +299,26 @@ export function ExamHubScreen() {
       backTestID="exam-hub-back"
       titleTestID="exam-hub-title"
       action={
-        scope.canUpdate && exam !== null
+        scope.canUpdate && exam !== null && !isResultsStage(exam.status)
           ? {
-              label: copy.exams.hub.options,
-              icon: "manage",
+              label: copy.exams.hub.editExam,
+              icon: "edit",
+              onPress: () =>
+                router.push({
+                  pathname: "/exams/exam-form",
+                  params: { examId },
+                }),
+              accessibilityHint: copy.exams.hub.editExamHint,
+              testID: "exam-hub-edit",
+            }
+          : undefined
+      }
+      secondaryAction={
+        exam !== null && sheetOptions.length > 0
+          ? {
+              label: copy.exams.hub.moreOptions,
+              icon: "more",
+              iconOnly: true,
               onPress: () => setOptionsOpen(true),
               accessibilityHint: copy.exams.hub.optionsHint,
               testID: "exam-hub-options",
@@ -253,6 +326,7 @@ export function ExamHubScreen() {
           : undefined
       }
       footer={footer}
+      footerVariant="floating"
       // The paper counts ride the same marks.entry cache the paper screen
       // writes through; a refresh that skipped them would show pre-entry
       // numbers after a round of typing.
@@ -323,12 +397,27 @@ export function ExamHubScreen() {
       />
     ) : undefined;
 
+  const canEditPapers = scope.canUpdate && !isResultsStage(exam.status);
+
   return frame(
     <View style={styles.body}>
       {moved ? (
         <Notice tone="positive" title={moved} icon="checkCircle" testID="exam-hub-moved" />
       ) : null}
-      <StageTrack status={exam.status} />
+      <StageTrack
+        status={exam.status}
+        back={
+          backMove
+            ? {
+                label: transitionLabel(backMove.key),
+                onPress: () => {
+                  move.reset();
+                  setPending(backMove);
+                },
+              }
+            : undefined
+        }
+      />
       {!openable ? (
         <Notice
           tone="neutral"
@@ -421,16 +510,35 @@ export function ExamHubScreen() {
         </EmptyState>
       ) : (
         <View>
-          <SectionLabel style={styles.label}>
-            {[
-              chips.length === 1 && activeClass && names.className(activeClass)
-                ? `${copy.exams.hub.papers} · ${names.className(activeClass)}`
-                : copy.exams.hub.papers,
-              reviewerView ? copy.exams.hub.review.orderHint : null,
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-          </SectionLabel>
+          <View style={styles.papersHead}>
+            <SectionLabel style={styles.labelInline}>
+              {[
+                chips.length === 1 && activeClass && names.className(activeClass)
+                  ? `${copy.exams.hub.papers} · ${names.className(activeClass)}`
+                  : copy.exams.hub.papers,
+                reviewerView ? copy.exams.hub.review.orderHint : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </SectionLabel>
+            {canEditPapers ? (
+              <HeaderActionButton
+                action={{
+                  label:
+                    isEntryOpen(exam.status) || exam.status === "ongoing"
+                      ? copy.exams.hub.viewPapers
+                      : copy.exams.hub.editPapers,
+                  icon: "edit",
+                  onPress: () =>
+                    router.push({
+                      pathname: "/exams/[examId]/setup",
+                      params: { examId },
+                    }),
+                  testID: "exam-hub-edit-papers",
+                }}
+              />
+            ) : null}
+          </View>
           {chips.length > 1 && activeClass ? (
             <View style={styles.chips}>
               <ChipRow
@@ -438,6 +546,27 @@ export function ExamHubScreen() {
                 value={activeClass}
                 options={chips}
                 onChange={setPickedClass}
+              />
+            </View>
+          ) : null}
+          {sectionIds.length > 0 ? (
+            <View style={styles.chips}>
+              <ChipRow
+                label={copy.exams.hub.sectionChipsLabel}
+                value={sectionPick}
+                options={[
+                  {
+                    value: "all",
+                    label: copy.exams.hub.allSections,
+                    testID: "exam-section-all",
+                  },
+                  ...sectionIds.map((id) => ({
+                    value: id,
+                    label: copy.exams.hub.section(sectionName(id) ?? ""),
+                    testID: `exam-section-${id}`,
+                  })),
+                ]}
+                onChange={setPickedSection}
               />
             </View>
           ) : null}
@@ -543,71 +672,10 @@ export function ExamHubScreen() {
       <ChoiceSheet
         visible={optionsOpen}
         title={copy.exams.hub.optionsTitle}
-        options={[
-          ...(scope.canUpdate && !isResultsStage(exam?.status ?? "draft")
-            ? [
-                {
-                  id: "editExam",
-                  label: copy.exams.hub.optionEdit,
-                  detail: copy.exams.hub.optionEditDetail,
-                },
-              ]
-            : []),
-          ...(scope.canUpdate &&
-          exam !== null &&
-          !isResultsStage(exam.status)
-            ? [
-                {
-                  id: "setup",
-                  label: copy.exams.hub.optionSetup,
-                  detail:
-                    isEntryOpen(exam.status) || exam.status === "ongoing"
-                      ? copy.exams.hub.optionSetupFrozenDetail
-                      : copy.exams.hub.optionSetupDetail,
-                },
-              ]
-            : []),
-          ...(scope.canUpdate && exam !== null && isEntryOpen(exam.status)
-            ? [
-                {
-                  id: "eligibility",
-                  label: copy.exams.hub.optionEligibility,
-                  detail: copy.exams.hub.optionEligibilityDetail,
-                },
-              ]
-            : []),
-          ...moves.overflow.map((option) => ({
-            id: option.key,
-            label: transitionLabel(option.key),
-            detail: transitionConsequence(option.key),
-          })),
-          ...(scope.canPublish && resultsOpen
-            ? [
-                {
-                  id: "publishAll",
-                  label: copy.exams.publication.publishAll,
-                  detail: copy.exams.publication.publishAllBody,
-                },
-              ]
-            : []),
-        ]}
+        options={sheetOptions}
         currentId=""
         onSelect={(id) => {
           setOptionsOpen(false);
-          if (id === "editExam") {
-            router.push({
-              pathname: "/exams/exam-form",
-              params: { examId },
-            });
-            return;
-          }
-          if (id === "setup") {
-            router.push({
-              pathname: "/exams/[examId]/setup",
-              params: { examId },
-            });
-            return;
-          }
           if (id === "eligibility") {
             router.push({
               pathname: "/exams/[examId]/eligibility",
@@ -638,9 +706,16 @@ const styles = StyleSheet.create({
   body: {
     gap: spacing.md,
   },
-  label: {
+  papersHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
     marginTop: spacing.md,
     marginBottom: spacing.sm,
+  },
+  labelInline: {
+    flex: 1,
   },
   chips: {
     marginBottom: spacing.md,

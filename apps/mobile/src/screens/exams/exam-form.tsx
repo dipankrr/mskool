@@ -11,6 +11,7 @@ import { Notice } from "../../components/notice";
 import { ScreenFrame } from "../../components/screen-frame";
 import { SelectField } from "../../components/select-field";
 import { Skeleton } from "../../components/skeleton";
+import { Slider } from "../../components/slider";
 import { SwitchRow } from "../../components/switch-row";
 import { ThemedText } from "../../components/themed-text";
 import { copy } from "../../lib/copy";
@@ -20,10 +21,11 @@ import {
   editFrozenFields,
   effectiveCountsTowardTerm,
   requiresLinkedExam,
+  weightHeadroom,
 } from "../../lib/exam-setup";
 import { colors } from "../../theme/brand-admin";
 import { spacing } from "../../theme/tokens";
-import { useExamDetail, useExamScope } from "./use-exam-data";
+import { useExamDetail, useExamList, useExamScope } from "./use-exam-data";
 import {
   useExamFormActions,
   useExamTerms,
@@ -50,6 +52,7 @@ export function ExamFormScreen() {
   const linked = useLinkedExamOptions(editing ? (examId ?? "") : null);
   const actions = useExamFormActions(examId ?? null);
 
+  const list = useExamList();
   const exam = detail.data?.exam ?? null;
   const frozen = useMemo(
     () => (exam ? editFrozenFields(exam) : null),
@@ -141,19 +144,56 @@ export function ExamFormScreen() {
   }));
   const countedValue = effectiveCountsTowardTerm(examType, counted);
   const needsLinked = requiresLinkedExam(examType);
+  /**
+   * Practice papers run the whole pipeline but never enter the term aggregate:
+   * the server forces the flag, and a weight on a paper that cannot count is a
+   * number the office would only have to ignore. The form hides both controls
+   * and says why in one line, instead of showing a disabled switch.
+   */
+  const practice = examType === "mock" || examType === "test";
+
+  /**
+   * The weight slider's ceiling is the term's free headroom: 100 minus what
+   * the term's other counting exams already hold, so a full term pins the
+   * thumb at 0 and a half-used term stops it at 50. The exam being edited does
+   * not consume its own weight — it is replacing it. An unmoved create rests
+   * on the headroom itself ("everything left" is the common case); once the
+   * teacher slides, the value clamps if the term or the list shifts under it.
+   */
+  const termForWeight = editing ? (exam?.termId ?? null) : termId;
+  const headroom = weightHeadroom(
+    list.data ?? [],
+    termForWeight,
+    editing ? examId : null,
+  );
+  const parsedWeight = Number(weight);
+  const weightNum = Math.min(
+    Number.isFinite(parsedWeight) && weight.trim() !== "" ? parsedWeight : headroom,
+    headroom,
+  );
 
   const save = () => {
     setProblem(null);
     if (name.trim() === "") return setProblem(copy.exams.form.needName);
     if (!editing && !termId) return setProblem(copy.exams.form.needTerm);
-    if (needsLinked && !linkedExamId && !editing) {
-      return setProblem(copy.exams.form.needLinked);
+    if (needsLinked && !editing) {
+      if (linkedOptions.length === 0) {
+        return setProblem(copy.exams.form.linkedNone);
+      }
+      if (!linkedExamId) return setProblem(copy.exams.form.needLinked);
+    }
+    if (!practice && countedValue && weightNum < 1) {
+      // The slider cannot exceed the headroom, and a counted exam cannot sit
+      // at zero — a full term has nothing left to give this one.
+      return setProblem(
+        headroom === 0 ? copy.exams.form.weightNone : copy.exams.form.weightNeeded,
+      );
     }
     const payload = createExamPayload({
       name,
       termId: termId ?? "",
       examType,
-      weightageInTerm: weight,
+      weightageInTerm: practice || !countedValue ? "" : String(weightNum),
       countsTowardTermResult: counted,
       allowsNegativeMarking: negative,
       linkedExamId: linkedExamId,
@@ -161,10 +201,10 @@ export function ExamFormScreen() {
     const run = editing
       ? actions.update({
           name: payload.name as string,
-          ...(frozen?.weightage
+          ...(frozen?.weightage || practice || !countedValue
             ? {}
             : { weightageInTerm: payload.weightageInTerm }),
-          ...(frozen?.countsTowardTerm
+          ...(frozen?.countsTowardTerm || practice
             ? {}
             : { countsTowardTermResult: payload.countsTowardTermResult }),
           ...(frozen?.negativeMarking
@@ -192,10 +232,14 @@ export function ExamFormScreen() {
 
   return frame(
     <View style={styles.body}>
-      {frozen?.weightage ? (
+      {frozen?.negativeMarking ? (
         <Notice
           tone="caution"
-          title={copy.exams.form.frozenNote}
+          title={
+            practice
+              ? copy.exams.form.frozenNotePractice
+              : copy.exams.form.frozenNote
+          }
           icon="info"
           testID="exam-form-frozen"
         />
@@ -236,8 +280,11 @@ export function ExamFormScreen() {
           options={EXAM_TYPES.map((type) => ({
             value: type,
             label: (copy.exams.type as Record<string, string | undefined>)[type] ?? type,
+            note: (copy.exams.form.typeNotes as Record<string, string>)[type],
+            wide: type === "regular",
           }))}
           onChange={setExamType}
+          layout="grid"
           testIDPrefix="exam-form-type"
         />
       ) : (
@@ -250,30 +297,91 @@ export function ExamFormScreen() {
         />
       )}
 
-      <FormField
-        label={copy.exams.form.weightLabel}
-        value={weight}
-        onChangeText={setWeight}
-        placeholder={copy.exams.form.weightPlaceholder}
-        help={frozen?.weightage ? undefined : copy.exams.form.weightHelp}
-        keyboardType="numbers-and-punctuation"
-        editable={!frozen?.weightage}
-        suffix="%"
-        testID="exam-form-weight"
-      />
-
-      <SwitchRow
-        label={copy.exams.form.countedLabel}
-        value={countedValue}
-        onChange={setCounted}
-        disabled={Boolean(frozen?.countsTowardTerm) || examType === "mock" || examType === "test"}
-        testID="exam-form-counted"
-      />
-      {examType === "mock" || examType === "test" ? (
-        <ThemedText variant="meta" color={colors.muted}>
-          {copy.exams.form.countedAutoNote}
-        </ThemedText>
+      {needsLinked && !editing ? (
+        <SelectField
+          label={copy.exams.form.linkedLabel}
+          valueLabel={
+            linkedOptions.find((option) => option.id === linkedExamId)?.label ?? null
+          }
+          placeholder={copy.exams.form.linkedPlaceholder}
+          options={linkedOptions}
+          currentId={linkedExamId ?? ""}
+          onSelect={setLinkedExamId}
+          disabled={linkedOptions.length === 0}
+          help={
+            linkedOptions.length === 0
+              ? copy.exams.form.linkedNone
+              : copy.exams.form.linkedHelp
+          }
+          testID="exam-form-linked"
+        />
       ) : null}
+
+      {practice ? (
+        <ThemedText
+          variant="meta"
+          color={colors.muted}
+          testID="exam-form-practice"
+        >
+          {copy.exams.form.practiceNote}
+        </ThemedText>
+      ) : (
+        <>
+          {frozen?.weightage ? (
+            <FormField
+              label={copy.exams.form.weightLabel}
+              value={weight}
+              onChangeText={() => {}}
+              editable={false}
+              suffix="%"
+              testID="exam-form-weight"
+            />
+          ) : !countedValue ? (
+            <ThemedText
+              variant="meta"
+              color={colors.muted}
+              testID="exam-form-weight-not-counted"
+            >
+              {copy.exams.form.weightNotCounted}
+            </ThemedText>
+          ) : (
+            <View>
+              <View style={styles.weightHead}>
+                <ThemedText variant="bodyStrong">
+                  {copy.exams.form.weightLabel}
+                </ThemedText>
+                <ThemedText variant="name" testID="exam-form-weight-value">
+                  {weightNum}%
+                </ThemedText>
+              </View>
+              <Slider
+                value={weightNum}
+                max={headroom}
+                onChange={(next) => setWeight(String(next))}
+                accessibilityLabel={copy.exams.form.weightLabel}
+                testID="exam-form-weight"
+              />
+              <ThemedText
+                variant="meta"
+                color={headroom === 0 ? colors.tone.caution.fg : colors.muted}
+                testID="exam-form-weight-caption"
+              >
+                {headroom === 0
+                  ? copy.exams.form.weightNone
+                  : copy.exams.form.weightAvailable(headroom)}
+              </ThemedText>
+            </View>
+          )}
+
+          <SwitchRow
+            label={copy.exams.form.countedLabel}
+            value={countedValue}
+            onChange={setCounted}
+            disabled={Boolean(frozen?.countsTowardTerm)}
+            testID="exam-form-counted"
+          />
+        </>
+      )}
 
       <SwitchRow
         label={copy.exams.form.negativeLabel}
@@ -282,23 +390,6 @@ export function ExamFormScreen() {
         disabled={Boolean(frozen?.negativeMarking)}
         testID="exam-form-negative"
       />
-
-      {needsLinked && !editing ? (
-        <>
-          <SelectField
-            label={copy.exams.form.linkedLabel}
-            valueLabel={
-              linkedOptions.find((option) => option.id === linkedExamId)?.label ?? null
-            }
-            placeholder={copy.exams.form.linkedPlaceholder}
-            options={linkedOptions}
-            currentId={linkedExamId ?? ""}
-            onSelect={setLinkedExamId}
-            help={copy.exams.form.linkedHelp}
-            testID="exam-form-linked"
-          />
-        </>
-      ) : null}
 
       <CapsuleButton
         title={actions.pending ? copy.exams.form.saving : editing ? copy.exams.form.saveEdit : copy.exams.form.save}
@@ -316,6 +407,12 @@ const styles = StyleSheet.create({
   body: {
     gap: spacing.md,
     paddingBottom: spacing.lg,
+  },
+  weightHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
   },
   cta: {
     alignSelf: "stretch",
