@@ -1132,8 +1132,12 @@ describe("exams integration: multi-exam term (M4 GPA, M5 boundary, M6 card flags
     expect(termA?.percentage).toBe("51.00");
     expect(termA?.isPassed).toBe(true);
 
-    // M6 on the frozen card: maths carries both exams (62.00);
-    // B's maths is exempted in the second exam, so the card excuses it.
+    // M6 on the frozen card: maths carries both exams (62.00).
+    // B's maths: scored 35 in the first exam, EXCUSED from the whole second
+    // paper (ADR-053 §7). The excused paper leaves the weighting, so the term
+    // score is the exam B sat (35.00 - the old zero's-effect rule gave 21).
+    // A subject is excused only when excused from EVERY exam, so the card is
+    // not blank, and it shows exactly what the term total counted.
     // Version +1 from whatever the revision tests left: earlier cases
     // re-issued these cards, so no absolute number is asserted.
     const aBefore = await examResultsService.listOwnedCards([world.studentA], world.academicYearId);
@@ -1153,8 +1157,8 @@ describe("exams integration: multi-exam term (M4 GPA, M5 boundary, M6 card flags
     const bMaths = (bCurrent.snapshotData as any).subjects.find(
       (s: any) => s.subjectId === world.subjectId,
     );
-    expect(bMaths.isExempted).toBe(true);
-    expect(bMaths.marksObtained).toBeNull();
+    expect(bMaths.isExempted).toBe(false);
+    expect(bMaths.marksObtained).toBe("35.00");
     // Slow on a loaded DB by design: three transitions + four entries +
     // compute + publish + card reads brush the 30s default, so this test
     // carries its own budget (the windows-test precedent).
