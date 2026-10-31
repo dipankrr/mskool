@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Academic Setup Mockups</title>
+<style>
+/* ============================================================
+   Academic setup revamp + setup card (2026-10-31).
+   Every value below is a token from apps/mobile/src/theme:
+   type {11,12,13,14,15,16,20,30,34}, 4-pt spacing, radii
+   12/14/16/24/full, one emerald accent, tones as status only.
+   Phones are 360 wide: the compact width MOBILE_PLAN asks for.
+   Icons are the Material set the Android build ships.
+   ============================================================ */
+@font-face { font-family: Clash; font-weight: 400; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Regular.ttf); }
+@font-face { font-family: Clash; font-weight: 500; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Medium.ttf); }
+@font-face { font-family: Clash; font-weight: 600; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Semibold.ttf); }
+@font-face { font-family: Clash; font-weight: 700; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Bold.ttf); }
+:root {
+  --canvas: #F2F3F7; --surface: #FFFFFF; --ink: #101828; --muted: #5D6674;
+  --hair: rgba(16, 24, 40, 0.08); --accent: #0F7A44; --deep: #0B6B3A; --tint: #E8F5EE;
+  --strong: rgba(15, 122, 68, 0.12); --field: #ECEEF3; --chip: #E9EDF3; --chev: #98A2B3;
+  --scrim: rgba(16, 24, 40, 0.45); --grab: #D5DAE2;
+  --amb: #B54708; --amb-t: #FFFAEB; --red: #B42318; --red-t: #FEF3F2; --slate: #475467; --slate-t: #F2F4F7;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { color-scheme: light; }
+body { background: #DADBD6; color: var(--ink); font-family: Clash, system-ui, sans-serif; font-size: 15px; padding: 32px 16px 64px; }
+svg { display: block; flex: none; }
+
+.intro { max-width: 1160px; margin: 0 auto 32px; }
+.intro h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.6px; }
+.intro p { margin-top: 4px; color: var(--muted); }
+.group { max-width: 1160px; margin: 40px auto 16px; font-size: 12px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: #3C4450; }
+.frames { max-width: 1160px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 32px 24px; }
+figure { width: 360px; max-width: 100%; }
+figcaption { margin-top: 12px; font-size: 13px; color: #3C4450; line-height: 1.4; }
+figcaption b { font-weight: 600; color: var(--ink); }
+
+.phone { position: relative; width: 360px; height: 760px; max-width: 100%; background: var(--canvas); border-radius: 32px; overflow: hidden; box-shadow: 0 0 0 1px rgba(16,24,40,.1), 0 14px 34px rgba(16,24,40,.12); }
+.status { height: 32px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 600; }
+.status i { width: 40px; height: 8px; border-radius: 999px; background: var(--ink); opacity: .75; }
+.body { padding: 8px 20px 0; }
+.top { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.back { width: 48px; height: 48px; margin-left: -16px; display: flex; align-items: center; justify-content: center; }
+.act { min-height: 38px; display: inline-flex; align-items: center; gap: 4px; padding: 0 12px; border-radius: 999px; background: var(--tint); color: var(--deep); font-size: 12px; font-weight: 600; }
+.h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.6px; line-height: 1.15; }
+.meta { font-size: 13px; color: var(--muted); }
+.sub { font-size: 15px; font-weight: 500; color: var(--muted); }
+.label { font-size: 12px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); }
+.name { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
+.strong { font-size: 15px; font-weight: 600; }
+.tnum { font-variant-numeric: tabular-nums; }
+
+.summary { margin-top: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 26px; }
+.pill { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.pill.p { color: var(--deep); background: var(--tint); }
+.pill.c { color: var(--amb); background: var(--amb-t); }
+.pill.n { color: var(--slate); background: var(--slate-t); }
+
+.card { background: var(--surface); border-radius: 16px; }
+.stack { display: flex; flex-direction: column; gap: 12px; }
+.row { position: relative; min-height: 62px; padding: 10px 16px; display: flex; align-items: center; gap: 12px; }
+.row + .row::before { content: ""; position: absolute; top: 0; left: 68px; right: 0; height: 1px; background: var(--hair); }
+.row.flush + .row.flush::before { left: 16px; }
+.grow { flex: 1; min-width: 0; }
+.tile { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: var(--tint); color: var(--deep); flex: none; }
+.tile.n { background: var(--chip); color: var(--slate); }
+.tile.c { background: var(--amb-t); color: var(--amb); }
+.addrow { min-height: 48px; padding: 0 16px; display: flex; align-items: center; gap: 8px; color: var(--deep); font-size: 15px; font-weight: 600; position: relative; }
+.addrow + .row::before { left: 68px; }
+
+/* class & section */
+.class { padding: 4px 16px 12px; }
+.classhead { display: flex; align-items: center; gap: 8px; min-height: 40px; }
+.pencil { width: 44px; height: 44px; margin: -2px -14px -2px 0; display: flex; align-items: center; justify-content: center; color: var(--muted); flex: none; }
+/* One line, always: chips scroll under a pinned "+", so every card is the same
+   height and the two section columns and the "+" line up down the whole list. */
+.secrow { display: flex; gap: 8px; }
+.secscroll { flex: 1; min-width: 0; display: flex; gap: 8px; overflow: hidden; }
+.sec { flex: 0 0 calc((100% - 8px) / 2); min-width: 108px; height: 52px; padding: 0 10px; border-radius: 14px; background: var(--canvas); display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+.secscroll.many .sec { flex-basis: calc((100% - 40px) / 2); min-width: 96px; }
+.secline { display: flex; align-items: baseline; justify-content: space-between; gap: 4px; }
+.sec b { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
+.secline span { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.facts { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.facts span { display: inline-flex; align-items: center; gap: 2px; }
+.plus { flex: none; width: 44px; height: 52px; border-radius: 14px; background: var(--tint); color: var(--deep); display: flex; align-items: center; justify-content: center; }
+.nosec { flex: 1; min-width: 0; height: 52px; padding: 0 12px; border-radius: 14px; background: var(--amb-t); color: var(--amb); display: flex; align-items: center; font-size: 14px; font-weight: 600; }
+.round { width: 38px; height: 38px; border-radius: 999px; background: var(--tint); color: var(--deep); display: flex; align-items: center; justify-content: center; flex: none; }
+.acts { display: flex; align-items: center; gap: 8px; }
+/* compact view */
+.crow { position: relative; min-height: 52px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.crow + .crow::before, .cgroup + .crow::before, .crow + .cgroup::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--hair); }
+.cgroup { position: relative; padding-bottom: 12px; }
+.cgroup .crow { padding-right: 16px; }
+.cgroup .secrow { padding: 0 16px; }
+.cside { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 13px; }
+.cside.c { color: var(--amb); font-weight: 600; }
+/* subject rows + class picker */
+.map { flex: none; height: 32px; padding: 0 12px; border-radius: 999px; background: var(--tint); color: var(--deep); display: flex; align-items: center; font-size: 12px; font-weight: 600; }
+.pick { display: flex; flex-wrap: wrap; gap: 8px; }
+.pick div { height: 38px; padding: 0 12px; border-radius: 999px; background: var(--field); color: var(--muted); display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; }
+.pick .on { background: var(--tint); color: var(--deep); }
+.switch { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.switch i { width: 44px; height: 26px; border-radius: 999px; background: var(--accent); position: relative; flex: none; }
+.switch i::after { content: ""; position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 999px; background: #fff; }
+
+/* subject & mapping */
+.scrollchips { margin: 12px -20px 0; padding: 0 20px; display: flex; gap: 8px; overflow: hidden; }
+.tab { position: relative; flex: none; height: 44px; padding: 0 16px; border-radius: 999px; background: var(--surface); color: var(--muted); display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 600; }
+.tab.on { background: var(--tint); color: var(--deep); }
+.dot { width: 8px; height: 8px; border-radius: 999px; background: var(--amb); margin-left: 2px; }
+
+/* setup card */
+.setup { margin-top: 16px; overflow: hidden; }
+.setuphead { padding: 16px 16px 12px; }
+.setuphead > div:first-child { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.meter { margin-top: 12px; display: flex; gap: 4px; }
+.meter i { flex: 1; height: 6px; border-radius: 999px; background: var(--field); }
+.meter i.on { background: var(--accent); }
+.next { border-top: 1px solid var(--hair); padding: 12px 16px; display: flex; align-items: center; gap: 12px; }
+.expand { border-top: 1px solid var(--hair); min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 4px; color: var(--muted); font-size: 13px; font-weight: 600; }
+.step { position: relative; min-height: 48px; padding: 6px 16px; display: flex; align-items: center; gap: 12px; }
+.step + .step::before { content: ""; position: absolute; top: 0; left: 48px; right: 0; height: 1px; background: var(--hair); }
+.step .t { font-size: 15px; font-weight: 600; }
+.step.done .t { font-weight: 500; color: var(--muted); }
+.step.lock .t { font-weight: 500; color: var(--muted); }
+.step .d { font-size: 12px; color: var(--muted); }
+
+/* home + tab bar */
+.branch { display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 12px; border-radius: 999px; background: var(--surface); border: 1px solid var(--hair); font-size: 13px; font-weight: 600; }
+.bar { position: absolute; left: 16px; right: 16px; bottom: 16px; height: 64px; padding: 6px; border-radius: 32px; display: flex; gap: 4px; background: var(--surface); border: 1px solid rgba(16,24,40,.06); box-shadow: 0 14px 34px rgba(16,24,40,.12); z-index: 2; }
+.bar div { flex: 1; border-radius: 26px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--muted); font-size: 11px; font-weight: 500; }
+.bar .on { color: var(--deep); background: var(--strong); font-weight: 600; }
+
+/* sheet */
+.scrim { position: absolute; inset: 0; background: var(--scrim); z-index: 3; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; background: var(--surface); border-radius: 24px 24px 0 0; box-shadow: 0 -12px 40px rgba(16,24,40,.18); z-index: 4; display: flex; flex-direction: column; }
+.grab { width: 36px; height: 4px; border-radius: 999px; background: var(--grab); margin: 8px auto 4px; }
+.sheethead { padding: 8px 20px 0; display: flex; justify-content: space-between; gap: 8px; }
+.sheethead .x { width: 44px; height: 44px; margin: -4px -12px 0 0; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.sheetbody { padding: 12px 20px 0; display: flex; flex-direction: column; gap: 12px; }
+.sheetfoot { padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 4px; }
+.cta { height: 52px; border-radius: 999px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 16px; font-weight: 600; box-shadow: 0 10px 24px rgba(16,24,40,.16); }
+.quiet { height: 44px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 15px; font-weight: 600; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field > span { font-size: 13px; font-weight: 600; }
+.input { height: 48px; border-radius: 12px; background: var(--field); padding: 0 12px; display: flex; align-items: center; justify-content: space-between; font-size: 16px; }
+.input.ph { color: var(--muted); }
+.two { display: flex; gap: 8px; }
+.two > * { flex: 1; min-width: 0; }
+.shift { display: flex; gap: 4px; padding: 3px; border-radius: 999px; background: var(--field); }
+.shift div { flex: 1; height: 42px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600; color: var(--muted); }
+.shift .on { background: var(--tint); color: var(--deep); }
+.tick { min-height: 48px; display: flex; align-items: center; gap: 12px; font-size: 15px; font-weight: 500; }
+.box { width: 24px; height: 24px; border-radius: 8px; background: var(--field); display: flex; align-items: center; justify-content: center; color: #fff; flex: none; }
+.box.on { background: var(--accent); }
+.notice { padding: 12px; border-radius: 14px; display: flex; gap: 8px; background: var(--amb-t); color: var(--amb); font-size: 13px; font-weight: 500; line-height: 1.35; }
+.empty { padding: 56px 16px 0; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.empty .tile { width: 56px; height: 56px; border-radius: 16px; margin-bottom: 8px; }
+.empty .act { margin-top: 12px; min-height: 44px; padding: 0 16px; font-size: 15px; }
+.ready { margin-top: 16px; padding: 12px 8px 12px 16px; display: flex; align-items: center; gap: 12px; background: var(--tint); color: var(--deep); border-radius: 16px; }
+
+@media (max-width: 420px) { body { padding: 20px 16px 48px; } .frames { gap: 28px 0; } }
+</style>
+</head>
+<body>
+<div class="intro">
+  <h1>Academic setup</h1>
+  <p>Mockups for review, in the app's own font, colours and spacing, at compact phone width.</p>
+</div>
+<div id="root"></div>
+
+<script>
+const P = {
+  edit: "M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z",
+  add: "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z",
+  right: "M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z",
+  left: "M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z",
+  down: "M16.59 8.59L12 13.17 7.41 8.59 6 10l6 6 6-6z",
+  up: "M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14z",
+  check: "M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z",
+  done: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z",
+  people: "M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z",
+  room: "M14 6v15H3v-2h2V3h9v1h5v15h2v2h-4V6h-3zm-4 5v2h2v-2h-2z",
+  chair: "M17 10c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2H7c-1.1 0-2 .9-2 2v4c0 1.1.9 2 2 2h1v2H7c-1.1 0-2 .9-2 2v7h2v-3h10v3h2v-7c0-1.1-.9-2-2-2h-1v-2h1zM7 8V4h10v4H7zm10 8H7v-2h10v2zm-3-4h-4v-2h4v2z",
+  compact: "M4 15h16v-2H4v2zm0 4h16v-2H4v2zm0-8h16V9H4v2zm0-6v2h16V5H4z",
+  cards: "M20 13H3c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h17c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1zm0-10H3c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h17c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1z",
+  lock: "M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z",
+  stack: "M11.99 18.54l-7.37-5.73L3 14.07l9 7 9-7-1.63-1.27-7.38 5.74zM12 16l7.36-5.73L21 9l-9-7-9 7 1.63 1.27L12 16z",
+  subject: "M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z",
+  session: "M9 11H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm2-7h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z",
+  today: "M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z",
+  person: "M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z",
+  school: "M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82zM12 3L1 9l11 6 9-4.91V17h2V9L12 3z",
+  warn: "M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z",
+  close: "M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z",
+  tune: "M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z",
+  home: "M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z",
+  list: "M22 7h-9v2h9V7zm0 8h-9v2h9v-2zM5.54 11L2 7.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L5.54 11zm0 8L2 15.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L5.54 19z",
+  more: "M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z",
+};
+const I = (n, s = 20, c = "currentColor") => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="${c}" aria-hidden="true"><path d="${P[n]}"/></svg>`;
+const chev = I("right", 18, "#98A2B3");
+
+const phone = (caption, body, overlay = "", bar = "") => `<figure><div class="phone"><div class="status"><span class="tnum">9:41</span><i></i></div>${body}${bar ? tabBar(bar) : ""}${overlay}</div><figcaption>${caption}</figcaption></figure>`;
+const tabBar = (on) => `<div class="bar">${[["home","Home"],["list","Attendance"],["more","More"]].map(([i,l]) => `<div class="${on===l?"on":""}">${I(i,20)}<span>${l}</span></div>`).join("")}</div>`;
+const head = (title, meta, action = "") => `<div class="top"><div class="back">${I("left",22)}</div>${action}</div><div class="h1">${title}</div>${meta ? `<div class="meta" style="margin-top:2px">${meta}</div>` : ""}`;
+const act = (icon, label) => `<div class="act">${I(icon,16)}${label}</div>`;
+const link = (icon, title, detail, tone = "") => `<div class="row"><div class="tile ${tone}">${I(icon,20)}</div><div class="grow"><div class="name">${title}</div><div class="meta">${detail}</div></div>${chev}</div>`;
+const facts = (room, seats) => `<div class="facts"><span>${I("room",13)}${room}</span><span>${I("chair",13)}${seats}</span></div>`;
+const sec = (n, s, r, c) => `<div class="sec"><div class="secline"><b>${n}</b><span>${s}</span></div>${facts(r, c)}</div>`;
+const plus = `<div class="plus">${I("add",22)}</div>`;
+const secRow = (chips) => `<div class="secrow"><div class="secscroll ${chips.length > 2 ? "many" : ""}">${chips.map((c) => sec(...c)).join("")}</div>${plus}</div>`;
+const noSecRow = `<div class="secrow"><div class="nosec">No section yet</div>${plus}</div>`;
+const cls = (name, count, row) => `<div class="card class"><div class="classhead"><div class="grow"><span class="name">${name}</span>${count ? `<span class="meta"> &nbsp;${count}</span>` : ""}</div><div class="pencil">${I("edit",18)}</div></div>${row}</div>`;
+const viewBtn = (icon) => `<div class="acts"><div class="round">${I(icon,18)}</div>${act("add","Add class")}</div>`;
+const crow = (name, count) => `<div class="crow"><span class="name">${name}</span><span class="cside ${count ? "" : "c"}">${count || "No section"}${I("down",18,"#98A2B3")}</span></div>`;
+const tabs = (on, dots = []) => `<div class="scrollchips">${["All subjects","Class 6","Class 7","Class 8","Class 9"].map((t,k) => `<div class="tab ${t===on?"on":""}">${k===0?I("subject",16):""}${t}${dots.includes(t)?'<span class="dot"></span>':""}</div>`).join("")}</div>`;
+const subj = (name, detail, full) => `<div class="row"><div class="tile n">${I("subject",20)}</div><div class="grow"><div class="name">${name}</div><div class="meta">${detail}</div></div>${full ? "" : `<div class="map">Map</div>`}${chev}</div>`;
+const map = (name, detail, pill, tone = "n") => `<div class="row flush"><div class="grow"><div class="name">${name}</div><div class="meta">${detail}</div></div><span class="pill ${tone}">${pill}</span>${chev}</div>`;
+const meter = (n) => `<div class="meter">${Array.from({length:8},(_,k)=>`<i class="${k<n?"on":""}"></i>`).join("")}</div>`;
+const step = (state, title, detail) => {
+  const icon = state === "done" ? I("done",20,"#0B6B3A") : state === "lock" ? `<span style="width:20px;display:flex;justify-content:center">${I("lock",16,"#98A2B3")}</span>` : `<span style="width:20px;height:20px;border-radius:999px;border:2px solid #98A2B3;display:block"></span>`;
+  return `<div class="step ${state}">${icon}<div class="grow"><div class="t">${title}</div>${detail ? `<div class="d">${detail}</div>` : ""}</div>${state === "lock" ? "" : chev}</div>`;
+};
+const homeHead = `<span class="branch">${I("school",14,"#475467")}Main Campus</span><div class="h1" style="margin-top:24px">Today</div><div class="sub">Saturday, 31 October</div>`;
+const setupHead = `<div class="setuphead"><div><span class="name">Set up Main Campus</span><span class="meta tnum">3 of 8 done</span></div>${meter(3)}</div>`;
+const nextRow = `<div class="next"><div class="tile c">${I("school",20)}</div><div class="grow"><div class="meta">Next step</div><div class="strong">Add sections</div><div class="meta">9 of 15 classes have one</div></div>${chev}</div>`;
+const classCard = (t, d) => `<div class="card row" style="margin-top:12px"><div class="tile">${I("list",20)}</div><div class="grow"><div class="name">${t}</div><div class="meta">${d}</div></div>${chev}</div>`;
+const sheet = (title, sub, body, foot) => `<div class="scrim"></div><div class="sheet"><div class="grab"></div><div class="sheethead"><div><div class="h1" style="font-size:20px;letter-spacing:-.2px">${title}</div>${sub ? `<div class="meta" style="margin-top:2px">${sub}</div>` : ""}</div><div class="x">${I("close",20)}</div></div><div class="sheetbody">${body}</div><div class="sheetfoot">${foot}</div></div>`;
+const tick = (on, label) => `<div class="tick"><div class="box ${on?"on":""}">${on?I("check",16):""}</div>${label}</div>`;
+
+const summaryRow = `<div class="summary"><span class="meta tnum">15 classes · 28 sections</span><span class="pill c">1 without a section</span></div>`;
+const classSectionBody = `<div class="body">${head("Class &amp; Section", "Main Campus · 2026–27", viewBtn("compact"))}
+  ${summaryRow}
+  <div class="stack" style="margin-top:12px;gap:8px">
+    ${cls("Class 6", "2 sections", secRow([["A","Day","09","30"],["B","Day","08","30"]]))}
+    ${cls("Class 7", "", noSecRow)}
+    ${cls("Class 8", "3 sections", secRow([["A","Day","02","30"],["B","Day","01","30"],["C","Day","03","35"]]))}
+    ${cls("Class 9", "2 sections", secRow([["A","Day","10","30"],["B","Morning","11","30"]]))}
+    ${cls("Class 10", "1 section", secRow([["A","Day","12","40"]]))}
+  </div></div>`;
+
+const compactRows = (open) => [["Nursery","1 section"],["LKG","2 sections"],["UKG","2 sections"],["Class 1","2 sections"],["Class 2","2 sections"],["Class 3","3 sections"],["Class 4","2 sections"],["Class 5","2 sections"],["Class 6","2 sections"],["Class 7",""],["Class 8","3 sections"]]
+  .filter(([n]) => !open || !["Class 7","Class 8"].includes(n))
+  .map(([n,c]) => n === open
+    ? `<div class="cgroup"><div class="crow"><span class="name">${n}</span><span class="cside"><span style="width:44px;height:44px;display:flex;align-items:center;justify-content:center">${I("edit",18)}</span>${I("up",18,"#98A2B3")}</span></div>${secRow([["A","Day","09","30"],["B","Day","08","30"]])}</div>`
+    : crow(n,c)).join("");
+const classCompact = (open) => `<div class="body">${head("Class &amp; Section", "Main Campus · 2026–27", viewBtn("cards"))}
+  ${summaryRow}
+  <div class="card" style="margin-top:12px">${compactRows(open)}</div></div>`;
+
+const hub = `<div class="body">${head("Academic setup","Main Campus")}
+  <div class="card" style="margin-top:16px">
+    ${link("session","Sessions","2026–27 is running")}
+    ${link("stack","Class &amp; Section","15 classes · 28 sections")}
+    ${link("subject","Subject &amp; Mapping","12 subjects · 13 of 15 classes mapped")}
+    ${link("today","Terms","2 terms this session")}
+    ${link("person","Teacher assignments","Who teaches what, where")}
+  </div></div>`;
+
+const hubFresh = `<div class="body">${head("Academic setup","Main Campus")}
+  <div class="card" style="margin-top:16px">
+    ${link("session","Sessions","Create your first session","c")}
+    ${link("stack","Class &amp; Section","No classes yet")}
+    ${link("subject","Subject &amp; Mapping","No subjects yet")}
+    <div class="row"><div class="tile n">${I("today",20)}</div><div class="grow"><div class="name" style="color:var(--muted)">Terms</div><div class="meta">Needs a running session</div></div>${I("lock",16,"#98A2B3")}</div>
+    <div class="row"><div class="tile n">${I("person",20)}</div><div class="grow"><div class="name" style="color:var(--muted)">Teacher assignments</div><div class="meta">Needs a running session</div></div>${I("lock",16,"#98A2B3")}</div>
+  </div></div>`;
+
+const classEmpty = `<div class="body">${head("Class &amp; Section","Main Campus · 2026–27")}
+  <div class="empty"><div class="tile">${I("stack",28)}</div><div class="name">No classes yet</div><div class="meta">Add the classes this school teaches.<br>Sections go inside each one.</div><div class="act">${I("add",18)}Add class</div></div></div>`;
+
+const addSection = sheet("Add section","Class 7 · 2026–27",`
+  <div class="field"><span>Section name</span><div class="input">A</div></div>
+  <div class="field"><span>Shift</span><div class="shift"><div>Morning</div><div class="on">Day</div><div>Evening</div></div></div>
+  <div class="two"><div class="field"><span>Room</span><div class="input ph">Optional</div></div><div class="field"><span>Seats</span><div class="input ph">Optional</div></div></div>`,
+  `<div class="cta">${I("check",20)}Add section</div>`);
+
+const allSubjects = `<div class="body">${head("Subject &amp; Mapping","Main Campus · 2026–27", act("tune","Subject types"))}
+  ${tabs("All subjects",["Class 7"])}
+  <div class="summary" style="margin-top:16px"><span class="meta tnum">12 subjects in this school</span></div>
+  <div class="card" style="margin-top:8px"><div class="addrow" style="border-bottom:1px solid var(--hair)">${I("add",20)}Add subject</div>
+    ${subj("English","ENG · All 15 classes",true)}${subj("Mathematics","MAT · All 15 classes",true)}${subj("Physics","PHY · 6 of 15 classes")}${subj("Hindi","HIN · 13 of 15 classes")}${subj("Sanskrit","SAN · No classes yet")}${subj("Science","SCI · All 15 classes",true)}
+  </div></div>`;
+
+const mapToClasses = sheet("Map Sanskrit","2026–27 · Not in any class yet",`
+  <div class="switch"><div><div class="strong">Every class</div><div class="meta">Turn off to pick classes</div></div><i></i></div>
+  <div class="pick">${["Nursery","LKG","UKG","Class 1","Class 2","Class 3","Class 4","Class 5","Class 6","Class 7","Class 8","Class 9","Class 10","Class 11","Class 12"].map((c) => `<div class="on">${I("check",14)}${c}</div>`).join("")}</div>
+  <div class="field"><span>Subject type</span><div class="input">Main Subjects ${I("down",18,"#5D6674")}</div></div>`,
+  `<div class="cta">${I("check",20)}Map to 15 classes</div>`);
+
+const mapPartly = sheet("Map Hindi","2026–27 · Already in 13 of 15 classes",`
+  <div class="switch"><div><div class="strong">Every class</div><div class="meta">Adds it to the 2 classes without it</div></div><i></i></div>
+  <div class="pick"><div class="on">${I("check",14)}Class 7</div><div class="on">${I("check",14)}Class 9</div></div>
+  <div class="field"><span>Subject type</span><div class="input">Main Subjects ${I("down",18,"#5D6674")}</div></div>`,
+  `<div class="cta">${I("check",20)}Map to 2 classes</div>`);
+
+const classSix = `<div class="body">${head("Subject &amp; Mapping","Main Campus · 2026–27", act("tune","Subject types"))}
+  ${tabs("Class 6",["Class 7"])}
+  <div class="summary" style="margin-top:16px"><span class="meta tnum">10 of 12 subjects mapped to Class 6</span></div>
+  <div class="card" style="margin-top:8px"><div class="addrow" style="border-bottom:1px solid var(--hair)">${I("add",20)}Map subjects</div>
+    ${map("Mathematics","Core","Main Subjects")}${map("English","Core","Main Subjects")}${map("Physics","Core","No subject type","c")}${map("Hindi","Elective","Main Subjects")}${map("Art","Core","Co-curricular")}${map("Discipline","Core","Personality")}
+  </div></div>`;
+
+const mapSheet = sheet("Pick the subjects to map","Subjects already in Class 6 are not offered.",`
+  <div>${tick(true,"Geography")}${tick(true,"History")}</div>
+  <div class="field"><span>Subject type</span><div class="input">Main Subjects ${I("down",18,"#5D6674")}</div><div class="meta" style="margin-top:2px">Decides whether it counts toward the result, takes a grade instead of marks, and which card section it appears in.</div></div>`,
+  `<div class="cta">${I("check",20)}Map 2 subjects</div>`);
+
+const mapNoType = sheet("Pick the subjects to map","Subjects already in Class 6 are not offered.",`
+  <div>${tick(true,"Geography")}${tick(true,"History")}</div>
+  <div class="notice">${I("warn",18)}<span>Subjects need a type before they can be mapped, so this school needs one first.</span></div>`,
+  `<div class="cta">Add a subject type</div>`);
+
+const typeRow = (t, d, pill) => `<div class="row"><div class="tile ${pill?"":"n"}">${I("tune",20)}</div><div class="grow"><div class="name">${t}</div><div class="meta">${d}</div></div>${pill ? `<span class="pill p">Default</span>` : ""}${chev}</div>`;
+const types = `<div class="body">${head("Subject types","Main Campus", act("add","Add type"))}
+  <div class="card" style="margin-top:16px">
+    ${typeRow("Main Subjects","Counts toward result · Marks",true)}
+    ${typeRow("Co-curricular","Not counted · Grades")}
+    ${typeRow("Personality","Not counted · Term grades")}
+  </div>
+  <div class="meta" style="margin:12px 4px 0;line-height:1.4">The default is picked for you when mapping subjects. Open a type to change it.</div></div>`;
+
+const homeCompact = `<div class="body">${homeHead}<div class="card setup">${setupHead}${nextRow}<div class="expand">All steps ${I("down",18)}</div></div>
+  <div class="label" style="margin-top:24px">Your classes</div>${classCard("Class 6-A","Class teacher · Not marked")}</div>`;
+
+const homeExpanded = `<div class="body">${homeHead}<div class="card setup">${setupHead}
+  ${step("done","Session","2026–27 is running")}${step("done","Terms","2 terms")}${step("done","Classes","15 classes")}
+  ${step("todo","Sections","9 of 15 classes have one")}${step("todo","Subjects","Add what the school teaches")}${step("todo","Subject types","How subjects count")}
+  ${step("lock","Class subjects","Needs subjects first")}${step("todo","Working days","Needed to mark attendance")}
+  <div class="expand">Fewer ${I("up",18)}</div></div></div>`;
+
+const popup = sheet("Finish setting up Main Campus","Everything keeps working while you do.",`
+  <div>${meter(3)}<div class="meta tnum" style="margin-top:8px">3 of 8 done</div></div>
+  <div style="margin:0 -16px">${step("todo","Sections","9 of 15 classes have one")}${step("todo","Subjects","Add what the school teaches")}${step("todo","Subject types","How subjects count")}${step("lock","Class subjects","Needs subjects first")}${step("todo","Working days","Needed to mark attendance")}</div>`,
+  `<div class="cta">Continue: Add sections</div><div class="quiet">Later</div>`);
+
+const homeReady = `<div class="body">${homeHead}<div class="ready"><div class="tile" style="background:#fff">${I("done",22)}</div><div class="grow"><div class="name" style="color:var(--deep)">Main Campus is ready</div><div class="meta" style="color:var(--deep)">Academic setup is complete.</div></div><div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center">${I("close",18)}</div></div>
+  <div class="label" style="margin-top:24px">Your classes</div>${classCard("Class 6-A","Class teacher · Not marked")}${classCard("Class 6-B","Principal · Not marked")}</div>`;
+
+const homeTeacher = `<div class="body">${homeHead}<div class="label" style="margin-top:24px">Your classes</div>
+  <div class="card row" style="margin-top:12px;align-items:flex-start;padding:16px"><div class="tile n">${I("school",20)}</div><div class="grow"><div class="name">Your school is being set up</div><div class="meta" style="margin-top:2px;line-height:1.4">Your classes will appear here once the session is running.</div></div></div></div>`;
+
+const group = (t) => `<div class="group">${t}</div>`;
+document.getElementById("root").innerHTML =
+  group("The revamp") + `<div class="frames">
+  ${phone("<b>1. Academic setup.</b> Sessions joins the list. Each row shows a live fact, not a description.", hub, "", "")}
+  ${phone("<b>2. Class &amp; Section.</b> Two sections and the + always share one line. Every card is the same height, and columns line up down the list.", classSectionBody)}
+  ${phone("<b>3. Compact view.</b> The button beside Add class shows class name and section count only. 11 classes on one screen.", classCompact())}
+  ${phone("<b>4. Compact, one class open.</b> Tap a class to open it in place and add or edit sections.", classCompact("Class 6"))}
+  ${phone("<b>5. Add section.</b> A sheet, so the new chip appears in place. Class is already chosen, and the next letter is filled in.", classSectionBody, addSection)}
+  ${phone("<b>6. Subject &amp; Mapping, all subjects.</b> Each row shows how many classes have it. Map appears until every class does.", allSubjects)}
+  ${phone("<b>7. Map to every class.</b> Every class is on by default, and turning it off lets you pick. New.", allSubjects, mapToClasses)}
+  ${phone("<b>8. Map, partly done.</b> Only offers classes without the subject, so nothing is mapped twice.", allSubjects, mapPartly)}
+  ${phone("<b>9. Subject &amp; Mapping, one class.</b> Your Physics case: an older row with no type is flagged, and tapping fixes it.", classSix)}
+  ${phone("<b>10. Map subjects.</b> Same sheet. &ldquo;School default&rdquo; is gone and the real default is already picked.", classSix, mapSheet)}
+  ${phone("<b>11. No subject types yet.</b> The sheet says so and offers the way forward.", classSix, mapNoType)}
+  ${phone("<b>12. Subject types.</b> The real default, marked once.", types)}
+  </div>` +
+  group("The setup card and popup") + `<div class="frames">
+  ${phone("<b>13. Card, compact.</b> Progress and the one next step. Tapping the step opens its screen.", homeCompact, "", "Home")}
+  ${phone("<b>14. Card, all steps.</b> Done, to do, and steps waiting on another step.", homeExpanded, "", "Home")}
+  ${phone("<b>15. Popup on fresh launch.</b> A sheet, never a blocker. Shows only what is left.", homeCompact, popup, "Home")}
+  ${phone("<b>16. Finished.</b> Shown once when the last step completes, then the card is gone for good.", homeReady, "", "Home")}
+  </div>` +
+  group("First-run states") + `<div class="frames">
+  ${phone("<b>17. New school, no session.</b> No more dead end: rows stay visible and the first step is clear.", hubFresh)}
+  ${phone("<b>18. No classes yet.</b> One clear action.", classEmpty)}
+  ${phone("<b>19. Teacher during setup.</b> A calm message instead of &ldquo;Ask your administrator&rdquo;.", homeTeacher, "", "Home")}
+  </div>`;
+</script>
+</body>
+</html>
