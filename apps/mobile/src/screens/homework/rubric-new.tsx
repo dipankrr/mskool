@@ -15,7 +15,7 @@ import { SectionLabel } from "../../components/section-label";
 import { Skeleton } from "../../components/skeleton";
 import { ThemedText } from "../../components/themed-text";
 import {
-  useActiveBranchName,
+  useBranchMeta,
   useActiveContext,
 } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
@@ -59,7 +59,7 @@ import { ConfirmSheet } from "./confirm-sheet";
  */
 export function HomeworkRubricNewScreen() {
   const { organizationId, schoolId, ready } = useActiveContext();
-  const branchName = useActiveBranchName();
+  const branchName = useBranchMeta();
   const { has } = usePermissions();
 
   const canWrite = has("school_settings:update");

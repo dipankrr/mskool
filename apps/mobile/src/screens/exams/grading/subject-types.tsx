@@ -33,7 +33,7 @@ import {
 import type { SubjectTypeDraft } from "../../../lib/subject-types";
 import { colors } from "../../../theme/brand-admin";
 import { spacing, touch } from "../../../theme/tokens";
-import { useActiveBranchName } from "../../../hooks/use-active-context";
+import { useBranchMeta } from "../../../hooks/use-active-context";
 import { useExamScope } from "../use-exam-data";
 import { QuietChip, SectionHead } from "./ui";
 import { useSubjectTypeActions, useSubjectTypesAdmin } from "./use-grading";
@@ -51,7 +51,7 @@ type SubjectTypeRow = inferRouterOutputs<AppRouter>["exam"]["subjectTypes"]["lis
  */
 export function SubjectTypesScreen() {
   const scope = useExamScope();
-  const branchName = useActiveBranchName();
+  const branchName = useBranchMeta();
   const types = useSubjectTypesAdmin();
   const actions = useSubjectTypeActions();
 
@@ -100,7 +100,7 @@ export function SubjectTypesScreen() {
   const frame = (children: ReactNode) => (
     <ScreenFrame
       title={copy.exams.grading.types.title}
-      meta={copy.exams.meta(scope.academicYear?.name ?? null, branchName)}
+      meta={branchName}
       backAccessibilityLabel={copy.common.back}
       backTestID="subject-types-back"
       titleTestID="subject-types-title"

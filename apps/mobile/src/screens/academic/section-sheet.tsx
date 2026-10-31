@@ -89,7 +89,7 @@ export function SectionSheet({
     setForm((current) => ({ ...current, [field]: value }));
     setSaveError(null);
   };
-  const touch_ = (field: keyof SectionForm) =>
+  const markTouched = (field: keyof SectionForm) =>
     setTouched((current) => new Set(current).add(field));
   const fieldError = (field: keyof SectionForm) =>
     touched.has(field) || submitted ? errors[field] : undefined;
@@ -189,7 +189,7 @@ export function SectionSheet({
         label={copy.academic.classSection.nameLabel}
         value={form.name}
         onChangeText={(name) => set("name", name)}
-        onBlur={() => touch_("name")}
+        onBlur={() => markTouched("name")}
         error={fieldError("name")}
         autoCapitalize="characters"
         maxLength={50}
@@ -228,7 +228,7 @@ export function SectionSheet({
             label={copy.academic.classSection.seatsLabel}
             value={form.maxStudents}
             onChangeText={(maxStudents) => set("maxStudents", maxStudents.replace(/\D/g, ""))}
-            onBlur={() => touch_("maxStudents")}
+            onBlur={() => markTouched("maxStudents")}
             error={fieldError("maxStudents")}
             placeholder={copy.academic.classSection.optional}
             keyboardType="number-pad"

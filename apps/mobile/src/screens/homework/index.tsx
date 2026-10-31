@@ -13,7 +13,7 @@ import { ScreenFrame } from "../../components/screen-frame";
 import { Skeleton } from "../../components/skeleton";
 import { ThemedText } from "../../components/themed-text";
 import {
-  useActiveBranchName,
+  useBranchMeta,
   useActiveContext,
 } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
@@ -97,7 +97,7 @@ const SEGMENT_OPTIONS: readonly SegmentOption<HomeworkSegment>[] = [
 export function HomeworkScreen({ variant = "pushed" }: { variant?: "pushed" | "tab" }) {
   const { organizationId, academicYear, yearPending, ready } =
     useActiveContext();
-  const branchName = useActiveBranchName();
+  const branchName = useBranchMeta();
   const { has } = usePermissions();
 
   const canRead = has("homework:read");

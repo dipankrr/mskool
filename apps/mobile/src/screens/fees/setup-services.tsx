@@ -21,7 +21,7 @@ import { StatusPill } from "../../components/status-pill";
 import { SwitchRow } from "../../components/switch-row";
 import { ThemedText } from "../../components/themed-text";
 import {
-  useActiveBranchName,
+  useBranchMeta,
   useActiveContext,
 } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
@@ -69,7 +69,7 @@ function studentName(student: Student): string {
 export function FeeServicesScreen() {
   const { organizationId, schoolId, academicYear, ready, yearPending } =
     useActiveContext();
-  const branchName = useActiveBranchName();
+  const branchName = useBranchMeta();
   const { has } = usePermissions();
   const sessionOpen = useSessionOpen();
 

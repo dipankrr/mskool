@@ -8,7 +8,7 @@ import { EmptyState } from "../../../components/empty-state";
 import { ErrorCard } from "../../../components/error-card";
 import { Skeleton } from "../../../components/skeleton";
 import { ThemedText } from "../../../components/themed-text";
-import { useActiveContext } from "../../../hooks/use-active-context";
+import { useActiveContext, useBranchMeta } from "../../../hooks/use-active-context";
 import { usePermissions } from "../../../hooks/use-permissions";
 import { copy } from "../../../lib/copy";
 import {
@@ -42,6 +42,7 @@ export function ManageCalendar() {
   const { has } = usePermissions();
   const canManage = has("attendance:update");
   const { organizationId, schoolId, academicYear } = useActiveContext();
+  const branchMeta = useBranchMeta();
   const [anchor, setAnchor] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [generateOpen, setGenerateOpen] = useState(false);
@@ -117,7 +118,7 @@ export function ManageCalendar() {
   return (
     <ManageFrame
       title={copy.attendance.manage.rows.calendar}
-      meta={academicYear ? academicYear.name : null}
+      meta={branchMeta}
     >
       {!ready || !monthAnchor ? (
         <Card>

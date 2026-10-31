@@ -22,7 +22,7 @@ import { SwitchRow } from "../../components/switch-row";
 import { ThemedText } from "../../components/themed-text";
 import { TimeField } from "../../components/time-field";
 import {
-  useActiveBranchName,
+  useBranchMeta,
   useActiveContext,
 } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
@@ -280,7 +280,7 @@ function HomeworkFormBody({
   academicYearId: string;
 }) {
   const editing = detail !== null;
-  const branchName = useActiveBranchName();
+  const branchName = useBranchMeta();
 
   const [initial] = useState<HomeworkFormState>(() =>
     detail ? formFromDetail(detail) : blankHomeworkForm(),

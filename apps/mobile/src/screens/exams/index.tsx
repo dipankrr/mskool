@@ -19,7 +19,7 @@ import { SectionLabel } from "../../components/section-label";
 import { SegmentBar } from "../../components/segment-bar";
 import type { SegmentOption } from "../../components/segment-bar";
 import { Skeleton } from "../../components/skeleton";
-import { useActiveBranchName } from "../../hooks/use-active-context";
+import { useBranchMeta } from "../../hooks/use-active-context";
 import { copy } from "../../lib/copy";
 import {
   countBySegment,
@@ -62,7 +62,7 @@ const SEGMENT_EMPTY: Record<
  */
 export function ExamsListScreen() {
   const scope = useExamScope();
-  const branchName = useActiveBranchName();
+  const branchName = useBranchMeta();
   const list = useExamList();
   const [picked, setPicked] = useState<ExamSegment | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -114,7 +114,7 @@ export function ExamsListScreen() {
   const frame = (children: ReactNode) => (
     <ScreenFrame
       title={copy.exams.title}
-      meta={copy.exams.meta(scope.academicYear?.name ?? null, branchName)}
+      meta={branchName}
       backAccessibilityLabel={copy.common.back}
       backTestID="exams-back"
       titleTestID="exams-title"

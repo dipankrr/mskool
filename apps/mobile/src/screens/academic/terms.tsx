@@ -5,7 +5,7 @@ import type { AppRouter } from "@repo/trpc";
 import { CapsuleButton } from "../../components/capsule-button";
 import { EntityCard } from "../../components/entity-card";
 import { formatReadableDateRange } from "../../lib/format";
-import { useActiveBranchName, useActiveContext } from "../../hooks/use-active-context";
+import { useBranchMeta, useActiveContext } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
 import { copy } from "../../lib/copy";
 import { trpc } from "../../lib/trpc";
@@ -17,7 +17,7 @@ type TermRow = inferRouterOutputs<AppRouter>["academic"]["term"]["list"][number]
  * is removed on the web, terms with children never leave. */
 export function TermsScreen() {
   const { organizationId, academicYear, ready } = useActiveContext();
-  const branchName = useActiveBranchName();
+  const branchName = useBranchMeta();
   const { has } = usePermissions();
 
   const canRead = has("academic_year:read");

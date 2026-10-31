@@ -13,7 +13,7 @@ import type { SegmentOption } from "../../components/segment-bar";
 import { Skeleton } from "../../components/skeleton";
 import { ThemedText } from "../../components/themed-text";
 import {
-  useActiveBranchName,
+  useBranchMeta,
   useActiveContext,
 } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
@@ -59,7 +59,7 @@ const FILTERS: readonly SegmentOption<PaymentFilter>[] = [
 export function PaymentsScreen() {
   const { organizationId, academicYear, yearPending, ready } =
     useActiveContext();
-  const branchName = useActiveBranchName();
+  const branchName = useBranchMeta();
   const { has } = usePermissions();
 
   const canRead = has("fee_payment:read");

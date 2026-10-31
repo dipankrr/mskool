@@ -9,7 +9,7 @@ import { Card } from "../../components/card";
 import { ChoiceSheet } from "../../components/choice-sheet";
 import { PersonRow } from "../../components/person-row";
 import { ThemedText } from "../../components/themed-text";
-import { useActiveBranchName, useActiveContext } from "../../hooks/use-active-context";
+import { useBranchMeta, useActiveContext } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
 import { copy } from "../../lib/copy";
 import { colors } from "../../theme/brand-admin";
@@ -29,7 +29,7 @@ type AssignmentRow = inferRouterOutputs<
 export function TeacherAssignmentsScreen() {
   const { sectionId } = useLocalSearchParams<{ sectionId?: string }>();
   const { organizationId, schoolId, academicYear, ready } = useActiveContext();
-  const branchName = useActiveBranchName();
+  const branchName = useBranchMeta();
   const { has } = usePermissions();
 
   const canRead = has("teacher_assignment:read");

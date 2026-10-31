@@ -20,7 +20,7 @@ import { Skeleton } from "../../components/skeleton";
 import { StatusPill } from "../../components/status-pill";
 import { ThemedText } from "../../components/themed-text";
 import {
-  useActiveBranchName,
+  useBranchMeta,
   useActiveContext,
 } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
@@ -57,7 +57,7 @@ type PhotoStatus = "uploading" | "done" | "failed";
 export function StudentPhotosScreen() {
   const { sectionId } = useLocalSearchParams<{ sectionId?: string }>();
   const { organizationId, schoolId, academicYear, ready } = useActiveContext();
-  const branchName = useActiveBranchName();
+  const branchName = useBranchMeta();
   const { has } = usePermissions();
 
   const canWrite = has("student:update");

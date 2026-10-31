@@ -16,7 +16,7 @@ import { Skeleton } from "../../components/skeleton";
 import { ThemedText } from "../../components/themed-text";
 import { useTabBarSpace } from "../../components/tab-bar";
 import {
-  useActiveBranchName,
+  useBranchMeta,
   useActiveContext,
 } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
@@ -50,7 +50,7 @@ export function StudentsScreen({
   variant?: "pushed" | "tab";
 }) {
   const { organizationId, schoolId, academicYear, ready } = useActiveContext();
-  const branchName = useActiveBranchName();
+  const branchName = useBranchMeta();
   const tabSpace = useTabBarSpace();
   const { has } = usePermissions();
 

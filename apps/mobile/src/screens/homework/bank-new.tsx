@@ -15,7 +15,7 @@ import { Skeleton } from "../../components/skeleton";
 import { SwitchRow } from "../../components/switch-row";
 import { ThemedText } from "../../components/themed-text";
 import {
-  useActiveBranchName,
+  useBranchMeta,
   useActiveContext,
 } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
@@ -61,7 +61,7 @@ const MAX_TOPIC = 250;
 export function HomeworkBankNewScreen() {
   const { organizationId, ready } = useActiveContext();
   const { has } = usePermissions();
-  const branchName = useActiveBranchName();
+  const branchName = useBranchMeta();
 
   const canCreate = has("homework:create");
 

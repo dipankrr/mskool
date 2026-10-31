@@ -12,7 +12,7 @@ import { ScreenFrame } from "../../components/screen-frame";
 import { Skeleton } from "../../components/skeleton";
 import { ThemedText } from "../../components/themed-text";
 import {
-  useActiveBranchName,
+  useBranchMeta,
   useActiveContext,
 } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
@@ -47,7 +47,7 @@ const ALL_TYPES = "all";
 export function LedgerScreen() {
   const { organizationId, academicYear, yearPending, ready } =
     useActiveContext();
-  const branchName = useActiveBranchName();
+  const branchName = useBranchMeta();
   const params = useLocalSearchParams<{
     studentId?: string;
     studentName?: string;

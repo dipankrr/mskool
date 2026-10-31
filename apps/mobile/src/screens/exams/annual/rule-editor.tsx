@@ -20,7 +20,7 @@ import { Slider } from "../../../components/slider";
 import { Skeleton } from "../../../components/skeleton";
 import { SwitchRow } from "../../../components/switch-row";
 import { ThemedText } from "../../../components/themed-text";
-import { useActiveBranchName } from "../../../hooks/use-active-context";
+import { useBranchMeta } from "../../../hooks/use-active-context";
 import { useUnsavedChanges } from "../../../hooks/use-unsaved-changes";
 import {
   ANNUAL_PRESETS,
@@ -71,7 +71,7 @@ const c = annualCopy.rules;
 export function AnnualRuleEditorScreen() {
   const { policyId } = useLocalSearchParams<{ policyId?: string }>();
   const scope = useExamScope();
-  const branchName = useActiveBranchName();
+  const branchName = useBranchMeta();
   const policies = useAnnualPolicies();
   const classes = useCriteriaClasses();
   const subjects = useCriteriaSubjects();
@@ -95,7 +95,7 @@ export function AnnualRuleEditorScreen() {
   const frame = (children: ReactNode) => (
     <ScreenFrame
       title={isNew ? c.createTitle : c.editTitle}
-      meta={copy.exams.meta(year?.name ?? null, branchName)}
+      meta={branchName}
       backAccessibilityLabel={copy.common.back}
       backTestID="annual-editor-back"
       titleTestID="annual-editor-title"

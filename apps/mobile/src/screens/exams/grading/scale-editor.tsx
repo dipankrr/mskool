@@ -16,7 +16,7 @@ import { ScreenFrame } from "../../../components/screen-frame";
 import { Skeleton } from "../../../components/skeleton";
 import { SwitchRow } from "../../../components/switch-row";
 import { ThemedText } from "../../../components/themed-text";
-import { useActiveBranchName } from "../../../hooks/use-active-context";
+import { useBranchMeta } from "../../../hooks/use-active-context";
 import { usePermissions } from "../../../hooks/use-permissions";
 import { useUnsavedChanges } from "../../../hooks/use-unsaved-changes";
 import { copy } from "../../../lib/copy";
@@ -59,7 +59,7 @@ type ScaleRow = inferRouterOutputs<AppRouter>["exam"]["gradingScales"]["list"][n
 export function ScaleEditorScreen() {
   const { scaleId } = useLocalSearchParams<{ scaleId?: string }>();
   const scope = useExamScope();
-  const branchName = useActiveBranchName();
+  const branchName = useBranchMeta();
   const scales = useGradingScalesAdmin();
 
   const isNew = !scaleId;
@@ -68,7 +68,7 @@ export function ScaleEditorScreen() {
   const hasDefault = rows.some((row) => row.isDefault);
 
   const meta = isNew
-    ? copy.exams.meta(scope.academicYear?.name ?? null, branchName)
+    ? branchName
     : scale
       ? [
           scale.isDefault ? copy.exams.grading.scales.defaultChip : null,

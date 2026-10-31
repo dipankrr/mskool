@@ -12,7 +12,7 @@ import { ScreenFrame } from "../../components/screen-frame";
 import { SectionLabel } from "../../components/section-label";
 import { Skeleton } from "../../components/skeleton";
 import {
-  useActiveBranchName,
+  useBranchMeta,
   useActiveContext,
   type AcademicYear,
 } from "../../hooks/use-active-context";
@@ -53,7 +53,7 @@ function statusOf(year: AcademicYear): { label: string; tone: Tone } {
  */
 export function SessionsScreen() {
   const { organizationId, schoolId, ready } = useActiveContext();
-  const branchName = useActiveBranchName();
+  const branchName = useBranchMeta();
   const { has } = usePermissions();
 
   const canRead = has("academic_year:read");

@@ -3021,7 +3021,6 @@ export const copy = {
     },
     setup: {
       title: "Fee setup",
-      meta: (session: string) => `Session ${session}`,
       intro:
         "What the school charges and how each class's bill is built. Changes here affect future assignments; existing bills keep the amounts they were created with.",
       headsRow: "Fee heads",
@@ -3324,8 +3323,6 @@ export const copy = {
   /** Staff exams and marks entry (Step 7). */
   exams: {
     title: "Exams",
-    meta: (session: string | null, branch: string | null) =>
-      [session, branch].filter(Boolean).join(" · "),
     noBranchTitle: "Choose a branch",
     noBranchBody: "Exams belong to one branch. Pick one from More to continue.",
     noYearTitle: "No running session",

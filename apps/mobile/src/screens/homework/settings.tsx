@@ -17,7 +17,7 @@ import { Skeleton } from "../../components/skeleton";
 import { SwitchRow } from "../../components/switch-row";
 import { ThemedText } from "../../components/themed-text";
 import {
-  useActiveBranchName,
+  useBranchMeta,
   useActiveContext,
 } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
@@ -76,7 +76,7 @@ const LATE_POLICY_OPTIONS: readonly SegmentOption<"allowed" | "not_allowed">[] =
  */
 export function HomeworkSettingsScreen() {
   const { organizationId, schoolId, ready } = useActiveContext();
-  const branchName = useActiveBranchName();
+  const branchName = useBranchMeta();
   const { has } = usePermissions();
 
   const canRead = has("school_settings:read");

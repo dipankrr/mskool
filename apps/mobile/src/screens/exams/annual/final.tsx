@@ -11,6 +11,7 @@ import { Skeleton } from "../../../components/skeleton";
 import { ThemedText } from "../../../components/themed-text";
 import { annualCopy } from "../../../lib/annual-copy";
 import type { StatusKind } from "../../../lib/annual";
+import { useBranchMeta } from "../../../hooks/use-active-context";
 import { copy } from "../../../lib/copy";
 import { isoOf } from "../../../lib/exam-results";
 import { formatTimestampDate } from "../../../lib/format";
@@ -34,6 +35,7 @@ export function FinalResultsScreen() {
   const overview = useAnnualOverview();
 
   const year = scope.academicYear;
+  const branchMeta = useBranchMeta();
   const classRows = [...(names.classes.data ?? [])].sort(
     (a, b) => a.numericOrder - b.numericOrder || a.name.localeCompare(b.name),
   );
@@ -42,7 +44,7 @@ export function FinalResultsScreen() {
   const frame = (children: ReactNode) => (
     <ScreenFrame
       title={c.title}
-      meta={year?.name ?? undefined}
+      meta={branchMeta}
       backAccessibilityLabel={copy.common.back}
       backTestID="exam-final-back"
       titleTestID="exam-final-title"

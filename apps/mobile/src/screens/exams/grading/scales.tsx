@@ -11,7 +11,7 @@ import { ErrorCard } from "../../../components/error-card";
 import { ScreenFrame } from "../../../components/screen-frame";
 import { Skeleton } from "../../../components/skeleton";
 import { ThemedText } from "../../../components/themed-text";
-import { useActiveBranchName } from "../../../hooks/use-active-context";
+import { useBranchMeta } from "../../../hooks/use-active-context";
 import { copy } from "../../../lib/copy";
 import { bandPhrases, bandSentence } from "../../../lib/grading-scale";
 import { colors } from "../../../theme/brand-admin";
@@ -31,7 +31,7 @@ type ScaleRow = inferRouterOutputs<AppRouter>["exam"]["gradingScales"]["list"][n
  */
 export function GradingScalesScreen() {
   const scope = useExamScope();
-  const branchName = useActiveBranchName();
+  const branchName = useBranchMeta();
   const scales = useGradingScalesAdmin();
 
   const rows = scales.data ?? [];
@@ -39,7 +39,7 @@ export function GradingScalesScreen() {
   const frame = (children: ReactNode) => (
     <ScreenFrame
       title={copy.exams.grading.scales.title}
-      meta={copy.exams.meta(scope.academicYear?.name ?? null, branchName)}
+      meta={branchName}
       backAccessibilityLabel={copy.common.back}
       backTestID="grading-scales-back"
       titleTestID="grading-scales-title"

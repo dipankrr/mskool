@@ -12,7 +12,7 @@ import { Notice } from "../../../components/notice";
 import { ScreenFrame } from "../../../components/screen-frame";
 import { Skeleton } from "../../../components/skeleton";
 import { ThemedText } from "../../../components/themed-text";
-import { useActiveBranchName } from "../../../hooks/use-active-context";
+import { useBranchMeta } from "../../../hooks/use-active-context";
 import { annualCopy } from "../../../lib/annual-copy";
 import {
   policyCounts,
@@ -41,7 +41,7 @@ const c = annualCopy.rules;
  */
 export function AnnualRulesScreen() {
   const scope = useExamScope();
-  const branchName = useActiveBranchName();
+  const branchName = useBranchMeta();
   const policies = useAnnualPolicies();
   const classes = useCriteriaClasses();
 
@@ -62,7 +62,7 @@ export function AnnualRulesScreen() {
   const frame = (children: ReactNode) => (
     <ScreenFrame
       title={c.title}
-      meta={copy.exams.meta(year?.name ?? null, branchName)}
+      meta={branchName}
       backAccessibilityLabel={copy.common.back}
       backTestID="annual-rules-back"
       titleTestID="annual-rules-title"

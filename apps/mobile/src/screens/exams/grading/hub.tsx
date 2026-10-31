@@ -12,7 +12,7 @@ import { Notice } from "../../../components/notice";
 import { ScreenFrame } from "../../../components/screen-frame";
 import { Skeleton } from "../../../components/skeleton";
 import { ThemedText } from "../../../components/themed-text";
-import { useActiveBranchName } from "../../../hooks/use-active-context";
+import { useBranchMeta } from "../../../hooks/use-active-context";
 import { annualCopy } from "../../../lib/annual-copy";
 import { policyCounts } from "../../../lib/annual";
 import { copy } from "../../../lib/copy";
@@ -38,7 +38,7 @@ import {
  */
 export function GradingHubScreen() {
   const scope = useExamScope();
-  const branchName = useActiveBranchName();
+  const branchName = useBranchMeta();
 
   const types = useSubjectTypesAdmin();
   const scales = useGradingScalesAdmin();
@@ -56,7 +56,7 @@ export function GradingHubScreen() {
   const annualCounts = policyCounts(annual.data ?? []);
 
   const year = scope.academicYear;
-  const meta = copy.exams.meta(year?.name ?? null, branchName);
+  const meta = branchName;
   const pending =
     types.isPending ||
     scales.isPending ||

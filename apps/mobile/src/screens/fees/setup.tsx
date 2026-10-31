@@ -10,7 +10,7 @@ import { Notice } from "../../components/notice";
 import { ScreenFrame } from "../../components/screen-frame";
 import { Skeleton } from "../../components/skeleton";
 import {
-  useActiveBranchName,
+  useBranchMeta,
   useActiveContext,
 } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
@@ -33,7 +33,7 @@ import { GenerationCard } from "./generation-card";
 export function FeeSetupScreen() {
   const { organizationId, academicYear, yearPending, ready } =
     useActiveContext();
-  const branchName = useActiveBranchName();
+  const branchName = useBranchMeta();
   const { has } = usePermissions();
 
   const canReadHeads = has("fee_head:read");
@@ -71,7 +71,7 @@ export function FeeSetupScreen() {
   const frame = (children: ReactNode) => (
     <ScreenFrame
       title={copy.fees.setup.title}
-      meta={academicYear ? copy.fees.setup.meta(academicYear.name) : branchName}
+      meta={branchName}
       backAccessibilityLabel={copy.common.back}
       onRefresh={
         canReadAny

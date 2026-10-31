@@ -12,7 +12,7 @@ import { Notice } from "../../../components/notice";
 import { ScreenFrame } from "../../../components/screen-frame";
 import { Skeleton } from "../../../components/skeleton";
 import { ThemedText } from "../../../components/themed-text";
-import { useActiveBranchName } from "../../../hooks/use-active-context";
+import { useBranchMeta } from "../../../hooks/use-active-context";
 import { copy } from "../../../lib/copy";
 import { errorMessage } from "../../../lib/errors";
 import {
@@ -42,7 +42,7 @@ type CriteriaRow = inferRouterOutputs<AppRouter>["exam"]["passCriteria"]["list"]
  */
 export function PassCriteriaScreen() {
   const scope = useExamScope();
-  const branchName = useActiveBranchName();
+  const branchName = useBranchMeta();
   const criteria = usePassCriteriaAdmin();
   const classes = useCriteriaClasses();
   const subjects = useCriteriaSubjects();
@@ -74,7 +74,7 @@ export function PassCriteriaScreen() {
   const frame = (children: ReactNode) => (
     <ScreenFrame
       title={copy.exams.grading.criteria.title}
-      meta={copy.exams.meta(year?.name ?? null, branchName)}
+      meta={branchName}
       backAccessibilityLabel={copy.common.back}
       backTestID="pass-criteria-back"
       titleTestID="pass-criteria-title"

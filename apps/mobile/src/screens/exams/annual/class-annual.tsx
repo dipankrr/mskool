@@ -22,6 +22,7 @@ import {
 } from "../../../lib/annual";
 import type { AnnualFilter } from "../../../lib/annual";
 import { annualCopy } from "../../../lib/annual-copy";
+import { useBranchMeta } from "../../../hooks/use-active-context";
 import { copy } from "../../../lib/copy";
 import { errorMessage } from "../../../lib/errors";
 import { colors } from "../../../theme/brand-admin";
@@ -63,6 +64,7 @@ export function ClassAnnualScreen() {
 
   const className = names.className(classId) ?? "";
   const year = scope.academicYear;
+  const branchMeta = useBranchMeta();
   const students = useMemo(() => table.data?.students ?? [], [table.data]);
   const sections = useMemo(
     () => [...new Set(students.map((s) => s.sectionName).filter((n): n is string => Boolean(n)))].sort(),
@@ -80,7 +82,7 @@ export function ClassAnnualScreen() {
   const frame = (children: ReactNode, footer?: ReactNode) => (
     <ScreenFrame
       title={className || annualCopy.final.title}
-      meta={year?.name ?? undefined}
+      meta={branchMeta}
       backAccessibilityLabel={copy.common.back}
       backTestID="class-annual-back"
       titleTestID="class-annual-title"

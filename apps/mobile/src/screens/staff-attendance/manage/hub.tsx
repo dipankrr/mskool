@@ -9,7 +9,7 @@ import { EmptyState } from "../../../components/empty-state";
 import { SectionLabel } from "../../../components/section-label";
 import { Skeleton } from "../../../components/skeleton";
 import { ThemedText } from "../../../components/themed-text";
-import { useActiveContext } from "../../../hooks/use-active-context";
+import { useActiveContext, useBranchMeta } from "../../../hooks/use-active-context";
 import { usePermissions } from "../../../hooks/use-permissions";
 import { copy } from "../../../lib/copy";
 import { formatShortWeekday, todayIso } from "../../../lib/format";
@@ -32,6 +32,7 @@ export function ManageHub() {
   const canManage = has("attendance:update");
   const params = useLocalSearchParams<{ sectionId?: string }>();
   const { organizationId, schoolId, academicYear } = useActiveContext();
+  const branchMeta = useBranchMeta();
   const { section, sectionLabel } = useAttendanceSection(params.sectionId);
 
   const ready = Boolean(organizationId && schoolId && academicYear);
@@ -111,7 +112,7 @@ export function ManageHub() {
   return (
     <ManageFrame
       title={copy.attendance.manage.title}
-      meta={academicYear ? academicYear.name : null}
+      meta={branchMeta}
     >
       <SectionLabel>{copy.attendance.manage.sessionLabel}</SectionLabel>
       <Card padless style={styles.rows}>

@@ -212,7 +212,9 @@ export function SessionFormScreen() {
     (year) => year.schoolId === targetSchoolId,
   );
   const branchName =
-    branches.find((branch) => branch.id === targetSchoolId)?.name ?? null;
+    branches.length > 1
+      ? (branches.find((branch) => branch.id === targetSchoolId)?.name ?? null)
+      : null;
 
   return (
     <SessionFormBody
