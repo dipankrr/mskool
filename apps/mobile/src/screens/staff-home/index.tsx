@@ -14,6 +14,7 @@ import {
   useActiveContext,
 } from "../../hooks/use-active-context";
 import { useMe } from "../../hooks/use-me";
+import { usePermissions } from "../../hooks/use-permissions";
 import { copy } from "../../lib/copy";
 import { formatLongWeekday, todayIso } from "../../lib/format";
 import { trpc } from "../../lib/trpc";
@@ -21,6 +22,7 @@ import { colors } from "../../theme/brand-admin";
 import { gutter, radius, spacing } from "../../theme/tokens";
 import { ClassCard } from "./class-card";
 import { OpenExamsCard } from "./open-exams";
+import { SetupCard } from "./setup-card";
 
 /**
  * Staff home (probe frame 01): branch chip, "Today" and the day line, then
@@ -39,6 +41,8 @@ export function StaffHomeScreen() {
     useActiveContext();
   const branchName = useActiveBranchName();
   const tabSpace = useTabBarSpace();
+  const { has } = usePermissions();
+  const canSetUp = has("academic_year:create");
 
   const sectionsQuery = trpc.academic.section.list.useQuery(
     {
@@ -73,6 +77,13 @@ export function StaffHomeScreen() {
       ? "loading"
       : "none";
 
+  // Someone setting the school up has the card; an empty "Your classes" under
+  // it would only repeat what it says.
+  const nothingToShow =
+    canSetUp &&
+    (yearState === "none" ||
+      (yearState === "ready" && sectionsQuery.isSuccess && sections.length === 0));
+
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView
@@ -94,11 +105,13 @@ export function StaffHomeScreen() {
           </ThemedText>
         </View>
 
+        <SetupCard />
+
         <OpenExamsCard />
 
-        <SectionLabel>{copy.home.classesLabel}</SectionLabel>
+        {nothingToShow ? null : <SectionLabel>{copy.home.classesLabel}</SectionLabel>}
 
-        {yearState === "loading" || (yearState === "ready" && sectionsQuery.isPending) ? (
+        {nothingToShow ? null : yearState === "loading" || (yearState === "ready" && sectionsQuery.isPending) ? (
           <View style={styles.cards}>
             <Skeleton height={76} testID="home-loading-1" />
             <Skeleton height={76} testID="home-loading-2" />
@@ -106,10 +119,10 @@ export function StaffHomeScreen() {
         ) : yearState === "none" ? (
           <Card>
             <ThemedText variant="bodyStrong">
-              {copy.session.noYearTitle}
+              {copy.setup.teacherTitle}
             </ThemedText>
             <ThemedText variant="meta" style={styles.cardBody}>
-              {copy.session.noYearBody}
+              {copy.setup.teacherBody}
             </ThemedText>
           </Card>
         ) : sectionsQuery.isError ? (

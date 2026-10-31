@@ -25,6 +25,19 @@ const isoDate = z
 // Academic years
 // ---------------------------------------------------------------------------
 
+/** What the setup card reads: one school's progress, from its real data. */
+export const setupStatusSchema = z.object({
+  session: z.object({ id: z.uuid(), name: z.string() }).nullable(),
+  termCount: z.number().int(),
+  classCount: z.number().int(),
+  classesWithoutSection: z.array(z.uuid()),
+  subjectCount: z.number().int(),
+  subjectTypeCount: z.number().int(),
+  classesWithoutSubjects: z.array(z.uuid()),
+  hasCalendar: z.boolean(),
+});
+export type SetupStatus = z.infer<typeof setupStatusSchema>;
+
 export const academicYearSelectSchema = createSelectSchema(academicYears);
 export type AcademicYear = z.infer<typeof academicYearSelectSchema>;
 

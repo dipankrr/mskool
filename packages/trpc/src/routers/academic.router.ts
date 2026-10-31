@@ -5,6 +5,7 @@ import {
   createClassSchema,
   createSectionSchema,
   sectionSelectSchema,
+  setupStatusSchema,
   updateAcademicYearSchema,
   updateClassSchema,
   updateSectionSchema,
@@ -562,4 +563,18 @@ export const academicRouter = router({
   // Terms are the year's own subdivisions, so they ride the academic namespace
   // (academic.term.list …) — the year visibility question is the same edge.
   term: termRouter,
+  // Gated on the permission that decides who sees the setup card at all.
+  setupStatus: staffProcedure("academic_year:create")
+    .meta({
+      openapi: {
+        method: "GET",
+        path: "/academic/setup-status",
+        tags: ["academic"],
+        summary: "One school's setup progress",
+        protect: true,
+      },
+    })
+    .input(z.object({ schoolId: z.uuid() }))
+    .output(setupStatusSchema)
+    .query(({ ctx }) => academicService.getSetupStatus(ctx.scope)),
 });

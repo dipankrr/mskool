@@ -8,13 +8,23 @@ import type {
   CreateAcademicYearInput,
   CreateClassInput,
   CreateSectionInput,
+  SetupStatus,
   UpdateAcademicYearInput,
   UpdateClassInput,
   UpdateSectionInput,
 } from "@repo/contracts";
 import { db } from "@repo/db";
-import { academicYears, classes, sections } from "@repo/db/schema";
-import { and, asc, eq } from "drizzle-orm";
+import {
+  academicCalendar,
+  academicYears,
+  classSubjectMappings,
+  classes,
+  sections,
+  subjectTypes,
+  subjects,
+  terms,
+} from "@repo/db/schema";
+import { and, asc, count, eq } from "drizzle-orm";
 
 /**
  * ACADEMIC STRUCTURE — Phase 2 slice 1.
@@ -413,6 +423,94 @@ export class AcademicService {
 
       return academicYear ?? null;
     });
+  }
+
+  /**
+   * One school's setup progress, read from its real data every time: there is
+   * no stored flag to drift. Per-session facts read the running session, so a
+   * new session starts them again.
+   */
+  async getSetupStatus(scope: DataScope): Promise<SetupStatus> {
+    const schoolId = requireSchoolId(scope);
+
+    const [session] = await db
+      .select({ id: academicYears.id, name: academicYears.name })
+      .from(academicYears)
+      .where(and(eq(academicYears.schoolId, schoolId), eq(academicYears.isCurrent, true)));
+
+    const activeClasses = await db
+      .select({ id: classes.id })
+      .from(classes)
+      .where(and(eq(classes.schoolId, schoolId), eq(classes.isActive, true)));
+    const [subjectTotal] = await db
+      .select({ total: count() })
+      .from(subjects)
+      .where(and(eq(subjects.schoolId, schoolId), eq(subjects.isActive, true)));
+    const [typeTotal] = await db
+      .select({ total: count() })
+      .from(subjectTypes)
+      .where(and(eq(subjectTypes.schoolId, schoolId), eq(subjectTypes.isActive, true)));
+
+    const classIds = activeClasses.map((row) => row.id);
+    const base = {
+      session: session ?? null,
+      classCount: classIds.length,
+      subjectCount: subjectTotal?.total ?? 0,
+      subjectTypeCount: typeTotal?.total ?? 0,
+    };
+    if (!session) {
+      return {
+        ...base,
+        termCount: 0,
+        classesWithoutSection: classIds,
+        classesWithoutSubjects: classIds,
+        hasCalendar: false,
+      };
+    }
+
+    const [termTotal] = await db
+      .select({ total: count() })
+      .from(terms)
+      .where(and(eq(terms.schoolId, schoolId), eq(terms.academicYearId, session.id)));
+    const withSection = await db
+      .selectDistinct({ classId: sections.classId })
+      .from(sections)
+      .where(
+        and(
+          eq(sections.schoolId, schoolId),
+          eq(sections.academicYearId, session.id),
+          eq(sections.status, "active"),
+        ),
+      );
+    const withSubjects = await db
+      .selectDistinct({ classId: classSubjectMappings.classId })
+      .from(classSubjectMappings)
+      .where(
+        and(
+          eq(classSubjectMappings.schoolId, schoolId),
+          eq(classSubjectMappings.academicYearId, session.id),
+        ),
+      );
+    const [calendarRow] = await db
+      .select({ id: academicCalendar.id })
+      .from(academicCalendar)
+      .where(
+        and(
+          eq(academicCalendar.schoolId, schoolId),
+          eq(academicCalendar.academicYearId, session.id),
+        ),
+      )
+      .limit(1);
+
+    const sectioned = new Set(withSection.map((row) => row.classId));
+    const mapped = new Set(withSubjects.map((row) => row.classId));
+    return {
+      ...base,
+      termCount: termTotal?.total ?? 0,
+      classesWithoutSection: classIds.filter((id) => !sectioned.has(id)),
+      classesWithoutSubjects: classIds.filter((id) => !mapped.has(id)),
+      hasCalendar: Boolean(calendarRow),
+    };
   }
 
   // -------------------------------------------------------------------------
