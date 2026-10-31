@@ -40,6 +40,9 @@ Usage: pnpm db:provision -- \\
 
 function readOptions() {
   const { values } = parseArgs({
+    // pnpm forwards a literal "--", and parseArgs treats everything after one as
+    // positional, so `pnpm db:provision -- --org-name x` would lose every option.
+    args: process.argv.slice(2).filter((arg) => arg !== "--"),
     options: {
       "org-name": { type: "string" },
       "org-slug": { type: "string" },
@@ -50,8 +53,6 @@ function readOptions() {
       board: { type: "string", default: "cbse" },
       password: { type: "string", default: DEFAULT_PASSWORD },
     },
-    // pnpm forwards its own "--" separator.
-    allowPositionals: true,
   });
 
   const required = [
