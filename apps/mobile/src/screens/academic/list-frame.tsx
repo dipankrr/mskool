@@ -52,6 +52,7 @@ export function AcademicListFrame({
   action,
   header,
   stickyHeader,
+  sheets,
   children,
   titleTestID,
 }: {
@@ -85,6 +86,11 @@ export function AcademicListFrame({
   header?: ReactNode;
   /** Tabs that stay on screen while the list scrolls. */
   stickyHeader?: ReactNode;
+  /**
+   * Bottom sheets, mounted in every state. `children` only render when there are
+   * rows, so a sheet there can't open from the empty state's own add button.
+   */
+  sheets?: ReactNode;
   children: ReactNode;
   titleTestID: string;
 }) {
@@ -100,6 +106,7 @@ export function AcademicListFrame({
       titleTestID={titleTestID}
     >
       {content}
+      {sheets}
     </ScreenFrame>
   );
 

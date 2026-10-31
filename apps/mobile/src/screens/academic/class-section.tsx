@@ -225,6 +225,40 @@ export function ClassSectionScreen() {
             }
           : undefined
       }
+      sheets={
+        <>
+          {sheet?.kind === "class" ? (
+            <ClassSheetBody
+              organizationId={organizationId ?? ""}
+              schoolId={schoolId}
+              row={sheet.row}
+              suggestedOrder={nextClassOrder(classRows.map((row) => row.numericOrder))}
+              canWrite={sheet.row ? has("class:update") : canCreateClass}
+              canDelete={Boolean(sheet.row) && has("class:delete")}
+              onClose={closeSheet}
+              onSaved={savedAndClosed}
+            />
+          ) : null}
+          {sheet?.kind === "section" ? (
+            <SectionSheet
+              organizationId={organizationId ?? ""}
+              schoolId={schoolId}
+              academicYearId={academicYear?.id ?? null}
+              classId={sheet.classRow.id}
+              className={sheet.classRow.name}
+              row={sheet.row}
+              suggestedName={nextSectionName(
+                (grouped.get(sheet.classRow.id) ?? []).map((section) => section.name),
+              )}
+              suggestedShift={(grouped.get(sheet.classRow.id) ?? []).at(-1)?.shift ?? "day"}
+              canWrite={sheet.row ? has("section:update") : canAddSection}
+              canDelete={Boolean(sheet.row) && has("section:delete")}
+              onClose={closeSheet}
+              onSaved={savedAndClosed}
+            />
+          ) : null}
+        </>
+      }
       titleTestID="class-section-title"
     >
       <View style={styles.summary}>
@@ -376,37 +410,6 @@ export function ClassSectionScreen() {
           );
         })
       )}
-
-      {sheet?.kind === "class" ? (
-        <ClassSheetBody
-          organizationId={organizationId ?? ""}
-          schoolId={schoolId}
-          row={sheet.row}
-          suggestedOrder={nextClassOrder(classRows.map((row) => row.numericOrder))}
-          canWrite={sheet.row ? has("class:update") : canCreateClass}
-          canDelete={Boolean(sheet.row) && has("class:delete")}
-          onClose={closeSheet}
-          onSaved={savedAndClosed}
-        />
-      ) : null}
-      {sheet?.kind === "section" ? (
-        <SectionSheet
-          organizationId={organizationId ?? ""}
-          schoolId={schoolId}
-          academicYearId={academicYear?.id ?? null}
-          classId={sheet.classRow.id}
-          className={sheet.classRow.name}
-          row={sheet.row}
-          suggestedName={nextSectionName(
-            (grouped.get(sheet.classRow.id) ?? []).map((section) => section.name),
-          )}
-          suggestedShift={(grouped.get(sheet.classRow.id) ?? []).at(-1)?.shift ?? "day"}
-          canWrite={sheet.row ? has("section:update") : canAddSection}
-          canDelete={Boolean(sheet.row) && has("section:delete")}
-          onClose={closeSheet}
-          onSaved={savedAndClosed}
-        />
-      ) : null}
     </AcademicListFrame>
   );
 }
