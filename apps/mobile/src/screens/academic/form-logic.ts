@@ -1,6 +1,5 @@
 import type {
   CreateClassInput,
-  CreateClassSubjectMappingInput,
   CreateSectionInput,
   CreateSectionTeacherAssignmentInput,
   CreateSubjectInput,
