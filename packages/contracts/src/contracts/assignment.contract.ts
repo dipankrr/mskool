@@ -12,7 +12,11 @@ import { z } from "zod";
 export const classSubjectMappingSelectSchema = createSelectSchema(classSubjectMappings);
 export type ClassSubjectMapping = z.infer<typeof classSubjectMappingSelectSchema>;
 
-export const createClassSubjectMappingSchema = createInsertSchema(classSubjectMappings)
+export const createClassSubjectMappingSchema = createInsertSchema(classSubjectMappings, {
+  // Required (ADR-055): exams skip a mapping without a type, silently. The
+  // column stays nullable for older rows only.
+  subjectTypeId: z.uuid(),
+})
   .omit({
     id: true,
     // Both come from the authenticated scope, never from the client — accepting

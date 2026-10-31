@@ -37,6 +37,7 @@ function type(args?: Partial<SubjectTypeRow>): SubjectTypeRow {
     isGradedOnly: false,
     assessmentMode: "exam",
     sequence: 1,
+    isDefault: false,
     isActive: true,
     hasAssessmentData: false,
     organizationId: "o1",

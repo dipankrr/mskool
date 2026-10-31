@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Pressable, StyleSheet, View } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/trpc";
 
@@ -25,6 +25,7 @@ import { toFriendlyError } from "../../lib/errors";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { spacing } from "../../theme/tokens";
+import { startingSubjectTypeId } from "../../lib/subject-types";
 import { AcademicListFrame } from "./list-frame";
 
 type MappingRow = inferRouterOutputs<
@@ -36,8 +37,8 @@ type SubjectType = inferRouterOutputs<AppRouter>["exam"]["subjectTypes"]["list"]
  * A class's curriculum for the running session (Step 2 rework). Mapping one
  * subject is a two-field act, so it lives in a bottom sheet — and onboarding
  * a class never repeats it ten times: "Add subjects" bulk-maps a checked
- * selection in one pass, each row carrying the school's Result type
- * (subjectTypeId — the report-card facts from ADR-032). The class picker
+ * selection in one pass, each row carrying a subject type (the report-card
+ * facts from ADR-032, required by ADR-055). The class picker
  * rides the route so deep links land on the same class.
  */
 export function SubjectMappingsScreen() {
@@ -63,7 +64,7 @@ export function SubjectMappingsScreen() {
     { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
     { enabled: ready && Boolean(organizationId) && canRead },
   );
-  // ADR-032's Result types — the report-card facts a mapping carries. Held by
+  // ADR-032's subject types — the report-card facts a mapping carries. Held by
   // exam:read; a caller without it simply loses the type column and picker.
   const subjectTypes = trpc.exam.subjectTypes.list.useQuery(
     { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
@@ -214,6 +215,7 @@ export function SubjectMappingsScreen() {
               candidates={unmapped.map((row) => ({ id: row.id, name: row.name }))}
               subjectTypes={subjectTypes.data ?? []}
               showTypes={Boolean(subjectTypes.data && subjectTypes.data.length > 0)}
+              canReadTypes={has("exam:read")}
               onSaved={(message) => {
                 setBulkOpen(false);
                 setSaved(message);
@@ -244,6 +246,11 @@ export function SubjectMappingsScreen() {
         <EntityCard
           key={row.id}
           title={subjectName(row.subjectId) ?? row.subjectId}
+          status={
+            row.subjectTypeId
+              ? null
+              : { label: copy.bulkMapping.typeMissing, tone: "caution" }
+          }
           meta={[
             typeName(row.subjectTypeId ?? null),
             copy.academic.mappings.meta(row.isElective, row.sequenceNumber),
@@ -277,6 +284,7 @@ function BulkMapSheet({
   candidates,
   subjectTypes,
   showTypes,
+  canReadTypes,
   onSaved,
 }: {
   onClose: () => void;
@@ -287,10 +295,13 @@ function BulkMapSheet({
   candidates: { id: string; name: string }[];
   subjectTypes: SubjectType[];
   showTypes: boolean;
+  canReadTypes: boolean;
   onSaved: (message: string) => void;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [typeId, setTypeId] = useState<string | null>(null);
+  // Null until the person picks; derived so a list that loads late still counts.
+  const [pickedTypeId, setPickedTypeId] = useState<string | null>(null);
+  const typeId = pickedTypeId ?? startingSubjectTypeId(subjectTypes);
   const [error, setError] = useState<unknown>(null);
   const [done, setDone] = useState(0);
   const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
@@ -309,7 +320,7 @@ function BulkMapSheet({
   const utils = trpc.useUtils();
 
   const mapSelected = async (targets: Set<string>) => {
-    if (!schoolId || !academicYearId || !classId) return;
+    if (!schoolId || !academicYearId || !classId || !typeId) return;
     setWorking(true);
     setError(null);
     try {
@@ -329,7 +340,7 @@ function BulkMapSheet({
               classId,
               subjectId: candidate.id,
               isElective: false,
-              ...(typeId ? { subjectTypeId: typeId } : {}),
+              subjectTypeId: typeId,
             },
           });
           completed += 1;
@@ -378,7 +389,7 @@ function BulkMapSheet({
             icon="check"
             onPress={() => void mapSelected(selected)}
             loading={working}
-            disabled={working || pending === 0}
+            disabled={working || pending === 0 || !typeId}
             testID="bulk-map-confirm"
           />
         </>
@@ -434,13 +445,37 @@ function BulkMapSheet({
         <SelectField
           label={copy.bulkMapping.typeLabel}
           valueLabel={typeId ? typeOptions.find((o) => o.id === typeId)?.label ?? null : null}
-          placeholder={copy.bulkMapping.typeNone}
-          options={[{ id: "", label: copy.bulkMapping.typeNone }, ...typeOptions]}
+          placeholder={copy.bulkMapping.typePlaceholder}
+          options={typeOptions}
           currentId={typeId ?? ""}
-          onSelect={(id) => setTypeId(id || null)}
+          onSelect={setPickedTypeId}
           help={copy.bulkMapping.typeHelp}
           testID="bulk-map-type"
         />
+      ) : candidates.length > 0 && !canReadTypes ? (
+        <Notice
+          tone="caution"
+          message={copy.bulkMapping.typesHiddenBody}
+          style={styles.retire}
+          testID="bulk-map-types-hidden"
+        />
+      ) : candidates.length > 0 ? (
+        <Notice
+          tone="caution"
+          message={copy.bulkMapping.noTypesBody}
+          style={styles.retire}
+          testID="bulk-map-no-types"
+        >
+          <CapsuleButton
+            title={copy.bulkMapping.noTypesAction}
+            size="compact"
+            onPress={() => {
+              onClose();
+              router.push("/exams/setup/subject-types");
+            }}
+            testID="bulk-map-add-type"
+          />
+        </Notice>
       ) : null}
     </FormSheet>
   );
@@ -471,9 +506,12 @@ function EditMappingSheet({
   canEnd: boolean;
   onSaved: (message: string) => void;
 }) {
-  const [isElective, setIsElective] = useState(false);
-  const [sequence, setSequence] = useState("0");
-  const [typeId, setTypeId] = useState<string | null>(null);
+  const [isElective, setIsElective] = useState(row?.isElective ?? false);
+  const [sequence, setSequence] = useState(String(row?.sequenceNumber ?? 0));
+  const [pickedTypeId, setPickedTypeId] = useState<string | null>(null);
+  // An older row with no type starts on the school's default: Save fixes it.
+  const typeId =
+    pickedTypeId ?? row?.subjectTypeId ?? startingSubjectTypeId(subjectTypes);
   const [touched, setTouched] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [saveError, setSaveError] = useState<unknown>(null);
@@ -497,7 +535,7 @@ function EditMappingSheet({
         data: {
           isElective,
           sequenceNumber: Number(sequence.trim()),
-          ...(typeId ? { subjectTypeId: typeId } : { subjectTypeId: null }),
+          ...(typeId ? { subjectTypeId: typeId } : {}),
         },
       });
       await utils.assignment.subjectMapping.list.invalidate();
@@ -591,10 +629,10 @@ function EditMappingSheet({
         <SelectField
           label={copy.bulkMapping.typeLabel}
           valueLabel={typeId ? typeOptions.find((o) => o.id === typeId)?.label ?? null : null}
-          placeholder={copy.bulkMapping.typeNone}
-          options={[{ id: "", label: copy.bulkMapping.typeNone }, ...typeOptions]}
+          placeholder={copy.bulkMapping.typePlaceholder}
+          options={typeOptions}
           currentId={typeId ?? ""}
-          onSelect={(id) => setTypeId(id || null)}
+          onSelect={setPickedTypeId}
           help={copy.bulkMapping.typeHelp}
           disabled={!canUpdate}
           testID="mapping-type"

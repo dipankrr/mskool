@@ -534,7 +534,7 @@ async function findOrCreateClassSubjectMapping(
   classId: string,
   subjectId: string,
   sequenceNumber: number,
-  subjectTypeId?: string,
+  subjectTypeId: string,
 ) {
   const [existing] = await db
     .select()
@@ -556,7 +556,7 @@ async function findOrCreateClassSubjectMapping(
     classId,
     subjectId,
     sequenceNumber,
-    ...(subjectTypeId ? { subjectTypeId } : {}),
+    subjectTypeId,
   });
   console.log("  + class-subject mapping");
   return mapping;

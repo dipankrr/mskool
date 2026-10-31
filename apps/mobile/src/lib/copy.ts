@@ -916,10 +916,16 @@ export const copy = {
     mapping: (done: number, total: number) => `${done} of ${total} mapped`,
     failed: (count: number) =>
       count === 1 ? "1 failed — retry" : `${count} failed — retry`,
-    typeLabel: "Result type",
+    typeLabel: "Subject type",
     typeHelp:
       "Decides whether it counts toward the result, takes a grade instead of marks, and which card section it appears in.",
-    typeNone: "School default",
+    typePlaceholder: "Choose a subject type",
+    typeMissing: "No subject type",
+    noTypesBody:
+      "Subjects need a type before they can be mapped, so this school needs one first.",
+    noTypesAction: "Add a subject type",
+    typesHiddenBody:
+      "Subjects need a type before they can be mapped, and your role can't see this school's types. Ask your administrator.",
   },
   /** Students tab + roster rework. */
   studentsTab: {
@@ -4014,6 +4020,10 @@ export const copy = {
       },
       types: {
         title: "Subject types",
+        defaultChip: "Default",
+        makeDefault: "Make default",
+        defaultNote: "New class subjects start on this type.",
+        madeDefault: "Default subject type changed.",
         meta: (total: number) =>
           total === 1 ? "1 type" : `${total} types`,
         add: "Add type",

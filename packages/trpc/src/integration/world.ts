@@ -247,7 +247,13 @@ async function findOrCreateClassSubjectMapping(
     );
   if (existing) return existing;
 
-  return assignmentService.createClassSubjectMapping(scope, input);
+  // Written directly: these rows deliberately carry no subject type (an older
+  // row's shape), which the service no longer accepts (ADR-055).
+  const [created] = await db
+    .insert(classSubjectMappings)
+    .values({ ...input, organizationId: scope.organizationId, schoolId: scope.schoolId })
+    .returning();
+  return created!;
 }
 
 /**

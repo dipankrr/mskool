@@ -293,12 +293,16 @@ const createMappingRouter = makeRouter({
         academicYearId: z.uuid(),
         classId: z.uuid(),
         subjectId: z.uuid(),
-        data: createClassSubjectMappingSchema,
+        // The gate and the parent checks are under test, and both refuse
+        // before the type is read, so the probe doesn't need a real one.
+        data: createClassSubjectMappingSchema.partial({ subjectTypeId: true }),
       }),
     )
     .mutation(({ ctx, input }) =>
       assignmentService.createClassSubjectMapping(ctx.scope as never, {
         ...input.data,
+        subjectTypeId:
+          input.data.subjectTypeId ?? "00000000-0000-4000-8000-000000000000",
         academicYearId: input.academicYearId,
         classId: input.classId,
         subjectId: input.subjectId,

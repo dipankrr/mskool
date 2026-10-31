@@ -260,6 +260,13 @@
       "when": 1793473894960,
       "tag": "0036_merge_subject_mapping_permission",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1793474162325,
+      "tag": "0037_subject_type_default",
+      "breakpoints": true
     }
   ]
 }

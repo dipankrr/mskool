@@ -163,6 +163,12 @@ export const examRouter = router({
       .output(subjectTypeSelectSchema.nullable())
       .mutation(({ ctx, input }) => examConfigService.deactivateSubjectType(ctx.scope, input.id)),
 
+    makeDefault: staffProcedure("exam:update", { resolveOwner: resolveSubjectTypeOwner })
+      .meta({ openapi: { method: "POST", path: "/exam/subject-types/{id}/make-default", tags: ["exams"], summary: "Make this type the school default", protect: true } })
+      .input(z.object({ id: z.uuid() }))
+      .output(subjectTypeSelectSchema.nullable())
+      .mutation(({ ctx, input }) => examConfigService.makeDefaultSubjectType(ctx.scope, input.id)),
+
     applyPreset: staffProcedure("exam:create")
       .meta({ openapi: { method: "POST", path: "/exam/subject-types/apply-preset", tags: ["exams"], summary: "Seed the standard subject types", protect: true } })
       .output(z.array(subjectTypeSelectSchema))

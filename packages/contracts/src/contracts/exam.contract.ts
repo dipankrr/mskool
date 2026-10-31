@@ -96,14 +96,15 @@ export const createSubjectTypeSchema = createInsertSchema(subjectTypes, {
   // payload must validate; the columns' own schemas still apply when sent.
   sequence: z.number().int().min(0).max(999).optional(),
   assessmentMode: z.enum(["exam", "term_grade"]).optional(),
-}).omit(omitTenant);
+  // Moving the default is its own act (makeDefault), one transaction.
+}).omit({ ...omitTenant, isDefault: true });
 export type CreateSubjectTypeInput = z.infer<typeof createSubjectTypeSchema>;
 
 export const updateSubjectTypeSchema = createInsertSchema(subjectTypes, {
   name: z.string().min(1).max(100),
   sequence: z.number().int().min(0).max(999),
 })
-  .omit(omitTenant)
+  .omit({ ...omitTenant, isDefault: true })
   .partial();
 export type UpdateSubjectTypeInput = z.infer<typeof updateSubjectTypeSchema>;
 

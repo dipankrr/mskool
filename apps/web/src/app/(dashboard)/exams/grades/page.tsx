@@ -31,7 +31,7 @@ import { trpc } from "@/lib/trpc/client";
  * absence left Subject Types' flags doing nothing visible).
  *
  * A term-grade subject never sits a paper: the class's curriculum rows
- * whose RESULT TYPE is assessed by "Term grade" get a grade + remarks at
+ * whose SUBJECT TYPE is assessed by "Term grade" get a grade + remarks at
  * term end, per student. One subject at a time (chips), one student per
  * row; cells save on blur through the SAME subject gate as the marks grid
  * (ADR-029/029a — section + subject name the fact the save answers).

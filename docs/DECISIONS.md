@@ -2593,3 +2593,27 @@ two can no longer be told apart; that loses the option of letting someone set a
 class's subjects without editing the school's list. Cached permission snapshots
 hold the old strings until their TTL. Old rows in the authz audit log keep the
 old names, which is correct for a history.
+
+---
+
+## ADR-055 - A class subject must have a subject type; a school may name a default
+
+**Context.** The mapping contract left `subjectTypeId` optional, and the mobile
+picker offered "School default", which was only a label for "none": no such
+default existed. Exams join on the type, so an untyped subject silently dropped
+out of exams and results. The mobile edit sheet also opened with blank state, so
+saving any edit cleared the type. Web already refused to save without one.
+
+**Decision.** The type is required on create, and an update can no longer clear
+it. The service checks the type belongs to the school, closing a gap where a
+crafted id from another school could be saved. `subject_types.is_default` adds a
+real default, at most one per school, moved by `subjectTypes.makeDefault` as
+grading scales do. The picker starts on the default, else the only type, else
+nothing. "Result type" is renamed "Subject type" everywhere; both named this one
+table.
+
+**Consequences.** The column stays nullable for older rows, which stay out of
+exams until someone sets a type; mobile flags them. Retiring the default leaves
+the school with none. Migration 0037 makes Main Subjects the default where it
+exists. Rejected: filling untyped rows automatically, since a wrong guess puts a
+subject in the wrong report-card section.

@@ -251,7 +251,7 @@ export class ExamConfigService {
 
       const [row] = await tx
         .update(subjectTypes)
-        .set(input)
+        .set(input.isActive === false ? { ...input, isDefault: false } : input)
         .where(
           and(
             eq(subjectTypes.id, id),
@@ -264,10 +264,42 @@ export class ExamConfigService {
     });
   }
 
+  /**
+   * Makes a type the one new class subjects start on (ADR-055): unset + set in
+   * one transaction, the grading-scale pattern. A retired type can't be it.
+   */
+  async makeDefaultSubjectType(scope: DataScope, id: string) {
+    const schoolId = requireSchoolId(scope);
+    return db.transaction(async (tx) => {
+      const [type] = await tx
+        .select({ id: subjectTypes.id })
+        .from(subjectTypes)
+        .where(
+          and(
+            eq(subjectTypes.id, id),
+            eq(subjectTypes.schoolId, schoolId),
+            eq(subjectTypes.isActive, true),
+          ),
+        );
+      if (!type) return null;
+      await tx
+        .update(subjectTypes)
+        .set({ isDefault: false })
+        .where(and(eq(subjectTypes.schoolId, schoolId), eq(subjectTypes.isDefault, true)));
+      const [row] = await tx
+        .update(subjectTypes)
+        .set({ isDefault: true })
+        .where(eq(subjectTypes.id, id))
+        .returning();
+      return row ?? null;
+    });
+  }
+
   async deactivateSubjectType(scope: DataScope, id: string) {
     const [row] = await db
       .update(subjectTypes)
-      .set({ isActive: false })
+      // Retiring the default leaves the school with none (ADR-055).
+      .set({ isActive: false, isDefault: false })
       .where(
         and(
           eq(subjectTypes.id, id),
@@ -282,7 +314,8 @@ export class ExamConfigService {
    * The CBSE-flavored starter set (ADR-032 §1): Main Subjects (marked,
    * counted), Co-curricular (graded-only, not counted), and Personality
    * (term-grade areas — Discipline/Life Skills class of subjects). Idempotent
-   * per name: existing types are left alone.
+   * per name: existing types are left alone. Main Subjects becomes the default
+   * when the school has none (ADR-055).
    */
   async applyCbsePreset(scope: DataScope, userId?: string) {
     const schoolId = requireSchoolId(scope);
@@ -314,6 +347,22 @@ export class ExamConfigService {
           .values({ ...p, organizationId: scope.organizationId, schoolId, createdBy: userId ?? null })
           .returning(),
       );
+    }
+    const [currentDefault] = await db
+      .select({ id: subjectTypes.id })
+      .from(subjectTypes)
+      .where(and(eq(subjectTypes.schoolId, schoolId), eq(subjectTypes.isDefault, true)));
+    if (!currentDefault) {
+      await db
+        .update(subjectTypes)
+        .set({ isDefault: true })
+        .where(
+          and(
+            eq(subjectTypes.schoolId, schoolId),
+            eq(subjectTypes.name, "Main Subjects"),
+            eq(subjectTypes.isActive, true),
+          ),
+        );
     }
     return created.flat();
   }

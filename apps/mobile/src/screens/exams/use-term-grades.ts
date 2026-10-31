@@ -33,7 +33,7 @@ export function useTermGradeTerms() {
   return useExamTerms();
 }
 
-/** The class's term-grade areas: mappings whose RESULT TYPE is "Term grade". */
+/** The class's term-grade areas: mappings whose SUBJECT TYPE is "Term grade". */
 export function useTermGradeSubjects(classId: string | null) {
   const scope = useExamScope();
   const names = useClassSubjectNames();

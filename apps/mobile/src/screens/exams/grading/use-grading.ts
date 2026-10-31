@@ -107,6 +107,9 @@ export function useSubjectTypeActions() {
   const applyPreset = trpc.exam.subjectTypes.applyPreset.useMutation({
     onSuccess: () => void refresh(),
   });
+  const makeDefault = trpc.exam.subjectTypes.makeDefault.useMutation({
+    onSuccess: () => void refresh(),
+  });
 
   return {
     create: (data: Record<string, unknown>) =>
@@ -126,11 +129,13 @@ export function useSubjectTypeActions() {
         id,
       }),
     applyPreset: () => applyPreset.mutateAsync(scopeArgs),
+    makeDefault: (id: string) => makeDefault.mutateAsync({ ...scopeArgs, id }),
     pending:
       create.isPending ||
       update.isPending ||
       deactivate.isPending ||
-      applyPreset.isPending,
+      applyPreset.isPending ||
+      makeDefault.isPending,
   };
 }
 

@@ -34,6 +34,18 @@ export type SubjectTypeLike = {
   hasAssessmentData: boolean;
 };
 
+/**
+ * What a class subject's type picker starts on (ADR-055): the school's default,
+ * else the only type there is, else nothing, so the person has to choose.
+ */
+export function startingSubjectTypeId(
+  types: readonly { id: string; isDefault: boolean }[],
+): string | null {
+  const preferred = types.find((type) => type.isDefault);
+  if (preferred) return preferred.id;
+  return types.length === 1 ? (types[0]?.id ?? null) : null;
+}
+
 export function subjectTypeDraft(row: SubjectTypeLike | null): SubjectTypeDraft {
   return {
     name: row?.name ?? "",

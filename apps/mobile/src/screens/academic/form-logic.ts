@@ -369,33 +369,6 @@ export function mappingUpdatePayload(
   };
 }
 
-/**
- * Create carries the triple twice — the router names it at the top level and
- * the insert schema (which does not omit it) demands it in `data`; the
- * service overwrites the data copy with the top-level one, so both agree.
- */
-export function mappingCreatePayload(
-  form: MappingForm,
-  ctx: { academicYearId: string; classId: string },
-): CreateClassSubjectMappingInput & { data: CreateClassSubjectMappingInput } {
-  const sequence = optionalInt(form.sequence);
-  const subjectId = form.subjectId ?? "";
-  return {
-    academicYearId: ctx.academicYearId,
-    classId: ctx.classId,
-    subjectId,
-    data: {
-      academicYearId: ctx.academicYearId,
-      classId: ctx.classId,
-      subjectId,
-      isElective: form.isElective,
-      ...(sequence !== undefined && sequence !== null
-        ? { sequenceNumber: sequence }
-        : {}),
-    },
-  };
-}
-
 // ---------------------------------------------------------------- assignments
 
 export type AssignmentRole = NonNullable<

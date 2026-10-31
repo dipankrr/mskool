@@ -331,6 +331,10 @@ export const subjectTypes = pgTable(
     // Widget order on the report card; ties break by name.
     sequence: smallint().notNull().default(0),
 
+    // The type a new class subject starts on (ADR-055): at most one per
+    // school, partial unique below. Retiring it leaves the school with none.
+    isDefault: boolean().notNull().default(false),
+
     isActive: boolean().notNull().default(true),
 
     createdBy: text().references(() => user.id),
@@ -343,6 +347,9 @@ export const subjectTypes = pgTable(
   },
   (t) => [
     uniqueIndex("subject_types_school_name_uq").on(t.schoolId, t.name),
+    uniqueIndex("subject_types_school_default_uq")
+      .on(t.schoolId)
+      .where(sql`is_default = true`),
     index("subject_types_school_idx").on(t.schoolId),
     index("subject_types_org_idx").on(t.organizationId),
   ],
@@ -404,9 +411,9 @@ export const classSubjectMappings = pgTable(
       .references(() => subjects.id),
 
     // The ADR-032 type: counts toward the result? graded-only? which
-    // report-card widget? Nullable in the DATABASE only because pre-ADR-032
-    // rows (demo seed) predate types — the service requires it at creation
-    // and `db:seed` regenerates every mapping with one.
+    // report-card widget? Nullable in the DATABASE only because older rows
+    // predate the rule; the contract requires it (ADR-055). Exams skip a
+    // mapping without one, so screens flag those rows.
     subjectTypeId: uuid().references(() => subjectTypes.id),
 
     // true = NOT auto-assigned to every student; the class-count list that

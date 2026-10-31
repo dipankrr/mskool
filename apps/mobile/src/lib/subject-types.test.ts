@@ -3,6 +3,7 @@ import {
   checkSubjectType,
   flagSentence,
   hasSubjectTypeErrors,
+  startingSubjectTypeId,
   subjectTypeCreatePayload,
   subjectTypeDraft,
   subjectTypeDirty,
@@ -213,5 +214,33 @@ describe("payloads", () => {
         row({ hasAssessmentData: true }),
       ),
     ).toEqual({ sequence: 4 });
+  });
+});
+
+describe("startingSubjectTypeId", () => {
+  it("starts on the school's default", () => {
+    expect(
+      startingSubjectTypeId([
+        { id: "a", isDefault: false },
+        { id: "b", isDefault: true },
+      ]),
+    ).toBe("b");
+  });
+
+  it("starts on the only type when there is no default", () => {
+    expect(startingSubjectTypeId([{ id: "a", isDefault: false }])).toBe("a");
+  });
+
+  it("makes the person choose among several with no default", () => {
+    expect(
+      startingSubjectTypeId([
+        { id: "a", isDefault: false },
+        { id: "b", isDefault: false },
+      ]),
+    ).toBeNull();
+  });
+
+  it("has nothing to start on with no types", () => {
+    expect(startingSubjectTypeId([])).toBeNull();
   });
 });

@@ -14,6 +14,7 @@ import { FormSheet } from "../../../components/form-sheet";
 import { Notice } from "../../../components/notice";
 import { ScreenFrame } from "../../../components/screen-frame";
 import { Skeleton } from "../../../components/skeleton";
+import { StatusPill } from "../../../components/status-pill";
 import { SwitchRow } from "../../../components/switch-row";
 import { ThemedText } from "../../../components/themed-text";
 import { copy } from "../../../lib/copy";
@@ -267,7 +268,12 @@ function TypeRow({
   first: boolean;
   onPress?: () => void;
 }) {
-  const sentence = flagSentence(row);
+  const sentence = [
+    flagSentence(row),
+    row.isDefault ? copy.exams.grading.types.defaultChip : null,
+  ]
+    .filter(Boolean)
+    .join(". ");
   const body = (
     <>
       <View style={styles.rowText}>
@@ -275,9 +281,12 @@ function TypeRow({
           {row.name}
         </ThemedText>
         <ThemedText variant="meta" numberOfLines={2}>
-          {sentence}
+          {flagSentence(row)}
         </ThemedText>
       </View>
+      {row.isDefault ? (
+        <StatusPill label={copy.exams.grading.types.defaultChip} tone="positive" />
+      ) : null}
       {row.hasAssessmentData ? (
         <QuietChip
           label={copy.exams.grading.types.inUseChip}
@@ -377,6 +386,19 @@ function TypeSheet({
           await actions.update(row.id, payload);
         }
         onDone(copy.exams.grading.types.updated);
+      } catch (cause) {
+        setError(cause);
+      }
+    })();
+  };
+
+  const makeDefault = () => {
+    if (!row) return;
+    setError(null);
+    void (async () => {
+      try {
+        await actions.makeDefault(row.id);
+        onDone(copy.exams.grading.types.madeDefault);
       } catch (cause) {
         setError(cause);
       }
@@ -541,6 +563,30 @@ function TypeSheet({
         error={errors.sequence}
         testID="subject-type-sequence"
       />
+
+      {row?.isDefault ? (
+        <Notice
+          tone="positive"
+          icon="checkCircle"
+          message={copy.exams.grading.types.defaultNote}
+          style={styles.notice}
+          testID="subject-type-default-note"
+        />
+      ) : row && canRetire ? (
+        <View style={styles.preset}>
+          <CapsuleButton
+            title={copy.exams.grading.types.makeDefault}
+            variant="secondary"
+            size="compact"
+            onPress={makeDefault}
+            disabled={actions.pending}
+            testID="subject-type-make-default"
+          />
+          <ThemedText variant="meta">
+            {copy.exams.grading.types.defaultNote}
+          </ThemedText>
+        </View>
+      ) : null}
     </FormSheet>
   );
 }

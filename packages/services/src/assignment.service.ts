@@ -14,9 +14,12 @@ import {
   sections,
   staff as staffTable,
   subjects,
+  subjectTypes,
   termAssessments,
 } from "@repo/db/schema";
 import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+
+import { ServiceRefusal } from "./service-error";
 
 /**
  * THE TEACHING-ASSIGNMENT LAYER — Phase 2 slice 2.
@@ -162,6 +165,23 @@ export class AssignmentService {
         );
       }
 
+      const [type] = await tx
+        .select({ id: subjectTypes.id })
+        .from(subjectTypes)
+        .where(
+          and(
+            eq(subjectTypes.id, input.subjectTypeId),
+            eq(subjectTypes.schoolId, schoolId),
+            eq(subjectTypes.isActive, true),
+          ),
+        );
+      if (!type) {
+        throw new ServiceRefusal(
+          "BAD_REQUEST",
+          "That subject type isn't available in this school.",
+        );
+      }
+
       const [mapping] = await tx
         .insert(classSubjectMappings)
         .values({ ...input, organizationId, schoolId })
@@ -211,6 +231,28 @@ export class AssignmentService {
     mappingId: string,
     input: UpdateClassSubjectMappingInput,
   ) {
+    if (input.subjectTypeId) {
+      // Ownership only: a row may keep a type that has since been retired.
+      const [type] = await db
+        .select({ id: subjectTypes.id })
+        .from(subjectTypes)
+        .where(
+          and(
+            eq(subjectTypes.id, input.subjectTypeId),
+            scopeWhere(atSchoolLevel(scope), {
+              organizationId: subjectTypes.organizationId,
+              schoolId: subjectTypes.schoolId,
+            }),
+          ),
+        );
+      if (!type) {
+        throw new ServiceRefusal(
+          "BAD_REQUEST",
+          "That subject type isn't available in this school.",
+        );
+      }
+    }
+
     const [mapping] = await db
       .update(classSubjectMappings)
       .set(input)
