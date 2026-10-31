@@ -45,6 +45,7 @@ const iconMap = {
   chevronRight: { ios: "chevron.right", android: "chevron-right" },
   chevronLeft: { ios: "chevron.left", android: "chevron-left" },
   chevronDown: { ios: "chevron.down", android: "expand-more" },
+  chevronUp: { ios: "chevron.up", android: "expand-less" },
   calendar: { ios: "calendar", android: "today" },
   calendarOff: { ios: "calendar.badge.exclamationmark", android: "event-busy" },
   check: { ios: "checkmark", android: "check" },
@@ -93,6 +94,15 @@ const iconMap = {
   marks: { ios: "square.and.pencil", android: "edit-note" },
   absent: { ios: "person.fill.xmark", android: "person-off" },
   refresh: { ios: "arrow.clockwise", android: "refresh" },
+  /** A section's room, seats and shift. */
+  room: { ios: "door.left.hand.closed", android: "meeting-room" },
+  seat: { ios: "chair.fill", android: "chair-alt" },
+  shiftMorning: { ios: "sunrise.fill", android: "wb-twilight" },
+  shiftDay: { ios: "sun.max.fill", android: "wb-sunny" },
+  shiftEvening: { ios: "moon.fill", android: "nightlight" },
+  /** A list's two densities: names only, or full cards. */
+  viewCompact: { ios: "list.bullet", android: "view-headline" },
+  viewCards: { ios: "rectangle.grid.1x2.fill", android: "view-agenda" },
   /** Remove a row from a local draft (a band, a paper part). */
   trash: { ios: "trash", android: "delete" },
 } as const satisfies Record<

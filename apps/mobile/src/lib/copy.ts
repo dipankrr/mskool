@@ -477,18 +477,140 @@ export const copy = {
     noSessionBody:
       "These settings hang off the branch's current academic session, and none is running. Set one in Sessions first.",
     rows: {
-      classes: "Classes",
-      classesDetail: "The grade levels this school teaches",
-      sections: "Sections",
-      sectionsDetail: "Class divisions for the running session",
-      subjects: "Subjects",
-      subjectsDetail: "What the school teaches",
+      sessions: "Sessions",
+      sessionRunning: (name: string) => `${name} is running`,
+      sessionNone: "Create your first session",
+      classSection: "Class & Section",
+      classSectionDetail: "Classes and their sections",
+      classSectionFact: (classes: number, sections: number | null) =>
+        classes === 0
+          ? "No classes yet"
+          : [
+              classes === 1 ? "1 class" : `${classes} classes`,
+              sections === null
+                ? null
+                : sections === 1
+                  ? "1 section"
+                  : `${sections} sections`,
+            ]
+              .filter(Boolean)
+              .join(" · "),
+      subjectMapping: "Subject & Mapping",
+      subjectMappingDetail: "Subjects and which classes take them",
+      subjectMappingFact: (
+        subjects: number,
+        coverage: { mapped: number; classes: number } | null,
+      ) =>
+        subjects === 0
+          ? "No subjects yet"
+          : [
+              subjects === 1 ? "1 subject" : `${subjects} subjects`,
+              coverage && coverage.classes > 0
+                ? `${coverage.mapped} of ${coverage.classes} classes mapped`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · "),
       terms: "Terms",
       termsDetail: "How the session divides for results",
-      mappings: "Subject mappings",
-      mappingsDetail: "Which class studies which subject",
+      termsFact: (terms: number) =>
+        terms === 0
+          ? "No terms yet"
+          : terms === 1
+            ? "1 term this session"
+            : `${terms} terms this session`,
       assignments: "Teacher assignments",
       assignmentsDetail: "Who teaches which section",
+      needsSession: "Needs a running session",
+    },
+    subjectMapping: {
+      title: "Subject & Mapping",
+      allSubjects: "All subjects",
+      subjectsInSchool: (count: number) =>
+        count === 1 ? "1 subject in this school" : `${count} subjects in this school`,
+      coverage: (mapped: number, total: number) =>
+        mapped === 0
+          ? "No classes yet"
+          : mapped >= total
+            ? `All ${total} classes`
+            : `${mapped} of ${total} classes`,
+      map: "Map",
+      mapHint: (name: string) => `Map ${name} to classes`,
+      mapSubjects: "Map subjects",
+      mappedSummary: (mapped: number, total: number, className: string) =>
+        `${mapped} of ${total} subjects mapped to ${className}`,
+      noneMapped: (className: string) => `No subjects mapped to ${className} yet`,
+      noSubjectsLabel: (className: string) => `${className}, no subjects yet`,
+      core: "Core",
+      elective: "Elective",
+      typesHint: "Opens subject types",
+      noSessionNote:
+        "Subjects can be added now. Which classes take them is per session, so mapping waits until one is running.",
+      mapSheetTitle: (name: string) => `Map ${name}`,
+      alreadyIn: (mapped: number, total: number) =>
+        mapped === 0 ? "Not in any class yet" : `Already in ${mapped} of ${total} classes`,
+      everyClass: "Every class",
+      everyClassHelp: "Turn off to pick classes",
+      everyMissingHelp: (count: number) =>
+        count === 1
+          ? "Adds it to the 1 class without it"
+          : `Adds it to the ${count} classes without it`,
+      mapTo: (count: number) => (count === 1 ? "Map to 1 class" : `Map to ${count} classes`),
+      mapping: (done: number, total: number) => `${done} of ${total} mapped`,
+      mapped: (name: string, count: number) =>
+        count === 1 ? `${name} mapped to 1 class.` : `${name} mapped to ${count} classes.`,
+    },
+    classSection: {
+      title: "Class & Section",
+      emptyBody: "Add the classes this school teaches. Sections go inside each one.",
+      summary: (classes: number, sections: number | null) =>
+        [
+          classes === 1 ? "1 class" : `${classes} classes`,
+          sections === null
+            ? null
+            : sections === 1
+              ? "1 section"
+              : `${sections} sections`,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      withoutSection: (count: number) => `${count} without section`,
+      count: (count: number) =>
+        count === 0
+          ? "No section"
+          : count === 1
+            ? "1 section"
+            : `${count} sections`,
+      noSection: "No section",
+      noSectionYet: "No section yet",
+      showCompact: "Show class names only",
+      showExpanded: "Show sections in every class",
+      foldClass: (name: string) => `Fold ${name}`,
+      unfoldClass: (name: string) => `Show sections in ${name}`,
+      editClass: (name: string) => `Edit ${name}`,
+      sectionLabel: (facts: {
+        name: string;
+        shift: string | null;
+        room: string | null;
+        seats: number | null;
+      }) =>
+        [
+          `Section ${facts.name}`,
+          facts.shift ? `${facts.shift} shift` : null,
+          facts.room ? `room ${facts.room}` : null,
+          facts.seats === null ? null : `${facts.seats} seats`,
+        ]
+          .filter(Boolean)
+          .join(", "),
+      noSessionNote:
+        "Classes can be added now. Sections belong to a session, so they wait until one is running.",
+      openSessions: "Open Sessions",
+      nameLabel: "Section name",
+      seatsLabel: "Seats",
+      optional: "Optional",
+      moreDetails: "Stream and house",
+      classFixed: "A section can't move to another class.",
+      sectionSaved: "Section saved.",
     },
     denied: {
       classesReadTitle: "Classes aren't in your account",

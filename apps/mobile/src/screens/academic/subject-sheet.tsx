@@ -1,20 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Alert, StyleSheet } from "react-native";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/trpc";
 
 import { CapsuleButton } from "../../components/capsule-button";
-import { EntityCard } from "../../components/entity-card";
 import { FormField } from "../../components/form-field";
 import { FormSheet } from "../../components/form-sheet";
 import { Notice } from "../../components/notice";
-import { useActiveBranchName, useActiveContext } from "../../hooks/use-active-context";
-import { usePermissions } from "../../hooks/use-permissions";
 import { copy } from "../../lib/copy";
 import { toFriendlyError } from "../../lib/errors";
 import { trpc } from "../../lib/trpc";
 import { spacing } from "../../theme/tokens";
-import { AcademicListFrame } from "./list-frame";
 
 type SubjectRow = inferRouterOutputs<AppRouter>["subject"]["list"][number];
 
@@ -46,117 +42,9 @@ function subjectPayload(form: SubjectForm) {
 }
 
 /**
- * The school's subjects (Step 2 rework): add/edit in a bottom sheet, mounted
- * fresh per open with a saved banner on the way out.
+ * Add or edit a subject in a bottom sheet, mounted fresh per open.
  */
-export function SubjectsScreen() {
-  const { organizationId, schoolId, ready } = useActiveContext();
-  const branchName = useActiveBranchName();
-  const { has } = usePermissions();
-
-  const canRead = has("subject:read");
-  const canCreate = has("subject:create");
-  const canUpdate = has("subject:update");
-  const canDelete = has("subject:delete");
-  const canOpen = canUpdate || canDelete;
-
-  const list = trpc.subject.list.useQuery(
-    { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
-    { enabled: ready && Boolean(organizationId) && canRead },
-  );
-
-  const [sheet, setSheet] = useState<string | "create" | null>(null);
-  const [saved, setSaved] = useState<string | null>(null);
-  useEffect(() => {
-    if (!saved) return;
-    const timer = setTimeout(() => setSaved(null), 3000);
-    return () => clearTimeout(timer);
-  }, [saved]);
-
-  const subjects = list.data ?? [];
-  const editing =
-    sheet && sheet !== "create"
-      ? subjects.find((row) => row.id === sheet) ?? null
-      : null;
-
-  const closeSheet = () => setSheet(null);
-  const savedAndClosed = (message: string) => {
-    setSheet(null);
-    setSaved(message);
-  };
-
-  return (
-    <AcademicListFrame
-      title={copy.academic.subjects.title}
-      meta={branchName}
-      canRead={canRead}
-      deniedTitle={copy.academic.denied.subjectsReadTitle}
-      deniedPermission="subject:read"
-      ready={ready}
-      hasOrg={Boolean(organizationId)}
-      pending={list.isPending}
-      error={list.error ?? null}
-      onRetry={() => void list.refetch()}
-      onRefresh={() => void list.refetch()}
-      refreshing={list.isRefetching}
-      isEmpty={subjects.length === 0}
-      emptyTitle={copy.academic.subjects.emptyTitle}
-      emptyBody={copy.academic.subjects.emptyBody}
-      emptyIcon="edit"
-      emptyAction={
-        canCreate ? (
-          <CapsuleButton
-            title={copy.academic.subjects.add}
-            icon="add"
-            onPress={() => setSheet("create")}
-            testID="subjects-empty-add"
-          />
-        ) : null
-      }
-      action={
-        canRead && canCreate
-          ? {
-              label: copy.academic.subjects.add,
-              icon: "add" as const,
-              onPress: () => setSheet("create"),
-              accessibilityHint: copy.academic.subjects.addHint,
-              testID: "subjects-add",
-            }
-          : undefined
-      }
-      titleTestID="subjects-title"
-    >
-      {saved ? (
-        <Notice tone="positive" message={saved} testID="subjects-saved" />
-      ) : null}
-      {subjects.map((row) => (
-        <EntityCard
-          key={row.id}
-          title={row.name}
-          meta={[row.shortName, row.code].filter(Boolean).join(" · ") || null}
-          icon="edit"
-          onPress={canOpen ? () => setSheet(row.id) : undefined}
-          accessibilityHint={canOpen ? copy.academic.subjects.openHint : undefined}
-          testID={`subject-card-${row.id}`}
-        />
-      ))}
-
-      {sheet !== null ? (
-        <SubjectSheet
-          organizationId={organizationId ?? ""}
-          schoolId={schoolId}
-          row={editing}
-          canWrite={editing ? canUpdate : canCreate}
-          canDelete={Boolean(editing) && canDelete}
-          onClose={closeSheet}
-          onSaved={savedAndClosed}
-        />
-      ) : null}
-    </AcademicListFrame>
-  );
-}
-
-function SubjectSheet({
+export function SubjectSheet({
   organizationId,
   schoolId,
   row,

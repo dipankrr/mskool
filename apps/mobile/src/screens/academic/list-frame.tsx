@@ -51,6 +51,7 @@ export function AcademicListFrame({
   emptyAction,
   action,
   header,
+  stickyHeader,
   children,
   titleTestID,
 }: {
@@ -82,6 +83,8 @@ export function AcademicListFrame({
   action?: HeaderAction;
   /** Filter rows that must stay reachable in the empty state too (pickers). */
   header?: ReactNode;
+  /** Tabs that stay on screen while the list scrolls. */
+  stickyHeader?: ReactNode;
   children: ReactNode;
   titleTestID: string;
 }) {
@@ -91,6 +94,7 @@ export function AcademicListFrame({
       meta={meta}
       backAccessibilityLabel={copy.common.back}
       action={action}
+      stickyHeader={stickyHeader}
       onRefresh={canRead ? onRefresh : undefined}
       refreshing={refreshing}
       titleTestID={titleTestID}

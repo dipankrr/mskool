@@ -70,6 +70,22 @@ const subjectMappingRouter = router({
       ),
     ),
 
+  coverage: staffListProcedure("subject:read")
+    .meta({
+      openapi: {
+        method: "GET",
+        path: "/subject-mappings/coverage",
+        tags: ["subject-mappings"],
+        summary: "Which classes take which subjects in one academic year",
+        protect: true,
+      },
+    })
+    .input(z.object({ academicYearId: z.uuid() }))
+    .output(z.array(z.object({ subjectId: z.uuid(), classId: z.uuid() })))
+    .query(async ({ ctx, input }) =>
+      assignmentService.listSubjectCoverage(ctx.scopes, input.academicYearId),
+    ),
+
   // B6: not a scope node, so the owning school comes from the resolver and
   // the gate asks overlap (ADR-028). A section-scoped teacher does not COVER
   // her school, but the mapping she reads belongs to it.

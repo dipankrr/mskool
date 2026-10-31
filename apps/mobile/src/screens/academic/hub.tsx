@@ -3,95 +3,135 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 
 import { AppIcon } from "../../components/app-icon";
+import type { AppIconName } from "../../components/app-icon";
 import { Card } from "../../components/card";
 import { LinkRow } from "../../components/link-row";
-import { EmptyState } from "../../components/empty-state";
 import { ThemedText } from "../../components/themed-text";
 import { useTabBarSpace } from "../../components/tab-bar";
-import {
-  useActiveBranchName,
-  useActiveContext,
-} from "../../hooks/use-active-context";
+import { useActiveContext, useBranchMeta } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
 import { copy } from "../../lib/copy";
+import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { gutter, spacing } from "../../theme/tokens";
 
 /**
- * Academic setup (Step 2 chunk B) — the six structural surfaces behind one
- * hub, each row gated to its own read permission. The surfaces bind to the
- * branch's running session; with none set, the hub says so instead of listing
- * doors that lead nowhere (ADR-047: the session is a fact, never a picker).
+ * Academic setup: the school's structure in one list, each row gated to its own
+ * read permission and showing a live fact rather than a description.
+ *
+ * With no running session the list stays: Sessions is the way forward and is
+ * first, Classes and Subjects work without one, and only the rows that truly
+ * hang off a session lock and say so (ADR-047: the session is a fact, never a
+ * picker). There is no dead end here.
  */
 export function AcademicSetupScreen() {
-  const { academicYear, ready } = useActiveContext();
-  const branchName = useActiveBranchName();
+  const { organizationId, schoolId, academicYear, ready } = useActiveContext();
+  const meta = useBranchMeta();
   const { has } = usePermissions();
   const tabSpace = useTabBarSpace();
 
-  const rows = [
+  const orgReady = ready && Boolean(organizationId);
+  const orgArgs = { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined };
+  const yearArgs = {
+    organizationId: organizationId ?? "",
+    academicYearId: academicYear?.id ?? "",
+  };
+  const hasYear = Boolean(academicYear?.id);
+
+  const classes = trpc.academic.class.list.useQuery(orgArgs, {
+    enabled: orgReady && has("class:read"),
+  });
+  const sections = trpc.academic.section.list.useQuery(yearArgs, {
+    enabled: orgReady && hasYear && has("section:read"),
+  });
+  const subjects = trpc.subject.list.useQuery(orgArgs, {
+    enabled: orgReady && has("subject:read"),
+  });
+  const coverage = trpc.assignment.subjectMapping.coverage.useQuery(
+    { organizationId: organizationId ?? "", academicYearId: academicYear?.id ?? "" },
+    { enabled: orgReady && hasYear && has("subject:read") },
+  );
+  const terms = trpc.academic.term.list.useQuery(yearArgs, {
+    enabled: orgReady && hasYear && has("academic_year:read"),
+  });
+
+  const rowsCopy = copy.academic.rows;
+
+  const rows: {
+    key: string;
+    title: string;
+    detail: string;
+    icon: AppIconName;
+    can: boolean;
+    route: string;
+    locked?: boolean;
+    testID: string;
+  }[] = [
     {
-      key: "classes",
-      title: copy.academic.rows.classes,
-      detail: copy.academic.rows.classesDetail,
-      icon: "stack" as const,
+      key: "sessions",
+      title: rowsCopy.sessions,
+      detail: academicYear ? rowsCopy.sessionRunning(academicYear.name) : rowsCopy.sessionNone,
+      icon: "sessions",
+      can: has("academic_year:read"),
+      route: "/sessions",
+      testID: "academic-sessions",
+    },
+    {
+      key: "class-section",
+      title: rowsCopy.classSection,
+      detail: classes.data
+        ? rowsCopy.classSectionFact(classes.data.length, sections.data?.length ?? null)
+        : rowsCopy.classSectionDetail,
+      icon: "stack",
       can: has("class:read"),
-      route: "/classes",
-      testID: "academic-classes",
+      route: "/class-section",
+      testID: "academic-class-section",
     },
     {
-      key: "sections",
-      title: copy.academic.rows.sections,
-      detail: copy.academic.rows.sectionsDetail,
-      icon: "school" as const,
-      can: has("section:read"),
-      route: "/sections",
-      testID: "academic-sections",
-    },
-    {
-      key: "subjects",
-      title: copy.academic.rows.subjects,
-      detail: copy.academic.rows.subjectsDetail,
-      icon: "edit" as const,
+      key: "subject-mapping",
+      title: rowsCopy.subjectMapping,
+      detail: subjects.data
+        ? rowsCopy.subjectMappingFact(
+            subjects.data.length,
+            coverage.data && classes.data
+              ? {
+                  mapped: new Set(coverage.data.map((pair) => pair.classId)).size,
+                  classes: classes.data.length,
+                }
+              : null,
+          )
+        : rowsCopy.subjectMappingDetail,
+      icon: "subject",
       can: has("subject:read"),
-      route: "/subjects",
-      testID: "academic-subjects",
+      route: "/subject-mapping",
+      testID: "academic-subject-mapping",
     },
     {
       key: "terms",
-      title: copy.academic.rows.terms,
-      detail: copy.academic.rows.termsDetail,
-      icon: "calendar" as const,
+      title: rowsCopy.terms,
+      detail: !hasYear
+        ? rowsCopy.needsSession
+        : terms.data
+          ? rowsCopy.termsFact(terms.data.length)
+          : rowsCopy.termsDetail,
+      icon: "calendar",
       can: has("academic_year:read"),
       route: "/terms",
+      locked: !hasYear,
       testID: "academic-terms",
     },
     {
-      key: "mappings",
-      title: copy.academic.rows.mappings,
-      detail: copy.academic.rows.mappingsDetail,
-      icon: "sort" as const,
-      can: has("subject:read"),
-      route: "/subject-mappings",
-      testID: "academic-mappings",
-    },
-    {
       key: "assignments",
-      title: copy.academic.rows.assignments,
-      detail: copy.academic.rows.assignmentsDetail,
-      icon: "person" as const,
+      title: rowsCopy.assignments,
+      detail: hasYear ? rowsCopy.assignmentsDetail : rowsCopy.needsSession,
+      icon: "person",
       can: has("teacher_assignment:read"),
       route: "/teacher-assignments",
+      locked: !hasYear,
       testID: "academic-assignments",
     },
-  ].filter((row) => row.can);
-
-  const needsSession = [
-    "sections",
-    "terms",
-    "mappings",
-    "assignments",
-  ].some((key) => rows.some((row) => row.key === key));
+  ];
+  const visible = rows.filter((row) => row.can);
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -110,28 +150,22 @@ export function AcademicSetupScreen() {
             <AppIcon name="chevronLeft" size={22} color={colors.ink} />
           </Pressable>
           <ThemedText variant="title">{copy.academic.title}</ThemedText>
-          {branchName ? (
+          {meta ? (
             <ThemedText variant="meta" style={styles.org}>
-              {branchName}
+              {meta}
             </ThemedText>
           ) : null}
         </View>
 
-        {!ready ? null : needsSession && !academicYear ? (
-          <EmptyState
-            icon="sessions"
-            title={copy.academic.noSessionTitle}
-            message={copy.academic.noSessionBody}
-            testID="academic-no-session"
-          />
-        ) : (
+        {ready ? (
           <Card padless>
-            {rows.map((row, index) => (
+            {visible.map((row, index) => (
               <LinkRow
                 key={row.key}
                 title={row.title}
                 detail={row.detail}
                 icon={row.icon}
+                locked={row.locked}
                 onPress={() =>
                   router.push(row.route as Parameters<typeof router.push>[0])
                 }
@@ -140,7 +174,7 @@ export function AcademicSetupScreen() {
               />
             ))}
           </Card>
-        )}
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );

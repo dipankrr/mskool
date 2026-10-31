@@ -212,6 +212,25 @@ export class AssignmentService {
       .orderBy(asc(classSubjectMappings.sequenceNumber));
   }
 
+  /**
+   * Which classes take which subjects in a year, for screens that need the
+   * whole picture: mappings are otherwise listed one class at a time.
+   */
+  async listSubjectCoverage(scopes: DataScope[], academicYearId: string) {
+    return db
+      .select({
+        subjectId: classSubjectMappings.subjectId,
+        classId: classSubjectMappings.classId,
+      })
+      .from(classSubjectMappings)
+      .where(
+        and(
+          eq(classSubjectMappings.academicYearId, academicYearId),
+          scopeWhere(scopes.map(atSchoolLevel), MAPPING_SCOPE_COLUMNS),
+        ),
+      );
+  }
+
   async getClassSubjectMappingById(scope: DataScope, mappingId: string) {
     const [mapping] = await db
       .select()

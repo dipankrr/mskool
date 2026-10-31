@@ -1,281 +1,33 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Alert, Pressable, StyleSheet, View } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { router } from "expo-router";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/trpc";
 
 import { AppIcon } from "../../components/app-icon";
 import { CapsuleButton } from "../../components/capsule-button";
 import { Card } from "../../components/card";
-import { ChoiceSheet } from "../../components/choice-sheet";
-import { EntityCard } from "../../components/entity-card";
 import { FormField } from "../../components/form-field";
 import { FormSheet } from "../../components/form-sheet";
 import { Notice } from "../../components/notice";
 import { SelectField } from "../../components/select-field";
 import { SwitchRow } from "../../components/switch-row";
 import { ThemedText } from "../../components/themed-text";
-import {
-  useActiveBranchName,
-  useActiveContext,
-} from "../../hooks/use-active-context";
-import { usePermissions } from "../../hooks/use-permissions";
 import { copy } from "../../lib/copy";
 import { toFriendlyError } from "../../lib/errors";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { spacing } from "../../theme/tokens";
 import { startingSubjectTypeId } from "../../lib/subject-types";
-import { AcademicListFrame } from "./list-frame";
 
 type MappingRow = inferRouterOutputs<
   AppRouter
 >["assignment"]["subjectMapping"]["list"][number];
 type SubjectType = inferRouterOutputs<AppRouter>["exam"]["subjectTypes"]["list"][number];
 
-/**
- * A class's curriculum for the running session (Step 2 rework). Mapping one
- * subject is a two-field act, so it lives in a bottom sheet — and onboarding
- * a class never repeats it ten times: "Add subjects" bulk-maps a checked
- * selection in one pass, each row carrying a subject type (the report-card
- * facts from ADR-032, required by ADR-055). The class picker
- * rides the route so deep links land on the same class.
- */
-export function SubjectMappingsScreen() {
-  const { classId } = useLocalSearchParams<{ classId?: string }>();
-  const { organizationId, schoolId, academicYear, ready } = useActiveContext();
-  const branchName = useActiveBranchName();
-  const { has } = usePermissions();
-
-  const canRead = has("subject:read");
-  const canCreate = has("subject:create");
-  const canOpen = has("subject:update") || has("subject:delete");
-
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [selectedClassId, setSelectedClassId] = useState<string | null>(
-    classId ?? null,
-  );
-
-  const classes = trpc.academic.class.list.useQuery(
-    { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
-    { enabled: ready && Boolean(organizationId) && canRead },
-  );
-  const subjects = trpc.subject.list.useQuery(
-    { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
-    { enabled: ready && Boolean(organizationId) && canRead },
-  );
-  // ADR-032's subject types — the report-card facts a mapping carries. Held by
-  // exam:read; a caller without it simply loses the type column and picker.
-  const subjectTypes = trpc.exam.subjectTypes.list.useQuery(
-    { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
-    {
-      enabled: ready && Boolean(organizationId) && has("exam:read"),
-      retry: false,
-    },
-  );
-
-  const list = trpc.assignment.subjectMapping.list.useQuery(
-    {
-      organizationId: organizationId ?? "",
-      academicYearId: academicYear?.id ?? "",
-      classId: selectedClassId ?? "",
-    },
-    {
-      enabled:
-        ready &&
-        Boolean(organizationId) &&
-        canRead &&
-        Boolean(academicYear?.id) &&
-        Boolean(selectedClassId),
-    },
-  );
-
-  const subjectName = (id: string) =>
-    (subjects.data ?? []).find((row) => row.id === id)?.name ?? null;
-  const typeName = (id: string | null) =>
-    id
-      ? (subjectTypes.data ?? []).find((row) => row.id === id)?.name ?? null
-      : null;
-  const className = selectedClassId
-    ? (classes.data ?? []).find((row) => row.id === selectedClassId)?.name ?? null
-    : null;
-
-  const [editSheetId, setEditSheetId] = useState<string | null>(null);
-  const [bulkOpen, setBulkOpen] = useState(false);
-  const [saved, setSaved] = useState<string | null>(null);
-  useEffect(() => {
-    if (!saved) return;
-    const timer = setTimeout(() => setSaved(null), 3000);
-    return () => clearTimeout(timer);
-  }, [saved]);
-
-  const mappings = list.data ?? [];
-  const mappedSubjectIds = new Set(mappings.map((row) => row.subjectId));
-  const unmapped = (subjects.data ?? []).filter(
-    (row) => !mappedSubjectIds.has(row.id),
-  );
-  const editRow = editSheetId
-    ? mappings.find((row) => row.id === editSheetId) ?? null
-    : null;
-
-  const hasClass = Boolean(selectedClassId);
-
-  return (
-    <AcademicListFrame
-      title={copy.academic.mappings.title}
-      meta={[branchName, className].filter(Boolean).join(" · ") || null}
-      canRead={canRead}
-      deniedTitle={copy.academic.denied.mappingsReadTitle}
-      deniedPermission="subject:read"
-      needsSession
-      academicYear={Boolean(academicYear)}
-      ready={ready}
-      hasOrg={Boolean(organizationId)}
-      pending={hasClass && list.isPending}
-      error={hasClass ? (list.error ?? null) : null}
-      onRetry={() => void list.refetch()}
-      onRefresh={() => void list.refetch()}
-      refreshing={list.isRefetching}
-      isEmpty={!hasClass || mappings.length === 0}
-      isFilteredEmpty={hasClass}
-      emptyTitle={copy.academic.mappings.emptyTitle}
-      emptyBody={copy.academic.mappings.emptyBody}
-      filteredEmptyTitle={copy.academic.mappings.emptyTitle}
-      filteredEmptyBody={copy.academic.mappings.emptyBody}
-      emptyIcon="sort"
-      titleTestID="mappings-title"
-      header={
-        <View style={styles.filterWrap}>
-          <Card style={styles.filterCard}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`${copy.academic.sections.classFilterLabel}, ${className ?? ""}`}
-              accessibilityHint={copy.academic.mappings.classPickerTitle}
-              onPress={() => setPickerOpen(true)}
-              style={({ pressed }) => [
-                styles.filter,
-                pressed ? styles.filterPressed : null,
-              ]}
-              testID="mappings-class-filter"
-            >
-              <ThemedText
-                variant="bodyStrong"
-                numberOfLines={1}
-                style={styles.filterText}
-              >
-                {`${copy.academic.sections.classFilterLabel}: ${className ?? copy.academic.sections.allClasses}`}
-              </ThemedText>
-              <AppIcon name="chevronDown" size={16} color={colors.muted} />
-            </Pressable>
-          </Card>
-          {hasClass && canCreate ? (
-            <Card style={styles.filterCard}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={copy.bulkMapping.add}
-                accessibilityHint={copy.bulkMapping.addHint}
-                onPress={() => setBulkOpen(true)}
-                style={({ pressed }) => [
-                  styles.filter,
-                  pressed ? styles.filterPressed : null,
-                ]}
-                testID="mappings-bulk-add"
-              >
-                <AppIcon name="add" size={18} color={colors.accentDeep} />
-                <ThemedText variant="bodyStrong" color={colors.accentDeep}>
-                  {copy.bulkMapping.add}
-                </ThemedText>
-              </Pressable>
-            </Card>
-          ) : null}
-          {saved ? (
-            <Notice tone="positive" message={saved} testID="mappings-saved" />
-          ) : null}
-          <ChoiceSheet
-            visible={pickerOpen}
-            title={copy.academic.mappings.classPickerTitle}
-            options={(classes.data ?? []).map((row) => ({ id: row.id, label: row.name }))}
-            currentId={selectedClassId ?? ""}
-            onSelect={(id) => {
-              setPickerOpen(false);
-              if (id && id !== selectedClassId) {
-                setSelectedClassId(id);
-              }
-            }}
-            onDismiss={() => setPickerOpen(false)}
-            testIDPrefix="mappings-class"
-          />
-          {bulkOpen ? (
-            <BulkMapSheet
-              onClose={() => setBulkOpen(false)}
-              organizationId={organizationId ?? ""}
-              schoolId={schoolId}
-              academicYearId={academicYear?.id ?? null}
-              classId={selectedClassId}
-              candidates={unmapped.map((row) => ({ id: row.id, name: row.name }))}
-              subjectTypes={subjectTypes.data ?? []}
-              showTypes={Boolean(subjectTypes.data && subjectTypes.data.length > 0)}
-              canReadTypes={has("exam:read")}
-              onSaved={(message) => {
-                setBulkOpen(false);
-                setSaved(message);
-              }}
-            />
-          ) : null}
-          {editSheetId !== null ? (
-            <EditMappingSheet
-              row={editRow}
-              onClose={() => setEditSheetId(null)}
-              organizationId={organizationId ?? ""}
-              className={className}
-              subjectName={editRow ? subjectName(editRow.subjectId) : null}
-              subjectTypes={subjectTypes.data ?? []}
-              showTypes={Boolean(subjectTypes.data && subjectTypes.data.length > 0)}
-              canUpdate={has("subject:update")}
-              canEnd={has("subject:delete")}
-              onSaved={(message) => {
-                setEditSheetId(null);
-                setSaved(message);
-              }}
-            />
-          ) : null}
-        </View>
-      }
-    >
-      {mappings.map((row) => (
-        <EntityCard
-          key={row.id}
-          title={subjectName(row.subjectId) ?? row.subjectId}
-          status={
-            row.subjectTypeId
-              ? null
-              : { label: copy.bulkMapping.typeMissing, tone: "caution" }
-          }
-          meta={[
-            typeName(row.subjectTypeId ?? null),
-            copy.academic.mappings.meta(row.isElective, row.sequenceNumber),
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-          icon="sort"
-          onPress={
-            canOpen
-              ? () =>
-                  setEditSheetId(row.id)
-              : undefined
-          }
-          accessibilityHint={canOpen ? copy.academic.mappings.openHint : undefined}
-          testID={`mapping-card-${row.id}`}
-        />
-      ))}
-
-    </AcademicListFrame>
-  );
-}
-
 // ---------------------------------------------------------------- bulk sheet
 
-function BulkMapSheet({
+export function BulkMapSheet({
   onClose,
   organizationId,
   schoolId,
@@ -348,7 +100,10 @@ function BulkMapSheet({
           failures.add(candidate.id);
         }
       }
-      await utils.assignment.subjectMapping.list.invalidate();
+      await Promise.all([
+        utils.assignment.subjectMapping.list.invalidate(),
+        utils.assignment.subjectMapping.coverage.invalidate(),
+      ]);
       setDone(completed);
       setFailedIds(failures);
       if (failures.size === 0) {
@@ -483,7 +238,7 @@ function BulkMapSheet({
 
 // ---------------------------------------------------------------- edit sheet
 
-function EditMappingSheet({
+export function EditMappingSheet({
   row,
   onClose,
   organizationId,
@@ -562,7 +317,10 @@ function EditMappingSheet({
     setEnding(true);
     try {
       await end.mutateAsync({ organizationId, id });
-      await utils.assignment.subjectMapping.list.invalidate();
+      await Promise.all([
+        utils.assignment.subjectMapping.list.invalidate(),
+        utils.assignment.subjectMapping.coverage.invalidate(),
+      ]);
       onSaved(copy.academic.mappings.endNoticeTitle);
     } catch (error) {
       setEndError(error);

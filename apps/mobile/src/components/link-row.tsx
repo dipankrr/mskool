@@ -22,6 +22,7 @@ export function LinkRow({
   icon,
   onPress,
   accessibilityHint,
+  locked = false,
   first,
   testID,
 }: {
@@ -31,6 +32,8 @@ export function LinkRow({
   icon?: AppIconName;
   onPress: () => void;
   accessibilityHint?: string;
+  /** Waits on something else, which `detail` names. Shown but not tappable. */
+  locked?: boolean;
   /** Suppresses the divider above the row (the first row in a card). */
   first?: boolean;
   testID?: string;
@@ -39,8 +42,10 @@ export function LinkRow({
     <Pressable
       testID={testID}
       accessibilityRole="button"
-      accessibilityLabel={title}
+      accessibilityLabel={locked && detail ? `${title}. ${detail}` : title}
       accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled: locked }}
+      disabled={locked}
       onPress={onPress}
       style={({ pressed }) => [
         styles.row,
@@ -48,16 +53,22 @@ export function LinkRow({
         pressed ? styles.pressed : null,
       ]}
     >
-      {icon ? <IconTile name={icon} tone="accent" /> : null}
+      {icon ? <IconTile name={icon} tone={locked ? "neutral" : "accent"} /> : null}
       <View style={styles.text}>
-        <ThemedText variant="bodyStrong">{title}</ThemedText>
+        <ThemedText variant="bodyStrong" color={locked ? colors.muted : undefined}>
+          {title}
+        </ThemedText>
         {detail ? (
           <ThemedText variant="meta" numberOfLines={2}>
             {detail}
           </ThemedText>
         ) : null}
       </View>
-      <AppIcon name="chevronRight" size={18} color={colors.chevron} />
+      <AppIcon
+        name={locked ? "lock" : "chevronRight"}
+        size={locked ? 16 : 18}
+        color={colors.chevron}
+      />
     </Pressable>
   );
 }

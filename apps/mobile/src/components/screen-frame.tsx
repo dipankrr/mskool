@@ -65,6 +65,7 @@ export function ScreenFrame({
   action,
   secondaryAction,
   overflowAction,
+  stickyHeader,
   footer,
   footerVariant = "bar",
   onRefresh,
@@ -83,6 +84,8 @@ export function ScreenFrame({
   secondaryAction?: HeaderAction;
   /** A three-dots menu: always the rightmost control, after `action`. */
   overflowAction?: HeaderAction;
+  /** Runs edge to edge under the title and stays put while the body scrolls. */
+  stickyHeader?: ReactNode;
   /** Sticky bottom content; the body yields its bottom padding to it. */
   footer?: ReactNode;
   /**
@@ -127,6 +130,7 @@ export function ScreenFrame({
             { paddingBottom: footer ? spacing.xl : bottom },
           ]}
           keyboardShouldPersistTaps="handled"
+          stickyHeaderIndices={stickyHeader ? [showTopRow ? 2 : 1] : undefined}
           refreshControl={
             onRefresh ? (
               <RefreshControl
@@ -180,6 +184,7 @@ export function ScreenFrame({
               </ThemedText>
             ) : null}
           </View>
+          {stickyHeader ? <View style={styles.sticky}>{stickyHeader}</View> : null}
           {children}
         </ScrollView>
         {footer ? (
@@ -318,6 +323,10 @@ const styles = StyleSheet.create({
   },
   head: {
     marginBottom: spacing.md,
+  },
+  sticky: {
+    marginHorizontal: -gutter,
+    backgroundColor: colors.canvas,
   },
   meta: {
     marginTop: spacing.xs,

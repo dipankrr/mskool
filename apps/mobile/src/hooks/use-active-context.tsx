@@ -79,6 +79,18 @@ export function useActiveBranchName(): string | null {
   return membership?.schools.find((s) => s.id === schoolId)?.name ?? null;
 }
 
+/**
+ * The line under a screen's heading: the branch's name, only when the person
+ * has more than one branch to tell apart. A single-school admin doesn't need
+ * their own school repeated on every screen, and the staff shell always runs in
+ * the branch's running session (ADR-047), so the session isn't repeated either.
+ */
+export function useBranchMeta(): string | null {
+  const name = useActiveBranchName();
+  const { branches } = useActiveContext();
+  return branches.length > 1 ? name : null;
+}
+
 /** The active organization's name, from the same settled membership data. */
 export function useActiveOrganizationName(): string | null {
   const { me } = useMe();
