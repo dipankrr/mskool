@@ -259,7 +259,7 @@ const mappingOwner: OwnerResolver = async (organizationId, id) => {
 };
 
 const mappingListRouter = makeRouter({
-  probe: staffListProcedure("subject_mapping:read")
+  probe: staffListProcedure("subject:read")
     .input(z.object({ academicYearId: z.uuid(), classId: z.uuid() }))
     .query(({ ctx, input }) =>
       assignmentService.listClassSubjectMappings(
@@ -271,7 +271,7 @@ const mappingListRouter = makeRouter({
 });
 
 const mappingByIdRouter = makeRouter({
-  probe: staffProcedure("subject_mapping:read", {
+  probe: staffProcedure("subject:read", {
     resolveOwner: mappingOwner,
     gate: "overlap",
   }).query(async ({ ctx, input }) => {
@@ -287,7 +287,7 @@ const mappingByIdRouter = makeRouter({
 });
 
 const createMappingRouter = makeRouter({
-  probe: staffProcedure("subject_mapping:create")
+  probe: staffProcedure("subject:create")
     .input(
       z.object({
         academicYearId: z.uuid(),
@@ -1560,7 +1560,7 @@ describe("the teaching-assignment layer — the template and the staffing", () =
     expect(ids).not.toContain(world.mappingB1MathId);
   });
 
-  it("an outsider org is 403 on subject_mapping.list", async () => {
+  it("an outsider org is 403 on subjectMapping.list", async () => {
     await expectTrpcError(
       callerOf(mappingListRouter, U().adminB).probe({
         organizationId: world.orgAId,
@@ -1568,7 +1568,7 @@ describe("the teaching-assignment layer — the template and the staffing", () =
         classId: world.class6Id,
       }),
       "FORBIDDEN",
-      "Missing permission: subject_mapping:read",
+      "Missing permission: subject:read",
     );
   });
 
@@ -1625,7 +1625,7 @@ describe("the teaching-assignment layer — the template and the staffing", () =
         },
       }),
       "FORBIDDEN",
-      "A role you hold has subject_mapping:create but not at this class.",
+      "A role you hold has subject:create but not at this class.",
     );
   });
 
@@ -1707,7 +1707,7 @@ describe("the teaching-assignment layer — the template and the staffing", () =
         },
       }),
       "FORBIDDEN",
-      "Missing permission: subject_mapping:create",
+      "Missing permission: subject:create",
     );
   });
 

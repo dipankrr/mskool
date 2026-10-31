@@ -2569,3 +2569,27 @@ record in `.kilo/plans/2026-10-26-mobile-exams.md`).
 - The Final results list and rule Save were broken on first use (a SQL typo
   and the name collision above); they are now covered by a router-level
   conformance suite that sends the phone's exact payloads.
+
+---
+
+## ADR-054 - Which subjects a class takes is governed by `subject:*`; `subject_mapping:*` is gone
+
+**Context.** The two permission sets split "the school's subjects" from "which
+classes take them". In the default matrix no role used the split: org admin and
+principal held both full sets, class and subject teachers held both reads. The
+one difference was vice principals, with `subject:read` but no
+`subject_mapping:read`, and that read as an oversight since they create exams.
+The mobile revamp puts both on one screen, where the split would mean checking
+two permissions per control for no benefit.
+
+**Decision.** `subject_mapping:*` is removed. Mapping procedures gate on the
+matching `subject:*` action, and ending a mapping is `subject:delete` (the
+ADR-033 guard is unchanged). Migration 0036 converts saved
+`org_role_permissions` rows rather than deleting them.
+
+**Consequences.** Vice principals can now read class subjects. A role an org
+granted only `subject_mapping:create` also gains `subject:create`, because the
+two can no longer be told apart; that loses the option of letting someone set a
+class's subjects without editing the school's list. Cached permission snapshots
+hold the old strings until their TTL. Old rows in the authz audit log keep the
+old names, which is correct for a history.

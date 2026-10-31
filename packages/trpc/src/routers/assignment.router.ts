@@ -14,14 +14,14 @@ import { router, staffListProcedure, staffProcedure, type OwnerResolver } from "
  * THE TEACHING-ASSIGNMENT LAYER — Phase 2 slice 2.
  *
  * Two tables, one workflow: map subjects onto classes for a year
- * (`subject_mapping.*`) then staff the sections (`teacher_assignment.*`).
+ * (`subject.*`, ADR-054) then staff the sections (`teacher_assignment.*`).
  * Knows nothing about HTTP; every read takes ctx.scope / ctx.scopes and
  * filters by it (hard rule 1). No `scope_nodes` writes — neither table is a
  * node in the authorization tree, so there is no transaction to insert one.
  *
- * Permission namespaces: `subject_mapping.*` and `teacher_assignment.*`. Both
+ * Permission namespaces: `subject.*` and `teacher_assignment.*`. Both
  * are school-level management surfaces, so the principal manages them at school
- * scope; subject_mapping:read is granted to class_teacher/subject_teacher so
+ * scope; subject:read is granted to class_teacher/subject_teacher so
  * they can populate their class's subject pickers. teacher_assignment:read is
  * granted to subject_teacher so they can see their own assignments.
  * AUTHORITY over marks/content is enforced separately by checkSubjectAccess in
@@ -50,7 +50,7 @@ const subjectMappingRouter = router({
   // Permissive list (ADR-017): a section-scoped teacher does not COVER the
   // school node they address to see their class's subjects, but must still get
   // those subjects. ctx.scopes is clipped to the addressed subtree.
-  list: staffListProcedure("subject_mapping:read")
+  list: staffListProcedure("subject:read")
     .meta({
       openapi: {
         method: "GET",
@@ -73,7 +73,7 @@ const subjectMappingRouter = router({
   // B6: not a scope node, so the owning school comes from the resolver and
   // the gate asks overlap (ADR-028). A section-scoped teacher does not COVER
   // her school, but the mapping she reads belongs to it.
-  byId: staffProcedure("subject_mapping:read", {
+  byId: staffProcedure("subject:read", {
     resolveOwner: resolveClassSubjectMappingOwner,
     gate: "overlap",
   })
@@ -101,7 +101,7 @@ const subjectMappingRouter = router({
 
   // B5: year + class named in the input, not inherited. The service verifies
   // all three parents (year/class/subject) belong to the caller's school.
-  create: staffProcedure("subject_mapping:create")
+  create: staffProcedure("subject:create")
     .meta({
       openapi: {
         method: "POST",
@@ -132,7 +132,7 @@ const subjectMappingRouter = router({
   // Only isElective/sequenceNumber are patchable — the update schema omits the
   // (year, class, subject) triple. B6: owner-resolved, cover gate (ADR-017
   // strict — mutations always cover).
-  update: staffProcedure("subject_mapping:update", {
+  update: staffProcedure("subject:update", {
     resolveOwner: resolveClassSubjectMappingOwner,
   })
     .meta({
@@ -161,7 +161,7 @@ const subjectMappingRouter = router({
   // END a mapping (ADR-033): remove the class's (year, subject) pair. The
   // service refuses when term-grade entries hang off it — the record is not
   // the template.
-  end: staffProcedure("subject_mapping:delete", {
+  end: staffProcedure("subject:delete", {
     resolveOwner: resolveClassSubjectMappingOwner,
   })
     .meta({
@@ -317,7 +317,7 @@ const teacherAssignmentRouter = router({
 });
 
 /**
- * Namespaced `subject_mapping.*` and `teacher_assignment.*` (AGENTS.md:
+ * Namespaced `subjectMapping.*` and `teacherAssignment.*` (AGENTS.md:
  * staff routers are `<domain>.*`). Each sub-router is flat so the tRPC
  * namespace matches the permission namespace. Wired under `assignment`;
  * REST paths are `/subject-mappings/*` and `/teacher-assignments/*`.

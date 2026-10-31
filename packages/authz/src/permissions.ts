@@ -45,6 +45,9 @@ export const RESOURCE_ACTIONS = {
   school: ["create", "read", "update", "delete"],
   class: ["create", "read", "update", "delete"],
   section: ["create", "read", "update", "delete"],
+  // Covers the school's subjects and which classes take them (ADR-054). On a
+  // mapping, `delete` ENDS it (ADR-033), guarded: a mapping with term-grade
+  // entries refuses.
   subject: ["create", "read", "update", "delete"],
   // `read_history` is a distinct action, not a scope inference (ADR-024): it
   // decides whether the caller may address a NON-current year at all. The year
@@ -52,12 +55,9 @@ export const RESOURCE_ACTIONS = {
   // past year is gated on it. Editable per org like any other permission
   // (ADR-011) — a school may hand it to whichever roles it trusts with history.
   academic_year: ["create", "read", "update", "delete", "read_history"],
-  // The teaching-assignment layer (Phase 2 S2): which subjects a class takes in a
-  // year, and who teaches what where. `delete` ENDS a mapping (ADR-033 — it
-  // supersedes the old "no delete" stance), guarded: a mapping with
-  // term-grade entries refuses. Assignments are still never deleted —
-  // they are ended via endAssignment (append-on-change).
-  subject_mapping: ["create", "read", "update", "delete"],
+  // Who teaches what where (Phase 2 S2). Which subjects a class takes in a year
+  // is `subject:*` (ADR-054). Assignments are never deleted — they are ended
+  // via endAssignment (append-on-change).
   teacher_assignment: ["create", "read", "update"],
   exam: ["create", "read", "update", "delete", "publish"],
   enrollment: ["create", "read", "update", "delete"],
@@ -152,7 +152,7 @@ export const RESOURCE_CATEGORIES: Record<string, Resource[]> = {
   Communication: ["announcement"],
   Structure: [
     "school", "class", "section", "subject", "academic_year", "exam",
-    "subject_mapping", "teacher_assignment",
+    "teacher_assignment",
   ],
   Configuration: ["school_settings", "org_settings"],
   Auth: ["role_permission", "role_assignment", "portal_access"],

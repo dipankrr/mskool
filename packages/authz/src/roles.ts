@@ -120,7 +120,6 @@ export const RESOURCE_MIN_SCOPE: Record<Resource, ScopeType> = {
   // The public website is the org's face (ADR-041): one site per org, so it
   // is meaningful only at org scope.
   public_site: "org",
-  subject_mapping: "school",
   teacher_assignment: "section",
   timetable: "class",
   syllabus: "class",

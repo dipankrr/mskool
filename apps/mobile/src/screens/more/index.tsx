@@ -90,7 +90,6 @@ export function MoreScreen() {
     "section:read",
     "subject:read",
     "academic_year:read",
-    "subject_mapping:read",
     "teacher_assignment:read",
   ].some((permission) => has(permission));
   const canManageBranches =

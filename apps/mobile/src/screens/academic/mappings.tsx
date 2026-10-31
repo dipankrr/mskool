@@ -46,9 +46,9 @@ export function SubjectMappingsScreen() {
   const branchName = useActiveBranchName();
   const { has } = usePermissions();
 
-  const canRead = has("subject_mapping:read");
-  const canCreate = has("subject_mapping:create");
-  const canOpen = has("subject_mapping:update") || has("subject_mapping:delete");
+  const canRead = has("subject:read");
+  const canCreate = has("subject:create");
+  const canOpen = has("subject:update") || has("subject:delete");
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState<string | null>(
@@ -125,7 +125,7 @@ export function SubjectMappingsScreen() {
       meta={[branchName, className].filter(Boolean).join(" · ") || null}
       canRead={canRead}
       deniedTitle={copy.academic.denied.mappingsReadTitle}
-      deniedPermission="subject_mapping:read"
+      deniedPermission="subject:read"
       needsSession
       academicYear={Boolean(academicYear)}
       ready={ready}
@@ -229,8 +229,8 @@ export function SubjectMappingsScreen() {
               subjectName={editRow ? subjectName(editRow.subjectId) : null}
               subjectTypes={subjectTypes.data ?? []}
               showTypes={Boolean(subjectTypes.data && subjectTypes.data.length > 0)}
-              canUpdate={has("subject_mapping:update")}
-              canEnd={has("subject_mapping:delete")}
+              canUpdate={has("subject:update")}
+              canEnd={has("subject:delete")}
               onSaved={(message) => {
                 setEditSheetId(null);
                 setSaved(message);

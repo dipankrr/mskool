@@ -68,12 +68,12 @@ export function CurriculumSection({
   const { scopeArgs, has } = useActiveContext();
   const utils = trpc.useUtils();
 
-  // The section renders only what the caller can read: a class teacher
-  // (no subject_mapping:read) sees the staffing table but not the subject
-  // mappings, and the queries never fire — a forbidden list renders a
+  // The section renders only what the caller can read: a role without
+  // subject:read sees the staffing table but not the subject mappings, and
+  // the queries never fire — a forbidden list renders a
   // worded error this component cannot swallow, and the class page is for
   // teachers too.
-  const canReadMappings = has("subject_mapping:read");
+  const canReadMappings = has("subject:read");
   const canReadAssignments = has("teacher_assignment:read");
 
   const subjects = trpc.subject.list.useQuery(scopeArgs(), {
@@ -193,7 +193,7 @@ export function CurriculumSection({
           id: "actions",
           header: copy.common.actions,
           cell: ({ row }) => (
-            <PermissionGate permission="subject_mapping:delete">
+            <PermissionGate permission="subject:delete">
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -255,7 +255,7 @@ export function CurriculumSection({
         <h2 className="font-heading text-base font-semibold">
           {copy.classes.curriculum.title}
         </h2>
-        <PermissionGate permission="subject_mapping:create">
+        <PermissionGate permission="subject:create">
           <Button
             variant="outline"
             size="sm"
@@ -292,7 +292,7 @@ export function CurriculumSection({
             title={copy.classes.curriculum.emptyTitle}
             description={copy.classes.curriculum.emptyBody}
             action={
-              <PermissionGate permission="subject_mapping:create">
+              <PermissionGate permission="subject:create">
                 <Button onClick={() => setMappingOpen(true)}>Map the first subject</Button>
               </PermissionGate>
             }

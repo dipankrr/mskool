@@ -131,13 +131,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "portal_access:activate",
     "portal_access:reset_password",
     "portal_access:change_phone",
-    // Manages the teaching-assignment layer (Phase 2 S2): which subjects each
-    // class takes in a year, and who teaches what where. The delete ends a
-    // mapping (ADR-033) — guarded against orphaning term-grade entries.
-    "subject_mapping:create",
-    "subject_mapping:read",
-    "subject_mapping:update",
-    "subject_mapping:delete",
+    // Manages the teaching-assignment layer (Phase 2 S2): who teaches what
+    // where. Which subjects each class takes is `subject:*` above (ADR-054).
     "teacher_assignment:create",
     "teacher_assignment:read",
     "teacher_assignment:update",
@@ -234,6 +229,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "announcement:read",
     "class:read",
     "section:read",
+    // Sees which subjects their class takes too — populates the subject pickers.
     "subject:read",
     // Branch identity for the app's context (owner direction, 2026-10-18):
     // the mobile branch chip and the school-scoped attendance-policy read.
@@ -242,8 +238,6 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     // Sees the year list to switch context; without read_history the switcher
     // offers the current session only.
     "academic_year:read",
-    // Sees which subjects their class takes — populates the subject pickers.
-    "subject_mapping:read",
     "student_fee_assignment:read",
     "fee_payment:read",
     "leave:create",
@@ -280,13 +274,13 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "announcement:read",
     "class:read",
     "section:read",
+    // Sees which subjects their class teaches too.
     "subject:read",
     // Branch identity for the app's context (owner direction, 2026-10-18);
     // scope-clipped to her own school, same reasoning as class_teacher's.
     "school:read",
     "academic_year:read",
-    // Sees which subjects their class teaches and their own assignments.
-    "subject_mapping:read",
+    // Sees their own assignments.
     "teacher_assignment:read",
     "leave:create",
     "leave:read",

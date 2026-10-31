@@ -54,7 +54,7 @@ export function useTeachingPairs({
 
   const canReadSections = has("section:read");
   const canReadClasses = has("class:read");
-  const canReadMappings = has("subject_mapping:read");
+  const canReadMappings = has("subject:read");
   const canReadStaffing = has("teacher_assignment:read");
 
   const orgReady = ready && Boolean(organizationId) && Boolean(academicYear?.id);

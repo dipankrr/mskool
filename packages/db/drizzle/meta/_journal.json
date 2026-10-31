@@ -253,6 +253,13 @@
       "when": 1793362326949,
       "tag": "0035_outstanding_shadow_king",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793473894960,
+      "tag": "0036_merge_subject_mapping_permission",
+      "breakpoints": true
     }
   ]
 }

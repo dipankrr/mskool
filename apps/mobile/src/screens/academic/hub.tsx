@@ -71,7 +71,7 @@ export function AcademicSetupScreen() {
       title: copy.academic.rows.mappings,
       detail: copy.academic.rows.mappingsDetail,
       icon: "sort" as const,
-      can: has("subject_mapping:read"),
+      can: has("subject:read"),
       route: "/subject-mappings",
       testID: "academic-mappings",
     },

@@ -728,7 +728,7 @@ async function main() {
   console.log("\nthe teaching-assignment layer — template + staffing");
 
   // The template: which subjects Class 6 takes this session. Both staffed
-  // personas read it — subject_mapping:read reaches class and section grants
+  // personas read it — subject:read reaches class and section grants
   // alike, and the school-level widening is the entity-shape reasoning the
   // service documents, not an accident to be fixed.
   const mappingList = await query(principalCookie, "assignment.subjectMapping.list", {
@@ -890,7 +890,7 @@ async function main() {
     },
   );
   report(
-    "subject_teacher holds NO subject_mapping:create",
+    "subject_teacher holds NO subject:create",
     teacherCreatesMapping.code === "FORBIDDEN",
     `code ${teacherCreatesMapping.code}`,
   );
