@@ -197,8 +197,25 @@ export class AcademicService {
    * request can commit the row that makes ours invalid — while the constraints
    * hold under concurrency by construction.
    */
-  async createAcademicYear(scope: DataScope, input: CreateAcademicYearInput) {
+  async createAcademicYear(
+    scope: DataScope,
+    input: CreateAcademicYearInput,
+    options: { runIfFirst?: boolean } = {},
+  ) {
     const schoolId = requireSchoolId(scope);
+
+    // ADR-056: a school with nothing running has nothing to disturb, so the API
+    // starts its session running instead of asking for a second step. A later
+    // session keeps the setCurrent confirm, because that switch changes what
+    // every colleague sees.
+    let isCurrent = false;
+    if (options.runIfFirst) {
+      const [running] = await db
+        .select({ id: academicYears.id })
+        .from(academicYears)
+        .where(and(eq(academicYears.schoolId, schoolId), eq(academicYears.isCurrent, true)));
+      isCurrent = !running;
+    }
 
     const [academicYear] = await db
       .insert(academicYears)
@@ -206,6 +223,7 @@ export class AcademicService {
         ...input,
         organizationId: scope.organizationId,
         schoolId,
+        isCurrent,
         // Frozen at creation, never accepted from input and never updated. If
         // the year is later extended, `endDate` moves and this stays put.
         originalEndDate: input.endDate,

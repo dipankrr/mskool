@@ -2617,3 +2617,28 @@ exams until someone sets a type; mobile flags them. Retiring the default leaves
 the school with none. Migration 0037 makes Main Subjects the default where it
 exists. Rejected: filling untyped rows automatically, since a wrong guess puts a
 subject in the wrong report-card section.
+
+---
+
+## ADR-056 - A school's first session runs automatically; tenants come from a script
+
+**Context.** Creating a session left it not running, and everything session-based
+stayed empty until a second confirm on the edit screen. A new admin hit "no
+session" right after creating one. Organizations have no API by design, so a new
+tenant needs a developer anyway.
+
+**Decision.** Through the API, creating a session when the school has none
+running also makes it running. A later session keeps the separate confirm,
+because that switch changes what every colleague sees. `pnpm db:provision`
+creates the org with its matrix, the first school, and the admin's login, staff
+row and org-level grant, with `must_change_password` set. It creates no session,
+since we would have to know each school's dates. The change-password screen
+refuses the current password, so the forced change can't be skipped by retyping it.
+
+**Consequences.** The service only does this when asked (`runIfFirst`), so the
+seed and test fixtures still create years that aren't running. Schools added
+later from Branches get the same first-session behaviour. The default password is
+fixed by the owner's choice: until first sign-in, anyone who knows the admin's
+email can use it, so credentials should be handed over soon after provisioning.
+The same-password check is on the client only; a direct API call could still
+reuse the password.

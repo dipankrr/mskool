@@ -268,6 +268,7 @@ function SessionFormBody({
     }
   }, [saved]);
 
+  const { academicYear } = useActiveContext();
   const utils = trpc.useUtils();
   const create = trpc.academic.year.create.useMutation();
   const update = trpc.academic.year.update.useMutation();
@@ -398,6 +399,14 @@ function SessionFormBody({
         </>
       }
     >
+      {!session && !academicYear ? (
+        <Notice
+          tone="neutral"
+          icon="info"
+          message={copy.sessions.firstRunsNote}
+          testID="session-first-runs"
+        />
+      ) : null}
       {session?.isCurrent ? (
         <Notice
           tone="positive"

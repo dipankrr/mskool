@@ -202,7 +202,7 @@ const academicYearRouter = router({
     .input(z.object({ schoolId: z.uuid(), data: createAcademicYearSchema }))
     .output(academicYearSelectSchema)
     .mutation(async ({ ctx, input }) => {
-      return academicService.createAcademicYear(ctx.scope, input.data);
+      return academicService.createAcademicYear(ctx.scope, input.data, { runIfFirst: true });
     }),
 
   // B6: owner-resolved like byId, but a MUTATION — the gate stays "cover"

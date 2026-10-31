@@ -71,6 +71,10 @@ export default function ChangePasswordScreen() {
       setError(copy.auth.passwordMismatch);
       return;
     }
+    if (newPassword === currentPassword) {
+      setError(copy.auth.passwordUnchanged);
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {

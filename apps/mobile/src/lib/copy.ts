@@ -46,6 +46,7 @@ export const copy = {
     newPasswordLabel: "New password",
     confirmPasswordLabel: "Confirm new password",
     passwordMismatch: "The new passwords don't match.",
+    passwordUnchanged: "Choose a new password, different from your current one.",
     currentPasswordMismatch:
       "That current password doesn't match. Check it and try again.",
     changeAction: "Set password",
@@ -245,6 +246,7 @@ export const copy = {
   /** Chunk B — academic years, and the one a branch is running. */
   sessions: {
     title: "Sessions",
+    firstRunsNote: "This will be the running session, since none is running yet.",
     add: "Add session",
     addTitle: "Add a session",
     editTitle: "Edit session",
