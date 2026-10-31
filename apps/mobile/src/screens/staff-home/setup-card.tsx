@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { router, useFocusEffect } from "expo-router";
@@ -17,7 +17,7 @@ import { buildSetupSteps, nextSetupStep, setupFinished } from "../../lib/setup-s
 import type { SetupStep } from "../../lib/setup-status";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
-import { radius, spacing, touch } from "../../theme/tokens";
+import { motion, radius, spacing, touch } from "../../theme/tokens";
 
 /**
  * Who the popup has been shown to since the app process started. Held in memory
@@ -63,34 +63,37 @@ export function SetupCard() {
 
   const [expanded, setExpanded] = useState(false);
   const [popupOpen, setPopupOpen] = useState(false);
-  const [readyCard, setReadyCard] = useState(false);
+  // "Ready" shows once, only when this run watched the last step finish.
+  const [readyFor, setReadyFor] = useState<string | null>(null);
+  const [lastSeen, setLastSeen] = useState<{ schoolId: string; finished: boolean } | null>(null);
 
   const steps = enabled && status.data ? buildSetupSteps(status.data, has) : null;
   const finished = steps ? setupFinished(steps) : true;
   const unfinished = Boolean(steps) && !finished;
 
   const userId = session?.user?.id ?? null;
+  // A beat after Home settles, so it doesn't land on the first frame.
   useEffect(() => {
     if (!unfinished || !focused || !userId || popupShownFor === userId) return;
-    popupShownFor = userId;
-    setPopupOpen(true);
+    const timer = setTimeout(() => {
+      popupShownFor = userId;
+      setPopupOpen(true);
+    }, motion.slow);
+    return () => clearTimeout(timer);
   }, [unfinished, focused, userId]);
 
-  // "Ready" shows once, only when this run watched the last step finish.
-  const watching = useRef<string | null>(null);
-  useEffect(() => {
-    if (!steps || !schoolId) return;
-    if (!finished) {
-      watching.current = schoolId;
-      setReadyCard(false);
-    } else if (watching.current === schoolId) {
-      watching.current = null;
-      setReadyCard(true);
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  if (steps && schoolId && (lastSeen?.schoolId !== schoolId || lastSeen.finished !== finished)) {
+    setLastSeen({ schoolId, finished });
+    if (lastSeen?.schoolId === schoolId && !lastSeen.finished && finished) {
+      setReadyFor(schoolId);
     }
-  }, [steps, finished, schoolId]);
+  }
 
-  if (readyCard) {
+  useEffect(() => {
+    if (readyFor) void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, [readyFor]);
+
+  if (readyFor && readyFor === schoolId && finished) {
     return (
       <View style={styles.ready} testID="setup-ready">
         <AppIcon name="checkCircle" size={24} color={colors.accentDeep} />
@@ -105,7 +108,7 @@ export function SetupCard() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={copy.setup.dismiss}
-          onPress={() => setReadyCard(false)}
+          onPress={() => setReadyFor(null)}
           style={styles.dismiss}
           testID="setup-ready-dismiss"
         >

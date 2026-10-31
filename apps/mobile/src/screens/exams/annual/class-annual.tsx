@@ -63,7 +63,6 @@ export function ClassAnnualScreen() {
   const [confirm, setConfirm] = useState(false);
 
   const className = names.className(classId) ?? "";
-  const year = scope.academicYear;
   const branchMeta = useBranchMeta();
   const students = useMemo(() => table.data?.students ?? [], [table.data]);
   const sections = useMemo(
