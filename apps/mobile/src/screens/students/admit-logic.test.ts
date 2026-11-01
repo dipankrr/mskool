@@ -2,8 +2,10 @@ import {
   admitSteps,
   emptyFamilyForm,
   familyPayloads,
+  filledMoreGroups,
   findAdmissionClash,
   findPossibleDuplicate,
+  fullFormProblems,
   isAdmissionNumberRefusal,
   normaliseParentPhone,
   primarySlot,
@@ -11,6 +13,7 @@ import {
   studentFullName,
   suggestAdmissionNumber,
   validateFamilyStep,
+  validateFullStudent,
   validateStudentStep,
   type FamilyForm,
   type RegisterRow,
@@ -297,5 +300,45 @@ describe("studentFullName", () => {
     expect(studentFullName({ firstName: "Rohan", middleName: "Kumar", lastName: "Verma" })).toBe(
       "Rohan Kumar Verma",
     );
+  });
+});
+
+describe("the full form", () => {
+  const ready = {
+    ...emptyStudentForm(),
+    firstName: "Aditi",
+    lastName: "Sharma",
+    dateOfBirth: "2014-06-12",
+    gender: "female" as const,
+    admissionNumber: "2026-015",
+  };
+
+  it("checks the optional fields the steps leave alone", () => {
+    const bad = { ...ready, pincode: "12", email: "not-an-email" };
+    expect(validateStudentStep(bad, [])).toEqual({});
+    expect(Object.keys(validateFullStudent(bad, []))).toEqual(
+      expect.arrayContaining(["pincode", "email"]),
+    );
+  });
+
+  it("still refuses a used number", () => {
+    const used = row({ admissionNumber: "2026-015" });
+    expect(validateFullStudent(ready, [used]).admissionNumber).toBeDefined();
+  });
+
+  it("names the parts holding an error, in the order they appear", () => {
+    expect(
+      fullFormProblems({ firstName: "x", pincode: "x", emergencyContactPhone: "x" }, { "father.phone": "x" }),
+    ).toEqual(["student", "family", "address", "health"]);
+    expect(fullFormProblems({}, {})).toEqual([]);
+  });
+
+  it("lists only the optional groups something was typed into", () => {
+    expect(filledMoreGroups(ready)).toEqual([]);
+    expect(filledMoreGroups({ ...ready, city: "Kolkata", bloodGroup: "b_positive" })).toEqual([
+      "address",
+      "health",
+    ]);
+    expect(filledMoreGroups({ ...ready, city: "   " })).toEqual([]);
   });
 });

@@ -26,19 +26,16 @@ import { colors } from "../../theme/brand-admin";
 import { spacing } from "../../theme/tokens";
 import {
   isStudentFormDirty,
-  normaliseStudentDigits,
   studentFormFrom,
   studentFormHasErrors,
   studentUpdatePayload,
   validateStudentForm,
-  type StudentBloodGroup,
   type StudentForm,
   type StudentFormField,
 } from "./student-form";
+import { StudentMoreFields } from "./student-more-fields";
 
 type Student = inferRouterOutputs<AppRouter>["student"]["byId"];
-
-const BLOOD_GROUPS = Object.keys(copy.studentForm.bloodGroups) as StudentBloodGroup[];
 
 /**
  * Edit a student (Step 2 chunk A); admitting one is `/admit-student`. Loads
@@ -396,192 +393,15 @@ function StudentFormBody({
           disabled={!canWrite}
           testID="student-gender"
         />
-        <SelectField
-          label={copy.studentForm.fields.bloodGroup}
-          valueLabel={
-            form.bloodGroup
-              ? copy.studentForm.bloodGroups[form.bloodGroup]
-              : copy.studentForm.bloodGroupNone
-          }
-          placeholder={copy.studentForm.bloodGroupNone}
-          options={[
-            { id: "", label: copy.studentForm.bloodGroupNone },
-            ...BLOOD_GROUPS.map((group) => ({
-              id: group,
-              label: copy.studentForm.bloodGroups[group],
-            })),
-          ]}
-          currentId={form.bloodGroup ?? ""}
-          onSelect={(bloodGroup) =>
-            set("bloodGroup", (bloodGroup || null) as StudentBloodGroup | null)
-          }
-          disabled={!canWrite}
-          testID="student-blood-group"
-        />
       </Card>
 
-      <SectionLabel>{copy.studentForm.sections.contact}</SectionLabel>
-      <Card style={styles.card}>
-        <FormField
-          label={copy.studentForm.fields.phone}
-          value={form.phone}
-          onChangeText={(phone) => set("phone", phone)}
-          onBlur={() => touch("phone")}
-          error={fieldError("phone")}
-          keyboardType="phone-pad"
-          maxLength={20}
-          editable={canWrite}
-          testID="student-phone"
-        />
-        <FormField
-          label={copy.studentForm.fields.email}
-          value={form.email}
-          onChangeText={(email) => set("email", email)}
-          onBlur={() => touch("email")}
-          error={fieldError("email")}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoCorrect={false}
-          editable={canWrite}
-          testID="student-email"
-        />
-      </Card>
-
-      <SectionLabel>{copy.studentForm.sections.background}</SectionLabel>
-      <Card style={styles.card}>
-        <FormField
-          label={copy.studentForm.fields.nationality}
-          value={form.nationality}
-          onChangeText={(nationality) => set("nationality", nationality)}
-          autoCapitalize="words"
-          editable={canWrite}
-          testID="student-nationality"
-        />
-        <FormField
-          label={copy.studentForm.fields.religion}
-          value={form.religion}
-          onChangeText={(religion) => set("religion", religion)}
-          autoCapitalize="words"
-          editable={canWrite}
-          testID="student-religion"
-        />
-        <FormField
-          label={copy.studentForm.fields.category}
-          value={form.category}
-          onChangeText={(category) => set("category", category)}
-          help={copy.studentForm.fields.categoryHelp}
-          autoCapitalize="characters"
-          editable={canWrite}
-          testID="student-category"
-        />
-        <FormField
-          label={copy.studentForm.fields.motherTongue}
-          value={form.motherTongue}
-          onChangeText={(motherTongue) => set("motherTongue", motherTongue)}
-          autoCapitalize="words"
-          editable={canWrite}
-          testID="student-mother-tongue"
-        />
-        <FormField
-          label={copy.studentForm.fields.aadhaar}
-          value={form.aadhaarNumber}
-          onChangeText={(aadhaarNumber) =>
-            set("aadhaarNumber", normaliseStudentDigits(aadhaarNumber))
-          }
-          onBlur={() => touch("aadhaarNumber")}
-          help={copy.studentForm.fields.aadhaarHelp}
-          error={fieldError("aadhaarNumber")}
-          keyboardType="number-pad"
-          maxLength={12}
-          editable={canWrite}
-          testID="student-aadhaar"
-        />
-      </Card>
-
-      <SectionLabel>{copy.studentForm.sections.address}</SectionLabel>
-      <Card style={styles.card}>
-        <FormField
-          label={copy.studentForm.fields.addressLine1}
-          value={form.addressLine1}
-          onChangeText={(addressLine1) => set("addressLine1", addressLine1)}
-          autoCapitalize="words"
-          editable={canWrite}
-          testID="student-address-1"
-        />
-        <FormField
-          label={copy.studentForm.fields.addressLine2}
-          value={form.addressLine2}
-          onChangeText={(addressLine2) => set("addressLine2", addressLine2)}
-          autoCapitalize="words"
-          editable={canWrite}
-          testID="student-address-2"
-        />
-        <FormField
-          label={copy.studentForm.fields.city}
-          value={form.city}
-          onChangeText={(city) => set("city", city)}
-          autoCapitalize="words"
-          editable={canWrite}
-          testID="student-city"
-        />
-        <FormField
-          label={copy.studentForm.fields.state}
-          value={form.state}
-          onChangeText={(state) => set("state", state)}
-          autoCapitalize="words"
-          editable={canWrite}
-          testID="student-state"
-        />
-        <FormField
-          label={copy.studentForm.fields.pincode}
-          value={form.pincode}
-          onChangeText={(pincode) => set("pincode", normaliseStudentDigits(pincode))}
-          onBlur={() => touch("pincode")}
-          error={fieldError("pincode")}
-          keyboardType="number-pad"
-          maxLength={6}
-          editable={canWrite}
-          testID="student-pincode"
-        />
-      </Card>
-
-      <SectionLabel>{copy.studentForm.sections.medical}</SectionLabel>
-      <Card style={styles.card}>
-        <FormField
-          label={copy.studentForm.fields.medical}
-          value={form.medicalConditions}
-          onChangeText={(medicalConditions) =>
-            set("medicalConditions", medicalConditions)
-          }
-          help={copy.studentForm.fields.medicalHelp}
-          autoCapitalize="sentences"
-          editable={canWrite}
-          testID="student-medical"
-        />
-        <FormField
-          label={copy.studentForm.fields.emergencyName}
-          value={form.emergencyContactName}
-          onChangeText={(emergencyContactName) =>
-            set("emergencyContactName", emergencyContactName)
-          }
-          autoCapitalize="words"
-          editable={canWrite}
-          testID="student-emergency-name"
-        />
-        <FormField
-          label={copy.studentForm.fields.emergencyPhone}
-          value={form.emergencyContactPhone}
-          onChangeText={(emergencyContactPhone) =>
-            set("emergencyContactPhone", emergencyContactPhone)
-          }
-          onBlur={() => touch("emergencyContactPhone")}
-          error={fieldError("emergencyContactPhone")}
-          keyboardType="phone-pad"
-          maxLength={20}
-          editable={canWrite}
-          testID="student-emergency-phone"
-        />
-      </Card>
+      <StudentMoreFields
+        form={form}
+        set={set}
+        touch={touch}
+        fieldError={fieldError}
+        editable={canWrite}
+      />
 
       {canDelete ? (
         <View style={styles.deactivate}>

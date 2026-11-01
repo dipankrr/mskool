@@ -5,7 +5,6 @@ import { usePreventRemove } from "expo-router/react-navigation";
 import type { AddGuardianInput, CreateEnrollmentInput } from "@repo/contracts";
 
 import { AppIcon } from "../../components/app-icon";
-import { Avatar } from "../../components/avatar";
 import { CapsuleButton } from "../../components/capsule-button";
 import { Card } from "../../components/card";
 import { EmptyState } from "../../components/empty-state";
@@ -29,14 +28,17 @@ import {
   admitSteps,
   emptyFamilyForm,
   familyPayloads,
+  filledMoreGroups,
   filledSlots,
   findPossibleDuplicate,
+  fullFormProblems,
   isAdmissionNumberRefusal,
   relationFor,
   sectionStrength,
   studentFullName,
   suggestAdmissionNumber,
   validateFamilyStep,
+  validateFullStudent,
   validateStudentStep,
   type AdmitStep,
   type FamilyForm,
@@ -51,14 +53,18 @@ import {
   type StudentForm,
   type StudentFormField,
 } from "./student-form";
+import { StudentMoreFields } from "./student-more-fields";
+import { photoUploadBody, StudentPhotoView, type PickedImage } from "./student-photo";
 
 /**
  * Admit a student (plan `.kilo/plans/2026-11-01-admit-flow.md`): who, which
  * class, which family, check, done. One route with in-screen steps, because the
  * typed work belongs to one admission and nothing reaches the server until Check.
  *
- * Address, health and background are not here. They wait on the edit form, one
- * tap from Done, so a counter admission asks only what the desk needs today.
+ * Address, health and background aren't in the steps, so a counter admission
+ * asks only what the desk needs today. "Full form" shows every field on one
+ * screen for the desk holding a filled-in paper form; both are views of the same
+ * typed work, so switching loses nothing.
  */
 export function AdmitStudentScreen() {
   const { organizationId, schoolId, ready } = useActiveContext();
@@ -109,6 +115,7 @@ export function AdmitStudentScreen() {
 
 /** One save that follows the student, with what Done needs to show and retry it. */
 type AdmitTask =
+  | { kind: "photo"; photo: PickedImage; error: unknown }
   | { kind: "enrollment"; payload: CreateEnrollmentInput; label: string; error: unknown }
   | {
       kind: "guardian";
@@ -124,6 +131,7 @@ type Admitted = {
   firstName: string;
   admissionNumber: string;
   admissionDate: string | null;
+  photoUri: string | null;
   tasks: AdmitTask[];
 };
 
@@ -156,7 +164,9 @@ function AdmitFlow({
   const [family, setFamily] = useState<FamilyForm>(emptyFamilyForm);
   const [classId, setClassId] = useState<string | null>(null);
   const [sectionId, setSectionId] = useState<string | null>(null);
+  const [photo, setPhoto] = useState<PickedImage | null>(null);
 
+  const [fullForm, setFullForm] = useState(false);
   const [step, setStep] = useState<AdmitStep>("student");
   // Arrived from Check's Edit: Continue goes straight back there.
   const [returnToCheck, setReturnToCheck] = useState(false);
@@ -189,15 +199,16 @@ function AdmitFlow({
   const createStudent = trpc.student.create.useMutation();
   const createEnrollment = trpc.enrollment.create.useMutation();
   const addGuardian = trpc.guardian.add.useMutation();
+  const uploadPhoto = trpc.student.uploadPhoto.useMutation();
 
   const rows = useMemo(() => register.data ?? [], [register.data]);
   const studentErrors = useMemo(() => {
-    const errors = validateStudentStep(form, rows);
+    const errors = fullForm ? validateFullStudent(form, rows) : validateStudentStep(form, rows);
     if (numberRefusal && numberRefusal.value === form.admissionNumber) {
       errors.admissionNumber = numberRefusal.message;
     }
     return errors;
-  }, [form, rows, numberRefusal]);
+  }, [form, rows, numberRefusal, fullForm]);
   const familyErrors = useMemo(() => validateFamilyStep(family), [family]);
 
   const strength = useMemo(
@@ -224,12 +235,15 @@ function AdmitFlow({
 
   const stepIndex = steps.indexOf(step);
   const dirty =
-    isStudentFormDirty(form, initial) || filledSlots(family).length > 0 || classId !== null;
+    isStudentFormDirty(form, initial) ||
+    filledSlots(family).length > 0 ||
+    classId !== null ||
+    photo !== null;
 
   // Back walks the steps, from any control: header, hardware or swipe. On the
   // first step it's a real exit, which guards typed work. Once the student is
   // saved there's nothing left to protect, and back returns to the roster.
-  const exitsFlow = stepIndex === 0 && !returnToCheck;
+  const exitsFlow = fullForm || (stepIndex === 0 && !returnToCheck);
   usePreventRemove(!admitted && (saving || !exitsFlow), () => {
     if (saving) return;
     if (returnToCheck) {
@@ -251,8 +265,11 @@ function AdmitFlow({
     setForm((current) => ({ ...current, [field]: value }));
     setSaveError(null);
   };
-  const touch = (field: StudentFormField) =>
-    setTouched((current) => new Set(current).add(field));
+  // Passing through an empty field isn't a mistake (the photo sits above the
+  // name), so a blank one waits for Continue before it turns red.
+  const touch = (field: StudentFormField) => {
+    if (form[field]) setTouched((current) => new Set(current).add(field));
+  };
   const studentFieldError = (field: StudentFormField) =>
     touched.has(field) || attempted.has("student") ? studentErrors[field] : undefined;
 
@@ -281,7 +298,17 @@ function AdmitFlow({
 
   const runTask = async (studentId: string, task: AdmitTask): Promise<AdmitTask> => {
     try {
-      if (task.kind === "enrollment") {
+      if (task.kind === "photo") {
+        const saved = await uploadPhoto.mutateAsync({
+          organizationId,
+          id: studentId,
+          data: await photoUploadBody(task.photo),
+        });
+        utils.student.photo.setData(
+          { organizationId, id: studentId },
+          { objectId: saved.objectId },
+        );
+      } else if (task.kind === "enrollment") {
         await createEnrollment.mutateAsync({
           organizationId,
           schoolId,
@@ -303,8 +330,26 @@ function AdmitFlow({
       utils.guardian.list.invalidate(),
     ]);
 
-  const admit = async () => {
+  const switchMode = () => {
+    Keyboard.dismiss();
+    setFullForm((current) => !current);
+    setReturnToCheck(false);
     setSaveError(null);
+  };
+
+  const admit = async () => {
+    Keyboard.dismiss();
+    setSaveError(null);
+    // The steps only check their own fields, and the full form can leave a bad
+    // value behind in one the steps don't show. Nothing invalid reaches the server.
+    if (
+      Object.keys(validateFullStudent(form, rows)).length > 0 ||
+      Object.keys(familyErrors).length > 0
+    ) {
+      setFullForm(true);
+      setAttempted((current) => new Set(current).add("student").add("family"));
+      return;
+    }
     setSaving(true);
     let student: { id: string };
     try {
@@ -318,8 +363,10 @@ function AdmitFlow({
       if (friendly.kind === "conflict" && isAdmissionNumberRefusal(friendly.message)) {
         setNumberRefusal({ value: form.admissionNumber, message: friendly.message });
         setAttempted((current) => new Set(current).add("student"));
-        setReturnToCheck(true);
-        setStep("student");
+        if (!fullForm) {
+          setReturnToCheck(true);
+          setStep("student");
+        }
       } else {
         setSaveError(error);
       }
@@ -330,6 +377,7 @@ function AdmitFlow({
     // The student is on the register now. What follows can fail on its own,
     // and Done reports each one rather than claiming the whole admission.
     const planned: AdmitTask[] = [];
+    if (photo) planned.push({ kind: "photo", photo, error: null });
     if (classId && academicYear?.id) {
       planned.push({
         kind: "enrollment",
@@ -365,6 +413,7 @@ function AdmitFlow({
       firstName: form.firstName.trim(),
       admissionNumber: form.admissionNumber.trim(),
       admissionDate: form.admissionDate,
+      photoUri: photo?.uri ?? null,
       tasks,
     });
     setSaving(false);
@@ -413,7 +462,11 @@ function AdmitFlow({
       ? `${stepLine} · ${copy.admit.class.session(academicYear.name)}`
       : `${copy.admit.title} · ${stepLine}`;
 
+  const problems = fullForm ? fullFormProblems(studentErrors, familyErrors) : [];
+  const fullFormAttempted = attempted.has("student") || attempted.has("family");
+
   const hasStepErrors =
+    !fullForm &&
     attempted.has(step) &&
     ((step === "student" && Object.keys(studentErrors).length > 0) ||
       (step === "family" && Object.keys(familyErrors).length > 0));
@@ -428,6 +481,118 @@ function AdmitFlow({
         ? copy.admit.family.skip
         : copy.admit.continue;
 
+  const studentStep = (
+    <StudentStep
+      form={form}
+      set={setField}
+      touch={touch}
+      fieldError={studentFieldError}
+      suggestion={suggestAdmissionNumber(rows, numberRefusal?.value)}
+      duplicate={findPossibleDuplicate(form, rows)}
+      photo={photo}
+      onPhoto={canAddFamily ? setPhoto : undefined}
+      focusName={!fullForm}
+    />
+  );
+  const classStep = (
+    <ClassStep
+      sessionName={academicYear?.name ?? null}
+      classes={classOptions}
+      sections={sectionsOf(classId)}
+      classId={classId}
+      sectionId={sectionId}
+      loading={classes.isPending || sections.isPending}
+      error={classes.error ?? sections.error}
+      onRetry={() => {
+        void classes.refetch();
+        void sections.refetch();
+      }}
+      onClass={chooseClass}
+      onSection={setSectionId}
+    />
+  );
+  const familyStep = (
+    <FamilyStep
+      family={family}
+      errors={familyErrors}
+      showAll={attempted.has("family")}
+      onChange={(slot, part, value) =>
+        setFamily((current) => ({
+          ...current,
+          [slot]: { ...current[slot], [part]: value },
+        }))
+      }
+      onRelation={(otherRelation) => setFamily((current) => ({ ...current, otherRelation }))}
+      onPrimary={(primary) => setFamily((current) => ({ ...current, primary }))}
+    />
+  );
+
+  if (fullForm) {
+    return (
+      <ScreenFrame
+        key="full"
+        title={copy.admit.fullForm.title}
+        meta={copy.admit.fullForm.meta}
+        backAccessibilityLabel={copy.common.back}
+        backTestID="admit-back"
+        action={{
+          label: copy.admit.fullForm.close,
+          accessibilityHint: copy.admit.fullForm.closeHint,
+          onPress: switchMode,
+          testID: "admit-mode",
+        }}
+        footer={
+          <>
+            {saveError ? (
+              <Notice
+                tone="critical"
+                message={toFriendlyError(saveError).message}
+                testID="admit-save-error"
+              />
+            ) : fullFormAttempted && problems.length > 0 ? (
+              <Notice
+                tone="critical"
+                message={copy.admit.fullForm.fix(
+                  problems.map((group) => copy.admit.fullForm.groups[group]).join(", "),
+                )}
+                testID="admit-invalid"
+              />
+            ) : null}
+            <CapsuleButton
+              title={copy.admit.review.admit(form.firstName.trim() || copy.admit.fullForm.student)}
+              icon="check"
+              onPress={() => void admit()}
+              loading={saving}
+              disabled={saving}
+              testID="admit-submit"
+              style={styles.action}
+            />
+          </>
+        }
+      >
+        {studentStep}
+        {canEnroll ? (
+          <>
+            <SectionLabel>{copy.admit.review.class}</SectionLabel>
+            {classStep}
+          </>
+        ) : null}
+        {canAddFamily ? (
+          <>
+            <SectionLabel>{copy.admit.review.family}</SectionLabel>
+            {familyStep}
+          </>
+        ) : null}
+        <StudentMoreFields
+          form={form}
+          set={setField}
+          touch={touch}
+          fieldError={studentFieldError}
+        />
+      </ScreenFrame>
+    );
+  }
+
   return (
     <ScreenFrame
       // A fresh scroll for each step: opening one partway down is disorienting.
@@ -436,6 +601,12 @@ function AdmitFlow({
       meta={meta}
       backAccessibilityLabel={copy.common.back}
       backTestID="admit-back"
+      action={{
+        label: copy.admit.fullForm.open,
+        accessibilityHint: copy.admit.fullForm.openHint,
+        onPress: switchMode,
+        testID: "admit-mode",
+      }}
       stickyHeader={
         <StepProgress
           current={stepIndex}
@@ -482,50 +653,9 @@ function AdmitFlow({
         </>
       }
     >
-      {step === "student" ? (
-        <StudentStep
-          form={form}
-          set={setField}
-          touch={touch}
-          fieldError={studentFieldError}
-          suggestion={suggestAdmissionNumber(rows, numberRefusal?.value)}
-          duplicate={findPossibleDuplicate(form, rows)}
-        />
-      ) : null}
-      {step === "class" ? (
-        <ClassStep
-          sessionName={academicYear?.name ?? null}
-          classes={classOptions}
-          sections={sectionsOf(classId)}
-          classId={classId}
-          sectionId={sectionId}
-          loading={classes.isPending || sections.isPending}
-          error={classes.error ?? sections.error}
-          onRetry={() => {
-            void classes.refetch();
-            void sections.refetch();
-          }}
-          onClass={chooseClass}
-          onSection={setSectionId}
-        />
-      ) : null}
-      {step === "family" ? (
-        <FamilyStep
-          family={family}
-          errors={familyErrors}
-          showAll={attempted.has("family")}
-          onChange={(slot, part, value) =>
-            setFamily((current) => ({
-              ...current,
-              [slot]: { ...current[slot], [part]: value },
-            }))
-          }
-          onRelation={(otherRelation) =>
-            setFamily((current) => ({ ...current, otherRelation }))
-          }
-          onPrimary={(primary) => setFamily((current) => ({ ...current, primary }))}
-        />
-      ) : null}
+      {step === "student" ? studentStep : null}
+      {step === "class" ? classStep : null}
+      {step === "family" ? familyStep : null}
       {step === "review" ? (
         <ReviewStep
           form={form}
@@ -533,10 +663,13 @@ function AdmitFlow({
           placement={placement}
           showClass={canEnroll}
           showFamily={canAddFamily}
+          photo={photo}
+          moreGroups={filledMoreGroups(form)}
           onEdit={(target) => {
             setReturnToCheck(true);
             setStep(target);
           }}
+          onEditMore={switchMode}
         />
       ) : null}
     </ScreenFrame>
@@ -616,6 +749,7 @@ function DoneScreen({
   const hasEnrollment = admitted.tasks.some((task) => task.kind === "enrollment");
   const hasGuardians = admitted.tasks.some((task) => task.kind === "guardian");
   const enrolled = admitted.tasks.some((task) => task.kind === "enrollment" && !task.error);
+  const photoSaved = admitted.tasks.some((task) => task.kind === "photo" && !task.error);
 
   // A failed retry should read as a refusal to act on, not a bare "failed".
   const reason = (error: unknown) => toFriendlyError(error).message;
@@ -652,7 +786,11 @@ function DoneScreen({
       }
     >
       <Card style={styles.hero}>
-        <Avatar name={admitted.name} size="lg" />
+        <StudentPhotoView
+          uri={photoSaved ? admitted.photoUri : null}
+          name={admitted.name}
+          size={64}
+        />
         <View style={styles.heroBody}>
           <ThemedText variant="name" testID="admit-done-name">
             {admitted.name}
@@ -673,7 +811,17 @@ function DoneScreen({
           <ResultRow state="skipped" title={copy.admit.done.classSkipped} testID="admit-result-class" />
         ) : null}
         {admitted.tasks.map((task, index) =>
-          task.kind === "enrollment" ? (
+          task.kind === "photo" ? (
+            <ResultRow
+              key="photo"
+              state={task.error ? "failed" : "saved"}
+              title={task.error ? copy.admit.done.photoFailed : copy.admit.done.photoRow}
+              detail={task.error ? reason(task.error) : undefined}
+              onRetry={task.error ? () => onRetry(index) : undefined}
+              retrying={retrying === index}
+              testID="admit-result-photo"
+            />
+          ) : task.kind === "enrollment" ? (
             <ResultRow
               key="enrollment"
               state={task.error ? "failed" : "saved"}

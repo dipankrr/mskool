@@ -111,6 +111,8 @@ const styles = StyleSheet.create({
   },
   value: {
     flexShrink: 1,
+    // Beside a chevron, space-between would strand the value mid-row.
+    marginLeft: "auto",
     textAlign: "right",
   },
 });

@@ -228,6 +228,7 @@ export function StudentPhotosScreen() {
               data: { contentType: "image/jpeg", dataBase64: base64 },
             });
             await utils.student.byId.invalidate({ id: target.studentId });
+            await utils.student.photo.invalidate({ id: target.studentId });
             setStatuses((current) => ({
               ...current,
               [target.studentId]: "done",

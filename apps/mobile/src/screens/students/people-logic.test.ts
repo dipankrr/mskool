@@ -1,10 +1,16 @@
 import {
   ENROLLMENT_TRANSITIONS,
+  addressBlock,
+  ageInYears,
   emptyEnrollmentForm,
   emptyGuardianForm,
   enrollmentCreatePayload,
   guardianFormFrom,
   guardianPayload,
+  hasLeft,
+  leavingOptions,
+  leavingPath,
+  maskAadhaar,
   validateEnrollmentForm,
   validateGuardianForm,
 } from "./people-logic";
@@ -130,5 +136,77 @@ describe("guardian form", () => {
     ] as const) {
       expect(copy.students.relations[relation]).toBeTruthy();
     }
+  });
+});
+
+describe("a student leaving", () => {
+  it("offers only withdrawal before a section is assigned", () => {
+    expect(leavingOptions("admitted")).toEqual(["withdrawn"]);
+  });
+
+  it("offers every way out to a student who is studying", () => {
+    const all = ["transferred_out", "withdrawn", "passed_out"];
+    expect(leavingOptions("section_assigned")).toEqual(all);
+    expect(leavingOptions("active")).toEqual(all);
+  });
+
+  it("offers nothing once they have left", () => {
+    expect(leavingOptions("withdrawn")).toEqual([]);
+    expect(hasLeft("passed_out")).toBe(true);
+    expect(hasLeft("section_assigned")).toBe(false);
+  });
+
+  it("takes only steps the server allows", () => {
+    expect(leavingPath("section_assigned", "withdrawn")).toEqual(["withdrawn"]);
+    expect(leavingPath("section_assigned", "transferred_out")).toEqual([
+      "active",
+      "transferred_out",
+    ]);
+    expect(leavingPath("active", "passed_out")).toEqual(["passed_out"]);
+    expect(leavingPath("admitted", "passed_out")).toEqual([]);
+    for (const [from, to] of [
+      ["section_assigned", "transferred_out"],
+      ["section_assigned", "passed_out"],
+      ["section_assigned", "withdrawn"],
+      ["active", "transferred_out"],
+    ] as const) {
+      let at: keyof typeof ENROLLMENT_TRANSITIONS = from;
+      for (const next of leavingPath(from, to)) {
+        expect(ENROLLMENT_TRANSITIONS[at]).toContain(next);
+        at = next;
+      }
+      expect(at).toBe(to);
+    }
+  });
+});
+
+describe("profile facts", () => {
+  it("counts a birthday only once it has passed", () => {
+    expect(ageInYears("2020-11-01", "2026-11-01")).toBe(6);
+    expect(ageInYears("2020-11-02", "2026-11-01")).toBe(5);
+    expect(ageInYears(null, "2026-11-01")).toBeNull();
+    expect(ageInYears("2027-01-01", "2026-11-01")).toBeNull();
+  });
+
+  it("masks all but the last four Aadhaar digits", () => {
+    expect(maskAadhaar("123456789012")).toBe("XXXX XXXX 9012");
+  });
+
+  it("writes the address as lines, skipping what is missing", () => {
+    expect(
+      addressBlock({
+        addressLine1: "12 Park St",
+        addressLine2: null,
+        city: "Kolkata",
+        state: "West Bengal",
+        pincode: "700016",
+      }),
+    ).toBe("12 Park St\nKolkata, West Bengal 700016");
+    expect(
+      addressBlock({ addressLine1: null, addressLine2: null, city: null, state: null, pincode: "700016" }),
+    ).toBe("700016");
+    expect(
+      addressBlock({ addressLine1: null, addressLine2: null, city: null, state: null, pincode: null }),
+    ).toBeNull();
   });
 });

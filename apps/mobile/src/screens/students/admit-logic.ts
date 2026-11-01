@@ -1,7 +1,7 @@
 import type { AddGuardianInput, GuardianView } from "@repo/contracts";
 
 import { copy } from "../../lib/copy";
-import { normaliseStudentDigits, validateStudentField } from "./student-form";
+import { normaliseStudentDigits, validateStudentField, validateStudentForm } from "./student-form";
 import type { StudentForm, StudentFormErrors, StudentFormField } from "./student-form";
 
 /**
@@ -122,6 +122,50 @@ export function validateStudentStep(
     );
   }
   return errors;
+}
+
+/** Every student field, for the full form and the last check before saving. */
+export function validateFullStudent(
+  form: StudentForm,
+  register: readonly RegisterRow[],
+): StudentFormErrors {
+  return { ...validateStudentForm(form), ...validateStudentStep(form, register) };
+}
+
+const MORE_GROUPS = {
+  contact: ["phone", "email"],
+  address: ["addressLine1", "addressLine2", "city", "state", "pincode"],
+  health: ["bloodGroup", "medicalConditions", "emergencyContactName", "emergencyContactPhone"],
+  background: ["nationality", "religion", "category", "motherTongue", "aadhaarNumber"],
+} as const satisfies Record<string, readonly StudentFormField[]>;
+
+export type MoreGroup = keyof typeof MORE_GROUPS;
+
+const MORE_GROUP_NAMES = Object.keys(MORE_GROUPS) as MoreGroup[];
+
+/** The optional groups something was typed into, so Check can show they exist. */
+export function filledMoreGroups(form: StudentForm): MoreGroup[] {
+  return MORE_GROUP_NAMES.filter((group) =>
+    MORE_GROUPS[group].some((field) => Boolean(form[field]?.trim())),
+  );
+}
+
+/** Which parts of a long form hold an error, since most are off screen. */
+export function fullFormProblems(
+  studentErrors: StudentFormErrors,
+  familyErrors: object,
+): ("student" | "family" | MoreGroup)[] {
+  const inMoreGroups = new Set<StudentFormField>(
+    MORE_GROUP_NAMES.flatMap((group) => [...MORE_GROUPS[group]]),
+  );
+  const fields = Object.keys(studentErrors) as StudentFormField[];
+  return [
+    ...(fields.some((field) => !inMoreGroups.has(field)) ? (["student"] as const) : []),
+    ...(Object.keys(familyErrors).length > 0 ? (["family"] as const) : []),
+    ...MORE_GROUP_NAMES.filter((group) =>
+      MORE_GROUPS[group].some((field) => fields.includes(field)),
+    ),
+  ];
 }
 
 /** The server's refusal for a used number: send the desk back to that field. */

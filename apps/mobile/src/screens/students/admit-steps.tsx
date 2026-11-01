@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Keyboard, Pressable, StyleSheet, TextInput, View } from "react-native";
 
 import { AppIcon } from "../../components/app-icon";
 import { CapsuleButton } from "../../components/capsule-button";
@@ -14,6 +14,7 @@ import { SelectField } from "../../components/select-field";
 import { Skeleton } from "../../components/skeleton";
 import { ThemedText } from "../../components/themed-text";
 import { copy } from "../../lib/copy";
+import { toFriendlyError } from "../../lib/errors";
 import { formatReadableDate, todayIso } from "../../lib/format";
 import { colors } from "../../theme/brand-admin";
 import { spacing } from "../../theme/tokens";
@@ -28,10 +29,12 @@ import {
   type FamilyForm,
   type FamilySlot,
   type GuardianRelation,
+  type MoreGroup,
   type RegisterRow,
 } from "./admit-logic";
 import { GUARDIAN_RELATIONS, guardianRelationLabel } from "./people-logic";
 import type { StudentForm, StudentFormField } from "./student-form";
+import { PhotoSourceSheet, StudentPhotoView, type PickedImage } from "./student-photo";
 
 /** Where the birth-date picker opens: about the age of a child starting school. */
 function typicalBirthDate(): string {
@@ -41,6 +44,62 @@ function typicalBirthDate(): string {
 
 // ------------------------------------------------------------------- student
 
+/** Held on the phone until the student exists to attach it to. */
+function PhotoField({
+  photo,
+  name,
+  onPhoto,
+}: {
+  photo: PickedImage | null;
+  name: string;
+  onPhoto: (photo: PickedImage | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const label = photo ? copy.admit.photo.change : copy.admit.photo.add;
+  const openSheet = () => {
+    Keyboard.dismiss();
+    setError(null);
+    setOpen(true);
+  };
+  return (
+    <>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityHint={copy.admit.photo.hint}
+        onPress={openSheet}
+        style={({ pressed }) => [styles.photoRow, pressed ? styles.photoPressed : null]}
+        testID="admit-photo"
+      >
+        <StudentPhotoView uri={photo?.uri ?? null} name={name.trim() || null} size={64} />
+        <View style={styles.photoText}>
+          <ThemedText variant="bodyStrong">{label}</ThemedText>
+          <ThemedText variant="meta">
+            {photo ? copy.admit.photo.chosen : copy.admit.photo.optional}
+          </ThemedText>
+        </View>
+      </Pressable>
+      {error ? (
+        <Notice
+          tone="critical"
+          message={toFriendlyError(error).message}
+          style={styles.photoError}
+          testID="admit-photo-error"
+        />
+      ) : null}
+      <PhotoSourceSheet
+        visible={open}
+        hasPhoto={photo !== null}
+        onDismiss={() => setOpen(false)}
+        onPicked={onPhoto}
+        onRemove={() => onPhoto(null)}
+        onError={setError}
+      />
+    </>
+  );
+}
+
 export function StudentStep({
   form,
   set,
@@ -48,6 +107,9 @@ export function StudentStep({
   fieldError,
   suggestion,
   duplicate,
+  photo,
+  onPhoto,
+  focusName,
 }: {
   form: StudentForm;
   set: (field: StudentFormField, value: string | null) => void;
@@ -56,6 +118,11 @@ export function StudentStep({
   /** The next number in sequence, if the register shows one. */
   suggestion: string | null;
   duplicate: RegisterRow | null;
+  photo: PickedImage | null;
+  /** Absent when the account can't save a photo, so it isn't offered. */
+  onPhoto?: (photo: PickedImage | null) => void;
+  /** Open on the name, which suits one short step but not a long form. */
+  focusName: boolean;
 }) {
   const lastNameRef = useRef<TextInput>(null);
   const [showMiddle, setShowMiddle] = useState(form.middleName.length > 0);
@@ -63,6 +130,9 @@ export function StudentStep({
   return (
     <>
       <Card style={styles.card}>
+        {onPhoto ? (
+          <PhotoField photo={photo} name={studentFullName(form)} onPhoto={onPhoto} />
+        ) : null}
         <View style={styles.nameRow}>
           <View style={styles.nameCell}>
             <FormField
@@ -73,7 +143,7 @@ export function StudentStep({
               error={fieldError("firstName")}
               autoCapitalize="words"
               autoCorrect={false}
-              autoFocus={form.firstName.length === 0}
+              autoFocus={focusName && form.firstName.length === 0}
               returnKeyType="next"
               submitBehavior="submit"
               onSubmitEditing={() => lastNameRef.current?.focus()}
@@ -497,7 +567,10 @@ export function ReviewStep({
   placement,
   showClass,
   showFamily,
+  photo,
+  moreGroups,
   onEdit,
+  onEditMore,
 }: {
   form: StudentForm;
   family: FamilyForm;
@@ -505,7 +578,11 @@ export function ReviewStep({
   placement: string | null;
   showClass: boolean;
   showFamily: boolean;
+  photo: PickedImage | null;
+  /** Optional groups already filled in, by way of the full form. */
+  moreGroups: MoreGroup[];
   onEdit: (step: "student" | "class" | "family") => void;
+  onEditMore: () => void;
 }) {
   const filled = filledSlots(family);
   const primary = primarySlot(family);
@@ -517,6 +594,9 @@ export function ReviewStep({
         onEdit={() => onEdit("student")}
         testID="admit-review-student"
       >
+        {photo ? (
+          <StudentPhotoView uri={photo.uri} name={studentFullName(form)} size={64} />
+        ) : null}
         <ReviewLine label={copy.admit.review.name} value={studentFullName(form)} />
         <ReviewLine
           label={copy.admit.review.born}
@@ -571,6 +651,21 @@ export function ReviewStep({
         </ReviewGroup>
       ) : null}
 
+      {moreGroups.length > 0 ? (
+        <ReviewGroup
+          title={copy.admit.review.more}
+          onEdit={onEditMore}
+          testID="admit-review-more"
+        >
+          <ThemedText variant="body">
+            {moreGroups
+              .map((group) => copy.admit.fullForm.groups[group])
+              .join(", ")
+              .replace(/^./, (first) => first.toUpperCase())}
+          </ThemedText>
+        </ReviewGroup>
+      ) : null}
+
       <Notice
         tone="caution"
         message={copy.admit.review.permanent(form.admissionNumber.trim())}
@@ -582,6 +677,23 @@ export function ReviewStep({
 }
 
 const styles = StyleSheet.create({
+  photoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    minHeight: 72,
+    paddingVertical: spacing.xs,
+  },
+  photoPressed: {
+    opacity: 0.7,
+  },
+  photoText: {
+    flex: 1,
+    gap: spacing.xxs,
+  },
+  photoError: {
+    marginTop: spacing.sm,
+  },
   nameRow: {
     flexDirection: "row",
     gap: spacing.sm,

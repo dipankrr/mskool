@@ -31,6 +31,62 @@ export const ENROLLMENT_TRANSITIONS: Record<EnrollmentStatus, EnrollmentStatus[]
   passed_out: [],
 };
 
+export type LeavingStatus = "transferred_out" | "withdrawn" | "passed_out";
+
+/**
+ * The ways a student can leave from where they stand. `section_assigned` and
+ * `active` read the same to every roster, so the profile shows both as
+ * "Studying" and doesn't ask the desk to tell them apart.
+ */
+export function leavingOptions(status: EnrollmentStatus): LeavingStatus[] {
+  if (status === "admitted") return ["withdrawn"];
+  if (status === "section_assigned" || status === "active") {
+    return ["transferred_out", "withdrawn", "passed_out"];
+  }
+  return [];
+}
+
+/** The server's steps to reach `to`, because only `active` can transfer or pass out. */
+export function leavingPath(from: EnrollmentStatus, to: LeavingStatus): EnrollmentStatus[] {
+  if (ENROLLMENT_TRANSITIONS[from].includes(to)) return [to];
+  if (from === "section_assigned" && ENROLLMENT_TRANSITIONS.active.includes(to)) {
+    return ["active", to];
+  }
+  return [];
+}
+
+export function hasLeft(status: EnrollmentStatus): boolean {
+  return ENROLLMENT_TRANSITIONS[status].length === 0;
+}
+
+/** Whole years old on `today`, both ISO dates. Null without a usable birth date. */
+export function ageInYears(dateOfBirth: string | null, today: string): number | null {
+  if (!dateOfBirth) return null;
+  const years = Number(today.slice(0, 4)) - Number(dateOfBirth.slice(0, 4));
+  const hadBirthday = today.slice(5) >= dateOfBirth.slice(5);
+  const age = hadBirthday ? years : years - 1;
+  return Number.isFinite(age) && age >= 0 ? age : null;
+}
+
+/** Aadhaar stays masked on a screen that gets read at a busy counter. */
+export function maskAadhaar(aadhaar: string): string {
+  return `XXXX XXXX ${aadhaar.slice(-4)}`;
+}
+
+/** The stored address as one block: street lines, then "City, State 700001". */
+export function addressBlock(student: {
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  state: string | null;
+  pincode: string | null;
+}): string | null {
+  const place = [student.city, student.state].filter(Boolean).join(", ");
+  const lastLine = [place, student.pincode].filter(Boolean).join(" ");
+  const lines = [student.addressLine1, student.addressLine2, lastLine].filter(Boolean);
+  return lines.length > 0 ? lines.join("\n") : null;
+}
+
 export type EnrollmentForm = {
   classId: string | null;
   sectionId: string | null;

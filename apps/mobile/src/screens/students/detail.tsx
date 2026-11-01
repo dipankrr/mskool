@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
-import { Alert, Image, Pressable, StyleSheet, View } from "react-native";
+import { useState } from "react";
+import { Alert, Linking, Pressable, StyleSheet, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/trpc";
 import type { ReactNode } from "react";
-import * as ImagePicker from "expo-image-picker";
 
 import { AppIcon } from "../../components/app-icon";
 import { CapsuleButton } from "../../components/capsule-button";
@@ -22,41 +21,58 @@ import { SectionLabel } from "../../components/section-label";
 import { SelectField } from "../../components/select-field";
 import { Skeleton } from "../../components/skeleton";
 import { FactRow } from "../../components/fact-row";
+import { StatusPill } from "../../components/status-pill";
 import { ThemedText } from "../../components/themed-text";
 import { useActiveContext } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
-import { env } from "../../env";
-import { authClient } from "../../lib/auth";
 import { copy } from "../../lib/copy";
 import { toFriendlyError } from "../../lib/errors";
-import { formatReadableDate } from "../../lib/format";
+import { formatReadableDate, todayIso } from "../../lib/format";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
-import { spacing } from "../../theme/tokens";
-import { ENROLLMENT_TRANSITIONS, type EnrollmentStatus } from "./people-logic";
-import { photoToWireBase64 } from "./photo-matching";
+import { radius, spacing } from "../../theme/tokens";
+import {
+  addressBlock,
+  ageInYears,
+  hasLeft,
+  leavingOptions,
+  leavingPath,
+  maskAadhaar,
+  type EnrollmentStatus,
+  type LeavingStatus,
+} from "./people-logic";
+import { PhotoSourceSheet, StudentPhotoView, useStudentPhoto } from "./student-photo";
 
 type Guardian = inferRouterOutputs<AppRouter>["guardian"]["list"][number];
 
+/** Opens the dialler; a phone without one gets told rather than ignored. */
+function callNumber(phone: string) {
+  Linking.openURL(`tel:${phone}`).catch(() =>
+    Alert.alert(copy.students.profile.callFailed),
+  );
+}
+
 /**
- * A student's record (Step 2 chunk A). Every stored fact the school recorded,
- * grouped the way the form groups it, plus the guardians of record. Editing
- * is the header action, gated `student:update` — the server re-checks.
+ * A student's profile, in the order a school reaches for it: who this is and
+ * where they sit, then how to reach the family, then the file. The hero answers
+ * "which class, which section, which roll" at a glance, and each of those fixes
+ * itself in place when it's missing.
  *
- * Facts that were never recorded are simply absent: an em-dash wall teaches
- * nobody anything. The identity section always renders because it always has
- * content.
+ * Details never recorded stay absent, because a wall of dashes teaches nobody
+ * anything. One row offers to fill them instead.
  */
 export function StudentDetailScreen() {
   const { studentId } = useLocalSearchParams<{ studentId?: string }>();
   const { organizationId, schoolId, academicYear, ready } = useActiveContext();
-  const { has } = usePermissions();
+  const { has, hasAny } = usePermissions();
 
   const canRead = has("student:read");
   const canUpdate = has("student:update");
   const canEnroll = has("enrollment:create");
   const canEnrollUpdate = has("enrollment:update");
+  const canReadEnrollment = has("enrollment:read");
   const canSeePortal = has("portal_access:activate");
+  const canSeeFees = hasAny("fee_report:read", "student_fee_assignment:read");
 
   const studentQuery = trpc.student.byId.useQuery(
     { organizationId: organizationId ?? "", id: studentId ?? "" },
@@ -69,159 +85,49 @@ export function StudentDetailScreen() {
       placeholderData: (previous) => previous,
     },
   );
+  const enrollmentsEnabled =
+    ready && Boolean(organizationId) && canReadEnrollment && Boolean(academicYear?.id);
   const enrollmentsQuery = trpc.enrollment.list.useQuery(
     { organizationId: organizationId ?? "", academicYearId: academicYear?.id ?? "" },
+    { enabled: enrollmentsEnabled },
+  );
+  // Enrollments only carry ids, and a name is what anyone is looking for.
+  const classesQuery = trpc.academic.class.list.useQuery(
+    { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
+    { enabled: enrollmentsEnabled && has("class:read") },
+  );
+  const sectionsQuery = trpc.academic.section.list.useQuery(
     {
-      enabled:
-        ready &&
-        Boolean(organizationId) &&
-        has("enrollment:read") &&
-        Boolean(academicYear?.id),
+      organizationId: organizationId ?? "",
+      schoolId: schoolId ?? undefined,
+      academicYearId: academicYear?.id ?? "",
     },
+    { enabled: enrollmentsEnabled && has("section:read") },
   );
 
   const enrollment = (enrollmentsQuery.data ?? []).find(
     (row) => row.student.id === studentId,
-  );
-  const transitions = enrollment
-    ? ENROLLMENT_TRANSITIONS[
-        enrollment.enrollment.enrollmentStatus as EnrollmentStatus
-      ] ?? []
-    : [];
+  )?.enrollment;
+  const status = enrollment?.enrollmentStatus as EnrollmentStatus | undefined;
+  const className = classesQuery.data?.find((row) => row.id === enrollment?.classId)?.name;
+  const sectionName = sectionsQuery.data?.find((row) => row.id === enrollment?.sectionId)?.name;
 
-  const [transitionOpen, setTransitionOpen] = useState(false);
-  const [transitionError, setTransitionError] = useState<unknown>(null);
   const utils = trpc.useUtils();
   const transition = trpc.enrollment.transition.useMutation();
-  const uploadPhoto = trpc.student.uploadPhoto.useMutation();
-  const removePhotoMutation = trpc.student.removePhoto.useMutation();
-  const moveAlong = async (to: EnrollmentStatus) => {
-    if (!enrollment || !organizationId) return;
-    setTransitionError(null);
-    try {
-      await transition.mutateAsync({
-        organizationId,
-        id: enrollment.enrollment.id,
-        to,
-      });
-      await utils.enrollment.list.invalidate();
-    } catch (error) {
-      setTransitionError(error);
-    }
-  };
+  const [leavingOpen, setLeavingOpen] = useState(false);
+  const [leavingBusy, setLeavingBusy] = useState(false);
+  const [leavingError, setLeavingError] = useState<unknown>(null);
 
-  // The student's own photo (Step 2 rework): viewed through the stable
-  // storage route, set from the gallery, removed behind a confirm — all
-  // through the ordinary student.photo/uploadPhoto/removePhoto seam.
-  const photoQuery = trpc.student.photo.useQuery(
-    { organizationId: organizationId ?? "", id: studentId ?? "" },
-    { enabled: ready && Boolean(organizationId) && canRead && Boolean(studentId) },
-  );
-  const photoObjectId = photoQuery.data?.objectId ?? null;
-  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const photo = useStudentPhoto(organizationId, studentId, ready && canRead);
   const [photoSheetOpen, setPhotoSheetOpen] = useState(false);
-  const [photoBusy, setPhotoBusy] = useState(false);
   const [photoError, setPhotoError] = useState<unknown>(null);
 
-  const loadPhoto = useCallback(async (objectId: string) => {
-    try {
-      // The session cookie lives in SecureStore, not the native cookie jar —
-      // it must ride the header explicitly (same rule as the tRPC link;
-      // credentials: "include" here sent no cookie and the route 401'd,
-      // silently keeping the initials avatar).
-      const cookies = await authClient.getCookie();
-      const response = await fetch(`${env.EXPO_PUBLIC_API_URL}/api/storage/${objectId}`, {
-        credentials: "omit",
-        ...(cookies ? { headers: { Cookie: cookies } } : {}),
-      });
-      if (!response.ok) return;
-      const blob = await response.blob();
-      const reader = new FileReader();
-      reader.onload = () => setPhotoUri(String(reader.result));
-      reader.readAsDataURL(blob);
-    } catch {
-      // A failed render keeps the initials avatar — never a broken image.
-    }
-  }, []);
-
-  const pickPhoto = async () => {
-    setPhotoError(null);
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
-        quality: 1,
-        exif: false,
-      });
-      if (result.canceled || !studentId || !organizationId) return;
-      const asset = result.assets[0];
-      setPhotoBusy(true);
-      const base64 = await photoToWireBase64(asset.uri, asset.width, asset.height);
-      if (!base64) {
-        setPhotoError(new Error(copy.photos.tooLarge));
-        return;
-      }
-      await uploadPhoto.mutateAsync({
-        organizationId,
-        id: studentId,
-        data: { contentType: "image/jpeg", dataBase64: base64 },
-      });
-      const objectId = await utils.student.photo.fetch({
-        organizationId,
-        id: studentId,
-      });
-      if (objectId?.objectId) await loadPhoto(objectId.objectId);
-      setPhotoSheetOpen(false);
-    } catch (error) {
-      setPhotoError(error);
-    } finally {
-      setPhotoBusy(false);
-    }
-  };
-
-  const removePhoto = () => {
-    if (!studentId || !organizationId) return;
-    Alert.alert(
-      copy.profilePhoto.removeConfirmTitle,
-      copy.profilePhoto.removeConfirmBody,
-      [
-        { text: copy.common.cancel, style: "cancel" },
-        {
-          text: copy.profilePhoto.removeConfirm,
-          style: "destructive",
-          onPress: () => {
-            setPhotoBusy(true);
-            removePhotoMutation
-              .mutateAsync({ organizationId, id: studentId })
-              .then(() => {
-                setPhotoUri(null);
-                setPhotoSheetOpen(false);
-              })
-              .catch((error: unknown) => setPhotoError(error))
-              .finally(() => setPhotoBusy(false));
-          },
-        },
-      ],
-    );
-  };
-
-  // The stored photo renders through a fetched data URI (RN's Image does not
-  // ride the session cookie the storage route requires).
-  useEffect(() => {
-    if (photoObjectId) void loadPhoto(photoObjectId);
-  }, [photoObjectId, loadPhoto]);
-
-  // Enrollment sheets (Step 2 rework): a two-field act never leaves the
-  // record — create, assign-section, and roll edit open here, not on a
-  // pushed screen.
-  const [enrollSheet, setEnrollSheet] = useState<
-    null | "create" | "assign" | "roll"
-  >(null);
+  const [enrollSheet, setEnrollSheet] = useState<null | "create" | "assign" | "roll">(null);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
+
   const student = studentQuery.data;
   const name = student
-    ? [student.firstName, student.middleName, student.lastName]
-        .filter(Boolean)
-        .join(" ")
+    ? [student.firstName, student.middleName, student.lastName].filter(Boolean).join(" ")
     : "";
 
   const editAction =
@@ -236,6 +142,13 @@ export function StudentDetailScreen() {
         }
       : undefined;
 
+  const refresh = () => {
+    void studentQuery.refetch();
+    void guardiansQuery.refetch();
+    void photo.refetch();
+    if (enrollmentsEnabled) void enrollmentsQuery.refetch();
+  };
+
   const frame = (children: ReactNode) => (
     <ScreenFrame
       title={student ? name : copy.students.title}
@@ -243,6 +156,8 @@ export function StudentDetailScreen() {
       backAccessibilityLabel={copy.common.back}
       action={editAction}
       titleTestID="student-detail-title"
+      onRefresh={student ? refresh : undefined}
+      refreshing={studentQuery.isRefetching}
     >
       {children}
     </ScreenFrame>
@@ -289,55 +204,280 @@ export function StudentDetailScreen() {
     );
   }
 
+  const profile = copy.students.profile;
   const guardians = guardiansQuery.data ?? [];
+  const firstContact = guardians.find((guardian) => guardian.isPrimary) ?? guardians[0];
+  const age = ageInYears(student.dateOfBirth, todayIso());
+  const left = status ? hasLeft(status) : false;
+  const canPlace = canEnrollUpdate && !left;
+  const leaving = status && canEnrollUpdate ? leavingOptions(status) : [];
+  const address = addressBlock(student);
+  const hasContact = Boolean(student.phone || student.email || address);
+  const hasHealth = Boolean(
+    student.medicalConditions || student.emergencyContactName || student.emergencyContactPhone,
+  );
+  const background = (
+    [
+      { label: copy.students.fields.nationality, value: student.nationality },
+      { label: copy.students.fields.religion, value: student.religion },
+      { label: copy.students.fields.category, value: student.category },
+      { label: copy.students.fields.motherTongue, value: student.motherTongue },
+      {
+        label: copy.students.fields.aadhaar,
+        value: student.aadhaarNumber ? maskAadhaar(student.aadhaarNumber) : null,
+      },
+    ] as { label: string; value: string | null }[]
+  ).filter((row) => row.value);
+  const emptyGroups = [
+    !student.phone && !student.email ? profile.groups.contact : null,
+    !address ? profile.groups.address : null,
+    !hasHealth && !student.bloodGroup ? profile.groups.health : null,
+    background.length === 0 ? profile.groups.background : null,
+  ].filter(Boolean);
+
+  const leave = async (to: LeavingStatus) => {
+    if (!enrollment || !status || !organizationId) return;
+    setLeavingError(null);
+    setLeavingBusy(true);
+    try {
+      for (const next of leavingPath(status, to)) {
+        await transition.mutateAsync({ organizationId, id: enrollment.id, to: next });
+      }
+    } catch (error) {
+      setLeavingError(error);
+    } finally {
+      await utils.enrollment.list.invalidate();
+      setLeavingBusy(false);
+    }
+  };
+
+  const confirmRemovePhoto = () =>
+    Alert.alert(copy.profilePhoto.removeConfirmTitle, copy.profilePhoto.removeConfirmBody, [
+      { text: copy.common.cancel, style: "cancel" },
+      {
+        text: copy.profilePhoto.removeConfirm,
+        style: "destructive",
+        onPress: () => void photo.remove().catch(setPhotoError),
+      },
+    ]);
+
+  const photoLabel = photo.hasPhoto ? copy.profilePhoto.change : copy.profilePhoto.add;
 
   return frame(
     <View style={styles.body}>
-      {savedMsg ? (
-        <Notice tone="positive" message={savedMsg} testID="student-saved" />
-      ) : null}
-      <SectionLabel>{copy.students.sections.identity}</SectionLabel>
-      <Card padless>
-        <Pressable
-          accessibilityRole={canUpdate ? "button" : undefined}
-          accessibilityLabel={
-            photoUri
-              ? copy.profilePhoto.change
-              : copy.profilePhoto.change
-          }
-          accessibilityHint={canUpdate ? copy.profilePhoto.changeHint : undefined}
-          onPress={canUpdate ? () => setPhotoSheetOpen(true) : undefined}
-          style={({ pressed }) => [
-            styles.photoRow,
-            pressed && canUpdate ? styles.photoPressed : null,
-          ]}
-          testID="student-photo-row"
-        >
-          {photoUri ? (
-            <Image source={{ uri: photoUri }} style={styles.photo} />
-          ) : (
-            <View style={[styles.photo, styles.photoEmpty]}>
-              <ThemedText variant="name" color={colors.muted}>
-                {student.firstName.charAt(0)}
-                {student.lastName.charAt(0)}
-              </ThemedText>
+      {savedMsg ? <Notice tone="positive" message={savedMsg} testID="student-saved" /> : null}
+
+      <Card padless testID="student-hero">
+        <View style={styles.heroTop}>
+          <StudentPhotoView
+            uri={photo.uri}
+            name={name}
+            size={84}
+            busy={photo.busy}
+            onPress={
+              canUpdate
+                ? () => {
+                    setPhotoError(null);
+                    setPhotoSheetOpen(true);
+                  }
+                : undefined
+            }
+            accessibilityLabel={photoLabel}
+            accessibilityHint={copy.profilePhoto.changeHint}
+            testID="student-photo-row"
+          />
+          <View style={styles.heroFacts}>
+            <ThemedText variant="bodyStrong">
+              {[age === null ? null : profile.age(age), copy.studentForm.genders[student.gender]]
+                .filter(Boolean)
+                .join(" · ")}
+            </ThemedText>
+            <ThemedText variant="meta">
+              {profile.born(formatReadableDate(student.dateOfBirth))}
+            </ThemedText>
+            <View style={styles.pills}>
+              {student.bloodGroup ? (
+                <StatusPill
+                  label={copy.studentForm.bloodGroups[student.bloodGroup]}
+                  tone="neutral"
+                  testID="student-blood-group-pill"
+                />
+              ) : null}
+              {status && left ? (
+                <StatusPill
+                  label={copy.people.enrollment.statuses[status]}
+                  tone="critical"
+                  testID="student-left-pill"
+                />
+              ) : null}
             </View>
-          )}
-          <View style={styles.photoText}>
-            <ThemedText variant="bodyStrong" numberOfLines={1}>
-              {photoUri ? copy.profilePhoto.change : copy.profilePhoto.change}
-            </ThemedText>
-            <ThemedText variant="meta" numberOfLines={1}>
-              {student.admissionNumber}
-            </ThemedText>
           </View>
-          {canUpdate ? (
-            <AppIcon name="chevronRight" size={18} color={colors.chevron} />
+        </View>
+
+        {canReadEnrollment && academicYear ? (
+          enrollmentsQuery.isPending ? (
+            <View style={styles.placementLoading}>
+              <Skeleton height={44} />
+            </View>
+          ) : enrollmentsQuery.isError ? (
+            <View style={styles.enrollBlock}>
+              <ThemedText variant="meta">{profile.enrollmentFailed}</ThemedText>
+              <CapsuleButton
+                title={copy.common.retry}
+                variant="secondary"
+                size="compact"
+                onPress={() => void enrollmentsQuery.refetch()}
+                testID="student-enrollment-retry"
+                style={styles.alignStart}
+              />
+            </View>
+          ) : enrollment ? (
+            <View style={styles.placement} testID="student-placement">
+              <PlacementCell
+                label={copy.people.enrollment.classLabel}
+                value={className ?? null}
+                testID="student-class"
+              />
+              <PlacementCell
+                label={copy.people.enrollment.sectionLabel}
+                value={enrollment.sectionId ? (sectionName ?? null) : null}
+                action={enrollment.sectionId ? undefined : profile.assign}
+                onPress={
+                  canPlace && !enrollment.sectionId ? () => setEnrollSheet("assign") : undefined
+                }
+                accessibilityHint={profile.assignHint}
+                testID="student-section"
+              />
+              <PlacementCell
+                label={copy.people.enrollment.rollLabel}
+                value={enrollment.rollNumber}
+                action={profile.add}
+                onPress={canPlace && enrollment.sectionId ? () => setEnrollSheet("roll") : undefined}
+                accessibilityHint={enrollment.rollNumber ? profile.editRollHint : profile.addRollHint}
+                testID="student-roll"
+              />
+            </View>
+          ) : (
+            <View style={styles.enrollBlock}>
+              <ThemedText variant="bodyStrong">{profile.enrollTitle}</ThemedText>
+              <ThemedText variant="meta">{profile.enrollBody}</ThemedText>
+              {canEnroll ? (
+                <CapsuleButton
+                  title={copy.people.enrollment.enroll}
+                  icon="add"
+                  size="compact"
+                  onPress={() => setEnrollSheet("create")}
+                  testID="enrollment-start"
+                  style={styles.alignStart}
+                />
+              ) : null}
+            </View>
+          )
+        ) : null}
+      </Card>
+
+      {photoError ? (
+        <Notice
+          tone="critical"
+          message={toFriendlyError(photoError).message}
+          testID="student-photo-error"
+        />
+      ) : null}
+
+      {firstContact || canSeeFees ? (
+        <View style={styles.quickActions}>
+          {firstContact ? (
+            <CapsuleButton
+              title={profile.call(copy.students.relations[firstContact.relation])}
+              icon="call"
+              variant="secondary"
+              size="compact"
+              onPress={() => callNumber(firstContact.phone)}
+              testID="student-call-first"
+              style={styles.quickAction}
+            />
           ) : null}
-        </Pressable>
+          {canSeeFees ? (
+            <CapsuleButton
+              title={profile.fees}
+              icon="fees"
+              variant="secondary"
+              size="compact"
+              onPress={() =>
+                router.push({
+                  pathname: "/fees/student/[studentId]",
+                  params: { studentId: student.id },
+                })
+              }
+              testID="student-fees"
+              style={styles.quickAction}
+            />
+          ) : null}
+        </View>
+      ) : null}
+
+      <SectionLabel>{profile.family}</SectionLabel>
+      {guardiansQuery.isPending ? (
+        <Card>
+          <Skeleton height={20} width="40%" />
+        </Card>
+      ) : (
+        <Card padless>
+          {guardians.length === 0 ? (
+            <ThemedText variant="meta" style={styles.emptyLine}>
+              {copy.students.guardiansEmpty}
+            </ThemedText>
+          ) : null}
+          {guardians.map((guardian, index) => (
+            <GuardianRow
+              key={guardian.id}
+              guardian={guardian}
+              first={index === 0}
+              onPress={
+                canUpdate
+                  ? () =>
+                      router.push({
+                        pathname: "/guardian-form",
+                        params: { studentId: student.id, guardianId: guardian.id },
+                      })
+                  : undefined
+              }
+            />
+          ))}
+          {canUpdate ? (
+            <LinkRow
+              title={copy.people.guardians.add}
+              icon="add"
+              onPress={() =>
+                router.push({ pathname: "/guardian-form", params: { studentId: student.id } })
+              }
+              accessibilityHint={copy.people.guardians.addHint}
+              first={guardians.length === 0}
+              testID="guardian-add"
+            />
+          ) : null}
+          {canSeePortal ? (
+            <LinkRow
+              title={profile.familyLogin}
+              detail={profile.familyLoginDetail}
+              icon="key"
+              onPress={() =>
+                router.push({ pathname: "/portal-access", params: { studentId: student.id } })
+              }
+              accessibilityHint={copy.people.portal.hint}
+              first={guardians.length === 0 && !canUpdate}
+              testID="student-portal-link"
+            />
+          ) : null}
+        </Card>
+      )}
+
+      <SectionLabel>{profile.record}</SectionLabel>
+      <Card padless>
         <FactRow
           label={copy.students.fields.admissionNumber}
           value={student.admissionNumber}
+          first
           testID="student-fact-admission"
         />
         {student.admissionDate ? (
@@ -346,31 +486,47 @@ export function StudentDetailScreen() {
             value={formatReadableDate(student.admissionDate)}
           />
         ) : null}
-        <FactRow
-          label={copy.students.fields.dateOfBirth}
-          value={formatReadableDate(student.dateOfBirth)}
-        />
-        <FactRow
-          label={copy.students.fields.gender}
-          value={copy.studentForm.genders[student.gender]}
-        />
-        {student.bloodGroup ? (
+        {status ? (
           <FactRow
-            label={copy.students.fields.bloodGroup}
-            value={copy.studentForm.bloodGroups[student.bloodGroup]}
+            label={copy.people.enrollment.statusLabel}
+            value={
+              // Older rows can hold a section while still marked admitted.
+              copy.people.enrollment.statuses[
+                status === "admitted" && enrollment?.sectionId ? "section_assigned" : status
+              ]
+            }
+            testID="student-status"
+          />
+        ) : null}
+        {leaving.length > 0 ? (
+          <LinkRow
+            title={leavingBusy ? copy.people.loading : profile.leaving}
+            onPress={() => setLeavingOpen(true)}
+            accessibilityHint={profile.leavingHint}
+            locked={leavingBusy}
+            testID="student-leaving"
           />
         ) : null}
       </Card>
+      {leavingError ? (
+        <Notice
+          tone="critical"
+          message={toFriendlyError(leavingError).message}
+          testID="student-leaving-error"
+        />
+      ) : null}
 
-      {(student.phone || student.email) && (
+      {hasContact ? (
         <>
-          <SectionLabel>{copy.students.sections.contact}</SectionLabel>
+          <SectionLabel>{profile.contact}</SectionLabel>
           <Card padless>
             {student.phone ? (
               <FactRow
                 label={copy.students.fields.phone}
                 value={student.phone}
                 first
+                onPress={() => callNumber(student.phone ?? "")}
+                accessibilityHint={profile.callHint}
               />
             ) : null}
             {student.email ? (
@@ -380,85 +536,23 @@ export function StudentDetailScreen() {
                 first={!student.phone}
               />
             ) : null}
+            {address ? (
+              <ThemedText
+                variant="body"
+                style={[
+                  styles.addressBlock,
+                  student.phone || student.email ? styles.divided : null,
+                ]}
+                testID="student-address"
+              >
+                {address}
+              </ThemedText>
+            ) : null}
           </Card>
         </>
-      )}
+      ) : null}
 
-      {(student.nationality ||
-        student.religion ||
-        student.category ||
-        student.motherTongue ||
-        student.aadhaarNumber) && (
-        <>
-          <SectionLabel>{copy.students.sections.background}</SectionLabel>
-          <Card padless>
-            {(
-              [
-                { key: "nationality", value: student.nationality },
-                { key: "religion", value: student.religion },
-                { key: "category", value: student.category },
-                { key: "motherTongue", value: student.motherTongue },
-                { key: "aadhaar", value: student.aadhaarNumber },
-              ] as { key: string; value: string | null }[]
-            )
-              .flatMap((row) =>
-                row.value ? [{ key: row.key, value: row.value }] : [],
-              )
-              .map((row, index) => (
-                <FactRow
-                  key={row.key}
-                  label={
-                    copy.students.fields[
-                      row.key as keyof typeof copy.students.fields
-                    ]
-                  }
-                  value={row.value}
-                  first={index === 0}
-                />
-              ))}
-          </Card>
-        </>
-      )}
-
-      {(student.addressLine1 ||
-        student.addressLine2 ||
-        student.city ||
-        student.state ||
-        student.pincode) && (
-        <>
-          <SectionLabel>{copy.students.sections.address}</SectionLabel>
-          <Card padless>
-            {(
-              [
-                { key: "addressLine1", value: student.addressLine1 },
-                { key: "addressLine2", value: student.addressLine2 },
-                { key: "city", value: student.city },
-                { key: "state", value: student.state },
-                { key: "pincode", value: student.pincode },
-              ] as { key: string; value: string | null }[]
-            )
-              .flatMap((row) =>
-                row.value ? [{ key: row.key, value: row.value }] : [],
-              )
-              .map((row, index) => (
-                <FactRow
-                  key={row.key}
-                  label={
-                    copy.students.fields[
-                      row.key as keyof typeof copy.students.fields
-                    ]
-                  }
-                  value={row.value}
-                  first={index === 0}
-                />
-              ))}
-          </Card>
-        </>
-      )}
-
-      {(student.medicalConditions ||
-        student.emergencyContactName ||
-        student.emergencyContactPhone) && (
+      {hasHealth ? (
         <>
           <SectionLabel>{copy.students.sections.medical}</SectionLabel>
           <Card padless>
@@ -480,191 +574,83 @@ export function StudentDetailScreen() {
               <FactRow
                 label={copy.students.fields.emergencyPhone}
                 value={student.emergencyContactPhone}
-                first={
-                  !student.medicalConditions && !student.emergencyContactName
-                }
+                first={!student.medicalConditions && !student.emergencyContactName}
+                onPress={() => callNumber(student.emergencyContactPhone ?? "")}
+                accessibilityHint={profile.callHint}
               />
             ) : null}
           </Card>
         </>
-      )}
-
-      <SectionLabel>{copy.people.enrollmentLabel}</SectionLabel>
-      {enrollmentsQuery.isPending ? (
-        <Card>
-          <Skeleton height={20} width="40%" />
-        </Card>
-      ) : enrollment ? (
-        <Card padless>
-          <FactRow
-            label={copy.people.enrollment.statusLabel}
-            value={
-              copy.people.enrollment.statuses[
-                enrollment.enrollment.enrollmentStatus as EnrollmentStatus
-              ] ?? enrollment.enrollment.enrollmentStatus
-            }
-            first
-          />
-          {enrollment.enrollment.rollNumber ? (
-            <FactRow
-              label={copy.people.enrollment.rollLabel}
-              value={
-                canEnrollUpdate
-                  ? `${enrollment.enrollment.rollNumber} · Edit`
-                  : enrollment.enrollment.rollNumber
-              }
-              onPress={
-                canEnrollUpdate
-                  ? () =>
-                      setEnrollSheet(enrollment.enrollment.sectionId === null ? "assign" : "roll")
-                  : undefined
-              }
-              accessibilityHint={copy.people.enrollment.editRoll}
-            />
-          ) : null}
-          {canEnrollUpdate && enrollment.enrollment.sectionId === null ? (
-            <FactRow
-              label={copy.people.enrollment.sectionLabel}
-              value={copy.people.enrollment.noSection}
-              onPress={() =>
-                setEnrollSheet(enrollment.enrollment.sectionId === null ? "assign" : "roll")
-              }
-              accessibilityHint={copy.people.enrollment.assignHint}
-            />
-          ) : null}
-          {canEnrollUpdate && transitions.length > 0 ? (
-            <FactRow
-              label={copy.people.enrollment.moveAlong}
-              value={copy.people.enrollment.statuses[
-                transitions[0] as EnrollmentStatus
-              ]}
-              onPress={() => setTransitionOpen(true)}
-              accessibilityHint={copy.people.enrollment.moveAlongHint}
-            />
-          ) : null}
-        </Card>
-      ) : (
-        <Card>
-          <ThemedText variant="meta">
-            {copy.people.enrollment.notEnrolledTitle} —{" "}
-            {copy.people.enrollment.notEnrolledBody}
-          </ThemedText>
-          {canEnroll ? (
-            <CapsuleButton
-              title={copy.people.enrollment.enroll}
-              icon="add"
-              onPress={() =>
-                setEnrollSheet("create")
-              }
-              testID="enrollment-start"
-              style={styles.enrollButton}
-            />
-          ) : null}
-        </Card>
-      )}
-      {transitionError ? (
-        <Notice
-          tone="critical"
-          message={toFriendlyError(transitionError).message}
-          testID="enrollment-transition-error"
-        />
       ) : null}
 
-      <SectionLabel>{copy.students.sections.guardians}</SectionLabel>
-      {guardiansQuery.isPending ? (
-        <Card>
-          <Skeleton height={20} width="40%" />
-        </Card>
-      ) : guardians.length > 0 ? (
-        <Card padless>
-          {guardians.map((guardian, index) => (
-            <GuardianRow
-              key={guardian.id}
-              guardian={guardian}
-              first={index === 0}
-              onPress={
-                canUpdate
-                  ? () =>
-                      router.push({
-                        pathname: "/guardian-form",
-                        params: { studentId: studentId ?? "", guardianId: guardian.id },
-                      })
-                  : undefined
-              }
-            />
-          ))}
-        </Card>
-      ) : (
-        <Card>
-          <ThemedText variant="meta">{copy.students.guardiansEmpty}</ThemedText>
-        </Card>
-      )}
-      {canUpdate ? (
-        <Card padless>
-          <LinkRow
-            title={copy.people.guardians.add}
-            detail={copy.people.guardians.addRowDetail}
-            icon="add"
-            onPress={() =>
-              router.push({
-                pathname: "/guardian-form",
-                params: { studentId: studentId ?? "" },
-              })
-            }
-            accessibilityHint={copy.people.guardians.addHint}
-            first
-            testID="guardian-add"
-          />
-        </Card>
-      ) : null}
-
-      {canSeePortal ? (
+      {background.length > 0 ? (
         <>
-          <SectionLabel>{copy.people.portal.title}</SectionLabel>
+          <SectionLabel>{copy.students.sections.background}</SectionLabel>
           <Card padless>
-            <LinkRow
-              title={copy.people.portal.title}
-              detail={copy.people.portal.detail}
-              icon="key"
-              onPress={() =>
-                router.push({
-                  pathname: "/portal-access",
-                  params: { studentId: studentId ?? "" },
-                })
-              }
-              accessibilityHint={copy.people.portal.hint}
-              first
-              testID="student-portal-link"
-            />
+            {background.map((row, index) => (
+              <FactRow
+                key={row.label}
+                label={row.label}
+                value={row.value ?? ""}
+                first={index === 0}
+              />
+            ))}
           </Card>
         </>
       ) : null}
 
+      {canUpdate && emptyGroups.length > 0 ? (
+        <Card padless style={styles.moreToAdd}>
+          <LinkRow
+            first
+            title={profile.moreToAdd}
+            detail={profile.moreToAddDetail(emptyGroups.join(", "))}
+            icon="edit"
+            onPress={() =>
+              router.push({ pathname: "/student-form", params: { id: student.id } })
+            }
+            accessibilityHint={profile.moreToAddHint}
+            testID="student-more-to-add"
+          />
+        </Card>
+      ) : null}
+
+      <PhotoSourceSheet
+        visible={photoSheetOpen}
+        hasPhoto={photo.hasPhoto}
+        onDismiss={() => setPhotoSheetOpen(false)}
+        onPicked={(picked) => void photo.upload(picked).catch(setPhotoError)}
+        onRemove={confirmRemovePhoto}
+        onError={setPhotoError}
+      />
+
       <ChoiceSheet
-        visible={transitionOpen}
-        title={copy.people.enrollment.transitions.sheetTitle}
-        options={transitions.map((to) => ({
+        visible={leavingOpen}
+        title={profile.leavingTitle}
+        options={leaving.map((to) => ({
           id: to,
-          label: copy.people.enrollment.statuses[to],
+          label: profile.leavingReasons[to].label,
+          detail: profile.leavingReasons[to].detail,
         }))}
         currentId=""
-        onSelect={(to) => {
-          setTransitionOpen(false);
+        onSelect={(id) => {
+          setLeavingOpen(false);
+          const to = id as LeavingStatus;
           Alert.alert(
-            copy.people.enrollment.transitions.confirmTitle,
-            copy.people.enrollment.transitions.confirmBody,
+            profile.leavingConfirmTitle(student.firstName, profile.leavingReasons[to].label),
+            profile.leavingConfirmBody,
             [
               { text: copy.common.cancel, style: "cancel" },
               {
-                text: copy.people.enrollment.transitions.confirm,
+                text: profile.leavingConfirm,
                 style: "destructive",
-                onPress: () => void moveAlong(to as EnrollmentStatus),
+                onPress: () => void leave(to),
               },
             ],
           );
         }}
-        onDismiss={() => setTransitionOpen(false)}
-        testIDPrefix="enrollment-transition"
+        onDismiss={() => setLeavingOpen(false)}
+        testIDPrefix="student-leaving-option"
       />
 
       {enrollSheet ? (
@@ -672,9 +658,9 @@ export function StudentDetailScreen() {
           organizationId={organizationId ?? ""}
           schoolId={schoolId}
           academicYearId={academicYear?.id ?? null}
-          studentId={studentId ?? ""}
+          studentId={student.id}
           mode={enrollSheet}
-          existing={enrollment?.enrollment ?? null}
+          existing={enrollment ?? null}
           onClose={() => setEnrollSheet(null)}
           onSaved={(message) => {
             setEnrollSheet(null);
@@ -682,63 +668,72 @@ export function StudentDetailScreen() {
           }}
         />
       ) : null}
-
-      {photoSheetOpen ? (
-      <FormSheet
-        title={copy.profilePhoto.sheetTitle}
-        onClose={() => setPhotoSheetOpen(false)}
-        testIDPrefix="student-photo-sheet"
-        footer={
-          <>
-            {photoError ? (
-              <Notice
-                tone="critical"
-                message={toFriendlyError(photoError).message}
-                testID="student-photo-error"
-              />
-            ) : null}
-            {canUpdate ? (
-              <>
-                <CapsuleButton
-                  title={copy.profilePhoto.change}
-                  icon="add"
-                  onPress={() => void pickPhoto()}
-                  loading={photoBusy}
-                  disabled={photoBusy}
-                  testID="student-photo-pick"
-                />
-                {photoObjectId ? (
-                  <CapsuleButton
-                    title={copy.profilePhoto.remove}
-                    icon="close"
-                    variant="destructive"
-                    onPress={removePhoto}
-                    disabled={photoBusy}
-                    testID="student-photo-remove"
-                  />
-                ) : null}
-              </>
-            ) : null}
-          </>
-        }
-      >
-        <View style={styles.photoSheetPreview}>
-          {photoUri ? (
-            <Image source={{ uri: photoUri }} style={styles.photo} />
-          ) : (
-            <View style={[styles.photo, styles.photoEmpty]}>
-              <ThemedText variant="name" color={colors.muted}>
-                {student ? student.firstName.charAt(0) : ""}
-                {student ? student.lastName.charAt(0) : ""}
-              </ThemedText>
-            </View>
-          )}
-          <ThemedText variant="meta">{copy.profilePhoto.changeHint}</ThemedText>
-        </View>
-      </FormSheet>
-      ) : null}
     </View>,
-  );}
+  );
+}
+
+/** One of class, section and roll: the value, or the way to fill it in. */
+function PlacementCell({
+  label,
+  value,
+  action,
+  onPress,
+  accessibilityHint,
+  testID,
+}: {
+  label: string;
+  value: string | null;
+  /** Shown in place of a missing value when it can be filled in here. */
+  action?: string;
+  onPress?: () => void;
+  accessibilityHint?: string;
+  testID: string;
+}) {
+  const showAction = !value && Boolean(onPress) && Boolean(action);
+  const body = (
+    <>
+      <ThemedText variant="caption" color={colors.muted} numberOfLines={1}>
+        {label}
+      </ThemedText>
+      {showAction ? (
+        <View style={styles.cellAction}>
+          <AppIcon name="add" size={16} color={colors.accentDeep} />
+          <ThemedText variant="bodyStrong" color={colors.accentDeep} numberOfLines={1}>
+            {action}
+          </ThemedText>
+        </View>
+      ) : (
+        <ThemedText
+          variant="bodyStrong"
+          color={value ? undefined : colors.muted}
+          numberOfLines={2}
+          testID={`${testID}-value`}
+        >
+          {value ?? copy.students.profile.notSet}
+        </ThemedText>
+      )}
+    </>
+  );
+  if (!onPress) {
+    return (
+      <View style={styles.cell} testID={testID}>
+        {body}
+      </View>
+    );
+  }
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${label}, ${value ?? action ?? ""}`}
+      accessibilityHint={accessibilityHint}
+      onPress={onPress}
+      style={({ pressed }) => [styles.cell, pressed ? styles.cellPressed : null]}
+      testID={testID}
+    >
+      {body}
+    </Pressable>
+  );
+}
 
 function GuardianRow({
   guardian,
@@ -750,9 +745,9 @@ function GuardianRow({
   onPress?: () => void;
 }) {
   const flags = [
+    guardian.phone,
     guardian.isPrimary ? copy.students.guardianPrimary : null,
     guardian.isEmergencyContact ? copy.students.guardianEmergency : null,
-    guardian.canAccessPortal ? copy.students.guardianPortal : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -760,18 +755,27 @@ function GuardianRow({
   return (
     <PersonRow
       name={name}
-      meta={copy.students.guardianMeta(
-        copy.students.relations[guardian.relation],
-        flags || null,
-      )}
+      meta={copy.students.guardianMeta(copy.students.relations[guardian.relation], flags)}
       first={first}
       onPress={onPress}
       accessibilityHint={onPress ? copy.students.openHint : undefined}
       testID={`student-guardian-${guardian.id}`}
+      trailing={
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={copy.students.profile.callGuardian(name)}
+          accessibilityHint={copy.students.profile.callHint}
+          hitSlop={4}
+          onPress={() => callNumber(guardian.phone)}
+          style={({ pressed }) => [styles.callButton, pressed ? styles.callPressed : null]}
+          testID={`student-guardian-call-${guardian.id}`}
+        >
+          <AppIcon name="call" size={18} color={colors.accentDeep} />
+        </Pressable>
+      }
     />
   );
 }
-
 
 function EnrollmentSheet({
   organizationId,
@@ -813,15 +817,8 @@ function EnrollmentSheet({
   const pending = create.isPending || update.isPending || assignSection.isPending;
 
   const sectionOptions = (sections.data ?? [])
-    .filter((section) => (mode === "create" && classId ? section.classId === classId : true))
-    .map((section) => {
-      const sectionClassName =
-        (classes.data ?? []).find((candidate) => candidate.id === section.classId)?.name ?? "";
-      return {
-        id: section.id,
-        label: [sectionClassName, section.name].filter(Boolean).join(" · "),
-      };
-    });
+    .filter((section) => section.classId === classId)
+    .map((section) => ({ id: section.id, label: section.name }));
 
   const rollInvalid = roll.trim().length > 20;
   const classInvalid = mode === "create" && !classId;
@@ -901,6 +898,7 @@ function EnrollmentSheet({
             loading={pending}
             disabled={pending}
             testID="enrollment-sheet-save"
+            style={styles.sheetSave}
           />
         </>
       }
@@ -948,6 +946,7 @@ function EnrollmentSheet({
         onChangeText={setRoll}
         help={copy.people.enrollment.fields.rollHelp}
         autoCapitalize="characters"
+        autoFocus={mode === "roll"}
         maxLength={20}
         testID="enrollment-sheet-roll"
       />
@@ -962,39 +961,95 @@ const styles = StyleSheet.create({
   skeleton: {
     gap: spacing.md,
   },
-  enrollButton: {
-    alignSelf: "stretch",
-    marginTop: spacing.sm,
-  },
-  photoRow: {
-    minHeight: 76,
+  heroTop: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+    gap: spacing.lg,
+    padding: spacing.lg,
   },
-  photoPressed: {
-    backgroundColor: colors.field,
-  },
-  photo: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.field,
-  },
-  photoEmpty: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  photoText: {
+  heroFacts: {
     flex: 1,
     gap: spacing.xxs,
   },
-  photoSheetPreview: {
+  pills: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  placement: {
+    flexDirection: "row",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.hairline,
+    backgroundColor: colors.canvas,
+    borderBottomLeftRadius: radius.lg,
+    borderBottomRightRadius: radius.lg,
+    overflow: "hidden",
+  },
+  placementLoading: {
+    padding: spacing.lg,
+    paddingTop: 0,
+  },
+  cell: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 64,
+    gap: spacing.xxs,
+    justifyContent: "center",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  cellPressed: {
+    backgroundColor: colors.field,
+  },
+  cellAction: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    marginTop: spacing.sm,
+    gap: spacing.xxs,
+  },
+  enrollBlock: {
+    gap: spacing.xs,
+    padding: spacing.lg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.hairline,
+  },
+  alignStart: {
+    alignSelf: "flex-start",
+    marginTop: spacing.xs,
+  },
+  quickActions: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  quickAction: {
+    flex: 1,
+  },
+  emptyLine: {
+    padding: spacing.lg,
+  },
+  callButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.full,
+    backgroundColor: colors.accentTint,
+  },
+  callPressed: {
+    backgroundColor: colors.accentStrong,
+  },
+  addressBlock: {
+    padding: spacing.lg,
+  },
+  divided: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.hairline,
+  },
+  moreToAdd: {
+    marginTop: spacing.lg,
+  },
+  sheetSave: {
+    alignSelf: "stretch",
   },
 });
