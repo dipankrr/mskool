@@ -33,6 +33,7 @@ export function DateField({
   error,
   minimumDate,
   maximumDate,
+  initialDate,
   disabled = false,
   testID,
 }: {
@@ -44,11 +45,14 @@ export function DateField({
   /** ISO bounds, inclusive. */
   minimumDate?: string;
   maximumDate?: string;
+  /** ISO. Where the picker opens with no value; a birth date is not near today. */
+  initialDate?: string;
   disabled?: boolean;
   testID?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const current = isoToLocalDate(value) ?? todayAtMidnight();
+  const current =
+    isoToLocalDate(value) ?? isoToLocalDate(initialDate) ?? todayAtMidnight();
   const hint = [error ?? help, copy.forms.datePickerHint]
     .filter(Boolean)
     .join(" ");

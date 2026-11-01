@@ -27,7 +27,6 @@ import { spacing } from "../../theme/tokens";
 import {
   isStudentFormDirty,
   normaliseStudentDigits,
-  studentCreatePayload,
   studentFormFrom,
   studentFormHasErrors,
   studentUpdatePayload,
@@ -42,10 +41,9 @@ type Student = inferRouterOutputs<AppRouter>["student"]["byId"];
 const BLOOD_GROUPS = Object.keys(copy.studentForm.bloodGroups) as StudentBloodGroup[];
 
 /**
- * Admit or edit a student (Step 2 chunk A). The route decides by `id`:
- * create mounts immediately, edit loads `student.byId` with `gcTime: 0` so a
- * cold deep link is the server's truth and a reopened form never mounts from
- * a stale cache (the chunk B walk lesson).
+ * Edit a student (Step 2 chunk A); admitting one is `/admit-student`. Loads
+ * `student.byId` with `gcTime: 0` so a cold deep link is the server's truth and
+ * a reopened form never mounts from a stale cache (the chunk B walk lesson).
  *
  * The admission number is permanent — the contract refuses it on update — so
  * in edit mode it renders locked with the reason written out. Deactivation
@@ -54,25 +52,23 @@ const BLOOD_GROUPS = Object.keys(copy.studentForm.bloodGroups) as StudentBloodGr
  */
 export function StudentFormScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const { organizationId, schoolId, ready } = useActiveContext();
+  const { organizationId, ready } = useActiveContext();
   const { has } = usePermissions();
 
-  const editing = Boolean(id);
-  const canCreate = has("student:create");
   const canUpdate = has("student:update");
   const canDelete = has("student:delete");
   const canRead = has("student:read");
-  const allowed = editing ? canRead && canUpdate : canRead && canCreate;
+  const allowed = canRead && canUpdate;
 
   const studentQuery = trpc.student.byId.useQuery(
     { organizationId: organizationId ?? "", id: id ?? "" },
     {
-      enabled: ready && Boolean(organizationId) && editing && canRead,
+      enabled: ready && Boolean(organizationId) && Boolean(id) && canRead,
       gcTime: 0,
     },
   );
 
-  const title = editing ? copy.studentForm.editTitle : copy.studentForm.addTitle;
+  const title = copy.studentForm.editTitle;
 
   if (!ready) {
     return (
@@ -119,7 +115,7 @@ export function StudentFormScreen() {
     );
   }
 
-  if (editing && studentQuery.isPending) {
+  if (id && studentQuery.isPending) {
     return (
       <ScreenFrame
         title={title}
@@ -138,7 +134,7 @@ export function StudentFormScreen() {
     );
   }
 
-  if (editing && studentQuery.isError) {
+  if (studentQuery.isError) {
     return (
       <ScreenFrame
         title={title}
@@ -154,7 +150,7 @@ export function StudentFormScreen() {
     );
   }
 
-  if (editing && !studentQuery.data) {
+  if (!studentQuery.data) {
     return (
       <ScreenFrame
         title={title}
@@ -173,29 +169,24 @@ export function StudentFormScreen() {
   return (
     <StudentFormBody
       organizationId={organizationId}
-      schoolId={schoolId}
-      student={studentQuery.data ?? null}
-      canWrite={editing ? canUpdate : canCreate}
-      canDelete={editing && canDelete}
+      student={studentQuery.data}
+      canWrite={canUpdate}
+      canDelete={canDelete}
     />
   );
 }
 
 function StudentFormBody({
   organizationId,
-  schoolId,
   student,
   canWrite,
   canDelete,
 }: {
   organizationId: string;
-  /** The active branch — a student is admitted INTO a school (create's address). */
-  schoolId: string | null;
-  student: Student | null;
+  student: Student;
   canWrite: boolean;
   canDelete: boolean;
 }) {
-  const editing = Boolean(student);
   const [initial] = useState<StudentForm>(() => studentFormFrom(student));
   const [form, setForm] = useState<StudentForm>(initial);
   const [touched, setTouched] = useState<Set<StudentFormField>>(new Set());
@@ -223,10 +214,9 @@ function StudentFormBody({
   }, [deactivated]);
 
   const utils = trpc.useUtils();
-  const create = trpc.student.create.useMutation();
   const update = trpc.student.update.useMutation();
   const deactivate = trpc.student.deactivate.useMutation();
-  const pending = create.isPending || update.isPending || deactivate.isPending;
+  const pending = update.isPending || deactivate.isPending;
 
   const set = (field: StudentFormField, value: string | null) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -246,28 +236,15 @@ function StudentFormBody({
     if (hasErrors) return;
 
     try {
-      if (student) {
-        await update.mutateAsync({
-          organizationId,
-          id: student.id,
-          data: studentUpdatePayload(form),
-        });
-        await Promise.all([
-          utils.student.list.invalidate(),
-          utils.student.byId.invalidate({ id: student.id }),
-        ]);
-      } else {
-        if (!schoolId) {
-          setSaveError(new Error(copy.students.noOrgBody));
-          return;
-        }
-        await create.mutateAsync({
-          organizationId,
-          schoolId,
-          data: studentCreatePayload(form),
-        });
-        await utils.student.list.invalidate();
-      }
+      await update.mutateAsync({
+        organizationId,
+        id: student.id,
+        data: studentUpdatePayload(form),
+      });
+      await Promise.all([
+        utils.student.list.invalidate(),
+        utils.student.byId.invalidate({ id: student.id }),
+      ]);
       setSaved(true);
     } catch (error) {
       setSaveError(error);
@@ -275,7 +252,6 @@ function StudentFormBody({
   };
 
   const confirmDeactivate = () => {
-    if (!student) return;
     Alert.alert(
       copy.studentForm.deactivateConfirmTitle,
       copy.studentForm.deactivateConfirmBody,
@@ -306,7 +282,7 @@ function StudentFormBody({
 
   return (
     <ScreenFrame
-      title={editing ? copy.studentForm.editTitle : copy.studentForm.addTitle}
+      title={copy.studentForm.editTitle}
       backAccessibilityLabel={copy.common.back}
       backTestID="student-form-back"
       footer={
@@ -326,12 +302,10 @@ function StudentFormBody({
               />
             ) : null}
             <CapsuleButton
-              title={
-                editing ? copy.studentForm.save : copy.studentForm.add
-              }
+              title={copy.studentForm.save}
               icon="check"
               onPress={() => void submit()}
-              loading={update.isPending || create.isPending}
+              loading={update.isPending}
               disabled={pending}
               testID="student-save"
               style={styles.save}
@@ -350,30 +324,14 @@ function StudentFormBody({
 
       <SectionLabel>{copy.studentForm.sections.basics}</SectionLabel>
       <Card style={styles.card}>
-        {editing ? (
-          <FormField
-            label={copy.studentForm.fields.admissionNumber}
-            value={form.admissionNumber}
-            onChangeText={() => {}}
-            help={copy.studentForm.admissionNote}
-            editable={false}
-            testID="student-admission-number"
-          />
-        ) : (
-          <FormField
-            label={copy.studentForm.fields.admissionNumber}
-            value={form.admissionNumber}
-            onChangeText={(admissionNumber) => set("admissionNumber", admissionNumber)}
-            onBlur={() => touch("admissionNumber")}
-            help={copy.studentForm.fields.admissionNumberHelp}
-            error={fieldError("admissionNumber")}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            maxLength={50}
-            editable={canWrite}
-            testID="student-admission-number"
-          />
-        )}
+        <FormField
+          label={copy.studentForm.fields.admissionNumber}
+          value={form.admissionNumber}
+          onChangeText={() => {}}
+          help={copy.studentForm.admissionNote}
+          editable={false}
+          testID="student-admission-number"
+        />
         <DateField
           label={copy.students.fields.admissionDate}
           value={form.admissionDate}
@@ -625,7 +583,7 @@ function StudentFormBody({
         />
       </Card>
 
-      {student && canDelete ? (
+      {canDelete ? (
         <View style={styles.deactivate}>
           <Notice
             tone="caution"

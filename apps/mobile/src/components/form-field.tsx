@@ -1,5 +1,6 @@
 import { StyleSheet, TextInput, View } from "react-native";
 import type { TextInputProps } from "react-native";
+import type { Ref } from "react";
 
 import { colors } from "../theme/brand-admin";
 import { fontFamily, fontSize, radius, spacing } from "../theme/tokens";
@@ -31,6 +32,11 @@ export function FormField({
   suffix,
   multiline = false,
   numberOfLines = 4,
+  inputRef,
+  autoFocus,
+  returnKeyType,
+  onSubmitEditing,
+  submitBehavior,
   testID,
 }: {
   label: string;
@@ -51,6 +57,13 @@ export function FormField({
   multiline?: boolean;
   /** Visible lines for a multiline field (default 4). */
   numberOfLines?: number;
+  /** For moving focus from the previous field's Next key. */
+  inputRef?: Ref<TextInput>;
+  autoFocus?: boolean;
+  returnKeyType?: TextInputProps["returnKeyType"];
+  onSubmitEditing?: () => void;
+  /** `submit` keeps the keyboard up while the Next key moves focus. */
+  submitBehavior?: TextInputProps["submitBehavior"];
   testID?: string;
 }) {
   return (
@@ -67,6 +80,11 @@ export function FormField({
         ]}
       >
         <TextInput
+          ref={inputRef}
+          autoFocus={autoFocus}
+          returnKeyType={returnKeyType}
+          onSubmitEditing={onSubmitEditing}
+          submitBehavior={submitBehavior}
           testID={testID}
           style={[styles.input, multiline ? styles.inputMultiline : null]}
           value={value}

@@ -141,7 +141,7 @@ export function StudentsScreen({
       ? {
           label: copy.students.add,
           icon: "add" as const,
-          onPress: () => router.push("/student-form"),
+          onPress: () => router.push("/admit-student"),
           accessibilityHint: copy.students.addHint,
           testID: "students-add",
         }
@@ -329,7 +329,7 @@ export function StudentsScreen({
             <CapsuleButton
               title={copy.students.add}
               icon="add"
-              onPress={() => router.push("/student-form")}
+              onPress={() => router.push("/admit-student")}
               testID="students-empty-add"
             />
           ) : null}
