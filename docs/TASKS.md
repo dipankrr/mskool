@@ -6,6 +6,8 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
+**STUDENT STATUSES - DECIDED, NOT BUILT, 2026-11-01.** `students.status`: `active` (with the school), `inactive` (no longer with it). `enrollmentStatus`: `admitted`, `studying`, `completed` (student stays active); `graduated`, `transferred_out`, `withdrawn`, `expelled` (student becomes inactive), plus a leaving date and reason. Next: (1) an ADR, the migration and one server action that changes both fields together, with rejoining reopening the same row; (2) one "current students" rule for attendance, homework, exams, billing and ID cards, with fee dues still showing anyone who owes; (3) mobile Students tab filters, opening on current students, and the profile's leaving and rejoin flow; (4) a minimal web fix for the changed types. **The promotion system is deferred** (see Later), so until it ships nothing sets `completed` or `graduated`, final-class students stay `studying`, and a school must not switch to a new session, because class lists would come up empty. **Known bug until (2):** a student who left stays on the attendance list and the server refuses them, so a section's save can fail; the profile's leaving message also wrongly says they come off attendance.
+
 **STUDENT PROFILE AND FULL ADMISSION FORM - MOBILE ONLY, ON `feat/admit-flow`, 2026-11-01.** Record in `.kilo/plans/2026-11-01-admit-flow.md` (round two). Admit gains a Full form view and an optional photo on step 1. The profile is rebuilt: class, section and roll in the hero, one-tap calls, "Student is leaving" replacing Move along. Set photo is fixed. Web is untouched and has none of this. Not walked: iOS, TalkBack, a saved camera photo, restricted accounts.
 
 **ADMIT FLOW REDESIGN - COMMITTED ON `feat/admit-flow`, NOT MERGED OR PUSHED, 2026-11-01.** Design and build record: `.kilo/plans/2026-11-01-admit-flow.md`. Web and mobile replace the long form with Student, Class, Family, Check, Done. No API, contract or schema change. Admit no longer asks for address, background or health on mobile, or for student phone and email on web; they stay on the edit form. A parent now needs a name and a phone, or neither. Mobile `/student-form` is edit-only; admitting is `/admit-student`. **Walked:** Android emulator (1.0x full journey, 1.3x layout, back from every control, server refusal of a used number, forced save failure and Retry, Postgres rows) and web in Playwright (desktop light and dark, phone width, same failure cases). **Not walked:** iOS, TalkBack, a caller missing `enrollment:create` or `student:update` (their steps are hidden, unit-tested only), a multi-branch admin. **Gates:** `check-types` 8/9 (the ninth fails only on the owner's untracked `apps/api/scripts/tmp-seed-fees-demo.ts`), mobile jest 41 suites / 708, web vitest 115, `flows.spec.ts` admission test passes. **Found, not fixed:** `e2e/session-boundary.spec.ts` fails because a class teacher still sees Branches links in the sidebar; this branch doesn't touch that code. **Dev DB residue:** deactivated walk students `ADM12346`, `ADM12347`, `WEB-071301`, whose guardians (phones starting 91) remain.
@@ -1609,7 +1611,18 @@ save/publish — verified end-to-end). Next in this phase:
 - **Homework** — `homework`, `homework_submissions` (ADR-014)
 - **Phone-number-change flow** — permission + audit + session revocation. Must land
   before the student portal ships (ADR-007)
-- **Year rollover** — remapping `scope_nodes` and `role_assignments` across academic years
+- **Promotion system and year rollover** — deferred by the owner on 2026-11-01. Needs its own
+  mobile design and owner review before any screens. Scope:
+  - Closing a session: its `studying` rows become `completed` with `promotionStatus = pending`
+  - Promotion screen: the annual result (`student_final_results`) is a suggestion and the school
+    decides. Writes `promotionStatus` on the old row and inserts the next session's row (hard rule 6)
+  - A graduate option on that screen sets `graduated`, which is how a student finishes the school.
+    The final class is settled in this design
+  - Detained students, and students who don't return (`withdrawn`, reason "did not return")
+  - Students awaiting a decision: a Students tab filter, added with this work
+  - Compartment: the rule is undecided; `promotionPending` exists for it
+  - Unpaid dues carried into `opening_balances`, tagged with the origin year
+  - Remapping `scope_nodes` and `role_assignments` across academic years
 - **Electives & subject enrollment** — `subject_groups` + `student_subject_enrollments`
   (the resolved layer, reference table 23) land via the Phase 5 resolver seam
   (ADR-032 §12); v1 = every student takes every counted mapping of the class
