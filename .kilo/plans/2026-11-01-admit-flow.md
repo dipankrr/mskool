@@ -158,6 +158,18 @@ The owner's feedback after using it, 2026-11-01: give the flow a "Full form" but
 - Photos aren't cropped. The circle fills from the centre, so a tall photo can lose the top of the head.
 - `enrollment.list` still loads the whole session to find one student, as it always has here.
 
+## Round three: statuses and the Students tab (mobile, plus server)
+
+The status rules are ADR-057. The owner closed the discussion and asked for the work to start, and chose whichever was better on the open points, so teachers see only their own students in the tab.
+
+**Screen:** search, view tabs with counts (Current, Not placed, Left, Alumni, All) and filter and sort controls stay pinned while rows scroll. Rows show photo, name, class, section, roll and admission number, with a label only when something is unusual. Current adds chips for who needs a section, a parent or a photo. In class order, rows are grouped under class and section headings. Alumni and Not placed hide while empty.
+
+**Walked on Android (emulator-5554, dev DB):** the tab with real photos and counts; the Left view; filter by gender with the count on the control, then clear; sort; rejoin and expel on a throwaway student, with Postgres matching after each; the profile showing the status, date and reason; and the attendance screen opening on the new roster.
+
+**Not walked:** iOS, TalkBack, a teacher account on the tab (integration-tested only), a full attendance save on the device, fee dues showing a left student, 1.3x text, and paging on a large school.
+
+**Dev DB residue:** `ZFT-001` (active, no class) and `ZFT-002` (expelled) from these walks, and `STATUS-*` students from the integration test.
+
 **Known limits:**
 
 - The suggestion and early clash check only see active students. A deactivated student's number gets through to the server's refusal, which is handled.

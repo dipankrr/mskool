@@ -2642,3 +2642,44 @@ fixed by the owner's choice: until first sign-in, anyone who knows the admin's
 email can use it, so credentials should be handed over soon after provisioning.
 The same-password check is on the client only; a direct API call could still
 reuse the password.
+
+## ADR-057 - Students say whether a child is here; enrollments say what happened
+
+**Context.** `students.status` had six values and only `inactive` was ever written.
+`enrollmentStatus` had three values meaning "still studying", and `admitted` versus
+`section_assigned` only repeated whether `sectionId` was empty. The two fields could
+disagree, and did: students who had left stayed active, and deactivated students stayed
+on rosters. Each list chose its own statuses, so a student who left stayed on the
+attendance list while the server refused them, which could fail a whole section's save.
+
+**Decision.** `students.status` is `active` or `inactive`: is this child with the school?
+`enrollmentStatus` says what happened in that session: `admitted` (class, no section),
+`studying`, `completed` (with `promotionStatus` saying how), `graduated`,
+`transferred_out`, `withdrawn`, `expelled`. The last four mean the student is inactive,
+and a departure records its date, reason and who recorded it.
+
+The enrollment decides. A trigger moves `students.status` when a student's latest
+enrollment changes, a second trigger refuses a status that enrollment contradicts, and
+`db:verify` checks the data agrees (following ADR-022). A student with no enrollment can
+be set directly, which is how someone admitted who never joined is deactivated.
+Deactivating closes any open enrollment. Rejoining reopens the same row, because each
+student has one per session, and files the earlier departure in `leavingHistory`.
+
+"Currently enrolled" is one definition in the services, not one per list, and
+`enrollment.list` leaves out students who left unless asked. Attendance follows the date,
+so a student stays on the days before they left. Fee dues list anyone who owes.
+
+The Students tab reads `student.roster`: `students` with the selected year's enrollment
+and the latest one attached, and each view a filter on that one query. Whole-school staff
+see the register; anyone limited to a class or section sees only students placed there
+this year. It shows photos in rows, an owner-approved exception to initials-only lists,
+for this tab only.
+
+**Rejected.** Keeping only current students in `student_enrollments`: fees and homework
+point at those rows, and they are the only record of past placement (hard rule 6). Rich
+statuses on `students`: no busy list needs them, and they would repeat the enrollment.
+A separate status for awaiting promotion: that is `completed` with `promotionStatus`
+`pending`.
+
+**Deferred.** The promotion system (see `TASKS.md`), which is what will set `completed`
+and `graduated`.
