@@ -55,7 +55,8 @@ export function useStudentEnrollments() {
   const { scopeArgs, activeSession } = useActiveContext();
 
   return trpc.enrollment.list.useQuery(
-    { ...scopeArgs(), academicYearId: activeSession?.id ?? "" },
+    // The student page shows a departure, so this read keeps those who left.
+    { ...scopeArgs(), academicYearId: activeSession?.id ?? "", includeLeft: true },
     {
       enabled: Boolean(activeSession?.id),
       staleTime: THIRTY_SECONDS,

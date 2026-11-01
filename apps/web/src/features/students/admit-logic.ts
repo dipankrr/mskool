@@ -226,6 +226,7 @@ export function sectionStrength(
     if (!enrollment.sectionId) continue;
     if (
       enrollment.enrollmentStatus === "withdrawn" ||
+      enrollment.enrollmentStatus === "expelled" ||
       enrollment.enrollmentStatus === "transferred_out"
     ) {
       continue;

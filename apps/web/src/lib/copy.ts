@@ -452,11 +452,12 @@ export const copy = {
     /** The enrollment life cycle (lowercase enum → words). */
     enrollmentStatuses: {
       admitted: "Admitted",
-      section_assigned: "Section assigned",
-      active: "Active",
+      studying: "Studying",
+      completed: "Session completed",
+      graduated: "Graduated",
       transferred_out: "Transferred out",
       withdrawn: "Withdrawn",
-      passed_out: "Passed out",
+      expelled: "Expelled",
     },
   },
 
