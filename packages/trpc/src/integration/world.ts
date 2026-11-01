@@ -758,7 +758,15 @@ export async function buildWorld(): Promise<IntegrationWorld> {
   // the same philosophy as the scratch section deactivation below.
   await db
     .update(studentEnrollments)
-    .set({ sectionId: null, enrollmentStatus: "admitted", rollNumber: null })
+    .set({
+      sectionId: null,
+      enrollmentStatus: "admitted",
+      rollNumber: null,
+      leftOn: null,
+      leavingReason: null,
+      leftBy: null,
+      leavingHistory: [],
+    })
     .where(eq(studentEnrollments.id, enrollmentUngranted.id));
 
   // 6-B's own student, sectioned. The no-widening crown needs rows that

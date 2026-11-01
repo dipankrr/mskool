@@ -1,9 +1,16 @@
-import { beforeAll, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { and, eq, inArray, like } from "drizzle-orm";
 
 import type { DataScope } from "@repo/authz";
 import { db } from "@repo/db";
-import { studentEnrollments, students } from "@repo/db/schema";
+import {
+  attendanceRecords,
+  attendanceSummary,
+  dailyAttendanceStatus,
+  studentAssignments,
+  studentEnrollments,
+  students,
+} from "@repo/db/schema";
 import { attendanceService, enrollmentService, studentService } from "@repo/services";
 
 import { buildWorld } from "./world";
@@ -55,6 +62,39 @@ describe("student statuses and the roster", () => {
       limit: 100,
     });
 
+  /**
+   * The world is shared and other suites pin its exact rosters, so these
+   * students never outlive the file. Also runs first, so a crashed run can't
+   * poison the next one.
+   */
+  const removeTestStudents = async () => {
+    const testStudents = db
+      .select({ id: students.id })
+      .from(students)
+      .where(
+        and(eq(students.schoolId, world.schoolA1Id), like(students.admissionNumber, "STATUS-%")),
+      );
+    const testEnrollments = db
+      .select({ id: studentEnrollments.id })
+      .from(studentEnrollments)
+      .where(inArray(studentEnrollments.studentId, testStudents));
+
+    await db
+      .delete(studentAssignments)
+      .where(inArray(studentAssignments.studentEnrollmentId, testEnrollments));
+    await db.delete(attendanceRecords).where(inArray(attendanceRecords.studentId, testStudents));
+    await db
+      .delete(dailyAttendanceStatus)
+      .where(inArray(dailyAttendanceStatus.studentId, testStudents));
+    await db.delete(attendanceSummary).where(inArray(attendanceSummary.studentId, testStudents));
+    await db.delete(studentEnrollments).where(inArray(studentEnrollments.studentId, testStudents));
+    await db
+      .delete(students)
+      .where(
+        and(eq(students.schoolId, world.schoolA1Id), like(students.admissionNumber, "STATUS-%")),
+      );
+  };
+
   beforeAll(async () => {
     world = await buildWorld();
     school = {
@@ -63,7 +103,10 @@ describe("student statuses and the roster", () => {
       classId: null,
       sectionId: null,
     };
+    await removeTestStudents();
   });
+
+  afterAll(removeTestStudents);
 
   it("derives the first status from the section", async () => {
     expect((await admit(true)).enrollment.enrollmentStatus).toBe("studying");
