@@ -809,6 +809,8 @@ export const feeMatrixOpeningBalanceSchema = z.object({
 export type FeeMatrixOpeningBalance = z.infer<typeof feeMatrixOpeningBalanceSchema>;
 
 export const feeMatrixRowSchema = z.object({
+  /** Lets a list mark a student who left but still owes money. */
+  enrollmentStatus: z.string(),
   studentId: z.uuid(),
   admissionNumber: z.string(),
   studentName: z.string(),

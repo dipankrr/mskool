@@ -1,6 +1,7 @@
 import {
   createEnrollmentSchema,
   enrollmentSelectSchema,
+  leaveEnrollmentSchema,
   studentSelectSchema,
   updateEnrollmentSchema,
 } from "@repo/contracts";
@@ -92,6 +93,8 @@ export const enrollmentRouter = router({
         academicYearId: z.uuid(),
         classId: z.uuid().optional(),
         sectionId: z.uuid().optional(),
+        // Off by default, so a list can't pick up students who left by accident.
+        includeLeft: z.boolean().optional(),
       }),
     )
     .output(
@@ -108,6 +111,7 @@ export const enrollmentRouter = router({
         input.academicYearId,
         input.classId,
         input.sectionId,
+        input.includeLeft,
       );
     }),
 
@@ -241,45 +245,26 @@ export const enrollmentRouter = router({
     }),
 
   /**
-   * Moves the enrollment through the status machine
-   * (`ENROLLMENT_TRANSITIONS`). Named operation, not a PATCH of the status:
-   * the legal moves are the map's, and an illegal one is refused in words.
+   * A student leaving (ADR-057). A named operation, not a PATCH of the status:
+   * it records the date and reason, and the database moves the student too.
    */
-  transition: staffProcedure("enrollment:update", {
+  leave: staffProcedure("enrollment:update", {
     resolveOwner: resolveEnrollmentOwner,
   })
     .meta({
       openapi: {
         method: "POST",
-        path: "/enrollments/{id}/transition",
+        path: "/enrollments/{id}/leave",
         tags: ["enrollments"],
-        summary: "Move an enrollment through its status machine",
+        summary: "Record a student leaving",
         protect: true,
       },
     })
-    .input(
-      z.object({
-        id: z.uuid(),
-        to: z.enum([
-          "admitted",
-          "section_assigned",
-          "active",
-          "transferred_out",
-          "withdrawn",
-          "passed_out",
-        ]),
-      }),
-    )
+    .input(z.object({ id: z.uuid(), data: leaveEnrollmentSchema }))
     .output(enrollmentSelectSchema)
-    .mutation(async ({ ctx, input }) => {
-      const enrollment = await enrollmentService.transitionEnrollment(
-        ctx.scope,
-        input.id,
-        input.to,
-      );
-
-      return enrollment;
-    }),
+    .mutation(({ ctx, input }) =>
+      enrollmentService.leaveEnrollment(ctx.scope, ctx.userId, input.id, input.data),
+    ),
 });
 
 // ---------------------------------------------------------------------------

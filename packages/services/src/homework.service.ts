@@ -108,7 +108,7 @@ const PLATFORM_DEFAULT_SETTINGS = {
   questionsEnabled: true,
 };
 
-const ACTIVE_ENROLLMENT_STATUSES = ["active", "section_assigned"] as const;
+const ACTIVE_ENROLLMENT_STATUSES = ["studying"] as const;
 
 function requireSchoolId(scope: DataScope): string {
   const schoolId = atSchoolLevel(scope).schoolId;

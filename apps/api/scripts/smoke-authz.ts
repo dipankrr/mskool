@@ -1100,19 +1100,19 @@ async function main() {
     `code ${teacherCreatesEnrollment.code}`,
   );
 
-  // No-trace mutation: an illegal transition is refused before anything is
+  // No-trace mutation: an impossible departure is refused before anything is
   // written, and translateErrors words it.
   const illegalTransition = await mutate(
     principalCookie,
-    "enrollment.transition",
+    "enrollment.leave",
     {
       organizationId: orgId,
       id: enrollmentSectioned.id,
-      to: "admitted",
+      data: { to: "withdrawn", leftOn: "2999-01-01" },
     },
   );
   report(
-    "the status machine refuses an illegal move, worded",
+    "a leaving date in the future is refused, worded",
     illegalTransition.code === "BAD_REQUEST",
     `code ${illegalTransition.code}`,
   );

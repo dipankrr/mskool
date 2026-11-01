@@ -125,7 +125,7 @@ describe("annual router conformance - the phone's payloads through the real rout
       .returning();
     await db.insert(studentEnrollments).values({
       organizationId: org!.id, schoolId: school.id, studentId: student!.id,
-      academicYearId: year.id, classId: klass.id, sectionId: section.id, enrollmentStatus: "active",
+      academicYearId: year.id, classId: klass.id, sectionId: section.id, enrollmentStatus: "studying",
     });
     const [principal] = await db
       .insert(user)

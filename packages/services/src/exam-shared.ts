@@ -1,3 +1,4 @@
+import { ENROLLED_STATUSES } from "./enrollment-status";
 import { db } from "@repo/db";
 import {
   classSubjectMappings,
@@ -101,7 +102,7 @@ export async function loadCohort(
   const base = [
     eq(studentEnrollments.classId, classId),
     eq(studentEnrollments.academicYearId, academicYearId),
-    inArray(studentEnrollments.enrollmentStatus, ["active", "admitted", "section_assigned"]),
+    inArray(studentEnrollments.enrollmentStatus, [...ENROLLED_STATUSES]),
   ];
   return tx
     .selectDistinct({ studentId: studentEnrollments.studentId })

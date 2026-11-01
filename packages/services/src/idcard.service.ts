@@ -1,3 +1,4 @@
+import { ENROLLED_STATUSES } from "./enrollment-status";
 import type {
   CloneIdCardTemplateInput,
   CreateIdCardTemplateInput,
@@ -577,6 +578,7 @@ export class IdCardService {
             ? inArray(studentEnrollments.studentId, input.studentIds)
             : undefined,
           eq(students.status, "active"),
+          inArray(studentEnrollments.enrollmentStatus, [...ENROLLED_STATUSES]),
           scopeWhere(scope, CARD_ENROLLMENT_SCOPE_COLUMNS),
         ),
       )

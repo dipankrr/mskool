@@ -1,3 +1,4 @@
+import { ENROLLED_STATUSES } from "./enrollment-status";
 import { atSchoolLevel, requireSchoolId, yearVisibilityWhere } from "./academic.service";
 import {
   allocateOldestFirst,
@@ -1446,6 +1447,7 @@ export class FeesCollectionService {
     const cohort = await db
       .select({
         enrollmentId: studentEnrollments.id,
+        enrollmentStatus: studentEnrollments.enrollmentStatus,
         studentId: students.id,
         admissionNumber: students.admissionNumber,
         firstName: students.firstName,
@@ -1670,6 +1672,7 @@ export class FeesCollectionService {
             ? "not_generated"
             : "generated";
       const row: FeeMatrixOutput["rows"][number] = {
+        enrollmentStatus: cohortRow.enrollmentStatus,
         studentId: cohortRow.studentId,
         admissionNumber: cohortRow.admissionNumber,
         studentName: [cohortRow.firstName, cohortRow.middleName, cohortRow.lastName]
@@ -1698,7 +1701,12 @@ export class FeesCollectionService {
         oldestDueDate: totals.oldestDueDate,
       };
 
-      computedRows.push(row);
+      // Someone who left stays listed only while they owe. Their paid amounts
+      // still count towards the totals below.
+      const stillListed =
+        (ENROLLED_STATUSES as readonly string[]).includes(cohortRow.enrollmentStatus) ||
+        matrixRowBalance(row) > 0n;
+      if (stillListed) computedRows.push(row);
       mergeMatrixAccumulator(cohortAccumulator, rowAccumulator);
       mergeOpeningBalance(cohortOpeningAccumulator, rowOpeningAccumulator);
       for (const month of months) {

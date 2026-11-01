@@ -86,7 +86,8 @@ type Executor = typeof db | Tx;
 const NOT_ENROLLED_REASONS: Record<string, string> = {
   transferred_out: "Not enrolled: transferred out.",
   withdrawn: "Not enrolled: withdrawn.",
-  passed_out: "Not enrolled: passed out.",
+  expelled: "Not enrolled: expelled.",
+  graduated: "Not enrolled: graduated.",
 };
 
 /** Postgres unique_violation, wherever drizzle nested it in the cause chain. */

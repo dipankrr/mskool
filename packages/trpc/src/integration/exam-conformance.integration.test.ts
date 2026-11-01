@@ -165,7 +165,7 @@ describe("exam router conformance — UI-shaped payloads through the real router
       .returning();
     await db
       .insert(studentEnrollments)
-      .values({ organizationId: org!.id, schoolId: school.id, studentId: student!.id, academicYearId: year.id, classId: klass.id, sectionId: section.id, enrollmentStatus: "active" });
+      .values({ organizationId: org!.id, schoolId: school.id, studentId: student!.id, academicYearId: year.id, classId: klass.id, sectionId: section.id, enrollmentStatus: "studying" });
 
     // Principal user + school-scoped assignment (the dialog's caller).
     const [principal] = await db

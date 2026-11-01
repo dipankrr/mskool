@@ -1,3 +1,4 @@
+import { ENROLLED_STATUSES } from "./enrollment-status";
 import { scopeWhere, type DataScope } from "@repo/authz";
 import type {
   AnnualCardOutput,
@@ -75,7 +76,7 @@ const POLICY_SCOPE_COLUMNS = {
   schoolId: annualResultPolicies.schoolId,
 } as const;
 
-const ROSTER_STATUSES = ["active", "admitted", "section_assigned"] as const;
+const ROSTER_STATUSES = ENROLLED_STATUSES;
 const CHUNK = 200;
 
 type PolicyRow = typeof annualResultPolicies.$inferSelect;

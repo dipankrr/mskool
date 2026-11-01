@@ -52,6 +52,82 @@ export const createStudentSchema = createInsertSchema(students, {
 export type CreateStudentInput = z.infer<typeof createStudentSchema>;
 
 /**
+ * The Students tab's read (ADR-057). One view of the register at a time, a page
+ * at a time, with each student's class and photo already attached.
+ */
+export const studentRosterViews = ["current", "notPlaced", "left", "alumni", "all"] as const;
+export type StudentRosterView = (typeof studentRosterViews)[number];
+
+export const studentRosterSorts = ["class", "name", "newest"] as const;
+export type StudentRosterSort = (typeof studentRosterSorts)[number];
+
+const rosterFilters = {
+  academicYearId: z.uuid(),
+  q: z.string().min(1).max(100).optional(),
+  classId: z.uuid().optional(),
+  sectionId: z.uuid().optional(),
+  gender: z.enum(["male", "female", "other"]).optional(),
+  admissionYear: z.number().int().min(1900).max(2200).optional(),
+  noSection: z.boolean().optional(),
+  noGuardian: z.boolean().optional(),
+  noPhoto: z.boolean().optional(),
+};
+
+export const studentRosterInput = z.object({
+  ...rosterFilters,
+  view: z.enum(studentRosterViews),
+  sort: z.enum(studentRosterSorts),
+  limit: z.number().int().min(1).max(100).optional(),
+  /** Rows to skip: how far this list has already been read. */
+  cursor: z.number().int().min(0).optional(),
+});
+export type StudentRosterInput = z.infer<typeof studentRosterInput>;
+
+export const studentRosterRow = z.object({
+  id: z.uuid(),
+  firstName: z.string(),
+  middleName: z.string().nullable(),
+  lastName: z.string(),
+  admissionNumber: z.string(),
+  status: z.enum(["active", "inactive"]),
+  /** This year's enrollment, or the latest one if there is none this year. */
+  enrollmentStatus: z.string().nullable(),
+  leftOn: z.string().nullable(),
+  classId: z.uuid().nullable(),
+  className: z.string().nullable(),
+  sectionId: z.uuid().nullable(),
+  sectionName: z.string().nullable(),
+  rollNumber: z.string().nullable(),
+  photoObjectId: z.uuid().nullable(),
+  hasGuardian: z.boolean(),
+});
+export type StudentRosterRow = z.infer<typeof studentRosterRow>;
+
+export const studentRosterOutput = z.object({
+  rows: z.array(studentRosterRow),
+  nextCursor: z.number().int().nullable(),
+});
+export type StudentRosterOutput = z.infer<typeof studentRosterOutput>;
+
+export const studentRosterSummaryInput = z.object({ academicYearId: z.uuid() });
+export const studentRosterSummaryOutput = z.object({
+  counts: z.object({
+    current: z.number().int(),
+    notPlaced: z.number().int(),
+    left: z.number().int(),
+    alumni: z.number().int(),
+    all: z.number().int(),
+  }),
+  /** Current students still missing something. */
+  attention: z.object({
+    noSection: z.number().int(),
+    noGuardian: z.number().int(),
+    noPhoto: z.number().int(),
+  }),
+});
+export type StudentRosterSummary = z.infer<typeof studentRosterSummaryOutput>;
+
+/**
  * Demographics and contact details are correctable; identity is not.
  *
  * `admissionNumber` is deliberately absent — school-issued and permanent, and

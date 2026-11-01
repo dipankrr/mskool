@@ -1,3 +1,4 @@
+import { ENROLLED_STATUSES } from "./enrollment-status";
 import { requireSchoolId } from "./academic.service";
 import { scopeWhere, type DataScope } from "@repo/authz";
 import type { SubmitRevisionInput } from "@repo/contracts";
@@ -1499,11 +1500,7 @@ export class ExamResultsService {
         and(
           eq(studentEnrollments.academicYearId, exam.academicYearId),
           eq(studentEnrollments.classId, classId),
-          inArray(studentEnrollments.enrollmentStatus, [
-            "admitted",
-            "section_assigned",
-            "active",
-          ]),
+          inArray(studentEnrollments.enrollmentStatus, [...ENROLLED_STATUSES]),
         ),
       )
       .orderBy(asc(studentEnrollments.rollNumber), asc(studentsTable.lastName), asc(studentsTable.firstName));

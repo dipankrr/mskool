@@ -208,6 +208,31 @@ async function main() {
   `;
   report("the grading-scale lock trigger exists", scaleLockTriggers.length === 1, `found ${scaleLockTriggers.length}/1`);
 
+  // ADR-057: a student's status follows their latest enrollment. Both triggers
+  // are hand-written SQL, and the data itself must agree with them.
+  const statusTriggers = await sql<{ tgname: string }[]>`
+    SELECT tg.tgname FROM pg_trigger tg
+    WHERE tg.tgname IN ('student_enrollments_sync_student_status_trg', 'students_guard_status_trg')
+      AND NOT tg.tgisinternal
+  `;
+  report("both student status triggers exist", statusTriggers.length === 2, `found ${statusTriggers.length}/2`);
+
+  const statusMismatches = await sql<{ count: number }[]>`
+    SELECT count(*)::int AS count FROM students s
+    CROSS JOIN LATERAL (
+      SELECT e.enrollment_status FROM student_enrollments e
+      JOIN academic_years y ON y.id = e.academic_year_id
+      WHERE e.student_id = s.id
+      ORDER BY y.start_date DESC LIMIT 1
+    ) latest
+    WHERE s.status <> student_status_for_enrollment(latest.enrollment_status)
+  `;
+  report(
+    "every student's status matches their latest enrollment",
+    statusMismatches[0]?.count === 0,
+    `${statusMismatches[0]?.count ?? "?"} mismatched`,
+  );
+
   console.log("\n=== hard rule 11: every timestamp is timestamptz ===");
   const naive = await sql<{ table_name: string; column_name: string }[]>`
     SELECT table_name, column_name FROM information_schema.columns
@@ -550,8 +575,8 @@ async function main() {
         VALUES (${org.id}, ${school.id}, ${enrStudent.id}, ${yearId},
                 ${enrClass.id}, ${sectionId}, ${status})`;
 
-    await expectAccept(tx, "an active enrollment with a section is accepted", (q) =>
-      enroll(q, enrYear.id, enrSection.id, "active"),
+    await expectAccept(tx, "a studying enrollment with a section is accepted", (q) =>
+      enroll(q, enrYear.id, enrSection.id, "studying"),
     );
 
     await expectReject(

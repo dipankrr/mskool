@@ -143,14 +143,11 @@ export const guardians = pgTable(
   ],
 );
 
-export const studentStatusEnum = pgEnum("student_status", [
-  "active",
-  "inactive",
-  "graduated",
-  "transferred_out",
-  "withdrawn",
-  "expelled",
-]);
+/**
+ * Is this child with the school (ADR-057)? Why they aren't lives on their latest
+ * enrollment, so this holds only the answer.
+ */
+export const studentStatusEnum = pgEnum("student_status", ["active", "inactive"]);
 
 export const bloodGroupEnum = pgEnum("blood_group", [
   "a_positive",

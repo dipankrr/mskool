@@ -33,9 +33,14 @@ export const createEnrollmentSchema = createInsertSchema(studentEnrollments, {
     organizationId: true,
     schoolId: true,
     // The status machine is the service's: creation DERIVES the status —
-    // `admitted` when no section is named, `section_assigned` when one is —
+    // `admitted` when no section is named, `studying` when one is —
     // and every later transition is a named operation, never a payload field.
     enrollmentStatus: true,
+    // Departures are a named operation that records them together.
+    leftOn: true,
+    leavingReason: true,
+    leftBy: true,
+    leavingHistory: true,
     // Set at year end by the exam chain (Phase 5), never at admission.
     promotionStatus: true,
     promotionPending: true,
@@ -74,6 +79,10 @@ export const updateEnrollmentSchema = createInsertSchema(studentEnrollments)
     sectionId: true,
     enrollmentDate: true,
     enrollmentStatus: true,
+    leftOn: true,
+    leavingReason: true,
+    leftBy: true,
+    leavingHistory: true,
     promotionStatus: true,
     promotionPending: true,
     createdFromTemplate: true,
@@ -83,3 +92,11 @@ export const updateEnrollmentSchema = createInsertSchema(studentEnrollments)
   })
   .partial();
 export type UpdateEnrollmentInput = z.infer<typeof updateEnrollmentSchema>;
+
+/** A student leaving. The date defaults to today on the server. */
+export const leaveEnrollmentSchema = z.object({
+  to: z.enum(["transferred_out", "withdrawn", "expelled"]),
+  leftOn: isoDate.optional(),
+  reason: z.string().max(200).optional(),
+});
+export type LeaveEnrollmentInput = z.infer<typeof leaveEnrollmentSchema>;

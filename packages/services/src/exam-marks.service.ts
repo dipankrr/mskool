@@ -1,3 +1,4 @@
+import { ENROLLED_STATUSES } from "./enrollment-status";
 import {
   atSchoolLevel,
   requireSchoolId,
@@ -144,7 +145,7 @@ export class ExamMarksService {
         and(
           inArray(studentEnrollments.classId, classIds),
           eq(studentEnrollments.academicYearId, academicYearId),
-          inArray(studentEnrollments.enrollmentStatus, ["active", "admitted", "section_assigned"]),
+          inArray(studentEnrollments.enrollmentStatus, [...ENROLLED_STATUSES]),
         ),
       );
 
@@ -268,11 +269,7 @@ export class ExamMarksService {
           eq(studentEnrollments.studentId, input.studentId),
           eq(studentEnrollments.academicYearId, exam.academicYearId),
           eq(studentEnrollments.schoolId, schoolId),
-          inArray(studentEnrollments.enrollmentStatus, [
-            "active",
-            "admitted",
-            "section_assigned",
-          ]),
+          inArray(studentEnrollments.enrollmentStatus, [...ENROLLED_STATUSES]),
         ),
       );
     if (!enrollment || !scheduled.some((s) => s.classId === enrollment.classId)) {
@@ -380,11 +377,7 @@ export class ExamMarksService {
             eq(studentEnrollments.studentId, input.studentId),
             eq(studentEnrollments.academicYearId, schedule.academicYearId),
             eq(studentEnrollments.schoolId, schoolId),
-            inArray(studentEnrollments.enrollmentStatus, [
-              "active",
-              "admitted",
-              "section_assigned",
-            ]),
+            inArray(studentEnrollments.enrollmentStatus, [...ENROLLED_STATUSES]),
           ),
         );
       if (!enrollment) return null;
@@ -608,11 +601,7 @@ export class ExamMarksService {
           ),
           eq(studentEnrollments.academicYearId, schedule.academicYearId),
           eq(studentEnrollments.schoolId, schoolId),
-          inArray(studentEnrollments.enrollmentStatus, [
-            "active",
-            "admitted",
-            "section_assigned",
-          ]),
+          inArray(studentEnrollments.enrollmentStatus, [...ENROLLED_STATUSES]),
         ),
       );
     const byStudent = new Map(enrollments.map((e) => [e.studentId, e]));
@@ -851,11 +840,7 @@ export class ExamMarksService {
           rosterSectionId
             ? eq(studentEnrollments.sectionId, rosterSectionId)
             : undefined,
-          inArray(studentEnrollments.enrollmentStatus, [
-            "admitted",
-            "section_assigned",
-            "active",
-          ]),
+          inArray(studentEnrollments.enrollmentStatus, [...ENROLLED_STATUSES]),
         ),
       )
       .orderBy(asc(studentEnrollments.rollNumber), asc(students.lastName), asc(students.firstName));
@@ -970,7 +955,7 @@ export class ExamMarksService {
           and(
             eq(studentEnrollmentsSection.classId, classId),
             eq(studentEnrollmentsSection.academicYearId, exam.academicYearId),
-            inArray(studentEnrollmentsSection.enrollmentStatus, ["active", "admitted", "section_assigned"]),
+            inArray(studentEnrollmentsSection.enrollmentStatus, [...ENROLLED_STATUSES]),
             cohortWhere,
           ),
         );
@@ -1029,11 +1014,7 @@ export class ExamMarksService {
           eq(studentEnrollments.studentId, examEligibility.studentId),
           eq(studentEnrollments.academicYearId, exam.academicYearId),
           eq(studentEnrollments.classId, classId),
-          inArray(studentEnrollments.enrollmentStatus, [
-            "active",
-            "admitted",
-            "section_assigned",
-          ]),
+          inArray(studentEnrollments.enrollmentStatus, [...ENROLLED_STATUSES]),
         ),
       )
       .where(
@@ -1130,11 +1111,7 @@ export class ExamMarksService {
             eq(studentEnrollments.studentId, input.studentId),
             eq(studentEnrollments.academicYearId, term.academicYearId),
             eq(studentEnrollments.schoolId, schoolId),
-            inArray(studentEnrollments.enrollmentStatus, [
-              "active",
-              "admitted",
-              "section_assigned",
-            ]),
+            inArray(studentEnrollments.enrollmentStatus, [...ENROLLED_STATUSES]),
           ),
         );
       if (!enrollment) return null;

@@ -1,3 +1,4 @@
+import { ENROLLED_STATUSES } from "./enrollment-status";
 import {
   atSchoolLevel,
   requireSchoolId,
@@ -1042,7 +1043,7 @@ export class ExamConfigService {
           and(
             eq(studentEnrollments.classId, schedule.classId),
             eq(studentEnrollments.academicYearId, academicYearId),
-            inArray(studentEnrollments.enrollmentStatus, ["active", "admitted", "section_assigned"]),
+            inArray(studentEnrollments.enrollmentStatus, [...ENROLLED_STATUSES]),
             cohortWhere,
           ),
         );

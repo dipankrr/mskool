@@ -4,6 +4,7 @@ import {
   check,
   date,
   index,
+  jsonb,
   numeric,
   pgEnum,
   pgTable,
@@ -533,13 +534,20 @@ export const sectionTeacherAssignments = pgTable(
  * status machine itself is the service's concern (S5.2); the enum only makes
  * the states unrepresentable-as-typo.
  */
+/**
+ * What happened in this session (ADR-057). `admitted` has a class and no
+ * section yet; `studying` has both; `completed` finished the session, with
+ * `promotionStatus` saying how. The other four end the student's time at the
+ * school, and a database trigger keeps `students.status` in step.
+ */
 export const enrollmentStatusEnum = pgEnum("enrollment_status", [
   "admitted",
-  "section_assigned",
-  "active",
+  "studying",
+  "completed",
+  "graduated",
   "transferred_out",
   "withdrawn",
-  "passed_out",
+  "expelled",
 ]);
 
 /**
@@ -812,6 +820,25 @@ export const studentEnrollments = pgTable(
     enrollmentStatus: enrollmentStatusEnum()
       .notNull()
       .default("admitted"),
+
+    // Filled when the row ends in a departure. The date is what keeps a student
+    // on the roster for days before they left.
+    leftOn: date(),
+    leavingReason: varchar({ length: 200 }),
+    leftBy: text().references(() => user.id),
+    // Earlier departures from this row, kept when a student rejoins.
+    leavingHistory: jsonb()
+      .$type<
+        {
+          status: string;
+          leftOn: string | null;
+          reason: string | null;
+          leftBy: string | null;
+          rejoinedOn: string;
+        }[]
+      >()
+      .notNull()
+      .default([]),
 
     promotionStatus: promotionStatusEnum(),
     // TRUE while waiting for a supplementary result before the next year's

@@ -497,6 +497,21 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
     message:
       "This enrollment already has a section. Moving a student mid-year needs a transfer — that flow is not built yet.",
   },  {
+    match: /^A leaving date cannot be/i,
+    code: "BAD_REQUEST",
+    message: "Choose a leaving date between the day they joined and today.",
+  },
+  {
+    match: /^This student is already with the school/i,
+    code: "BAD_REQUEST",
+    message: "This student is already with the school. Refresh to see their current state.",
+  },
+  {
+    match: /^A graduated student cannot rejoin/i,
+    code: "BAD_REQUEST",
+    message: "A graduated student can't rejoin from here.",
+  },
+  {
     match: /^Only an admitted enrollment can be assigned a section/i,
     code: "BAD_REQUEST",
     message:

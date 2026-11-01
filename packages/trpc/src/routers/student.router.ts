@@ -1,5 +1,9 @@
 import {
   createStudentSchema,
+  studentRosterInput,
+  studentRosterOutput,
+  studentRosterSummaryInput,
+  studentRosterSummaryOutput,
   studentSelectSchema,
   studentsByAdmissionsInput,
   studentsByAdmissionsOutput,
@@ -61,6 +65,21 @@ export const studentRouter = router({
     .query(async ({ ctx, input }) => {
       return studentService.listStudents(ctx.scopes, input.q);
     }),
+
+  // The Students tab (ADR-057). Permissive like the list: whole-school staff get
+  // the whole register, and the service limits everyone else to their own
+  // classes and sections.
+  roster: staffListProcedure("student:read")
+    .input(studentRosterInput)
+    .output(studentRosterOutput)
+    .query(({ ctx, input }) => studentService.listRoster(ctx.scopes, input)),
+
+  rosterSummary: staffListProcedure("student:read")
+    .input(studentRosterSummaryInput)
+    .output(studentRosterSummaryOutput)
+    .query(({ ctx, input }) =>
+      studentService.rosterSummary(ctx.scopes, input.academicYearId),
+    ),
 
   // The bulk-photo matcher's read: strict cover (the caller addresses the
   // branch whose register the zip claims to match), active students only,
@@ -192,6 +211,7 @@ export const studentRouter = router({
       const student = await studentService.deactivateStudent(
         ctx.scope,
         input.id,
+        ctx.userId,
       );
 
       if (!student) {
@@ -219,6 +239,22 @@ export const studentRouter = router({
         .getStudentPhotoObjectId(ctx.scope, input.id)
         .then((objectId) => ({ objectId })),
     ),
+
+  /** Brings back a student who left, reopening their latest enrollment (ADR-057). */
+  rejoin: staffProcedure("student:update", {
+    resolveOwner: resolveStudentOwner,
+  })
+    .input(z.object({ id: z.uuid() }))
+    .output(studentSelectSchema)
+    .mutation(async ({ ctx, input }) => {
+      const student = await studentService.rejoinStudent(ctx.scope, input.id);
+
+      if (!student) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Student not found." });
+      }
+
+      return student;
+    }),
 
   uploadPhoto: staffProcedure("student:update", {
     resolveOwner: resolveStudentOwner,

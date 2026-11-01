@@ -487,14 +487,7 @@ const enrollmentByIdRouter = makeRouter({
   }),
 });
 
-const enrollmentStatuses = z.enum([
-  "admitted",
-  "section_assigned",
-  "active",
-  "transferred_out",
-  "withdrawn",
-  "passed_out",
-]);
+const leavingStatuses = z.enum(["transferred_out", "withdrawn", "expelled"]);
 
 const createEnrollmentRouter = makeRouter({
   probe: staffProcedure("enrollment:create")
@@ -523,9 +516,20 @@ const assignSectionRouter = makeRouter({
 
 const transitionEnrollmentRouter = makeRouter({
   probe: staffProcedure("enrollment:update", { resolveOwner: enrollmentOwner })
-    .input(z.object({ id: z.uuid(), to: enrollmentStatuses }))
+    .input(
+      z.object({
+        id: z.uuid(),
+        to: leavingStatuses,
+        leftOn: z.string().optional(),
+        reason: z.string().optional(),
+      }),
+    )
     .mutation(({ ctx, input }) =>
-      enrollmentService.transitionEnrollment(ctx.scope, input.id, input.to),
+      enrollmentService.leaveEnrollment(ctx.scope, ctx.userId, input.id, {
+        to: input.to,
+        leftOn: input.leftOn,
+        reason: input.reason,
+      }),
     ),
 });
 
@@ -567,7 +571,7 @@ const studentCreateRouter = makeRouter({
 const studentDeactivateRouter = makeRouter({
   probe: staffProcedure("student:delete", { resolveOwner: resolveStudentOwner })
     .mutation(({ ctx, input }) =>
-      studentService.deactivateStudent(ctx.scope, rowId(input)),
+      studentService.deactivateStudent(ctx.scope, rowId(input), ctx.userId),
     ),
 });
 
@@ -1479,21 +1483,23 @@ describe("enrollments — the year anchor, in both tracks", () => {
     );
   });
 
-  it("the status machine refuses an illegal move, worded", async () => {
+  it("a leaving date in the future is refused, worded", async () => {
     await expectTrpcError(
       callerOf(transitionEnrollmentRouter, U().adminA).probe({
         organizationId: world.orgAId,
         id: world.enrollmentOwnedId,
-        to: "admitted",
+        to: "withdrawn",
+        leftOn: "2999-01-01",
       }),
       "BAD_REQUEST",
-      "That status change is not allowed right now. Refresh to see the enrollment's current state.",
+      "Choose a leaving date between the day they joined and today.",
+      //t state.",
     );
   });
 
   it("assignSection, the machine, and the transfer boundary (runs late, mutates)", async () => {
     // FIRST assignment on the admitted row: NULL section, becomes 6-B with a
-    // roll number, status derived to section_assigned.
+    // roll number, status derived to studying.
     const assigned = await callerOf(assignSectionRouter, U().adminA).probe({
       organizationId: world.orgAId,
       id: world.enrollmentUngrantedId,
@@ -1501,7 +1507,7 @@ describe("enrollments — the year anchor, in both tracks", () => {
       rollNumber: "02",
     });
     expect(assigned.sectionId).toBe(world.section6bId);
-    expect(assigned.enrollmentStatus).toBe("section_assigned");
+    expect(assigned.enrollmentStatus).toBe("studying");
 
     // A SECOND assignment is the transfer boundary, refused in words — the
     // history-preserving path is unrepresentable to skip.
@@ -1515,14 +1521,42 @@ describe("enrollments — the year anchor, in both tracks", () => {
       "This enrollment already has a section. Moving a student mid-year needs a transfer — that flow is not built yet.",
     );
 
-    // The machine: section_assigned → active is legal; the UPDATE re-checks
-    // the current state so a concurrent transition loses cleanly.
-    const active = await callerOf(transitionEnrollmentRouter, U().adminA).probe({
+    // Leaving moves the student too, and rejoining reopens the same row with
+    // the departure filed in its history (ADR-057).
+    const left = await callerOf(transitionEnrollmentRouter, U().adminA).probe({
       organizationId: world.orgAId,
       id: world.enrollmentUngrantedId,
-      to: "active",
+      to: "transferred_out",
+      reason: "Family moved",
     });
-    expect(active.enrollmentStatus).toBe("active");
+    expect(left.enrollmentStatus).toBe("transferred_out");
+    expect(left.leftOn).not.toBeNull();
+    const [gone] = await db.select().from(students).where(eq(students.id, left.studentId));
+    expect(gone?.status).toBe("inactive");
+
+    // Nothing can set a status the latest enrollment contradicts.
+    await expect(
+      db.update(students).set({ status: "active" }).where(eq(students.id, left.studentId)),
+    ).rejects.toThrow();
+
+    const back = await studentService.rejoinStudent(
+      {
+        organizationId: world.orgAId,
+        schoolId: left.schoolId,
+        classId: null,
+        sectionId: null,
+      },
+      left.studentId,
+    );
+    expect(back?.status).toBe("active");
+    const [reopened] = await db
+      .select()
+      .from(studentEnrollments)
+      .where(eq(studentEnrollments.id, left.id));
+    expect(reopened?.enrollmentStatus).toBe("studying");
+    expect(reopened?.leftOn).toBeNull();
+    expect(reopened?.leavingHistory).toHaveLength(1);
+    expect(reopened?.leavingHistory[0]?.reason).toBe("Family moved");
   });
 
   it("the PORTAL list returns only the OWNED student's enrollment", async () => {

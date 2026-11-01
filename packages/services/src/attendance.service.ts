@@ -26,7 +26,7 @@ import {
   subjects,
   terms,
 } from "@repo/db/schema";
-import { and, asc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 
 /**
  * ATTENDANCE — Phase 3. Configuration layer (C2): calendar, policy, periods.
@@ -727,9 +727,9 @@ export class AttendanceService {
         );
       }
 
-      // The roster check: entries must name students enrolled in THIS
-      // section, still attending (section_assigned or active — not one who
-      // transferred out or withdrew).
+      // The roster check: entries must name students enrolled in THIS section
+      // and still at the school on this date. Someone who left later can still
+      // have an earlier day marked or corrected.
       const rosterRows = await tx
         .select({ studentId: studentEnrollments.studentId })
         .from(studentEnrollments)
@@ -737,10 +737,10 @@ export class AttendanceService {
           and(
             eq(studentEnrollments.sectionId, section.id),
             eq(studentEnrollments.academicYearId, yearId),
-            inArray(studentEnrollments.enrollmentStatus, [
-              "section_assigned",
-              "active",
-            ]),
+            or(
+              inArray(studentEnrollments.enrollmentStatus, ["studying", "completed"]),
+              gt(studentEnrollments.leftOn, input.date),
+            ),
           ),
         );
       const roster = new Set(rosterRows.map((r) => r.studentId));

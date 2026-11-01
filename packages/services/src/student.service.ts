@@ -2,19 +2,27 @@ import {
   atSchoolLevel,
   requireSchoolId,
 } from "./academic.service";
+import { ENROLLED_STATUSES, LEFT_STATUSES, todayInIst } from "./enrollment-status";
 import { escapeLike, scopeWhere, type DataScope, type ScopeColumns } from "@repo/authz";
 import type {
   CreateStudentInput,
+  StudentRosterInput,
+  StudentRosterOutput,
+  StudentRosterSummary,
   UpdateStudentInput,
 } from "@repo/contracts";
 import { db } from "@repo/db";
 import {
+  academicYears,
   classes,
   sections,
   studentEnrollments,
+  studentGuardians,
+  studentPhotos,
   students,
 } from "@repo/db/schema";
-import { and, asc, eq, ilike, inArray, or } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 /**
  * STUDENTS — the identity registry. Written once at admission; a student's
@@ -46,6 +54,63 @@ const STUDENT_SCOPE_COLUMNS: ScopeColumns = {
   organizationId: students.organizationId,
   schoolId: students.schoolId,
 } as const;
+
+const ROSTER_PAGE_SIZE = 50;
+
+/**
+ * The register with each student's enrollment attached: the selected year's row,
+ * and their latest row for telling where they stand now. Every roster view is
+ * this one query plus a filter, so the tab and its counts can't disagree.
+ */
+function rosterSource(scopes: DataScope[], academicYearId: string) {
+  const year = alias(studentEnrollments, "year_enrollment");
+  const latestRow = alias(studentEnrollments, "latest_row");
+  const latest = db
+    .select({
+      id: latestRow.id,
+      classId: latestRow.classId,
+      sectionId: latestRow.sectionId,
+      rollNumber: latestRow.rollNumber,
+      enrollmentStatus: latestRow.enrollmentStatus,
+      leftOn: latestRow.leftOn,
+    })
+    .from(latestRow)
+    .innerJoin(academicYears, eq(academicYears.id, latestRow.academicYearId))
+    .where(eq(latestRow.studentId, students.id))
+    .orderBy(desc(academicYears.startDate))
+    .limit(1)
+    .as("latest");
+
+  // Whole-school staff see the whole register. Anyone limited to a class or
+  // section sees only the students placed in it this year.
+  const broad = scopes.filter((scope) => !scope.classId && !scope.sectionId);
+  const narrow = scopes.filter((scope) => scope.classId || scope.sectionId);
+  const scopeFilter = or(
+    broad.length > 0 ? scopeWhere(broad, STUDENT_SCOPE_COLUMNS) : undefined,
+    narrow.length > 0
+      ? scopeWhere(narrow, {
+          organizationId: year.organizationId,
+          schoolId: year.schoolId,
+          classId: year.classId,
+          sectionId: year.sectionId,
+        })
+      : undefined,
+  );
+
+  const hasGuardian = sql<boolean>`exists (select 1 from ${studentGuardians} where ${studentGuardians.studentId} = ${students.id})`;
+  const views: Record<StudentRosterInput["view"], SQL | undefined> = {
+    current: inArray(year.enrollmentStatus, [...ENROLLED_STATUSES]),
+    notPlaced: and(eq(students.status, "active"), isNull(year.id)),
+    left: and(
+      eq(students.status, "inactive"),
+      or(isNull(latest.id), inArray(latest.enrollmentStatus, [...LEFT_STATUSES])),
+    ),
+    alumni: eq(latest.enrollmentStatus, "graduated"),
+    all: undefined,
+  };
+
+  return { year, latest, scopeFilter, hasGuardian, views, academicYearId };
+}
 
 export class StudentService {
   /**
@@ -199,23 +264,264 @@ export class StudentService {
 
   /**
    * The registry's soft delete (hard rule 2): the student becomes `inactive`,
-   * and every enrollment, fee row, and result keeps pointing at her. The
-   * enrollment/TC flow drives the richer departures (transferred_out with a
-   * TC); this is the plain "this record should not act" switch.
+   * and every enrollment, fee row, and result keeps pointing at her. An open
+   * enrollment closes first, because the database refuses an inactive student
+   * whose latest enrollment says otherwise (ADR-057).
    */
-  async deactivateStudent(scope: DataScope, studentId: string) {
-    const [student] = await db
-      .update(students)
-      .set({ status: "inactive" })
+  async deactivateStudent(scope: DataScope, studentId: string, actorUserId: string) {
+    return db.transaction(async (tx) => {
+      const [found] = await tx
+        .select({ id: students.id })
+        .from(students)
+        .where(
+          and(
+            eq(students.id, studentId),
+            scopeWhere(atSchoolLevel(scope), STUDENT_SCOPE_COLUMNS),
+          ),
+        );
+      if (!found) return null;
+
+      const [latest] = await tx
+        .select({
+          id: studentEnrollments.id,
+          enrollmentStatus: studentEnrollments.enrollmentStatus,
+        })
+        .from(studentEnrollments)
+        .innerJoin(academicYears, eq(academicYears.id, studentEnrollments.academicYearId))
+        .where(eq(studentEnrollments.studentId, studentId))
+        .orderBy(desc(academicYears.startDate))
+        .limit(1);
+      if (latest && (ENROLLED_STATUSES as readonly string[]).includes(latest.enrollmentStatus)) {
+        await tx
+          .update(studentEnrollments)
+          .set({
+            enrollmentStatus: "withdrawn",
+            leftOn: todayInIst(),
+            leavingReason: "Student record was deactivated",
+            leftBy: actorUserId,
+          })
+          .where(eq(studentEnrollments.id, latest.id));
+      }
+
+      const [student] = await tx
+        .update(students)
+        .set({ status: "inactive" })
+        .where(eq(students.id, studentId))
+        .returning();
+      return student ?? null;
+    });
+  }
+
+  /**
+   * Brings back a student who left. Each student has one enrollment per session,
+   * so this reopens their latest row and files the departure in its history; the
+   * database moves the student back to `active`. Graduating isn't a departure
+   * to undo, so it stays with the promotion flow.
+   */
+  async rejoinStudent(scope: DataScope, studentId: string) {
+    return db.transaction(async (tx) => {
+      const [found] = await tx
+        .select({ status: students.status })
+        .from(students)
+        .where(
+          and(
+            eq(students.id, studentId),
+            scopeWhere(atSchoolLevel(scope), STUDENT_SCOPE_COLUMNS),
+          ),
+        );
+      if (!found) return null;
+      if (found.status === "active") {
+        throw new Error("This student is already with the school.");
+      }
+
+      const [latest] = await tx
+        .select({ enrollment: studentEnrollments })
+        .from(studentEnrollments)
+        .innerJoin(academicYears, eq(academicYears.id, studentEnrollments.academicYearId))
+        .where(eq(studentEnrollments.studentId, studentId))
+        .orderBy(desc(academicYears.startDate))
+        .limit(1);
+      if (latest) {
+        const row = latest.enrollment;
+        if (row.enrollmentStatus === "graduated") {
+          throw new Error("A graduated student cannot rejoin from here.");
+        }
+        await tx
+          .update(studentEnrollments)
+          .set({
+            enrollmentStatus: row.sectionId ? "studying" : "admitted",
+            leftOn: null,
+            leavingReason: null,
+            leftBy: null,
+            leavingHistory: [
+              ...row.leavingHistory,
+              {
+                status: row.enrollmentStatus,
+                leftOn: row.leftOn,
+                reason: row.leavingReason,
+                leftBy: row.leftBy,
+                rejoinedOn: todayInIst(),
+              },
+            ],
+          })
+          .where(eq(studentEnrollments.id, row.id));
+      }
+
+      const [student] = await tx
+        .update(students)
+        .set({ status: "active" })
+        .where(eq(students.id, studentId))
+        .returning();
+      return student ?? null;
+    });
+  }
+
+  /** One page of one Students tab view, for the selected year. */
+  async listRoster(
+    scopes: DataScope[],
+    input: StudentRosterInput,
+  ): Promise<StudentRosterOutput> {
+    const { year, latest, scopeFilter, hasGuardian, views } = rosterSource(
+      scopes,
+      input.academicYearId,
+    );
+    const limit = input.limit ?? ROSTER_PAGE_SIZE;
+    const offset = input.cursor ?? 0;
+    const classId = sql<string | null>`case when ${year.id} is not null then ${year.classId} else ${latest.classId} end`;
+    const sectionId = sql<string | null>`case when ${year.id} is not null then ${year.sectionId} else ${latest.sectionId} end`;
+    const rollNumber = sql<string | null>`case when ${year.id} is not null then ${year.rollNumber} else ${latest.rollNumber} end`;
+    const pattern = input.q ? `%${escapeLike(input.q)}%` : null;
+
+    const orderBy: Record<StudentRosterInput["sort"], SQL[]> = {
+      class: [
+        sql`${classes.numericOrder} asc nulls last`,
+        sql`${sections.name} asc nulls last`,
+        sql`nullif(regexp_replace(${rollNumber}, '\\D', '', 'g'), '')::numeric asc nulls last`,
+        asc(students.firstName),
+        asc(students.lastName),
+      ],
+      name: [asc(students.firstName), asc(students.lastName)],
+      newest: [
+        sql`${students.admissionDate} desc nulls last`,
+        desc(students.createdAt),
+      ],
+    };
+
+    const rows = await db
+      .select({
+        id: students.id,
+        firstName: students.firstName,
+        middleName: students.middleName,
+        lastName: students.lastName,
+        admissionNumber: students.admissionNumber,
+        status: students.status,
+        yearStatus: year.enrollmentStatus,
+        latestStatus: latest.enrollmentStatus,
+        leftOn: latest.leftOn,
+        classId,
+        className: classes.name,
+        sectionId,
+        sectionName: sections.name,
+        rollNumber,
+        photoObjectId: studentPhotos.objectId,
+        hasGuardian,
+      })
+      .from(students)
+      .leftJoin(
+        year,
+        and(eq(year.studentId, students.id), eq(year.academicYearId, input.academicYearId)),
+      )
+      .leftJoinLateral(latest, sql`true`)
+      .leftJoin(classes, eq(classes.id, classId))
+      .leftJoin(sections, eq(sections.id, sectionId))
+      .leftJoin(studentPhotos, eq(studentPhotos.studentId, students.id))
       .where(
         and(
-          eq(students.id, studentId),
-          scopeWhere(atSchoolLevel(scope), STUDENT_SCOPE_COLUMNS),
+          scopeFilter,
+          views[input.view],
+          pattern
+            ? or(
+                ilike(students.firstName, pattern),
+                ilike(students.middleName, pattern),
+                ilike(students.lastName, pattern),
+                ilike(students.admissionNumber, pattern),
+              )
+            : undefined,
+          input.classId ? eq(year.classId, input.classId) : undefined,
+          input.sectionId ? eq(year.sectionId, input.sectionId) : undefined,
+          input.gender ? eq(students.gender, input.gender) : undefined,
+          input.admissionYear
+            ? sql`extract(year from ${students.admissionDate}) = ${input.admissionYear}`
+            : undefined,
+          input.noSection ? eq(year.enrollmentStatus, "admitted") : undefined,
+          input.noGuardian ? sql`not ${hasGuardian}` : undefined,
+          input.noPhoto ? isNull(studentPhotos.id) : undefined,
         ),
       )
-      .returning();
+      .orderBy(...orderBy[input.sort])
+      .limit(limit + 1)
+      .offset(offset);
 
-    return student ?? null;
+    return {
+      rows: rows.slice(0, limit).map(({ yearStatus, latestStatus, ...row }) => ({
+        ...row,
+        // A student who has gone is described by how they left, even in an older
+        // session's list; otherwise the selected year says what's happening.
+        enrollmentStatus:
+          row.status === "inactive" ? latestStatus : (yearStatus ?? latestStatus),
+      })),
+      nextCursor: rows.length > limit ? offset + limit : null,
+    };
+  }
+
+  /** The counts on the Students tab: its views, and who needs attention. */
+  async rosterSummary(
+    scopes: DataScope[],
+    academicYearId: string,
+  ): Promise<StudentRosterSummary> {
+    const { year, latest, scopeFilter, hasGuardian, views } = rosterSource(
+      scopes,
+      academicYearId,
+    );
+    const count = (condition: SQL | undefined) =>
+      condition
+        ? sql<number>`count(*) filter (where ${condition})::int`
+        : sql<number>`count(*)::int`;
+
+    const [row] = await db
+      .select({
+        current: count(views.current),
+        notPlaced: count(views.notPlaced),
+        left: count(views.left),
+        alumni: count(views.alumni),
+        all: count(undefined),
+        noSection: count(eq(year.enrollmentStatus, "admitted")),
+        noGuardian: count(and(views.current, sql`not ${hasGuardian}`)),
+        noPhoto: count(and(views.current, isNull(studentPhotos.id))),
+      })
+      .from(students)
+      .leftJoin(
+        year,
+        and(eq(year.studentId, students.id), eq(year.academicYearId, academicYearId)),
+      )
+      .leftJoinLateral(latest, sql`true`)
+      .leftJoin(studentPhotos, eq(studentPhotos.studentId, students.id))
+      .where(scopeFilter);
+
+    return {
+      counts: {
+        current: row?.current ?? 0,
+        notPlaced: row?.notPlaced ?? 0,
+        left: row?.left ?? 0,
+        alumni: row?.alumni ?? 0,
+        all: row?.all ?? 0,
+      },
+      attention: {
+        noSection: row?.noSection ?? 0,
+        noGuardian: row?.noGuardian ?? 0,
+        noPhoto: row?.noPhoto ?? 0,
+      },
+    };
   }
 
   /**

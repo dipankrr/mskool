@@ -1,7 +1,9 @@
 import { atSchoolLevel } from "./academic.service";
+import { ENROLLED_STATUSES, todayInIst, type LeftStatus } from "./enrollment-status";
 import { scopeWhere, type DataScope, type ScopeColumns } from "@repo/authz";
 import type {
   CreateEnrollmentInput,
+  LeaveEnrollmentInput,
   UpdateEnrollmentInput,
 } from "@repo/contracts";
 import { db } from "@repo/db";
@@ -76,30 +78,29 @@ const SECTION_SCOPE_COLUMNS: ScopeColumns = {
 } as const;
 
 /**
- * The legal status transitions, derived from the schema's enum so a new state
- * cannot be added without this map answering for it. ADMITTED leaves only by
- * withdrawing (the first section assignment is `assignSection`, not a
- * transition); TRANSFERRED_OUT and WITHDRAWN are terminal — a student who
- * left does not resume; PASSED_OUT closes the year. Declared as a map so the
- * transition operation is a lookup, not a branch thicket, and so S5.4's tests
- * can pin the machine itself.
+ * The legal ways out of each status, derived from the schema's enum so a new
+ * state cannot be added without this map answering for it (ADR-057). ADMITTED
+ * becomes STUDYING through `assignSection`, and the promotion flow will own
+ * COMPLETED and GRADUATED. A student who left comes back only by rejoining,
+ * which reopens the row (`StudentService.rejoinStudent`).
  */
 export type EnrollmentStatus = (typeof enrollmentStatusEnum.enumValues)[number];
 
 export const ENROLLMENT_TRANSITIONS: Record<EnrollmentStatus, EnrollmentStatus[]> =
   {
-    admitted: ["withdrawn"],
-    section_assigned: ["active", "withdrawn"],
-    active: ["transferred_out", "withdrawn", "passed_out"],
+    admitted: ["transferred_out", "withdrawn", "expelled"],
+    studying: ["completed", "graduated", "transferred_out", "withdrawn", "expelled"],
+    completed: ["graduated", "transferred_out", "withdrawn", "expelled"],
+    graduated: [],
     transferred_out: [],
     withdrawn: [],
-    passed_out: [],
+    expelled: [],
   };
 
 export class EnrollmentService {
   /**
    * Admits a student into a year (and optionally a section, in which case the
-   * row is born `section_assigned` — the status is DERIVED from whether a
+   * row is born `studying` — the status is DERIVED from whether a
    * section was named, never client-supplied). Re-reads all four parents
    * through the caller's scope inside the transaction, and verifies the
    * section agrees with the year AND the class it is being enrolled under:
@@ -209,7 +210,7 @@ export class EnrollmentService {
           schoolId,
           // Derived, never supplied: a section named at admission means the
           // student already has somewhere to sit.
-          enrollmentStatus: input.sectionId ? "section_assigned" : "admitted",
+          enrollmentStatus: input.sectionId ? "studying" : "admitted",
         })
         .returning();
       if (!enrollment) {
@@ -236,6 +237,8 @@ export class EnrollmentService {
     academicYearId: string,
     classId?: string,
     sectionId?: string,
+    /** Also return students who left; only screens showing them on purpose want this. */
+    includeLeft = false,
   ) {
     const rows = await db
       .select({ enrollment: studentEnrollments, student: students })
@@ -246,6 +249,9 @@ export class EnrollmentService {
           eq(studentEnrollments.academicYearId, academicYearId),
           classId ? eq(studentEnrollments.classId, classId) : undefined,
           sectionId ? eq(studentEnrollments.sectionId, sectionId) : undefined,
+          includeLeft
+            ? undefined
+            : inArray(studentEnrollments.enrollmentStatus, [...ENROLLED_STATUSES]),
           scopeWhere(scopes, ENROLLMENT_SCOPE_COLUMNS),
         ),
       )
@@ -297,7 +303,7 @@ export class EnrollmentService {
 
   /**
    * FIRST section assignment — allowed only while `sectionId` is still NULL.
-   * Sets the section and moves the status to `section_assigned` in one
+   * Sets the section and moves the status to `studying` in one
    * transaction, verifying the section through the caller's scope and against
    * the enrollment's own year and class (the same consistency checks creation
    * makes; an enrollment cannot be assigned into a section of another year or
@@ -340,10 +346,7 @@ export class EnrollmentService {
           "This enrollment already has a section. Moving a student mid-year is a transfer, and transfers are logged — that flow is not built yet.",
         );
       }
-      if (
-        enrollment.enrollmentStatus !== "admitted" &&
-        enrollment.enrollmentStatus !== "section_assigned"
-      ) {
+      if (enrollment.enrollmentStatus !== "admitted") {
         throw new Error(
           "Only an admitted enrollment can be assigned a section. This enrollment has left the admission flow.",
         );
@@ -384,7 +387,7 @@ export class EnrollmentService {
         .set({
           sectionId: input.sectionId,
           ...(input.rollNumber !== undefined ? { rollNumber: input.rollNumber } : {}),
-          enrollmentStatus: "section_assigned",
+          enrollmentStatus: "studying",
         })
         .where(
           and(
@@ -405,15 +408,15 @@ export class EnrollmentService {
   }
 
   /**
-   * Moves an enrollment through the status machine (`ENROLLMENT_TRANSITIONS`).
-   * The legal map is a lookup, so an illegal transition is refused in words
-   * ("an enrollment that has left the admission flow cannot return"), not by
-   * a status field anyone can set.
+   * Records a student leaving. The date is what keeps them on the roster for
+   * earlier days, so it can't be in the future or before they joined. The
+   * database moves `students.status` along with this row (ADR-057).
    */
-  async transitionEnrollment(
+  async leaveEnrollment(
     scope: DataScope,
+    actorUserId: string,
     enrollmentId: string,
-    to: EnrollmentStatus,
+    input: LeaveEnrollmentInput,
   ) {
     const [enrollment] = await db
       .select()
@@ -428,16 +431,28 @@ export class EnrollmentService {
       throw new Error("Enrollment not found in this school.");
     }
 
-    const legal = ENROLLMENT_TRANSITIONS[enrollment.enrollmentStatus] ?? [];
-    if (!legal.includes(to)) {
+    const to: LeftStatus = input.to;
+    if (!ENROLLMENT_TRANSITIONS[enrollment.enrollmentStatus].includes(to)) {
       throw new Error(
         `An enrollment cannot move from ${enrollment.enrollmentStatus} to ${to}. Check the student's current state.`,
       );
     }
+    const leftOn = input.leftOn ?? todayInIst();
+    if (leftOn > todayInIst()) {
+      throw new Error("A leaving date cannot be in the future.");
+    }
+    if (leftOn < enrollment.enrollmentDate) {
+      throw new Error("A leaving date cannot be before the student joined.");
+    }
 
     const [updated] = await db
       .update(studentEnrollments)
-      .set({ enrollmentStatus: to })
+      .set({
+        enrollmentStatus: to,
+        leftOn,
+        leavingReason: input.reason?.trim() || null,
+        leftBy: actorUserId,
+      })
       .where(
         and(
           eq(studentEnrollments.id, enrollmentId),
