@@ -1,5 +1,4 @@
 import {
-  ENROLLMENT_TRANSITIONS,
   addressBlock,
   ageInYears,
   emptyEnrollmentForm,
@@ -9,29 +8,11 @@ import {
   guardianPayload,
   hasLeft,
   leavingOptions,
-  leavingPath,
   maskAadhaar,
   validateEnrollmentForm,
   validateGuardianForm,
 } from "./people-logic";
 import { copy } from "../../lib/copy";
-
-describe("enrollment transitions map", () => {
-  it("mirrors the service's legal moves", () => {
-    expect(ENROLLMENT_TRANSITIONS.admitted).toEqual(["withdrawn"]);
-    expect(ENROLLMENT_TRANSITIONS.section_assigned).toEqual([
-      "active",
-      "withdrawn",
-    ]);
-    expect(ENROLLMENT_TRANSITIONS.active).toEqual([
-      "transferred_out",
-      "withdrawn",
-      "passed_out",
-    ]);
-    expect(ENROLLMENT_TRANSITIONS.withdrawn).toEqual([]);
-    expect(ENROLLMENT_TRANSITIONS.passed_out).toEqual([]);
-  });
-});
 
 describe("enrollment form", () => {
   it("demands a class on create", () => {
@@ -140,43 +121,23 @@ describe("guardian form", () => {
 });
 
 describe("a student leaving", () => {
-  it("offers only withdrawal before a section is assigned", () => {
-    expect(leavingOptions("admitted")).toEqual(["withdrawn"]);
+  it("offers every way out to anyone still at the school", () => {
+    const all = ["transferred_out", "withdrawn", "expelled"];
+    expect(leavingOptions("admitted")).toEqual(all);
+    expect(leavingOptions("studying")).toEqual(all);
+    expect(leavingOptions("completed")).toEqual(all);
   });
 
-  it("offers every way out to a student who is studying", () => {
-    const all = ["transferred_out", "withdrawn", "passed_out"];
-    expect(leavingOptions("section_assigned")).toEqual(all);
-    expect(leavingOptions("active")).toEqual(all);
-  });
-
-  it("offers nothing once they have left", () => {
+  it("offers nothing once they have gone", () => {
     expect(leavingOptions("withdrawn")).toEqual([]);
-    expect(hasLeft("passed_out")).toBe(true);
-    expect(hasLeft("section_assigned")).toBe(false);
+    expect(leavingOptions("graduated")).toEqual([]);
   });
 
-  it("takes only steps the server allows", () => {
-    expect(leavingPath("section_assigned", "withdrawn")).toEqual(["withdrawn"]);
-    expect(leavingPath("section_assigned", "transferred_out")).toEqual([
-      "active",
-      "transferred_out",
-    ]);
-    expect(leavingPath("active", "passed_out")).toEqual(["passed_out"]);
-    expect(leavingPath("admitted", "passed_out")).toEqual([]);
-    for (const [from, to] of [
-      ["section_assigned", "transferred_out"],
-      ["section_assigned", "passed_out"],
-      ["section_assigned", "withdrawn"],
-      ["active", "transferred_out"],
-    ] as const) {
-      let at: keyof typeof ENROLLMENT_TRANSITIONS = from;
-      for (const next of leavingPath(from, to)) {
-        expect(ENROLLMENT_TRANSITIONS[at]).toContain(next);
-        at = next;
-      }
-      expect(at).toBe(to);
-    }
+  it("treats graduating as having left, and a finished session as not", () => {
+    expect(hasLeft("graduated")).toBe(true);
+    expect(hasLeft("expelled")).toBe(true);
+    expect(hasLeft("studying")).toBe(false);
+    expect(hasLeft("completed")).toBe(false);
   });
 });
 

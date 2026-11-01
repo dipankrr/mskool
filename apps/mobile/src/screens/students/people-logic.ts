@@ -15,48 +15,28 @@ import { copy } from "../../lib/copy";
 
 export type EnrollmentStatus =
   | "admitted"
-  | "section_assigned"
-  | "active"
+  | "studying"
+  | "completed"
+  | "graduated"
   | "transferred_out"
   | "withdrawn"
-  | "passed_out";
+  | "expelled";
 
-/** The service's legal map (enrollment.service ENROLLMENT_TRANSITIONS). */
-export const ENROLLMENT_TRANSITIONS: Record<EnrollmentStatus, EnrollmentStatus[]> = {
-  admitted: ["withdrawn"],
-  section_assigned: ["active", "withdrawn"],
-  active: ["transferred_out", "withdrawn", "passed_out"],
-  transferred_out: [],
-  withdrawn: [],
-  passed_out: [],
-};
+export type LeavingStatus = "transferred_out" | "withdrawn" | "expelled";
 
-export type LeavingStatus = "transferred_out" | "withdrawn" | "passed_out";
-
-/**
- * The ways a student can leave from where they stand. `section_assigned` and
- * `active` read the same to every roster, so the profile shows both as
- * "Studying" and doesn't ask the desk to tell them apart.
- */
+/** How a student can leave from where they stand (the service's map, ADR-057). */
 export function leavingOptions(status: EnrollmentStatus): LeavingStatus[] {
-  if (status === "admitted") return ["withdrawn"];
-  if (status === "section_assigned" || status === "active") {
-    return ["transferred_out", "withdrawn", "passed_out"];
-  }
-  return [];
+  return hasLeft(status) ? [] : ["transferred_out", "withdrawn", "expelled"];
 }
 
-/** The server's steps to reach `to`, because only `active` can transfer or pass out. */
-export function leavingPath(from: EnrollmentStatus, to: LeavingStatus): EnrollmentStatus[] {
-  if (ENROLLMENT_TRANSITIONS[from].includes(to)) return [to];
-  if (from === "section_assigned" && ENROLLMENT_TRANSITIONS.active.includes(to)) {
-    return ["active", to];
-  }
-  return [];
-}
-
+/** Their time at the school is over, one way or another. */
 export function hasLeft(status: EnrollmentStatus): boolean {
-  return ENROLLMENT_TRANSITIONS[status].length === 0;
+  return (
+    status === "graduated" ||
+    status === "transferred_out" ||
+    status === "withdrawn" ||
+    status === "expelled"
+  );
 }
 
 /** Whole years old on `today`, both ISO dates. Null without a usable birth date. */

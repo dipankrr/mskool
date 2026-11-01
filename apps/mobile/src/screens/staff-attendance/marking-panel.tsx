@@ -152,7 +152,7 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
 
   // The roster, in roll order, through the shared hook — the summary panel
   // reads the same query and the same order.
-  const { roster, rosterIds, query: enrollmentsQuery } = useSectionRoster(sectionId);
+  const { roster, rosterIds, query: enrollmentsQuery } = useSectionRoster(sectionId, date);
 
   const { days: recentDays } = useRecentAttendance({
     sectionId,

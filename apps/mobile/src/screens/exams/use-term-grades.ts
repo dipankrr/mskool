@@ -14,9 +14,9 @@ export type TermGradeSubject = {
 
 /** The enrollment statuses `saveTermAssessment` accepts (mirrored, not invented). */
 const SAVEABLE_ENROLLMENT_STATUS = new Set([
-  "active",
   "admitted",
-  "section_assigned",
+  "studying",
+  "completed",
 ]);
 
 export type TermGradeStudent = {

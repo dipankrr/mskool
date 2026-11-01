@@ -1,3 +1,4 @@
+import { Image } from "expo-image";
 import { createAuthClient } from "better-auth/react";
 import { usernameClient } from "better-auth/client/plugins";
 import { expoClient } from "@better-auth/expo/client";
@@ -115,6 +116,8 @@ export async function logout() {
   if (result.error) {
     throw new Error(copy.auth.signOutFailed);
   }
+  // Student photos cached for the Students tab go with the session.
+  await Image.clearDiskCache().catch(() => undefined);
   // Confirmed by the server. Sweep the persisted auth material and cached
   // server state deterministically: the expo plugin resets its own cache
   // around the request, but a raced or half-completed flow left the old

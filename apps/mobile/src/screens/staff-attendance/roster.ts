@@ -10,7 +10,12 @@
  */
 
 export type EnrollmentPair = {
-  enrollment: { sectionId: string | null; rollNumber: string | null };
+  enrollment: {
+    sectionId: string | null;
+    rollNumber: string | null;
+    enrollmentStatus?: string;
+    leftOn?: string | null;
+  };
   student: {
     id: string;
     firstName: string;
@@ -25,12 +30,28 @@ export type RosterEntry = {
   roll: string | null;
 };
 
+/**
+ * Who was at the school on this date. Someone who left stays on earlier days, so
+ * a past day can still be corrected; a row with no date of leaving hasn't left.
+ */
+function onRollOn(enrollment: EnrollmentPair["enrollment"], date: string): boolean {
+  const { enrollmentStatus: status, leftOn } = enrollment;
+  if (status === "studying" || status === "completed" || status === undefined) return true;
+  return Boolean(leftOn && leftOn > date);
+}
+
 export function buildRoster(
   rows: readonly EnrollmentPair[],
   sectionId: string,
+  /** Omit for everyone who has been in the section, such as a month's summary. */
+  date?: string,
 ): RosterEntry[] {
   const entries = rows
-    .filter((pair) => pair.enrollment.sectionId === sectionId)
+    .filter(
+      (pair) =>
+        pair.enrollment.sectionId === sectionId &&
+        (date === undefined || onRollOn(pair.enrollment, date)),
+    )
     .map((pair) => ({
       studentId: pair.student.id,
       name: [pair.student.firstName, pair.student.middleName, pair.student.lastName]

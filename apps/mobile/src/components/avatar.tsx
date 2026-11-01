@@ -7,7 +7,7 @@ import { ThemedText } from "./themed-text";
 
 /**
  * Initials avatar — names only, never student photos (privacy rule from the
- * design gate). `md` (40) sits in roster rows, `lg` (44) heads the status
+ * design gate; the Students tab's rows are the one approved exception, ADR-057).`md` (40) sits in roster rows, `lg` (44) heads the status
  * sheet. Decorative: the row/sheet announces the full name, so the avatar is
  * hidden from screen readers.
  */

@@ -9,6 +9,7 @@ import { AppIcon } from "../../components/app-icon";
 import { CapsuleButton } from "../../components/capsule-button";
 import { Card } from "../../components/card";
 import { ChoiceSheet } from "../../components/choice-sheet";
+import { DateField } from "../../components/date-field";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorCard } from "../../components/error-card";
 import { FormField } from "../../components/form-field";
@@ -36,7 +37,6 @@ import {
   ageInYears,
   hasLeft,
   leavingOptions,
-  leavingPath,
   maskAadhaar,
   type EnrollmentStatus,
   type LeavingStatus,
@@ -88,7 +88,11 @@ export function StudentDetailScreen() {
   const enrollmentsEnabled =
     ready && Boolean(organizationId) && canReadEnrollment && Boolean(academicYear?.id);
   const enrollmentsQuery = trpc.enrollment.list.useQuery(
-    { organizationId: organizationId ?? "", academicYearId: academicYear?.id ?? "" },
+    {
+      organizationId: organizationId ?? "",
+      academicYearId: academicYear?.id ?? "",
+      includeLeft: true,
+    },
     { enabled: enrollmentsEnabled },
   );
   // Enrollments only carry ids, and a name is what anyone is looking for.
@@ -113,10 +117,10 @@ export function StudentDetailScreen() {
   const sectionName = sectionsQuery.data?.find((row) => row.id === enrollment?.sectionId)?.name;
 
   const utils = trpc.useUtils();
-  const transition = trpc.enrollment.transition.useMutation();
+  const rejoin = trpc.student.rejoin.useMutation();
   const [leavingOpen, setLeavingOpen] = useState(false);
-  const [leavingBusy, setLeavingBusy] = useState(false);
-  const [leavingError, setLeavingError] = useState<unknown>(null);
+  const [leavingTo, setLeavingTo] = useState<LeavingStatus | null>(null);
+  const [rejoinError, setRejoinError] = useState<unknown>(null);
 
   const photo = useStudentPhoto(organizationId, studentId, ready && canRead);
   const [photoSheetOpen, setPhotoSheetOpen] = useState(false);
@@ -208,7 +212,7 @@ export function StudentDetailScreen() {
   const guardians = guardiansQuery.data ?? [];
   const firstContact = guardians.find((guardian) => guardian.isPrimary) ?? guardians[0];
   const age = ageInYears(student.dateOfBirth, todayIso());
-  const left = status ? hasLeft(status) : false;
+  const left = student.status === "inactive" || (status ? hasLeft(status) : false);
   const canPlace = canEnrollUpdate && !left;
   const leaving = status && canEnrollUpdate ? leavingOptions(status) : [];
   const address = addressBlock(student);
@@ -235,19 +239,18 @@ export function StudentDetailScreen() {
     background.length === 0 ? profile.groups.background : null,
   ].filter(Boolean);
 
-  const leave = async (to: LeavingStatus) => {
-    if (!enrollment || !status || !organizationId) return;
-    setLeavingError(null);
-    setLeavingBusy(true);
+  const rejoinStudent = async () => {
+    if (!organizationId) return;
+    setRejoinError(null);
+    setSavedMsg(null);
     try {
-      for (const next of leavingPath(status, to)) {
-        await transition.mutateAsync({ organizationId, id: enrollment.id, to: next });
-      }
+      await rejoin.mutateAsync({ organizationId, id: student.id });
+      await Promise.all([
+        utils.enrollment.list.invalidate(),
+        utils.student.byId.invalidate({ id: student.id }),
+      ]);
     } catch (error) {
-      setLeavingError(error);
-    } finally {
-      await utils.enrollment.list.invalidate();
-      setLeavingBusy(false);
+      setRejoinError(error);
     }
   };
 
@@ -303,10 +306,10 @@ export function StudentDetailScreen() {
                   testID="student-blood-group-pill"
                 />
               ) : null}
-              {status && left ? (
+              {left ? (
                 <StatusPill
-                  label={copy.people.enrollment.statuses[status]}
-                  tone="critical"
+                  label={status && hasLeft(status) ? copy.people.enrollment.statuses[status] : profile.gone}
+                  tone={status === "graduated" ? "positive" : "critical"}
                   testID="student-left-pill"
                 />
               ) : null}
@@ -357,7 +360,7 @@ export function StudentDetailScreen() {
                 testID="student-roll"
               />
             </View>
-          ) : (
+          ) : left ? null : (
             <View style={styles.enrollBlock}>
               <ThemedText variant="bodyStrong">{profile.enrollTitle}</ThemedText>
               <ThemedText variant="meta">{profile.enrollBody}</ThemedText>
@@ -375,6 +378,31 @@ export function StudentDetailScreen() {
           )
         ) : null}
       </Card>
+
+      {canUpdate && student.status === "inactive" && status !== "graduated" ? (
+        <CapsuleButton
+          title={profile.rejoin}
+          icon="history"
+          variant="secondary"
+          size="compact"
+          loading={rejoin.isPending}
+          disabled={rejoin.isPending}
+          onPress={() =>
+            Alert.alert(profile.rejoinConfirmTitle(student.firstName), profile.rejoinConfirmBody, [
+              { text: copy.common.cancel, style: "cancel" },
+              { text: profile.rejoinConfirm, onPress: () => void rejoinStudent() },
+            ])
+          }
+          testID="student-rejoin"
+        />
+      ) : null}
+      {rejoinError ? (
+        <Notice
+          tone="critical"
+          message={toFriendlyError(rejoinError).message}
+          testID="student-rejoin-error"
+        />
+      ) : null}
 
       {photoError ? (
         <Notice
@@ -489,32 +517,25 @@ export function StudentDetailScreen() {
         {status ? (
           <FactRow
             label={copy.people.enrollment.statusLabel}
-            value={
-              // Older rows can hold a section while still marked admitted.
-              copy.people.enrollment.statuses[
-                status === "admitted" && enrollment?.sectionId ? "section_assigned" : status
-              ]
-            }
+            value={copy.people.enrollment.statuses[status]}
             testID="student-status"
           />
         ) : null}
+        {enrollment?.leftOn ? (
+          <FactRow label={profile.leftOn} value={formatReadableDate(enrollment.leftOn)} />
+        ) : null}
+        {enrollment?.leavingReason ? (
+          <FactRow label={profile.reason} value={enrollment.leavingReason} />
+        ) : null}
         {leaving.length > 0 ? (
           <LinkRow
-            title={leavingBusy ? copy.people.loading : profile.leaving}
+            title={profile.leaving}
             onPress={() => setLeavingOpen(true)}
             accessibilityHint={profile.leavingHint}
-            locked={leavingBusy}
             testID="student-leaving"
           />
         ) : null}
       </Card>
-      {leavingError ? (
-        <Notice
-          tone="critical"
-          message={toFriendlyError(leavingError).message}
-          testID="student-leaving-error"
-        />
-      ) : null}
 
       {hasContact ? (
         <>
@@ -635,23 +656,27 @@ export function StudentDetailScreen() {
         currentId=""
         onSelect={(id) => {
           setLeavingOpen(false);
-          const to = id as LeavingStatus;
-          Alert.alert(
-            profile.leavingConfirmTitle(student.firstName, profile.leavingReasons[to].label),
-            profile.leavingConfirmBody,
-            [
-              { text: copy.common.cancel, style: "cancel" },
-              {
-                text: profile.leavingConfirm,
-                style: "destructive",
-                onPress: () => void leave(to),
-              },
-            ],
-          );
+          setLeavingTo(id as LeavingStatus);
         }}
         onDismiss={() => setLeavingOpen(false)}
         testIDPrefix="student-leaving-option"
       />
+
+      {leavingTo && enrollment ? (
+        <LeavingSheet
+          organizationId={organizationId ?? ""}
+          enrollmentId={enrollment.id}
+          enrollmentDate={enrollment.enrollmentDate}
+          firstName={student.firstName}
+          to={leavingTo}
+          onClose={() => setLeavingTo(null)}
+          onSaved={() => {
+            setLeavingTo(null);
+            setSavedMsg(null);
+            void utils.student.byId.invalidate({ id: student.id });
+          }}
+        />
+      ) : null}
 
       {enrollSheet ? (
         <EnrollmentSheet
@@ -669,6 +694,99 @@ export function StudentDetailScreen() {
         />
       ) : null}
     </View>,
+  );
+}
+
+/** How a student left: the last day and, if the desk wants to record it, why. */
+function LeavingSheet({
+  organizationId,
+  enrollmentId,
+  enrollmentDate,
+  firstName,
+  to,
+  onClose,
+  onSaved,
+}: {
+  organizationId: string;
+  enrollmentId: string;
+  enrollmentDate: string;
+  firstName: string;
+  to: LeavingStatus;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const profile = copy.students.profile;
+  const [leftOn, setLeftOn] = useState<string | null>(todayIso());
+  const [reason, setReason] = useState("");
+  const [saveError, setSaveError] = useState<unknown>(null);
+  const utils = trpc.useUtils();
+  const leave = trpc.enrollment.leave.useMutation();
+
+  const save = async () => {
+    setSaveError(null);
+    try {
+      await leave.mutateAsync({
+        organizationId,
+        id: enrollmentId,
+        data: {
+          to,
+          ...(leftOn ? { leftOn } : {}),
+          ...(reason.trim() ? { reason: reason.trim() } : {}),
+        },
+      });
+      await utils.enrollment.list.invalidate();
+      onSaved();
+    } catch (error) {
+      setSaveError(error);
+    }
+  };
+
+  return (
+    <FormSheet
+      title={profile.leavingSheetTitle(firstName, profile.leavingReasons[to].label)}
+      onClose={onClose}
+      testIDPrefix="leaving-sheet"
+      footer={
+        <>
+          {saveError ? (
+            <Notice
+              tone="critical"
+              message={toFriendlyError(saveError).message}
+              testID="leaving-sheet-error"
+            />
+          ) : null}
+          <CapsuleButton
+            title={profile.leavingConfirm}
+            variant="destructive"
+            onPress={() => void save()}
+            loading={leave.isPending}
+            disabled={leave.isPending}
+            testID="leaving-sheet-save"
+            style={styles.sheetSave}
+          />
+        </>
+      }
+    >
+      <ThemedText variant="meta" style={styles.leavingBody}>
+        {profile.leavingBody}
+      </ThemedText>
+      <DateField
+        label={profile.leavingDate}
+        value={leftOn}
+        onChange={setLeftOn}
+        minimumDate={enrollmentDate}
+        maximumDate={todayIso()}
+        testID="leaving-sheet-date"
+      />
+      <FormField
+        label={profile.leavingReason}
+        value={reason}
+        onChangeText={setReason}
+        autoCapitalize="sentences"
+        maxLength={200}
+        testID="leaving-sheet-reason"
+      />
+    </FormSheet>
   );
 }
 
@@ -1051,5 +1169,8 @@ const styles = StyleSheet.create({
   },
   sheetSave: {
     alignSelf: "stretch",
+  },
+  leavingBody: {
+    marginTop: spacing.sm,
   },
 });

@@ -210,6 +210,7 @@ export function StudentFeeDeskScreen() {
       organizationId: organizationId ?? "",
       academicYearId: academicYear?.id ?? "",
       classId: row?.classId,
+      includeLeft: true,
     },
     {
       enabled:

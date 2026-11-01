@@ -15,6 +15,29 @@ function pair(
   };
 }
 
+describe("buildRoster on a date", () => {
+  const withStatus = (id: string, enrollmentStatus: string, leftOn: string | null) => ({
+    enrollment: { sectionId: "sec-1", rollNumber: null, enrollmentStatus, leftOn },
+    student: { id, firstName: id, middleName: null, lastName: null },
+  });
+
+  it("drops a student from the day they left, and keeps them before it", () => {
+    const rows = [withStatus("stay", "studying", null), withStatus("gone", "withdrawn", "2026-10-15")];
+    const ids = (date: string) => buildRoster(rows, "sec-1", date).map((entry) => entry.studentId);
+    expect(ids("2026-10-14")).toEqual(["gone", "stay"]);
+    expect(ids("2026-10-15")).toEqual(["stay"]);
+    expect(ids("2026-10-16")).toEqual(["stay"]);
+  });
+
+  it("drops a departure with no recorded date", () => {
+    expect(buildRoster([withStatus("gone", "withdrawn", null)], "sec-1", "2026-10-14")).toEqual([]);
+  });
+
+  it("lists everyone when no date is given", () => {
+    expect(buildRoster([withStatus("gone", "withdrawn", "2026-10-15")], "sec-1")).toHaveLength(1);
+  });
+});
+
 describe("buildRoster", () => {
   it("keeps numeric roll order (2 before 10), un-numbered last by name", () => {
     const roster = buildRoster(

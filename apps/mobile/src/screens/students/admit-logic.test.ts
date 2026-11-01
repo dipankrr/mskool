@@ -281,8 +281,8 @@ describe("familyPayloads", () => {
 describe("sectionStrength", () => {
   it("counts current students per section", () => {
     const counts = sectionStrength([
-      { enrollment: { sectionId: "a", enrollmentStatus: "active" } },
-      { enrollment: { sectionId: "a", enrollmentStatus: "section_assigned" } },
+      { enrollment: { sectionId: "a", enrollmentStatus: "studying" } },
+      { enrollment: { sectionId: "a", enrollmentStatus: "completed" } },
       { enrollment: { sectionId: "a", enrollmentStatus: "withdrawn" } },
       { enrollment: { sectionId: "b", enrollmentStatus: "transferred_out" } },
       { enrollment: { sectionId: null, enrollmentStatus: "admitted" } },

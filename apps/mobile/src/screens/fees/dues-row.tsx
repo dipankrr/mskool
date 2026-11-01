@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, View } from "react-native";
+import { hasLeft, type EnrollmentStatus } from "../students/people-logic";
 
 import { StatusPill } from "../../components/status-pill";
 import { ThemedText } from "../../components/themed-text";
@@ -10,6 +11,7 @@ import { radius, spacing } from "../../theme/tokens";
 import { FactChip, MatrixStatusPill, RowAmount } from "./status";
 
 export type DuesRowData = {
+  enrollmentStatus: string;
   studentId: string;
   admissionNumber: string;
   studentName: string;
@@ -63,6 +65,10 @@ export function DuesRow({
     row.className,
     row.sectionName,
     row.rollNumber ? `Roll ${row.rollNumber}` : null,
+    // Someone who left is listed only because they still owe.
+    hasLeft(row.enrollmentStatus as EnrollmentStatus)
+      ? copy.people.enrollment.statuses[row.enrollmentStatus as EnrollmentStatus]
+      : null,
   ]
     .filter(Boolean)
     .join(" · ");
