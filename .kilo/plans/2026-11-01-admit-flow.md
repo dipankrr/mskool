@@ -168,7 +168,7 @@ The status rules are ADR-057. The owner closed the discussion and asked for the 
 
 **Not walked:** iOS, TalkBack, a teacher account on the tab (integration-tested only), a full attendance save on the device, fee dues showing a left student, 1.3x text, and paging on a large school.
 
-**Dev DB residue:** `ZFT-001` (active, no class) and `ZFT-002` (expelled) from these walks, and `STATUS-*` students from the integration test.
+**Dev DB residue:** `ZFT-001` (active, no class) and `ZFT-002` (expelled) from these walks. The integration test now removes its own `STATUS-*` students.
 
 **Known limits:**
 
