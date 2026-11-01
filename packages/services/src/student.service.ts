@@ -21,7 +21,19 @@ import {
   studentPhotos,
   students,
 } from "@repo/db/schema";
-import { and, asc, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNotNull,
+  isNull,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 /**
@@ -508,7 +520,19 @@ export class StudentService {
       .leftJoin(studentPhotos, eq(studentPhotos.studentId, students.id))
       .where(scopeFilter);
 
+    const admissionYear = sql<number>`extract(year from ${students.admissionDate})::int`;
+    const years = await db
+      .selectDistinct({ year: admissionYear })
+      .from(students)
+      .leftJoin(
+        year,
+        and(eq(year.studentId, students.id), eq(year.academicYearId, academicYearId)),
+      )
+      .where(and(scopeFilter, isNotNull(students.admissionDate)))
+      .orderBy(desc(admissionYear));
+
     return {
+      admissionYears: years.map((row) => row.year),
       counts: {
         current: row?.current ?? 0,
         notPlaced: row?.notPlaced ?? 0,

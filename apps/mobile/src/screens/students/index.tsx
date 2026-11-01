@@ -22,12 +22,12 @@ import { ChoicePills } from "../../components/choice-pills";
 import { ChoiceSheet } from "../../components/choice-sheet";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorCard } from "../../components/error-card";
-import { FormField } from "../../components/form-field";
 import { FormSheet } from "../../components/form-sheet";
 import { HeaderActionButton } from "../../components/screen-frame";
+import { SelectField } from "../../components/select-field";
 import { Skeleton } from "../../components/skeleton";
 import { StatusPill } from "../../components/status-pill";
-import { useTabBarSpace } from "../../components/tab-bar";
+import { useHideTabBarOnScroll, useTabBarSpace } from "../../components/tab-bar";
 import { ThemedText } from "../../components/themed-text";
 import { useActiveContext, useBranchMeta } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
@@ -63,10 +63,11 @@ const SORTS: { id: RosterSort; label: string }[] = [
  * studying now, with one tap to anyone else. It has its own bottom tab and a More
  * entry, the same screen with `variant` deciding the chrome.
  *
- * Search, tabs and filters stay pinned while the list scrolls, because moving
- * between them is what this screen is for. Rows load a page at a time, and photos
- * only as they come on screen, so a large school stays quick. Photos in rows are
- * a deliberate exception to the initials-only rule for lists, for this tab only.
+ * The title, search, tabs and filters scroll away with the rows, and on the tab
+ * the bottom bar slides off too, so the list gets the whole screen. Rows load a
+ * page at a time, and photos only as they come on screen, so a large school stays
+ * quick. Photos in rows are a deliberate exception to the initials-only rule for
+ * lists, for this tab only.
  */
 export function StudentsScreen({
   variant = "pushed",
@@ -76,6 +77,7 @@ export function StudentsScreen({
   const { organizationId, schoolId, academicYear, ready } = useActiveContext();
   const branchName = useBranchMeta();
   const tabSpace = useTabBarSpace();
+  const hideTabBarOnScroll = useHideTabBarOnScroll();
   const { has } = usePermissions();
 
   const canRead = has("student:read");
@@ -274,8 +276,10 @@ export function StudentsScreen({
 
   const searching = search.length > 0 || filterCount > 0;
 
-  return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
+  // Handed to the list as an element, not a component, so the search field keeps
+  // its focus and keyboard while results change underneath it.
+  const listHeader = (
+    <View>
       {head}
       <View style={styles.controls}>
         <View style={styles.searchWrap}>
@@ -356,90 +360,92 @@ export function StudentsScreen({
             testID="students-sort"
           />
         </View>
+        {view === "current" ? (
+          <Attention attention={attention} filters={filters} onToggle={toggle} />
+        ) : null}
       </View>
+    </View>
+  );
 
-      {roster.isError && rows.length === 0 ? (
-        <View style={styles.state}>
-          <ErrorCard
-            cause={roster.error}
-            onRetry={() => void roster.refetch()}
-            testID="students-error"
-          />
+  const listEmpty = roster.isError ? (
+    <ErrorCard
+      cause={roster.error}
+      onRetry={() => void roster.refetch()}
+      testID="students-error"
+    />
+  ) : roster.isPending ? (
+    <View style={styles.loading} accessibilityLabel={copy.students.loading}>
+      {[0, 1, 2, 3, 4].map((key) => (
+        <View key={key} style={styles.skeletonRow}>
+          <Skeleton width={52} height={52} />
+          <View style={styles.skeletonText}>
+            <Skeleton width="56%" height={16} />
+            <Skeleton width="38%" height={12} />
+          </View>
         </View>
-      ) : roster.isPending ? (
-        <View style={styles.state} accessibilityLabel={copy.students.loading}>
-          {[0, 1, 2, 3, 4].map((key) => (
-            <View key={key} style={styles.skeletonRow}>
-              <Skeleton width={52} height={52} />
-              <View style={styles.skeletonText}>
-                <Skeleton width="56%" height={16} />
-                <Skeleton width="38%" height={12} />
-              </View>
-            </View>
-          ))}
-        </View>
-      ) : (
-        <FlatList
-          ref={listRef}
-          data={items}
-          keyExtractor={(item) => item.key}
-          renderItem={renderItem}
-          extraData={cookie}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          contentContainerStyle={[
-            styles.listContent,
-            { paddingBottom: variant === "tab" ? tabSpace : spacing.huge },
-          ]}
-          initialNumToRender={12}
-          maxToRenderPerBatch={12}
-          windowSize={9}
-          onEndReachedThreshold={0.6}
-          onEndReached={() => {
-            if (roster.hasNextPage && !roster.isFetchingNextPage) {
-              void roster.fetchNextPage();
-            }
-          }}
-          refreshing={roster.isRefetching && !roster.isFetchingNextPage}
-          onRefresh={refresh}
-          ListHeaderComponent={
-            view === "current" ? (
-              <Attention attention={attention} filters={filters} onToggle={toggle} />
-            ) : null
-          }
-          ListFooterComponent={
-            roster.isFetchingNextPage ? (
-              <ActivityIndicator color={colors.accent} style={styles.more} />
-            ) : null
-          }
-          ListEmptyComponent={
-            searching ? (
-              <EmptyState
-                icon="search"
-                title={copy.students.noResultsTitle}
-                message={copy.students.list.noResultsBody}
-                testID="students-no-results"
-              />
-            ) : (
-              <EmptyState
-                icon="students"
-                title={copy.students.list.emptyTitles[view]}
-                message={copy.students.list.emptyBodies[view]}
-                testID="students-empty"
-              >
-                {canCreate && view === "current" ? (
-                  <CapsuleButton
-                    title={copy.students.add}
-                    icon="add"
-                    onPress={() => router.push("/admit-student")}
-                    testID="students-empty-add"
-                  />
-                ) : null}
-              </EmptyState>
-            )
-          }
+      ))}
+    </View>
+  ) : searching ? (
+    <EmptyState
+      icon="search"
+      title={copy.students.noResultsTitle}
+      message={copy.students.list.noResultsBody}
+      testID="students-no-results"
+    />
+  ) : (
+    <EmptyState
+      icon="students"
+      title={copy.students.list.emptyTitles[view]}
+      message={copy.students.list.emptyBodies[view]}
+      testID="students-empty"
+    >
+      {canCreate && view === "current" ? (
+        <CapsuleButton
+          title={copy.students.add}
+          icon="add"
+          onPress={() => router.push("/admit-student")}
+          testID="students-empty-add"
         />
-      )}
+      ) : null}
+    </EmptyState>
+  );
+
+  return (
+    <SafeAreaView style={styles.safe} edges={["top"]}>
+      <FlatList
+        ref={listRef}
+        data={items}
+        keyExtractor={(item) => item.key}
+        renderItem={renderItem}
+        extraData={cookie}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: variant === "tab" ? tabSpace : spacing.huge },
+        ]}
+        initialNumToRender={12}
+        maxToRenderPerBatch={12}
+        windowSize={9}
+        onScroll={variant === "tab" ? hideTabBarOnScroll : undefined}
+        scrollEventThrottle={16}
+        onEndReachedThreshold={0.6}
+        onEndReached={() => {
+          if (roster.hasNextPage && !roster.isFetchingNextPage) {
+            void roster.fetchNextPage();
+          }
+        }}
+        refreshing={roster.isRefetching && !roster.isFetchingNextPage}
+        onRefresh={refresh}
+        ListHeaderComponent={listHeader}
+        ListHeaderComponentStyle={styles.listHeader}
+        ListFooterComponent={
+          roster.isFetchingNextPage ? (
+            <ActivityIndicator color={colors.accent} style={styles.more} />
+          ) : null
+        }
+        ListEmptyComponent={listEmpty}
+      />
 
       <ChoiceSheet
         visible={sortOpen}
@@ -530,19 +536,25 @@ export function StudentsScreen({
             }
             testIDPrefix="students-filter-gender"
           />
-          <FormField
-            label={copy.students.list.admissionYear}
-            value={filters.admissionYear}
-            onChangeText={(value) =>
-              setFilters((current) => ({
-                ...current,
-                admissionYear: value.replace(/\D/g, "").slice(0, 4),
-              }))
-            }
-            keyboardType="number-pad"
-            maxLength={4}
-            testID="students-filter-year"
-          />
+          {(summary.data?.admissionYears ?? []).length > 0 ? (
+            <SelectField
+              label={copy.students.list.admissionYear}
+              valueLabel={filters.admissionYear || copy.students.list.anyYear}
+              placeholder={copy.students.list.anyYear}
+              options={[
+                { id: "", label: copy.students.list.anyYear },
+                ...(summary.data?.admissionYears ?? []).map((year) => ({
+                  id: String(year),
+                  label: String(year),
+                })),
+              ]}
+              currentId={filters.admissionYear}
+              onSelect={(admissionYear) =>
+                setFilters((current) => ({ ...current, admissionYear }))
+              }
+              testID="students-filter-year"
+            />
+          ) : null}
           <ChoicePills
             label={copy.students.list.missing}
             value={
@@ -733,9 +745,6 @@ function StudentRow({ row, cookie }: { row: RosterRow; cookie: string | null }) 
         <ThemedText variant="meta" numberOfLines={1}>
           {line}
         </ThemedText>
-        <ThemedText variant="caption" color={colors.muted} numberOfLines={1}>
-          {copy.students.meta(row.admissionNumber)}
-        </ThemedText>
       </View>
       {status && hasLeft(status) ? (
         <StatusPill
@@ -783,8 +792,17 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     gap: spacing.md,
   },
+  loading: {
+    gap: spacing.md,
+    paddingTop: spacing.sm,
+  },
+  listHeader: {
+    // Its own rows set their gutters, so the chips can scroll edge to edge.
+    marginHorizontal: -gutter,
+  },
   controls: {
     paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
     gap: spacing.sm,
   },
   searchWrap: {
@@ -845,12 +863,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.field,
   },
   listContent: {
+    flexGrow: 1,
     paddingHorizontal: gutter,
-    paddingTop: spacing.sm,
   },
   attention: {
+    paddingHorizontal: gutter,
     gap: spacing.xs,
-    paddingBottom: spacing.sm,
   },
   attentionChip: {
     minHeight: 32,
@@ -870,7 +888,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xs,
   },
   row: {
-    minHeight: 76,
+    minHeight: 68,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,

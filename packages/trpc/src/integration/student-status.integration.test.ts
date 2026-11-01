@@ -210,6 +210,29 @@ describe("student statuses and the roster", () => {
     expect(await count("all")).toBe(summary.counts.all);
   });
 
+  it("offers the years students were admitted in, and filters by one", async () => {
+    serial += 1;
+    const student = await studentService.createStudent(school, {
+      admissionNumber: `STATUS-${RUN}-${serial}`,
+      firstName: `Status${RUN}`,
+      lastName: `Child${serial}`,
+      gender: "male",
+      dateOfBirth: "2015-01-01",
+      admissionDate: "2019-06-01",
+    });
+    const { admissionYears } = await studentService.rosterSummary([school], world.currentYearAId);
+    expect(admissionYears).toContain(2019);
+    expect(admissionYears).toEqual([...admissionYears].sort((a, b) => b - a));
+    const page = await studentService.listRoster([school], {
+      academicYearId: world.currentYearAId,
+      view: "all",
+      sort: "name",
+      q: `Status${RUN}`,
+      admissionYear: 2019,
+    });
+    expect(page.rows.map((row) => row.id)).toEqual([student.id]);
+  });
+
   it("attendance accepts days before a student left and refuses from that day", async () => {
     const { student, enrollment } = await admit(true);
     const mark = (date: string) =>

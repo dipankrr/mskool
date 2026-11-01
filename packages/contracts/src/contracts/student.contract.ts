@@ -124,6 +124,8 @@ export const studentRosterSummaryOutput = z.object({
     noGuardian: z.number().int(),
     noPhoto: z.number().int(),
   }),
+  /** Years this caller's students were admitted in, newest first, for the filter. */
+  admissionYears: z.array(z.number().int()),
 });
 export type StudentRosterSummary = z.infer<typeof studentRosterSummaryOutput>;
 

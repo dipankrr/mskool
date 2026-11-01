@@ -448,6 +448,7 @@ export const copy = {
       clear: "Clear all",
       done: "Done",
       admissionYear: "Admission year",
+      anyYear: "Any year",
       missing: "Missing",
       missingOptions: { noSection: "No section", noGuardian: "No parent", noPhoto: "No photo" },
       attention: {

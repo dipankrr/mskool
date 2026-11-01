@@ -1,10 +1,14 @@
+import { useCallback, useRef } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
+import type { NativeScrollEvent, NativeSyntheticEvent } from "react-native";
+import { useFocusEffect } from "expo-router";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
+import Animated, { makeMutable, useAnimatedStyle, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabBarProps } from "expo-router/js-tabs";
 
 import { colors } from "../theme/brand-admin";
-import { radius, shadow, spacing } from "../theme/tokens";
+import { motion, radius, shadow, spacing } from "../theme/tokens";
 import { ThemedText } from "./themed-text";
 
 /**
@@ -26,8 +30,49 @@ export function useTabBarSpace(): number {
   return TAB_BAR_HEIGHT + spacing.md + insets.bottom + spacing.md;
 }
 
+/** How far the bar has slid down. The app has one bar, so this is one value. */
+const tabBarOffset = makeMutable(0);
+
+/** Ignores the small jitter of a finger resting on the list. */
+const SCROLL_THRESHOLD = 8;
+
+/**
+ * For a long list on a tab: the bar slides away while scrolling down and returns
+ * on any scroll up, giving the rows the room. It always comes back on leaving the
+ * screen, so no other tab can open without it. Reanimated follows the phone's
+ * reduced-motion setting, which turns the slide into a jump.
+ */
+export function useHideTabBarOnScroll() {
+  const space = useTabBarSpace();
+  const lastY = useRef(0);
+
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        tabBarOffset.value = withTiming(0, { duration: motion.quick });
+      },
+      [],
+    ),
+  );
+
+  return useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const y = event.nativeEvent.contentOffset.y;
+      const moved = y - lastY.current;
+      if (Math.abs(moved) < SCROLL_THRESHOLD) return;
+      lastY.current = y;
+      const hide = moved > 0 && y > 0;
+      tabBarOffset.value = withTiming(hide ? space : 0, { duration: motion.base });
+    },
+    [space],
+  );
+}
+
 export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const slide = useAnimatedStyle(() => ({
+    transform: [{ translateY: tabBarOffset.value }],
+  }));
   const liquidGlass = Platform.OS === "ios" && isLiquidGlassAvailable();
 
   const tabs = state.routes
@@ -87,16 +132,17 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
       );
     });
 
-  const style = [styles.bar, { bottom: spacing.md + insets.bottom }];
-
-  if (liquidGlass) {
-    return (
-      <GlassView glassEffectStyle="regular" style={style}>
-        {tabs}
-      </GlassView>
-    );
-  }
-  return <View style={[style, styles.solid]}>{tabs}</View>;
+  return (
+    <Animated.View style={[styles.bar, { bottom: spacing.md + insets.bottom }, slide]}>
+      {liquidGlass ? (
+        <GlassView glassEffectStyle="regular" style={styles.capsule}>
+          {tabs}
+        </GlassView>
+      ) : (
+        <View style={[styles.capsule, styles.solid]}>{tabs}</View>
+      )}
+    </Animated.View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -105,6 +151,9 @@ const styles = StyleSheet.create({
     left: spacing.lg,
     right: spacing.lg,
     height: TAB_BAR_HEIGHT,
+  },
+  capsule: {
+    flex: 1,
     borderRadius: radius.full,
     flexDirection: "row",
     gap: spacing.xs,
