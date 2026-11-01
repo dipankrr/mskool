@@ -110,6 +110,54 @@ Student  ->  Class  ->  Family  ->  Check  ->  Done
 - An untouched web form asked before closing, because its inputs started as `""` against `undefined` defaults.
 - The sheet's `data-[side=bottom]:h-auto` beat a plain height class on phone-width web.
 
+## Round two: full form, step 1 photo, the profile (mobile only)
+
+The owner's feedback after using it, 2026-11-01: give the flow a "Full form" button, the profile "looks so basic" and "is straight up throwing data from the form", a student placed in Class 6 B showed no class, section or roll, "what is even Move along", set photo doesn't work, and step 1 should offer an optional photo. From here on work is mobile only. Web is unchanged and has no equivalent of these yet.
+
+**What was actually wrong on the profile:**
+
+- Class and section were never rendered. The row was found, but only its status and an optional roll were shown, so a placed student looked unplaced.
+- A missing roll had no way to be added: the row only existed once a roll did.
+- "Move along" showed the first legal status change as a row. For a student with no section that offered "Withdrawn" as the next step.
+- Set photo saved, then kept showing initials. After the upload it re-read the pointer with `utils.student.photo.fetch`, which the 60-second stale time answered from the cached "no photo". It came right on its own a minute later, which is why it read as flaky.
+- `photoUri` was never cleared, so one screen instance given a new student id could show the last student's photo.
+- A person without `enrollment:read` waited on a skeleton forever, and a failed enrollment read looked like "not enrolled".
+- The assign-section sheet offered every class's sections.
+
+**Decisions:**
+
+| # | Decision | Why |
+|---|---|---|
+| R1 | Full form is a second view of the same state, not a second route | Switching either way loses nothing. It's for the desk copying a filled-in paper form. |
+| R2 | Full form holds every field: basics, class, family, contact, address, health, background | The owner asked to jump to the full thing. Only the basics are required, and the header says so. |
+| R3 | Saving always runs the whole validation, whichever view it started from | Steps only check their own fields, so a bad pincode left in the full form must not reach the server. It reopens the full form with errors shown. |
+| R4 | Errors name their groups in the footer ("Check family, address") | Most of a long form is off screen when you press Admit. |
+| R5 | A blank field going out of focus doesn't turn red | The photo sits above the name, so tapping it first flagged the name. Blanks wait for Continue. |
+| R6 | Step 1 photo stays on the phone, then saves as one of Done's rows with Retry | There's no student to attach it to until the save, and a failed photo must not lose the admission. Offered only with `student:update`, which the upload needs. |
+| R7 | Photo offers camera as well as gallery | A child standing at the counter is the common case. |
+| R8 | The profile leads with who and where, then family, then the file | Order of need. Class, section and roll sit together in the hero, and each offers its own fix when empty. |
+| R9 | `section_assigned` and `active` both read "Studying" | Every roster accepts both, and nothing tells them apart. Asking the desk to move between them was the "Move along" confusion. |
+| R10 | "Student is leaving" replaces Move along, with a reason and a confirm | It's the only status change a person actually decides. A transfer or passing out from `section_assigned` makes the two legal server steps, through `active`. |
+| R11 | Aadhaar is masked on the profile | It's read at a busy counter. The edit form still holds the full number. |
+| R12 | Empty groups collapse into one "Add more details" row | Better than a wall of dashes or hiding that they exist. |
+| R13 | Blood group moves to the Health group on the edit form | The fields are now one shared component with the full form. |
+
+**Walked on Android (emulator-5554, dev DB):**
+
+- Full form with photo, Class 6 A, a father and a pincode: Postgres shows the student, `section_assigned`, the guardian as primary, and the photo row.
+- An invalid phone and pincode together: "Check family, address", clearing as each was fixed. Discard prompt from the header's back.
+- Typed work surviving a switch to the full form and back, and Check then listing the extra details under More details.
+- Roll added from the hero. Photo removed. Photo added to a student with none, showing immediately (the reported bug). A photo taken with the emulator camera and saved.
+- Transfer from `section_assigned`: Postgres shows `transferred_out`, and the hero shows the pill and stops offering changes.
+
+**Not walked:** iOS (including the picker opening after the sheet closes, the reason `PhotoSourceSheet` waits), TalkBack, the dialler on a real phone, offline, an account without `enrollment:read`, `class:read` or `student:update`, and 1.3x text on the new screens.
+
+**Known limits from round two:**
+
+- A low-memory Android phone can kill the app while the camera is open, which loses a typed admission. `getPendingResultAsync` could recover the photo but not the form, so it isn't wired in. Real phones should be tried at the counter.
+- Photos aren't cropped. The circle fills from the centre, so a tall photo can lose the top of the head.
+- `enrollment.list` still loads the whole session to find one student, as it always has here.
+
 **Known limits:**
 
 - The suggestion and early clash check only see active students. A deactivated student's number gets through to the server's refusal, which is handled.
