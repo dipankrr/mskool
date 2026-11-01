@@ -2,7 +2,6 @@
 
 import type {
   CreateEnrollmentInput,
-  CreateStudentInput,
   UpdateStudentInput,
 } from "@repo/contracts";
 import { toast } from "sonner";
@@ -17,10 +16,10 @@ import { useActiveContext } from "@/features/session/active-context";
  *
  * The list is permissive (`student.list` takes `{ organizationId }` and the
  * builder clips to the caller's grants), so the front desk at any scope
- * searches the same registry and sees exactly who they may see. Create names
- * the branch explicitly (B5): admitting a child is a branch-attributed act,
- * and `writeScopeArgs()` returning null is the "choose a branch first" state
- * the page renders instead of guessing.
+ * searches the same registry and sees exactly who they may see. Admitting a
+ * child is `use-admission.ts`, a branch-attributed act (B5): `writeScopeArgs()`
+ * returning null is the "choose a branch first" state the page renders instead
+ * of guessing.
  *
  * The search box owns `q` — the front-desk search runs server-side across
  * name parts and the admission number, so there is nothing to filter here.
@@ -93,16 +92,6 @@ export function useStudentMutations() {
     ]);
   };
 
-  const create = trpc.student.create.useMutation({
-    onSuccess: async () => {
-      toast.success(copy.students.created);
-      await refreshRegister();
-    },
-    // A duplicate admission number arrives already worded (ADR-026 maps the
-    // unique index); errorMessage only guards anything that is not.
-    onError: (error) => toast.error(errorMessage(error)),
-  });
-
   const update = trpc.student.update.useMutation({
     onSuccess: async () => {
       toast.success(copy.students.updated);
@@ -140,21 +129,6 @@ export function useStudentMutations() {
   });
 
   return {
-    create: {
-      ...create,
-      /**
-       * Returns the mutation promise so the dialog can close on SUCCESS only —
-       * a fire-and-forget submit would close over a refused admission and the
-       * user would wonder where the student went. Null writeScopeArgs means no
-       * branch is chosen — the caller decides.
-       */
-      submit: (data: CreateStudentInput) => {
-        const scope = writeScopeArgs();
-        if (!scope) throw new Error("A branch must be chosen to admit a student.");
-        return create.mutateAsync({ ...scope, data });
-      },
-      canSubmit: Boolean(writeScopeArgs()),
-    },
     update: {
       ...update,
       submit: (id: string, data: UpdateStudentInput) =>

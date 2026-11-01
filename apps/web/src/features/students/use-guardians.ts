@@ -36,42 +36,6 @@ export function useGuardians(studentId: string) {
   );
 }
 
-/**
- * The ADMISSION form's guardian write: the student exists by the time this
- * runs, so the id arrives with the payload rather than from the hook. Kept
- * separate from `useGuardianMutations` because that one is bound to a
- * student's profile, and the register has no student yet at open time.
- */
-export function useGuardianAddAtAdmission() {
-  const utils = trpc.useUtils();
-  const { writeScopeArgs } = useActiveContext();
-
-  const add = trpc.guardian.add.useMutation({
-    onSuccess: async () => {
-      await utils.student.list.invalidate();
-    },
-    onError: (error) => toast.error(errorMessage(error)),
-  });
-
-  return {
-    ...add,
-    submit: (data: {
-      studentId: string;
-      firstName: string;
-      relation: GuardianRelation;
-      phone: string;
-      isPrimary?: boolean;
-    }) => {
-      const scope = writeScopeArgs();
-      if (!scope) {
-        throw new Error("A branch must be chosen to admit a student.");
-      }
-      const { studentId: id, ...rest } = data;
-      return add.mutateAsync({ ...scope, id, ...rest });
-    },
-  };
-}
-
 export function useGuardianMutations(studentId: string) {
   const utils = trpc.useUtils();
   const { scopeArgs } = useActiveContext();

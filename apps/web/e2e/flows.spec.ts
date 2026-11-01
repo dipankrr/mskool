@@ -69,15 +69,34 @@ test.describe("admission flow (principal)", () => {
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByText("Admit a student")).toBeVisible();
 
-    await dialog.locator("#student-admission-number").fill(admissionNumber);
+    // Continue refuses an incomplete student and says what is missing.
+    await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(dialog.getByText("Enter the first name.")).toBeVisible();
+
     await dialog.locator("#student-first-name").fill("Zara");
     await dialog.locator("#student-last-name").fill(lastName);
     await dialog.locator("#student-dob").fill("2014-05-10");
-    await pickSelect(dialog.page(), "student-gender", "Female");
+    await dialog.locator("label", { hasText: "Female" }).click();
+    await dialog.locator("#student-admission-number").fill(admissionNumber);
+    await dialog.getByRole("button", { name: "Continue", exact: true }).click();
 
-    // Success closes the dialog (close-on-success is the U2 contract); a
-    // validation failure would leave it open and fail the next assertion.
-    await dialog.getByRole("button", { name: "Admit student" }).click();
+    // Class and family can both be skipped, and say so.
+    await expect(dialog.getByRole("heading", { name: "Which class?" })).toBeVisible();
+    await dialog.getByRole("button", { name: "Continue without a class" }).click();
+    await expect(dialog.getByRole("heading", { name: "Who is the family?" })).toBeVisible();
+    await dialog.getByRole("button", { name: "Continue without family" }).click();
+
+    // Check repeats the permanent number before anything is saved.
+    await expect(dialog.getByRole("heading", { name: "Check and admit" })).toBeVisible();
+    await expect(dialog.getByTestId("admit-permanent")).toContainText(admissionNumber);
+    await dialog.getByRole("button", { name: "Admit Zara" }).click();
+
+    // Done reports what was saved and what is still open.
+    const done = dialog.getByTestId("admit-done");
+    await expect(done.getByText("On the register")).toBeVisible();
+    await expect(done.getByText("No class yet")).toBeVisible();
+    await expect(done.getByText("No family recorded yet")).toBeVisible();
+    await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
 
     // The register finds her by admission number — the server-side search,
