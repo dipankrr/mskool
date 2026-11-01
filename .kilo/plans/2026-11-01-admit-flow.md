@@ -162,7 +162,7 @@ The owner's feedback after using it, 2026-11-01: give the flow a "Full form" but
 
 The status rules are ADR-057. The owner closed the discussion and asked for the work to start, and chose whichever was better on the open points, so teachers see only their own students in the tab.
 
-**Screen:** search, view tabs with counts (Current, Not placed, Left, Alumni, All) and filter and sort controls stay pinned while rows scroll. Rows show photo, name, class, section, roll and admission number, with a label only when something is unusual. Current adds chips for who needs a section, a parent or a photo. In class order, rows are grouped under class and section headings. Alumni and Not placed hide while empty.
+**Screen:** the title, search, view tabs with counts (Current, Not placed, Left, Alumni, All) and filter and sort controls scroll away with the rows, and the bottom bar slides off while scrolling down and returns on any scroll up. Rows show photo, name, class, section and roll, with a label only when something is unusual. Admission numbers stay searchable but left the rows at the owner's request. Current adds chips for who needs a section, a parent or a photo. In class order, rows are grouped under class and section headings. Alumni and Not placed hide while empty.
 
 **Walked on Android (emulator-5554, dev DB):** the tab with real photos and counts; the Left view; filter by gender with the count on the control, then clear; sort; rejoin and expel on a throwaway student, with Postgres matching after each; the profile showing the status, date and reason; and the attendance screen opening on the new roster.
 
