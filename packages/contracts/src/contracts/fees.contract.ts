@@ -1170,3 +1170,117 @@ export const feeStudentSummarySchema = z.object({
   recentPayments: z.array(feePaymentSelectSchema.extend({ refundedAmount: z.string() })),
 });
 export type FeeStudentSummary = z.infer<typeof feeStudentSummarySchema>;
+
+// ---------------------------------------------------------------------------
+// Printed documents
+// ---------------------------------------------------------------------------
+
+export const FEE_DOCUMENT_KINDS = [
+  "receipt",
+  "statement",
+  "dueNotice",
+  "defaulters",
+  "dayBook",
+  "chequeList",
+  "noDues",
+  "structureSheet",
+] as const;
+export type FeeDocumentKind = (typeof FEE_DOCUMENT_KINDS)[number];
+
+export const feeReceiptLayoutSchema = z.enum([
+  "a4_full",
+  "a4_half_two",
+  "a4_half_top",
+  "a4_half_bottom",
+  "thermal_58",
+  "thermal_80",
+]);
+export type FeeReceiptLayout = z.infer<typeof feeReceiptLayoutSchema>;
+
+/** Finished HTML, plus the page size the phone needs to turn it into a PDF. */
+export const feeDocumentSchema = z.object({
+  html: z.string(),
+  fileName: z.string(),
+  width: z.number(),
+  height: z.number(),
+});
+export type FeeDocument = z.infer<typeof feeDocumentSchema>;
+
+export const feeDocumentNoticesSchema = z.object({
+  academicYearId: z.uuid(),
+  classId: z.uuid().optional(),
+  sectionId: z.uuid().optional(),
+  perPage: z.union([z.literal(1), z.literal(2), z.literal(4)]).default(2),
+});
+export type FeeDocumentNoticesInput = z.infer<typeof feeDocumentNoticesSchema>;
+
+export const feeDocumentDefaultersSchema = z.object({
+  academicYearId: z.uuid(),
+  classId: z.uuid().optional(),
+  sectionId: z.uuid().optional(),
+});
+export type FeeDocumentDefaultersInput = z.infer<typeof feeDocumentDefaultersSchema>;
+
+export const feeDocumentDayBookSchema = z.object({
+  academicYearId: z.uuid(),
+  date: isoDate,
+});
+export type FeeDocumentDayBookInput = z.infer<typeof feeDocumentDayBookSchema>;
+
+const printLines = z
+  .string()
+  .max(300)
+  .refine((value) => value.split("\n").length <= 3, "Keep this to three lines.")
+  .refine(
+    (value) => value.split("\n").every((line) => line.length <= 80),
+    "Keep each line to 80 characters.",
+  );
+
+export const feePrintUpiModeSchema = z.enum(["off", "upi_id", "image"]);
+
+export const feePrintSettingsSchema = z.object({
+  headerText: z.string(),
+  subText: z.string(),
+  footerText: z.string(),
+  signatureLabel: z.string(),
+  titles: z.record(z.string(), z.string()),
+  showAmountInWords: z.boolean(),
+  receiptLayout: feeReceiptLayoutSchema,
+  upiMode: feePrintUpiModeSchema,
+  upiId: z.string().nullable(),
+  upiPayeeName: z.string().nullable(),
+  logoObjectId: z.uuid().nullable(),
+  upiImageObjectId: z.uuid().nullable(),
+});
+export type FeePrintSettings = z.infer<typeof feePrintSettingsSchema>;
+
+export const updateFeePrintSettingsSchema = z
+  .object({
+    headerText: printLines,
+    subText: printLines,
+    footerText: printLines,
+    signatureLabel: z.string().trim().max(60),
+    titles: z.partialRecord(z.enum(FEE_DOCUMENT_KINDS), z.string().trim().max(60)),
+    showAmountInWords: z.boolean(),
+    receiptLayout: feeReceiptLayoutSchema,
+    upiMode: feePrintUpiModeSchema,
+    upiId: z
+      .string()
+      .trim()
+      .regex(/^[\w.\-+]+@[\w.\-]+$/, "Enter a UPI ID like school@bank.")
+      .nullish(),
+    upiPayeeName: z.string().trim().max(100).nullish(),
+    logoObjectId: z.uuid().nullish(),
+    upiImageObjectId: z.uuid().nullish(),
+  })
+  .partial();
+export type UpdateFeePrintSettingsInput = z.infer<typeof updateFeePrintSettingsSchema>;
+
+export const uploadFeePrintImageSchema = z.object({
+  contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+  dataBase64: z
+    .string()
+    .max(Math.ceil((512 * 1024) / 3) * 4)
+    .regex(/^[A-Za-z0-9+/]*={0,2}$/, "The image data is not valid base64."),
+});
+export type UploadFeePrintImageInput = z.infer<typeof uploadFeePrintImageSchema>;

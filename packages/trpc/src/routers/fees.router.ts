@@ -11,8 +11,16 @@ import {
   feeDashboardListInputSchema,
   feeDashboardListOutputSchema,
   feeDashboardOutputSchema,
+  feeDocumentDayBookSchema,
+  feeDocumentDefaultersSchema,
+  feeDocumentNoticesSchema,
+  feeDocumentSchema,
   feeDuesRunSchema,
+  feePrintSettingsSchema,
+  feeReceiptLayoutSchema,
   feeSetupStatusSchema,
+  updateFeePrintSettingsSchema,
+  uploadFeePrintImageSchema,
   startFeeDuesRunSchema,
   feeStudentSummaryInputSchema,
   feeStudentSummarySchema,
@@ -59,6 +67,7 @@ import {
   updateFeeStructureSchema,
 } from "@repo/contracts";
 import {
+  feeDocumentsService,
   feesBillingService,
   feesCollectionService,
   feesDashboardService,
@@ -257,6 +266,103 @@ export const feesRouter = router({
       .output(feeSetupStatusSchema)
       .query(({ ctx, input }) =>
         feesDashboardService.setupStatus(ctx.scope, input.academicYearId),
+      ),
+  }),
+
+  // -------------------------------------------------------------------------
+  // Printed documents: finished HTML the client turns into a PDF. A page of HTML
+  // is no use to a REST caller, so these stay off the REST surface.
+  // -------------------------------------------------------------------------
+  document: router({
+    receipt: staffProcedure("fee_payment:read")
+      .input(z.object({ id: z.uuid(), layout: feeReceiptLayoutSchema.optional(), ...schoolParent.shape }))
+      .output(feeDocumentSchema)
+      .query(async ({ ctx, input }) => {
+        const document = await feeDocumentsService.receipt(ctx.scope, input.id, input.layout);
+        if (!document) throw notFound();
+        return document;
+      }),
+
+    statement: staffProcedure("fee_report:read")
+      .input(z.object({ academicYearId: z.uuid(), studentId: z.uuid(), ...schoolParent.shape }))
+      .output(feeDocumentSchema)
+      .query(async ({ ctx, input }) => {
+        const document = await feeDocumentsService.statement(ctx.scope, input, ctx.can(READ_HISTORY));
+        if (!document) throw notFound();
+        return document;
+      }),
+
+    noDues: staffProcedure("fee_report:read")
+      .input(z.object({ academicYearId: z.uuid(), studentId: z.uuid(), ...schoolParent.shape }))
+      .output(feeDocumentSchema)
+      .query(async ({ ctx, input }) => {
+        const document = await feeDocumentsService.noDues(ctx.scope, input, ctx.can(READ_HISTORY));
+        if (!document) throw notFound();
+        return document;
+      }),
+
+    notices: staffProcedure("fee_report:read")
+      .input(z.object({ data: feeDocumentNoticesSchema, ...schoolParent.shape }))
+      .output(feeDocumentSchema)
+      .query(async ({ ctx, input }) => {
+        const document = await feeDocumentsService.notices(ctx.scope, input.data, ctx.can(READ_HISTORY));
+        if (!document) throw notFound();
+        return document;
+      }),
+
+    defaulters: staffProcedure("fee_report:read")
+      .input(z.object({ data: feeDocumentDefaultersSchema, ...schoolParent.shape }))
+      .output(feeDocumentSchema)
+      .query(async ({ ctx, input }) => {
+        const document = await feeDocumentsService.defaulters(ctx.scope, input.data, ctx.can(READ_HISTORY));
+        if (!document) throw notFound();
+        return document;
+      }),
+
+    dayBook: staffProcedure("fee_report:read")
+      .input(z.object({ data: feeDocumentDayBookSchema, ...schoolParent.shape }))
+      .output(feeDocumentSchema)
+      .query(async ({ ctx, input }) => {
+        const document = await feeDocumentsService.dayBook(ctx.scope, input.data);
+        if (!document) throw notFound();
+        return document;
+      }),
+
+    chequeList: staffProcedure("fee_payment:read")
+      .input(z.object({ academicYearId: z.uuid(), ...schoolParent.shape }))
+      .output(feeDocumentSchema)
+      .query(async ({ ctx, input }) => {
+        const document = await feeDocumentsService.chequeList(ctx.scope, input.academicYearId);
+        if (!document) throw notFound();
+        return document;
+      }),
+
+    structureSheet: staffProcedure("fee_structure:read")
+      .input(z.object({ id: z.uuid(), ...schoolParent.shape }))
+      .output(feeDocumentSchema)
+      .query(async ({ ctx, input }) => {
+        const document = await feeDocumentsService.structureSheet(ctx.scope, input.id, ctx.can(READ_HISTORY));
+        if (!document) throw notFound();
+        return document;
+      }),
+  }),
+
+  printing: router({
+    get: staffProcedure("fee_payment:read")
+      .input(schoolParent)
+      .output(feePrintSettingsSchema)
+      .query(({ ctx }) => feeDocumentsService.getPrintSettings(ctx.scope)),
+
+    update: staffProcedure("fee_structure:update")
+      .input(z.object({ data: updateFeePrintSettingsSchema, ...schoolParent.shape }))
+      .output(feePrintSettingsSchema)
+      .mutation(({ ctx, input }) => feeDocumentsService.updatePrintSettings(ctx.scope, input.data)),
+
+    uploadImage: staffProcedure("fee_structure:update")
+      .input(z.object({ data: uploadFeePrintImageSchema, ...schoolParent.shape }))
+      .output(z.object({ objectId: z.uuid() }))
+      .mutation(({ ctx, input }) =>
+        feeDocumentsService.uploadPrintImage(ctx.scope, input.data, ctx.userId),
       ),
   }),
 

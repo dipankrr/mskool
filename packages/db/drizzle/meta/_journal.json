@@ -316,6 +316,13 @@
       "when": 1793569473928,
       "tag": "0044_fees_fix_old_once_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1793603215289,
+      "tag": "0045_fees_print_settings",
+      "breakpoints": true
     }
   ]
 }

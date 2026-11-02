@@ -22,6 +22,7 @@ import { user } from "./auth";
 import { academicYears, classes, sections, studentEnrollments, terms } from "./academic";
 import { organizations, schools } from "./organization";
 import { students } from "./people";
+import { storageObjects } from "./storage";
 
 /**
  * FEES — Phase 4.
@@ -1314,6 +1315,61 @@ export const receiptNumberSequences = pgTable(
   (t) => [
     // The composite primary key IS the per-school-per-year counter identity.
     primaryKey({ columns: [t.schoolId, t.academicYearId] }),
+  ],
+);
+
+export const feeReceiptLayoutEnum = pgEnum("fee_receipt_layout", [
+  "a4_full",
+  "a4_half_two",
+  "a4_half_top",
+  "a4_half_bottom",
+  "thermal_58",
+  "thermal_80",
+]);
+
+export const feePrintUpiModeEnum = pgEnum("fee_print_upi_mode", ["off", "upi_id", "image"]);
+
+/**
+ * How a school's fee documents print: its own heading, titles and footer, and the
+ * UPI QR on due notices. One row per school, created on first save; a school with
+ * no row prints with the defaults. Nothing here touches money.
+ */
+export const feePrintSettings = pgTable(
+  "fee_print_settings",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    organizationId: uuid()
+      .notNull()
+      .references(() => organizations.id),
+    schoolId: uuid()
+      .notNull()
+      .references(() => schools.id),
+
+    logoObjectId: uuid().references(() => storageObjects.id, { onDelete: "restrict" }),
+    // Up to three lines each, kept as text with line breaks.
+    headerText: varchar({ length: 300 }).notNull().default(""),
+    subText: varchar({ length: 300 }).notNull().default(""),
+    footerText: varchar({ length: 300 }).notNull().default(""),
+    signatureLabel: varchar({ length: 60 }).notNull().default(""),
+    // Document kind to the school's own title. A missing kind prints the default.
+    titles: jsonb().$type<Record<string, string>>().notNull().default({}),
+    showAmountInWords: boolean().notNull().default(true),
+    receiptLayout: feeReceiptLayoutEnum().notNull().default("a4_half_two"),
+
+    upiMode: feePrintUpiModeEnum().notNull().default("off"),
+    upiId: varchar({ length: 100 }),
+    upiPayeeName: varchar({ length: 100 }),
+    upiImageObjectId: uuid().references(() => storageObjects.id, { onDelete: "restrict" }),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex("fee_print_settings_school_uq").on(t.schoolId),
+    index("fee_print_settings_org_idx").on(t.organizationId),
   ],
 );
 

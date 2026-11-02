@@ -62,6 +62,11 @@ export * from "./fees-billing.service";
 // the named status transitions, refunds, waivers, the gateway system path.
 export * from "./fees-collection.service";
 export * from "./fees-dashboard.service";
+
+// Fees: printed documents. The API fills a template and returns HTML; the client
+// turns it into a PDF. Templates live here so a layout fix needs no app release.
+export * from "./fee-documents/amount-words";
+export * from "./fee-documents.service";
 export * from "./exams-maths";
 
 // Exams: config/blueprint/lifecycle, the marks pipeline, and the compute/
