@@ -1859,12 +1859,15 @@ async function main() {
       .limit(1);
     const firstOpen = open[0];
     if (firstOpen) {
+      // Fee writes refuse a date outside the session, and the default seed's session
+      // has already ended.
+      const today = new Date().toISOString().slice(0, 10);
       const payment = await feesCollectionService.recordPayment(
         scopeA,
         {
           studentId: student1.id,
           academicYearId: currentYearA.id,
-          paymentDate: new Date().toISOString().slice(0, 10),
+          paymentDate: today < currentYearA.endDate ? today : currentYearA.endDate,
           paymentMode: "cash",
           allocations: [{ installmentId: firstOpen.id, amount: firstOpen.netAmount }],
           clientReference: "seed-receipt-001",

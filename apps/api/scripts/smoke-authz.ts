@@ -80,6 +80,9 @@ const STAFF_COORDINATOR_EMAIL = "staff-coordinator@demo-trust.test";
 const PARENT_EMAIL = "parent@demo-trust.test";
 const SEED_PASSWORD = "Password123!";
 
+// Inside the default seed's 2025-26 session: fee writes refuse a date outside it.
+const PAYMENT_DATE = "2026-01-15";
+
 let failures = 0;
 let checks = 0;
 
@@ -240,10 +243,12 @@ async function main() {
     .from(academicYears)
     .where(eq(academicYears.schoolId, schoolB.id));
 
+  // By name: the dev database drifts, and the first class it returns may not be
+  // the seeded one the staffing facts below hang off.
   const [classA] = await db
     .select()
     .from(classes)
-    .where(eq(classes.schoolId, schoolA.id));
+    .where(and(eq(classes.schoolId, schoolA.id), eq(classes.name, "Class 6")));
 
   if (!currentYearA || !closedYearA || !yearB || !classA) {
     throw new Error(
@@ -2146,7 +2151,7 @@ async function main() {
     data: {
       studentId: student1.id,
       academicYearId: currentYearA.id,
-      paymentDate: new Date().toISOString().slice(0, 10),
+      paymentDate: PAYMENT_DATE,
       paymentMode: "cash",
       allocations: [{ installmentId: target.id, amount: target.netAmount }],
       clientReference: `smoke-${Date.now()}`,
@@ -2178,7 +2183,7 @@ async function main() {
     data: {
       studentId: student1.id,
       academicYearId: currentYearA.id,
-      paymentDate: new Date().toISOString().slice(0, 10),
+      paymentDate: PAYMENT_DATE,
       paymentMode: "cash",
       allocations: [{ installmentId: target.id, amount: "1.00" }],
       clientReference: `smoke-teacher-${Date.now()}`,
@@ -2258,7 +2263,7 @@ async function main() {
     studentId: webhookStudent.id,
     gatewayOrderId: orderId,
     amount: "1.00",
-    paymentDate: new Date().toISOString().slice(0, 10),
+    paymentDate: PAYMENT_DATE,
   });
 
   const signedRes = await fetch(`${API}/api/webhooks/fees`, {
@@ -2285,7 +2290,7 @@ async function main() {
     studentId: webhookStudent.id,
     gatewayOrderId: `smoke-gw-tamper-${Date.now()}`,
     amount: "500.00",
-    paymentDate: new Date().toISOString().slice(0, 10),
+    paymentDate: PAYMENT_DATE,
   });
   const tamperedRes = await fetch(`${API}/api/webhooks/fees`, {
     method: "POST",
@@ -2395,7 +2400,7 @@ async function main() {
     data: {
       studentId: student1.id,
       academicYearId: currentYearA.id,
-      paymentDate: new Date().toISOString().slice(0, 10),
+      paymentDate: PAYMENT_DATE,
       paymentMode: "cash",
       allocations: [{ installmentId: target.id, amount: "1.00" }],
       clientReference: `smoke-librarian-${Date.now()}`,
