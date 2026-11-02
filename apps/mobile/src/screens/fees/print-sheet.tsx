@@ -70,6 +70,7 @@ export function PrintSheet({
             loading={busy === "share"}
             disabled={!canSubmit || busy !== null}
             onPress={() => void run("share")}
+            style={styles.half}
             testID={`${testIDPrefix}-share`}
           />
           <CapsuleButton
@@ -79,6 +80,7 @@ export function PrintSheet({
             loading={busy === "print"}
             disabled={!canSubmit || busy !== null}
             onPress={() => void run("print")}
+            style={styles.half}
             testID={`${testIDPrefix}-print`}
           />
         </View>
@@ -98,6 +100,9 @@ export function PrintSheet({
 }
 
 const styles = StyleSheet.create({
+  half: {
+    flex: 1,
+  },
   footer: {
     flexDirection: "row",
     justifyContent: "flex-end",

@@ -690,6 +690,8 @@ export function FeesScreen({
             classId: row.classId,
           }))}
           canReadPayments={canReadPayments}
+          initialClassId={classId}
+          initialSectionId={sectionId}
           onClose={() => setSheet(null)}
         />
       ) : null}

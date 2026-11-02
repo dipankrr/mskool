@@ -4,7 +4,6 @@ import { AccessibilityInfo, Pressable, StyleSheet, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
 import { AppIcon } from "../../components/app-icon";
-import { CapsuleButton } from "../../components/capsule-button";
 import { Card } from "../../components/card";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorCard } from "../../components/error-card";
@@ -26,16 +25,24 @@ import {
 } from "../../lib/fees";
 import { feesCopy } from "../../lib/fees-copy";
 import { formatReadableDate, todayIso } from "../../lib/format";
-import { formatMoney, isPositiveMoney, sumMoney } from "../../lib/money";
+import { formatMoney, isPositiveMoney, parseMoney, sumMoney } from "../../lib/money";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { radius, spacing } from "../../theme/tokens";
 import { DueSheet } from "./desk-actions";
+import { PayButton } from "./installment-row";
 
 type Show = "open" | "paid" | "all";
 type By = "month" | "fee";
 
-type SheetDue = { id: string; title: string; net: string; paid: string; dueDate: string; status: string };
+type SheetDue = {
+  id: string;
+  title: string;
+  net: string;
+  paid: string;
+  dueDate: string;
+  status: string;
+};
 
 /**
  * Every due for one student, under its month or its fee. "Pay" on a row pays
@@ -72,7 +79,11 @@ export function StudentDuesScreen() {
     },
     {
       enabled:
-        ready && canRead && Boolean(organizationId) && Boolean(academicYear?.id) && Boolean(studentId),
+        ready &&
+        canRead &&
+        Boolean(organizationId) &&
+        Boolean(academicYear?.id) &&
+        Boolean(studentId),
     },
   );
   const data = summary.data;
@@ -118,7 +129,11 @@ export function StudentDuesScreen() {
   }
   if (summary.isError || !data || !organizationId || !schoolId) {
     return frame(
-      <ErrorCard cause={summary.error} onRetry={() => void summary.refetch()} testID="fee-dues-error" />,
+      <ErrorCard
+        cause={summary.error}
+        onRetry={() => void summary.refetch()}
+        testID="fee-dues-error"
+      />,
     );
   }
 
@@ -220,6 +235,31 @@ export function StudentDuesScreen() {
         ))}
       </View>
 
+      {by === "fee" ? (
+        <FeeShares
+          parts={[
+            ...(isPositiveMoney(sumMoney(data.previousDues.map((row) => row.balanceAmount)))
+              ? [
+                  {
+                    key: "previous",
+                    label: words.previous,
+                    amount: sumMoney(data.previousDues.map((row) => row.balanceAmount)),
+                  },
+                ]
+              : []),
+            ...groupDues(live.filter(isPayable), "fee").map((group) => ({
+              key: group.key,
+              label: group.label,
+              amount: sumMoney(
+                group.rows
+                  .filter((due) => monthKeyOf(due.dueDate) <= currentMonth)
+                  .map((due) => due.balanceAmount),
+              ),
+            })),
+          ].filter((part) => isPositiveMoney(part.amount))}
+        />
+      ) : null}
+
       {previous.length > 0 ? (
         <View>
           {groupHead(
@@ -235,9 +275,17 @@ export function StudentDuesScreen() {
                 first={index === 0}
                 title={row.description?.trim() || words.previousRow}
                 detail={null}
-                amount={isPositiveMoney(row.balanceAmount) ? formatMoney(row.balanceAmount) : formatMoney(row.amount)}
+                amount={
+                  isPositiveMoney(row.balanceAmount)
+                    ? formatMoney(row.balanceAmount)
+                    : formatMoney(row.amount)
+                }
                 paid={!isPositiveMoney(row.balanceAmount)}
-                onPay={canCollect && isPositiveMoney(row.balanceAmount) ? () => openCollect("previous") : undefined}
+                onPay={
+                  canCollect && isPositiveMoney(row.balanceAmount)
+                    ? () => openCollect("previous")
+                    : undefined
+                }
                 testID={`fee-dues-previous-${row.id}`}
               />
             ))}
@@ -270,7 +318,8 @@ export function StudentDuesScreen() {
                   by === "month"
                     ? feeNameOf(due.description)
                     : `${monthNameOf(monthKeyOf(due.dueDate))} ${due.dueDate.slice(0, 4)}`;
-                const partly = isPositiveMoney(due.paidAmount) && isPositiveMoney(due.balanceAmount);
+                const partly =
+                  isPositiveMoney(due.paidAmount) && isPositiveMoney(due.balanceAmount);
                 const detail =
                   due.paymentStatus === "waived"
                     ? words.waived
@@ -285,7 +334,9 @@ export function StudentDuesScreen() {
                     detail={detail}
                     amount={formatMoney(isPayable(due) ? due.balanceAmount : due.netAmount)}
                     paid={!isPayable(due)}
-                    onPay={canCollect && isPayable(due) ? () => openCollect(`due:${due.id}`) : undefined}
+                    onPay={
+                      canCollect && isPayable(due) ? () => openCollect(`due:${due.id}`) : undefined
+                    }
                     onPress={() =>
                       setSheet({
                         id: due.id,
@@ -335,6 +386,73 @@ export function StudentDuesScreen() {
   );
 }
 
+/** Shades of the one accent, so fee types differ without a colour meaning status. */
+const SHARE_SHADES = [1, 0.72, 0.5, 0.34, 0.22];
+
+/**
+ * Each fee type's share of what is due now: one bar, then a line per type with
+ * its amount and percentage. Previous dues keep their slate.
+ */
+function FeeShares({ parts }: { parts: { key: string; label: string; amount: string }[] }) {
+  const words = feesCopy.everyDue;
+  if (parts.length === 0) return null;
+  const total = sumMoney(parts.map((part) => part.amount));
+  const totalPaise = Number(parseMoney(total) ?? 0n);
+  const colourOf = (key: string, index: number) =>
+    key === "previous" ? colors.tone.neutral.fg : colors.accent;
+  const opacityOf = (key: string, index: number) => {
+    const fees = parts.filter((part) => part.key !== "previous");
+    const at = fees.findIndex((part) => part.key === key);
+    return key === "previous" ? 1 : (SHARE_SHADES[Math.min(at, SHARE_SHADES.length - 1)] ?? 0.22);
+  };
+  return (
+    <Card style={styles.shares} testID="fee-dues-shares">
+      <View style={styles.sharesHead}>
+        <ThemedText variant="sectionLabel">{words.sharesTitle}</ThemedText>
+        <ThemedText variant="bodyStrong">{formatMoney(total)}</ThemedText>
+      </View>
+      <View style={styles.shareBar}>
+        {parts.map((part, index) => (
+          <View
+            key={part.key}
+            style={[
+              styles.shareSlice,
+              {
+                flex: Number(parseMoney(part.amount) ?? 0n),
+                backgroundColor: colourOf(part.key, index),
+                opacity: opacityOf(part.key, index),
+              },
+            ]}
+          />
+        ))}
+      </View>
+      {parts.map((part, index) => {
+        const percent =
+          totalPaise > 0
+            ? Math.round((Number(parseMoney(part.amount) ?? 0n) * 100) / totalPaise)
+            : 0;
+        return (
+          <View key={part.key} style={styles.shareRow}>
+            <View
+              style={[
+                styles.shareDot,
+                { backgroundColor: colourOf(part.key, index), opacity: opacityOf(part.key, index) },
+              ]}
+            />
+            <ThemedText variant="body" numberOfLines={1} style={styles.shareLabel}>
+              {part.label}
+            </ThemedText>
+            <ThemedText variant="meta">{`${percent}%`}</ThemedText>
+            <ThemedText variant="bodyStrong" style={styles.shareAmount}>
+              {formatMoney(part.amount)}
+            </ThemedText>
+          </View>
+        );
+      })}
+    </Card>
+  );
+}
+
 function DueLine({
   title,
   detail,
@@ -362,7 +480,11 @@ function DueLine({
       accessibilityHint={onPress ? words.tapHint : undefined}
       disabled={!onPress}
       onPress={onPress}
-      style={({ pressed }) => [styles.row, first ? null : styles.divider, pressed ? styles.pressed : null]}
+      style={({ pressed }) => [
+        styles.row,
+        first ? null : styles.divider,
+        pressed ? styles.pressed : null,
+      ]}
       testID={testID}
     >
       <View style={styles.rowText}>
@@ -383,13 +505,7 @@ function DueLine({
         {amount}
       </ThemedText>
       {onPay ? (
-        <CapsuleButton
-          title={words.pay}
-          variant="secondary"
-          size="mini"
-          onPress={onPay}
-          testID={`${testID}-pay`}
-        />
+        <PayButton onPress={onPay} testID={`${testID}-pay`} />
       ) : paid ? (
         <AppIcon name="checkCircle" size={20} color={colors.accentDeep} />
       ) : null}
@@ -479,5 +595,41 @@ const styles = StyleSheet.create({
   },
   hint: {
     textAlign: "center",
+  },
+  shares: {
+    gap: spacing.sm,
+  },
+  sharesHead: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+  },
+  shareBar: {
+    height: 10,
+    flexDirection: "row",
+    gap: 2,
+  },
+  shareSlice: {
+    minWidth: 6,
+    borderRadius: radius.full,
+  },
+  shareRow: {
+    minHeight: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  shareDot: {
+    width: 10,
+    height: 10,
+    borderRadius: radius.full,
+  },
+  shareLabel: {
+    flex: 1,
+    minWidth: 0,
+  },
+  shareAmount: {
+    minWidth: 72,
+    textAlign: "right",
   },
 });

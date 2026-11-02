@@ -2944,9 +2944,9 @@ export const copy = {
       concessionNoHeads: "No fee types are configured.",
       waiverDone: "Installment waived.",
       monthSheetEmptyTitle: "No fee this month",
-      monthNetLabel: "Net",
+      monthNetLabel: "Billed",
       monthPaidLabel: "Paid",
-      monthBalanceLabel: "Balance",
+      monthBalanceLabel: "Still open",
       monthLateFeeLabel: "Late fee",
       monthDueLabel: "Due",
       monthInstallments: (count: number) =>

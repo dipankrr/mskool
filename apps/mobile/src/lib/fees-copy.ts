@@ -144,6 +144,7 @@ export const feesCopy = {
     paidUpTo: (month: string) => `Paid up to ${month}`,
     nothingYet: "No dues yet this session",
     callParent: "Call parent",
+    openProfile: "Open profile to call",
     tiles: {
       charge: "Add charge",
       concession: "Concession",
@@ -194,6 +195,7 @@ export const feesCopy = {
     emptyOpen: "Nothing is open. Every due this session is paid.",
     emptyPaid: "No due is fully paid yet.",
     tapHint: "Tap a due to waive or cancel it",
+    sharesTitle: "Due now, by fee type",
   },
   line: {
     howOften: "How often",
@@ -478,9 +480,14 @@ export const feesCopy = {
     sectionLabel: "Section",
     allClasses: "All classes",
     allSections: "All sections",
+    wholeSchool: "the whole school",
     oneClassHelp: "A whole school at once can be slow on a phone. One class is quicker.",
     perPageLabel: "On each A4 sheet",
     perPage: (count: number) => (count === 1 ? "1 notice" : `${count} notices`),
+    sheetCount: (students: number, where: string, sheets: number) =>
+      students === 0
+        ? `Nobody owes in ${where}, so there is nothing to print.`
+        : `${students === 1 ? "1 student owes" : `${students} students owe`} in ${where}, so ${sheets === 1 ? "1 sheet" : `${sheets} sheets`}.`,
     dateLabel: "Date",
     statementTitle: "Fee statement",
     statementAction: "Print fee statement",

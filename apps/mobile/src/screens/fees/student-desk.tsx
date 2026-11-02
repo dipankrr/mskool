@@ -26,7 +26,13 @@ import { useActiveContext } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
 import { useSessionOpen } from "../../hooks/use-session-open";
 import { copy } from "../../lib/copy";
-import { CONCESSION_TYPE_LABEL, installmentTitle, monthKeyOf, monthNameOf } from "../../lib/fees";
+import {
+  CONCESSION_TYPE_LABEL,
+  installmentTitle,
+  isPayable,
+  monthKeyOf,
+  monthNameOf,
+} from "../../lib/fees";
 import { feesCopy } from "../../lib/fees-copy";
 import { formatReadableDate, localDateToIso, todayIso } from "../../lib/format";
 import { formatMoney, isPositiveMoney, paidPercent, sumMoney } from "../../lib/money";
@@ -42,6 +48,7 @@ import {
   DueSheet,
 } from "./desk-actions";
 import { MonthSheet } from "./month-sheet";
+import { PayButton } from "./installment-row";
 import { PaymentRow } from "./payment-row";
 import { PrintSheet } from "./print-sheet";
 import { SectionHead } from "./status";
@@ -108,6 +115,7 @@ export function StudentFeeDeskScreen() {
   const canConcession = has("fee_waiver:create") && sessionOpen;
   const canReadPayments = has("fee_payment:read");
   const canPrint = has("fee_report:read");
+  const canSeeProfile = has("student:read");
 
   const [sheet, setSheet] = useState<DeskSheet | null>(null);
   const [notice, setNotice] = useState<DeskNotice | null>(null);
@@ -131,7 +139,7 @@ export function StudentFeeDeskScreen() {
   );
   const guardians = trpc.guardian.list.useQuery(
     { organizationId: organizationId ?? "", id: studentId },
-    { enabled: ready && Boolean(organizationId) && Boolean(studentId) && has("student:read") },
+    { enabled: ready && Boolean(organizationId) && Boolean(studentId) && canSeeProfile },
   );
   const contact =
     (guardians.data ?? []).find((guardian) => guardian.isPrimary && guardian.phone) ??
@@ -175,13 +183,19 @@ export function StudentFeeDeskScreen() {
       title={title}
       meta={classLine}
       backAccessibilityLabel={copy.common.back}
+      titleInTopRow
       action={
-        contact?.phone
+        canSeeProfile
           ? {
-              label: words.callParent,
+              // A parent's number on file is called; without one, the profile
+              // is where a number gets found or added.
+              label: contact?.phone ? words.callParent : words.openProfile,
               icon: "call",
               iconOnly: true,
-              onPress: () => callNumber(contact.phone),
+              onPress: () =>
+                contact?.phone
+                  ? callNumber(contact.phone)
+                  : router.push({ pathname: "/students/[studentId]", params: { studentId } }),
               testID: "fee-desk-call",
             }
           : undefined
@@ -709,7 +723,8 @@ export function StudentFeeDeskScreen() {
                 icon="add"
                 title={installmentTitle(due)}
                 detail={words.oneOff(formatReadableDate(localDateToIso(new Date(due.createdAt))))}
-                amount={formatMoney(due.netAmount)}
+                amount={formatMoney(isPayable(due) ? due.balanceAmount : due.netAmount)}
+                onPay={canCollect && isPayable(due) ? () => openCollect(`due:${due.id}`) : undefined}
                 onPress={() =>
                   setSheet({
                     kind: "due",
@@ -901,6 +916,7 @@ function ChargeRow({
   amount,
   tone,
   first,
+  onPay,
   onPress,
   testID,
 }: {
@@ -910,6 +926,7 @@ function ChargeRow({
   amount: string;
   tone?: "positive";
   first: boolean;
+  onPay?: () => void;
   onPress?: () => void;
   testID: string;
 }) {
@@ -954,7 +971,11 @@ function ChargeRow({
       >
         {amount}
       </ThemedText>
-      {onPress ? <AppIcon name="chevronRight" size={18} color={colors.chevron} /> : null}
+      {onPay ? (
+        <PayButton onPress={onPay} testID={`${testID}-pay`} />
+      ) : onPress ? (
+        <AppIcon name="chevronRight" size={18} color={colors.chevron} />
+      ) : null}
     </Pressable>
   );
 }

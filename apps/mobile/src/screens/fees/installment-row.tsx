@@ -13,7 +13,7 @@ import {
 } from "../../lib/fees";
 import { formatMoney, isPositiveMoney } from "../../lib/money";
 import { colors } from "../../theme/brand-admin";
-import { spacing } from "../../theme/tokens";
+import { radius, spacing } from "../../theme/tokens";
 import { FactChip, InstallmentStatusPill, RowAmount } from "./status";
 
 export type InstallmentRowData = {
@@ -63,10 +63,15 @@ export function InstallmentRow({
   const content = (
     <>
       <View style={styles.body}>
+        <ThemedText variant="bodyStrong" numberOfLines={2} style={styles.text}>
+          {title}
+        </ThemedText>
+        <RowAmount tone={payable ? (overdue ? "critical" : undefined) : "positive"}>
+          {formatMoney(installment.balanceAmount)}
+        </RowAmount>
+      </View>
+      <View style={styles.body}>
         <View style={styles.text}>
-          <ThemedText variant="bodyStrong" numberOfLines={2}>
-            {title}
-          </ThemedText>
           <ThemedText variant="meta" numberOfLines={1}>
             {dueLabel(installment.dueDate, today)}
           </ThemedText>
@@ -78,33 +83,19 @@ export function InstallmentRow({
           </ThemedText>
           {lateFee ? (
             <FactChip
-              label={copy.fees.desk.lateFeeChip(
-                formatMoney(installment.lateFeeApplicable),
-              )}
+              label={copy.fees.desk.lateFeeChip(formatMoney(installment.lateFeeApplicable))}
               tone="caution"
             />
           ) : null}
         </View>
-        <View style={styles.trailing}>
-          <RowAmount
-            tone={payable ? (overdue ? "critical" : undefined) : "positive"}
-          >
-            {formatMoney(installment.balanceAmount)}
-          </RowAmount>
-          <InstallmentStatusPill
-            status={installment.paymentStatus}
-            overdue={overdue}
-            testID={`fee-installment-status-${installment.id}`}
-          />
-          {payable && onPay ? (
-            <CapsuleButton
-              title={feesCopy.everyDue.pay}
-              variant="secondary"
-              size="mini"
-              onPress={onPay}
-              testID={`fee-pay-${installment.id}`}
-            />
-          ) : null}
+        <InstallmentStatusPill
+          status={installment.paymentStatus}
+          overdue={overdue}
+          testID={`fee-installment-status-${installment.id}`}
+        />
+      </View>
+      {(payable && onPay) || (waivable && onWaive) ? (
+        <View style={styles.actions}>
           {waivable && onWaive ? (
             <CapsuleButton
               title={copy.fees.desk.waiverAction}
@@ -114,8 +105,11 @@ export function InstallmentRow({
               testID={`fee-waive-${installment.id}`}
             />
           ) : null}
+          {payable && onPay ? (
+            <PayButton onPress={onPay} testID={`fee-pay-${installment.id}`} />
+          ) : null}
         </View>
-      </View>
+      ) : null}
     </>
   );
 
@@ -141,11 +135,60 @@ export function InstallmentRow({
   );
 }
 
+/**
+ * The one Pay control for a due: a solid tint, so it reads as the action on
+ * the row and never as a ghost beside the amount.
+ */
+export function PayButton({
+  onPress,
+  label = feesCopy.everyDue.pay,
+  testID,
+}: {
+  onPress: () => void;
+  label?: string;
+  testID?: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      hitSlop={{ top: 6, bottom: 6 }}
+      onPress={onPress}
+      style={({ pressed }) => [styles.pay, pressed ? styles.payPressed : null]}
+      testID={testID}
+    >
+      <ThemedText variant="bodyStrong" color={colors.onAccent} maxFontSizeMultiplier={1.2}>
+        {label}
+      </ThemedText>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   row: {
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
+    gap: spacing.xs,
     backgroundColor: colors.surface,
+  },
+  actions: {
+    marginTop: spacing.xs,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  pay: {
+    minHeight: 36,
+    minWidth: 64,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.full,
+    backgroundColor: colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  payPressed: {
+    backgroundColor: colors.accentDeep,
   },
   divider: {
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -156,7 +199,7 @@ const styles = StyleSheet.create({
   },
   body: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     gap: spacing.md,
   },
   text: {

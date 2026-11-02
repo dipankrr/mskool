@@ -63,7 +63,7 @@ export function MonthSheet({
 
   return (
     <FormSheet
-      title={label}
+      title={`${monthNameOf(month)} ${month.slice(0, 4)}`}
       onClose={onClose}
       testIDPrefix="fee-month"
       scroll={
@@ -115,7 +115,7 @@ export function MonthSheet({
                 title={copy.fees.desk.monthInstallmentsTitle}
                 hint={copy.fees.desk.monthInstallments(installments.length)}
               />
-              <Card padless>
+              <Card padless style={styles.rows}>
                 {installments.map((installment, index) => {
                   const description = installment.description?.trim()
                     ? installment.description
@@ -162,6 +162,7 @@ export function MonthSheet({
             title={feesCopy.everyDue.payMonth(monthNameOf(month), formatMoney(cell.data?.balanceAmount))}
             icon="collect"
             onPress={() => onPay(`month:${month}`)}
+            style={styles.wide}
             testID="fee-month-pay"
           />
         ) : (
@@ -179,12 +180,20 @@ export function MonthSheet({
 }
 
 const styles = StyleSheet.create({
+  wide: {
+    alignSelf: "stretch",
+  },
+  // Rows line up with the tiles above them, edge to edge in the sheet.
+  rows: {
+    marginHorizontal: -spacing.lg,
+  },
   skeletons: {
     gap: spacing.md,
   },
   tiles: {
     flexDirection: "row",
     gap: spacing.sm,
+    marginBottom: spacing.xs,
   },
   note: {
     marginTop: spacing.md,

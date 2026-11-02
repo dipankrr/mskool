@@ -89,8 +89,8 @@ export function ScreenFrame({
   /** More icon-only utilities, left of `secondaryAction` (print). */
   utilityActions?: HeaderAction[];
   /**
-   * The title and meta sit on the top row, left of the actions, instead of
-   * under them. Only for a screen with no back control (a tab root).
+   * The title and meta sit on the top row, beside the back control and left
+   * of the actions, instead of under them.
    */
   titleInTopRow?: boolean;
   /** A three-dots menu: always the rightmost control, after `action`. */
@@ -125,7 +125,7 @@ export function ScreenFrame({
       overflowAction ||
       (utilityActions && utilityActions.length > 0),
   );
-  const inlineTitle = titleInTopRow && !backAccessibilityLabel;
+  const inlineTitle = titleInTopRow;
   const titleBlock = (
     <View style={inlineTitle ? styles.inlineHead : styles.head}>
       <ThemedText variant="title" testID={titleTestID} numberOfLines={inlineTitle ? 1 : undefined}>
@@ -189,11 +189,10 @@ export function ScreenFrame({
                 >
                   <AppIcon name="chevronLeft" size={22} color={colors.ink} />
                 </Pressable>
-              ) : inlineTitle ? (
-                titleBlock
-              ) : (
+              ) : inlineTitle ? null : (
                 <View style={styles.topSpacer} />
               )}
+              {inlineTitle ? titleBlock : null}
               {action || secondaryAction || overflowAction || utilityActions?.length ? (
                 <View style={styles.actions}>
                   {(utilityActions ?? []).map((utility) => (
