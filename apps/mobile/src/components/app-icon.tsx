@@ -89,6 +89,7 @@ const iconMap = {
   refund: { ios: "arrow.uturn.backward.circle.fill", android: "replay" },
   warningCircle: { ios: "exclamationmark.circle.fill", android: "error" },
   share: { ios: "square.and.arrow.up", android: "share" },
+  print: { ios: "printer", android: "print" },
   /** Exams — the assessment domain. */
   exams: { ios: "list.clipboard.fill", android: "assignment" },
   marks: { ios: "square.and.pencil", android: "edit-note" },

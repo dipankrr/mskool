@@ -29,6 +29,7 @@ import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { radius, spacing, touch } from "../../theme/tokens";
 import { DuesSheet } from "./dues-sheet";
+import { PrintingSheet } from "./printing-sheet";
 
 const words = feesCopy.setup;
 
@@ -50,7 +51,7 @@ export function FeeSetupScreen() {
   const canUpdate = has("fee_structure:update") && sessionOpen;
   const canBill = has("student_fee_assignment:create") && sessionOpen;
   const canReadAny = canReadHeads || canReadStructures;
-  const [sheet, setSheet] = useState<"months" | "receipts" | "dues" | null>(null);
+  const [sheet, setSheet] = useState<"months" | "receipts" | "dues" | "printing" | null>(null);
   const [notice, setNotice] = useState<{
     tone: "positive" | "caution" | "critical";
     message: string;
@@ -87,6 +88,10 @@ export function FeeSetupScreen() {
       academicYearId: yearId,
     },
     { enabled: enabled && canReadStructures },
+  );
+  const printing = trpc.fees.printing.get.useQuery(
+    { organizationId: organizationId ?? "", schoolId: schoolId ?? "" },
+    { enabled: enabled && has("fee_payment:read") },
   );
   const mode = trpc.fees.settings.get.useQuery(
     { organizationId: organizationId ?? "", schoolId: schoolId ?? "" },
@@ -362,6 +367,22 @@ export function FeeSetupScreen() {
           onPress={() => setSheet("dues")}
           testID="fee-setup-dues"
         />
+        <Row
+          icon="print"
+          title={feesCopy.printing.row}
+          detail={feesCopy.printing.rowDetail(
+            Boolean(
+              printing.data &&
+                (printing.data.headerText ||
+                  printing.data.footerText ||
+                  printing.data.logoObjectId ||
+                  printing.data.upiMode !== "off" ||
+                  Object.keys(printing.data.titles).length > 0),
+            ),
+          )}
+          onPress={canUpdate ? () => setSheet("printing") : undefined}
+          testID="fee-setup-printing"
+        />
       </Card>
 
       {sheet === "months" ? (
@@ -385,6 +406,17 @@ export function FeeSetupScreen() {
           schoolId={schoolId}
           academicYearId={academicYear.id}
           initial={settings.data}
+          onClose={() => setSheet(null)}
+          onDone={() => {
+            setSheet(null);
+            setNotice({ tone: "positive", message: words.saved });
+          }}
+        />
+      ) : null}
+      {sheet === "printing" ? (
+        <PrintingSheet
+          organizationId={organizationId}
+          schoolId={schoolId}
           onClose={() => setSheet(null)}
           onDone={() => {
             setSheet(null);

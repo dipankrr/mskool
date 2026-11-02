@@ -6,6 +6,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { CapsuleButton } from "../../components/capsule-button";
 import { Card } from "../../components/card";
 import { EmptyState } from "../../components/empty-state";
+import { SelectField } from "../../components/select-field";
 import { ErrorCard } from "../../components/error-card";
 import { Notice } from "../../components/notice";
 import { ScreenFrame } from "../../components/screen-frame";
@@ -31,7 +32,12 @@ import { formatMoney, parseMoney } from "../../lib/money";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { spacing } from "../../theme/tokens";
+import { PrintSheet } from "./print-sheet";
 import { PaymentStatusPill, SectionHead } from "./status";
+
+const printWords = feesCopy.print;
+type ReceiptLayout = keyof typeof printWords.paper;
+const LAYOUTS = Object.keys(printWords.paper) as ReceiptLayout[];
 
 /**
  * The receipt (Step 5B).
@@ -41,9 +47,8 @@ import { PaymentStatusPill, SectionHead } from "./status";
  * values are the student's name and class, carried in the route from the desk
  * because `payment.detail` does not join them (documented gap).
  *
- * There is no PDF endpoint. A parent who wants the receipt on WhatsApp gets
- * this screen's text through the system share sheet — a receipt number the
- * server issued, never one composed here.
+ * The API fills the printed page, so a parent gets a PDF on WhatsApp, or the
+ * screen's text if they would rather not download anything.
  */
 export function ReceiptScreen() {
   const params = useLocalSearchParams<{
@@ -60,6 +65,9 @@ export function ReceiptScreen() {
   const canRead = has("fee_payment:read");
 
   const [shareError, setShareError] = useState<unknown>(null);
+  const [printing, setPrinting] = useState(false);
+  const [paper, setPaper] = useState<ReceiptLayout | null>(null);
+  const utils = trpc.useUtils();
 
   const detail = trpc.fees.payment.detail.useQuery(
     {
@@ -86,6 +94,12 @@ export function ReceiptScreen() {
     () => detail.data?.openingBalanceAllocations ?? [],
     [detail.data?.openingBalanceAllocations],
   );
+
+  const printSettings = trpc.fees.printing.get.useQuery(
+    { organizationId: organizationId ?? "", schoolId: schoolId ?? "" },
+    { enabled: printing && Boolean(organizationId) && Boolean(schoolId) && canRead },
+  );
+  const chosenPaper: ReceiptLayout = paper ?? printSettings.data?.receiptLayout ?? "a4_half_two";
 
   const student = trpc.student.byId.useQuery(
     { organizationId: organizationId ?? "", id: payment?.studentId ?? "" },
@@ -417,16 +431,53 @@ export function ReceiptScreen() {
           testID="fee-receipt-share-error"
         />
       ) : null}
+
+      {printing ? (
+        <PrintSheet
+          title={printWords.receiptTitle}
+          onClose={() => setPrinting(false)}
+          load={() =>
+            utils.fees.document.receipt.fetch(
+              { organizationId, schoolId, id: payment.id, layout: paper ?? undefined },
+              { staleTime: 0 },
+            )
+          }
+          testIDPrefix="fee-receipt-sheet"
+          extraAction={
+            <CapsuleButton
+              title={printWords.sendAsText}
+              variant="secondary"
+              size="compact"
+              onPress={() => {
+                setPrinting(false);
+                void share();
+              }}
+              testID="fee-receipt-share"
+            />
+          }
+        >
+          <SelectField
+            label={printWords.paperLabel}
+            valueLabel={printWords.paper[chosenPaper]}
+            placeholder={printWords.paperLabel}
+            options={LAYOUTS.map((id) => ({ id, label: printWords.paper[id] }))}
+            currentId={chosenPaper}
+            onSelect={(id) => setPaper(id as ReceiptLayout)}
+            help={printWords.paperHelp[chosenPaper] || undefined}
+            testID="fee-receipt-paper"
+          />
+        </PrintSheet>
+      ) : null}
     </View>,
     <View style={styles.footerRow}>
       <CapsuleButton
-        title={copy.fees.receipt.share}
-        icon="share"
+        title={printWords.printOrShare}
+        icon="print"
         variant="secondary"
         size="compact"
-        onPress={() => void share()}
+        onPress={() => setPrinting(true)}
         style={styles.footerButton}
-        testID="fee-receipt-share"
+        testID="fee-receipt-print"
       />
       <CapsuleButton
         title={copy.fees.receipt.done}

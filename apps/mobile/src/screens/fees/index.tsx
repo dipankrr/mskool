@@ -39,6 +39,7 @@ import {
 } from "./dashboard-cards";
 import { DashboardRow } from "./dashboard-row";
 import { DuesSheet } from "./dues-sheet";
+import { FeesPrintSheet } from "./fees-print-sheet";
 
 type Show = "owes" | "paid" | "not_billed" | "all";
 type Sort = "oldest" | "highest" | "name";
@@ -85,7 +86,7 @@ export function FeesScreen({
   const [classId, setClassId] = useState<string | null>(null);
   const [sectionId, setSectionId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const [sheet, setSheet] = useState<"class" | "section" | "sort" | "dues" | null>(null);
+  const [sheet, setSheet] = useState<"class" | "section" | "sort" | "dues" | "print" | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -402,6 +403,19 @@ export function FeesScreen({
               <AppIcon name="chevronRight" size={16} color={colors.accentDeep} />
             </Pressable>
           ) : null}
+          {schoolId ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setSheet("print")}
+              style={styles.reportLink}
+              testID="fees-print-link"
+            >
+              <AppIcon name="print" size={16} color={colors.accentDeep} />
+              <ThemedText variant="meta" color={colors.accentDeep}>
+                {feesCopy.print.listsLink}
+              </ThemedText>
+            </Pressable>
+          ) : null}
         </>
       ) : null}
 
@@ -661,6 +675,23 @@ export function FeesScreen({
         onDismiss={() => setSheet(null)}
         testIDPrefix="fees-sort"
       />
+      {sheet === "print" && organizationId && schoolId && academicYear ? (
+        <FeesPrintSheet
+          organizationId={organizationId}
+          schoolId={schoolId}
+          academicYearId={academicYear.id}
+          sessionStart={academicYear.startDate}
+          sessionEnd={academicYear.endDate}
+          classes={(classes.data ?? []).map((row) => ({ id: row.id, name: row.name }))}
+          sections={(sections.data ?? []).map((row) => ({
+            id: row.id,
+            name: row.name,
+            classId: row.classId,
+          }))}
+          canReadPayments={canReadPayments}
+          onClose={() => setSheet(null)}
+        />
+      ) : null}
       {sheet === "dues" && organizationId && schoolId && academicYear ? (
         <DuesSheet
           organizationId={organizationId}

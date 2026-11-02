@@ -39,6 +39,7 @@ import {
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { radius, spacing, touch } from "../../theme/tokens";
+import { PrintSheet } from "./print-sheet";
 import { FactChip, SectionHead } from "./status";
 import { useSessionOpen } from "../../hooks/use-session-open";
 
@@ -103,6 +104,7 @@ export function FeeStructureScreen() {
     | null
   >(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [printing, setPrinting] = useState(false);
   const [billResult, setBillResult] = useState<{
     tone: "positive" | "caution" | "critical";
     message: string;
@@ -199,6 +201,17 @@ export function FeeStructureScreen() {
             }
           : undefined
       }
+      secondaryAction={
+        structure.data
+          ? {
+              label: feesCopy.print.printOrShare,
+              icon: "print",
+              iconOnly: true,
+              onPress: () => setPrinting(true),
+              testID: "fee-structure-print",
+            }
+          : undefined
+      }
       onRefresh={
         canRead
           ? () => {
@@ -214,6 +227,19 @@ export function FeeStructureScreen() {
       titleTestID="fee-structure-title"
     >
       {children}
+      {printing && organizationId && schoolId ? (
+        <PrintSheet
+          title={feesCopy.print.structureTitle}
+          onClose={() => setPrinting(false)}
+          load={() =>
+            utils.fees.document.structureSheet.fetch(
+              { organizationId, schoolId, id: structureId },
+              { staleTime: 0 },
+            )
+          }
+          testIDPrefix="fee-structure-print-sheet"
+        />
+      ) : null}
     </ScreenFrame>
   );
 

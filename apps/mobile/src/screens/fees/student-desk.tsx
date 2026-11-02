@@ -41,6 +41,7 @@ import {
 } from "./desk-actions";
 import { MonthSheet } from "./month-sheet";
 import { PaymentRow } from "./payment-row";
+import { PrintSheet } from "./print-sheet";
 import { SectionHead } from "./status";
 
 type DeskSheet =
@@ -90,6 +91,9 @@ export function StudentFeeDeskScreen() {
   const [sheet, setSheet] = useState<DeskSheet | null>(null);
   const [notice, setNotice] = useState<DeskNotice | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [printing, setPrinting] = useState<"statement" | "noDues" | null>(null);
+  const canPrint = has("fee_report:read");
+  const utils = trpc.useUtils();
 
   const summary = trpc.fees.dashboard.student.useQuery(
     {
@@ -448,8 +452,28 @@ export function StudentFeeDeskScreen() {
                 testID="fee-desk-status-action"
               />
             ) : null}
+            {canPrint ? (
+              <>
+                <LinkRow
+                  first={!canManage && !(record && canConcession)}
+                  icon="print"
+                  title={feesCopy.print.statementAction}
+                  detail={feesCopy.print.statementHint}
+                  onPress={() => setPrinting("statement")}
+                  testID="fee-desk-print-statement"
+                />
+                <LinkRow
+                  first={false}
+                  icon="receipt"
+                  title={feesCopy.print.noDuesAction}
+                  detail={feesCopy.print.noDuesHint}
+                  onPress={() => setPrinting("noDues")}
+                  testID="fee-desk-print-no-dues"
+                />
+              </>
+            ) : null}
             <LinkRow
-              first={!canManage && !(record && canConcession)}
+              first={!canManage && !(record && canConcession) && !canPrint}
               icon="ledger"
               title={copy.fees.desk.ledgerLink}
               onPress={() =>
@@ -464,6 +488,19 @@ export function StudentFeeDeskScreen() {
         </View>
       ) : null}
 
+      {printing ? (
+        <PrintSheet
+          title={printing === "statement" ? feesCopy.print.statementTitle : feesCopy.print.noDuesTitle}
+          onClose={() => setPrinting(null)}
+          load={() => {
+            const input = { organizationId, schoolId, academicYearId: academicYear.id, studentId };
+            return printing === "statement"
+              ? utils.fees.document.statement.fetch(input, { staleTime: 0 })
+              : utils.fees.document.noDues.fetch(input, { staleTime: 0 });
+          }}
+          testIDPrefix={`fee-desk-print-${printing}`}
+        />
+      ) : null}
       {sheet?.kind === "assign" ? (
         <AssignSheet
           organizationId={organizationId}
