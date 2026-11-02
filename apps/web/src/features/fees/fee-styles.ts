@@ -90,6 +90,8 @@ const OPENING_BALANCE_STYLES: Record<OpeningBalanceStatus, string> = {
     "border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-100",
   waived:
     "border-violet-200 bg-violet-50 text-violet-950 dark:border-violet-900 dark:bg-violet-950/60 dark:text-violet-100",
+  cancelled:
+    "border-slate-200 bg-slate-50 text-slate-950 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100",
 };
 
 export function openingBalanceStatusTint(status: OpeningBalanceStatus): string {

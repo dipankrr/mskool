@@ -21,14 +21,16 @@ import { ConcessionDialog } from "./concession-dialog";
 import { SubscriptionsSection } from "./subscriptions-section";
 import { OpeningBalancesSection } from "./opening-balances-section";
 import { FeeStatus } from "./fee-status";
+import { endOfMonthOf } from "./due-now";
 import { moneyCellClass } from "./fee-styles";
 import { useFeeHeads } from "./use-fee-setup";
 import { useFeeDues, useWaiveMutation } from "./use-fee-dues";
 import { usePayments } from "./use-fee-payments";
 import { useFeeProfileMutations, useStudentFeeAssignment } from "./use-fee-profile";
 import { copy } from "@/lib/copy";
-import { formatIsoDate } from "@/lib/format";
-import { addMoney, formatMoney, isMoneyString, subtractMoney } from "@/lib/money";
+import { formatIsoDate, todayIso } from "@/lib/format";
+import { addMoney, formatMoney } from "@/lib/money";
+import { trpc } from "@/lib/trpc/client";
 import type { FeeInstallment } from "@/lib/trpc/types";
 import { cn } from "@/lib/utils";
 
@@ -42,8 +44,27 @@ import { cn } from "@/lib/utils";
  * approve-tier (hidden from the accountant — duties).
  */
 
+function FinanceFigure({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-muted-foreground text-xs font-medium">{label}</p>
+      <p className="text-lg font-bold tabular-nums">{formatMoney(value)}</p>
+    </div>
+  );
+}
+
 export function FeeProfileCard({ studentId }: { studentId: string }) {
-  const { schoolId, activeSession } = useActiveContext();
+  const { schoolId, activeSession, has, scopeArgs } = useActiveContext();
+  // The same read the app's student page uses, so the two can't disagree. A role
+  // without it (a class teacher) still sees what is due, from the dues it can read.
+  const summary = trpc.fees.dashboard.student.useQuery(
+    {
+      ...scopeArgs(),
+      academicYearId: activeSession?.id ?? "",
+      studentId,
+    },
+    { enabled: Boolean(activeSession?.id) && has("fee_report:read") },
+  );
   const assignment = useStudentFeeAssignment(studentId);
   const enrollments = useStudentEnrollments();
   const heads = useFeeHeads();
@@ -79,22 +100,29 @@ export function FeeProfileCard({ studentId }: { studentId: string }) {
   const row = assignment.data;
   const openDues = useMemo(() => dues.data ?? [], [dues.data]);
 
-  // Presentation sums of server balances — billed/concessions are the
-  // assignment's frozen snapshots, paid/outstanding sum the dues rows.
   const finance = useMemo(() => {
     if (!row) return null;
-    const base = row.baseAnnualAmount;
-    const net = row.netAnnualAmount;
-    const paid = openDues.reduce((sum, r) => addMoney(sum, r.paidAmount), "0.00");
-    const outstanding = openDues.reduce((sum, r) => addMoney(sum, r.balanceAmount), "0.00");
+    if (summary.data) {
+      const totals = summary.data.totals;
+      return {
+        dueNow: totals.dueNow,
+        later: totals.later,
+        previous: totals.previousDues,
+        paid: totals.paid,
+        concession: totals.concession,
+      };
+    }
+    const monthEnd = endOfMonthOf(todayIso());
+    const sum = (rows: typeof openDues) =>
+      rows.reduce((total, r) => addMoney(total, r.balanceAmount), "0.00");
     return {
-      billed: base,
-      concessions:
-        isMoneyString(base) && isMoneyString(net) ? subtractMoney(base, net) : "0.00",
-      paid,
-      outstanding,
+      dueNow: sum(openDues.filter((r) => r.dueDate <= monthEnd)),
+      later: sum(openDues.filter((r) => r.dueDate > monthEnd)),
+      previous: null,
+      paid: null,
+      concession: null,
     };
-  }, [row, openDues]);
+  }, [row, openDues, summary.data]);
 
   const recentPayments = useMemo(() => (payments.data ?? []).slice(0, 5), [payments.data]);
 
@@ -131,35 +159,18 @@ export function FeeProfileCard({ studentId }: { studentId: string }) {
           ) : (
             <>
               {finance ? (
-                <div className="grid gap-3 rounded-lg border p-4 sm:grid-cols-4">
-                  <div>
-                    <p className="text-muted-foreground text-xs font-medium">
-                      {copy.fees.profile.billedTotal}
-                    </p>
-                    <p className="text-lg font-bold tabular-nums">{formatMoney(finance.billed)}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs font-medium">
-                      {copy.fees.profile.concessionsTotal}
-                    </p>
-                    <p className="text-lg font-bold tabular-nums">
-                      {formatMoney(finance.concessions)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs font-medium">
-                      {copy.fees.profile.paidTotal}
-                    </p>
-                    <p className="text-lg font-bold tabular-nums">{formatMoney(finance.paid)}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs font-medium">
-                      {copy.fees.profile.outstandingTotal}
-                    </p>
-                    <p className="text-lg font-bold tabular-nums">
-                      {formatMoney(finance.outstanding)}
-                    </p>
-                  </div>
+                <div className="grid gap-3 rounded-lg border p-4 sm:grid-cols-5">
+                  <FinanceFigure label={copy.fees.profile.outstandingTotal} value={finance.dueNow} />
+                  <FinanceFigure label={copy.fees.profile.laterTotal} value={finance.later} />
+                  {finance.previous !== null ? (
+                    <FinanceFigure label={copy.fees.profile.previousTotal} value={finance.previous} />
+                  ) : null}
+                  {finance.paid !== null ? (
+                    <FinanceFigure label={copy.fees.profile.paidTotal} value={finance.paid} />
+                  ) : null}
+                  {finance.concession !== null ? (
+                    <FinanceFigure label={copy.fees.profile.concessionsTotal} value={finance.concession} />
+                  ) : null}
                 </div>
               ) : null}
 

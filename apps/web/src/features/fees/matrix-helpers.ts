@@ -20,11 +20,11 @@ export function collectionPercent(paidAmount: string, netAmount: string): bigint
 
 export function matrixRowBalance(
   row: {
-    totals: Pick<FeeMatrixRow["totals"], "balanceAmount">;
+    totals: Pick<FeeMatrixRow["totals"], "dueNowAmount">;
     openingBalance: Pick<FeeMatrixRow["openingBalance"], "balance">;
   },
 ): string {
-  return addMoney(row.totals.balanceAmount, row.openingBalance.balance);
+  return addMoney(row.totals.dueNowAmount, row.openingBalance.balance);
 }
 
 export function isCurrentMonth(month: string, currentMonth: string): boolean {

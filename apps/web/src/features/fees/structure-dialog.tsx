@@ -22,7 +22,6 @@ import { useClasses } from "@/features/classes/use-classes";
 import { useActiveContext } from "@/features/session/active-context";
 import { copy } from "@/lib/copy";
 import type { FeeStructure } from "@/lib/trpc/types";
-import type { FeeStructureInstallmentMode } from "./fee-enums";
 
 /**
  * CREATE STRUCTURE — one structure per class per session (the unique index
@@ -36,7 +35,6 @@ import type { FeeStructureInstallmentMode } from "./fee-enums";
  * not appear to be a choice.
  */
 
-const MODES: ReadonlyArray<FeeStructureInstallmentMode> = ["term_wise", "monthly", "upfront"];
 
 export function StructureDialog({
   open,
@@ -49,7 +47,7 @@ export function StructureDialog({
   onOpenChange: (open: boolean) => void;
   onSubmit: (data: CreateFeeStructureInput) => Promise<void> | void;
   pending: boolean;
-  /** Present = edit mode (name + installment mode only). */
+  /** Present = edit mode (name only). */
   structure?: FeeStructure;
 }) {
   const isEdit = Boolean(structure);
@@ -58,7 +56,7 @@ export function StructureDialog({
 
   const form = useForm<CreateFeeStructureInput>({
     resolver: zodResolver(createFeeStructureSchema),
-    defaultValues: { name: "", installmentMode: "term_wise" },
+    defaultValues: { name: "" },
   });
 
   useEffect(() => {
@@ -69,9 +67,8 @@ export function StructureDialog({
             academicYearId: structure?.academicYearId ?? "",
             classId: structure?.classId ?? "",
             name: structure?.name ?? "",
-            installmentMode: structure?.installmentMode,
           }
-        : { name: "", installmentMode: "term_wise" },
+        : { name: "" },
     );
   }, [open, isEdit, structure, form]);
 
@@ -168,34 +165,6 @@ export function StructureDialog({
           />
           <FieldDescription>{copy.fees.structures.fields.nameHelp}</FieldDescription>
           <FieldError>{errors.name?.message}</FieldError>
-        </Field>
-
-        <Field data-invalid={errors.installmentMode ? true : undefined}>
-          <FieldLabel htmlFor="structure-mode">{copy.fees.structures.fields.installmentMode}</FieldLabel>
-          <Select
-            value={form.watch("installmentMode") ?? "term_wise"}
-            onValueChange={(v) =>
-              form.setValue("installmentMode", (v ?? "term_wise") as FeeStructureInstallmentMode)
-            }
-          >
-              <SelectTrigger id="structure-mode" aria-invalid={errors.installmentMode ? true : undefined}>
-                <SelectValue>
-                  {(value: string | null) =>
-                    (value
-                      ? copy.fees.installmentModes[value as FeeStructureInstallmentMode]
-                      : undefined) ?? copy.fees.installmentModes.term_wise}
-                </SelectValue>
-              </SelectTrigger>
-            <SelectContent>
-              {MODES.map((mode) => (
-                <SelectItem key={mode} value={mode}>
-                  {copy.fees.installmentModes[mode]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <FieldDescription>{copy.fees.structures.fields.installmentModeHelp}</FieldDescription>
-          <FieldError>{errors.installmentMode?.message}</FieldError>
         </Field>
       </FieldGroup>
     </FormDialog>

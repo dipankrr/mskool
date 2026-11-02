@@ -19,7 +19,9 @@ import { FeesTabs } from "@/features/fees/tabs";
 import { OverdueFlag } from "@/features/fees/fee-status";
 import { FilterField, FilterRow } from "@/features/fees/fee-filters";
 import { moneyCellClass } from "@/features/fees/fee-styles";
+import { endOfMonthOf } from "@/features/fees/due-now";
 import { useFeeDues } from "@/features/fees/use-fee-dues";
+import { useOpeningBalances } from "@/features/fees/use-fee-ledger";
 import { useClasses } from "@/features/classes/use-classes";
 import { useStudentEnrollments, useStudents } from "@/features/students/use-students";
 import { useActiveContext } from "@/features/session/active-context";
@@ -70,8 +72,10 @@ export default function FeesOutstandingPage() {
   const today = todayIso();
   const dues = useFeeDues({
     academicYearId: selectedYear,
-    dueOnOrBefore: dueBy || undefined,
+    // Unless asked for a date, this list is what is due now, not the whole session.
+    dueOnOrBefore: dueBy || endOfMonthOf(today),
   });
+  const previous = useOpeningBalances(selectedYear, undefined, has("fee_structure:read"));
   const students = useStudents();
   const enrollments = useStudentEnrollments();
   const classes = useClasses();
@@ -129,6 +133,18 @@ export default function FeesOutstandingPage() {
       current.count += 1;
       byStudent.set(row.studentId, current);
     }
+    for (const row of previous.data ?? []) {
+      if (compareMoney(row.balanceAmount ?? "0.00", "0.00") <= 0) continue;
+      const current = byStudent.get(row.studentId) ?? {
+        oldestDue: "",
+        total: "0.00",
+        overdueTotal: "0.00",
+        count: 0,
+      };
+      current.total = addMoney(current.total, row.balanceAmount ?? "0.00");
+      current.count += 1;
+      byStudent.set(row.studentId, current);
+    }
     return [...byStudent.entries()].map(([studentId, g]) => {
       const student = studentById.get(studentId);
       const cls = classByStudentId.get(studentId);
@@ -145,7 +161,7 @@ export default function FeesOutstandingPage() {
         openCount: g.count,
       };
     });
-  }, [dues.data, studentById, classByStudentId, today]);
+  }, [dues.data, previous.data, studentById, classByStudentId, today]);
 
   const query = search.trim().toLowerCase();
   const rows = useMemo(
@@ -210,7 +226,7 @@ export default function FeesOutstandingPage() {
           header: copy.fees.dues.oldestDue,
           cell: ({ row }) => (
             <span>
-              {formatIsoDate(row.original.oldestDue)}{" "}
+              {(row.original.oldestDue ? formatIsoDate(row.original.oldestDue) : copy.common.none)}{" "}
               {row.original.overdue ? <OverdueFlag /> : null}
             </span>
           ),

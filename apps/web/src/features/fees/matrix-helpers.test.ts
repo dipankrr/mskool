@@ -27,7 +27,7 @@ describe("matrix money helpers", () => {
   it("adds opening balance to the server total exactly", () => {
     expect(
       matrixRowBalance({
-        totals: { balanceAmount: "0.03" },
+        totals: { dueNowAmount: "0.03" },
         openingBalance: { balance: "0.01" },
       }),
     ).toBe("0.04");

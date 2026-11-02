@@ -21,34 +21,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { copy } from "@/lib/copy";
-import { formatMoney, fromPaise, isMoneyString, toPaise } from "@/lib/money";
 import type { FeeHead, FeeStructureLine } from "@/lib/trpc/types";
 import type { FeeInstallmentFrequency } from "./fee-enums";
 
 /**
- * ADD / EDIT a structure LINE — the head + annual amount + how it splits.
- * The money input is the wire format itself (the schema's regex): typing
- * "1200.505" is a FIELD error before any submit, which is the whole
- * "forms ARE the contracts" rule doing its job.
- *
- * The month window is two selects (1..12), not free typing — the from ≤ to
- * refinement then reads as a rule about choices, not a keyboard error.
+ * ADD / EDIT a structure LINE: the head, how often it charges, and how much per
+ * period. New lines start from the months the school charges. Choosing months
+ * and changing a single row are on the mobile app.
  */
 
 const FREQUENCIES: ReadonlyArray<FeeInstallmentFrequency> = [
-  "inherit",
   "monthly",
   "quarterly",
   "half_yearly",
   "term_wise",
-  "annual",
+  "once",
 ];
-
-const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
-
-function monthLabel(month: number): string {
-  return new Intl.DateTimeFormat("en-IN", { month: "short" }).format(new Date(2026, month - 1, 1));
-}
 
 export function StructureLineDialog({
   open,
@@ -77,47 +65,12 @@ export function StructureLineDialog({
     if (!open) return;
     form.reset(
       isEdit
-        ? {
-            annualAmount: line?.annualAmount ?? "",
-            installmentFrequency: line?.installmentFrequency,
-            applicableFromMonth: line?.applicableFromMonth,
-            applicableToMonth: line?.applicableToMonth,
-          }
-        : {
-            feeHeadId: "",
-            annualAmount: "",
-            installmentFrequency: "inherit",
-            applicableFromMonth: 1,
-            applicableToMonth: 12,
-          },
+        ? { amount: line?.amount ?? "", frequency: line?.frequency }
+        : { feeHeadId: "", amount: "", frequency: "monthly" },
     );
   }, [open, isEdit, line, form]);
 
   const errors = form.formState.errors;
-
-  // Live preview (spec §27): fixed frequencies divide the annual amount
-  // into equal instalments — paise arithmetic only, shown only when the
-  // split is exact. inherit/term_wise depend on the structure, not the line.
-  const previewAnnual = form.watch("annualAmount") ?? "";
-  const previewFrequency = form.watch("installmentFrequency");
-  const previewPeriods =
-    previewFrequency === "monthly"
-      ? 12
-      : previewFrequency === "quarterly"
-        ? 4
-        : previewFrequency === "half_yearly"
-          ? 2
-          : previewFrequency === "annual"
-            ? 1
-            : 0;
-  const previewPer =
-    previewPeriods > 0 && isMoneyString(previewAnnual)
-      ? (() => {
-          const paise = toPaise(previewAnnual);
-          const per = paise / BigInt(previewPeriods);
-          return paise % BigInt(previewPeriods) === 0n ? fromPaise(per) : null;
-        })()
-      : null;
 
   return (
     <FormDialog
@@ -156,34 +109,19 @@ export function StructureLineDialog({
         ) : null}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field data-invalid={errors.annualAmount ? true : undefined}>
-            <FieldLabel htmlFor="line-amount">{copy.fees.structures.lineFields.annualAmount}</FieldLabel>
-            <Input
-              id="line-amount"
-              inputMode="decimal"
-              placeholder="12000.00"
-              aria-invalid={errors.annualAmount ? true : undefined}
-              {...form.register("annualAmount")}
-            />
-            <FieldDescription>{copy.fees.structures.lineFields.annualAmountHelp}</FieldDescription>
-            <FieldError>{errors.annualAmount?.message}</FieldError>
-          </Field>
-
-          <Field data-invalid={errors.installmentFrequency ? true : undefined}>
+          <Field data-invalid={errors.frequency ? true : undefined}>
             <FieldLabel htmlFor="line-frequency">
               {copy.fees.structures.lineFields.frequency}
             </FieldLabel>
             <Select
-              value={form.watch("installmentFrequency")}
-              onValueChange={(v) =>
-                form.setValue("installmentFrequency", v as FeeInstallmentFrequency)
-              }
+              value={form.watch("frequency")}
+              onValueChange={(v) => form.setValue("frequency", v as FeeInstallmentFrequency)}
             >
-              <SelectTrigger id="line-frequency" aria-invalid={errors.installmentFrequency ? true : undefined}>
+              <SelectTrigger id="line-frequency" aria-invalid={errors.frequency ? true : undefined}>
                 <SelectValue>
                   {(value: string | null) =>
                     (value ? copy.fees.frequencies[value as FeeInstallmentFrequency] : undefined) ??
-                    copy.fees.frequencies.inherit}
+                    copy.fees.frequencies.monthly}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -194,68 +132,20 @@ export function StructureLineDialog({
                 ))}
               </SelectContent>
             </Select>
-            <FieldDescription>{copy.fees.structures.lineFields.frequencyHelp}</FieldDescription>
-            <FieldError>{errors.installmentFrequency?.message}</FieldError>
-            {previewPer ? (
-              <p className="text-muted-foreground text-sm tabular-nums" aria-live="polite">
-                {copy.fees.structures.lineFields.linePreview(
-                  formatMoney(previewPer),
-                  previewPeriods,
-                )}
-              </p>
-            ) : null}
-          </Field>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field data-invalid={errors.applicableFromMonth ? true : undefined}>
-            <FieldLabel htmlFor="line-from">{copy.fees.structures.lineFields.fromMonth}</FieldLabel>
-            <Select
-              value={String(form.watch("applicableFromMonth") ?? 1)}
-              onValueChange={(v) => form.setValue("applicableFromMonth", Number(v), { shouldValidate: true })}
-            >
-              <SelectTrigger id="line-from" aria-invalid={errors.applicableFromMonth ? true : undefined}>
-                <SelectValue>
-                  {(value: string | null) => {
-                    const m = Number(value);
-                    return m >= 1 && m <= 12 ? monthLabel(m) : copy.common.none;
-                  }}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {MONTHS.map((m) => (
-                  <SelectItem key={m} value={String(m)}>
-                    {monthLabel(m)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <FieldError>{errors.frequency?.message}</FieldError>
           </Field>
 
-          <Field data-invalid={errors.applicableToMonth ? true : undefined}>
-            <FieldLabel htmlFor="line-to">{copy.fees.structures.lineFields.toMonth}</FieldLabel>
-            <Select
-              value={String(form.watch("applicableToMonth") ?? 12)}
-              onValueChange={(v) => form.setValue("applicableToMonth", Number(v), { shouldValidate: true })}
-            >
-              <SelectTrigger id="line-to" aria-invalid={errors.applicableToMonth ? true : undefined}>
-                <SelectValue>
-                  {(value: string | null) => {
-                    const m = Number(value);
-                    return m >= 1 && m <= 12 ? monthLabel(m) : copy.common.none;
-                  }}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {MONTHS.map((m) => (
-                  <SelectItem key={m} value={String(m)}>
-                    {monthLabel(m)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <FieldDescription>{copy.fees.structures.lineFields.monthsHelp}</FieldDescription>
-            <FieldError>{errors.applicableToMonth?.message}</FieldError>
+          <Field data-invalid={errors.amount ? true : undefined}>
+            <FieldLabel htmlFor="line-amount">{copy.fees.structures.lineFields.amount}</FieldLabel>
+            <Input
+              id="line-amount"
+              inputMode="decimal"
+              placeholder="1000.00"
+              aria-invalid={errors.amount ? true : undefined}
+              {...form.register("amount")}
+            />
+            <FieldDescription>{copy.fees.structures.lineFields.amountHelp}</FieldDescription>
+            <FieldError>{errors.amount?.message}</FieldError>
           </Field>
         </div>
       </FieldGroup>

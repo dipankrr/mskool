@@ -9,7 +9,9 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { FeesTabs } from "@/features/fees/tabs";
 import { FeeStatus, OverdueFlag } from "@/features/fees/fee-status";
 import { moneyCellClass } from "@/features/fees/fee-styles";
+import { endOfMonthOf } from "@/features/fees/due-now";
 import { useFeeDues } from "@/features/fees/use-fee-dues";
+import { useOpeningBalances } from "@/features/fees/use-fee-ledger";
 import { usePayments } from "@/features/fees/use-fee-payments";
 import { useStudents } from "@/features/students/use-students";
 import { useActiveContext } from "@/features/session/active-context";
@@ -31,7 +33,11 @@ export default function FeesOverviewPage() {
   const { has, activeSession } = useActiveContext();
   const today = todayIso();
 
-  const dues = useFeeDues({ academicYearId: activeSession?.id });
+  const dues = useFeeDues({
+    academicYearId: activeSession?.id,
+    dueOnOrBefore: endOfMonthOf(today),
+  });
+  const previous = useOpeningBalances(activeSession?.id, undefined, has("fee_structure:read"));
   const payments = usePayments(activeSession?.id);
   const students = useStudents();
 
@@ -56,6 +62,11 @@ export default function FeesOverviewPage() {
       }
       debtors.add(row.studentId);
     }
+    for (const row of previous.data ?? []) {
+      if (compareMoney(row.balanceAmount ?? "0.00", "0.00") <= 0) continue;
+      outstanding = addMoney(outstanding, row.balanceAmount ?? "0.00");
+      debtors.add(row.studentId);
+    }
     let collected = "0.00";
     for (const payment of payments.data ?? []) {
       if (payment.paymentStatus === "cleared") {
@@ -69,7 +80,7 @@ export default function FeesOverviewPage() {
       studentsWithDues: debtors.size,
       studentsOverdue: overdueDebtors.size,
     };
-  }, [dues.data, payments.data, today]);
+  }, [dues.data, previous.data, payments.data, today]);
 
   const topOutstanding = useMemo(() => {
     const byStudent = new Map<string, { total: string; overdue: boolean; oldestDue: string }>();
@@ -84,11 +95,21 @@ export default function FeesOverviewPage() {
       if (row.dueDate < current.oldestDue) current.oldestDue = row.dueDate;
       byStudent.set(row.studentId, current);
     }
+    for (const row of previous.data ?? []) {
+      if (compareMoney(row.balanceAmount ?? "0.00", "0.00") <= 0) continue;
+      const current = byStudent.get(row.studentId) ?? {
+        total: "0.00",
+        overdue: false,
+        oldestDue: "",
+      };
+      current.total = addMoney(current.total, row.balanceAmount ?? "0.00");
+      byStudent.set(row.studentId, current);
+    }
     return [...byStudent.entries()]
       .map(([studentId, g]) => ({ studentId, ...g }))
       .sort((a, b) => compareMoney(b.total, a.total))
       .slice(0, 5);
-  }, [dues.data, today]);
+  }, [dues.data, previous.data, today]);
 
   const recent = useMemo(() => (payments.data ?? []).slice(0, 5), [payments.data]);
 
@@ -167,7 +188,7 @@ export default function FeesOverviewPage() {
                           {studentNameById.get(row.studentId) ?? copy.common.none}
                         </span>
                         <span className="text-muted-foreground text-xs">
-                          {formatIsoDate(row.oldestDue)}{" "}
+                          {(row.oldestDue ? formatIsoDate(row.oldestDue) : copy.common.none)}{" "}
                           {row.overdue ? <OverdueFlag /> : null}
                         </span>
                       </span>

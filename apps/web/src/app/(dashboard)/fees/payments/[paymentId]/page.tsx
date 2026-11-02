@@ -221,6 +221,12 @@ export default function FeePaymentDetailPage() {
             />
             <Detail label={copy.fees.counter.paymentDate} value={formatIsoDate(payment.paymentDate)} />
             <Detail label={copy.fees.amounts.total} value={formatMoney(payment.totalAmount)} />
+            {payment.discountAmount && payment.discountAmount !== "0.00" ? (
+              <Detail
+                label={copy.fees.amounts.discountGiven}
+                value={formatMoney(payment.discountAmount)}
+              />
+            ) : null}
             <Detail
               label={copy.fees.amounts.lateFee}
               value={

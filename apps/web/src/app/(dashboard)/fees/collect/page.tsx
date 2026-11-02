@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { RecordPaymentInput } from "@repo/contracts";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/empty-state";
 import { Input } from "@/components/ui/input";
@@ -12,7 +13,9 @@ import { PageHeader } from "@/components/page-header";
 import { FeesTabs } from "@/features/fees/tabs";
 import { FeeStatus } from "@/features/fees/fee-status";
 import { moneyCellClass } from "@/features/fees/fee-styles";
+import { endOfMonthOf } from "@/features/fees/due-now";
 import { useFeeDues } from "@/features/fees/use-fee-dues";
+import { useOpeningBalances } from "@/features/fees/use-fee-ledger";
 import { useCounterMutations } from "@/features/fees/use-fee-counter";
 import { useStudent, useStudents } from "@/features/students/use-students";
 import { useActiveContext } from "@/features/session/active-context";
@@ -21,11 +24,13 @@ import { formatIsoDate, todayIso } from "@/lib/format";
 import {
   addMoney,
   clampMoney,
+  compareMoney,
   formatMoney,
   fromPaise,
   isMoneyString,
   toPaise,
 } from "@/lib/money";
+import { trpc } from "@/lib/trpc/client";
 import type { FeeInstallment, FeePayment, Student } from "@/lib/trpc/types";
 import { cn } from "@/lib/utils";
 
@@ -52,7 +57,7 @@ const MODES = ["cash", "upi", "cheque", "neft_rtgs", "card", "dd"] as const;
 type CollectMode = (typeof MODES)[number];
 
 export default function FeesCollectPage() {
-  const { has, activeSession, schoolId, schools } = useActiveContext();
+  const { has, activeSession, schoolId, schools, writeScopeArgs } = useActiveContext();
 
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -110,9 +115,30 @@ export default function FeesCollectPage() {
     [openInstallments],
   );
 
+  // What is due now. Later months stay payable, but aren't part of this figure.
+  const monthEnd = endOfMonthOf(todayIso());
   const totalOutstanding = useMemo(
-    () => openByAge.reduce((sum, row) => addMoney(sum, row.balanceAmount), "0.00"),
-    [openByAge],
+    () =>
+      openByAge
+        .filter((row) => row.dueDate <= monthEnd)
+        .reduce((sum, row) => addMoney(sum, row.balanceAmount), "0.00"),
+    [openByAge, monthEnd],
+  );
+  const laterTotal = useMemo(
+    () =>
+      openByAge
+        .filter((row) => row.dueDate > monthEnd)
+        .reduce((sum, row) => addMoney(sum, row.balanceAmount), "0.00"),
+    [openByAge, monthEnd],
+  );
+  const previousDues = useOpeningBalances(
+    activeSession?.id,
+    paying?.id,
+    Boolean(paying) && has("fee_structure:read"),
+  );
+  const previousTotal = (previousDues.data ?? []).reduce(
+    (sum, row) => addMoney(sum, row.balanceAmount ?? "0.00"),
+    "0.00",
   );
 
   /** The derived total — the only total this screen has. */
@@ -123,6 +149,26 @@ export default function FeesCollectPage() {
 
   const hasAmount = allocations.length > 0 && allocations.every((row) => isMoneyString(row.amount));
   const allocatedTotal = hasAmount ? total : "0.00";
+
+  // The server's figure for this exact bill, so the amount asked for is the amount
+  // recorded. Nothing here works a late fee out for itself.
+  const quote = trpc.fees.payment.quote.useQuery(
+    {
+      ...(writeScopeArgs() ?? { organizationId: "", schoolId: "" }),
+      data: {
+        studentId: paying?.id ?? "",
+        academicYearId: activeSession?.id ?? "",
+        paymentDate,
+        allocations: allocations.map((row) => ({
+          installmentId: row.installment.id,
+          amount: row.amount,
+        })),
+      },
+    },
+    { enabled: has("fee_payment:create") && Boolean(paying && activeSession && schoolId) && hasAmount },
+  );
+  const lateFee = hasAmount ? (quote.data?.lateFeeAmount ?? "0.00") : "0.00";
+  const toCollect = addMoney(allocatedTotal, lateFee);
 
   /** Split one amount across the oldest dues first. Valid wire input only. */
   const splitAmount = (raw: string): AllocationRow[] => {
@@ -291,12 +337,21 @@ export default function FeesCollectPage() {
             student={paying}
             outstanding={totalOutstanding}
             openCount={openByAge.length}
+            later={laterTotal}
             onBack={() => {
               setPaying(undefined);
               setAllocations([]);
               setQuickDraft(null);
             }}
           />
+
+          {compareMoney(previousTotal, "0.00") > 0 ? (
+            <Alert>
+              <AlertDescription>
+                {copy.fees.counter.previousNotice(formatMoney(previousTotal))}
+              </AlertDescription>
+            </Alert>
+          ) : null}
 
           {openInstallments.length === 0 && dues.isSuccess ? (
             <EmptyState
@@ -326,9 +381,11 @@ export default function FeesCollectPage() {
                     aria-invalid={quickDraft !== null && !isMoneyString(quickDraft)}
                     className="h-12 flex-1 text-right text-lg"
                   />
-                  <Button variant="outline" className="min-h-12" onClick={collectFull}>
-                    {copy.fees.counter.collectFull(formatMoney(totalOutstanding))}
-                  </Button>
+                  {compareMoney(totalOutstanding, "0.00") > 0 ? (
+                    <Button variant="outline" className="min-h-12" onClick={collectFull}>
+                      {copy.fees.counter.collectFull(formatMoney(totalOutstanding))}
+                    </Button>
+                  ) : null}
                 </div>
                 {quickDraft !== null && !isMoneyString(quickDraft) ? (
                   <p className="text-destructive mt-1 text-xs" role="alert">
@@ -344,6 +401,8 @@ export default function FeesCollectPage() {
                   amount: row.amount,
                 }))}
                 total={allocatedTotal}
+                lateFee={lateFee}
+                toCollect={toCollect}
                 open={adjustOpen}
                 onToggle={() => setAdjustOpen((v) => !v)}
                 rows={openByAge}
@@ -430,7 +489,7 @@ export default function FeesCollectPage() {
                   {record.isPending
                     ? copy.fees.counter.submitting
                     : hasAmount
-                      ? copy.fees.counter.submitAmount(formatMoney(allocatedTotal))
+                      ? copy.fees.counter.submitAmount(formatMoney(toCollect))
                       : copy.fees.counter.submit}
                 </Button>
               </div>
@@ -499,11 +558,13 @@ function AccountHeader({
   student,
   outstanding,
   openCount,
+  later,
   onBack,
 }: {
   student: Student;
   outstanding: string;
   openCount: number;
+  later: string;
   onBack: () => void;
 }) {
   return (
@@ -522,6 +583,11 @@ function AccountHeader({
           <p className="text-4xl font-bold tracking-tight tabular-nums">
             {formatMoney(outstanding)}
           </p>
+          {compareMoney(later, "0.00") > 0 ? (
+            <p className="text-muted-foreground mt-1 text-sm">
+              {copy.fees.counter.laterLine(formatMoney(later))}
+            </p>
+          ) : null}
         </div>
         <p className="text-muted-foreground text-sm">
           {copy.fees.counter.openCount(openCount)}
@@ -566,6 +632,8 @@ function InstallmentList({ rows }: { rows: FeeInstallment[] }) {
 function AutoAllocation({
   lines,
   total,
+  lateFee,
+  toCollect,
   open,
   onToggle,
   rows,
@@ -574,6 +642,8 @@ function AutoAllocation({
 }: {
   lines: Array<{ id: string; description: string; amount: string }>;
   total: string;
+  lateFee: string;
+  toCollect: string;
   open: boolean;
   onToggle: () => void;
   rows: FeeInstallment[];
@@ -601,6 +671,18 @@ function AutoAllocation({
             <span>{copy.fees.amounts.total}</span>
             <span className={cn("tabular-nums", moneyCellClass)}>{formatMoney(total)}</span>
           </li>
+          {compareMoney(lateFee, "0.00") > 0 ? (
+            <>
+              <li className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                <span>{copy.fees.amounts.lateFee}</span>
+                <span className={cn("tabular-nums", moneyCellClass)}>{formatMoney(lateFee)}</span>
+              </li>
+              <li className="flex items-center justify-between gap-2 bg-accent/40 px-3 py-2 text-sm font-semibold">
+                <span>{copy.fees.counter.toCollect}</span>
+                <span className={cn("tabular-nums", moneyCellClass)}>{formatMoney(toCollect)}</span>
+              </li>
+            </>
+          ) : null}
         </ul>
       ) : (
         <p className="text-muted-foreground mt-2 text-sm">{copy.fees.counter.enterAmount}</p>

@@ -87,10 +87,6 @@ export function FeeStructuresSection() {
             </Link>
           ),
         }),
-        column.accessor("installmentMode", {
-          header: copy.fees.structures.fields.installmentMode,
-          cell: ({ row }) => copy.fees.installmentModes[row.original.installmentMode],
-        }),
         column.display({
           id: "actions",
           header: copy.common.actions,
@@ -189,8 +185,7 @@ export function FeeStructuresSection() {
                 {row.name}
               </Link>
               <p className="text-muted-foreground text-xs">
-                {classNameById.get(row.classId) ?? copy.common.none} ·{" "}
-                {copy.fees.installmentModes[row.installmentMode]}
+                {classNameById.get(row.classId) ?? copy.common.none}
               </p>
             </div>
             <DropdownMenu>

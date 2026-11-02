@@ -35,7 +35,11 @@ export function useLedger(academicYearId: string | undefined, studentId?: string
   );
 }
 
-export function useOpeningBalances(academicYearId: string | undefined, studentId?: string) {
+export function useOpeningBalances(
+  academicYearId: string | undefined,
+  studentId?: string,
+  allowed = true,
+) {
   const { scopeArgs } = useActiveContext();
 
   return trpc.fees.ledger.listOpeningBalances.useQuery(
@@ -45,7 +49,7 @@ export function useOpeningBalances(academicYearId: string | undefined, studentId
       ...(studentId ? { studentId } : {}),
     },
     {
-      enabled: Boolean(academicYearId),
+      enabled: allowed && Boolean(academicYearId),
       staleTime: THIRTY_SECONDS,
     },
   );

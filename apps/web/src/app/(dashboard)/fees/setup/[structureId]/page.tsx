@@ -14,6 +14,7 @@ import { DataTable } from "@/components/data-table";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { PermissionGate } from "@/components/permission-gate";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -36,6 +37,7 @@ import { moneyCellClass } from "@/features/fees/fee-styles";
 import { copy } from "@/lib/copy";
 import { formatIsoDate } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
+import { trpc } from "@/lib/trpc/client";
 import { createAppColumnHelper, type DataTableColumns } from "@/lib/table";
 import type {
   FeeStructureLine,
@@ -57,14 +59,6 @@ import { cn } from "@/lib/utils";
 const lineColumn = createAppColumnHelper<FeeStructureLine>();
 const ruleColumn = createAppColumnHelper<LateFeeRuleRow>();
 
-function monthRangeLabel(from: number, to: number): string {
-  const months = new Intl.DateTimeFormat("en-IN", { month: "short" });
-  const name = (m: number) => months.format(new Date(2026, m - 1, 1));
-  return from === 1 && to === 12
-    ? copy.fees.structures.lineFields.wholeSession
-    : `${name(from)} – ${name(to)}`;
-}
-
 /**
  * A late-fee value in its own units: flat rupees read as money, a
  * percentage as %, per-day as rupees per day.
@@ -84,7 +78,11 @@ function formatLateFeeValue(calculationType: string, value: string): string {
 export default function FeeStructureDetailPage() {
   const params = useParams<{ structureId: string }>();
   const structureId = params.structureId;
-  const { schoolId } = useActiveContext();
+  const { schoolId, scopeArgs } = useActiveContext();
+  const structure = trpc.fees.structure.byId.useQuery(
+    { ...scopeArgs(), schoolId: schoolId ?? "", id: structureId, includeHistory: true },
+    { enabled: Boolean(schoolId && structureId) },
+  );
 
   const heads = useFeeHeads();
   const lines = useFeeStructureLines(schoolId ?? undefined, structureId);
@@ -109,22 +107,13 @@ export default function FeeStructureDetailPage() {
           header: copy.fees.structures.lineFields.head,
           cell: ({ row }) => headNameById.get(row.original.feeHeadId) ?? copy.common.none,
         }),
-        lineColumn.accessor("annualAmount", {
-          header: copy.fees.amounts.annual,
-          cell: ({ row }) => formatMoney(row.original.annualAmount),
+        lineColumn.accessor("amount", {
+          header: copy.fees.structures.lineFields.amount,
+          cell: ({ row }) => formatMoney(row.original.amount),
         }),
-        lineColumn.accessor("installmentFrequency", {
+        lineColumn.accessor("frequency", {
           header: copy.fees.structures.lineFields.frequency,
-          cell: ({ row }) => copy.fees.frequencies[row.original.installmentFrequency],
-        }),
-        lineColumn.display({
-          id: "months",
-          header: copy.fees.structures.lineFields.windowHeader,
-          cell: ({ row }) =>
-            monthRangeLabel(
-              row.original.applicableFromMonth,
-              row.original.applicableToMonth,
-            ),
+          cell: ({ row }) => copy.fees.frequencies[row.original.frequency],
         }),
         lineColumn.display({
           id: "actions",
@@ -201,6 +190,12 @@ export default function FeeStructureDetailPage() {
         }
       />
 
+      {structure.data && !structure.data.billingStartedAt ? (
+        <Alert className="mb-4">
+          <AlertDescription>{copy.fees.structureNotStarted}</AlertDescription>
+        </Alert>
+      ) : null}
+
       <Card>
         <CardHeader>
           <CardTitle>{copy.fees.structures.linesTitle}</CardTitle>
@@ -233,11 +228,11 @@ export default function FeeStructureDetailPage() {
                     {headNameById.get(row.feeHeadId) ?? copy.common.none}
                   </p>
                   <p className="text-muted-foreground text-xs">
-                    {copy.fees.frequencies[row.installmentFrequency]}
+                    {copy.fees.frequencies[row.frequency]}
                   </p>
                 </div>
                 <p className={cn("text-sm font-medium", moneyCellClass)}>
-                  {formatMoney(row.annualAmount)}
+                  {formatMoney(row.amount)}
                 </p>
               </div>
             )}
