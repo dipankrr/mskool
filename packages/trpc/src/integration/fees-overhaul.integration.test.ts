@@ -942,7 +942,7 @@ describe("dues created late, and creating dues in the background", () => {
   }
 
   it("a due can't be late before it was created", async () => {
-    const { klass, structure } = await startedClass("Late", 91);
+    const { klass, structure } = await startedClass("Created late", 91);
     // Billing started long ago, and this student's dues are only being made now.
     await db
       .update(feeStructures)
