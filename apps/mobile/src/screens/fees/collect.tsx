@@ -263,6 +263,7 @@ export function CollectPaymentScreen() {
       title: installmentTitle(row),
       name: feeNameOf(row.description),
       month: monthKeyOf(row.dueDate),
+      oneOff: row.periodKey.startsWith("one:"),
       paid: row.paidAmount,
       net: row.netAmount,
       balance: row.balanceAmount ?? "0.00",

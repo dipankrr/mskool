@@ -25,14 +25,7 @@ import { formatMoney, parseMoney, sumMoney, toInputAmount, toMoneyString } from 
 // ---------------------------------------------------------------------------
 
 /** The counter wire. `online_portal` is written by the gateway, never by staff. */
-export const PAYMENT_MODES = [
-  "cash",
-  "upi",
-  "cheque",
-  "neft_rtgs",
-  "card",
-  "dd",
-] as const;
+export const PAYMENT_MODES = ["cash", "upi", "cheque", "neft_rtgs", "card", "dd"] as const;
 export type PaymentMode = (typeof PAYMENT_MODES)[number];
 
 export const PAYMENT_MODE_LABEL: Record<PaymentMode, string> = {
@@ -45,13 +38,7 @@ export const PAYMENT_MODE_LABEL: Record<PaymentMode, string> = {
 };
 
 /** Refunds cannot go back through the gateway — it refunds through itself. */
-export const REFUND_MODES = [
-  "cash",
-  "upi",
-  "cheque",
-  "neft_rtgs",
-  "dd",
-] as const;
+export const REFUND_MODES = ["cash", "upi", "cheque", "neft_rtgs", "dd"] as const;
 export type RefundMode = (typeof REFUND_MODES)[number];
 
 export const REFUND_MODE_LABEL: Record<RefundMode, string> = {
@@ -136,13 +123,7 @@ export function referenceFields(mode: PaymentMode): ReferenceFields {
 // Status labels
 // ---------------------------------------------------------------------------
 
-export const INSTALLMENT_STATUSES = [
-  "unpaid",
-  "partial",
-  "paid",
-  "waived",
-  "cancelled",
-] as const;
+export const INSTALLMENT_STATUSES = ["unpaid", "partial", "paid", "waived", "cancelled"] as const;
 export type InstallmentStatus = (typeof INSTALLMENT_STATUSES)[number];
 
 export const INSTALLMENT_STATUS_LABEL: Record<InstallmentStatus, string> = {
@@ -153,13 +134,7 @@ export const INSTALLMENT_STATUS_LABEL: Record<InstallmentStatus, string> = {
   cancelled: "Cancelled",
 };
 
-export const PAYMENT_STATUSES = [
-  "pending",
-  "cleared",
-  "bounced",
-  "reversed",
-  "cancelled",
-] as const;
+export const PAYMENT_STATUSES = ["pending", "cleared", "bounced", "reversed", "cancelled"] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
 export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
@@ -198,9 +173,7 @@ export type LedgerTotals = {
  * through `subtractMoney`, because a refund-heavy year may legitimately net
  * negative and the balance helpers floor at zero.
  */
-export function ledgerTotals(
-  rows: { cashEffect: string; amount: string }[],
-): LedgerTotals {
+export function ledgerTotals(rows: { cashEffect: string; amount: string }[]): LedgerTotals {
   // Money in/out is cash only (ADR-049): an opening balance, concession or
   // waiver changes what is owed and carries `cashEffect: "none"`.
   let credit = 0n;
@@ -256,10 +229,7 @@ export const CONCESSION_TYPE_LABEL: Record<ConcessionType, string> = {
 export const CONCESSION_CALCULATIONS = ["flat", "percentage"] as const;
 export type ConcessionCalculation = (typeof CONCESSION_CALCULATIONS)[number];
 
-export const CONCESSION_CALCULATION_LABEL: Record<
-  ConcessionCalculation,
-  string
-> = {
+export const CONCESSION_CALCULATION_LABEL: Record<ConcessionCalculation, string> = {
   flat: "Flat amount",
   percentage: "Percentage",
 };
@@ -355,8 +325,7 @@ export const MATRIX_TIMING_STATE_LABEL: Record<string, string> = {
  * decision point on the detail screen, but it is gated by `fee_refund:create`
  * and only exists for a cleared payment.
  */
-export type PaymentAction =
-  "clear" | "bounce" | "reverse" | "cancel" | "refund";
+export type PaymentAction = "clear" | "bounce" | "reverse" | "cancel" | "refund";
 
 export type PaymentActionSpec = {
   action: PaymentAction;
@@ -459,10 +428,7 @@ export type PayableInstallment = {
 
 /** Only an open balance can take money; waived/cancelled/paid rows cannot. */
 export function isPayable(installment: PayableInstallment): boolean {
-  if (
-    installment.paymentStatus !== "unpaid" &&
-    installment.paymentStatus !== "partial"
-  ) {
+  if (installment.paymentStatus !== "unpaid" && installment.paymentStatus !== "partial") {
     return false;
   }
   const balance = parseMoney(installment.balanceAmount);
@@ -549,19 +515,14 @@ export function installmentTitle(row: { description?: string | null }): string {
  * A receipt line for an installment, from the server's labelled allocation:
  * its description ("Lab Fee — 2025-05"), else the fee head and number.
  */
-export function allocationLabel(row: {
-  description: string | null;
-  feeHeadName: string;
-}): string {
+export function allocationLabel(row: { description: string | null; feeHeadName: string }): string {
   const description = row.description?.trim();
   if (description) return friendlyDueName(description);
   return row.feeHeadName;
 }
 
 /** A receipt line for a carried-forward balance. */
-export function openingBalanceLabel(row: {
-  originAcademicYearName: string | null;
-}): string {
+export function openingBalanceLabel(row: { originAcademicYearName: string | null }): string {
   return `Carried forward from ${row.originAcademicYearName}`;
 }
 
@@ -570,10 +531,7 @@ export function openingBalanceLabel(row: {
  * is rupees; a percentage is 0–100 with at most two decimals. The message is
  * the field's error line, so it says what to type, not what went wrong.
  */
-export function concessionValueError(
-  calculation: string,
-  value: string,
-): string | null {
+export function concessionValueError(calculation: string, value: string): string | null {
   const amount = parseMoney(value);
   if (amount === null || amount <= 0n) {
     return "Enter a value above zero.";
@@ -616,10 +574,7 @@ export type DueTiming = "none" | "upcoming" | "due" | "overdue";
  * The same three states the matrix uses. "due" is today; "overdue" is a day or
  * more late. A missing or unparseable date is "none", never "overdue".
  */
-export function dueTiming(
-  dueDate: string | null | undefined,
-  today: string,
-): DueTiming {
+export function dueTiming(dueDate: string | null | undefined, today: string): DueTiming {
   if (!dueDate) return "none";
   const days = daysBetweenIso(dueDate, today);
   if (days === null) return "none";
@@ -629,10 +584,7 @@ export function dueTiming(
 }
 
 /** "12 days overdue" / "Due today" / "Due 05/11/2026". */
-export function dueLabel(
-  dueDate: string | null | undefined,
-  today: string,
-): string {
+export function dueLabel(dueDate: string | null | undefined, today: string): string {
   const timing = dueTiming(dueDate, today);
   if (timing === "none") return "No due date";
   if (timing === "due") return "Due today";
@@ -720,10 +672,7 @@ export function isSettled(totals: Pick<OutstandingTotals, "balance">): boolean {
  * receipt instead of writing a second payment. Not a security token — just
  * unique per school.
  */
-export function nextClientReference(
-  now = Date.now(),
-  random = Math.random,
-): string {
+export function nextClientReference(now = Date.now(), random = Math.random): string {
   const time = now.toString(36);
   const noise = Math.floor(random() * 0xffffffff)
     .toString(36)
@@ -786,10 +735,7 @@ export function buildReceiptText(input: ReceiptInput): string {
   if (input.reference) rows.push(`Reference: ${input.reference}`);
   if (input.collectedBy) rows.push(`Collected by: ${input.collectedBy}`);
   if (input.status && input.status !== "cleared") {
-    rows.push(
-      "",
-      `Status: ${PAYMENT_STATUS_LABEL[input.status as PaymentStatus] ?? input.status}`,
-    );
+    rows.push("", `Status: ${PAYMENT_STATUS_LABEL[input.status as PaymentStatus] ?? input.status}`);
   }
 
   rows.push(
@@ -830,9 +776,7 @@ export function monthLabel(month: number): string {
  */
 export function monthRangeLabel(from: number, to: number): string {
   if (from === 1 && to === 12) return "All year";
-  return from === to
-    ? monthLabel(from)
-    : `${monthLabel(from)} – ${monthLabel(to)}`;
+  return from === to ? monthLabel(from) : `${monthLabel(from)} – ${monthLabel(to)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -940,6 +884,8 @@ export type CollectLine = {
   month: string | null;
   name: string;
   balance: string;
+  /** A one-off charge: it has a due date, but belongs to no month's fees. */
+  oneOff?: boolean;
 };
 
 /** One line of "This pays". */
@@ -962,10 +908,7 @@ type CoverGroup = { key: string; month: string | null; entries: CoverEntry[] };
  * money lands inside one month only, each fee gets its own row, because then
  * the cashier picked fees, not months.
  */
-export function coverRows(
-  lines: CollectLine[],
-  amounts: Record<string, string>,
-): CoverRow[] {
+export function coverRows(lines: CollectLine[], amounts: Record<string, string>): CoverRow[] {
   const groups: CoverGroup[] = [];
   for (const line of lines) {
     const raw = parseMoney(amounts[line.key] ?? "") ?? 0n;
@@ -989,22 +932,29 @@ export function coverRows(
     .filter((entry) => entry.amount > 0n);
 
   const only = paid.length === 1 ? paid[0] : undefined;
-  if (only) {
-    const picked = only.group.entries.filter((entry) => entry.amount > 0n);
-    if (picked.length > 1) {
-      return picked.map((entry) => ({
-        key: entry.line.key,
-        label: entry.line.name,
-        detail:
-          entry.amount < entry.balance
-            ? `${formatMoney(toMoneyString(entry.amount))} of ${formatMoney(toMoneyString(entry.balance))}`
-            : only.group.month
-              ? monthNameOf(only.group.month)
-              : null,
-        amount: toMoneyString(entry.amount),
-        full: entry.amount >= entry.balance,
-      }));
-    }
+  const picked = only ? only.group.entries.filter((entry) => entry.amount > 0n) : [];
+  const allOneOff = paid.every((entry) =>
+    entry.group.entries.filter((line) => line.amount > 0n).every((line) => line.line.oneOff),
+  );
+  if (
+    only &&
+    (picked.length > 1 ||
+      only.group.month === null ||
+      allOneOff ||
+      picked.length < only.group.entries.length)
+  ) {
+    return picked.map((entry) => ({
+      key: entry.line.key,
+      label: entry.line.name,
+      detail:
+        entry.amount < entry.balance
+          ? `${formatMoney(toMoneyString(entry.amount))} of ${formatMoney(toMoneyString(entry.balance))}`
+          : only.group.month && !entry.line.oneOff
+            ? monthNameOf(only.group.month)
+            : null,
+      amount: toMoneyString(entry.amount),
+      full: entry.amount >= entry.balance,
+    }));
   }
 
   const rows: CoverRow[] = [];
@@ -1015,8 +965,7 @@ export function coverRows(
     if (!first || !last) return;
     rows.push({
       key: `${first}..${last}`,
-      label:
-        run.length === 1 ? monthNameOf(first) : `${monthNameOf(first)} – ${monthNameOf(last)}`,
+      label: run.length === 1 ? monthNameOf(first) : `${monthNameOf(first)} – ${monthNameOf(last)}`,
       detail: run.length === 1 ? null : `${run.length} months`,
       amount: toMoneyString(run.reduce((sum, entry) => sum + entry.amount, 0n)),
       full: true,
@@ -1081,7 +1030,9 @@ export function collectShortcuts(
     out.push({ id: "previous", label: "Previous dues", amount: sum(previous) });
   }
 
-  const aheadMonths = [...new Set(ahead.map((line) => line.month ?? ""))].sort().slice(0, aheadLimit);
+  const aheadMonths = [...new Set(ahead.map((line) => line.month ?? ""))]
+    .sort()
+    .slice(0, aheadLimit);
   aheadMonths.forEach((month, index) => {
     const through = ahead.filter((line) => (line.month ?? "") <= month);
     out.push({
@@ -1131,10 +1082,7 @@ export function focusAmounts(
 }
 
 /** "Paying April 2026", "Paying previous dues", "Paying Tuition Fee". */
-export function focusLabel(
-  lines: (CollectLine & { id: string })[],
-  focus: string,
-): string | null {
+export function focusLabel(lines: (CollectLine & { id: string })[], focus: string): string | null {
   if (focus === "previous") return "Previous dues";
   if (focus.startsWith("fee:")) return focus.slice(4);
   if (focus.startsWith("month:")) {
@@ -1144,7 +1092,7 @@ export function focusLabel(
   if (focus.startsWith("due:")) {
     const line = lines.find((entry) => entry.id === focus.slice(4));
     if (!line) return null;
-    return line.month ? `${line.name}, ${monthNameOf(line.month)}` : line.name;
+    return line.month && !line.oneOff ? `${line.name}, ${monthNameOf(line.month)}` : line.name;
   }
   return null;
 }

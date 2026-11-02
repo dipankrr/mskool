@@ -74,7 +74,26 @@ describe("coverRows", () => {
   it("never counts more than a line's balance", () => {
     const rows = coverRows(DUE_NOW, { "opening:1": "9999" });
     expect(rows).toEqual([
-      { key: "previous", label: "Previous dues", detail: null, amount: "4500.00", full: true },
+      { key: "opening:1", label: "Previous dues", detail: null, amount: "4500.00", full: true },
+    ]);
+  });
+
+  it("shows a one-off charge by its own name, not as part of its month", () => {
+    const lines = ADITI.map((line) =>
+      line.name === "bookd" ? { ...line, oneOff: true } : line,
+    );
+    const bookd = lines.find((line) => line.name === "bookd");
+    const rows = coverRows(lines, focusAmounts(lines, `due:${bookd?.id}`));
+    expect(rows.map((row) => [row.label, row.detail, row.amount, row.full])).toEqual([
+      ["bookd", null, "420.00", true],
+    ]);
+    expect(focusLabel(lines, `due:${bookd?.id}`)).toBe("bookd");
+  });
+
+  it("names the one fee when a single due inside a month is paid", () => {
+    const rows = coverRows(ADITI, focusAmounts(ADITI, "due:2026-05-lab"));
+    expect(rows.map((row) => [row.label, row.detail, row.amount])).toEqual([
+      ["Lab Fee", "May", "200.00"],
     ]);
   });
 
