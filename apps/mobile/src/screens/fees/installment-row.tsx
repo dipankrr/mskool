@@ -18,7 +18,6 @@ import { FactChip, InstallmentStatusPill, RowAmount } from "./status";
 export type InstallmentRowData = {
   id: string;
   description: string | null;
-  installmentNumber: number;
   dueDate: string;
   netAmount: string;
   paidAmount: string;

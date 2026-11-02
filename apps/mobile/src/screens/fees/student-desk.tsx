@@ -1,14 +1,20 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { ReactNode } from "react";
-import { AccessibilityInfo, Pressable, StyleSheet, View } from "react-native";
+import {
+  AccessibilityInfo,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import type { inferRouterOutputs } from "@trpc/server";
-import type { AppRouter } from "@repo/trpc";
 
+import { AppIcon } from "../../components/app-icon";
 import { CapsuleButton } from "../../components/capsule-button";
 import { Card } from "../../components/card";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorCard } from "../../components/error-card";
+import { LinkRow } from "../../components/link-row";
 import { Notice } from "../../components/notice";
 import { ScreenFrame } from "../../components/screen-frame";
 import { Skeleton } from "../../components/skeleton";
@@ -16,218 +22,76 @@ import { StatusPill } from "../../components/status-pill";
 import { ThemedText } from "../../components/themed-text";
 import { useActiveContext } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
+import { useSessionOpen } from "../../hooks/use-session-open";
 import { copy } from "../../lib/copy";
-import {
-  ASSIGNMENT_STATUS_LABEL,
-  canWaiveInstallment,
-  installmentTitle,
-  oldestFirst,
-  outstandingTotals,
-  monthKeyOf,
-  splitByMonth,
-} from "../../lib/fees";
-import { formatReadableDate, todayIso } from "../../lib/format";
-import {
-  formatMoney,
-  isPositiveMoney,
-  paidPercent,
-  sumMoney,
-  subtractMoney,
-} from "../../lib/money";
+import { CONCESSION_TYPE_LABEL, installmentTitle } from "../../lib/fees";
+import { feesCopy } from "../../lib/fees-copy";
+import { formatReadableDate } from "../../lib/format";
+import { formatMoney, isPositiveMoney } from "../../lib/money";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { radius, spacing } from "../../theme/tokens";
 import { ConcessionSheet } from "./concession-sheet";
 import {
   AssignSheet,
-  GenerateSheet,
-  RecomputeSheet,
-  WaiveSheet,
+  OneOffSheet,
+  StatusSheet,
+  VoidConcessionSheet,
+  DueSheet,
 } from "./desk-actions";
-import { InstallmentRow } from "./installment-row";
 import { MonthSheet } from "./month-sheet";
-import { MonthStrip } from "./month-strip";
 import { PaymentRow } from "./payment-row";
-import {
-  FactChip,
-  InstallmentStatusPill,
-  MatrixStatusPill,
-  SectionHead,
-} from "./status";
-import { useSessionOpen } from "../../hooks/use-session-open";
-
-type MatrixOutput = inferRouterOutputs<AppRouter>["fees"]["matrix"]["list"];
-type MatrixRow = MatrixOutput["rows"][number];
+import { SectionHead } from "./status";
 
 type DeskSheet =
   | { kind: "assign" }
-  | { kind: "generate"; assignmentId: string }
-  | { kind: "recompute"; assignmentId: string }
   | { kind: "concession"; assignmentId: string }
-  | { kind: "waive"; installment: { id: string; title: string } }
+  | { kind: "one-off" }
+  | { kind: "status"; assignmentId: string; next: "active" | "suspended" }
+  | { kind: "void"; concessionId: string; label: string }
+  | { kind: "due"; due: { id: string; title: string; net: string; paid: string; dueDate: string; status: string } }
   | { kind: "month"; month: string; label: string };
 
 type DeskNotice = { message: string; tone: "positive" | "caution" };
 
+const MONTH_TONE = {
+  overdue: colors.tone.critical.fg,
+  due: colors.tone.caution.fg,
+  upcoming: colors.tone.neutral.fg,
+  paid: colors.tone.positive.fg,
+  none: colors.grabber,
+} as const;
+
 /**
- * One student's fee desk (Step 5A) — the counter's answer to "what does this
- * child owe, and since when?".
- *
- * The hero comes from the matrix row because the principal can read the
- * report but NOT `student_fee_assignment:read`. The open-installment list and
- * the assignment actions therefore appear only for a caller who can read the
- * assignment; everyone with the report sees the month strip, which opens a
- * month's installments from `matrix.cell` and carries the principal's waiver.
- *
- * The hero's total is the year's balance PLUS any carried-forward opening
- * balance — the same sum the server's matrix sorts by. The two are shown
- * separately because only the year's installments can take a counter payment
- * in this build; the opening balance is a recorded debt with no collection
- * endpoint yet (documented gap).
+ * One student's fee page, from one read. What matters comes first: what they
+ * owe now and Collect. Then the months, then past payments. The individual dues
+ * and the rarer actions sit a tap further in, so a stray tap can't waive a fee
+ * and the page doesn't open on two dozen rows.
  */
 export function StudentFeeDeskScreen() {
   const params = useLocalSearchParams<{
     studentId?: string;
-    admissionNumber?: string;
     studentName?: string;
   }>();
   const { organizationId, schoolId, academicYear, yearPending, ready } =
     useActiveContext();
   const { has, hasAny } = usePermissions();
   const sessionOpen = useSessionOpen();
+  const words = feesCopy.student;
 
   const studentId = params.studentId ?? "";
-  const admissionParam =
-    typeof params.admissionNumber === "string"
-      ? params.admissionNumber
-      : undefined;
-
-  const canReadDesk = hasAny("fee_report:read", "student_fee_assignment:read");
-  const canReadMatrix = has("fee_report:read");
-  const canReadAssignment = has("student_fee_assignment:read");
-  const canAssign = has("student_fee_assignment:create") && sessionOpen;
-  const canUpdateAssignment =
-    has("student_fee_assignment:update") && sessionOpen;
-  const canCreateConcession = has("fee_waiver:create") && sessionOpen;
-  const canReadStructure = has("fee_structure:read");
-  const canReadPayments = has("fee_payment:read");
+  const canRead = hasAny("fee_report:read", "student_fee_assignment:read");
   const canCollect = has("fee_payment:create") && sessionOpen;
+  const canBill = has("student_fee_assignment:create") && sessionOpen;
+  const canManage = has("student_fee_assignment:update") && sessionOpen;
+  const canConcession = has("fee_waiver:create") && sessionOpen;
+  const canReadPayments = has("fee_payment:read");
 
   const [sheet, setSheet] = useState<DeskSheet | null>(null);
   const [notice, setNotice] = useState<DeskNotice | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
 
-  const student = trpc.student.byId.useQuery(
-    { organizationId: organizationId ?? "", id: studentId },
-    {
-      enabled: ready && Boolean(studentId) && !admissionParam,
-    },
-  );
-
-  const admissionNumber =
-    admissionParam ?? student.data?.admissionNumber ?? null;
-
-  const matrix = trpc.fees.matrix.list.useQuery(
-    {
-      organizationId: organizationId ?? "",
-      academicYearId: academicYear?.id ?? "",
-      search: admissionNumber ?? undefined,
-      page: 1,
-      pageSize: 50,
-      sort: "student",
-      view: "all",
-    },
-    {
-      enabled:
-        ready &&
-        canReadMatrix &&
-        Boolean(academicYear?.id) &&
-        Boolean(admissionNumber),
-    },
-  );
-
-  const row: MatrixRow | null = useMemo(
-    () =>
-      matrix.data?.rows.find((entry) => entry.studentId === studentId) ?? null,
-    [matrix.data, studentId],
-  );
-
-  const assignmentQuery = trpc.fees.assignment.byStudent.useQuery(
-    {
-      organizationId: organizationId ?? "",
-      studentId,
-      academicYearId: academicYear?.id ?? "",
-      schoolId: schoolId ?? "",
-    },
-    {
-      enabled:
-        ready &&
-        canReadAssignment &&
-        Boolean(schoolId) &&
-        Boolean(academicYear?.id) &&
-        Boolean(studentId),
-    },
-  );
-  const assignment = assignmentQuery.data ?? null;
-  // Month-by-month schools (ADR-051) create later months as they arrive, so
-  // the session bill can exceed the dues that exist yet. The bill is the
-  // assignment's net; the dues are what the matrix has seen.
-  const notYetBilled = assignment
-    ? subtractMoney(assignment.netAnnualAmount, row?.totals.netAmount ?? "0.00")
-    : "0.00";
-
-  const structures = trpc.fees.structure.list.useQuery(
-    {
-      organizationId: organizationId ?? "",
-      academicYearId: academicYear?.id ?? "",
-      includeHistory: true,
-    },
-    {
-      enabled: ready && canReadStructure && Boolean(academicYear?.id),
-      staleTime: 5 * 60_000,
-    },
-  );
-
-  const classStructure = useMemo(() => {
-    if (!row) return null;
-    return (
-      structures.data?.find(
-        (structure) => structure.classId === row.classId && structure.isActive,
-      ) ?? null
-    );
-  }, [structures.data, row]);
-
-  const assignedStructureName = useMemo(() => {
-    if (!assignment) return null;
-    return (
-      structures.data?.find(
-        (structure) => structure.id === assignment.feeStructureId,
-      )?.name ?? null
-    );
-  }, [structures.data, assignment]);
-
-  const enrollments = trpc.enrollment.list.useQuery(
-    {
-      organizationId: organizationId ?? "",
-      academicYearId: academicYear?.id ?? "",
-      classId: row?.classId,
-      includeLeft: true,
-    },
-    {
-      enabled:
-        ready &&
-        canAssign &&
-        Boolean(academicYear?.id) &&
-        Boolean(row?.classId),
-    },
-  );
-  const enrollment = useMemo(
-    () =>
-      enrollments.data?.find((entry) => entry.student.id === studentId)
-        ?.enrollment ?? null,
-    [enrollments.data, studentId],
-  );
-
-  const dues = trpc.fees.installment.dues.useQuery(
+  const summary = trpc.fees.dashboard.student.useQuery(
     {
       organizationId: organizationId ?? "",
       academicYearId: academicYear?.id ?? "",
@@ -235,107 +99,48 @@ export function StudentFeeDeskScreen() {
     },
     {
       enabled:
-        ready &&
-        canReadAssignment &&
-        Boolean(academicYear?.id) &&
-        Boolean(studentId),
+        ready && canRead && Boolean(organizationId) && Boolean(academicYear?.id) && Boolean(studentId),
     },
   );
-  const installments = useMemo(() => oldestFirst(dues.data ?? []), [dues.data]);
-  const openTotals = useMemo(
-    () => outstandingTotals(installments),
-    [installments],
-  );
 
-  const payments = trpc.fees.payment.list.useQuery(
-    {
-      organizationId: organizationId ?? "",
-      academicYearId: academicYear?.id ?? "",
-      studentId,
-    },
-    {
-      enabled:
-        ready &&
-        canReadPayments &&
-        Boolean(academicYear?.id) &&
-        Boolean(studentId),
-    },
-  );
-  const recentPayments = useMemo(
-    () => [...(payments.data ?? [])].reverse().slice(0, 5),
-    [payments.data],
-  );
-
-  const today = todayIso();
-  const yearBalance = row?.totals.balanceAmount ?? "0.00";
-  const openingBalance = row?.openingBalance.balance ?? "0.00";
-  const outstanding = sumMoney([yearBalance, openingBalance]);
-  const monthSplit = splitByMonth(
-    row?.cells ?? [],
-    monthKeyOf(todayIso()),
-    openingBalance,
-  );
-  const settled = !isPositiveMoney(outstanding);
-  const percent = row
-    ? paidPercent(row.totals.paidAmount, row.totals.netAmount)
-    : 0;
-
+  const data = summary.data;
   const title =
-    (typeof params.studentName === "string" ? params.studentName : null) ??
-    row?.studentName ??
-    (student.data
-      ? [student.data.firstName, student.data.middleName, student.data.lastName]
-          .filter(Boolean)
-          .join(" ")
-      : copy.fees.desk.title);
-
-  const classLine = row
+    data?.student.name ??
+    (typeof params.studentName === "string" ? params.studentName : copy.fees.desk.title);
+  const classLine = data
     ? [
-        row.className,
-        row.sectionName,
-        row.rollNumber ? `Roll ${row.rollNumber}` : null,
-        row.admissionNumber,
+        data.student.className,
+        data.student.sectionName,
+        data.student.rollNumber ? `Roll ${data.student.rollNumber}` : null,
+        data.student.admissionNumber,
       ]
         .filter(Boolean)
         .join(" · ")
-    : null;
+    : copy.fees.desk.title;
 
-  const onDone = (
-    message: string,
-    tone: "positive" | "caution" = "positive",
-  ) => {
+  const onDone = (message: string, tone: "positive" | "caution" = "positive") => {
     setNotice({ message, tone });
     setSheet(null);
     AccessibilityInfo.announceForAccessibility(message);
   };
 
-  const refreshAll = () => {
-    void matrix.refetch();
-    void assignmentQuery.refetch();
-    void dues.refetch();
-    void payments.refetch();
-  };
+  const hasDues = Boolean(data && data.dues.length + data.previousDues.length > 0);
 
-  const frame = (children: ReactNode, footerSlot?: ReactNode) => (
+  const frame = (children: ReactNode, footer?: ReactNode) => (
     <ScreenFrame
       title={title}
-      meta={classLine ?? copy.fees.desk.title}
+      meta={classLine}
       backAccessibilityLabel={copy.common.back}
-      onRefresh={canReadMatrix ? refreshAll : undefined}
-      refreshing={
-        matrix.isRefetching ||
-        assignmentQuery.isRefetching ||
-        dues.isRefetching ||
-        payments.isRefetching
-      }
-      footer={footerSlot}
+      onRefresh={canRead ? () => void summary.refetch() : undefined}
+      refreshing={summary.isRefetching}
+      footer={footer}
       titleTestID="fee-desk-title"
     >
       {children}
     </ScreenFrame>
   );
 
-  if (!canReadDesk) {
+  if (!canRead) {
     return frame(
       <EmptyState
         icon="shield"
@@ -345,17 +150,15 @@ export function StudentFeeDeskScreen() {
       />,
     );
   }
-
-  if (!ready || yearPending) {
+  if (!ready || yearPending || (summary.isPending && !data && !summary.isError)) {
     return frame(
-      <View style={styles.skeletonWrap}>
+      <View style={styles.body}>
         <Skeleton height={150} />
         <Skeleton height={84} />
         <Skeleton height={220} />
       </View>,
     );
   }
-
   if (!organizationId || !schoolId) {
     return frame(
       <EmptyState
@@ -366,7 +169,6 @@ export function StudentFeeDeskScreen() {
       />,
     );
   }
-
   if (!academicYear) {
     return frame(
       <EmptyState
@@ -377,127 +179,26 @@ export function StudentFeeDeskScreen() {
       />,
     );
   }
-
-  if (!canReadMatrix) {
-    return frame(
-      <EmptyState
-        icon="lock"
-        title={copy.fees.noReportTitle}
-        message={copy.fees.noReportBody}
-        testID="fee-desk-no-report"
-      >
-        {canReadPayments ? (
-          <CapsuleButton
-            title={copy.fees.openPayments}
-            variant="secondary"
-            size="compact"
-            onPress={() => router.push("/fees/payments")}
-            testID="fee-desk-open-payments"
-          />
-        ) : null}
-      </EmptyState>,
-    );
-  }
-
-  if (student.isError) {
+  if (summary.isError || !data) {
     return frame(
       <ErrorCard
-        cause={student.error}
-        onRetry={() => void student.refetch()}
-        testID="fee-desk-student-error"
-      />,
-    );
-  }
-
-  if (matrix.isError) {
-    return frame(
-      <ErrorCard
-        cause={matrix.error}
-        onRetry={() => void matrix.refetch()}
+        cause={summary.error}
+        onRetry={() => void summary.refetch()}
         testID="fee-desk-error"
       />,
     );
   }
 
-  if ((matrix.isPending && !matrix.data) || !row) {
-    if (matrix.data && !row) {
-      return frame(
-        <EmptyState
-          icon="search"
-          title={copy.fees.desk.missingTitle}
-          message={copy.fees.desk.missingBody}
-          testID="fee-desk-missing"
-        />,
-      );
-    }
-    return frame(
-      <View style={styles.skeletonWrap}>
-        <Skeleton height={150} />
-        <Skeleton height={84} />
-        <Skeleton height={220} />
-      </View>,
-    );
-  }
-
-  const assigned =
-    Boolean(row.assignmentId) || row.assignmentState !== "unassigned";
-  const generated = row.generationState === "generated";
-  const opening = row.openingBalance;
-
-  const statusPill =
-    row.assignmentState === "unassigned" ? (
-      <StatusPill
-        label={copy.fees.desk.unassignedPill}
-        tone="neutral"
-        testID="fee-desk-status"
-      />
-    ) : row.assignmentState === "cancelled" ? (
-      <StatusPill
-        label={ASSIGNMENT_STATUS_LABEL.cancelled ?? "Cancelled"}
-        tone="critical"
-        testID="fee-desk-status"
-      />
-    ) : row.assignmentState === "suspended" ? (
-      <StatusPill
-        label={ASSIGNMENT_STATUS_LABEL.suspended ?? "Suspended"}
-        tone="caution"
-        testID="fee-desk-status"
-      />
-    ) : !generated ? (
-      <StatusPill
-        label={copy.fees.desk.notGeneratedPill}
-        tone="caution"
-        testID="fee-desk-status"
-      />
-    ) : settled ? (
-      <StatusPill
-        label={copy.fees.desk.settledPill}
-        tone="positive"
-        testID="fee-desk-status"
-      />
-    ) : (
-      <MatrixStatusPill
-        paymentState={row.paymentState}
-        timingState={row.timingState}
-        testID="fee-desk-status"
-      />
-    );
+  const record = data.feeRecord;
+  const { totals } = data;
 
   return frame(
     <View style={styles.body}>
       {!sessionOpen ? (
-        <Notice
-          tone="caution"
-          message={copy.fees.sessionClosed}
-          testID="fees-session-closed"
-        />
+        <Notice tone="caution" message={copy.fees.sessionClosed} testID="fees-session-closed" />
       ) : null}
       {notice ? (
-        <Notice
-          tone={notice.tone}
-          message={notice.message}
-          testID="fee-desk-notice"
-        >
+        <Notice tone={notice.tone} message={notice.message} testID="fee-desk-notice">
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={copy.common.dismiss}
@@ -514,381 +215,101 @@ export function StudentFeeDeskScreen() {
 
       <Card style={styles.hero}>
         <View style={styles.heroTop}>
-          <View style={styles.heroText}>
-            <ThemedText variant="sectionLabel">
-              {copy.fees.dues.dueNowLabel}
-            </ThemedText>
-            <ThemedText
-              variant="hero"
-              numberOfLines={1}
-              maxFontSizeMultiplier={1.15}
-              testID="fee-desk-due-now"
-            >
-              {formatMoney(monthSplit.dueNow)}
-            </ThemedText>
-            <ThemedText variant="meta">
-              {copy.fees.dues.thisMonth} {formatMoney(monthSplit.thisMonth)}
-              {" · "}
-              {copy.fees.dues.overdue} {formatMoney(monthSplit.overdue)}
-            </ThemedText>
-            {isPositiveMoney(openingBalance) ? (
-              <ThemedText variant="meta">
-                {copy.fees.dues.previousDues(formatMoney(openingBalance))}
-              </ThemedText>
-            ) : null}
-            <ThemedText variant="meta">
-              {copy.fees.desk.wholeSession(
-                formatMoney(outstanding),
-                formatMoney(monthSplit.later),
-              )}
-            </ThemedText>
-            {isPositiveMoney(notYetBilled) ? (
-              <ThemedText variant="meta">
-                {copy.fees.desk.notYetBilled(formatMoney(notYetBilled))}
-              </ThemedText>
-            ) : null}
-          </View>
-          {statusPill}
-        </View>
-
-        <View style={styles.facts}>
-          <ThemedText variant="meta">
-            {copy.fees.desk.assessedLabel} {formatMoney(row.totals.netAmount)}
-          </ThemedText>
-          <ThemedText variant="meta">
-            {copy.fees.desk.paidLabel} {formatMoney(row.totals.paidAmount)}
-          </ThemedText>
-          {isPositiveMoney(row.totals.concessionAmount) ? (
-            <ThemedText variant="meta">
-              {copy.fees.desk.concessionLabel}{" "}
-              {formatMoney(row.totals.concessionAmount)}
-            </ThemedText>
+          <ThemedText variant="sectionLabel">{words.dueNow}</ThemedText>
+          {record && record.status !== "active" ? (
+            <StatusPill
+              label={words.recordStatus[record.status as "suspended" | "cancelled"] ?? record.status}
+              tone="caution"
+              testID="fee-desk-status"
+            />
           ) : null}
         </View>
-
-        <View
-          style={styles.track}
-          accessibilityRole="progressbar"
-          accessibilityValue={{ min: 0, max: 100, now: percent }}
-          accessibilityLabel={copy.fees.desk.progress(percent)}
+        <ThemedText
+          variant="hero"
+          numberOfLines={1}
+          maxFontSizeMultiplier={1.15}
+          testID="fee-desk-due-now"
         >
-          <View style={[styles.fill, { width: `${percent}%` }]} />
-        </View>
-        <ThemedText variant="meta">
-          {copy.fees.desk.progress(percent)}
+          {formatMoney(totals.dueNow)}
         </ThemedText>
+        <Fact label={words.thisMonth} value={formatMoney(totals.thisMonth)} />
+        <Fact
+          label={words.overdue}
+          value={formatMoney(totals.overdue)}
+          critical={isPositiveMoney(totals.overdue)}
+        />
+        {isPositiveMoney(totals.previousDues) ? (
+          <Fact label={words.previous} value={formatMoney(totals.previousDues)} />
+        ) : null}
+        {isPositiveMoney(totals.later) ? (
+          <Fact label={words.later} value={formatMoney(totals.later)} />
+        ) : null}
+        <Fact label={words.paid} value={formatMoney(totals.paid)} />
+        {isPositiveMoney(totals.concession) ? (
+          <Fact label={words.concession} value={formatMoney(totals.concession)} />
+        ) : null}
       </Card>
 
-      {isPositiveMoney(opening.amount) ? (
-        <Card style={styles.opening}>
-          <SectionHead
-            title={copy.fees.desk.openingTitle}
-            hint={copy.fees.desk.openingOrigins(opening.originCount)}
-          />
-          <ThemedText variant="bodyStrong" numberOfLines={2}>
-            {copy.fees.desk.openingBody(
-              formatMoney(opening.amount),
-              formatMoney(opening.balance),
-            )}
-          </ThemedText>
-          <View style={styles.facts}>
-            <ThemedText variant="meta">
-              {copy.fees.desk.openingPaid(
-                formatMoney(opening.paid),
-                formatMoney(opening.amount),
-              )}
-            </ThemedText>
-            <ThemedText variant="meta">
-              {copy.fees.desk.openingIncluded}
-            </ThemedText>
-          </View>
-          <InstallmentStatusPill
-            status={opening.status}
-            testID="fee-desk-opening-status"
-          />
-        </Card>
-      ) : null}
-
-      {canReadAssignment ? (
+      {!record ? (
         <Card style={styles.actions}>
-          <SectionHead
-            title={copy.fees.desk.actionsTitle}
-            hint={copy.fees.desk.actionsHint}
-          />
-
-          {assignmentQuery.isError ? (
-            <Notice
-              tone="critical"
-              message={copy.fees.desk.assignmentLoadError}
-              testID="fee-desk-assignment-error"
-            >
-              <CapsuleButton
-                title={copy.common.retry}
-                variant="secondary"
-                size="mini"
-                onPress={() => void assignmentQuery.refetch()}
-                testID="fee-desk-assignment-retry"
-              />
-            </Notice>
-          ) : assignmentQuery.isPending ? (
-            <Skeleton height={96} />
-          ) : !assigned ? (
-            <>
-              <ThemedText variant="bodyStrong">
-                {copy.fees.desk.notAssignedTitle}
-              </ThemedText>
-              <ThemedText variant="meta">
-                {copy.fees.desk.notAssignedBody}
-              </ThemedText>
-              {canAssign && canReadStructure ? (
-                <>
-                  {enrollments.isError || structures.isError ? (
-                    <Notice
-                      tone="critical"
-                      message={
-                        enrollments.isError
-                          ? copy.fees.desk.enrollmentLoadError
-                          : copy.fees.desk.structureLoadError
-                      }
-                      testID="fee-desk-assign-load-error"
-                    >
-                      <CapsuleButton
-                        title={copy.common.retry}
-                        variant="secondary"
-                        size="mini"
-                        onPress={() => {
-                          void enrollments.refetch();
-                          void structures.refetch();
-                        }}
-                        testID="fee-desk-assign-load-retry"
-                      />
-                    </Notice>
-                  ) : null}
-                  <CapsuleButton
-                    title={copy.fees.desk.assignAction}
-                    icon="check"
-                    variant="primary"
-                    size="compact"
-                    disabled={enrollments.isPending || structures.isPending}
-                    loading={enrollments.isPending || structures.isPending}
-                    onPress={() => setSheet({ kind: "assign" })}
-                    testID="fee-desk-assign"
-                  />
-                </>
-              ) : null}
-            </>
-          ) : !assignment ? (
-            <Notice
-              tone="caution"
-              message={copy.fees.desk.assignmentLoadError}
-              testID="fee-desk-assignment-missing"
-            >
-              <CapsuleButton
-                title={copy.common.retry}
-                variant="secondary"
-                size="mini"
-                onPress={() => void assignmentQuery.refetch()}
-                testID="fee-desk-assignment-missing-retry"
-              />
-            </Notice>
-          ) : (
-            <>
-              <ThemedText variant="bodyStrong" numberOfLines={2}>
-                {assignedStructureName ?? copy.fees.desk.assignmentTitle}
-              </ThemedText>
-              <View style={styles.facts}>
-                <ThemedText variant="meta">
-                  {copy.fees.desk.assignmentEffective(
-                    formatReadableDate(assignment.feeEffectiveFrom),
-                  )}
-                </ThemedText>
-                <ThemedText variant="meta">
-                  {copy.fees.desk.assignmentBaseAnnual(
-                    formatMoney(assignment.baseAnnualAmount),
-                  )}
-                </ThemedText>
-                <ThemedText variant="meta">
-                  {copy.fees.desk.assignmentNetAnnual(
-                    formatMoney(assignment.netAnnualAmount),
-                  )}
-                </ThemedText>
-              </View>
-              <FactChip
-                label={
-                  ASSIGNMENT_STATUS_LABEL[assignment.status] ??
-                  assignment.status
-                }
-                tone={assignment.status === "active" ? "positive" : "caution"}
-              />
-
-              {!generated ? (
-                <>
-                  <Notice
-                    tone="caution"
-                    message={copy.fees.desk.notGeneratedHint}
-                    testID="fee-desk-not-generated"
-                  />
-                  {canUpdateAssignment ? (
-                    <CapsuleButton
-                      title={copy.fees.desk.generateAction}
-                      icon="check"
-                      variant="primary"
-                      size="compact"
-                      onPress={() =>
-                        setSheet({
-                          kind: "generate",
-                          assignmentId: assignment.id,
-                        })
-                      }
-                      testID="fee-desk-generate"
-                    />
-                  ) : null}
-                </>
-              ) : (
-                <View style={styles.actionRow}>
-                  {canCreateConcession ? (
-                    <CapsuleButton
-                      title={copy.fees.desk.concessionAction}
-                      icon="fees"
-                      variant="secondary"
-                      size="compact"
-                      onPress={() =>
-                        setSheet({
-                          kind: "concession",
-                          assignmentId: assignment.id,
-                        })
-                      }
-                      testID="fee-desk-concession"
-                    />
-                  ) : null}
-                  {canUpdateAssignment &&
-                  isPositiveMoney(row.totals.concessionAmount) ? (
-                    <CapsuleButton
-                      title={copy.fees.desk.recomputeAction}
-                      icon="receipt"
-                      variant="secondary"
-                      size="compact"
-                      onPress={() =>
-                        setSheet({
-                          kind: "recompute",
-                          assignmentId: assignment.id,
-                        })
-                      }
-                      testID="fee-desk-recompute"
-                    />
-                  ) : null}
-                </View>
-              )}
-              {generated &&
-              canUpdateAssignment &&
-              isPositiveMoney(row.totals.concessionAmount) ? (
-                <ThemedText variant="meta">
-                  {copy.fees.desk.recomputeHint}
-                </ThemedText>
-              ) : null}
-            </>
-          )}
+          <ThemedText variant="bodyStrong">{copy.fees.desk.notAssignedTitle}</ThemedText>
+          <ThemedText variant="meta">{copy.fees.desk.notAssignedBody}</ThemedText>
+          {canBill ? (
+            <CapsuleButton
+              title={copy.fees.desk.assignAction}
+              icon="check"
+              variant="primary"
+              size="compact"
+              onPress={() => setSheet({ kind: "assign" })}
+              testID="fee-desk-assign"
+            />
+          ) : null}
         </Card>
       ) : null}
 
-      {matrix.data && row.cells.length > 0 ? (
+      {data.months.some((month) => month.state !== "none") ? (
         <View style={styles.months}>
-          <SectionHead
-            title={copy.fees.desk.monthsTitle}
-            hint={copy.fees.desk.monthsHint}
-          />
-          <MonthStrip
-            months={matrix.data.months}
-            cells={row.cells}
-            onSelect={(month, label) =>
-              setSheet({ kind: "month", month, label })
-            }
-          />
+          <SectionHead title={copy.fees.desk.monthsTitle} hint={copy.fees.desk.monthsHint} />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.monthRow}
+            accessibilityLabel={copy.fees.desk.monthsTitle}
+          >
+            {data.months.map((month) => (
+              <Pressable
+                key={month.month}
+                accessibilityRole="button"
+                accessibilityLabel={`${month.label}. ${isPositiveMoney(month.balance) ? `${formatMoney(month.balance)} open` : words.monthState[month.state]}`}
+                onPress={() =>
+                  setSheet({ kind: "month", month: month.month, label: month.label })
+                }
+                style={({ pressed }) => [styles.month, pressed ? styles.monthPressed : null]}
+                testID={`fee-month-${month.month}`}
+              >
+                <ThemedText variant="caption" numberOfLines={1}>
+                  {month.label}
+                </ThemedText>
+                <View style={[styles.monthDot, { backgroundColor: MONTH_TONE[month.state] }]} />
+                <ThemedText variant="meta" numberOfLines={1} maxFontSizeMultiplier={1.15}>
+                  {isPositiveMoney(month.balance) ? formatMoney(month.balance) : "—"}
+                </ThemedText>
+              </Pressable>
+            ))}
+          </ScrollView>
         </View>
-      ) : null}
-
-      {canReadAssignment ? (
-        <>
-          <SectionHead
-            title={copy.fees.desk.outstandingTitle}
-            hint={copy.fees.desk.installmentsOpen(openTotals.count)}
-          />
-          {dues.isPending ? (
-            <Skeleton height={160} />
-          ) : dues.isError ? (
-            <ErrorCard
-              cause={dues.error}
-              onRetry={() => void dues.refetch()}
-              testID="fee-desk-dues-error"
-            />
-          ) : installments.length === 0 ? (
-            <EmptyState
-              icon={generated ? "check" : "fees"}
-              title={
-                generated
-                  ? copy.fees.desk.nothingTitle
-                  : copy.fees.desk.noInstallmentsTitle
-              }
-              message={
-                generated
-                  ? copy.fees.desk.nothingBody
-                  : copy.fees.desk.noInstallmentsBody
-              }
-              testID="fee-desk-installments-empty"
-            />
-          ) : (
-            <Card padless>
-              {installments.map((installment, index) => (
-                <InstallmentRow
-                  key={installment.id}
-                  installment={installment}
-                  today={today}
-                  can={has}
-                  onWaive={
-                    canWaiveInstallment(installment, has)
-                      ? () =>
-                          setSheet({
-                            kind: "waive",
-                            installment: {
-                              id: installment.id,
-                              title: installmentTitle(installment),
-                            },
-                          })
-                      : undefined
-                  }
-                  first={index === 0}
-                />
-              ))}
-            </Card>
-          )}
-        </>
       ) : null}
 
       {canReadPayments ? (
         <>
-          <SectionHead
-            title={copy.fees.desk.paymentHistoryTitle}
-            hint={
-              payments.data
-                ? copy.fees.desk.paymentHistoryCount(payments.data.length)
-                : undefined
-            }
-          />
-          {payments.isPending ? (
-            <Skeleton height={140} />
-          ) : payments.isError ? (
-            <ErrorCard
-              cause={payments.error}
-              onRetry={() => void payments.refetch()}
-              testID="fee-desk-payments-error"
-            />
-          ) : recentPayments.length === 0 ? (
+          <SectionHead title={copy.fees.desk.paymentHistoryTitle} />
+          {data.recentPayments.length === 0 ? (
             <ThemedText variant="meta" style={styles.paymentEmpty}>
               {copy.fees.desk.paymentHistoryEmpty}
             </ThemedText>
           ) : (
             <Card padless>
-              {recentPayments.map((payment, index) => (
+              {data.recentPayments.map((payment, index) => (
                 <PaymentRow
                   key={payment.id}
                   payment={payment}
@@ -906,97 +327,231 @@ export function StudentFeeDeskScreen() {
         </>
       ) : null}
 
-      {canReadMatrix ? (
-        <CapsuleButton
-          title={copy.fees.desk.ledgerLink}
-          icon="ledger"
-          variant="secondary"
-          size="compact"
-          onPress={() =>
-            router.push({
-              pathname: "/fees/ledger",
-              params: { studentId, studentName: title },
-            })
-          }
-          testID="fee-desk-open-ledger"
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: moreOpen }}
+        accessibilityLabel={words.more}
+        onPress={() => setMoreOpen((value) => !value)}
+        style={styles.moreToggle}
+        testID="fee-desk-more"
+      >
+        <ThemedText variant="bodyStrong">{words.more}</ThemedText>
+        <AppIcon
+          name={moreOpen ? "chevronUp" : "chevronDown"}
+          size={20}
+          color={colors.muted}
         />
+      </Pressable>
+
+      {moreOpen ? (
+        <View style={styles.more}>
+          {data.dues.length > 0 ? (
+            <>
+              <SectionHead title={words.allDues} hint={words.tapDue} />
+              <Card padless>
+                {data.dues.map((due, index) => (
+                  <LinkRow
+                    key={due.id}
+                    first={index === 0}
+                    title={installmentTitle(due)}
+                    detail={
+                      due.paymentStatus === "waived"
+                        ? words.waivedLine
+                        : `${formatMoney(due.balanceAmount)} · ${words.dueOn(formatReadableDate(due.dueDate))}`
+                    }
+                    onPress={() =>
+                      setSheet({
+                        kind: "due",
+                        due: {
+                          id: due.id,
+                          title: installmentTitle(due),
+                          net: due.netAmount,
+                          paid: due.paidAmount,
+                          dueDate: due.dueDate,
+                          status: due.paymentStatus,
+                        },
+                      })
+                    }
+                    testID={`fee-due-${due.id}`}
+                  />
+                ))}
+              </Card>
+            </>
+          ) : null}
+
+          {data.concessions.length > 0 ? (
+            <>
+              <SectionHead title={words.concessions} />
+              <Card padless>
+                {data.concessions.map((concession, index) => {
+                  const label =
+                    CONCESSION_TYPE_LABEL[
+                      concession.concessionType as keyof typeof CONCESSION_TYPE_LABEL
+                    ] ?? concession.concessionType;
+                  return (
+                    <LinkRow
+                      key={concession.id}
+                      first={index === 0}
+                      title={label}
+                      detail={formatMoney(concession.concessionAmount)}
+                      onPress={() => {
+                        if (!canConcession) return;
+                        setSheet({
+                          kind: "void",
+                          concessionId: concession.id,
+                          label,
+                        });
+                      }}
+                      testID={`fee-concession-${concession.id}`}
+                    />
+                  );
+                })}
+              </Card>
+            </>
+          ) : null}
+
+          <SectionHead title={words.actions} />
+          <Card padless>
+            {record && canConcession ? (
+              <LinkRow
+                first
+                icon="fees"
+                title={copy.fees.desk.concessionAction}
+                detail={words.concessionHint}
+                onPress={() => setSheet({ kind: "concession", assignmentId: record.id })}
+                testID="fee-desk-concession"
+              />
+            ) : null}
+            {canManage ? (
+              <LinkRow
+                first={!record || !canConcession}
+                icon="add"
+                title={words.oneOffAction}
+                detail={words.oneOffHint}
+                onPress={() => setSheet({ kind: "one-off" })}
+                testID="fee-desk-one-off"
+              />
+            ) : null}
+            {record && canManage && record.status !== "cancelled" ? (
+              <LinkRow
+                first={false}
+                icon="clock"
+                title={record.status === "active" ? words.suspendAction : words.restoreAction}
+                detail={record.status === "active" ? words.suspendHint : words.restoreHint}
+                onPress={() =>
+                  setSheet({
+                    kind: "status",
+                    assignmentId: record.id,
+                    next: record.status === "active" ? "suspended" : "active",
+                  })
+                }
+                testID="fee-desk-status-action"
+              />
+            ) : null}
+            <LinkRow
+              first={!canManage && !(record && canConcession)}
+              icon="ledger"
+              title={copy.fees.desk.ledgerLink}
+              onPress={() =>
+                router.push({
+                  pathname: "/fees/ledger",
+                  params: { studentId, studentName: title },
+                })
+              }
+              testID="fee-desk-open-ledger"
+            />
+          </Card>
+        </View>
       ) : null}
 
       {sheet?.kind === "assign" ? (
         <AssignSheet
-          organizationId={organizationId ?? ""}
-          schoolId={schoolId ?? ""}
-          enrollmentId={enrollment?.id ?? null}
-          className={row.className}
-          structure={
-            classStructure
-              ? {
-                  id: classStructure.id,
-                  name: classStructure.name,
-                  installmentMode: classStructure.installmentMode,
-                }
-              : null
-          }
-          effectiveFrom={enrollment?.enrollmentDate ?? null}
+          organizationId={organizationId}
+          schoolId={schoolId}
+          enrollmentId={data.student.enrollmentId}
+          className={data.student.className}
+          choices={data.structureChoices}
           onClose={() => setSheet(null)}
           onDone={onDone}
         />
       ) : null}
-
-      {sheet?.kind === "generate" ? (
-        <GenerateSheet
-          organizationId={organizationId ?? ""}
-          schoolId={schoolId ?? ""}
-          assignmentId={sheet.assignmentId}
-          onClose={() => setSheet(null)}
-          onDone={onDone}
-        />
-      ) : null}
-
-      {sheet?.kind === "recompute" ? (
-        <RecomputeSheet
-          organizationId={organizationId ?? ""}
-          schoolId={schoolId ?? ""}
-          assignmentId={sheet.assignmentId}
-          onClose={() => setSheet(null)}
-          onDone={onDone}
-        />
-      ) : null}
-
       {sheet?.kind === "concession" ? (
         <ConcessionSheet
-          organizationId={organizationId ?? ""}
-          schoolId={schoolId ?? ""}
+          organizationId={organizationId}
+          schoolId={schoolId}
           assignmentId={sheet.assignmentId}
           academicYearStart={academicYear.startDate}
           onClose={() => setSheet(null)}
           onDone={onDone}
         />
       ) : null}
-
-      {sheet?.kind === "waive" ? (
-        <WaiveSheet
-          organizationId={organizationId ?? ""}
-          schoolId={schoolId ?? ""}
-          installment={sheet.installment}
+      {sheet?.kind === "one-off" ? (
+        <OneOffSheet
+          organizationId={organizationId}
+          schoolId={schoolId}
+          studentId={studentId}
+          academicYearId={academicYear.id}
+          studentName={title}
+          className={[data.student.className, data.student.sectionName].filter(Boolean).join(" · ")}
           onClose={() => setSheet(null)}
           onDone={onDone}
         />
       ) : null}
-
+      {sheet?.kind === "status" ? (
+        <StatusSheet
+          organizationId={organizationId}
+          schoolId={schoolId}
+          assignmentId={sheet.assignmentId}
+          next={sheet.next}
+          onClose={() => setSheet(null)}
+          onDone={onDone}
+        />
+      ) : null}
+      {sheet?.kind === "void" ? (
+        <VoidConcessionSheet
+          organizationId={organizationId}
+          schoolId={schoolId}
+          concessionId={sheet.concessionId}
+          label={sheet.label}
+          onClose={() => setSheet(null)}
+          onDone={onDone}
+        />
+      ) : null}
+      {sheet?.kind === "due" ? (
+        <DueSheet
+          organizationId={organizationId}
+          schoolId={schoolId}
+          due={sheet.due}
+          canManage={canManage}
+          onClose={() => setSheet(null)}
+          onDone={onDone}
+        />
+      ) : null}
       {sheet?.kind === "month" ? (
         <MonthSheet
-          organizationId={organizationId ?? ""}
+          organizationId={organizationId}
           studentId={studentId}
           academicYearId={academicYear.id}
           month={sheet.month}
           label={sheet.label}
           onClose={() => setSheet(null)}
-          onWaive={(installment) => setSheet({ kind: "waive", installment })}
+          onWaive={(installment) =>
+            setSheet({
+              kind: "due",
+              due: {
+                id: installment.id,
+                title: installment.title,
+                net: "0.00",
+                paid: "0.00",
+                dueDate: "",
+                status: "unpaid",
+              },
+            })
+          }
         />
       ) : null}
     </View>,
-    canCollect && isPositiveMoney(outstanding) ? (
+    canCollect && hasDues ? (
       <CapsuleButton
         title={copy.fees.desk.collectAction}
         icon="collect"
@@ -1006,14 +561,9 @@ export function StudentFeeDeskScreen() {
             params: {
               studentId,
               studentName: title,
-              className: [row.className, row.sectionName]
+              className: [data.student.className, data.student.sectionName]
                 .filter(Boolean)
                 .join(" · "),
-              // Display only: collect explains why this amount is not in its
-              // total (there is no write that pays an opening balance).
-              carriedForward: isPositiveMoney(openingBalance)
-                ? openingBalance
-                : "",
             },
           })
         }
@@ -1023,12 +573,34 @@ export function StudentFeeDeskScreen() {
   );
 }
 
+function Fact({
+  label,
+  value,
+  critical = false,
+}: {
+  label: string;
+  value: string;
+  critical?: boolean;
+}) {
+  return (
+    <View style={styles.fact}>
+      <ThemedText variant="meta" color={critical ? colors.tone.critical.fg : undefined}>
+        {label}
+      </ThemedText>
+      <ThemedText
+        variant="meta"
+        numberOfLines={1}
+        maxFontSizeMultiplier={1.2}
+        color={critical ? colors.tone.critical.fg : undefined}
+      >
+        {value}
+      </ThemedText>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   body: {
-    gap: spacing.md,
-    marginTop: spacing.sm,
-  },
-  skeletonWrap: {
     gap: spacing.md,
     marginTop: spacing.sm,
   },
@@ -1041,47 +613,55 @@ const styles = StyleSheet.create({
   },
   heroTop: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: spacing.md,
   },
-  heroText: {
-    flex: 1,
-    gap: spacing.xxs,
-  },
-  facts: {
+  fact: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-  },
-  track: {
-    height: 8,
-    marginTop: spacing.xs,
-    borderRadius: radius.full,
-    backgroundColor: colors.field,
-    overflow: "hidden",
-  },
-  fill: {
-    height: "100%",
-    borderRadius: radius.full,
-    backgroundColor: colors.accent,
-  },
-  opening: {
-    gap: spacing.xs,
+    justifyContent: "space-between",
+    gap: spacing.md,
   },
   actions: {
-    gap: spacing.sm,
-  },
-  actionRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
     gap: spacing.sm,
   },
   months: {
     gap: spacing.xs,
   },
+  monthRow: {
+    gap: spacing.sm,
+  },
+  month: {
+    minWidth: 68,
+    minHeight: 72,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xxs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+  },
+  monthPressed: {
+    backgroundColor: colors.field,
+  },
+  monthDot: {
+    width: 8,
+    height: 8,
+    borderRadius: radius.full,
+  },
   paymentEmpty: {
     paddingHorizontal: spacing.xs,
     paddingVertical: spacing.sm,
+  },
+  moreToggle: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.xs,
+  },
+  more: {
+    gap: spacing.md,
   },
 });

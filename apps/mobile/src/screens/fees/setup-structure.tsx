@@ -26,7 +26,7 @@ import {
 import { usePermissions } from "../../hooks/use-permissions";
 import { copy } from "../../lib/copy";
 import { toFriendlyError } from "../../lib/errors";
-import { monthLabel, monthRangeLabel } from "../../lib/fees";
+import { feesCopy } from "../../lib/fees-copy";
 import { formatReadableDate, todayIso } from "../../lib/format";
 import {
   formatAmountDigits,
@@ -34,10 +34,11 @@ import {
   parseMoney,
   sanitizeAmountInput,
   toInputAmount,
+  toMoneyString,
 } from "../../lib/money";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
-import { spacing, touch } from "../../theme/tokens";
+import { radius, spacing, touch } from "../../theme/tokens";
 import { FactChip, SectionHead } from "./status";
 import { useSessionOpen } from "../../hooks/use-session-open";
 
@@ -47,33 +48,27 @@ type Line =
 type Rule =
   inferRouterOutputs<AppRouter>["fees"]["structure"]["listLateFeeRules"][number];
 type Head = inferRouterOutputs<AppRouter>["fees"]["head"]["list"][number];
-type Frequency =
-  "inherit" | "monthly" | "quarterly" | "half_yearly" | "annual" | "term_wise";
+type Frequency = "monthly" | "quarterly" | "half_yearly" | "term_wise" | "once";
 type RuleType = "flat" | "percentage" | "per_day";
+type ApplyPer = "fee" | "month";
 type RuleScope = "structure" | "school";
 
 const FREQUENCY_ORDER: Frequency[] = [
-  "inherit",
   "monthly",
   "quarterly",
   "half_yearly",
-  "annual",
   "term_wise",
+  "once",
 ];
-
-const MONTH_OPTIONS = Array.from({ length: 12 }, (_, index) => ({
-  id: String(index + 1),
-  label: monthLabel(index + 1),
-}));
 
 /**
  * One structure's bill (Step 5E): its fee lines and the late-fee rules that
  * apply to it.
  *
- * A structure is a template. Editing it never reaches a generated bill —
- * installments freeze the amounts they were created with — so this screen can
- * offer ordinary edits without a warning banner. Retiring it only stops new
- * assignments.
+ * A structure is a template. A due already created keeps its own amount, so
+ * edits here only reach dues not created yet. Retiring it only stops new
+ * billing. "Start billing" is the switch: it bills everyone the structure covers,
+ * and new admissions are billed on their own from then on.
  */
 export function FeeStructureScreen() {
   const params = useLocalSearchParams<{
@@ -101,14 +96,19 @@ export function FeeStructureScreen() {
   const canBill = has("student_fee_assignment:create") && sessionOpen;
 
   const [sheet, setSheet] = useState<
-    { mode: "edit" } | { mode: "line"; line?: Line } | { mode: "rule" } | null
+    | { mode: "edit" }
+    | { mode: "line"; line?: Line }
+    | { mode: "period"; period: Line["periods"][number] }
+    | { mode: "rule" }
+    | null
   >(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [billResult, setBillResult] = useState<{
     tone: "positive" | "caution" | "critical";
     message: string;
   } | null>(null);
-  const billClass = trpc.fees.assignment.billClass.useMutation();
+  const startBilling = trpc.fees.structure.startBilling.useMutation();
+  const removeRule = trpc.fees.structure.removeLateFeeRule.useMutation();
   const utils = trpc.useUtils();
 
   const enabled =
@@ -182,22 +182,11 @@ export function FeeStructureScreen() {
     (row) => row.feeStructureId === null || row.feeStructureId === structureId,
   );
 
-  const mode = structure.data
-    ? (copy.fees.setup.structures.modes[
-        structure.data
-          .installmentMode as keyof typeof copy.fees.setup.structures.modes
-      ] ?? structure.data.installmentMode)
-    : null;
-
   const frame = (children: ReactNode) => (
     <ScreenFrame
       title={structure.data?.name ?? copy.fees.setup.structure.title}
       meta={
-        className && mode
-          ? `${className} · ${mode}`
-          : structure.data
-            ? className
-            : branchName
+        structure.data ? className : branchName
       }
       backAccessibilityLabel={copy.common.back}
       action={
@@ -306,21 +295,19 @@ export function FeeStructureScreen() {
   const canAddRule = canCreate && active;
   const canBillClass = canBill && active && lineRows.length > 0;
 
-  // "Bill all students in this class": a shortcut beside per-student billing.
   // The server skips anyone already billed, so pressing it twice is harmless.
   const runBillClass = async () => {
     if (!structure.data) return;
     setBillResult(null);
     try {
-      const result = await billClass.mutateAsync({
+      const result = await startBilling.mutateAsync({
         organizationId: organizationId ?? "",
         schoolId: schoolId ?? "",
-        data: {
-          academicYearId: structure.data.academicYearId,
-          classId: structure.data.classId,
-        },
+        id: structure.data.id,
       });
       await Promise.all([
+        utils.fees.dashboard.invalidate(),
+        utils.fees.structure.byId.invalidate(),
         utils.fees.matrix.list.invalidate(),
         utils.fees.matrix.cell.invalidate(),
         utils.fees.installment.dues.invalidate(),
@@ -381,16 +368,25 @@ export function FeeStructureScreen() {
       {canBillClass ? (
         <Card style={styles.billCard}>
           <ThemedText variant="bodyStrong">
-            {copy.fees.setup.structure.billTitle}
+            {structure.data?.billingStartedAt
+              ? feesCopy.line.billingOnTitle
+              : feesCopy.line.billingOffTitle}
           </ThemedText>
           <ThemedText variant="meta">
-            {copy.fees.setup.structure.billBody(className ?? "")}
+            {structure.data?.billingStartedAt
+              ? feesCopy.line.billingOnBody
+              : feesCopy.line.billingOffBody(className ?? "")}
           </ThemedText>
           <CapsuleButton
-            title={copy.fees.setup.structure.billAction}
+            title={
+              structure.data?.billingStartedAt
+                ? feesCopy.line.billingOnAction
+                : feesCopy.line.billingOffAction
+            }
             icon="collect"
             size="compact"
-            loading={billClass.isPending}
+            variant={structure.data?.billingStartedAt ? "secondary" : "primary"}
+            loading={startBilling.isPending}
             onPress={confirmBillClass}
             testID="fee-structure-bill-class"
           />
@@ -460,6 +456,11 @@ export function FeeStructureScreen() {
                     ? () => setSheet({ mode: "line", line })
                     : undefined
                 }
+                onPeriod={
+                  canUpdate && active
+                    ? (period) => setSheet({ mode: "period", period })
+                    : undefined
+                }
               />
             ))}
           </Card>
@@ -512,6 +513,38 @@ export function FeeStructureScreen() {
                 rule={rule}
                 first={index === 0}
                 schoolWide={rule.feeStructureId === null}
+                onRemove={
+                  canUpdate
+                    ? () => {
+                        Alert.alert(
+                          feesCopy.line.ruleOffTitle,
+                          feesCopy.line.ruleOffBody,
+                          [
+                            { text: copy.common.cancel, style: "cancel" },
+                            {
+                              text: feesCopy.line.ruleOffConfirm,
+                              style: "destructive",
+                              onPress: () => {
+                                void removeRule
+                                  .mutateAsync({
+                                    organizationId,
+                                    schoolId,
+                                    id: rule.id,
+                                  })
+                                  .then(() =>
+                                    utils.fees.structure.listLateFeeRules.invalidate(),
+                                  )
+                                  .then(() => setNotice(feesCopy.line.ruleOffDone))
+                                  .catch((cause: unknown) =>
+                                    setNotice(toFriendlyError(cause).message),
+                                  );
+                              },
+                            },
+                          ],
+                        );
+                      }
+                    : undefined
+                }
               />
             ))}
           </Card>
@@ -543,11 +576,25 @@ export function FeeStructureScreen() {
       {sheet?.mode === "line" ? (
         <LineSheet
           structureId={structureId}
+          academicYearId={structure.data?.academicYearId ?? ""}
           line={sheet.line}
           organizationId={organizationId}
           schoolId={schoolId}
           heads={heads.data ?? []}
           usedHeadIds={usedHeadIds}
+          onClose={() => setSheet(null)}
+          onDone={(message) => {
+            setSheet(null);
+            setNotice(message);
+          }}
+        />
+      ) : null}
+
+      {sheet?.mode === "period" ? (
+        <PeriodSheet
+          period={sheet.period}
+          organizationId={organizationId}
+          schoolId={schoolId}
           onClose={() => setSheet(null)}
           onDone={(message) => {
             setSheet(null);
@@ -577,21 +624,27 @@ function LineRow({
   headName,
   first,
   onPress,
+  onPeriod,
 }: {
   line: Line;
   headName: string;
   first: boolean;
   onPress?: () => void;
+  onPeriod?: (period: Line["periods"][number]) => void;
 }) {
-  const frequency =
-    copy.fees.setup.structure.frequencies[
-      line.installmentFrequency as Frequency
-    ] ?? line.installmentFrequency;
-  const months = monthRangeLabel(
-    line.applicableFromMonth,
-    line.applicableToMonth,
+  const [showSchedule, setShowSchedule] = useState(false);
+  const words = feesCopy.line;
+  const frequency = line.frequency as Frequency;
+  const yearTotal = toMoneyString(
+    line.periods.reduce((acc, period) => acc + (parseMoney(period.amount) ?? 0n), 0n),
   );
-  const detail = copy.fees.setup.structure.lineFrequency(frequency, months);
+  const detail = [
+    words.perPeriod[frequency](formatMoney(line.amount)),
+    frequency === "once" ? null : words.periodCount[frequency](line.periods.length),
+    line.whoPays === "new_students" ? words.whoPaysNew : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const row = (
     <>
@@ -599,7 +652,7 @@ function LineRow({
         <ThemedText variant="bodyStrong" numberOfLines={2}>
           {headName}
         </ThemedText>
-        <ThemedText variant="meta" numberOfLines={1}>
+        <ThemedText variant="meta" numberOfLines={2}>
           {detail}
         </ThemedText>
       </View>
@@ -609,31 +662,67 @@ function LineRow({
         maxFontSizeMultiplier={1.3}
         style={styles.amount}
       >
-        {formatMoney(line.annualAmount)}
+        {formatMoney(yearTotal)}
       </ThemedText>
     </>
   );
 
-  if (!onPress) {
-    return (
-      <View style={[styles.row, first ? null : styles.divider]}>{row}</View>
-    );
-  }
-
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${headName}, ${formatMoney(line.annualAmount)}, ${detail}`}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.row,
-        first ? null : styles.divider,
-        pressed ? styles.rowPressed : null,
-      ]}
-      testID={`fee-structure-line-${line.id}`}
-    >
-      {row}
-    </Pressable>
+    <View style={first ? null : styles.divider}>
+      {onPress ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${headName}, ${detail}, ${formatMoney(yearTotal)}`}
+          onPress={onPress}
+          style={({ pressed }) => [styles.row, pressed ? styles.rowPressed : null]}
+          testID={`fee-structure-line-${line.id}`}
+        >
+          {row}
+        </Pressable>
+      ) : (
+        <View style={styles.row}>{row}</View>
+      )}
+      {line.frequency !== "once" ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: showSchedule }}
+          onPress={() => setShowSchedule((value) => !value)}
+          style={styles.scheduleToggle}
+          testID={`fee-structure-schedule-${line.id}`}
+        >
+          <ThemedText variant="meta" color={colors.accentDeep}>
+            {showSchedule ? words.hideSchedule : words.showSchedule}
+          </ThemedText>
+        </Pressable>
+      ) : null}
+      {showSchedule
+        ? line.periods.map((period) => (
+            <Pressable
+              key={period.id}
+              accessibilityRole={onPeriod ? "button" : "text"}
+              disabled={!onPeriod}
+              onPress={() => onPeriod?.(period)}
+              style={({ pressed }) => [
+                styles.periodRow,
+                pressed ? styles.rowPressed : null,
+              ]}
+              testID={`fee-period-${period.periodKey}`}
+            >
+              <View style={styles.rowText}>
+                <ThemedText variant="meta" numberOfLines={1}>
+                  {period.label}
+                </ThemedText>
+                <ThemedText variant="caption" numberOfLines={1}>
+                  {words.dueOn(formatReadableDate(period.dueDate))}
+                </ThemedText>
+              </View>
+              <ThemedText variant="meta" numberOfLines={1}>
+                {formatMoney(period.amount)}
+              </ThemedText>
+            </Pressable>
+          ))
+        : null}
+    </View>
   );
 }
 
@@ -641,10 +730,12 @@ function RuleRow({
   rule,
   first,
   schoolWide,
+  onRemove,
 }: {
   rule: Rule;
   first: boolean;
   schoolWide: boolean;
+  onRemove?: () => void;
 }) {
   const type = rule.calculationType as RuleType;
   const typeLabel =
@@ -690,12 +781,26 @@ function RuleRow({
         <ThemedText variant="caption" numberOfLines={1}>
           {dates}
         </ThemedText>
+        <ThemedText variant="caption" numberOfLines={1}>
+          {feesCopy.line.applyPer[rule.applyPer as ApplyPer]}
+        </ThemedText>
       </View>
-      {schoolWide ? (
-        <FactChip label={copy.fees.setup.structure.schoolWide} tone="neutral" />
-      ) : (
-        <FactChip label={copy.fees.setup.structure.scopeThis} tone="neutral" />
-      )}
+      <View style={styles.ruleSide}>
+        {schoolWide ? (
+          <FactChip label={copy.fees.setup.structure.schoolWide} tone="neutral" />
+        ) : (
+          <FactChip label={copy.fees.setup.structure.scopeThis} tone="neutral" />
+        )}
+        {onRemove ? (
+          <CapsuleButton
+            title={feesCopy.line.ruleOffAction}
+            variant="secondary"
+            size="mini"
+            onPress={onRemove}
+            testID={`late-rule-off-${rule.id}`}
+          />
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -718,9 +823,22 @@ function StructureEditSheet({
   onRetired: () => void;
 }) {
   const [name, setName] = useState(structure.name);
-  const [installmentMode, setInstallmentMode] = useState<
-    "upfront" | "term_wise" | "monthly"
-  >(structure.installmentMode as "upfront" | "term_wise" | "monthly");
+  const classSections = trpc.academic.section.list.useQuery({
+    organizationId,
+    schoolId,
+    academicYearId: structure.academicYearId,
+  });
+  const linked = trpc.fees.structure.listSections.useQuery({
+    organizationId,
+    schoolId,
+    id: structure.id,
+  });
+  const [picked, setPicked] = useState<Set<string> | null>(null);
+  const chosen = picked ?? new Set(linked.data ?? []);
+  const sectionRows = (classSections.data ?? []).filter(
+    (row) => row.classId === structure.classId,
+  );
+  const setSections = trpc.fees.structure.setSections.useMutation();
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
@@ -750,8 +868,17 @@ function StructureEditSheet({
         organizationId,
         schoolId,
         id: structure.id,
-        data: { name: name.trim(), installmentMode },
+        data: { name: name.trim() },
       });
+      if (picked) {
+        await setSections.mutateAsync({
+          organizationId,
+          schoolId,
+          id: structure.id,
+          sectionIds: [...picked],
+        });
+        await utils.fees.structure.listSections.invalidate();
+      }
       await invalidate();
       onDone(copy.fees.setup.structures.updated);
     } catch (cause) {
@@ -827,19 +954,40 @@ function StructureEditSheet({
         testID="fee-structure-edit-name"
       />
 
-      <ChoicePills
-        label={copy.fees.setup.structures.modeLabel}
-        value={installmentMode}
-        options={(["term_wise", "monthly", "upfront"] as const).map(
-          (value) => ({
-            value,
-            label: copy.fees.setup.structures.modes[value],
-          }),
-        )}
-        onChange={setInstallmentMode}
-        help={copy.fees.setup.structures.modeHelp}
-        testIDPrefix="fee-structure-edit-mode"
-      />
+      {sectionRows.length > 0 ? (
+        <View style={styles.periods}>
+          <ThemedText variant="sectionLabel">{feesCopy.line.sectionsLabel}</ThemedText>
+          <View style={styles.chips}>
+            {sectionRows.map((section) => {
+              const on = chosen.has(section.id);
+              return (
+                <Pressable
+                  key={section.id}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: on }}
+                  accessibilityLabel={section.name}
+                  onPress={() => {
+                    const next = new Set(chosen);
+                    if (on) next.delete(section.id);
+                    else next.add(section.id);
+                    setPicked(next);
+                  }}
+                  style={[styles.chip, on ? styles.chipOn : null]}
+                  testID={`fee-structure-section-${section.id}`}
+                >
+                  <ThemedText
+                    variant="meta"
+                    color={on ? colors.accentDeep : colors.muted}
+                  >
+                    {section.name}
+                  </ThemedText>
+                </Pressable>
+              );
+            })}
+          </View>
+          <ThemedText variant="caption">{feesCopy.line.sectionsHelp}</ThemedText>
+        </View>
+      ) : null}
 
       {error ? (
         <Notice
@@ -854,6 +1002,7 @@ function StructureEditSheet({
 
 function LineSheet({
   structureId,
+  academicYearId,
   line,
   organizationId,
   schoolId,
@@ -863,6 +1012,7 @@ function LineSheet({
   onDone,
 }: {
   structureId: string;
+  academicYearId: string;
   line?: Line;
   organizationId: string;
   schoolId: string;
@@ -871,20 +1021,23 @@ function LineSheet({
   onClose: () => void;
   onDone: (message: string) => void;
 }) {
+  const words = feesCopy.line;
   const editing = Boolean(line);
   const [feeHeadId, setFeeHeadId] = useState<string | null>(
     line?.feeHeadId ?? null,
   );
-  const [annualAmount, setAnnualAmount] = useState(
-    line ? toInputAmount(line.annualAmount) : "",
-  );
   const [frequency, setFrequency] = useState<Frequency>(
-    (line?.installmentFrequency as Frequency | undefined) ?? "inherit",
+    (line?.frequency as Frequency | undefined) ?? "monthly",
   );
-  const [fromMonth, setFromMonth] = useState(
-    String(line?.applicableFromMonth ?? 1),
+  const [amount, setAmount] = useState(line ? toInputAmount(line.amount) : "");
+  const [whoPays, setWhoPays] = useState<"everyone" | "new_students">(
+    (line?.whoPays as "everyone" | "new_students" | undefined) ?? "everyone",
   );
-  const [toMonth, setToMonth] = useState(String(line?.applicableToMonth ?? 12));
+  const [picked, setPicked] = useState<Set<string> | null>(
+    line && line.frequency === frequency
+      ? new Set(line.periods.map((period) => period.periodKey))
+      : null,
+  );
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
@@ -892,34 +1045,66 @@ function LineSheet({
   const updateLine = trpc.fees.structure.updateLine.useMutation();
   const utils = trpc.useUtils();
 
+  const options = trpc.fees.structure.periodOptions.useQuery({
+    organizationId,
+    schoolId,
+    academicYearId,
+    frequency,
+  });
+  const settings = trpc.fees.settings.getSession.useQuery({
+    organizationId,
+    schoolId,
+    academicYearId,
+  });
+
+  // New lines start from the months the school charges, set once in setup.
+  const charged = settings.data?.chargedMonths ?? [];
+  const optionKeys = (options.data ?? []).map((option) => option.key);
+  const selected =
+    picked ??
+    new Set(
+      frequency === "monthly" && charged.length > 0
+        ? optionKeys.filter((key) => charged.includes(key))
+        : optionKeys,
+    );
+
   const pending = addLine.isPending || updateLine.isPending;
-  const amount = parseMoney(annualAmount);
+  const parsed = parseMoney(amount);
   const headOptions = heads
-    .filter((head) => !usedHeadIds.has(head.id) || head.id === line?.feeHeadId)
+    .filter(
+      (head) =>
+        head.category !== "optional" &&
+        (!usedHeadIds.has(head.id) || head.id === line?.feeHeadId),
+    )
     .map((head) => ({ id: head.id, label: head.name }));
   const headName =
     heads.find((head) => head.id === feeHeadId)?.name ??
     (editing ? copy.fees.setup.structure.headUnknown : null);
 
+  const onChooseHead = (id: string) => {
+    setFeeHeadId(id);
+    // A one-time fee type starts as a one-time line. It can still be changed.
+    if (!editing && heads.find((head) => head.id === id)?.category === "one_time") {
+      setFrequency("once");
+      setPicked(null);
+    }
+  };
+
   const headError =
-    submitted && !editing && !feeHeadId
-      ? copy.fees.setup.structure.headRequired
-      : undefined;
+    submitted && !editing && !feeHeadId ? copy.fees.setup.structure.headRequired : undefined;
   const amountError =
-    submitted && (amount === null || amount < 0n)
-      ? copy.fees.setup.structure.annualAmountError
-      : undefined;
-  const monthError =
-    submitted && Number(fromMonth) > Number(toMonth)
-      ? copy.fees.setup.structure.monthError
-      : undefined;
+    submitted && (parsed === null || parsed < 0n) ? words.amountError : undefined;
+  const periodError = submitted && selected.size === 0 ? words.periodError : undefined;
+
+  const keys = optionKeys.filter((key) => selected.has(key));
+  const total =
+    parsed !== null && parsed >= 0n ? formatMoney(toMoneyString(parsed * BigInt(keys.length))) : null;
 
   const submit = async () => {
     setSubmitted(true);
     setError(null);
     if (!editing && !feeHeadId) return;
-    if (amount === null || amount < 0n) return;
-    if (Number(fromMonth) > Number(toMonth)) return;
+    if (parsed === null || parsed < 0n || keys.length === 0) return;
 
     try {
       if (editing && line) {
@@ -927,25 +1112,14 @@ function LineSheet({
           organizationId,
           schoolId,
           id: line.id,
-          data: {
-            annualAmount,
-            installmentFrequency: frequency,
-            applicableFromMonth: Number(fromMonth),
-            applicableToMonth: Number(toMonth),
-          },
+          data: { amount, frequency, whoPays, periodKeys: keys },
         });
       } else if (feeHeadId) {
         await addLine.mutateAsync({
           organizationId,
           schoolId,
           id: structureId,
-          data: {
-            feeHeadId,
-            annualAmount,
-            installmentFrequency: frequency,
-            applicableFromMonth: Number(fromMonth),
-            applicableToMonth: Number(toMonth),
-          },
+          data: { feeHeadId, amount, frequency, whoPays, periodKeys: keys },
         });
       }
       await Promise.all([
@@ -990,59 +1164,190 @@ function LineSheet({
         placeholder={copy.fees.setup.structure.headPlaceholder}
         options={headOptions}
         currentId={feeHeadId ?? ""}
-        onSelect={setFeeHeadId}
+        onSelect={onChooseHead}
         error={headError}
         disabled={editing}
         testID="fee-line-head"
       />
 
-      <FormField
-        label={copy.fees.setup.structure.annualAmountLabel}
-        value={annualAmount}
-        onChangeText={(next) => setAnnualAmount(sanitizeAmountInput(next))}
-        placeholder="45000"
-        keyboardType="decimal-pad"
-        error={amountError}
-        maxLength={12}
-        testID="fee-line-amount"
-      />
-
       <ChoicePills
-        label={copy.fees.setup.structure.frequencyLabel}
+        label={words.howOften}
         value={frequency}
         options={FREQUENCY_ORDER.map((value) => ({
           value,
-          label: copy.fees.setup.structure.frequencies[value],
+          label: words.frequencies[value],
         }))}
-        onChange={setFrequency}
+        onChange={(next) => {
+          setFrequency(next);
+          setPicked(null);
+        }}
         testIDPrefix="fee-line-frequency"
       />
 
-      <SelectField
-        label={copy.fees.setup.structure.fromMonth}
-        valueLabel={monthLabel(Number(fromMonth))}
-        placeholder={copy.fees.setup.structure.fromMonth}
-        options={MONTH_OPTIONS}
-        currentId={fromMonth}
-        onSelect={setFromMonth}
-        testID="fee-line-from-month"
+      <FormField
+        label={words.amountLabel[frequency]}
+        value={amount}
+        onChangeText={(next) => setAmount(sanitizeAmountInput(next))}
+        placeholder="1000"
+        keyboardType="decimal-pad"
+        error={amountError}
+        maxLength={11}
+        testID="fee-line-amount"
       />
-      <SelectField
-        label={copy.fees.setup.structure.toMonth}
-        valueLabel={monthLabel(Number(toMonth))}
-        placeholder={copy.fees.setup.structure.toMonth}
-        options={MONTH_OPTIONS}
-        currentId={toMonth}
-        onSelect={setToMonth}
-        error={monthError}
-        testID="fee-line-to-month"
+
+      {frequency !== "once" ? (
+        <View style={styles.periods}>
+          <ThemedText variant="sectionLabel">{words.periodsLabel[frequency]}</ThemedText>
+          <View style={styles.chips}>
+            {(options.data ?? []).map((option) => {
+              const on = selected.has(option.key);
+              return (
+                <Pressable
+                  key={option.key}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: on }}
+                  accessibilityLabel={option.label}
+                  onPress={() => {
+                    const next = new Set(selected);
+                    if (on) next.delete(option.key);
+                    else next.add(option.key);
+                    setPicked(next);
+                  }}
+                  style={[styles.chip, on ? styles.chipOn : null]}
+                  testID={`fee-line-period-${option.key}`}
+                >
+                  <ThemedText
+                    variant="meta"
+                    numberOfLines={1}
+                    color={on ? colors.accentDeep : colors.muted}
+                  >
+                    {frequency === "monthly"
+                      ? option.label.slice(0, 3)
+                      : option.label}
+                  </ThemedText>
+                </Pressable>
+              );
+            })}
+          </View>
+          {periodError ? (
+            <ThemedText variant="meta" color={colors.tone.critical.fg}>
+              {periodError}
+            </ThemedText>
+          ) : null}
+          {total ? (
+            <ThemedText variant="meta" testID="fee-line-total">
+              {words.total(keys.length, total)}
+            </ThemedText>
+          ) : null}
+        </View>
+      ) : null}
+
+      <ChoicePills
+        label={words.whoPays}
+        value={whoPays}
+        options={[
+          { value: "everyone", label: words.whoPaysEveryone },
+          { value: "new_students", label: words.whoPaysNew },
+        ]}
+        onChange={setWhoPays}
+        help={words.whoPaysHelp}
+        testIDPrefix="fee-line-who-pays"
       />
+
+      {editing ? (
+        <ThemedText variant="caption" style={styles.hint}>
+          {words.editHint}
+        </ThemedText>
+      ) : null}
 
       {error ? (
         <Notice
           tone="critical"
           message={toFriendlyError(error).message}
           testID="fee-line-sheet-error"
+        />
+      ) : null}
+    </FormSheet>
+  );
+}
+
+/** One row of a schedule: "₹1,200 from October" or a different due date. */
+function PeriodSheet({
+  period,
+  organizationId,
+  schoolId,
+  onClose,
+  onDone,
+}: {
+  period: Line["periods"][number];
+  organizationId: string;
+  schoolId: string;
+  onClose: () => void;
+  onDone: (message: string) => void;
+}) {
+  const words = feesCopy.line;
+  const [amount, setAmount] = useState(toInputAmount(period.amount));
+  const [dueDate, setDueDate] = useState(period.dueDate);
+  const [error, setError] = useState<unknown>(null);
+  const update = trpc.fees.structure.updatePeriod.useMutation();
+  const utils = trpc.useUtils();
+
+  const submit = async () => {
+    setError(null);
+    try {
+      await update.mutateAsync({
+        organizationId,
+        schoolId,
+        id: period.id,
+        data: { amount, dueDate },
+      });
+      await utils.fees.structure.listLines.invalidate();
+      onDone(words.periodSaved);
+    } catch (cause) {
+      setError(cause);
+    }
+  };
+
+  return (
+    <FormSheet
+      title={period.label}
+      onClose={onClose}
+      testIDPrefix="fee-period-sheet"
+      footer={
+        <View style={styles.sheetFooter}>
+          <CapsuleButton
+            title={copy.fees.setup.structure.lineSave}
+            icon="check"
+            size="compact"
+            loading={update.isPending}
+            onPress={() => void submit()}
+            testID="fee-period-save"
+          />
+        </View>
+      }
+    >
+      <FormField
+        label={words.periodAmount}
+        value={amount}
+        onChangeText={(next) => setAmount(sanitizeAmountInput(next))}
+        keyboardType="decimal-pad"
+        maxLength={11}
+        testID="fee-period-amount"
+      />
+      <DateField
+        label={words.periodDue}
+        value={dueDate}
+        onChange={setDueDate}
+        testID="fee-period-due"
+      />
+      <ThemedText variant="caption" style={styles.hint}>
+        {words.editHint}
+      </ThemedText>
+      {error ? (
+        <Notice
+          tone="critical"
+          message={toFriendlyError(error).message}
+          testID="fee-period-error"
         />
       ) : null}
     </FormSheet>
@@ -1070,6 +1375,7 @@ function RuleSheet({
   const [hasEnd, setHasEnd] = useState(false);
   const [effectiveTo, setEffectiveTo] = useState(todayIso());
   const [scope, setScope] = useState<RuleScope>("structure");
+  const [applyPer, setApplyPer] = useState<ApplyPer>("month");
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
@@ -1123,6 +1429,7 @@ function RuleSheet({
         data: {
           feeStructureId: scope === "structure" ? structureId : null,
           calculationType: type,
+          applyPer,
           value,
           gracePeriodDays: graceDays,
           maxLateFee: max.trim().length > 0 ? max : null,
@@ -1181,6 +1488,18 @@ function RuleSheet({
         error={valueError}
         maxLength={10}
         testID="late-rule-value"
+      />
+
+      <ChoicePills
+        label={feesCopy.line.applyPerLabel}
+        value={applyPer}
+        options={[
+          { value: "month", label: feesCopy.line.applyPerMonth },
+          { value: "fee", label: feesCopy.line.applyPerFee },
+        ]}
+        onChange={setApplyPer}
+        help={feesCopy.line.applyPerHelp}
+        testIDPrefix="late-rule-apply-per"
       />
 
       <FormField
@@ -1299,6 +1618,46 @@ const styles = StyleSheet.create({
   },
   hint: {
     paddingHorizontal: spacing.xs,
+  },
+  ruleSide: {
+    alignItems: "flex-end",
+    gap: spacing.xs,
+  },
+  scheduleToggle: {
+    minHeight: 40,
+    justifyContent: "center",
+    paddingHorizontal: spacing.lg,
+  },
+  periodRow: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xs,
+  },
+  periods: {
+    gap: spacing.xs,
+  },
+  chips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+  },
+  chip: {
+    minHeight: 40,
+    minWidth: 52,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.hairline,
+    backgroundColor: colors.surface,
+  },
+  chipOn: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentTint,
   },
   sheetFooter: {
     flexDirection: "row",

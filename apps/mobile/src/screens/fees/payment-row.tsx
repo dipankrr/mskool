@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { ThemedText } from "../../components/themed-text";
 import { copy } from "../../lib/copy";
 import { paymentModeLabel } from "../../lib/fees";
+import { feesCopy } from "../../lib/fees-copy";
 import { formatReadableDate } from "../../lib/format";
 import { formatMoney, isPositiveMoney } from "../../lib/money";
 import { colors } from "../../theme/brand-admin";
@@ -17,6 +18,8 @@ export type PaymentRowData = {
   totalAmount: string | null;
   lateFeeAmount: string;
   paymentStatus: string;
+  /** Present on the student page's history; other lists don't carry it. */
+  refundedAmount?: string | null;
   /** Present on `payment.list` rows; shown only where the list spans students. */
   studentName?: string | null;
   className?: string | null;
@@ -71,6 +74,14 @@ export function PaymentRow({
           <FactChip
             label={copy.fees.desk.lateFeeChip(
               formatMoney(payment.lateFeeAmount),
+            )}
+            tone="caution"
+          />
+        ) : null}
+        {isPositiveMoney(payment.refundedAmount) ? (
+          <FactChip
+            label={feesCopy.student.refundedChip(
+              formatMoney(payment.refundedAmount),
             )}
             tone="caution"
           />

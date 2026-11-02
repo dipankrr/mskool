@@ -18,6 +18,7 @@ import { ThemedText } from "../../components/themed-text";
 import { useActiveContext } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
 import { copy } from "../../lib/copy";
+import { feesCopy } from "../../lib/fees-copy";
 import { toFriendlyError } from "../../lib/errors";
 import {
   PAYMENT_STATUS_NOTE,
@@ -159,7 +160,8 @@ export function PaymentDetailScreen() {
 
   const refundable = useMemo(() => {
     if (!payment) return "0.00";
-    const amount = parseMoney(payment.amount) ?? 0n;
+    const amount =
+      (parseMoney(payment.amount) ?? 0n) + (parseMoney(payment.lateFeeAmount) ?? 0n);
     const already = parseMoney(refunded) ?? 0n;
     return toMoneyString(amount > already ? amount - already : 0n);
   }, [payment, refunded]);
@@ -402,6 +404,14 @@ export function PaymentDetailScreen() {
             {formatMoney(payment.amount)}
           </ThemedText>
         </View>
+        {(parseMoney(payment.discountAmount) ?? 0n) > 0n ? (
+          <View style={styles.factRow}>
+            <ThemedText variant="meta">{feesCopy.collect.discountGiven}</ThemedText>
+            <ThemedText variant="bodyStrong">
+              {formatMoney(payment.discountAmount)}
+            </ThemedText>
+          </View>
+        ) : null}
         <View style={styles.factRow}>
           <ThemedText variant="meta">
             {copy.fees.receipt.lateFeeLabel}

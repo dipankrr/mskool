@@ -85,7 +85,6 @@ export function ConcessionSheet({
     { staleTime: 5 * 60_000 },
   );
   const add = trpc.fees.assignment.addConcession.useMutation();
-  const recompute = trpc.fees.assignment.recomputeConcessions.useMutation();
 
   const valueError = submitted
     ? (concessionValueError(calculation, value) ?? undefined)
@@ -112,7 +111,7 @@ export function ConcessionSheet({
       ? copy.fees.desk.concessionAllHeads
       : (heads.data?.find((head) => head.id === headId)?.name ?? null);
 
-  const busy = add.isPending || recompute.isPending;
+  const busy = add.isPending || false;
 
   const submit = async () => {
     setSubmitted(true);
@@ -155,28 +154,10 @@ export function ConcessionSheet({
         utils.fees.matrix.cell.invalidate(),
       ]);
 
-      const recorded = formatMoney(created.concessionAmount);
-      try {
-        await recompute.mutateAsync({
-          organizationId,
-          schoolId,
-          id: assignmentId,
-        });
-        await Promise.all([
-          utils.fees.assignment.byStudent.invalidate(),
-          utils.fees.installment.dues.invalidate(),
-          utils.fees.matrix.list.invalidate(),
-          utils.fees.matrix.cell.invalidate(),
-        ]);
-        onDone(copy.fees.desk.concessionDone(recorded));
-      } catch {
-        // The concession is recorded; only its apportionment failed. Saying
-        // "failed" would send the clerk to record it twice.
-        onDone(
-          copy.fees.desk.concessionRecordedNeedsRecompute(recorded),
-          "caution",
-        );
-      }
+      // The server applies it as part of adding it, and says what actually
+      // landed: dues already paid are left out.
+      await utils.fees.dashboard.invalidate();
+      onDone(copy.fees.desk.concessionDone(formatMoney(created.concessionAmount)));
     } catch (cause) {
       setError(cause);
     }

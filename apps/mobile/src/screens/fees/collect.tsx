@@ -20,7 +20,10 @@ import { usePermissions } from "../../hooks/use-permissions";
 import { copy } from "../../lib/copy";
 import { toFriendlyError } from "../../lib/errors";
 import {
+  applyDiscount,
+  distributeAmount,
   installmentTitle,
+  isHeldMode,
   isPayable,
   nextClientReference,
   oldestFirst,
@@ -53,6 +56,8 @@ import {
 } from "../../theme/tokens";
 import { SectionHead } from "./status";
 import { useSessionOpen } from "../../hooks/use-session-open";
+import { SwitchRow } from "../../components/switch-row";
+import { feesCopy } from "../../lib/fees-copy";
 
 /**
  * Take the money (Step 5B).
@@ -135,6 +140,14 @@ export function CollectPaymentScreen() {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [showAhead, setShowAhead] = useState(false);
+  // One amount by default: the cashier types what was handed over and the split
+  // follows, oldest first. The per-fee boxes are one tap away for the rare case.
+  const [adjust, setAdjust] = useState(false);
+  const [received, setReceived] = useState<string | null>(null);
+  const [discount, setDiscount] = useState("");
+  const [discountReason, setDiscountReason] = useState("");
+  const [waiveLateFee, setWaiveLateFee] = useState(false);
+  const canGiveOff = has("fee_waiver:create");
   const currentMonth = monthKeyOf(todayIso());
 
   // One key for this attempt. Kept for the component's life so a retry after
@@ -205,8 +218,9 @@ export function CollectPaymentScreen() {
         Boolean(studentId),
     },
   );
-  // Collect waits for the openings read only when it can make it.
-  const openingsSettled = !canReadOpenings || !openings.isPending;
+  // Collect waits for the openings read only when it can make it. A failed read
+  // is not settled: prefilling without it would quote a smaller bill than is owed.
+  const openingsSettled = !canReadOpenings || openings.isSuccess;
 
   // Everything payable on one receipt, oldest money first: carried-forward
   // balances (an earlier session), then installments oldest-due first.
@@ -254,7 +268,7 @@ export function CollectPaymentScreen() {
     setAmounts(dueNowAmounts);
   }, [dues.data, openingsSettled, dueNowAmounts]);
 
-  const allocations = useMemo(
+  const billed = useMemo(
     () =>
       lines
         .map((line) => ({
@@ -265,10 +279,72 @@ export function CollectPaymentScreen() {
     [lines, amounts],
   );
 
+  // A discount comes off the bill: less cash on the dues it lands on.
+  const discounted = useMemo(
+    () =>
+      applyDiscount(
+        billed.map((entry) => ({
+          key: entry.line.key,
+          id: entry.line.id,
+          kind: entry.line.kind,
+          amount: entry.amount,
+        })),
+        discount,
+      ),
+    [billed, discount],
+  );
+  const discountsToSend = discounted.discounts;
+  const appliedDiscount = discounted.appliedDiscount;
+  const allocations = useMemo(
+    () =>
+      billed
+        .map((entry, index) => ({
+          line: entry.line,
+          amount: discounted.lines[index]?.cash ?? entry.amount,
+        }))
+        .filter(
+          (entry) =>
+            (parseMoney(entry.amount) ?? 0n) > 0n ||
+            discountsToSend.some((d) => d.installmentId === entry.line.id),
+        ),
+    [billed, discounted, discountsToSend],
+  );
+
+  const bill = useMemo(() => sumMoney(billed.map((entry) => entry.amount)), [billed]);
   const total = useMemo(
     () => sumMoney(allocations.map((entry) => entry.amount)),
     [allocations],
   );
+
+  // What recording this would cost, so the parent hears the full amount first.
+  const quote = trpc.fees.payment.quote.useQuery(
+    {
+      organizationId: organizationId ?? "",
+      schoolId: schoolId ?? "",
+      data: {
+        studentId,
+        academicYearId: academicYear?.id ?? "",
+        paymentDate,
+        allocations: allocations
+          .filter(
+            (entry) =>
+              entry.line.kind === "installment" && (parseMoney(entry.amount) ?? 0n) > 0n,
+          )
+          .map((entry) => ({ installmentId: entry.line.id, amount: entry.amount })),
+      },
+    },
+    {
+      enabled:
+        ready &&
+        Boolean(academicYear?.id) &&
+        allocations.some(
+          (entry) =>
+            entry.line.kind === "installment" && (parseMoney(entry.amount) ?? 0n) > 0n,
+        ),
+    },
+  );
+  const lateFee = waiveLateFee ? "0.00" : (quote.data?.lateFeeAmount ?? "0.00");
+  const grandTotal = sumMoney([total, lateFee]);
   const outstanding = useMemo(
     () => sumMoney(nowLines.map((line) => line.balance)),
     [nowLines],
@@ -405,8 +481,54 @@ export function CollectPaymentScreen() {
   };
 
   const payFull = () => {
-    setAmounts((current) => ({ ...current, ...dueNowAmounts }));
+    setAmounts(dueNowAmounts);
+    setReceived(null);
     setClamped({});
+  };
+
+  // The one-amount box: what was handed over, spread oldest first.
+  const changeReceived = (next: string) => {
+    const value = sanitizeAmountInput(next);
+    setReceived(value);
+    setAmounts(
+      distributeAmount(
+        value,
+        lines.map((line) => ({ key: line.key, balance: line.balance })),
+      ),
+    );
+  };
+
+  const payRestOfYear = async () => {
+    const assignment = assignmentQuery.data;
+    if (!assignment || !academicYear) return;
+    setError(null);
+    try {
+      await addMonth.mutateAsync({
+        organizationId: organizationId ?? "",
+        schoolId: schoolId ?? "",
+        id: assignment.id,
+        through: academicYear.endDate,
+      });
+      const [fresh] = await Promise.all([
+        dues.refetch(),
+        utils.fees.dashboard.invalidate(),
+      ]);
+      // The bill is now everything open. `lines` is a render behind, so the
+      // new dues are read from the refetch.
+      const next: Record<string, string> = {};
+      for (const line of lines) {
+        if (line.kind === "opening") next[line.key] = toInputAmount(line.balance);
+      }
+      for (const row of (fresh.data ?? []).filter(isPayable)) {
+        next[row.id] = toInputAmount(row.balanceAmount ?? "0.00");
+      }
+      setAmounts(next);
+      setReceived(null);
+      setShowAhead(true);
+      setAdjust(false);
+    } catch (cause) {
+      setError(cause);
+    }
   };
 
   const fillAhead = () => {
@@ -422,6 +544,7 @@ export function CollectPaymentScreen() {
     setSubmitted(true);
     setError(null);
     if (allocations.length === 0) return;
+    if (isPositiveMoney(appliedDiscount) && discountReason.trim().length === 0) return;
     if (fields.reference && reference.trim().length === 0) return;
     if (fields.bank && bankName.trim().length === 0) return;
     if (fields.chequeDate && !chequeDate) return;
@@ -442,8 +565,17 @@ export function CollectPaymentScreen() {
           academicYearId: academicYear.id,
           paymentDate,
           paymentMode: mode,
+          discounts: discountsToSend,
+          discountReason: isPositiveMoney(appliedDiscount)
+            ? discountReason.trim()
+            : null,
+          waiveLateFee,
           allocations: allocations
-            .filter((entry) => entry.line.kind === "installment")
+            .filter(
+              (entry) =>
+                entry.line.kind === "installment" &&
+                (parseMoney(entry.amount) ?? 0n) > 0n,
+            )
             .map((entry) => ({
               installmentId: entry.line.id,
               amount: entry.amount,
@@ -463,6 +595,7 @@ export function CollectPaymentScreen() {
       });
 
       await Promise.all([
+        utils.fees.dashboard.invalidate(),
         utils.fees.installment.dues.invalidate(),
         utils.fees.ledger.listOpeningBalances.invalidate(),
         utils.fees.matrix.list.invalidate(),
@@ -499,7 +632,7 @@ export function CollectPaymentScreen() {
             maxFontSizeMultiplier={1.15}
             testID="fee-collect-total"
           >
-            {formatMoney(total)}
+            {formatMoney(grandTotal)}
           </ThemedText>
         </View>
         <CapsuleButton
@@ -578,11 +711,14 @@ export function CollectPaymentScreen() {
     );
   }
 
-  if (dues.isError) {
+  if (dues.isError || (canReadOpenings && openings.isError)) {
     return frame(
       <ErrorCard
-        cause={dues.error}
-        onRetry={() => void dues.refetch()}
+        cause={dues.error ?? openings.error}
+        onRetry={() => {
+          if (dues.isError) void dues.refetch();
+          if (openings.isError) void openings.refetch();
+        }}
         testID="fee-collect-error"
       />,
     );
@@ -668,7 +804,7 @@ export function CollectPaymentScreen() {
           </View>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`${copy.fees.collect.clearRow} ${title}`}
+            accessibilityLabel={`${feesCopy.collect.removeRow} ${title}`}
             hitSlop={8}
             onPress={() => {
               setAmount(line.key, "");
@@ -681,7 +817,7 @@ export function CollectPaymentScreen() {
             testID={`fee-collect-clear-${line.id}`}
           >
             <ThemedText variant="caption" color={colors.accentDeep}>
-              {copy.fees.collect.clearRow}
+              {feesCopy.collect.removeRow}
             </ThemedText>
           </Pressable>
         </View>
@@ -703,19 +839,110 @@ export function CollectPaymentScreen() {
           >
             {formatMoney(outstanding)}
           </ThemedText>
-          <ThemedText variant="meta">
-            {copy.fees.collect.collectingOf(
-              formatMoney(total),
-              formatMoney(outstanding),
-            )}
-          </ThemedText>
+          {bill === outstanding ? null : (
+            <ThemedText variant="meta">
+              {copy.fees.collect.collectingOf(
+                formatMoney(bill),
+                formatMoney(outstanding),
+              )}
+            </ThemedText>
+          )}
           {isPositiveMoney(later) ? (
             <ThemedText variant="meta">
               {copy.fees.dues.laterThisSession(formatMoney(later))}
             </ThemedText>
           ) : null}
-          <ThemedText variant="meta">{copy.fees.desk.lateFeeNote}</ThemedText>
         </Card>
+
+        {adjust ? null : (
+          <FormField
+            label={feesCopy.collect.amountLabel}
+            value={received ?? toInputAmount(bill)}
+            onChangeText={changeReceived}
+            keyboardType="decimal-pad"
+            help={isPositiveMoney(lateFee) ? feesCopy.collect.amountHelp : undefined}
+            maxLength={11}
+            testID="fee-collect-received"
+          />
+        )}
+
+        {canGiveOff ? (
+          <FormField
+            label={feesCopy.collect.discountLabel}
+            value={discount}
+            onChangeText={(next) => setDiscount(sanitizeAmountInput(next))}
+            keyboardType="decimal-pad"
+            placeholder="0"
+            help={feesCopy.collect.discountHelp}
+            maxLength={11}
+            testID="fee-collect-discount"
+          />
+        ) : null}
+        {isPositiveMoney(appliedDiscount) ? (
+          <FormField
+            label={feesCopy.collect.discountReason}
+            value={discountReason}
+            onChangeText={setDiscountReason}
+            error={
+              submitted && discountReason.trim().length === 0
+                ? feesCopy.collect.discountNeedsReason
+                : undefined
+            }
+            maxLength={255}
+            testID="fee-collect-discount-reason"
+          />
+        ) : null}
+
+        <Card style={styles.summary}>
+          <SummaryLine label={feesCopy.collect.billLine} value={formatMoney(bill)} />
+          {isPositiveMoney(appliedDiscount) ? (
+            <SummaryLine
+              label={feesCopy.collect.discountLine}
+              value={`− ${formatMoney(appliedDiscount)}`}
+            />
+          ) : null}
+          {isPositiveMoney(quote.data?.lateFeeAmount) ? (
+            <SummaryLine
+              label={feesCopy.collect.lateFeeLine}
+              value={formatMoney(lateFee)}
+            />
+          ) : null}
+          <SummaryLine
+            strong
+            label={feesCopy.collect.collectLine}
+            value={formatMoney(grandTotal)}
+          />
+          {canGiveOff && isPositiveMoney(quote.data?.lateFeeAmount) ? (
+            <SwitchRow
+              label={feesCopy.collect.waiveLateFee}
+              value={waiveLateFee}
+              onChange={setWaiveLateFee}
+              help={feesCopy.collect.waiveLateFeeHelp}
+              testID="fee-collect-waive-late"
+            />
+          ) : null}
+        </Card>
+
+        <CapsuleButton
+          title={adjust ? feesCopy.collect.adjustDone : feesCopy.collect.adjust}
+          variant="secondary"
+          size="compact"
+          onPress={() => {
+            setAdjust((value) => !value);
+            setReceived(null);
+          }}
+          testID="fee-collect-adjust"
+        />
+        {canAddMonths && canOfferNextMonth ? (
+          <CapsuleButton
+            title={feesCopy.collect.payRest}
+            variant="secondary"
+            size="compact"
+            loading={addMonth.isPending}
+            onPress={() => void payRestOfYear()}
+            testID="fee-collect-pay-rest"
+          />
+        ) : null}
 
         {isPositiveMoney(params.carriedForward) && !canReadOpenings ? (
           <Notice
@@ -727,24 +954,26 @@ export function CollectPaymentScreen() {
           />
         ) : null}
 
-        <View style={styles.sectionHead}>
-          <View style={styles.sectionHeadText}>
-            <SectionHead
-              title={copy.fees.collect.allocationTitle}
-              hint={copy.fees.collect.allocationHint}
+        {adjust ? (
+          <View style={styles.sectionHead}>
+            <View style={styles.sectionHeadText}>
+              <SectionHead
+                title={copy.fees.collect.allocationTitle}
+                hint={copy.fees.collect.allocationHint}
+              />
+            </View>
+            <CapsuleButton
+              title={copy.fees.collect.payFull}
+              variant="secondary"
+              size="mini"
+              onPress={payFull}
+              testID="fee-collect-pay-full"
             />
           </View>
-          <CapsuleButton
-            title={copy.fees.collect.payFull}
-            variant="secondary"
-            size="mini"
-            onPress={payFull}
-            testID="fee-collect-pay-full"
-          />
-        </View>
+        ) : null}
 
         {nowLines.length > 0 ? (
-          <Card padless>{nowLines.map(renderLine)}</Card>
+          adjust ? <Card padless>{nowLines.map(renderLine)}</Card> : null
         ) : (
           <Notice
             tone="neutral"
@@ -802,7 +1031,6 @@ export function CollectPaymentScreen() {
           />
         ) : null}
 
-        <SectionHead title={copy.fees.collect.modeLabel} />
         <ChoicePills
           label={copy.fees.collect.modeLabel}
           value={mode}
@@ -813,7 +1041,7 @@ export function CollectPaymentScreen() {
           onChange={setMode}
           testIDPrefix="fee-collect-mode"
         />
-        {mode !== "cash" ? (
+        {isHeldMode(mode) ? (
           <Notice
             tone="neutral"
             message={copy.fees.collect.modeHint}
@@ -916,7 +1144,8 @@ export function CollectPaymentScreen() {
               </View>
 
               <View style={styles.reviewLines}>
-                {allocations.map((entry) => (
+                {/* Before any discount, so the lines add up to the total shown. */}
+                {billed.map((entry) => (
                   <View key={entry.line.key} style={styles.reviewLine}>
                     <ThemedText
                       variant="body"
@@ -932,11 +1161,23 @@ export function CollectPaymentScreen() {
                 ))}
               </View>
 
+              {isPositiveMoney(appliedDiscount) ? (
+                <SummaryLine
+                  label={feesCopy.collect.discountLine}
+                  value={`− ${formatMoney(appliedDiscount)}`}
+                />
+              ) : null}
+              {isPositiveMoney(lateFee) ? (
+                <SummaryLine
+                  label={feesCopy.collect.lateFeeLine}
+                  value={formatMoney(lateFee)}
+                />
+              ) : null}
               <View style={styles.reviewTotal}>
                 <ThemedText variant="bodyStrong">
                   {copy.fees.collect.reviewTotal}
                 </ThemedText>
-                <ThemedText variant="title">{formatMoney(total)}</ThemedText>
+                <ThemedText variant="title">{formatMoney(grandTotal)}</ThemedText>
               </View>
 
               <View style={styles.reviewFacts}>
@@ -965,7 +1206,7 @@ export function CollectPaymentScreen() {
                 ) : null}
               </View>
 
-              {mode !== "cash" ? (
+              {isHeldMode(mode) ? (
                 <Notice
                   tone="caution"
                   message={copy.fees.collect.modeHint}
@@ -1012,7 +1253,35 @@ export function CollectPaymentScreen() {
   );
 }
 
+function SummaryLine({
+  label,
+  value,
+  strong = false,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+}) {
+  return (
+    <View style={styles.summaryLine}>
+      <ThemedText variant={strong ? "bodyStrong" : "meta"}>{label}</ThemedText>
+      <ThemedText
+        variant={strong ? "bodyStrong" : "meta"}
+        numberOfLines={1}
+        maxFontSizeMultiplier={1.2}
+      >
+        {value}
+      </ThemedText>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  summaryLine: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
   body: {
     gap: spacing.lg,
   },

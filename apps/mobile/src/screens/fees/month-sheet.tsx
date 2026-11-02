@@ -123,7 +123,6 @@ export function MonthSheet({
                       installment={{
                         id: installment.id,
                         description: title,
-                        installmentNumber: 0,
                         dueDate: installment.dueDate,
                         netAmount: installment.netAmount,
                         paidAmount: installment.paidAmount,

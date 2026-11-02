@@ -1625,6 +1625,9 @@ export const copy = {
         /** The generate sheet. */
         generateHelp:
           "Pick the days a week school is in session. Days already set are left untouched — this only fills gaps.",
+        startFromLabel: "Start from",
+        startFromHelp:
+          "Joining mid-session? Pick your first day here. Earlier days won't count as working days.",
         weekdays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
         weekdayA11y: (weekday: string, state: string) =>
           `${weekday}, ${state}. Double tap to change.`,
@@ -2730,53 +2733,24 @@ export const copy = {
   fees: {
     title: "Fees",
     tabLabel: "Fees",
-    generation: {
-      title: "When dues are created",
-      hint: "Timing only; prices stay the same",
-      modeLabel: "Create dues",
-      modes: {
-        all_now: "All at once",
-        monthly_auto: "Monthly, automatic",
-        monthly_manual: "Monthly, by hand",
-      },
-      explain: {
-        all_now:
-          "Billing a student creates every due for the session straight away.",
-        monthly_auto:
-          "Billing creates dues up to this month. Each new month is added automatically on the 1st.",
-        monthly_manual:
-          "Billing creates dues up to this month. Add later months below when you are ready.",
-      },
-      throughLabel: "Create dues up to",
-      action: "Generate dues",
-      done: (dues: number, students: number, month: string, failed: number) =>
-        [
-          dues === 0
-            ? `Everyone already has dues up to ${month}.`
-            : `Added ${dues} ${dues === 1 ? "due" : "dues"} for ${students} ${students === 1 ? "student" : "students"}, up to ${month}.`,
-          failed > 0 ? `${failed} could not be updated.` : null,
-        ]
-          .filter(Boolean)
-          .join(" "),
-    },
     checklist: {
       title: (year: string) => `Set up ${year}`,
       hint: "Tap a step to do it",
       heads: "Fee types",
       headsTodo: "Add tuition, transport and the other fees you charge.",
       headsDone: (count: number) => `${count} fee types`,
-      charts: "Fee charts",
+      charts: "Fee structures",
       chartsTodo: "Set what each class pays this session.",
       chartsDone: (count: number) =>
-        count === 1 ? "1 fee chart" : `${count} fee charts`,
+        count === 1 ? "1 fee structure" : `${count} fee structures`,
       rule: "Late-fee rule (optional)",
       ruleTodo: "Choose a late fee, or skip this step.",
       ruleDone: "Late fee set",
       bill: "Bill students",
       billTodo: (count: number) =>
         count === 1
-          ? "1 student has no bill yet. Open a fee chart and bill the class."
-          : `${count} students have no bill yet. Open a fee chart and bill the class.`,
+          ? "1 student has no bill yet. Open a fee structure and bill the class."
+          : `${count} students have no bill yet. Open a fee structure and bill the class.`,
       billDone: "Everyone is billed",
     },
     sessionClosed:
@@ -2865,7 +2839,7 @@ export const copy = {
         "This student is not billed yet, so there is nothing due.",
       notAssignedTitle: "Not billed yet",
       notAssignedBody:
-        "Bill this student to create their dues from the class fee chart.",
+        "Bill this student to create their dues from the class fee structure.",
       assignAction: "Bill this student",
       generateAction: "Add missing dues",
       recomputeAction: "Recompute concessions",
@@ -2898,7 +2872,7 @@ export const copy = {
       missingBody:
         "They may have left the school, or the session changed. Go back and search again.",
       actionsTitle: "Billing",
-      actionsHint: "Fee chart, dues and concessions",
+      actionsHint: "Fee structure, dues and concessions",
       assignmentTitle: "Assignment",
       assignmentEffective: (date: string) => `Effective ${date}`,
       installmentsOpen: (count: number) =>
@@ -2907,7 +2881,7 @@ export const copy = {
       paidOf: (paid: string, net: string) => `${paid} of ${net} paid`,
       assignSheetTitle: "Bill this student",
       assignSheetBody: (className: string) =>
-        `Uses ${className}'s fee chart for this session, charged from the date below. Later changes to the chart do not change this bill.`,
+        `Uses ${className}'s fee structure for this session, charged from the date below. Later changes to the chart do not change this bill.`,
       assignStructureSummary: (name: string, mode: string) => `${name} · ${mode}`,
       joiningFullCharge: "Charge the joining month in full",
       joiningFullChargeHelp:
@@ -2943,7 +2917,7 @@ export const copy = {
       concessionTypeLabel: "Reason",
       concessionCalculationLabel: "Calculation",
       concessionHeadLabel: "Applies to",
-      concessionAllHeads: "All fee heads",
+      concessionAllHeads: "All fee types",
       concessionValueLabel: "Value",
       concessionValueFlatHelp: "The rupee amount to discount.",
       concessionValuePercentHelp: "A percentage from 0 to 100, rounded down.",
@@ -2966,8 +2940,8 @@ export const copy = {
       concessionDurationSession: "Whole session",
       concessionDurationDated: "Ends on a date",
       concessionNeedsEnd: "Choose an end date.",
-      concessionHeadHelp: "A single head confines the discount to that fee.",
-      concessionNoHeads: "No fee heads are configured.",
+      concessionHeadHelp: "A single fee type confines the discount to that fee.",
+      concessionNoHeads: "No fee types are configured.",
       waiverDone: "Installment waived.",
       monthSheetEmptyTitle: "No fee this month",
       monthNetLabel: "Net",
@@ -3108,7 +3082,7 @@ export const copy = {
       backToDesk: "Back to the fee desk",
       studentFallback: "Student",
       modeHint:
-        "Cash clears immediately. Every other mode stays pending until a principal approves it.",
+        "Cash, UPI and card clear straight away. This one stays pending until someone confirms the money has arrived.",
       noFeeHeads: "The installment has no description.",
       collectingOf: (collecting: string, outstanding: string) =>
         `${collecting} of ${outstanding}`,
@@ -3234,7 +3208,7 @@ export const copy = {
       title: "Fee setup",
       intro:
         "What the school charges and how each class's bill is built. Changes here affect future assignments; existing bills keep the amounts they were created with.",
-      headsRow: "Fee heads",
+      headsRow: "Fee types",
       headsDetail: (count: number) =>
         count === 1 ? "1 head" : `${count} heads`,
       headsHint: "What the school charges",
@@ -3250,39 +3224,39 @@ export const copy = {
       deniedBody:
         "Configuring fees needs the fee structure permission. Ask your administrator.",
       heads: {
-        title: "Fee heads",
+        title: "Fee types",
         meta: (count: number) =>
           count === 1 ? "1 head" : `${count} heads`,
-        add: "Add head",
-        emptyTitle: "No fee heads yet",
+        add: "Add fee type",
+        emptyTitle: "No fee types yet",
         emptyBody:
-          "Add the first fee head — e.g. Tuition Fee — and build structures from it.",
+          "Add the first fee type — e.g. Tuition Fee — and build structures from it.",
         nameLabel: "Name",
         namePlaceholder: "Tuition Fee",
         shortCodeLabel: "Short code",
         shortCodePlaceholder: "TUIF",
         shortCodeHelp: "Optional. Printed where the full name won't fit.",
         categoryLabel: "Category",
-        categoryHelp: "Only optional heads can be subscribed to per student.",
+        categoryHelp: "Only optional fee types can be subscribed to per student.",
         descriptionLabel: "Note",
         descriptionPlaceholder: "Optional description",
         taxableLabel: "Taxable",
-        taxableHelp: "Tick if GST applies to this head.",
+        taxableHelp: "Tick if GST applies to this fee type.",
         taxLabel: "Tax %",
         taxPlaceholder: "18",
         taxError: "Enter a tax rate between 0 and 100.",
         nameRequired: "Enter a name.",
-        createTitle: "Add a fee head",
-        editTitle: "Edit fee head",
-        save: "Save head",
-        created: "Fee head added.",
-        updated: "Fee head updated.",
+        createTitle: "Add a fee type",
+        editTitle: "Edit fee type",
+        save: "Save fee type",
+        created: "Fee type added.",
+        updated: "Fee type updated.",
         retireAction: "Retire",
-        retireTitle: "Retire this fee head?",
+        retireTitle: "Retire this fee type?",
         retireBody:
           "It stops appearing in new structures. Existing bills, receipts and ledger rows keep it exactly as they are.",
-        retired: "Fee head retired.",
-        retireConfirm: "Retire head",
+        retired: "Fee type retired.",
+        retireConfirm: "Retire fee type",
         inactivePill: "Retired",
         categories: {
           regular: "Regular",
@@ -3291,7 +3265,7 @@ export const copy = {
           fine: "Fine",
           refundable: "Refundable",
         },
-        loadError: "Couldn't load the fee heads.",
+        loadError: "Couldn't load the fee types.",
         taxableChip: "Taxable",
       },
       structures: {
@@ -3346,7 +3320,7 @@ export const copy = {
         notFoundBody: "It may belong to another branch.",
       billTitle: "Bill students",
         billBody: (className: string) =>
-          `Give every student in ${className || "this class"} who has no bill yet this fee chart and their dues. Students already billed are left as they are.`,
+          `Give every student in ${className || "this class"} who has no bill yet this fee structure and their dues. Students already billed are left as they are.`,
         billAction: "Bill all students in this class",
         billConfirmTitle: "Bill this class?",
         billConfirmBody: (className: string) =>
@@ -3369,13 +3343,13 @@ export const copy = {
           count === 1 ? "1 line" : `${count} lines`,
         addLine: "Add line",
         noLinesTitle: "No fee lines",
-        noLinesBody: "Add what this class pays, head by head.",
-        allHeadsUsed: "Every active fee head is already in this structure.",
-        headUnknown: "Fee head",
+        noLinesBody: "Add what this class pays, fee by fee.",
+        allHeadsUsed: "Every active fee type is already in this structure.",
+        headUnknown: "Fee type",
         lineFrequency: (frequency: string, months: string) =>
           `${frequency} · ${months}`,
         rulesTitle: "Late fee rules",
-        rulesHint: "Applied when a payment is late",
+        rulesHint: "On late payments",
         addRule: "Add rule",
         noRulesTitle: "No late fee rules",
         noRulesBody: "Without a rule, a late payment costs nothing extra.",
@@ -3384,9 +3358,9 @@ export const copy = {
         schoolWide: "All classes",
         lineSheetAddTitle: "Add a fee line",
         lineSheetEditTitle: "Edit fee line",
-        headLabel: "Fee head",
-        headPlaceholder: "Choose a head",
-        headRequired: "Choose a fee head.",
+        headLabel: "Fee type",
+        headPlaceholder: "Choose a fee type",
+        headRequired: "Choose a fee type.",
         headAlreadyUsed: "Already in this structure",
         annualAmountLabel: "Annual amount",
         annualAmountError: "Enter an amount.",
@@ -3476,9 +3450,9 @@ export const copy = {
           to ? `${from} – ${to}` : `From ${from}`,
         subscriptionSheetTitle: "Subscribe to a service",
         headLabel: "Service",
-        headPlaceholder: "Choose an optional head",
-        headRequired: "Choose an optional fee head.",
-        headEmpty: "No optional fee heads are configured.",
+        headPlaceholder: "Choose an optional fee type",
+        headRequired: "Choose an optional fee type.",
+        headEmpty: "No optional fee types are configured.",
         detailLabel: "Detail",
         detailPlaceholder: "Route 3 · Dum Dum",
         monthlyAmountLabel: "Monthly amount",

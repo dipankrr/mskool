@@ -1,74 +1,59 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
-import { router } from "expo-router";
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { router, type Href } from "expo-router";
+import Animated from "react-native-reanimated";
 import { keepPreviousData } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
 import { AppIcon } from "../../components/app-icon";
 import { CapsuleButton } from "../../components/capsule-button";
-import { Card } from "../../components/card";
 import { ChoiceSheet } from "../../components/choice-sheet";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorCard } from "../../components/error-card";
+import { Notice } from "../../components/notice";
 import { ScreenFrame } from "../../components/screen-frame";
-import { SegmentBar } from "../../components/segment-bar";
-import type { SegmentOption } from "../../components/segment-bar";
 import { Skeleton } from "../../components/skeleton";
+import {
+  useFollowTabBar,
+  useHideTabBarOnScroll,
+  useTabBarSpace,
+} from "../../components/tab-bar";
 import { ThemedText } from "../../components/themed-text";
 import {
   useBranchMeta,
   useActiveContext,
 } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
+import { useSessionOpen } from "../../hooks/use-session-open";
 import { copy } from "../../lib/copy";
-import {
-  formatMoney,
-  isPositiveMoney,
-  paidPercent,
-  sumMoney,
-} from "../../lib/money";
-import { todayIso } from "../../lib/format";
+import { feesCopy } from "../../lib/fees-copy";
+import { formatMoney } from "../../lib/money";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
-import { fontFamily, fontSize, radius, spacing } from "../../theme/tokens";
-import { DuesRow } from "./dues-row";
-import { SectionHead } from "./status";
-import { useCollectedIncludesLateFees } from "../../lib/fee-prefs";
-import { monthKeyOf, splitByMonth } from "../../lib/fees";
-import { useSessionOpen } from "../../hooks/use-session-open";
-import { Notice } from "../../components/notice";
-import { FeeSetupChecklist } from "./setup-checklist";
+import { fontFamily, fontSize, gutter, radius, spacing } from "../../theme/tokens";
+import {
+  AttentionCards,
+  SmallStat,
+  TotalDueCard,
+  type AttentionCard,
+} from "./dashboard-cards";
+import { DashboardRow } from "./dashboard-row";
+import { DuesSheet } from "./dues-sheet";
 
-type FeeView = "attention" | "overdue" | "paid" | "all";
-
-const VIEW_OPTIONS: readonly SegmentOption<FeeView>[] = [
-  { value: "attention", label: "Attention", testID: "fees-view-attention" },
-  { value: "overdue", label: "Overdue", testID: "fees-view-overdue" },
-  { value: "paid", label: "Settled", testID: "fees-view-paid" },
-  { value: "all", label: "All", testID: "fees-view-all" },
-];
+type Show = "owes" | "paid" | "not_billed" | "all";
+type Sort = "oldest" | "highest" | "name";
 
 const PAGE_SIZE = 25;
-
-type Period = "month" | "session";
-const PERIOD_OPTIONS: readonly SegmentOption<Period>[] = [
-  { value: "month", label: "This month", testID: "fees-period-month" },
-  { value: "session", label: "Whole session", testID: "fees-period-session" },
-];
+const words = feesCopy.dashboard;
+const STATUS_CHIPS = ["owes", "paid", "not_billed"] as const;
 
 /**
- * The Fees tab root — the accountant's working list.
+ * The Fees tab: the owner's sketch (`docs/design/mobile/fees-dashboard-sketch.png`).
+ * Attention cards, this month's total, two small figures, then the students.
+ * The summary folds away so the list can have the whole screen, and Collect
+ * floats above everything because taking money is the daily job.
  *
- * It reads `fees.matrix.list` rather than `installment.dues` because the
- * matrix is the only fee read that returns student identity, class placement,
- * assignment/generation state, the totals, the oldest due date and pagination
- * in one call. The default view is Attention: an overdue balance, a carried
- * forward balance, or an assignment that has not been generated yet. The
- * other views are refinements of the same list, never a different screen.
- *
- * The wide matrix is not rendered here — a 12-month table on a phone is a
- * squeeze, not a feature. The month strip lives on the student desk, where
- * one student's year has room to breathe.
+ * Every figure comes from the server, so no two screens can add up differently.
  */
 export function FeesScreen({
   variant = "pushed",
@@ -80,25 +65,27 @@ export function FeesScreen({
   const branchName = useBranchMeta();
   const { has, hasAny } = usePermissions();
   const sessionOpen = useSessionOpen();
+  const tabBarSpace = useTabBarSpace();
+  const hideTabBarOnScroll = useHideTabBarOnScroll();
+  const followTabBar = useFollowTabBar();
 
   const canReadDesk = hasAny("fee_report:read", "student_fee_assignment:read");
-  const canReadMatrix = has("fee_report:read");
+  const canReadReport = has("fee_report:read");
   const canReadPayments = has("fee_payment:read");
   const canSetup = hasAny("fee_structure:read", "fee_head:read");
   const canFilter = has("class:read") && has("section:read");
+  const canCollect = has("fee_payment:create") && sessionOpen;
+  const canCreateDues = has("student_fee_assignment:update") && sessionOpen;
 
-  const [view, setView] = useState<FeeView>("attention");
-  // Month first: a counter's question is "what is due up to now?".
-  const [period, setPeriod] = useState<Period>("month");
+  const [summaryOpen, setSummaryOpen] = useState(true);
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
+  const [show, setShow] = useState<Show>("owes");
+  const [sort, setSort] = useState<Sort>("oldest");
   const [classId, setClassId] = useState<string | null>(null);
   const [sectionId, setSectionId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const [classSheet, setClassSheet] = useState(false);
-  const [sectionSheet, setSectionSheet] = useState(false);
-
-  const today = todayIso();
+  const [sheet, setSheet] = useState<"class" | "section" | "sort" | "dues" | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -108,12 +95,35 @@ export function FeesScreen({
     return () => clearTimeout(timer);
   }, [query]);
 
+  const enabled =
+    ready && canReadReport && Boolean(organizationId) && Boolean(academicYear?.id);
+
+  const overview = trpc.fees.dashboard.overview.useQuery(
+    {
+      organizationId: organizationId ?? "",
+      academicYearId: academicYear?.id ?? "",
+    },
+    { enabled },
+  );
+
+  const list = trpc.fees.dashboard.list.useQuery(
+    {
+      organizationId: organizationId ?? "",
+      academicYearId: academicYear?.id ?? "",
+      search: search.length > 0 ? search : undefined,
+      classId: classId ?? undefined,
+      sectionId: sectionId ?? undefined,
+      show,
+      sort,
+      page,
+      pageSize: PAGE_SIZE,
+    },
+    { enabled, placeholderData: keepPreviousData },
+  );
+
   const classes = trpc.academic.class.list.useQuery(
     { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
-    {
-      enabled: ready && Boolean(organizationId) && canFilter,
-      staleTime: 5 * 60_000,
-    },
+    { enabled: enabled && canFilter, staleTime: 5 * 60_000 },
   );
   const sections = trpc.academic.section.list.useQuery(
     {
@@ -121,162 +131,154 @@ export function FeesScreen({
       schoolId: schoolId ?? undefined,
       academicYearId: academicYear?.id ?? "",
     },
-    {
-      enabled:
-        ready &&
-        canFilter &&
-        Boolean(organizationId) &&
-        Boolean(academicYear?.id),
-      staleTime: 5 * 60_000,
-    },
+    { enabled: enabled && canFilter, staleTime: 5 * 60_000 },
   );
 
-  const list = trpc.fees.matrix.list.useQuery(
-    {
-      organizationId: organizationId ?? "",
-      academicYearId: academicYear?.id ?? "",
-      search: search.length > 0 ? search : undefined,
-      classId: classId ?? undefined,
-      sectionId: sectionId ?? undefined,
-      page,
-      pageSize: PAGE_SIZE,
-      sort: "oldestDue",
-      view,
-    },
-    {
-      enabled:
-        ready &&
-        canReadMatrix &&
-        Boolean(organizationId) &&
-        Boolean(academicYear?.id),
-      placeholderData: keepPreviousData,
-    },
-  );
-
-  // Whole-cohort counts for the setup checklist: the list above is filtered
-  // by view and search, so it cannot say how many students are unbilled.
-  const cohort = trpc.fees.matrix.list.useQuery(
-    {
-      organizationId: organizationId ?? "",
-      academicYearId: academicYear?.id ?? "",
-      page: 1,
-      pageSize: 1,
-      view: "all",
-    },
-    {
-      enabled:
-        ready &&
-        canReadMatrix &&
-        canSetup &&
-        Boolean(organizationId) &&
-        Boolean(academicYear?.id),
-      staleTime: 60_000,
-    },
-  );
-
-  const rows = useMemo(() => list.data?.rows ?? [], [list.data]);
-  const totals = list.data?.cohortTotals;
-  const pageInfo = list.data?.pageInfo;
-
-  const sectionOptions = useMemo(() => {
-    const all = sections.data ?? [];
-    return (classId ? all.filter((row) => row.classId === classId) : all).map(
-      (row) => ({
-        id: row.id,
-        label: row.name,
-        detail:
-          classes.data?.find((cls) => cls.id === row.classId)?.name ?? null,
-      }),
-    );
-  }, [sections.data, classes.data, classId]);
-
-  const classLabel =
-    classes.data?.find((row) => row.id === classId)?.name ??
-    copy.fees.dues.allClasses;
-  const sectionLabel =
-    sectionOptions.find((row) => row.id === sectionId)?.label ??
-    copy.fees.dues.allSections;
-
-  const filtered = Boolean(search || classId || sectionId);
-  const outstanding = sumMoney([
-    totals?.balanceAmount,
-    totals?.openingBalance.balance,
-  ]);
-  const carriedForward = totals?.openingBalance.balance ?? "0.00";
-  // Gap 13: the viewer picks whether Collected counts late fees (the same
-  // switch as Payments). The progress bar stays fees-only: it measures bills.
-  const includeLateFees = useCollectedIncludesLateFees();
-  const collected = totals
-    ? includeLateFees
-      ? sumMoney([totals.paidAmount, totals.lateFeePaidAmount])
-      : totals.paidAmount
-    : null;
-  const percent = totals ? paidPercent(totals.paidAmount, totals.netAmount) : 0;
-  const currentMonth = monthKeyOf(today);
-  const monthSplit = useMemo(
+  const sectionOptions = useMemo(
     () =>
-      splitByMonth(
-        (list.data?.monthSummaries ?? []).map((summary) => ({
-          month: summary.month,
-          balanceAmount: summary.balanceAmount,
+      (sections.data ?? [])
+        .filter((row) => (classId ? row.classId === classId : true))
+        .map((row) => ({
+          id: row.id,
+          label: row.name,
         })),
-        currentMonth,
-        totals?.openingBalance.balance,
-      ),
-    [list.data?.monthSummaries, currentMonth, totals?.openingBalance.balance],
+    [sections.data, classId],
   );
+
+  const data = overview.data;
+
+  const cards: AttentionCard[] = useMemo(() => {
+    if (!data) return [];
+    const out: AttentionCard[] = [];
+    const steps = [
+      data.setup.hasFeeTypes,
+      data.setup.structures > 0,
+      data.setup.structures > 0 && data.setup.structuresNotStarted === 0,
+    ];
+    const done = steps.filter(Boolean).length;
+    if (canSetup && done < steps.length) {
+      out.push({
+        key: "setup",
+        icon: "settings",
+        tone: "positive",
+        title: words.setupCardTitle,
+        body: words.setupCardBody(done, steps.length),
+        onPress: () => router.push("/fees/setup"),
+      });
+    }
+    // Automatic is paused, so nobody else will add these. This must not be missable.
+    if (data.paused && data.paused.missingDues > 0 && canCreateDues) {
+      out.push({
+        key: "paused",
+        icon: "warning",
+        tone: "caution",
+        title: words.pausedCardTitle(data.monthLabel),
+        body: words.pausedCardBody(data.paused.missingDues),
+        onPress: () => setSheet("dues"),
+      });
+    }
+    if (data.pending.count > 0 && canReadPayments) {
+      out.push({
+        key: "pending",
+        icon: "clock",
+        tone: "caution",
+        title: words.pendingCardTitle(data.pending.count),
+        body: words.pendingCardBody(formatMoney(data.pending.amount)),
+        onPress: () => router.push("/fees/payments"),
+      });
+    }
+    if (data.studentsNotBilled > 0 && data.setup.structures > 0) {
+      out.push({
+        key: "not-billed",
+        icon: "warningCircle",
+        tone: "neutral",
+        title: words.notBilledCardTitle(data.studentsNotBilled),
+        body: words.notBilledCardBody,
+        onPress: () => {
+          setShow("not_billed");
+          setPage(1);
+          setSummaryOpen(false);
+        },
+      });
+    }
+    return out;
+  }, [data, canSetup, canReadPayments, canCreateDues]);
+
+  const refresh = () => {
+    void overview.refetch();
+    void list.refetch();
+  };
 
   const resetFilters = () => {
     setQuery("");
     setSearch("");
     setClassId(null);
     setSectionId(null);
+    setShow("owes");
     setPage(1);
   };
 
-  const paymentsAction = canReadPayments
-    ? {
-        label: "Payments",
-        icon: "receipt" as const,
-        onPress: () => router.push("/fees/payments"),
-        accessibilityHint: "Opens every receipt recorded this session",
-        testID: "fees-payments",
-      }
-    : undefined;
-
-  const setupAction = canSetup
-    ? {
-        label: "Fee setup",
-        icon: "settings" as const,
-        iconOnly: true,
-        onPress: () => router.push("/fees/setup"),
-        accessibilityHint: "Opens fee heads, structures and late fees",
-        testID: "fees-setup",
-      }
-    : undefined;
-
   const frame = (children: ReactNode) => (
-    <ScreenFrame
-      title={copy.fees.title}
-      meta={
-        list.data
-          ? period === "month"
-            ? copy.fees.dues.metaDueNow(formatMoney(monthSplit.dueNow))
-            : copy.fees.dues.meta(formatMoney(outstanding))
-          : branchName
-      }
-      backAccessibilityLabel={
-        variant === "pushed" ? copy.common.back : undefined
-      }
-      action={paymentsAction}
-      secondaryAction={setupAction}
-      onRefresh={canReadMatrix ? () => void list.refetch() : undefined}
-      refreshing={list.isRefetching}
-      titleTestID="fees-title"
-      padForTabBar={variant === "tab"}
-    >
-      {children}
-    </ScreenFrame>
+    <View style={styles.root}>
+      <ScreenFrame
+        title={words.title}
+        meta={branchName}
+        backAccessibilityLabel={
+          variant === "pushed" ? copy.common.back : undefined
+        }
+        action={
+          canReadPayments
+            ? {
+                label: copy.fees.payments.title,
+                icon: "receipt",
+                onPress: () => router.push("/fees/payments"),
+                testID: "fees-payments",
+              }
+            : undefined
+        }
+        secondaryAction={
+          canSetup
+            ? {
+                label: copy.fees.setup.title,
+                icon: "settings",
+                iconOnly: true,
+                onPress: () => router.push("/fees/setup"),
+                testID: "fees-setup",
+              }
+            : undefined
+        }
+        onRefresh={canReadReport ? refresh : undefined}
+        refreshing={overview.isRefetching || list.isRefetching}
+        titleTestID="fees-title"
+        padForTabBar={variant === "tab"}
+        onScroll={variant === "tab" ? hideTabBarOnScroll : undefined}
+      >
+        {children}
+      </ScreenFrame>
+      {canCollect && enabled ? (
+        <Animated.View
+          style={[
+            styles.fabSpot,
+            { bottom: (variant === "tab" ? tabBarSpace : 0) + spacing.md },
+            variant === "tab" ? followTabBar : null,
+          ]}
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={words.collect}
+            accessibilityHint={words.collectHint}
+            onPress={() => router.push("/fees/collect" as Href)}
+            style={({ pressed }) => [styles.fab, pressed ? styles.fabPressed : null]}
+            testID="fees-collect-fab"
+          >
+            <AppIcon name="collect" size={20} color={colors.onAccent} />
+            <ThemedText variant="bodyStrong" color={colors.onAccent}>
+              {words.collect}
+            </ThemedText>
+          </Pressable>
+        </Animated.View>
+      ) : null}
+    </View>
   );
 
   if (!canReadDesk) {
@@ -291,15 +293,7 @@ export function FeesScreen({
   }
 
   if (!ready || yearPending) {
-    return frame(
-      <View style={styles.skeletonWrap}>
-        <Skeleton height={140} />
-        <Skeleton height={48} />
-        {[0, 1, 2].map((key) => (
-          <Skeleton key={key} height={104} />
-        ))}
-      </View>,
-    );
+    return frame(<LoadingBody />);
   }
 
   if (!organizationId) {
@@ -324,7 +318,7 @@ export function FeesScreen({
     );
   }
 
-  if (!canReadMatrix) {
+  if (!canReadReport) {
     return frame(
       <EmptyState
         icon="lock"
@@ -345,27 +339,22 @@ export function FeesScreen({
     );
   }
 
-  if (list.isError) {
+  if (overview.isError) {
     return frame(
       <ErrorCard
-        cause={list.error}
-        onRetry={() => void list.refetch()}
+        cause={overview.error}
+        onRetry={() => void overview.refetch()}
         testID="fees-error"
       />,
     );
   }
 
-  if (list.isPending && !list.data) {
-    return frame(
-      <View style={styles.skeletonWrap}>
-        <Skeleton height={140} />
-        <Skeleton height={48} />
-        {[0, 1, 2].map((key) => (
-          <Skeleton key={key} height={104} />
-        ))}
-      </View>,
-    );
+  if (!data) {
+    return frame(<LoadingBody />);
   }
+
+  const rows = list.data?.rows ?? [];
+  const noSetup = !data.setup.hasFeeTypes || data.setup.structures === 0;
 
   return frame(
     <View style={styles.body}>
@@ -376,144 +365,80 @@ export function FeesScreen({
           testID="fees-session-closed"
         />
       ) : null}
-      {cohort.data ? (
-        <FeeSetupChecklist
-          studentCount={cohort.data.cohortTotals.studentCount}
-          billedCount={cohort.data.cohortTotals.assignedCount}
-        />
+
+      {summaryOpen ? (
+        <>
+          <AttentionCards cards={cards} />
+          <TotalDueCard
+            monthLabel={data.monthLabel}
+            due={data.dueThisMonth}
+            billed={data.billedThisMonth}
+            paid={data.paidOnThisMonth}
+            collected={data.collectedThisMonth}
+            trend={data.trend.map((point) => point.balance)}
+          />
+          <View style={styles.stats}>
+            <SmallStat
+              label={words.allTimeDue}
+              value={formatMoney(data.allTimeDue)}
+              testID="fees-all-time-due"
+            />
+            <SmallStat
+              label={words.studentsWithDue}
+              value={words.studentsOf(data.studentsWithDue, data.studentsBilled)}
+              testID="fees-students-with-due"
+            />
+          </View>
+          {canReadPayments ? (
+            <Pressable
+              accessibilityRole="link"
+              onPress={() => router.push("/fees/payments")}
+              style={styles.reportLink}
+              testID="fees-report-link"
+            >
+              <ThemedText variant="meta" color={colors.accentDeep}>
+                {words.report}
+              </ThemedText>
+              <AppIcon name="chevronRight" size={16} color={colors.accentDeep} />
+            </Pressable>
+          ) : null}
+        </>
       ) : null}
 
-      <SegmentBar
-        label={copy.fees.dues.periodLabel}
-        value={period}
-        options={PERIOD_OPTIONS}
-        onChange={setPeriod}
-      />
-
-      {period === "month" ? (
-        <Card style={styles.summary}>
-          <ThemedText variant="sectionLabel">
-            {copy.fees.dues.dueNowLabel} ·{" "}
-            {copy.fees.dues.students(totals?.studentCount ?? 0)}
-          </ThemedText>
-          <ThemedText
-            variant="hero"
-            numberOfLines={1}
-            maxFontSizeMultiplier={1.15}
-            testID="fees-due-now"
-          >
-            {formatMoney(monthSplit.dueNow)}
-          </ThemedText>
-          <View style={styles.summaryFacts}>
-            <ThemedText variant="meta">
-              {copy.fees.dues.thisMonth} {formatMoney(monthSplit.thisMonth)}
-            </ThemedText>
-            <ThemedText
-              variant="meta"
-              color={
-                isPositiveMoney(monthSplit.overdue)
-                  ? colors.tone.critical.fg
-                  : undefined
-              }
-            >
-              {copy.fees.dues.overdue} {formatMoney(monthSplit.overdue)}
-            </ThemedText>
-          </View>
-          {isPositiveMoney(monthSplit.previous) ? (
-            <ThemedText variant="meta">
-              {copy.fees.dues.previousDues(formatMoney(monthSplit.previous))}
-            </ThemedText>
-          ) : null}
-          <ThemedText variant="meta">
-            {copy.fees.dues.laterThisSession(formatMoney(monthSplit.later))}
-          </ThemedText>
-          <ThemedText variant="meta">
-            {copy.fees.dues.collected} {formatMoney(collected)}
-            {" · "}
-            {includeLateFees
-              ? copy.fees.collectedLateFees.included
-              : copy.fees.collectedLateFees.excluded}
-          </ThemedText>
-        </Card>
-      ) : (
-        <Card style={styles.summary}>
-          <ThemedText variant="sectionLabel">
-            {copy.fees.dues.summaryLabel} ·{" "}
-            {copy.fees.dues.students(totals?.studentCount ?? 0)}
-          </ThemedText>
-          <ThemedText
-            variant="hero"
-            numberOfLines={1}
-            maxFontSizeMultiplier={1.15}
-            testID="fees-outstanding"
-          >
-            {formatMoney(outstanding)}
-          </ThemedText>
-          <View style={styles.summaryFacts}>
-            <ThemedText variant="meta">
-              {copy.fees.dues.assessed} {formatMoney(totals?.netAmount)}
-            </ThemedText>
-            <ThemedText variant="meta">
-              {copy.fees.dues.collected} {formatMoney(collected)}
-              {" · "}
-              {includeLateFees
-                ? copy.fees.collectedLateFees.included
-                : copy.fees.collectedLateFees.excluded}
-            </ThemedText>
-          </View>
-          {isPositiveMoney(carriedForward) ? (
-            <ThemedText variant="meta">
-              {copy.fees.desk.includesOpening(formatMoney(carriedForward))}
-            </ThemedText>
-          ) : null}
-          <View
-            style={styles.track}
-            accessibilityRole="progressbar"
-            accessibilityValue={{ min: 0, max: 100, now: percent }}
-            accessibilityLabel={copy.fees.desk.progress(percent)}
-          >
-            <View style={[styles.fill, { width: `${percent}%` }]} />
-          </View>
-          <ThemedText variant="meta">
-            {copy.fees.desk.progress(percent)}
-          </ThemedText>
-        </Card>
-      )}
-
-      <SegmentBar
-        label={copy.fees.title}
-        value={view}
-        options={VIEW_OPTIONS}
-        onChange={(next) => {
-          setView(next);
-          setPage(1);
-        }}
-      />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={summaryOpen ? words.collapse : words.expand}
+        accessibilityState={{ expanded: summaryOpen }}
+        onPress={() => setSummaryOpen((value) => !value)}
+        style={styles.collapse}
+        hitSlop={8}
+        testID="fees-summary-toggle"
+      >
+        <AppIcon
+          name={summaryOpen ? "chevronUp" : "chevronDown"}
+          size={22}
+          color={colors.muted}
+        />
+      </Pressable>
 
       <View style={styles.searchWrap}>
-        <AppIcon
-          name="search"
-          size={18}
-          color={colors.muted}
-          style={styles.searchIcon}
-        />
+        <AppIcon name="search" size={18} color={colors.muted} />
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder={copy.fees.dues.searchPlaceholder}
+          placeholder={words.search}
           placeholderTextColor={colors.muted}
           autoCorrect={false}
           autoCapitalize="none"
           returnKeyType="search"
-          accessibilityLabel={copy.fees.dues.searchPlaceholder}
-          accessibilityHint={copy.fees.dues.searchHint}
+          accessibilityLabel={words.search}
           style={styles.searchInput}
           testID="fees-search"
         />
         {query.length > 0 ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={copy.fees.dues.clearSearch}
+            accessibilityLabel={words.clearSearch}
             hitSlop={8}
             onPress={() => setQuery("")}
             testID="fees-search-clear"
@@ -523,84 +448,134 @@ export function FeesScreen({
         ) : null}
       </View>
 
-      {canFilter ? (
-        <View style={styles.chips}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.filterRow}
+        testID="fees-filters"
+      >
+        {canFilter ? (
+          <FilterPill
+            label={classes.data?.find((row) => row.id === classId)?.name ?? words.classLabel}
+            accessibilityLabel={words.classLabel}
+            selected={Boolean(classId)}
+            dropdown
+            onPress={() => setSheet("class")}
+            testID="fees-filter-class"
+          />
+        ) : null}
+        {canFilter && classId && sectionOptions.length > 0 ? (
+          <FilterPill
+            label={sectionOptions.find((row) => row.id === sectionId)?.label ?? words.sectionShort}
+            accessibilityLabel={words.sectionLabel}
+            selected={Boolean(sectionId)}
+            dropdown
+            onPress={() => setSheet("section")}
+            testID="fees-filter-section"
+          />
+        ) : null}
+        {STATUS_CHIPS.map((id) => (
+          <FilterPill
+            key={id}
+            label={words.show[id]}
+            selected={show === id}
+            // Tapping the chip that's on turns it off, which shows everyone.
+            onPress={() => {
+              setShow(show === id ? "all" : id);
+              setPage(1);
+            }}
+            testID={`fees-filter-${id}`}
+          />
+        ))}
+      </ScrollView>
+
+      {list.data ? (
+        <View style={styles.listHead}>
+          <ThemedText
+            variant="meta"
+            numberOfLines={1}
+            style={styles.count}
+            testID="fees-count"
+          >
+            {show === "paid" || show === "not_billed"
+              ? words.countNoTotal(list.data.total)
+              : words.count(list.data.total, formatMoney(list.data.totalDue))}
+          </ThemedText>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`${copy.fees.dues.allClasses}: ${classLabel}`}
-            accessibilityHint={copy.fees.dues.filterHint}
-            onPress={() => setClassSheet(true)}
-            style={({ pressed }) => [
-              styles.chip,
-              pressed ? styles.chipPressed : null,
-            ]}
-            testID="fees-class-filter"
+            accessibilityLabel={`${words.sort}: ${words.sorts[sort]}`}
+            hitSlop={8}
+            onPress={() => setSheet("sort")}
+            style={styles.sort}
+            testID="fees-sort"
           >
-            <ThemedText variant="meta" numberOfLines={1}>
-              {classLabel}
+            <AppIcon name="sort" size={16} color={colors.accentDeep} />
+            <ThemedText variant="meta" numberOfLines={1} color={colors.accentDeep}>
+              {words.sorts[sort]}
             </ThemedText>
-            <AppIcon name="chevronDown" size={14} color={colors.muted} />
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`${copy.fees.dues.allSections}: ${sectionLabel}`}
-            accessibilityHint={copy.fees.dues.sectionHint}
-            onPress={() => setSectionSheet(true)}
-            style={({ pressed }) => [
-              styles.chip,
-              pressed ? styles.chipPressed : null,
-            ]}
-            testID="fees-section-filter"
-          >
-            <ThemedText variant="meta" numberOfLines={1}>
-              {sectionLabel}
-            </ThemedText>
-            <AppIcon name="chevronDown" size={14} color={colors.muted} />
           </Pressable>
         </View>
       ) : null}
 
-      {rows.length > 0 ? (
-        <>
-          <SectionHead
-            title={copy.fees.title}
-            hint={
-              pageInfo
-                ? copy.fees.dues.count(rows.length, pageInfo.total)
-                : undefined
-            }
-          />
-          <View style={styles.rows}>
-            {rows.map((row) => (
-              <DuesRow
-                key={row.studentId}
-                row={row}
-                today={today}
-                currentMonth={currentMonth}
-                period={period}
-                onPress={() =>
-                  router.push({
-                    pathname: "/fees/student/[studentId]",
-                    params: {
-                      studentId: row.studentId,
-                      admissionNumber: row.admissionNumber,
-                      studentName: row.studentName,
-                    },
-                  })
-                }
-              />
-            ))}
-          </View>
-        </>
-      ) : filtered ? (
+      {list.isError ? (
+        <ErrorCard
+          cause={list.error}
+          onRetry={() => void list.refetch()}
+          testID="fees-list-error"
+        />
+      ) : list.isPending && !list.data ? (
+        <View style={styles.rows}>
+          {[0, 1, 2].map((key) => (
+            <Skeleton key={key} height={96} />
+          ))}
+        </View>
+      ) : rows.length > 0 ? (
+        <View style={styles.rows}>
+          {rows.map((row) => (
+            <DashboardRow
+              key={row.studentId}
+              row={row}
+              onPress={() =>
+                router.push({
+                  pathname: "/fees/student/[studentId]",
+                  params: {
+                    studentId: row.studentId,
+                    admissionNumber: row.admissionNumber,
+                    studentName: row.studentName,
+                  },
+                })
+              }
+            />
+          ))}
+        </View>
+      ) : noSetup ? (
+        <EmptyState
+          icon="fees"
+          title={words.emptySetupTitle}
+          message={words.emptySetupBody}
+          testID="fees-empty-setup"
+        >
+          {canSetup ? (
+            <CapsuleButton
+              title={words.emptySetupAction}
+              icon="settings"
+              variant="secondary"
+              size="compact"
+              onPress={() => router.push("/fees/setup")}
+              testID="fees-empty-setup-action"
+            />
+          ) : null}
+        </EmptyState>
+      ) : search || classId || sectionId || show !== "owes" ? (
         <EmptyState
           icon="search"
-          title={copy.fees.dues.filteredEmptyTitle}
-          message={copy.fees.dues.filteredEmptyBody}
+          title={words.emptyFilteredTitle}
+          message={words.emptyFilteredBody}
           testID="fees-filtered-empty"
         >
           <CapsuleButton
-            title={copy.fees.dues.clearFilters}
+            title={words.clearFilters}
             variant="secondary"
             size="compact"
             onPress={resetFilters}
@@ -609,116 +584,179 @@ export function FeesScreen({
         </EmptyState>
       ) : (
         <EmptyState
-          icon="fees"
-          title={copy.fees.dues.emptyTitle}
-          message={copy.fees.dues.emptyBody}
+          icon="check"
+          title={words.emptyOwesTitle}
+          message={words.emptyOwesBody}
           testID="fees-empty"
-        >
-          {canSetup ? (
-            <CapsuleButton
-              title={copy.fees.dues.emptyAction}
-              icon="settings"
-              variant="secondary"
-              size="compact"
-              onPress={() => router.push("/fees/setup")}
-              testID="fees-empty-setup"
-            />
-          ) : null}
-        </EmptyState>
+        />
       )}
 
-      {pageInfo && pageInfo.totalPages > 1 ? (
+      {list.data && list.data.totalPages > 1 ? (
         <View style={styles.pager}>
           <CapsuleButton
-            title="Previous"
+            title={words.previousPage}
             variant="secondary"
             size="mini"
-            disabled={!pageInfo.hasPreviousPage}
+            disabled={page <= 1}
             onPress={() => setPage((current) => Math.max(1, current - 1))}
             testID="fees-prev-page"
           />
-          <ThemedText variant="meta">{`${pageInfo.page} / ${pageInfo.totalPages}`}</ThemedText>
+          <ThemedText variant="meta">{`${list.data.page} / ${list.data.totalPages}`}</ThemedText>
           <CapsuleButton
-            title="Next"
+            title={words.nextPage}
             variant="secondary"
             size="mini"
-            disabled={!pageInfo.hasNextPage}
+            disabled={page >= list.data.totalPages}
             onPress={() => setPage((current) => current + 1)}
             testID="fees-next-page"
           />
         </View>
       ) : null}
 
+      <View style={styles.fabSpace} />
+
       <ChoiceSheet
-        visible={classSheet}
-        title={copy.fees.dues.allClasses}
+        visible={sheet === "class"}
+        title={words.classLabel}
         options={[
-          { id: "", label: copy.fees.dues.allClasses },
-          ...(classes.data ?? []).map((row) => ({
-            id: row.id,
-            label: row.name,
-          })),
+          { id: "", label: words.allClasses },
+          ...(classes.data ?? []).map((row) => ({ id: row.id, label: row.name })),
         ]}
         currentId={classId ?? ""}
         onSelect={(id) => {
           setClassId(id || null);
           setSectionId(null);
           setPage(1);
-          setClassSheet(false);
+          setSheet(null);
         }}
-        onDismiss={() => setClassSheet(false)}
+        onDismiss={() => setSheet(null)}
         testIDPrefix="fees-class"
       />
-
       <ChoiceSheet
-        visible={sectionSheet}
-        title={copy.fees.dues.allSections}
-        options={[
-          { id: "", label: copy.fees.dues.allSections },
-          ...sectionOptions,
-        ]}
+        visible={sheet === "section"}
+        title={words.sectionLabel}
+        options={[{ id: "", label: words.allSections }, ...sectionOptions]}
         currentId={sectionId ?? ""}
         onSelect={(id) => {
           setSectionId(id || null);
           setPage(1);
-          setSectionSheet(false);
+          setSheet(null);
         }}
-        onDismiss={() => setSectionSheet(false)}
+        onDismiss={() => setSheet(null)}
         testIDPrefix="fees-section"
       />
+      <ChoiceSheet
+        visible={sheet === "sort"}
+        title={words.sort}
+        options={(["oldest", "highest", "name"] as const).map((id) => ({
+          id,
+          label: words.sorts[id],
+        }))}
+        currentId={sort}
+        onSelect={(id) => {
+          setSort(id as Sort);
+          setPage(1);
+          setSheet(null);
+        }}
+        onDismiss={() => setSheet(null)}
+        testIDPrefix="fees-sort"
+      />
+      {sheet === "dues" && organizationId && schoolId && academicYear ? (
+        <DuesSheet
+          organizationId={organizationId}
+          schoolId={schoolId}
+          academicYearId={academicYear.id}
+          sessionEnd={academicYear.endDate}
+          onClose={() => setSheet(null)}
+        />
+      ) : null}
     </View>,
   );
 }
 
+function LoadingBody() {
+  return (
+    <View style={styles.body}>
+      <Skeleton height={140} />
+      <Skeleton height={72} />
+      {[0, 1, 2].map((key) => (
+        <Skeleton key={key} height={96} />
+      ))}
+    </View>
+  );
+}
+
+function FilterPill({
+  label,
+  accessibilityLabel,
+  selected,
+  dropdown = false,
+  onPress,
+  testID,
+}: {
+  label: string;
+  accessibilityLabel?: string;
+  selected: boolean;
+  dropdown?: boolean;
+  onPress: () => void;
+  testID: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ? `${accessibilityLabel}: ${label}` : label}
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.pill,
+        selected ? styles.pillSelected : null,
+        pressed ? styles.pillPressed : null,
+      ]}
+      testID={testID}
+    >
+      <ThemedText
+        variant="meta"
+        numberOfLines={1}
+        color={selected ? colors.accentDeep : colors.ink}
+      >
+        {label}
+      </ThemedText>
+      {dropdown ? (
+        <AppIcon
+          name="chevronDown"
+          size={14}
+          color={selected ? colors.accentDeep : colors.muted}
+        />
+      ) : null}
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
   body: {
     gap: spacing.md,
     marginTop: spacing.sm,
   },
-  skeletonWrap: {
-    gap: spacing.md,
-    marginTop: spacing.sm,
-  },
-  summary: {
-    gap: spacing.xs,
-  },
-  summaryFacts: {
+  stats: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
     gap: spacing.sm,
   },
-  track: {
-    height: 8,
-    marginTop: spacing.xs,
-    borderRadius: radius.full,
-    backgroundColor: colors.field,
-    overflow: "hidden",
+  reportLink: {
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xxs,
   },
-  fill: {
-    height: "100%",
-    borderRadius: radius.full,
-    backgroundColor: colors.accent,
+  collapse: {
+    alignSelf: "center",
+    minHeight: 32,
+    minWidth: 64,
+    alignItems: "center",
+    justifyContent: "center",
   },
   searchWrap: {
     minHeight: 48,
@@ -729,9 +767,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     backgroundColor: colors.field,
   },
-  searchIcon: {
-    marginTop: 1,
-  },
   searchInput: {
     flex: 1,
     color: colors.ink,
@@ -739,24 +774,42 @@ const styles = StyleSheet.create({
     fontSize: fontSize.callout,
     fontFamily: fontFamily.regular,
   },
-  chips: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-  },
-  chip: {
-    minHeight: 36,
+  filterRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
+  },
+  pill: {
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xxs,
     paddingHorizontal: spacing.md,
     borderRadius: radius.full,
     borderWidth: 1,
     borderColor: colors.hairline,
     backgroundColor: colors.surface,
   },
-  chipPressed: {
+  pillSelected: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentTint,
+  },
+  pillPressed: {
     backgroundColor: colors.field,
+  },
+  listHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  sort: {
+    minHeight: 32,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xxs,
+  },
+  count: {
+    flex: 1,
   },
   rows: {
     gap: spacing.sm,
@@ -767,5 +820,29 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: spacing.md,
     paddingVertical: spacing.sm,
+  },
+  fabSpace: {
+    height: 64,
+  },
+  fabSpot: {
+    position: "absolute",
+    right: gutter,
+  },
+  fab: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.full,
+    backgroundColor: colors.accent,
+    elevation: 4,
+    shadowColor: colors.ink,
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+  },
+  fabPressed: {
+    backgroundColor: colors.accentDeep,
   },
 });

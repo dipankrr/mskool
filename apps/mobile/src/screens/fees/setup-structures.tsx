@@ -8,7 +8,6 @@ import type { ReactNode } from "react";
 import { AppIcon } from "../../components/app-icon";
 import { CapsuleButton } from "../../components/capsule-button";
 import { Card } from "../../components/card";
-import { ChoicePills } from "../../components/choice-pills";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorCard } from "../../components/error-card";
 import { FormField } from "../../components/form-field";
@@ -23,6 +22,7 @@ import { ThemedText } from "../../components/themed-text";
 import { useActiveContext } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
 import { copy } from "../../lib/copy";
+import { feesCopy } from "../../lib/fees-copy";
 import { toFriendlyError } from "../../lib/errors";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
@@ -32,9 +32,6 @@ import { useSessionOpen } from "../../hooks/use-session-open";
 
 type Structure =
   inferRouterOutputs<AppRouter>["fees"]["structure"]["list"][number];
-type InstallmentMode = "upfront" | "term_wise" | "monthly";
-
-const MODE_ORDER: InstallmentMode[] = ["term_wise", "monthly", "upfront"];
 
 /**
  * Each class's bill for the session (Step 5E).
@@ -303,18 +300,15 @@ function StructureRow({
   first: boolean;
   onPress: () => void;
 }) {
-  const mode =
-    copy.fees.setup.structures.modes[
-      structure.installmentMode as InstallmentMode
-    ] ?? structure.installmentMode;
-
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={[
         structure.name,
         className,
-        mode,
+        structure.billingStartedAt
+          ? feesCopy.line.billingOnTitle
+          : feesCopy.line.billingOffTitle,
         structure.isActive ? null : copy.fees.setup.structures.inactivePill,
       ]
         .filter(Boolean)
@@ -332,7 +326,10 @@ function StructureRow({
           {structure.name}
         </ThemedText>
         <ThemedText variant="meta" numberOfLines={1}>
-          {className} · {mode}
+          {className} ·{" "}
+          {structure.billingStartedAt
+            ? feesCopy.line.billingOnTitle
+            : feesCopy.line.billingOffTitle}
         </ThemedText>
       </View>
       {structure.isActive ? null : (
@@ -370,9 +367,6 @@ function StructureSheet({
   const [name, setName] = useState(structure?.name ?? "");
   const [classId, setClassId] = useState<string | null>(
     structure?.classId ?? null,
-  );
-  const [installmentMode, setInstallmentMode] = useState<InstallmentMode>(
-    (structure?.installmentMode as InstallmentMode | undefined) ?? "term_wise",
   );
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -417,7 +411,6 @@ function StructureSheet({
             name: name.trim(),
             academicYearId,
             classId,
-            installmentMode,
           },
         });
         await invalidate();
@@ -429,7 +422,7 @@ function StructureSheet({
           organizationId,
           schoolId,
           id: structure.id,
-          data: { name: name.trim(), installmentMode },
+          data: { name: name.trim() },
         });
         await invalidate();
         onDone(copy.fees.setup.structures.updated);
@@ -484,18 +477,6 @@ function StructureSheet({
         }
         disabled={mode === "edit"}
         testID="fee-structure-class"
-      />
-
-      <ChoicePills
-        label={copy.fees.setup.structures.modeLabel}
-        value={installmentMode}
-        options={MODE_ORDER.map((value) => ({
-          value,
-          label: copy.fees.setup.structures.modes[value],
-        }))}
-        onChange={setInstallmentMode}
-        help={copy.fees.setup.structures.modeHelp}
-        testIDPrefix="fee-structure-mode"
       />
 
       {error ? (

@@ -12,6 +12,7 @@ import {
 } from "@expo/ui/community/bottom-sheet";
 
 import { CapsuleButton } from "../../../components/capsule-button";
+import { DateField } from "../../../components/date-field";
 import { ErrorCard } from "../../../components/error-card";
 import { SectionLabel } from "../../../components/section-label";
 import { ThemedText } from "../../../components/themed-text";
@@ -83,6 +84,7 @@ function GenerateBody({ onDone }: { onDone: () => void }) {
   const utils = trpc.useUtils();
   const [rows, setRows] = useState(defaultWeekdayRows);
   const [result, setResult] = useState<number | null>(null);
+  const [startFrom, setStartFrom] = useState(academicYear?.startDate ?? "");
 
   const generate = trpc.attendance.calendar.generate.useMutation({
     onSuccess: (data) => {
@@ -101,6 +103,7 @@ function GenerateBody({ onDone }: { onDone: () => void }) {
       data: {
         academicYearId: academicYear.id,
         ...buildGenerateInput(rows),
+        ...(startFrom ? { startFrom } : {}),
       },
     });
   };
@@ -176,6 +179,17 @@ function GenerateBody({ onDone }: { onDone: () => void }) {
               </Pressable>
             ))}
           </BottomSheetScrollView>
+          {academicYear ? (
+            <DateField
+              label={copy.attendance.manage.calendar.startFromLabel}
+              value={startFrom}
+              onChange={setStartFrom}
+              help={copy.attendance.manage.calendar.startFromHelp}
+              minimumDate={academicYear.startDate}
+              maximumDate={academicYear.endDate}
+              testID="generate-start-from"
+            />
+          ) : null}
           {!valid ? (
             <ThemedText
               variant="meta"

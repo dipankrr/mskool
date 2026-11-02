@@ -17,6 +17,7 @@ import {
 } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
 import { copy } from "../../lib/copy";
+import { feesCopy } from "../../lib/fees-copy";
 import {
   allocationLabel,
   buildReceiptText,
@@ -147,6 +148,7 @@ export function ReceiptScreen() {
           lines,
           amount: payment.amount,
           lateFee,
+          discount: payment?.discountAmount ?? null,
           total: total ?? payment.amount,
           modeLabel: paymentModeLabel(payment.paymentMode),
           reference: payment.transactionReference,
@@ -360,6 +362,15 @@ export function ReceiptScreen() {
           </ThemedText>
           <ThemedText variant="title">{formatMoney(total)}</ThemedText>
         </View>
+        {/* Not money paid, so it sits below the sum rather than inside it. */}
+        {payment.discountAmount && (parseMoney(payment.discountAmount) ?? 0n) > 0n ? (
+          <View style={styles.totalRow}>
+            <ThemedText variant="meta">{feesCopy.collect.discountGiven}</ThemedText>
+            <ThemedText variant="bodyStrong">
+              {formatMoney(payment.discountAmount)}
+            </ThemedText>
+          </View>
+        ) : null}
       </Card>
 
       <SectionHead title={copy.fees.receipt.modeLabel} />

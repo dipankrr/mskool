@@ -68,6 +68,13 @@ export function useHideTabBarOnScroll() {
   );
 }
 
+/** For something floating just above the bar: it moves down with the bar. */
+export function useFollowTabBar() {
+  return useAnimatedStyle(() => ({
+    transform: [{ translateY: tabBarOffset.value }],
+  }));
+}
+
 export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const slide = useAnimatedStyle(() => ({

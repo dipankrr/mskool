@@ -1,4 +1,7 @@
 import {
+  applyDiscount,
+  distributeAmount,
+  isHeldMode,
   buildReceiptText,
   canWaiveInstallment,
   concessionValueError,
@@ -110,18 +113,66 @@ describe("paymentModeLabel", () => {
   });
 });
 
+describe("distributeAmount", () => {
+  const lines = [
+    { key: "apr", balance: "1000.00" },
+    { key: "may", balance: "1000.00" },
+    { key: "jun", balance: "1000.00" },
+  ];
+
+  it("fills oldest first and stops at the amount", () => {
+    expect(distributeAmount("1500", lines)).toEqual({ apr: "1000", may: "500" });
+  });
+
+  it("never places more than is owed, and nothing for nothing", () => {
+    expect(distributeAmount("9999", lines)).toEqual({ apr: "1000", may: "1000", jun: "1000" });
+    expect(distributeAmount("", lines)).toEqual({});
+  });
+});
+
+describe("applyDiscount", () => {
+  const lines = [
+    { key: "open", id: "o", kind: "opening", amount: "500.00" },
+    { key: "apr", id: "a", kind: "installment", amount: "1000.00" },
+    { key: "may", id: "m", kind: "installment", amount: "1000.00" },
+  ];
+
+  it("comes off the newest due first and leaves previous dues alone", () => {
+    const out = applyDiscount(lines, "300");
+    expect(out.discounts).toEqual([{ installmentId: "m", amount: "300.00" }]);
+    expect(out.lines.map((line) => line.cash)).toEqual(["500.00", "1000.00", "700.00"]);
+    expect(out.appliedDiscount).toBe("300.00");
+  });
+
+  it("can cover a due whole and spills to the next", () => {
+    const out = applyDiscount(lines, "1200");
+    expect(out.discounts).toEqual([
+      { installmentId: "a", amount: "200.00" },
+      { installmentId: "m", amount: "1000.00" },
+    ]);
+    expect(out.lines.map((line) => line.cash)).toEqual(["500.00", "800.00", "0.00"]);
+  });
+
+  it("can't discount more than the dues, and an empty box is no discount", () => {
+    expect(applyDiscount(lines, "99999").appliedDiscount).toBe("2000.00");
+    expect(applyDiscount(lines, "").discounts).toEqual([]);
+  });
+});
+
+describe("isHeldMode", () => {
+  it("holds cheque, DD and bank transfer, never UPI, card or cash", () => {
+    for (const mode of ["cheque", "dd", "neft_rtgs"]) expect(isHeldMode(mode)).toBe(true);
+    for (const mode of ["cash", "upi", "card"]) expect(isHeldMode(mode)).toBe(false);
+  });
+});
+
 describe("installmentTitle", () => {
-  it("prefers the generated description, then a numbered fallback", () => {
-    expect(
-      installmentTitle({
-        description: "April 2026 Tuition Fee",
-        installmentNumber: 4,
-      }),
-    ).toBe("April 2026 Tuition Fee");
-    expect(installmentTitle({ description: "  ", installmentNumber: 4 })).toBe(
-      "Installment 4",
+  it("prefers the generated description, then a plain fallback", () => {
+    expect(installmentTitle({ description: "April 2026 Tuition Fee" })).toBe(
+      "April 2026 Tuition Fee",
     );
-    expect(installmentTitle({})).toBe("Installment");
+    expect(installmentTitle({ description: "  " })).toBe("Due");
+    expect(installmentTitle({})).toBe("Due");
   });
 });
 
@@ -202,12 +253,12 @@ describe("outstandingTotals", () => {
 });
 
 describe("oldestFirst", () => {
-  it("orders by due date then installment number, stably", () => {
+  it("orders by due date then name, stably", () => {
     const rows = [
-      { id: "c", dueDate: "2026-06-10", installmentNumber: 2 },
-      { id: "a", dueDate: "2026-04-10", installmentNumber: 1 },
-      { id: "b", dueDate: "2026-06-10", installmentNumber: 1 },
-      { id: "d", dueDate: "2026-04-10", installmentNumber: 1 },
+      { id: "c", dueDate: "2026-06-10", description: "Tuition" },
+      { id: "a", dueDate: "2026-04-10", description: "Lab" },
+      { id: "b", dueDate: "2026-06-10", description: "Lab" },
+      { id: "d", dueDate: "2026-04-10", description: "Lab" },
     ];
     expect(oldestFirst(rows).map((row) => row.id)).toEqual([
       "a",

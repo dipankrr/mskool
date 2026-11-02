@@ -26,6 +26,7 @@ import {
 } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
 import { copy } from "../../lib/copy";
+import { feesCopy } from "../../lib/fees-copy";
 import { toFriendlyError } from "../../lib/errors";
 import { formatReadableDate, todayIso } from "../../lib/format";
 import {
@@ -425,6 +426,7 @@ export function FeeServicesScreen() {
                                     utils.fees.subscription.list.invalidate(),
                                     utils.fees.matrix.list.invalidate(),
                                     utils.fees.installment.dues.invalidate(),
+                                    utils.fees.dashboard.invalidate(),
                                   ]);
                                   setNotice({
                                     tone: "positive",
@@ -484,7 +486,9 @@ export function FeeServicesScreen() {
                     key={balance.id}
                     balance={balance}
                     originName={
-                      yearNames.get(balance.originAcademicYearId) ?? "—"
+                      (balance.originAcademicYearId
+                        ? yearNames.get(balance.originAcademicYearId)
+                        : null) ?? feesCopy.setup.beforeApp
                     }
                     first={index === 0}
                   />
@@ -777,6 +781,7 @@ function SubscribeSheet({
         utils.fees.matrix.list.invalidate(),
         utils.fees.matrix.cell.invalidate(),
         utils.fees.installment.dues.invalidate(),
+        utils.fees.dashboard.invalidate(),
       ]);
       onDone(done);
     } catch (cause) {
@@ -953,6 +958,7 @@ function OpeningSheet({
         utils.fees.matrix.list.invalidate(),
         utils.fees.matrix.cell.invalidate(),
         utils.fees.installment.dues.invalidate(),
+        utils.fees.dashboard.invalidate(),
       ]);
       onDone({
         tone: "positive",

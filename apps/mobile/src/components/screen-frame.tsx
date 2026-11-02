@@ -9,6 +9,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import type { ReactNode } from "react";
+import type { NativeScrollEvent, NativeSyntheticEvent } from "react-native";
 
 import { colors } from "../theme/brand-admin";
 import { gutter, radius, spacing } from "../theme/tokens";
@@ -70,6 +71,7 @@ export function ScreenFrame({
   footerVariant = "bar",
   onRefresh,
   refreshing = false,
+  onScroll,
   children,
 }: {
   title: string;
@@ -98,6 +100,7 @@ export function ScreenFrame({
   /** Passing this enables pull-to-refresh. */
   onRefresh?: () => void;
   refreshing?: boolean;
+  onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   children: ReactNode;
 }) {
   const tabSpace = useTabBarSpace();
@@ -130,6 +133,8 @@ export function ScreenFrame({
             { paddingBottom: footer ? spacing.xl : bottom },
           ]}
           keyboardShouldPersistTaps="handled"
+          onScroll={onScroll}
+          scrollEventThrottle={onScroll ? 16 : undefined}
           stickyHeaderIndices={stickyHeader ? [showTopRow ? 2 : 1] : undefined}
           refreshControl={
             onRefresh ? (

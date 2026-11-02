@@ -18,7 +18,7 @@
  */
 
 import { formatReadableDate } from "./format";
-import { formatMoney, parseMoney, sumMoney, toMoneyString } from "./money";
+import { formatMoney, parseMoney, sumMoney, toInputAmount, toMoneyString } from "./money";
 
 // ---------------------------------------------------------------------------
 // Payment modes
@@ -392,7 +392,7 @@ const PAYMENT_ACTION_SPEC: Record<PaymentAction, PaymentActionSpec> = {
     action: "cancel",
     label: "Cancel payment",
     warning:
-      "Withdraws a pending payment. No money moved, so the ledger is untouched.",
+      "Withdraws a pending payment. No money moved. The installments it covered re-open and the ledger entry is offset.",
     destructive: true,
   },
   refund: {
@@ -474,15 +474,75 @@ export function isPayable(installment: PayableInstallment): boolean {
  * description ("April 2026 Tuition Fee"); a row without one still needs a
  * name, and "Installment 4" is better than a UUID.
  */
-export function installmentTitle(row: {
-  description?: string | null;
-  installmentNumber?: number | null;
-}): string {
+/**
+ * One amount across dues, oldest first. Returns the box value for each line that
+ * gets money, so the cashier types what the parent handed over and the split
+ * follows. Anything above the total owed is simply not placed; the caller shows
+ * the amount as capped.
+ */
+export function distributeAmount(
+  amount: string,
+  lines: { key: string; balance: string }[],
+): Record<string, string> {
+  let remaining = parseMoney(amount) ?? 0n;
+  const out: Record<string, string> = {};
+  for (const line of lines) {
+    if (remaining <= 0n) break;
+    const balance = parseMoney(line.balance) ?? 0n;
+    const take = balance < remaining ? balance : remaining;
+    if (take > 0n) out[line.key] = toInputAmount(toMoneyString(take));
+    remaining -= take;
+  }
+  return out;
+}
+
+/**
+ * Takes a discount off the money going on dues, newest due first, so the oldest
+ * dues stay paid in full. Previous dues are left alone: only dues can carry a
+ * discount. Returns what to collect on each line, and the discount on each.
+ */
+export function applyDiscount<T extends { key: string; id: string; kind: string; amount: string }>(
+  lines: T[],
+  discount: string,
+): {
+  lines: (T & { cash: string })[];
+  discounts: { installmentId: string; amount: string }[];
+  appliedDiscount: string;
+} {
+  let remaining = parseMoney(discount) ?? 0n;
+  const taken = new Map<string, bigint>();
+  for (const line of [...lines].reverse()) {
+    if (remaining <= 0n) break;
+    if (line.kind !== "installment") continue;
+    const amount = parseMoney(line.amount) ?? 0n;
+    const take = amount < remaining ? amount : remaining;
+    if (take > 0n) taken.set(line.key, take);
+    remaining -= take;
+  }
+  const applied = [...taken.values()].reduce((acc, value) => acc + value, 0n);
+  return {
+    lines: lines.map((line) => ({
+      ...line,
+      cash: toMoneyString((parseMoney(line.amount) ?? 0n) - (taken.get(line.key) ?? 0n)),
+    })),
+    discounts: lines
+      .filter((line) => taken.has(line.key))
+      .map((line) => ({
+        installmentId: line.id,
+        amount: toMoneyString(taken.get(line.key) ?? 0n),
+      })),
+    appliedDiscount: toMoneyString(applied),
+  };
+}
+
+/** Whether a payment mode waits to be cleared. UPI and card do not. */
+export function isHeldMode(mode: string): boolean {
+  return mode === "cheque" || mode === "dd" || mode === "neft_rtgs";
+}
+
+export function installmentTitle(row: { description?: string | null }): string {
   const description = row.description?.trim();
-  if (description) return friendlyDueName(description);
-  return row.installmentNumber
-    ? `Installment ${row.installmentNumber}`
-    : "Installment";
+  return description ? friendlyDueName(description) : "Due";
 }
 
 /**
@@ -492,16 +552,15 @@ export function installmentTitle(row: {
 export function allocationLabel(row: {
   description: string | null;
   feeHeadName: string;
-  installmentNumber: number;
 }): string {
   const description = row.description?.trim();
   if (description) return friendlyDueName(description);
-  return `${row.feeHeadName} · Installment ${row.installmentNumber}`;
+  return row.feeHeadName;
 }
 
 /** A receipt line for a carried-forward balance. */
 export function openingBalanceLabel(row: {
-  originAcademicYearName: string;
+  originAcademicYearName: string | null;
 }): string {
   return `Carried forward from ${row.originAcademicYearName}`;
 }
@@ -627,12 +686,12 @@ export function outstandingTotals(
 }
 
 /**
- * Oldest due first, then by installment number — the counter's working order,
- * and the order the collect screen prefills. Stable for equal dates so a
- * re-render never reshuffles rows under a finger.
+ * Oldest due first, then by name — the counter's working order, and the order
+ * the collect screen fills a typed amount. A month's fees share a due date, so
+ * the name keeps them in one order on every screen and every load.
  */
 export function oldestFirst<
-  T extends { dueDate: string; installmentNumber?: number | null; id?: string },
+  T extends { dueDate: string; description?: string | null; id?: string },
 >(rows: T[]): T[] {
   return [...rows]
     .map((row, index) => ({ row, index }))
@@ -640,10 +699,8 @@ export function oldestFirst<
       if (left.row.dueDate !== right.row.dueDate) {
         return left.row.dueDate < right.row.dueDate ? -1 : 1;
       }
-      const leftNumber = left.row.installmentNumber ?? 0;
-      const rightNumber = right.row.installmentNumber ?? 0;
-      if (leftNumber !== rightNumber) return leftNumber - rightNumber;
-      return left.index - right.index;
+      const byName = (left.row.description ?? "").localeCompare(right.row.description ?? "");
+      return byName !== 0 ? byName : left.index - right.index;
     })
     .map((entry) => entry.row);
 }
@@ -687,6 +744,7 @@ export type ReceiptInput = {
   className: string;
   lines: ReceiptLine[];
   amount: string;
+  discount?: string | null;
   lateFee: string;
   total: string;
   modeLabel: string;
@@ -720,10 +778,11 @@ export function buildReceiptText(input: ReceiptInput): string {
   if ((parseMoney(input.lateFee) ?? 0n) > 0n) {
     rows.push(`Late fee: ${formatMoney(input.lateFee)}`);
   }
-  rows.push(
-    `Total paid: ${formatMoney(input.total)}`,
-    `Mode: ${input.modeLabel}`,
-  );
+  rows.push(`Total paid: ${formatMoney(input.total)}`);
+  if ((parseMoney(input.discount) ?? 0n) > 0n) {
+    rows.push(`Discount given: ${formatMoney(input.discount)}`);
+  }
+  rows.push(`Mode: ${input.modeLabel}`);
   if (input.reference) rows.push(`Reference: ${input.reference}`);
   if (input.collectedBy) rows.push(`Collected by: ${input.collectedBy}`);
   if (input.status && input.status !== "cleared") {
@@ -843,8 +902,10 @@ export function splitByMonth(
  * "Tuition Fee — November 2026". Only a trailing year-month is rewritten.
  */
 export function friendlyDueName(description: string): string {
-  return description.replace(
-    /(\d{4})-(0[1-9]|1[0-2])$/,
-    (_, year: string, month: string) => `${monthLabel(Number(month))} ${year}`,
-  );
+  return description
+    .replace(/ — once$/, "")
+    .replace(
+      /(\d{4})-(0[1-9]|1[0-2])$/,
+      (_, year: string, month: string) => `${monthLabel(Number(month))} ${year}`,
+    );
 }
