@@ -616,7 +616,7 @@ short, repeated teacher task before the more complex assignment workflow.
 | 2 | Students + academic setup (§7) | `student` 7 · `enrollment` 6 · `guardian` 4 · `portalAccess` 4 · `academic` classes 5 + sections 5 · `subject` 5 · `term` 4 · `assignment` 10 | open |
 | 3 | Attendance (§8) | `attendance.*` 13 | complete (mark/status walked 2026-10-18; summary + section switcher 2026-10-19; calendar generate/days, policy, periods 2026-10-20; report exports remain open) |
 | 4 | Homework manage (§9) | `homework.*` staff 28 | complete — staff slice device-walked 2026-10-25 (`88864ab`, `678c5dd`, `5ed3583`, `6198649`, `4ad81f3`); quiz-attempt grading not walked (no seeded attempts); family door at Step 9 |
-| 5 | Fees (§10) | `fees.*` 38 | open |
+| 5 | Fees (§10) | `fees.*` | rebuilt on ADR-058, on `feat/fees-overhaul` 2026-11-02; partly walked, see `.kilo/plans/2026-11-01-fees-overhaul.md` section 10 |
 | 6 | Staff + roles + ID cards + feed (§11) | `staff` 8 · `role` 8 · `idCard` 10 | open |
 | 7 | Exams + marks (§12) | `exam.*` staff 46 | **7A + 7B built and device-walked 2026-10-26/27; 7C (core arc) and 7D built; 7E + 7F built and Android-walked 2026-10-28** on `feat/mobile-exams-7a` (plan: `.kilo/plans/2026-10-26-mobile-exams.md`); 7C/7D walk remainders and iOS open |
 | 8 | Remaining staff parity closeout | Any mobile-scoped staff workflows found by route audit | open |

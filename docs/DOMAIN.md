@@ -101,12 +101,24 @@ Distinctions that are easy to get wrong:
 - `attendance_summary` is a pre-aggregate, refreshed on change — report cards and late-fee
   rules would otherwise re-`COUNT` a year of rows per student.
 
-## 5. Fees (14)
+## 5. Fees (17)
 
-`fee_heads`, `fee_structures`, `fee_structure_lines`, `student_fee_assignments`,
+`fee_heads`, `fee_structures`, `fee_structure_lines`, `fee_line_periods`,
+`fee_structure_sections`, `fee_session_settings`, `student_fee_assignments`,
 `fee_concessions`, `student_optional_fee_subscriptions`, `late_fee_rules`,
 `fee_installments`, `opening_balances`, `fee_payments`, `payment_allocations`,
 `fee_refunds`, `financial_transactions`, `receipt_number_sequences`.
+
+Fee structure and schedule → student is billed → dues are created → parent pays → receipt.
+
+- A fee line's price is its **schedule**, one `fee_line_periods` row per period. A year total
+  is the sum of the rows (ADR-058).
+- A due is identified by `period_key` and never changes once created. Structure edits reach
+  only dues not yet created.
+- Dues are added automatically each month, unless a school pauses that and adds them itself.
+  Creating the rest of the session now is a one-time action. `fee_session_settings` holds the
+  months charged and the due day.
+- Start billing is a switch on a structure; admissions after it bill themselves.
 
 **Billing and collection are deliberately decoupled.** `fee_installments` is what is owed;
 `fee_payments` is what arrived; `payment_allocations` joins them many-to-many. That is the
@@ -116,19 +128,12 @@ only way to handle one cheque covering three months, or half of one month.
   the one table accounting and Tally export read (hard rule 3).
 - `receipt_number_sequences` needs `SELECT … FOR UPDATE`; two concurrent cashiers must not
   produce the same receipt number.
-- `fee_payments.payment_status` tracks `pending → cleared → bounced/reversed`, not just
-  success. A bounced cheque is a real event with an accounting consequence.
-- Late fee is computed live for display but **frozen into the payment** when charged, so a
-  later rule change cannot alter a past receipt.
-- `opening_balances` carries prior-year dues forward tagged with their origin year, rather
-  than polluting the current year's structure.
-- Mid-year structure line ADDITIONS generate new installments for existing assignments while
-  the assignment's snapshotted `base_annual_amount` / `net_annual_amount` headers are NOT
-  restated — the headers are historical snapshots of assignment time, and the sum of generated
-  installments is the operative truth (recorded owner decision, 2026-09-03). Percentage
-  consequence: all-heads concession percentages ride the header, so a stale header skews
-  concession maths for students whose structure grew post-assignment; revisit if a real school
-  does mid-year edits.
+- `fee_payments.payment_status` tracks `pending → cleared → bounced/reversed`. Cash, UPI and
+  card clear at once. A bounced cheque is a real event with an accounting consequence.
+- A late fee is charged once on a due and recorded on the allocation, so a bounce undoes exactly
+  what that payment charged and a later rule change can't alter a past receipt.
+- `opening_balances` holds previous dues, with an optional origin year, rather than polluting
+  the current year's structure.
 
 ## 6. Exams & results (15)
 

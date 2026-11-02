@@ -2683,3 +2683,84 @@ A separate status for awaiting promotion: that is `completed` with `promotionSta
 
 **Deferred.** The promotion system (see `TASKS.md`), which is what will set `completed`
 and `graduated`.
+
+---
+
+## ADR-058 - Fees bill from a schedule of periods, not a yearly amount divided
+
+**Supersedes** the yearly-amount parts of ADR-050 and ADR-051, and the refund approval and
+held-UPI parts of ADR-049. Full record, with every issue and edge case:
+`.kilo/plans/2026-11-01-fees-overhaul.md`.
+
+**Context.** About 90% of schools bill monthly, yet staff entered a monthly fee as a yearly total
+that the system then divided. That assumption ran through price entry, due creation, concessions
+and the screens. An audit of 34 findings, verified 2026-11-01, plus 14 of our own, found real money
+bugs: a late fee charged again on each part payment, a concession that drifted as dues were added,
+and a bounce that left a late fee behind. The screens were hard to read on top of that.
+
+**Decision.** The goal is clarity and any fee structure, not fewer features.
+
+- **A fee line has a schedule.** Saving a line builds one `fee_line_periods` row per period: key,
+  dates, amount, due date. Rows can be edited or switched off, so April to February, December off
+  and April off all work, in any session. `annual_amount` and the division are gone.
+- **A due is identified by its period** (`period_key`: `2026-11`, `q:2026-10`, `term:<id>`, `once`),
+  unique per assignment and head. Editing months or frequency cannot skip or duplicate a due.
+- **A created due never changes.** Structure edits only reach dues not yet created.
+- **Timing never changes an amount.** Dues are added automatically each month. "Pause automatic" is
+  a switch for a school that wants to add them itself, and a dashboard card appears while any are
+  waiting, because a due that doesn't exist yet makes "Due now" read low. "All at once" is not a mode:
+  it is a one-time **Create remaining months now** button, run in the background because it goes one
+  student at a time, and automatic carries on after it. A created due never changes, so a later fee
+  increase doesn't reach months already created, and there is no bulk undo. A student admitted later
+  gets dues up to the current month. Totals come from created dues, not from the structure.
+- **A due can't be late before it was created.** Once billing has started, a due made after its date
+  is due the day it was made.
+- **Start billing** is a switch on a structure. It bills that structure's students, and later
+  admissions bill themselves. No due is late before Start billing.
+- **Several structures per class**, linked to sections; if nothing links, staff pick. Lines can be
+  for new students only.
+- **Concessions are rules applied per due on the server**, each recording the periods it covers
+  when created, so it cannot drift. Voiding gives the money back on dues not yet paid.
+- **A late fee is charged once on a due**, on the rule in effect when that due fell due, per month
+  (the default) or per fee. Bounce, reversal and cancel undo what that payment charged. It can be
+  forgiven at the counter, and `payment.quote` shows it before recording.
+- **Discount at collect** sits in its own column on the due, prints on the receipt, is non-cash in
+  the ledger and is undone with the payment. It needs a reason and `fee_waiver:create`.
+- **One-off charges** (dress, notebooks, a fine) are dues with no fee line and no late fee. Staff say
+  what it's for and the amount; the due goes under a hidden fee type, because every due needs one. If
+  it's paid on the spot, the charge and its receipt are made in one transaction, so a refused payment
+  leaves no charge.
+- **Leaving** cancels unpaid dues after the leaving date, in the same transaction. **Rejoining**
+  reopens dues from the rejoin date.
+- **UPI and card clear immediately.** Cheque, DD and NEFT/RTGS stay pending until confirmed.
+- **Refunds go by `fee_refund:create`.** `fee_refund:approve` is gone: no route ever checked it.
+  `fee_payment:update`, `:delete`, `:export` and `fee_waiver:read` went for the same reason.
+- **A closed session refuses fee writes on the server**, not only in the app.
+- **All fee dates are IST.**
+- **The dashboard reads SQL aggregates** (`fees.dashboard.*`), one definition per figure. It no
+  longer loads a whole school's dues into memory, and screens can't disagree.
+
+Mid-session has no special mode: tick the months left, enter previous dues by hand, set the next
+receipt number, start billing. A school may use its real session or a one-day term at its actual
+start; the app stays neutral. The attendance calendar generator takes a "start from" date so the
+days before a school joined don't count as working days. Exam schedules have no term-range check,
+so past papers can be dated freely inside a one-day term.
+
+The schema has no compatibility path (owner, dev mode): 0039 adds and backfills, 0040 drops, 0041
+and 0042 tidy permissions, 0043 removes the all-at-once mode and adds the hidden fee type and the
+background run, 0044 repairs one-time dues 0039 keyed wrongly.
+
+**Departure from the plan.** Fee months and the due day live per session in `fee_session_settings`,
+not on each structure, because a school has one calendar and one due day. Lines start from those
+months and can differ.
+
+**Rejected.** A paid-ahead field: rare in India, and staff can waive those months. A mid-session
+mode: ticking the months left does the job, with less to get wrong. A new discount permission:
+`fee_waiver:create` already means giving money off. A web revamp: web keeps working on the new
+model and has no discount, one-off charges, Start billing or carried-forward collection, so it says
+so where that matters. Its totals use the same "due now" line as the app.
+
+**Deferred.** Promotion and year-end carry-forward: until promotion ships, entering previous dues
+does not close the earlier session's dues, so staff must not collect both. Gateway, receipt PDF,
+CSV import of previous dues, class-wide one-off charges, per-student pause on one fee line, web
+parity. See section 7 of the plan.
