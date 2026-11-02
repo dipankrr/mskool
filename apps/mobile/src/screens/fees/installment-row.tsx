@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { CapsuleButton } from "../../components/capsule-button";
 import { ThemedText } from "../../components/themed-text";
 import { copy } from "../../lib/copy";
+import { feesCopy } from "../../lib/fees-copy";
 import {
   canWaiveInstallment,
   dueLabel,
@@ -40,6 +41,7 @@ export function InstallmentRow({
   today,
   can,
   onWaive,
+  onPay,
   onPress,
   first = false,
 }: {
@@ -47,6 +49,8 @@ export function InstallmentRow({
   today: string;
   can: (permission: string) => boolean;
   onWaive?: () => void;
+  /** Opens collect with just this due; shown only while it has a balance. */
+  onPay?: () => void;
   onPress?: () => void;
   first?: boolean;
 }) {
@@ -92,6 +96,15 @@ export function InstallmentRow({
             overdue={overdue}
             testID={`fee-installment-status-${installment.id}`}
           />
+          {payable && onPay ? (
+            <CapsuleButton
+              title={feesCopy.everyDue.pay}
+              variant="secondary"
+              size="mini"
+              onPress={onPay}
+              testID={`fee-pay-${installment.id}`}
+            />
+          ) : null}
           {waivable && onWaive ? (
             <CapsuleButton
               title={copy.fees.desk.waiverAction}

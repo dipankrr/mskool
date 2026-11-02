@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fee Page Mockups</title>
+<style>
+/* ============================================================
+   Student fee page revamp (2026-11-02). Mockup only.
+   Every value below is a token from apps/mobile/src/theme:
+   type {11,12,13,14,15,16,20,30,34}, 4-pt spacing, radii
+   12/14/16/24/full, one emerald accent, tones as status only.
+   Phones are 360 wide: the compact width MOBILE_PLAN asks for.
+   Aditi's figures are the demo school's real ones on 2 Nov 2026;
+   every other student is made up to show a state.
+   ============================================================ */
+@font-face { font-family: Clash; font-weight: 400; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Regular.ttf); }
+@font-face { font-family: Clash; font-weight: 500; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Medium.ttf); }
+@font-face { font-family: Clash; font-weight: 600; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Semibold.ttf); }
+@font-face { font-family: Clash; font-weight: 700; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Bold.ttf); }
+:root {
+  --canvas: #F2F3F7; --surface: #FFFFFF; --ink: #101828; --muted: #5D6674;
+  --hair: rgba(16, 24, 40, 0.08); --accent: #0F7A44; --deep: #0B6B3A; --tint: #E8F5EE;
+  --field: #ECEEF3; --chip: #E9EDF3; --chev: #98A2B3;
+  --scrim: rgba(16, 24, 40, 0.45); --grab: #D5DAE2;
+  --amb: #B54708; --amb-t: #FFFAEB; --red: #B42318; --red-t: #FEF3F2; --slate: #475467; --slate-t: #F2F4F7;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { color-scheme: light; }
+body { background: #DADBD6; color: var(--ink); font-family: Clash, system-ui, sans-serif; font-size: 15px; padding: 32px 16px 64px; }
+svg { display: block; flex: none; }
+
+.intro { max-width: 1160px; margin: 0 auto 32px; }
+.intro h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.6px; }
+.intro p { margin-top: 4px; color: var(--muted); }
+.group { max-width: 1160px; margin: 40px auto 16px; font-size: 12px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: #3C4450; }
+.frames { max-width: 1160px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 32px 24px; }
+figure { width: 360px; max-width: 100%; }
+figcaption { margin-top: 12px; font-size: 13px; color: #3C4450; line-height: 1.4; }
+figcaption b { font-weight: 600; color: var(--ink); }
+
+.phone { position: relative; width: 360px; height: 760px; max-width: 100%; background: var(--canvas); border-radius: 32px; overflow: hidden; box-shadow: 0 0 0 1px rgba(16,24,40,.1), 0 14px 34px rgba(16,24,40,.12); }
+.status { height: 32px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 600; }
+.status i { width: 40px; height: 8px; border-radius: 999px; background: var(--ink); opacity: .75; }
+.body { padding: 0 20px; }
+.meta { font-size: 13px; color: var(--muted); }
+.label { font-size: 12px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); }
+.name { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
+.tnum { font-variant-numeric: tabular-nums; }
+.grow { flex: 1; min-width: 0; }
+.clip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card { background: var(--surface); border-radius: 16px; }
+.pill { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; flex: none; }
+.pill.p { color: var(--deep); background: var(--tint); }
+.pill.c { color: var(--amb); background: var(--amb-t); }
+.pill.r { color: var(--red); background: var(--red-t); }
+.pill.n { color: var(--slate); background: var(--slate-t); }
+
+/* header: who, on one line, and it stays pinned while the page scrolls */
+.who { height: 56px; padding: 0 20px 0 4px; display: flex; align-items: center; gap: 8px; }
+.back { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; flex: none; }
+.avatar { width: 40px; height: 40px; border-radius: 999px; background: var(--chip); color: var(--slate); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; flex: none; margin-left: -4px; }
+.whoname { font-size: 20px; font-weight: 700; letter-spacing: -0.2px; line-height: 1.2; }
+.round { width: 38px; height: 38px; border-radius: 999px; background: var(--tint); color: var(--deep); display: flex; align-items: center; justify-content: center; flex: none; }
+.screenhead { height: 56px; padding: 0 20px 0 4px; display: flex; align-items: center; gap: 4px; }
+
+/* hero: only what adds up to the big number */
+.hero { margin-top: 8px; padding: 16px 16px 0; }
+.herotop { min-height: 26px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.big { margin-top: 4px; font-size: 34px; font-weight: 700; letter-spacing: -0.6px; line-height: 1.15; }
+.split { margin-top: 12px; display: flex; gap: 2px; height: 8px; }
+.split i { display: block; border-radius: 999px; min-width: 6px; }
+.part { min-height: 28px; display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; }
+.parts { margin-top: 8px; padding-bottom: 8px; }
+.part span.when { font-size: 13px; font-weight: 400; color: var(--muted); }
+.part b { font-weight: 600; margin-left: auto; }
+.dot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
+.herolink { margin: 0 -16px; padding: 0 16px; min-height: 44px; border-top: 1px solid var(--hair); display: flex; align-items: center; justify-content: space-between; color: var(--deep); font-size: 14px; font-weight: 600; }
+.calm { margin-top: 12px; padding-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+
+/* four actions, one row: everyone can see them, nothing fires on one tap */
+.quick { margin-top: 12px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.q { height: 72px; border-radius: 14px; background: var(--surface); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--ink); }
+.q span { color: var(--deep); }
+
+/* the session, all twelve months, no sideways scrolling */
+.year { margin-top: 12px; padding: 16px; }
+.yearhead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.progress { margin-top: 8px; height: 6px; border-radius: 999px; background: var(--field); overflow: hidden; }
+.progress i { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+.grid { margin-top: 12px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.m { position: relative; height: 52px; padding: 0 2px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; overflow: hidden; }
+.m u { text-decoration: none; font-size: 12px; font-weight: 600; }
+.m em { font-style: normal; font-size: 13px; font-variant-numeric: tabular-nums; display: flex; align-items: center; height: 16px; }
+.m.over { background: var(--red-t); color: var(--red); } .m.over em { font-weight: 600; }
+.m.now { background: var(--amb-t); color: var(--amb); box-shadow: inset 0 0 0 2px var(--amb); } .m.now em { font-weight: 600; }
+.m.later { background: var(--slate-t); color: var(--slate); }
+.m.paid { background: var(--tint); color: var(--deep); }
+.m.none { background: var(--canvas); color: var(--muted); }
+.m s { position: absolute; left: 8px; right: 8px; bottom: 4px; height: 2px; border-radius: 999px; background: rgba(180, 35, 24, 0.18); text-decoration: none; }
+.m s i { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+.legend { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 4px; }
+.swatch { width: 12px; height: 12px; border-radius: 4px; flex: none; display: flex; align-items: center; justify-content: center; }
+
+/* lists */
+.section { margin: 20px 4px 8px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.row { position: relative; min-height: 62px; padding: 10px 16px; display: flex; align-items: center; gap: 12px; }
+.row + .row::before { content: ""; position: absolute; top: 0; left: 68px; right: 0; height: 1px; background: var(--hair); }
+.row.flush + .row.flush::before { left: 16px; }
+.tile { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: var(--chip); color: var(--slate); flex: none; }
+.tile.p { background: var(--tint); color: var(--deep); }
+.tile.c { background: var(--amb-t); color: var(--amb); }
+.amount { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; font-variant-numeric: tabular-nums; flex: none; }
+.side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; }
+
+/* collect */
+.cta { height: 52px; border-radius: 999px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 16px; font-weight: 600; box-shadow: 0 10px 24px rgba(16,24,40,.16); }
+.cta.soft { background: var(--tint); color: var(--deep); box-shadow: none; }
+.float { position: absolute; left: 20px; right: 20px; bottom: 16px; z-index: 2; }
+.dock { position: absolute; left: 16px; right: 16px; bottom: 16px; height: 64px; padding: 6px 6px 6px 20px; border-radius: 32px; display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--surface); border: 1px solid rgba(16,24,40,.06); box-shadow: 0 14px 34px rgba(16,24,40,.12); z-index: 2; }
+.dock .cta { padding: 0 20px; box-shadow: none; }
+
+/* sheet */
+.scrim { position: absolute; inset: 0; background: var(--scrim); z-index: 3; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; background: var(--surface); border-radius: 24px 24px 0 0; box-shadow: 0 -12px 40px rgba(16,24,40,.18); z-index: 4; display: flex; flex-direction: column; }
+.grab { width: 36px; height: 4px; border-radius: 999px; background: var(--grab); margin: 8px auto 4px; }
+.sheethead { padding: 8px 20px 0; display: flex; justify-content: space-between; gap: 8px; }
+.sheethead .t { font-size: 20px; font-weight: 700; letter-spacing: -0.2px; }
+.sheethead .x { width: 44px; height: 44px; margin: -4px -12px 0 0; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.sheetbody { padding: 8px 0 20px; }
+.three { margin: 4px 20px 8px; padding: 12px 0; display: flex; border-radius: 14px; background: var(--canvas); }
+.three div { flex: 1; text-align: center; }
+.three div + div { border-left: 1px solid var(--hair); }
+.three b { display: block; font-size: 16px; font-weight: 600; letter-spacing: -0.2px; font-variant-numeric: tabular-nums; }
+.three span { font-size: 12px; color: var(--muted); }
+
+/* every due */
+.chips { margin-top: 4px; display: flex; gap: 8px; }
+.chipf { height: 44px; padding: 0 16px; border-radius: 999px; background: var(--surface); color: var(--muted); display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
+.chipf.on { background: var(--tint); color: var(--deep); }
+.chipf small { font-size: 12px; font-weight: 500; }
+.monthhead { margin: 16px 4px 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.duerow { position: relative; min-height: 52px; padding: 8px 8px 8px 16px; display: flex; align-items: center; gap: 8px; }
+.duerow + .duerow::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--hair); }
+.sheetbody .duerow { padding-left: 20px; padding-right: 12px; }
+.sheetbody .duerow + .duerow::before { left: 20px; }
+.notice { margin-top: 8px; padding: 12px; border-radius: 14px; display: flex; align-items: center; gap: 8px; background: var(--amb-t); color: var(--amb); font-size: 13px; font-weight: 500; line-height: 1.35; }
+.notice b { margin-left: auto; font-weight: 600; flex: none; padding-left: 8px; }
+.block { margin-top: 12px; padding: 16px; }
+.block .cta { margin-top: 12px; height: 44px; font-size: 15px; box-shadow: none; }
+
+/* Fees tab: its real header, search, chips and list rows */
+.feestop { min-height: 48px; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.act { min-height: 38px; display: inline-flex; align-items: center; gap: 4px; padding: 0 12px; border-radius: 999px; background: var(--tint); color: var(--deep); font-size: 12px; font-weight: 600; }
+.h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.6px; line-height: 1.15; }
+.fold { height: 32px; margin-top: 4px; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.search { height: 48px; padding: 0 12px; border-radius: 12px; background: var(--field); display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 16px; }
+.fchips { margin-top: 12px; display: flex; gap: 4px; }
+.fp { height: 40px; padding: 0 12px; border-radius: 999px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--hair); display: flex; align-items: center; gap: 2px; font-size: 13px; color: var(--ink); white-space: nowrap; }
+.fp.on { background: var(--tint); color: var(--deep); box-shadow: inset 0 0 0 1px var(--accent); }
+.listhead { margin-top: 12px; min-height: 38px; display: flex; align-items: center; gap: 8px; }
+.sortl { display: flex; align-items: center; gap: 2px; font-size: 13px; color: var(--deep); white-space: nowrap; flex: none; }
+.viewtog { display: flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--field); flex: none; }
+.viewtog div { width: 36px; height: 34px; border-radius: 999px; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.viewtog .on { background: var(--surface); color: var(--deep); }
+.lrow { padding: 12px 12px 0; }
+.lrow + .lrow { margin-top: 8px; }
+.lrow > div:first-child { display: flex; justify-content: space-between; gap: 12px; }
+.moreinfo { min-height: 40px; display: flex; align-items: center; gap: 2px; color: var(--deep); font-size: 13px; }
+.fab { position: absolute; right: 20px; bottom: 16px; height: 52px; padding: 0 16px; border-radius: 999px; background: var(--accent); color: #fff; display: flex; align-items: center; gap: 4px; font-size: 15px; font-weight: 600; box-shadow: 0 10px 24px rgba(16,24,40,.16); z-index: 2; }
+
+/* the year matrix: one row per student, one box per fee month */
+.mx { margin-top: 8px; padding: 12px 12px 4px; }
+.mxtop { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.mxlegend { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); }
+.mxlegend span { display: inline-flex; align-items: center; gap: 4px; }
+.mxlegend .box { width: 12px; height: 12px; flex: none; }
+.mline { display: flex; align-items: stretch; }
+.mline.body-row { min-height: 44px; border-top: 1px solid var(--hair); }
+.mcells { flex: 1; min-width: 0; display: grid; }
+.c { display: flex; align-items: center; justify-content: center; padding: 0 1px; }
+.c.cur { background: rgba(16, 24, 40, 0.05); }
+.mhead .c { height: 24px; font-size: 11px; font-weight: 500; color: var(--muted); }
+.mhead .c.cur { color: var(--ink); font-weight: 700; border-radius: 4px 4px 0 0; }
+.mn { width: 100px; flex: none; display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; }
+.mline.right .mn { padding-left: 8px; }
+.mline.left .mn { padding-right: 8px; }
+.mn b { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mn span { font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.box { display: flex; align-items: center; justify-content: center; width: 100%; height: 20px; border-radius: 4px; color: #fff; }
+.box.r { background: var(--red); }
+.box.g { background: var(--accent); }
+.box.h { background: linear-gradient(135deg, var(--accent) 50%, var(--red) 50%); }
+.box.l { background: var(--chip); }
+.box.x { box-shadow: inset 0 0 0 1px rgba(16, 24, 40, 0.14); }
+
+/* Collect payment */
+.amt { margin-top: 8px; padding: 16px; }
+.amthead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.amtbig { margin-top: 4px; display: flex; align-items: center; gap: 2px; font-size: 34px; font-weight: 700; letter-spacing: -0.6px; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.amtbig.typing { color: var(--ink); }
+.caret { width: 2px; height: 32px; background: var(--accent); border-radius: 2px; margin-left: 2px; }
+.amtline { margin-top: 4px; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.amtline b { font-weight: 600; color: var(--ink); }
+.amtline u { text-decoration: none; color: var(--deep); font-weight: 600; margin-left: auto; }
+.qrow { margin: 12px -16px 0; padding: 0 16px; display: flex; gap: 8px; overflow: hidden; }
+.qc { flex: none; height: 40px; padding: 0 12px; border-radius: 999px; background: var(--canvas); display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.qc span { font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; }
+.qc.on { background: var(--tint); color: var(--deep); box-shadow: inset 0 0 0 1px var(--accent); }
+.qc.on span { color: var(--deep); }
+.covers { margin-top: 12px; }
+.covhead { padding: 12px 16px 4px; display: flex; justify-content: space-between; align-items: baseline; }
+.cov { position: relative; min-height: 44px; padding: 0 16px; display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 500; }
+.cov + .cov::before { content: ""; position: absolute; top: 0; left: 48px; right: 0; height: 1px; background: var(--hair); }
+.cov b { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cov .when { font-size: 13px; color: var(--muted); font-weight: 400; }
+.ok { width: 20px; height: 20px; border-radius: 999px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; flex: none; }
+.halfok { width: 20px; height: 20px; border-radius: 999px; background: conic-gradient(var(--amb) 0 10%, var(--amb-t) 10% 100%); box-shadow: inset 0 0 0 2px var(--amb); flex: none; }
+.notyet { width: 20px; height: 20px; border-radius: 999px; box-shadow: inset 0 0 0 2px var(--grab); flex: none; }
+.covfoot { border-top: 1px solid var(--hair); min-height: 44px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--muted); }
+.covfoot u { text-decoration: none; color: var(--deep); font-weight: 600; display: flex; align-items: center; gap: 4px; }
+.modes { margin-top: 8px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.mode { height: 64px; border-radius: 14px; background: var(--surface); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 13px; font-weight: 600; color: var(--slate); }
+.mode.on { background: var(--tint); color: var(--deep); box-shadow: inset 0 0 0 2px var(--accent); }
+.form { margin-top: 12px; padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+.fld { display: flex; flex-direction: column; gap: 4px; }
+.fld > span { font-size: 13px; font-weight: 600; }
+.inp { height: 48px; border-radius: 12px; background: var(--field); padding: 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 16px; font-variant-numeric: tabular-nums; }
+.inp.ph { color: var(--muted); }
+.inp.on { box-shadow: inset 0 0 0 2px var(--accent); background: var(--surface); }
+.pairf { display: flex; gap: 8px; } .pairf > * { flex: 1; min-width: 0; }
+.factrow { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--hair); }
+.form .factrow:last-child { border-bottom: none; }
+.factrow b { display: flex; align-items: center; gap: 4px; font-weight: 600; font-size: 15px; }
+.addl { min-height: 44px; display: flex; align-items: center; gap: 8px; color: var(--deep); font-size: 15px; font-weight: 600; }
+.tot { margin-top: 12px; padding: 8px 16px; }
+.tl { min-height: 32px; display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.tl b { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tl.big { min-height: 44px; border-top: 1px solid var(--hair); margin-top: 4px; font-size: 16px; font-weight: 600; }
+.tl.big b { font-size: 20px; font-weight: 700; }
+.tl u { text-decoration: none; color: var(--deep); font-weight: 600; font-size: 13px; }
+.kbd { position: absolute; left: 0; right: 0; bottom: 0; height: 236px; background: #D5D9E0; padding: 8px 6px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; z-index: 3; }
+.kbd div { border-radius: 8px; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 500; }
+.kbd div.k2 { background: #BCC2CC; }
+.receipt { margin: 4px 20px 0; padding: 16px; border-radius: 16px; background: var(--canvas); }
+.rline { min-height: 30px; display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.rline b { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }
+.sheetfoot2 { padding: 12px 20px 20px; display: flex; gap: 8px; }
+.sheetfoot2 .cta { flex: 1; box-shadow: none; }
+.sheetfoot2 .ghost { height: 52px; padding: 0 20px; border-radius: 999px; background: var(--field); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; color: var(--ink); }
+.done { padding: 40px 20px 0; text-align: center; display: flex; flex-direction: column; align-items: center; }
+.donebadge { width: 72px; height: 72px; border-radius: 999px; background: var(--tint); color: var(--deep); display: flex; align-items: center; justify-content: center; }
+.donebtns { margin-top: 24px; width: 100%; display: flex; flex-direction: column; gap: 8px; }
+.donebtns .cta { box-shadow: none; }
+.donebtns .ghost { height: 52px; border-radius: 999px; background: var(--surface); display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 16px; font-weight: 600; color: var(--ink); }
+
+/* Printing: the PrintSheet the app already has, Share PDF beside Print */
+.doccard { margin: 4px 20px 0; padding: 12px; border-radius: 14px; background: var(--canvas); display: flex; align-items: center; gap: 12px; }
+.doccard .tile { background: var(--surface); }
+.plabel { margin: 16px 20px 4px; font-size: 13px; font-weight: 600; }
+.radio { min-height: 44px; padding: 0 20px; display: flex; align-items: center; gap: 12px; font-size: 15px; }
+.radio i { width: 20px; height: 20px; border-radius: 999px; box-shadow: inset 0 0 0 2px var(--chev); flex: none; }
+.radio.on i { box-shadow: inset 0 0 0 6px var(--accent); }
+.radio small { margin-left: auto; font-size: 12px; color: var(--muted); }
+.textlink { margin: 4px 20px 0; min-height: 44px; display: flex; align-items: center; gap: 8px; color: var(--deep); font-size: 15px; font-weight: 600; }
+.pmodes { margin: 0 20px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.pmodes .mode { height: 56px; flex-direction: row; gap: 8px; background: var(--canvas); }
+.pmodes .mode.on { background: var(--tint); }
+.seg { margin: 0 20px; display: flex; gap: 4px; padding: 3px; border-radius: 999px; background: var(--field); }
+.seg div { flex: 1; height: 40px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; color: var(--muted); }
+.seg .on { background: var(--surface); color: var(--deep); }
+.dis { opacity: .55; }
+
+/* Pay this */
+.paybtn { flex: none; height: 36px; padding: 0 14px; border-radius: 999px; background: var(--tint); color: var(--deep); display: flex; align-items: center; font-size: 13px; font-weight: 600; }
+.duerow.pay { min-height: 60px; padding-right: 16px; gap: 12px; }
+.sheetbody .duerow.pay { padding-right: 20px; }
+.monthhead .paylink { font-size: 13px; font-weight: 600; color: var(--deep); display: flex; align-items: center; }
+.monthhead .lbl { display: flex; align-items: baseline; gap: 6px; }
+.monthhead .lbl em { font-style: normal; font-size: 12px; font-weight: 600; color: var(--red); }
+.sheetcta { padding: 8px 20px 20px; }
+.sheetcta .cta { box-shadow: none; }
+.context { margin: 12px -16px -16px; padding: 0 16px; min-height: 44px; border-top: 1px solid var(--hair); display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--muted); }
+.context u { text-decoration: none; color: var(--deep); font-weight: 600; }
+
+@media (max-width: 420px) { body { padding: 20px 16px 48px; } .frames { gap: 28px 0; } }
+</style>
+</head>
+<body>
+<div class="intro">
+  <h1>Fee page mockups</h1>
+  <p>Mockup for review, in the app's own font, colours and spacing, at compact phone width. Nothing is built.</p>
+</div>
+<div id="root"></div>
+
+<script>
+const P = {
+  add: "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z",
+  right: "M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z",
+  left: "M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z",
+  check: "M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z",
+  done: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z",
+  close: "M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z",
+  more: "M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z",
+  call: "M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z",
+  cash: "M19 14V6c0-1.1-.9-2-2-2H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zm-9-1c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm13-6v11c0 1.1-.9 2-2 2H4v-2h17V7h2z",
+  doc: "M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z",
+  pause: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z",
+  tag: "M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z",
+  ledger: "M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z",
+  phone: "M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.89 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z",
+  person: "M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z",
+  warn: "M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z",
+  bank: "M4 10v7h3v-7H4zm6 0v7h3v-7h-3zM2 22h19v-3H2v3zm14-12v7h3v-7h-3zm-4.5-9L2 6v2h19V6l-9.5-5z",
+  card: "M20 4H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z",
+  cal: "M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z",
+  share: "M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z",
+  print: "M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z",
+  tune: "M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z",
+  note: "M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z",
+  down: "M16.59 8.59L12 13.17 7.41 8.59 6 10l6 6 6-6z",
+  search: "M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z",
+  sort: "M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z",
+  receipt: "M19.5 3.5L18 2l-1.5 1.5L15 2l-1.5 1.5L12 2l-1.5 1.5L9 2 7.5 3.5 6 2 4.5 3.5 3 2v20l1.5-1.5L6 22l1.5-1.5L9 22l1.5-1.5L12 22l1.5-1.5L15 22l1.5-1.5L18 22l1.5-1.5L21 22V2l-1.5 1.5zM18 17H6v-2h12v2zm0-4H6v-2h12v2zm0-4H6V7h12v2z",
+  settings: "M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z",
+  viewlist: "M3 14h4v-4H3v4zm0 5h4v-4H3v4zM3 9h4V5H3v4zm5 5h13v-4H8v4zm0 5h13v-4H8v4zM8 5v4h13V5H8z",
+  grid: "M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z",
+};
+const I = (n, s = 20, c = "currentColor") => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="${c}" aria-hidden="true"><path d="${P[n]}"/></svg>`;
+const chev = I("right", 18, "#98A2B3");
+const RED = "#B42318", AMB = "#B54708", SLATE = "#475467";
+
+const phone = (caption, body, overlay = "", dock = "") => `<figure><div class="phone"><div class="status"><span class="tnum">9:41</span><i></i></div>${body}${dock}${overlay}</div><figcaption>${caption}</figcaption></figure>`;
+const who = (initials, name, meta, phoneBtn = true) => `<div class="who"><div class="back">${I("left",22)}</div><div class="avatar">${initials}</div><div class="grow"><div class="whoname clip">${name}</div><div class="meta clip">${meta}</div></div>${phoneBtn ? `<div class="round">${I("call",18)}</div>` : ""}</div>`;
+const aditi = who("AS", "Aditi Sharma", "Class 6 · A · DEMO-0001");
+
+const part = (colour, label, when, amount, red = false) => `<div class="part"${red ? ` style="color:${RED}"` : ""}><span class="dot" style="background:${colour}"></span>${label}${when ? `<span class="when">${when}</span>` : ""}<b class="tnum">${amount}</b></div>`;
+const split = (bits) => `<div class="split">${bits.map(([c, n]) => `<i style="background:${c};flex:${n}"></i>`).join("")}</div>`;
+const hero = (amount, pill, splitBar, parts, link) => `<div class="card hero"><div class="herotop"><span class="label">Due now</span>${pill}</div><div class="big tnum">${amount}</div>${splitBar}<div class="parts">${parts}</div>${link ? `<div class="herolink">${link}${I("right",18)}</div>` : ""}</div>`;
+const aditiHero = hero("₹18,720", `<span class="pill r">Overdue since 1 Apr</span>`,
+  split([[SLATE, 4500],[RED, 12600],[AMB, 1620]]),
+  part(SLATE, "Previous dues", "2025–26", "₹4,500") + part(RED, "Overdue", "7 months", "₹12,600", true) + part(AMB, "This month", "November", "₹1,620"),
+  "See every due");
+
+const q = (icon, label) => `<div class="q"><span>${I(icon,22)}</span>${label}</div>`;
+const quick = `<div class="quick">${q("add","Add charge")}${q("tag","Concession")}${q("doc","Statement")}${q("more","More")}</div>`;
+
+const m = (cls, name, value, paidPct) => `<div class="m ${cls}"><u>${name}</u><em>${value}</em>${paidPct ? `<s><i style="width:${paidPct}%"></i></s>` : ""}</div>`;
+const tickIcon = I("check",16);
+const LEGEND = {
+  over: `<span><i class="swatch" style="background:#FEF3F2;box-shadow:inset 0 0 0 1px ${RED}"></i>Overdue</span>`,
+  now: `<span><i class="swatch" style="background:#FFFAEB;box-shadow:inset 0 0 0 2px ${AMB}"></i>This month</span>`,
+  later: `<span><i class="swatch" style="background:#F2F4F7;box-shadow:inset 0 0 0 1px #98A2B3"></i>Later</span>`,
+  none: `<span><i class="swatch" style="background:#F2F3F7;box-shadow:inset 0 0 0 1px #98A2B3"></i>Not created</span>`,
+  paid: `<span><i class="swatch" style="background:#E8F5EE;color:#0B6B3A">${I("check",10)}</i>Paid</span>`,
+  part: `<span><i class="swatch" style="height:2px;border-radius:999px;background:#0F7A44"></i>Part paid</span>`,
+};
+const legend = (keys) => `<div class="legend">${keys.map((k) => LEGEND[k]).join("")}</div>`;
+const year = (paid, total, pct, sub, cells, keys) => `<div class="card year"><div class="yearhead"><span class="name">2026–27</span><span class="meta tnum">${paid} of ${total} paid</span></div><div class="progress"><i style="width:${pct}%"></i></div>${sub ? `<div class="meta tnum" style="margin-top:8px">${sub}</div>` : ""}<div class="grid">${cells}</div>${legend(keys)}</div>`;
+const aditiCells = m("over","Apr","₹5,400",13) + ["May","Jun","Jul","Aug","Sep","Oct"].map((n) => m("over",n,"₹1,200")).join("") + m("now","Nov","₹1,620") + ["Dec","Jan","Feb","Mar"].map((n) => m("later",n,"₹1,200")).join("");
+const aditiYear = year("₹800","₹19,820",4,"₹4,800 more later this session",aditiCells,["over","now","later","part"]);
+
+const section = (title, right = "") => `<div class="section"><span class="label">${title}</span>${right ? `<span class="meta" style="color:var(--deep);font-weight:600">${right}</span>` : ""}</div>`;
+const pay = (icon, amount, note, when, receipt, pill) => `<div class="row"><div class="tile">${I(icon,20)}</div><div class="grow"><div style="display:flex;align-items:baseline;gap:8px"><span class="amount">${amount}</span>${note ? `<span class="meta clip">${note}</span>` : ""}</div><div class="meta clip">${when}</div><div class="meta clip">${receipt}</div></div>${pill || chev}</div>`;
+
+const cta = (label = "Collect payment") => `<div class="float"><div class="cta">${I("cash",20)}${label}</div></div>`;
+const dock = (amount) => `<div class="dock"><div><div class="meta">Due now</div><div class="amount">${amount}</div></div><div class="cta">${I("cash",20)}Collect</div></div>`;
+
+const pageTop = `${aditi}<div class="body">${aditiHero}${quick}${aditiYear}</div>`;
+const scrolled = `${aditi}<div class="body" style="margin-top:8px">${aditiYear}
+  ${section("Payments")}
+  <div class="card">
+    ${pay("phone","₹250","incl. ₹50 late fee","26 Oct · UPI","RCP-2026-00002",`<span class="pill c">Pending</span>`)}
+    ${pay("cash","₹1,000","","26 Oct · Cash","RCP-2026-00001",`<span class="pill c">₹400 refunded</span>`)}
+  </div></div>`;
+const scrolledLower = `${aditi}<div class="body">
+  ${section("Payments","See all")}
+  <div class="card">
+    ${pay("phone","₹250","incl. ₹50 late fee","26 Oct · UPI","RCP-2026-00002",`<span class="pill c">Pending</span>`)}
+    ${pay("cash","₹1,000","","26 Oct · Cash","RCP-2026-00001",`<span class="pill c">₹400 refunded</span>`)}
+    ${pay("doc","₹2,400","","4 Sep · Cheque 002143","RCP-2026-00003",`<span class="pill r">Bounced</span>`)}
+  </div>
+  ${section("Charges and concessions")}
+  <div class="card">
+    <div class="row"><div class="tile">${I("add",20)}</div><div class="grow"><div class="name clip">bookd</div><div class="meta">One-off · added 1 Nov</div></div><div class="amount">₹420</div>${chev}</div>
+    <div class="row"><div class="tile p">${I("tag",20)}</div><div class="grow"><div class="name clip">Sibling concession</div><div class="meta">10% off Tuition Fee</div></div><div class="amount" style="color:var(--deep)">−₹1,200</div>${chev}</div>
+  </div></div>`;
+
+const due = (title, meta, amount, pill) => `<div class="duerow"><div class="grow"><div class="name clip">${title}</div><div class="meta clip">${meta}</div></div><div class="side"><span class="amount">${amount}</span>${pill || ""}</div>${chev}</div>`;
+// A due with its own Pay button. Tapping the rest of the row still opens waive or cancel.
+const dueP = (title, meta, amount) => `<div class="duerow pay"><div class="grow"><div class="name clip">${title}</div><div class="meta clip">${meta}</div></div><span class="amount">${amount}</span><div class="paybtn">Pay</div></div>`;
+const duePaid = (title, meta) => `<div class="duerow pay"><div class="grow"><div class="name clip">${title}</div><div class="meta clip">${meta}</div></div><span class="amount" style="color:var(--muted)">₹0</span><span class="pill p">Paid</span></div>`;
+const payHead = (label, amount, overdue = true) => `<div class="monthhead"><span class="lbl"><span class="label">${label}</span>${overdue ? "<em>Overdue</em>" : ""}</span><span class="paylink tnum">Pay ${amount}${I("right",16)}</span></div>`;
+const sheet = (title, sub, body) => `<div class="scrim"></div><div class="sheet"><div class="grab"></div><div class="sheethead"><div><div class="t">${title}</div>${sub ? `<div class="meta" style="margin-top:2px">${sub}</div>` : ""}</div><div class="x">${I("close",20)}</div></div><div class="sheetbody">${body}</div></div>`;
+const monthSheet = sheet("April 2026","Due 1 Apr · overdue 7 months",`
+  <div class="three"><div><b>₹6,200</b><span>Billed</span></div><div><b>₹800</b><span>Paid</span></div><div><b style="color:${RED}">₹5,400</b><span>Still open</span></div></div>
+  ${dueP("Admission Fee","Unpaid · one time","₹5,000")}
+  ${dueP("Tuition Fee","₹600 of ₹1,000 paid","₹400")}
+  ${duePaid("Lab Fee","₹200 paid")}
+  <div class="sheetcta"><div class="cta">${I("cash",20)}Pay April · ₹5,400</div></div>`);
+
+const moreRow = (icon, title, detail, tone = "") => `<div class="row"><div class="tile ${tone}">${I(icon,20)}</div><div class="grow"><div class="name">${title}</div>${detail ? `<div class="meta">${detail}</div>` : ""}</div>${chev}</div>`;
+const moreSheet = sheet("More","Aditi Sharma",`
+  ${moreRow("ledger","This student's ledger","Every entry, for checking")}
+  ${moreRow("person","Student profile","Parents, class, admission")}
+  <div class="row dis"><div class="tile">${I("receipt",20)}</div><div class="grow"><div class="name">No dues certificate</div><div class="meta">Aditi still owes ₹23,520 this session</div></div></div>
+  ${moreRow("pause","Pause billing","Long leave: no new dues until restored","c")}`);
+
+const every = `<div class="screenhead"><div class="back">${I("left",22)}</div><div class="grow"><div class="whoname">Every due</div><div class="meta">Aditi Sharma · oldest first</div></div></div>
+  <div class="body"><div class="chips"><div class="chipf on">Open <small class="tnum">₹23,520</small></div><div class="chipf">Paid</div><div class="chipf">All</div></div>
+  ${payHead("Previous dues","₹4,500",false)}
+  <div class="card">${dueP("2025–26 balance","Carried forward","₹4,500")}</div>
+  ${payHead("April 2026","₹5,400")}
+  <div class="card">${dueP("Admission Fee","One time","₹5,000")}${dueP("Tuition Fee","₹600 of ₹1,000 paid","₹400")}</div>
+  ${payHead("May 2026","₹1,200")}
+  <div class="card">${dueP("Tuition Fee","Due 1 May","₹1,000")}${dueP("Lab Fee","Due 1 May","₹200")}</div>
+  ${payHead("June 2026","₹1,200")}
+  <div class="card">${dueP("Tuition Fee","Due 1 Jun","₹1,000")}${dueP("Lab Fee","Due 1 Jun","₹200")}</div>
+  </div>`;
+
+const clearCells = ["Apr","May","Jun","Jul","Aug","Sep","Oct","Nov"].map((n) => m("paid",n,tickIcon)).join("") + ["Dec","Jan","Feb","Mar"].map((n) => m("later",n,"₹1,080")).join("");
+const clear = `${who("BR","Bhavya Rao","Class 6 · A · WALK-002")}<div class="body">
+  <div class="card hero"><div class="herotop"><span class="label">Due now</span><span class="pill p">All paid up</span></div><div class="big tnum">₹0</div>
+    <div class="calm"><span class="tile p" style="width:32px;height:32px;border-radius:12px">${I("check",18)}</span><div class="meta" style="color:var(--ink)">Next due <b style="font-weight:600">₹1,080</b> on 1 Dec</div></div></div>
+  ${quick}${year("₹8,640","₹12,960",67,"₹4,320 more later this session",clearCells,["paid","later"])}</div>`;
+
+const pausedCells = ["Apr","May","Jun","Jul","Aug"].map((n) => m("paid",n,tickIcon)).join("") + m("over","Sep","₹900") + m("over","Oct","₹1,200") + ["Nov","Dec","Jan","Feb","Mar"].map((n) => m("none",n,"—")).join("");
+const paused = `${who("RV","Rohan Verma","Class 7 · DEMO-0002")}<div class="body">
+  <div class="notice">${I("pause",18)}<span>Billing paused on 12 Oct. No new dues until restored.</span><b>Restore</b></div>
+  ${hero("₹2,100",`<span class="pill r">Overdue since 1 Sep</span>`,split([[RED,1]]),part(RED,"Overdue","2 months","₹2,100",true),"See every due")}
+  ${quick}${year("₹6,000","₹8,100",74,"",pausedCells,["paid","over","none"])}</div>`;
+
+const notBilled = `${who("CK","Chirag Kumar","Class 7 · B · DEMO-0014")}<div class="body">
+  ${hero("₹3,000",`<span class="pill n">Previous only</span>`,split([[SLATE,1]]),part(SLATE,"Previous dues","2025–26","₹3,000"),"See every due")}
+  <div class="card block"><div style="display:flex;gap:12px;align-items:center"><div class="tile c">${I("warn",20)}</div><div class="grow"><div class="name">Not billed yet</div><div class="meta">No dues this session. Bill Chirag to create them from the class fee structure.</div></div></div><div class="cta soft">Bill this student</div></div>
+  <div class="quick">${q("add","Add charge")}${q("doc","Statement")}${q("ledger","Ledger")}${q("person","Profile")}</div></div>`;
+
+// ---- Fees tab, year matrix ----
+// One letter per state: r due, g cleared, h part paid, l not yet, x no fee created.
+const YEAR = ["A","M","J","J","A","S","O","N","D","J","F","M"];
+const NO_MAY = ["A","J","J","A","S","O","N","D","J","F","M"];
+const CLASS_6A = [
+  ["Aditi Sharma","hrrrrrrrllll","₹18,720"],
+  ["Meera Nair","ggggggggllll","₹3,000"],
+  ["Dev Malhotra","grrrrrrrllll"],
+  ["Ishita Banerjee","gggrrrrrllll"],
+  ["Kabir Singh","gggggrrrllll"],
+  ["Priya Menon","gggggghrllll"],
+  ["Nikhil Das","gggggggrllll"],
+  ["Sanya Gupta","gggggggrllll"],
+  ["Bhavya Rao","ggggggggllll"],
+  ["Tanvi Joshi","ggggggggllll"],
+  ["Arjun Mehta","ggggggggllll"],
+  ["Farhan Ali","ggggggggllll"],
+  ["Riya Sen","xxxxggggllll"],
+  ["Zoya Khan","gggggggggggg"],
+];
+const CLASS_7B = [
+  ["Chirag Kumar","xxxxxxxxxxx","₹3,000"],
+  ["Aman Verma","grrrxxxxxxx","Left · ₹3,600","r"],
+  ["Sneha Pillai","gggrrrrllll"],
+  ["Rahul Dutta","gggggrrllll"],
+  ["Kiara Bose","xxxgggrllll"],
+  ["Om Prakash","ggggghrllll"],
+  ["Lata Iyer","gggggggllll"],
+  ["Yash Thakur","gggggggllll"],
+  ["Divya Nanda","xxxxxxxxxxx","Not billed","n"],
+];
+const rupees = (n) => "₹" + n.toLocaleString("en-IN");
+const owedOf = ([, states, fixed]) => {
+  if (fixed && fixed.includes("₹")) return Number(fixed.split("₹")[1].replace(/,/g, ""));
+  if (fixed) return 0;
+  return [...states].reduce((sum, st) => sum + (st === "r" ? 1200 : st === "h" ? 600 : 0), 0);
+};
+const box = (st) => `<i class="box ${st}">${st === "g" ? I("check",12) : ""}</i>`;
+const mcells = (states, cur) => `<div class="mcells" style="grid-template-columns:repeat(${states.length},1fr)">${[...states].map((st, k) => `<div class="c ${k === cur ? "cur" : ""}">${box(st)}</div>`).join("")}</div>`;
+const mname = (row) => {
+  const [name, , fixed, tone] = row;
+  const owed = owedOf(row);
+  const label = fixed || (owed ? rupees(owed) : "Paid up");
+  const colour = tone === "n" ? "var(--muted)" : owed || tone === "r" ? RED : "var(--deep)";
+  return `<div class="mn"><b>${name}</b><span style="color:${colour}">${label}</span></div>`;
+};
+const mrow = (row, cur, side) => `<div class="mline body-row ${side}">${side === "left" ? mname(row) : ""}${mcells(row[1], cur)}${side === "right" ? mname(row) : ""}</div>`;
+const mhead = (letters, cur, side) => `<div class="mline mhead ${side}">${side === "left" ? '<div class="mn"></div>' : ""}<div class="mcells" style="grid-template-columns:repeat(${letters.length},1fr)">${letters.map((l, k) => `<div class="c ${k === cur ? "cur" : ""}">${l}</div>`).join("")}</div>${side === "right" ? '<div class="mn"></div>' : ""}</div>`;
+const mxLegend = `<div class="mxlegend"><span><i class="box r"></i>Due</span><span><i class="box g">${I("check",9)}</i>Cleared</span><span><i class="box h"></i>Part paid</span><span><i class="box l"></i>Not yet</span></div>`;
+const clearedNow = (rows, cur) => rows.filter((row) => row[1][cur] === "g").length;
+const billedNow = (rows, cur) => rows.filter((row) => row[1][cur] !== "x").length;
+const matrix = (rows, letters, cur, side) => `<div class="card mx"><div class="mxtop"><span class="name">2026–27</span><span class="meta tnum">Nov: ${clearedNow(rows, cur)} of ${billedNow(rows, cur)} cleared</span></div>${mxLegend}<div style="margin-top:8px">${mhead(letters, cur, side)}${rows.map((row) => mrow(row, cur, side)).join("")}</div></div>`;
+
+const fp = (label, on, drop) => `<div class="fp ${on ? "on" : ""}">${label}${drop ? I("down",14) : ""}</div>`;
+const feesTop = (klass, sec, count, view) => `<div class="body"><div class="feestop"><div class="round" style="background:var(--surface);color:var(--slate)">${I("print",18)}</div><div class="round" style="background:var(--surface);color:var(--slate)">${I("settings",18)}</div><div class="act">${I("receipt",16)}Payments</div></div>
+  <div class="h1">Fees</div><div class="meta" style="margin-top:2px">Main Campus</div>
+  <div class="fold">${I("down",22)}</div>
+  <div class="search">${I("search",18)}Search student</div>
+  <div class="fchips">${fp(klass,true,true)}${fp(sec,true,true)}${fp("Owes")}${fp("Paid")}${fp("Not billed")}</div>
+  <div class="listhead"><span class="meta grow clip tnum">${count}</span><span class="sortl">${I("sort",16)}Oldest first</span><div class="viewtog"><div class="${view === "list" ? "on" : ""}">${I("viewlist",18)}</div><div class="${view === "year" ? "on" : ""}">${I("grid",18)}</div></div></div>`;
+const fab = `<div class="fab">${I("cash",20)}Collect</div>`;
+const countLine = (rows) => `${rows.length} students · ${rupees(rows.reduce((sum, row) => sum + owedOf(row), 0))}`;
+const lrow = (name, line, amount, status, red) => `<div class="card lrow"><div><div class="grow"><div class="name clip">${name}</div><div class="meta clip">${line}</div></div><div style="text-align:right"><div class="name tnum" style="font-size:15px;${red ? `color:${RED}` : ""}">${amount}</div><div class="meta" style="${red ? `color:${RED}` : ""}">${status}</div></div></div><div class="moreinfo">More info${I("down",16)}</div></div>`;
+const listView = feesTop("Class 6","A",countLine(CLASS_6A),"list") + `<div style="margin-top:8px">${lrow("Aditi Sharma","Class 6 · A","₹18,720","7 months overdue",true)}${lrow("Meera Nair","Class 6 · A","₹3,000","Previous dues",true)}${lrow("Dev Malhotra","Class 6 · A","₹8,400","6 months overdue",true)}${lrow("Ishita Banerjee","Class 6 · A","₹6,000","4 months overdue",true)}</div></div>`;
+const yearView = (side) => feesTop("Class 6","A",countLine(CLASS_6A),"year") + matrix(CLASS_6A,YEAR,7,side) + "</div>";
+const yearScrolled = `<div style="padding:0 20px"><div class="card" style="padding:4px 12px 4px;border-radius:16px 16px 0 0">${mhead(YEAR,7,"right")}${CLASS_6A.map((row) => mrow(row,7,"right")).join("")}</div></div>`;
+const yearEleven = feesTop("Class 7","B",countLine(CLASS_7B),"year") + matrix(CLASS_7B,NO_MAY,6,"right") + "</div>";
+
+// ---- Collect payment ----
+// Aditi's dues are real; the ₹50 late fee and the references are examples.
+const colWho = who("AS", "Aditi Sharma", "Collect payment · Class 6 · A", false);
+const qc = (label, amount, on) => `<div class="qc ${on ? "on" : ""}">${label}${amount ? `<span>${amount}</span>` : ""}</div>`;
+const amountCard = (big, typing, line, chips) => `<div class="card amt"><div class="amthead"><span class="label">Amount</span><span class="meta tnum">Due now ₹18,720</span></div>
+  <div class="amtbig ${typing ? "typing" : ""}">${big}${typing ? '<i class="caret"></i>' : ""}</div>${line}<div class="qrow">${chips}</div></div>`;
+const lateLine = (total) => `<div class="amtline"><span>+ ₹50 late fee · total <b>${total}</b></span><u>Forgive</u></div>`;
+const fullChips = qc("All due","₹18,720",true) + qc("Up to Oct","₹17,100") + qc("Previous","₹4,500") + qc("Pay ahead");
+const cov = (mark, label, when, amount) => `<div class="cov">${mark === "ok" ? `<span class="ok">${I("check",14)}</span>` : mark === "part" ? '<span class="halfok"></span>' : '<span class="notyet"></span>'}${label}${when ? `<span class="when">${when}</span>` : ""}<b>${amount}</b></div>`;
+const covers = (rows, foot) => `<div class="card covers"><div class="covhead"><span class="label">This pays</span><span class="meta">oldest first</span></div>${rows}<div class="covfoot">${foot}<u>${I("tune",16)}Adjust per fee</u></div></div>`;
+const fullCovers = covers(cov("ok","Previous dues","2025–26","₹4,500") + cov("ok","April – October","7 months","₹12,600") + cov("ok","November","","₹1,620"), "<span>Nothing left due now</span>");
+const modeTile = (icon, label, on) => `<div class="mode ${on ? "on" : ""}">${I(icon,22)}${label}</div>`;
+const modes = (on) => `<div class="section" style="margin-top:16px"><span class="label">Paid by</span></div><div class="modes">${modeTile("cash","Cash",on==="cash")}${modeTile("phone","UPI",on==="upi")}${modeTile("doc","Cheque",on==="cheque")}${modeTile("bank","Bank transfer",on==="neft")}${modeTile("card","Card",on==="card")}${modeTile("ledger","DD",on==="dd")}</div>`;
+const recordCta = (label) => `<div class="float"><div class="cta">${I("check",20)}${label}</div></div>`;
+const receivedRow = `<div class="factrow"><span class="meta" style="font-size:15px;color:var(--ink)">Received on</span><b>Today, 2 Nov ${I("down",18)}</b></div>`;
+const totals = (rows) => `<div class="card tot">${rows}</div>`;
+const tl = (label, amount, extra = "") => `<div class="tl">${label}${extra}<b>${amount}</b></div>`;
+
+const colReady = `${colWho}<div class="body">${amountCard("₹18,720", false, lateLine("₹18,770"), fullChips)}${fullCovers}${modes("cash")}</div>`;
+
+const typingChips = qc("All due","₹18,720") + qc("Up to Oct","₹17,100") + qc("Previous","₹4,500");
+const colFromMonth = `${colWho}<div class="body"><div class="card amt"><div class="amthead"><span class="label">Paying April 2026</span><span class="meta tnum">Due now ₹18,720</span></div>
+  <div class="amtbig">₹5,400</div>${lateLine("₹5,450")}
+  <div class="context"><span>Opened from April</span><u>Pay all due instead</u></div></div>
+  ${covers(cov("ok","Admission Fee","April","₹5,000") + cov("ok","Tuition Fee","April","₹400"), "<span>Older dues stay open: <b style='color:#475467'>₹4,500</b></span>")}${modes("cash")}</div>`;
+const colTyping = `${colWho}<div class="body">${amountCard("₹10,000", true, lateLine("₹10,050"), typingChips)}${covers(cov("ok","Previous dues","2025–26","₹4,500") + cov("ok","April","","₹5,400") + cov("part","May","₹100 of ₹1,200","₹100"), "<span>Still due after this: <b style='color:#B42318'>₹8,720</b></span>")}</div>
+  <div class="kbd">${["1","2","3","4","5","6","7","8","9",".","0","⌫"].map((k) => `<div class="${k === "." || k === "⌫" ? "k2" : ""}">${k}</div>`).join("")}</div>`;
+
+const colUpi = `${colWho}<div class="body" style="margin-top:-4px">${modes("upi")}
+  <div class="card form"><div class="fld" style="margin-top:8px"><span>UPI reference</span><div class="inp on">430211876650</div></div>${receivedRow}
+    <div><div class="addl">${I("tag",20)}Add a discount</div><div class="addl">${I("note",20)}Add a note for the receipt</div></div></div>
+  ${totals(tl("Fees","₹18,720") + tl("Late fee","₹50"," <u>Forgive</u>") + `<div class="tl big">To take<b>₹18,770</b></div>`)}</div>${recordCta("Record ₹18,770 · UPI")}`;
+
+const colCheque = `${colWho}<div class="body" style="margin-top:-4px">${modes("cheque")}
+  <div class="card form"><div class="fld" style="margin-top:8px"><span>Cheque number</span><div class="inp on">002143</div></div>
+    <div class="pairf"><div class="fld"><span>Bank</span><div class="inp">SBI</div></div><div class="fld"><span>Cheque date</span><div class="inp">2 Nov ${I("cal",18,"#5D6674")}</div></div></div>
+    ${receivedRow}</div>
+  <div class="notice" style="margin-top:12px">${I("warn",18)}<span>Cheques stay pending until someone confirms the money arrived. The receipt says so.</span></div></div>${recordCta("Record ₹18,770 · Cheque")}`;
+
+const colDiscount = `${colWho}<div class="body" style="margin-top:-4px">${modes("cash")}
+  <div class="card form"><div class="pairf" style="margin-top:8px"><div class="fld" style="flex:0 0 112px"><span>Discount</span><div class="inp on">₹500</div></div><div class="fld"><span>Reason</span><div class="inp">Staff child</div></div></div>
+    <div class="meta" style="margin-top:-4px">Comes off this bill and shows on the receipt.</div>${receivedRow}</div>
+  ${totals(tl("Fees","₹18,720") + tl("Discount","− ₹500") + tl("<s style='color:#5D6674'>Late fee</s>","₹0"," <u>Undo</u>") + `<div class="tl big">To take<b>₹18,220</b></div>`)}</div>${recordCta("Record ₹18,220 · Cash")}`;
+
+const adjRow = (title, meta, value, on) => `<div class="duerow" style="padding-right:20px"><div class="grow"><div class="name clip">${title}</div><div class="meta clip">${meta}</div></div><div class="inp ${on ? "on" : ""}" style="width:104px;height:44px">₹${value}</div></div>`;
+const adjustSheet = `<div class="scrim"></div><div class="sheet"><div class="grab"></div><div class="sheethead"><div><div class="t">Adjust per fee</div><div class="meta" style="margin-top:2px">For when a parent says what they're paying for</div></div><div class="x">${I("close",20)}</div></div>
+  <div class="sheetbody" style="padding-bottom:0">
+  <div class="monthhead" style="margin:8px 20px 4px"><span class="label">Previous dues</span></div>${adjRow("Balance from 2025–26","₹4,500 open","0")}
+  <div class="monthhead" style="margin:8px 20px 4px"><span class="label">April 2026</span></div>${adjRow("Admission Fee","₹5,000 open","5,000")}${adjRow("Tuition Fee","₹400 open","400")}
+  <div class="monthhead" style="margin:8px 20px 4px"><span class="label">May 2026</span></div>${adjRow("Tuition Fee","₹1,000 open","1,000",true)}${adjRow("Lab Fee","₹200 open","0")}
+  </div><div class="sheetfoot2"><div class="ghost">Pay all</div><div class="cta">Use ₹6,400</div></div></div>`;
+const colAdjust = `${colWho}<div class="body">${amountCard("₹18,720", false, lateLine("₹18,770"), fullChips)}${fullCovers}</div>${adjustSheet}`;
+
+const rl = (label, amount, muted) => `<div class="rline"${muted ? ' style="color:#5D6674"' : ""}>${label}<b>${amount}</b></div>`;
+const reviewSheet = `<div class="scrim"></div><div class="sheet"><div class="grab"></div><div class="sheethead"><div><div class="t">Take ₹18,770 in cash?</div><div class="meta" style="margin-top:2px">From Aditi Sharma's parent · today, 2 Nov</div></div><div class="x">${I("close",20)}</div></div>
+  <div class="sheetbody" style="padding-bottom:0"><div class="receipt">${rl("Previous dues · 2025–26","₹4,500")}${rl("April – October","₹12,600")}${rl("November","₹1,620")}${rl("Late fee","₹50")}
+    <div class="tl big" style="margin-top:8px">Total<b>₹18,770</b></div></div>
+    <div class="meta" style="margin:12px 20px 0">Nothing is due after this. The receipt number comes once it's recorded.</div></div>
+  <div class="sheetfoot2"><div class="ghost">Edit</div><div class="cta">Record payment</div></div></div>`;
+const colReview = `${colWho}<div class="body">${amountCard("₹18,720", false, lateLine("₹18,770"), fullChips)}${fullCovers}</div>${reviewSheet}`;
+
+const colDone = `<div class="screenhead"><div class="back">${I("close",22)}</div></div><div class="done"><div class="donebadge">${I("check",40)}</div>
+  <div class="big tnum" style="margin-top:16px">₹18,770</div><div class="name" style="margin-top:4px">received from Aditi Sharma</div><div class="meta" style="margin-top:4px">Cash · 2 Nov · RCP-2026-00004</div>
+  <div class="card" style="margin-top:20px;width:100%;padding:12px 16px;text-align:left">${rl("Due now","₹0")}${rl("Later this session","₹4,800",true)}</div>
+  <div class="donebtns"><div class="cta">${I("share",20)}Share receipt PDF</div><div class="ghost">${I("print",20)}Print receipt</div><div class="ghost">Back to Aditi's fees</div></div></div>`;
+
+const aheadChips = qc("December","₹1,080",true) + qc("Dec – Jan","₹2,160") + qc("Rest of year","₹4,320");
+const colAhead = `${who("BR","Bhavya Rao","Collect payment · Class 6 · A",false)}<div class="body"><div class="card amt"><div class="amthead"><span class="label">Pay ahead</span><span class="pill p">Nothing due now</span></div>
+  <div class="amtbig">₹1,080</div><div class="amtline"><span>No late fee when paying ahead</span></div><div class="qrow">${aheadChips}</div></div>
+  ${covers(cov("ok","December","due 1 Dec","₹1,080"), "<span>Adds December's dues first</span>")}${modes("cash")}</div>${recordCta("Record ₹1,080 · Cash")}`;
+
+// ---- Printing ----
+const printFoot = `<div class="sheetfoot2"><div class="ghost" style="display:flex;align-items:center;gap:8px">${I("share",20)}Share PDF</div><div class="cta">${I("print",20)}Print</div></div>`;
+const printSheet = (title, sub, body) => `<div class="scrim"></div><div class="sheet"><div class="grab"></div><div class="sheethead"><div><div class="t">${title}</div>${sub ? `<div class="meta" style="margin-top:2px">${sub}</div>` : ""}</div><div class="x">${I("close",20)}</div></div><div class="sheetbody" style="padding-bottom:0">${body}</div>${printFoot}</div>`;
+const docCard = (icon, title, meta) => `<div class="doccard"><div class="tile p">${I(icon,20)}</div><div class="grow"><div class="name">${title}</div><div class="meta">${meta}</div></div></div>`;
+const radio = (label, on, note = "") => `<div class="radio ${on ? "on" : ""}"><i></i>${label}${note ? `<small>${note}</small>` : ""}</div>`;
+
+const statementSheet = printSheet("Fee statement", "Aditi Sharma · 2026–27",
+  docCard("doc", "Every due and payment", "This session · A4") +
+  `<div class="meta" style="margin:12px 20px 0;line-height:1.4">Shows the school's heading and footer from Fee setup › Printing.</div>`);
+
+const receiptSheet = printSheet("Receipt", "RCP-2026-00004 · ₹18,770",
+  `<div class="plabel">Paper</div>` +
+  radio("A4, half page, two copies", true, "Usual") + radio("A4, half page, top half", false) + radio("A4, half page, bottom half", false) + radio("A4, full page", false) + radio("Thermal, 80mm", false) + radio("Thermal, 58mm", false) +
+  `<div class="meta" style="margin:4px 20px 0">One copy for the parent, one for the office.</div><div class="textlink">${I("note",20)}Send as text instead</div>`);
+
+const pmode = (icon, label, on) => `<div class="mode ${on ? "on" : ""}">${I(icon,20)}${label}</div>`;
+const listsSheet = printSheet("Print lists and notices", "",
+  `<div class="plabel" style="margin-top:8px">What to print</div><div class="pmodes">${pmode("doc","Due notices",true)}${pmode("person","Who owes")}${pmode("ledger","Day book")}${pmode("bank","Cheques")}</div>
+  <div class="meta" style="margin:8px 20px 0">One slip per student who owes, to send home.</div>
+  <div class="pairf" style="margin:12px 20px 0"><div class="fld"><span>Class</span><div class="inp">Class 6 ${I("down",18,"#5D6674")}</div></div><div class="fld"><span>Section</span><div class="inp">A ${I("down",18,"#5D6674")}</div></div></div>
+  <div class="plabel">On each A4 sheet</div><div class="seg"><div>1 notice</div><div class="on">2 notices</div><div>4 notices</div></div>
+  <div class="meta" style="margin:8px 20px 0">8 students owe in Class 6 A, so 4 sheets.</div>`);
+
+const group = (t) => `<div class="group">${t}</div>`;
+document.getElementById("root").innerHTML =
+  group("Collect payment") + `<div class="frames">
+  ${phone("<b>1. Opens ready to record.</b> The usual case, a parent paying everything in cash, is one tap. The late fee and the real total sit right under the amount, not at the bottom.", colReady, "", recordCta("Record ₹18,770 · Cash"))}
+  ${phone("<b>1b. Opened from a month or a due.</b> Pay on April (or on one fee) lands here with only that selected. The card says where it came from, older dues it leaves open, and one tap goes back to paying everything.", colFromMonth, "", recordCta("Record ₹5,450 · Cash"))}
+  ${phone("<b>2. Paying part.</b> Type any amount, or tap a shortcut. &ldquo;This pays&rdquo; shows which dues it settles, oldest first, and what is still left. The Record button comes back when the keyboard closes.", colTyping)}
+  ${phone("<b>3. Mode, then only its fields.</b> Six large tiles instead of small pills. UPI asks for one reference. Discount and note stay hidden until asked for.", colUpi)}
+  ${phone("<b>4. Cheque.</b> Number, bank and date side by side, and a plain warning that it stays pending.", colCheque)}
+  ${phone("<b>5. Discount and late fee.</b> Only for people allowed to give them. Every change shows in the totals and on the button.", colDiscount)}
+  ${phone("<b>6. Adjust per fee.</b> The rare case, a parent paying for specific fees. A sheet, so the main screen stays simple.", colAdjust)}
+  ${phone("<b>7. Review.</b> Reads like the receipt. The title says the amount and the mode, so the cashier checks the two things that go wrong.", colReview)}
+  ${phone("<b>8. Recorded.</b> Sending the receipt is the next thing the parent asks for, so it comes first. Share PDF goes straight to the share menu, on the school's usual paper, so WhatsApp is two taps.", colDone)}
+  ${phone("<b>8b. Print receipt.</b> The print sheet the app already has: paper choice, with the school's usual one marked. Share PDF and Print share one footer, and plain text stays as a fallback.", colDone, receiptSheet)}
+  ${phone("<b>9. Paying ahead.</b> Nothing due now: the shortcuts become months ahead, and the app creates the dues first.", colAhead)}
+  </div>` +
+  group("New idea: the whole year, for every selected student (Fees tab)") + `<div class="frames">
+  ${phone("<b>A. Where it lives.</b> The Fees tab as it is today, with the summary folded. The new print button at the top stays reachable even when the summary is folded. One new control beside the sort: list or year. Class, Sec, Owes and Paid choose which students appear.", listView, "", fab)}
+  ${phone("<b>B. Year view, names on the right.</b> Your idea: one row per student, one box per fee month. Red is due, green is cleared. Tap anywhere on a row to open that student's page.", yearView("right"), "", fab)}
+  ${phone("<b>C. Same, names on the left.</b> Drawn so you can compare the two sides. The boxes and figures are identical.", yearView("left"), "", fab)}
+  ${phone("<b>D. Scrolled.</b> A whole class on one screen. The month letters stay pinned, and this month's column stays shaded all the way down.", yearScrolled, "", fab)}
+  ${phone("<b>F. Print lists and notices.</b> Opens with the class and section already filtered. The four kinds become tiles, and it says how many sheets will print.", yearView("right"), listsSheet, fab)}
+  ${phone("<b>E. 11 fee months, real-life rows.</b> No fee in May, so May's column is gone and the boxes get wider. Empty boxes mean no fee was created: not billed, left the school, or joined late like Kiara.", yearEleven, "", fab)}
+  </div>` +
+  group("The page") + `<div class="frames">
+  ${phone("<b>1. Opens on the answer.</b> The big number and the three parts that add up to it, and nothing else. Later and Paid moved out, because they are not part of what is owed.", pageTop, "", cta())}
+  ${phone("<b>2. The whole session.</b> Twelve months at once, no sideways scrolling. April's small green line means part paid. Once you scroll past the big number, it moves into the Collect bar.", scrolled, "", dock("₹18,720"))}
+  ${phone("<b>3. Payments, charges, concessions.</b> The amount leads. Only something unusual gets a pill, so a normal cleared payment stays quiet. Concessions and one-offs are no longer hidden under More. The cheque and concession rows are examples, not Aditi's data.", scrolledLower, "", dock("₹18,720"))}
+  </div>` +
+  group("One tap deeper") + `<div class="frames">
+  ${phone("<b>4. Tap a month.</b> What was billed, paid and still open. Each open fee has its own Pay, and the button pays the whole month. Tapping the rest of a row still opens waive or cancel, two careful steps away.", pageTop, monthSheet)}
+  ${phone("<b>5. Every due.</b> Grouped under months, so names lose &ldquo;— April 2026&rdquo;. Pay on a row pays that fee; Pay on a month heading pays the month. Overdue is said once, in the heading. Opens on what is still open, so ₹0 rows are gone unless you ask for Paid.", every)}
+  ${phone("<b>6. More.</b> Only the rare things live here now. The no dues certificate stays visible but greyed, with the reason, until nothing is owed. Pause billing sits last, in caution colour.", pageTop, moreSheet)}
+  ${phone("<b>6b. Statement.</b> The Statement button opens the app's print sheet: what will print, then Share PDF or Print.", pageTop, statementSheet)}
+  </div>` +
+  group("Other students") + `<div class="frames">
+  ${phone("<b>7. All paid up.</b> A calm ₹0 and the next date to expect. Collect steps back, and paying early is still possible.", clear, "", `<div class="float"><div class="cta soft">${I("cash",20)}Collect in advance</div></div>`)}
+  ${phone("<b>8. Billing paused.</b> Says so first, with the way back. Months with no dues show a dash, and only the one part owed appears.", paused, "", cta())}
+  ${phone("<b>9. Not billed, but owes from last year.</b> Money first, then the one setup step. The months are hidden because there are none. The actions change to fit.", notBilled, "", cta())}
+  </div>`;
+</script>
+</body>
+</html>

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
+import { AppIcon } from "../../components/app-icon";
+import type { AppIconName } from "../../components/app-icon";
 import { CapsuleButton } from "../../components/capsule-button";
 import { Card } from "../../components/card";
-import { ChoicePills } from "../../components/choice-pills";
 import { DateField } from "../../components/date-field";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorCard } from "../../components/error-card";
@@ -14,6 +15,7 @@ import { FormSheet } from "../../components/form-sheet";
 import { Notice } from "../../components/notice";
 import { ScreenFrame } from "../../components/screen-frame";
 import { Skeleton } from "../../components/skeleton";
+import { StatusPill } from "../../components/status-pill";
 import { ThemedText } from "../../components/themed-text";
 import { useActiveContext } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
@@ -21,7 +23,12 @@ import { copy } from "../../lib/copy";
 import { toFriendlyError } from "../../lib/errors";
 import {
   applyDiscount,
+  collectShortcuts,
+  coverRows,
   distributeAmount,
+  feeNameOf,
+  focusAmounts,
+  focusLabel,
   installmentTitle,
   isHeldMode,
   isPayable,
@@ -43,6 +50,7 @@ import {
   toMoneyString,
   isPositiveMoney,
   sanitizeAmountInput,
+  subtractMoney,
   toInputAmount,
 } from "../../lib/money";
 import { trpc } from "../../lib/trpc";
@@ -54,19 +62,18 @@ import {
   spacing,
   touch,
 } from "../../theme/tokens";
-import { SectionHead } from "./status";
 import { useSessionOpen } from "../../hooks/use-session-open";
-import { SwitchRow } from "../../components/switch-row";
 import { feesCopy } from "../../lib/fees-copy";
 
 /**
- * Take the money (Step 5B).
+ * Take the money.
  *
- * The screen's one idea: the cashier allocates, never types a total. Every
- * open installment is listed oldest-first with its full balance already in the
- * amount box — the common case is "pay everything" — and the total is the sum
- * of those boxes. An amount cannot exceed its installment: typing past the
- * balance is capped on blur with a visible reason, and again at review, so the
+ * It opens ready to record the usual case: everything due now, in cash. One
+ * amount is spread oldest first across the open dues, and "This pays" shows
+ * exactly where it lands. Shortcuts are running totals, so tapping one is the
+ * same as typing it. Opened from "Pay" on a month or a due, only that is
+ * filled. The per-fee boxes live in a sheet for the rare parent who names fees.
+ * An amount cannot exceed its due: it is capped with a visible reason, so the
  * server never has to reject an over-allocation.
  *
  * `clientReference` is minted once per mount and kept across retries. A
@@ -99,10 +106,14 @@ type PayableLine = {
   key: string;
   id: string;
   title: string;
+  /** The fee's name without its month, for "This pays". */
+  name: string;
+  /** The due's month; null for a balance carried in from an earlier session. */
+  month: string | null;
   paid: string | null;
   net: string | null;
   balance: string;
-  /** Due after the current month: shown under "Pay ahead". */
+  /** Due after the current month: paying ahead. */
   ahead: boolean;
 };
 
@@ -112,6 +123,8 @@ export function CollectPaymentScreen() {
     studentName?: string;
     className?: string;
     carriedForward?: string;
+    /** From "Pay": `month:2026-04`, `fee:Tuition Fee`, `due:<id>` or `previous`. */
+    focus?: string;
   }>();
   const { organizationId, schoolId, academicYear, ready, yearPending } =
     useActiveContext();
@@ -139,7 +152,6 @@ export function CollectPaymentScreen() {
   const [review, setReview] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const [showAhead, setShowAhead] = useState(false);
   // One amount by default: the cashier types what was handed over and the split
   // follows, oldest first. The per-fee boxes are one tap away for the rare case.
   const [adjust, setAdjust] = useState(false);
@@ -147,6 +159,11 @@ export function CollectPaymentScreen() {
   const [discount, setDiscount] = useState("");
   const [discountReason, setDiscountReason] = useState("");
   const [waiveLateFee, setWaiveLateFee] = useState(false);
+  const [showDiscount, setShowDiscount] = useState(false);
+  const [showNote, setShowNote] = useState(false);
+  const focus = typeof params.focus === "string" && params.focus.length > 0 ? params.focus : null;
+  // Opened from "Pay": the card says so until the cashier switches to all due.
+  const [focusOn, setFocusOn] = useState(Boolean(focus));
   const canGiveOff = has("fee_waiver:create");
   const currentMonth = monthKeyOf(todayIso());
 
@@ -232,6 +249,8 @@ export function CollectPaymentScreen() {
         key: `opening:${row.id}`,
         id: row.id,
         title: row.description?.trim() || copy.fees.collect.carriedForwardLine,
+        name: row.description?.trim() || copy.fees.collect.carriedForwardLine,
+        month: null,
         paid: row.paidAmount,
         net: row.amount,
         balance: row.balanceAmount ?? "0.00",
@@ -242,6 +261,8 @@ export function CollectPaymentScreen() {
       key: row.id,
       id: row.id,
       title: installmentTitle(row),
+      name: feeNameOf(row.description),
+      month: monthKeyOf(row.dueDate),
       paid: row.paidAmount,
       net: row.netAmount,
       balance: row.balanceAmount ?? "0.00",
@@ -265,8 +286,10 @@ export function CollectPaymentScreen() {
   useEffect(() => {
     if (prefilled.current || !dues.data || !openingsSettled) return;
     prefilled.current = true;
-    setAmounts(dueNowAmounts);
-  }, [dues.data, openingsSettled, dueNowAmounts]);
+    // From "Pay": only what was picked, whole. A fee type pays up to this month.
+    const picked = focus ? focusAmounts(lines, focus, currentMonth) : null;
+    setAmounts(picked && Object.keys(picked).length > 0 ? picked : dueNowAmounts);
+  }, [dues.data, openingsSettled, dueNowAmounts, focus, lines, currentMonth]);
 
   const billed = useMemo(
     () =>
@@ -349,16 +372,6 @@ export function CollectPaymentScreen() {
     () => sumMoney(nowLines.map((line) => line.balance)),
     [nowLines],
   );
-  const later = useMemo(
-    () => sumMoney(aheadLines.map((line) => line.balance)),
-    [aheadLines],
-  );
-  const aheadChosen = aheadLines.some(
-    (line) => (parseMoney(amounts[line.key] ?? "") ?? 0n) > 0n,
-  );
-  // Open when asked, when something is already chosen there, or when nothing
-  // is due yet (then pay ahead is the only thing to collect).
-  const aheadOpen = showAhead || aheadChosen || nowLines.length === 0;
 
   // The month "Add {month}" would create: one past the latest open due, and
   // never before next month. Pressing it again steps forward a month, so a
@@ -392,7 +405,6 @@ export function CollectPaymentScreen() {
         through: endOfMonthKey(nextMonthKey),
       });
       setAddedThrough(nextMonthKey);
-      setShowAhead(true);
       await Promise.all([
         utils.fees.installment.dues.invalidate(),
         utils.fees.matrix.list.invalidate(),
@@ -484,12 +496,14 @@ export function CollectPaymentScreen() {
     setAmounts(dueNowAmounts);
     setReceived(null);
     setClamped({});
+    setFocusOn(false);
   };
 
   // The one-amount box: what was handed over, spread oldest first.
   const changeReceived = (next: string) => {
     const value = sanitizeAmountInput(next);
     setReceived(value);
+    setFocusOn(false);
     setAmounts(
       distributeAmount(
         value,
@@ -524,20 +538,10 @@ export function CollectPaymentScreen() {
       }
       setAmounts(next);
       setReceived(null);
-      setShowAhead(true);
       setAdjust(false);
     } catch (cause) {
       setError(cause);
     }
-  };
-
-  const fillAhead = () => {
-    setAmounts((current) => {
-      const next = { ...current };
-      for (const line of aheadLines)
-        next[line.key] = toInputAmount(line.balance);
-      return next;
-    });
   };
 
   const openReview = () => {
@@ -612,6 +616,7 @@ export function CollectPaymentScreen() {
           studentId: payment.studentId,
           studentName,
           className: classLine ?? "",
+          recorded: "1",
         },
       });
     } catch (cause) {
@@ -619,41 +624,46 @@ export function CollectPaymentScreen() {
     }
   };
 
+  const words = feesCopy.collect;
+  const modeLabel = paymentModeLabel(mode);
+  const shownAmount = received ?? toInputAmount(bill);
+  const shownPaise = parseMoney(shownAmount) ?? 0n;
+  const owedInAll = sumMoney(lines.map((line) => line.balance));
+  const overAsked =
+    received !== null && (parseMoney(received) ?? 0n) > (parseMoney(owedInAll) ?? 0n);
+  const shortcuts = collectShortcuts(lines, currentMonth);
+  const covers = coverRows(lines, amounts);
+  const billedNow = sumMoney(
+    billed.filter((entry) => !entry.line.ahead).map((entry) => entry.amount),
+  );
+  const leftNow = subtractMoney(outstanding, billedNow);
+  // Only when "Pay" found something to fill; otherwise collect opened as usual.
+  const focusFound = focus ? Object.keys(focusAmounts(lines, focus, currentMonth)).length > 0 : false;
+  const focusText = focusOn && focus && focusFound ? focusLabel(lines, focus) : null;
+  const nothingDueNow = nowLines.length === 0;
+  const hasLateFee = isPositiveMoney(quote.data?.lateFeeAmount);
+
   const footer =
     lines.length > 0 ? (
-      <View style={styles.footerRow}>
-        <View style={styles.footerTotal}>
-          <ThemedText variant="sectionLabel">
-            {copy.fees.collect.totalLabel}
-          </ThemedText>
-          <ThemedText
-            variant="title"
-            numberOfLines={1}
-            maxFontSizeMultiplier={1.15}
-            testID="fee-collect-total"
-          >
-            {formatMoney(grandTotal)}
-          </ThemedText>
-        </View>
-        <CapsuleButton
-          title={copy.fees.collect.reviewAction}
-          icon="check"
-          size="compact"
-          onPress={openReview}
-          disabled={allocations.length === 0}
-          testID="fee-collect-review"
-        />
-      </View>
+      <CapsuleButton
+        title={words.record(formatMoney(grandTotal), modeLabel)}
+        icon="check"
+        onPress={openReview}
+        disabled={allocations.length === 0}
+        style={styles.wide}
+        testID="fee-collect-review"
+      />
     ) : undefined;
 
   const frame = (children: ReactNode, footerSlot?: ReactNode) => (
     <ScreenFrame
-      title={copy.fees.collect.title}
-      meta={classLine ? `${studentName} · ${classLine}` : studentName}
+      title={studentName}
+      meta={classLine ? `${copy.fees.collect.title} · ${classLine}` : copy.fees.collect.title}
       backAccessibilityLabel={copy.common.back}
       onRefresh={canReadDues ? () => void dues.refetch() : undefined}
       refreshing={dues.isRefetching}
       footer={footerSlot}
+      footerVariant="floating"
       titleTestID="fee-collect-title"
     >
       {children}
@@ -682,9 +692,9 @@ export function CollectPaymentScreen() {
   if (!ready || yearPending) {
     return frame(
       <View style={styles.skeletons}>
-        <Skeleton height={120} />
-        <Skeleton height={90} />
-        <Skeleton height={90} />
+        <Skeleton height={160} />
+        <Skeleton height={140} />
+        <Skeleton height={140} />
       </View>,
     );
   }
@@ -727,9 +737,9 @@ export function CollectPaymentScreen() {
   if ((dues.isPending && !dues.data) || !openingsSettled) {
     return frame(
       <View style={styles.skeletons}>
-        <Skeleton height={120} />
-        <Skeleton height={90} />
-        <Skeleton height={90} />
+        <Skeleton height={160} />
+        <Skeleton height={140} />
+        <Skeleton height={140} />
       </View>,
     );
   }
@@ -786,7 +796,11 @@ export function CollectPaymentScreen() {
             </ThemedText>
             <TextInput
               value={value}
-              onChangeText={(next) => setAmount(line.key, next)}
+              onChangeText={(next) => {
+                setAmount(line.key, next);
+                setReceived(null);
+                setFocusOn(false);
+              }}
               onBlur={() => settleAmount(line.key, line.balance)}
               keyboardType="decimal-pad"
               inputMode="decimal"
@@ -804,10 +818,11 @@ export function CollectPaymentScreen() {
           </View>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`${feesCopy.collect.removeRow} ${title}`}
+            accessibilityLabel={`${words.removeRow} ${title}`}
             hitSlop={8}
             onPress={() => {
               setAmount(line.key, "");
+              setReceived(null);
               setClamped((current) => ({
                 ...current,
                 [line.key]: null,
@@ -817,7 +832,7 @@ export function CollectPaymentScreen() {
             testID={`fee-collect-clear-${line.id}`}
           >
             <ThemedText variant="caption" color={colors.accentDeep}>
-              {feesCopy.collect.removeRow}
+              {words.removeRow}
             </ThemedText>
           </Pressable>
         </View>
@@ -825,124 +840,217 @@ export function CollectPaymentScreen() {
     );
   };
 
+  const lateFeeLink = canGiveOff && hasLateFee ? (
+    <Pressable
+      accessibilityRole="button"
+      hitSlop={8}
+      onPress={() => setWaiveLateFee((value) => !value)}
+      testID="fee-collect-waive-late"
+    >
+      <ThemedText variant="meta" color={colors.accentDeep}>
+        {waiveLateFee ? words.undo : words.forgive}
+      </ThemedText>
+    </Pressable>
+  ) : null;
+
   return frame(
     <>
       <View style={styles.body}>
-        <Card style={styles.summary}>
-          <ThemedText variant="sectionLabel">
-            {copy.fees.collect.balanceLabel}
-          </ThemedText>
-          <ThemedText
-            variant="hero"
-            numberOfLines={1}
-            maxFontSizeMultiplier={1.15}
+        <Card style={styles.amountCard}>
+          <View style={styles.amountHead}>
+            <ThemedText variant="sectionLabel" numberOfLines={1} style={styles.flex}>
+              {focusText
+                ? words.paying(focusText)
+                : nothingDueNow
+                  ? words.payAhead
+                  : words.amount}
+            </ThemedText>
+            {nothingDueNow ? (
+              <StatusPill label={words.nothingDue} tone="positive" />
+            ) : (
+              <ThemedText variant="meta">{words.dueNow(formatMoney(outstanding))}</ThemedText>
+            )}
+          </View>
+
+          <View style={styles.bigField}>
+            <ThemedText style={styles.bigRupee} maxFontSizeMultiplier={1.15}>
+              ₹
+            </ThemedText>
+            <TextInput
+              value={shownAmount}
+              onChangeText={changeReceived}
+              keyboardType="decimal-pad"
+              inputMode="decimal"
+              placeholder="0"
+              placeholderTextColor={colors.muted}
+              selectTextOnFocus
+              maxLength={11}
+              maxFontSizeMultiplier={1.15}
+              accessibilityLabel={words.amountA11y}
+              style={styles.bigInput}
+              testID="fee-collect-received"
+            />
+            <AppIcon name="edit" size={18} color={colors.muted} />
+          </View>
+          {overAsked ? (
+            <ThemedText variant="caption" color={colors.tone.caution.fg}>
+              {words.capped(formatMoney(owedInAll))}
+            </ThemedText>
+          ) : null}
+          {hasLateFee ? (
+            <View style={styles.lateRow}>
+              <ThemedText variant="meta" style={styles.flex}>
+                {waiveLateFee
+                  ? words.lateForgiven
+                  : words.lateLine(formatMoney(lateFee), formatMoney(grandTotal))}
+              </ThemedText>
+              {lateFeeLink}
+            </View>
+          ) : null}
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            style={styles.chipScroll}
+            contentContainerStyle={styles.chips}
+            testID="fee-collect-shortcuts"
           >
-            {formatMoney(outstanding)}
-          </ThemedText>
-          {bill === outstanding ? null : (
-            <ThemedText variant="meta">
-              {copy.fees.collect.collectingOf(
-                formatMoney(bill),
-                formatMoney(outstanding),
-              )}
-            </ThemedText>
-          )}
-          {isPositiveMoney(later) ? (
-            <ThemedText variant="meta">
-              {copy.fees.dues.laterThisSession(formatMoney(later))}
-            </ThemedText>
+            {shortcuts.map((shortcut) => {
+              const on = !focusText && shownPaise === (parseMoney(shortcut.amount) ?? -1n);
+              return (
+                <Pressable
+                  key={shortcut.id}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  onPress={() => {
+                    setClamped({});
+                    changeReceived(toInputAmount(shortcut.amount));
+                  }}
+                  style={[styles.chip, on ? styles.chipOn : null]}
+                  testID={`fee-collect-shortcut-${shortcut.id}`}
+                >
+                  <ThemedText variant="bodyStrong" color={on ? colors.accentDeep : colors.ink}>
+                    {shortcut.label}
+                  </ThemedText>
+                  <ThemedText variant="meta" color={on ? colors.accentDeep : colors.muted}>
+                    {formatMoney(shortcut.amount)}
+                  </ThemedText>
+                </Pressable>
+              );
+            })}
+            {canOfferNextMonth ? (
+              <Pressable
+                accessibilityRole="button"
+                disabled={addMonth.isPending}
+                onPress={() => void addNextMonth()}
+                style={[styles.chip, addMonth.isPending ? styles.dim : null]}
+                testID="fee-collect-add-month"
+              >
+                <AppIcon name="add" size={16} color={colors.accentDeep} />
+                <ThemedText variant="bodyStrong" color={colors.accentDeep}>
+                  {words.addMonthChip(
+                    `${monthLabel(Number(nextMonthKey.slice(5, 7))).slice(0, 3)}`,
+                  )}
+                </ThemedText>
+              </Pressable>
+            ) : null}
+            {canOfferNextMonth ? (
+              <Pressable
+                accessibilityRole="button"
+                disabled={addMonth.isPending}
+                onPress={() => void payRestOfYear()}
+                style={[styles.chip, addMonth.isPending ? styles.dim : null]}
+                testID="fee-collect-pay-rest"
+              >
+                <ThemedText variant="bodyStrong" color={colors.accentDeep}>
+                  {words.payRest}
+                </ThemedText>
+              </Pressable>
+            ) : null}
+          </ScrollView>
+
+          {focusText ? (
+            <View style={styles.context}>
+              <ThemedText variant="meta" numberOfLines={1} style={styles.flex}>
+                {words.openedFrom(focusText)}
+              </ThemedText>
+              <Pressable
+                accessibilityRole="button"
+                hitSlop={8}
+                onPress={payFull}
+                testID="fee-collect-pay-all-instead"
+              >
+                <ThemedText variant="bodyStrong" color={colors.accentDeep}>
+                  {words.payAllInstead}
+                </ThemedText>
+              </Pressable>
+            </View>
           ) : null}
         </Card>
 
-        {adjust ? null : (
-          <FormField
-            label={feesCopy.collect.amountLabel}
-            value={received ?? toInputAmount(bill)}
-            onChangeText={changeReceived}
-            keyboardType="decimal-pad"
-            help={isPositiveMoney(lateFee) ? feesCopy.collect.amountHelp : undefined}
-            maxLength={11}
-            testID="fee-collect-received"
+        {covers.length > 0 ? (
+          <Card padless>
+            <View style={styles.coverHead}>
+              <ThemedText variant="sectionLabel">{words.thisPays}</ThemedText>
+              <ThemedText variant="meta">{words.oldestFirst}</ThemedText>
+            </View>
+            {covers.map((row, index) => (
+              <View
+                key={row.key}
+                style={[styles.cover, index === 0 ? null : styles.coverDivider]}
+                testID={`fee-collect-covers-${index}`}
+              >
+                {row.full ? (
+                  <View style={styles.ok}>
+                    <AppIcon name="check" size={14} color={colors.onAccent} />
+                  </View>
+                ) : (
+                  <View style={styles.part} />
+                )}
+                <ThemedText variant="body" numberOfLines={1}>
+                  {row.label}
+                </ThemedText>
+                <ThemedText variant="meta" numberOfLines={1} style={styles.flex}>
+                  {row.detail ?? ""}
+                </ThemedText>
+                <ThemedText variant="bodyStrong" maxFontSizeMultiplier={1.2}>
+                  {formatMoney(row.amount)}
+                </ThemedText>
+              </View>
+            ))}
+            <View style={styles.coverFoot}>
+              <ThemedText
+                variant="meta"
+                numberOfLines={1}
+                style={styles.flex}
+                color={isPositiveMoney(leftNow) ? colors.tone.critical.fg : undefined}
+              >
+                {isPositiveMoney(leftNow)
+                  ? words.stillDue(formatMoney(leftNow))
+                  : words.nothingLeft}
+              </ThemedText>
+              <Pressable
+                accessibilityRole="button"
+                hitSlop={8}
+                onPress={() => setAdjust(true)}
+                style={styles.adjustLink}
+                testID="fee-collect-adjust"
+              >
+                <AppIcon name="manage" size={16} color={colors.accentDeep} />
+                <ThemedText variant="bodyStrong" color={colors.accentDeep}>
+                  {words.adjust}
+                </ThemedText>
+              </Pressable>
+            </View>
+          </Card>
+        ) : (
+          <Notice
+            tone="neutral"
+            message={nothingDueNow ? copy.fees.collect.nothingDueNow : copy.fees.collect.noAllocations}
+            testID="fee-collect-nothing-due"
           />
         )}
-
-        {canGiveOff ? (
-          <FormField
-            label={feesCopy.collect.discountLabel}
-            value={discount}
-            onChangeText={(next) => setDiscount(sanitizeAmountInput(next))}
-            keyboardType="decimal-pad"
-            placeholder="0"
-            help={feesCopy.collect.discountHelp}
-            maxLength={11}
-            testID="fee-collect-discount"
-          />
-        ) : null}
-        {isPositiveMoney(appliedDiscount) ? (
-          <FormField
-            label={feesCopy.collect.discountReason}
-            value={discountReason}
-            onChangeText={setDiscountReason}
-            error={
-              submitted && discountReason.trim().length === 0
-                ? feesCopy.collect.discountNeedsReason
-                : undefined
-            }
-            maxLength={255}
-            testID="fee-collect-discount-reason"
-          />
-        ) : null}
-
-        <Card style={styles.summary}>
-          <SummaryLine label={feesCopy.collect.billLine} value={formatMoney(bill)} />
-          {isPositiveMoney(appliedDiscount) ? (
-            <SummaryLine
-              label={feesCopy.collect.discountLine}
-              value={`− ${formatMoney(appliedDiscount)}`}
-            />
-          ) : null}
-          {isPositiveMoney(quote.data?.lateFeeAmount) ? (
-            <SummaryLine
-              label={feesCopy.collect.lateFeeLine}
-              value={formatMoney(lateFee)}
-            />
-          ) : null}
-          <SummaryLine
-            strong
-            label={feesCopy.collect.collectLine}
-            value={formatMoney(grandTotal)}
-          />
-          {canGiveOff && isPositiveMoney(quote.data?.lateFeeAmount) ? (
-            <SwitchRow
-              label={feesCopy.collect.waiveLateFee}
-              value={waiveLateFee}
-              onChange={setWaiveLateFee}
-              help={feesCopy.collect.waiveLateFeeHelp}
-              testID="fee-collect-waive-late"
-            />
-          ) : null}
-        </Card>
-
-        <CapsuleButton
-          title={adjust ? feesCopy.collect.adjustDone : feesCopy.collect.adjust}
-          variant="secondary"
-          size="compact"
-          onPress={() => {
-            setAdjust((value) => !value);
-            setReceived(null);
-          }}
-          testID="fee-collect-adjust"
-        />
-        {canAddMonths && canOfferNextMonth ? (
-          <CapsuleButton
-            title={feesCopy.collect.payRest}
-            variant="secondary"
-            size="compact"
-            loading={addMonth.isPending}
-            onPress={() => void payRestOfYear()}
-            testID="fee-collect-pay-rest"
-          />
-        ) : null}
 
         {isPositiveMoney(params.carriedForward) && !canReadOpenings ? (
           <Notice
@@ -954,75 +1062,6 @@ export function CollectPaymentScreen() {
           />
         ) : null}
 
-        {adjust ? (
-          <View style={styles.sectionHead}>
-            <View style={styles.sectionHeadText}>
-              <SectionHead
-                title={copy.fees.collect.allocationTitle}
-                hint={copy.fees.collect.allocationHint}
-              />
-            </View>
-            <CapsuleButton
-              title={copy.fees.collect.payFull}
-              variant="secondary"
-              size="mini"
-              onPress={payFull}
-              testID="fee-collect-pay-full"
-            />
-          </View>
-        ) : null}
-
-        {nowLines.length > 0 ? (
-          adjust ? <Card padless>{nowLines.map(renderLine)}</Card> : null
-        ) : (
-          <Notice
-            tone="neutral"
-            message={copy.fees.collect.nothingDueNow}
-            testID="fee-collect-nothing-due"
-          />
-        )}
-
-        {aheadLines.length === 0 && nextMonthButton ? (
-          <>
-            <SectionHead
-              title={copy.fees.collect.payAheadTitle}
-              hint={copy.fees.collect.payAheadEmptyHint}
-            />
-            {nextMonthButton}
-          </>
-        ) : null}
-
-        {aheadLines.length > 0 ? (
-          <>
-            <View style={styles.sectionHead}>
-              <View style={styles.sectionHeadText}>
-                <SectionHead
-                  title={copy.fees.collect.payAheadTitle}
-                  hint={copy.fees.collect.payAheadHint(
-                    aheadLines.length,
-                    formatMoney(later),
-                  )}
-                />
-              </View>
-              <CapsuleButton
-                title={
-                  aheadOpen
-                    ? copy.fees.collect.payAheadFill
-                    : copy.fees.collect.payAheadShow
-                }
-                variant="secondary"
-                size="mini"
-                onPress={() => (aheadOpen ? fillAhead() : setShowAhead(true))}
-                testID="fee-collect-pay-ahead"
-              />
-            </View>
-            {aheadOpen ? (
-              <Card padless>{aheadLines.map(renderLine)}</Card>
-            ) : null}
-            {aheadOpen ? nextMonthButton : null}
-          </>
-        ) : null}
-
         {anyClamped ? (
           <Notice
             tone="caution"
@@ -1031,79 +1070,173 @@ export function CollectPaymentScreen() {
           />
         ) : null}
 
-        <ChoicePills
-          label={copy.fees.collect.modeLabel}
-          value={mode}
-          options={PAYMENT_MODES.map((option) => ({
-            value: option,
-            label: paymentModeLabel(option),
-          }))}
-          onChange={setMode}
-          testIDPrefix="fee-collect-mode"
-        />
+        <ThemedText variant="sectionLabel" style={styles.sectionLabel}>
+          {words.paidBy}
+        </ThemedText>
+        <View style={styles.modes}>
+          {PAYMENT_MODES.map((option) => {
+            const on = mode === option;
+            return (
+              <Pressable
+                key={option}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: on }}
+                onPress={() => setMode(option)}
+                style={[styles.mode, on ? styles.modeOn : null]}
+                testID={`fee-collect-mode-${option}`}
+              >
+                <AppIcon
+                  name={MODE_ICON[option]}
+                  size={22}
+                  color={on ? colors.accentDeep : colors.tone.neutral.fg}
+                />
+                <ThemedText
+                  variant="caption"
+                  color={on ? colors.accentDeep : colors.tone.neutral.fg}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={1.2}
+                >
+                  {paymentModeLabel(option)}
+                </ThemedText>
+              </Pressable>
+            );
+          })}
+        </View>
         {isHeldMode(mode) ? (
           <Notice
-            tone="neutral"
+            tone="caution"
             message={copy.fees.collect.modeHint}
             testID="fee-collect-mode-hint"
           />
         ) : null}
 
-        <DateField
-          label={copy.fees.collect.paymentDateLabel}
-          value={paymentDate}
-          onChange={setPaymentDate}
-          help={copy.fees.collect.paymentDateHelp}
-          maximumDate={today}
-          testID="fee-collect-date"
-        />
-
-        {fields.reference ? (
-          <FormField
-            label={copy.fees.collect.referenceLabel}
-            value={reference}
-            onChangeText={setReference}
-            placeholder={fields.placeholder}
-            help={fields.hint ?? undefined}
-            error={referenceError}
-            autoCapitalize="characters"
-            maxLength={150}
-            testID="fee-collect-reference"
-          />
-        ) : null}
-
-        {fields.bank ? (
-          <FormField
-            label={copy.fees.collect.bankLabel}
-            value={bankName}
-            onChangeText={setBankName}
-            placeholder={copy.fees.collect.bankLabel}
-            error={bankError}
-            maxLength={100}
-            testID="fee-collect-bank"
-          />
-        ) : null}
-
-        {fields.chequeDate ? (
+        <Card style={styles.fields}>
+          {fields.reference ? (
+            <FormField
+              label={copy.fees.collect.referenceLabel}
+              value={reference}
+              onChangeText={setReference}
+              placeholder={fields.placeholder}
+              help={fields.hint ?? undefined}
+              error={referenceError}
+              autoCapitalize="characters"
+              maxLength={150}
+              testID="fee-collect-reference"
+            />
+          ) : null}
+          {fields.bank ? (
+            <FormField
+              label={copy.fees.collect.bankLabel}
+              value={bankName}
+              onChangeText={setBankName}
+              placeholder={copy.fees.collect.bankLabel}
+              error={bankError}
+              maxLength={100}
+              testID="fee-collect-bank"
+            />
+          ) : null}
+          {fields.chequeDate ? (
+            <DateField
+              label={copy.fees.collect.chequeDateLabel}
+              value={chequeDate}
+              onChange={setChequeDate}
+              error={chequeDateError}
+              testID="fee-collect-cheque-date"
+            />
+          ) : null}
           <DateField
-            label={copy.fees.collect.chequeDateLabel}
-            value={chequeDate}
-            onChange={setChequeDate}
-            error={chequeDateError}
-            testID="fee-collect-cheque-date"
+            label={copy.fees.collect.paymentDateLabel}
+            value={paymentDate}
+            onChange={setPaymentDate}
+            help={copy.fees.collect.paymentDateHelp}
+            maximumDate={today}
+            testID="fee-collect-date"
           />
-        ) : null}
 
-        <FormField
-          label={copy.fees.collect.remarksLabel}
-          value={remarks}
-          onChangeText={setRemarks}
-          placeholder={copy.fees.collect.remarksPlaceholder}
-          multiline
-          numberOfLines={3}
-          maxLength={500}
-          testID="fee-collect-remarks"
-        />
+          {canGiveOff && (showDiscount || discount.length > 0) ? (
+            <>
+              <FormField
+                label={words.discountLabel}
+                value={discount}
+                onChangeText={(next) => setDiscount(sanitizeAmountInput(next))}
+                keyboardType="decimal-pad"
+                placeholder="0"
+                help={words.discountHelp}
+                maxLength={11}
+                testID="fee-collect-discount"
+              />
+              {isPositiveMoney(appliedDiscount) ? (
+                <FormField
+                  label={words.discountReason}
+                  value={discountReason}
+                  onChangeText={setDiscountReason}
+                  error={
+                    submitted && discountReason.trim().length === 0
+                      ? words.discountNeedsReason
+                      : undefined
+                  }
+                  maxLength={255}
+                  testID="fee-collect-discount-reason"
+                />
+              ) : null}
+            </>
+          ) : canGiveOff ? (
+            <AddLink
+              icon="fees"
+              label={words.addDiscount}
+              onPress={() => setShowDiscount(true)}
+              testID="fee-collect-add-discount"
+            />
+          ) : null}
+
+          {showNote || remarks.length > 0 ? (
+            <FormField
+              label={copy.fees.collect.remarksLabel}
+              value={remarks}
+              onChangeText={setRemarks}
+              placeholder={copy.fees.collect.remarksPlaceholder}
+              multiline
+              numberOfLines={3}
+              maxLength={500}
+              testID="fee-collect-remarks"
+            />
+          ) : (
+            <AddLink
+              icon="edit"
+              label={words.addNote}
+              onPress={() => setShowNote(true)}
+              testID="fee-collect-add-note"
+            />
+          )}
+        </Card>
+
+        <Card style={styles.totals}>
+          <SummaryLine label={words.fees} value={formatMoney(bill)} />
+          {isPositiveMoney(appliedDiscount) ? (
+            <SummaryLine
+              label={words.discountLine}
+              value={`− ${formatMoney(appliedDiscount)}`}
+            />
+          ) : null}
+          {hasLateFee ? (
+            <SummaryLine
+              label={words.lateFeeLine}
+              value={formatMoney(lateFee)}
+              trailing={lateFeeLink}
+            />
+          ) : null}
+          <View style={styles.totalLine}>
+            <ThemedText variant="bodyStrong">{words.toTake}</ThemedText>
+            <ThemedText
+              variant="title"
+              numberOfLines={1}
+              maxFontSizeMultiplier={1.15}
+              testID="fee-collect-total"
+            >
+              {formatMoney(grandTotal)}
+            </ThemedText>
+          </View>
+        </Card>
 
         {submitted && allocations.length === 0 ? (
           <Notice
@@ -1122,72 +1255,77 @@ export function CollectPaymentScreen() {
         ) : null}
       </View>
 
+      {adjust ? (
+        <FormSheet
+          title={words.adjustTitle}
+          onClose={() => setAdjust(false)}
+          testIDPrefix="fee-collect-adjust-sheet"
+          scroll={
+            <>
+              <ThemedText variant="meta">{words.adjustSub}</ThemedText>
+              <Card padless>{[...nowLines, ...aheadLines].map(renderLine)}</Card>
+            </>
+          }
+          footer={
+            <View style={styles.sheetFooter}>
+              <CapsuleButton
+                title={words.payAll}
+                variant="secondary"
+                size="compact"
+                onPress={payFull}
+                testID="fee-collect-pay-full"
+              />
+              <CapsuleButton
+                title={words.usePerFee(formatMoney(bill))}
+                size="compact"
+                onPress={() => {
+                  setReceived(null);
+                  setAdjust(false);
+                }}
+                testID="fee-collect-adjust-done"
+              />
+            </View>
+          }
+        />
+      ) : null}
+
       {review ? (
         <FormSheet
-          title={copy.fees.collect.reviewTitle}
+          title={words.reviewTitle(formatMoney(grandTotal), modeLabel)}
           onClose={() => setReview(false)}
           testIDPrefix="fee-collect-review"
           scroll={
             <>
-              <Notice
-                tone="neutral"
-                message={copy.fees.collect.reviewIntro}
-                testID="fee-collect-review-intro"
-              />
-              <View style={styles.reviewStudent}>
-                <ThemedText variant="bodyStrong" numberOfLines={2}>
-                  {studentName}
-                </ThemedText>
-                {classLine ? (
-                  <ThemedText variant="meta">{classLine}</ThemedText>
-                ) : null}
-              </View>
-
-              <View style={styles.reviewLines}>
+              <ThemedText variant="meta">
+                {words.reviewSub(studentName, formatReadableDate(paymentDate))}
+              </ThemedText>
+              <View style={styles.receipt}>
                 {/* Before any discount, so the lines add up to the total shown. */}
-                {billed.map((entry) => (
-                  <View key={entry.line.key} style={styles.reviewLine}>
-                    <ThemedText
-                      variant="body"
-                      numberOfLines={2}
-                      style={styles.flex}
-                    >
-                      {entry.line.title}
-                    </ThemedText>
-                    <ThemedText variant="numeric">
-                      {formatMoney(entry.amount)}
-                    </ThemedText>
-                  </View>
+                {covers.map((row) => (
+                  <SummaryLine
+                    key={row.key}
+                    label={row.detail ? `${row.label} · ${row.detail}` : row.label}
+                    value={formatMoney(row.amount)}
+                  />
                 ))}
-              </View>
-
-              {isPositiveMoney(appliedDiscount) ? (
-                <SummaryLine
-                  label={feesCopy.collect.discountLine}
-                  value={`− ${formatMoney(appliedDiscount)}`}
-                />
-              ) : null}
-              {isPositiveMoney(lateFee) ? (
-                <SummaryLine
-                  label={feesCopy.collect.lateFeeLine}
-                  value={formatMoney(lateFee)}
-                />
-              ) : null}
-              <View style={styles.reviewTotal}>
-                <ThemedText variant="bodyStrong">
-                  {copy.fees.collect.reviewTotal}
-                </ThemedText>
-                <ThemedText variant="title">{formatMoney(grandTotal)}</ThemedText>
+                {isPositiveMoney(appliedDiscount) ? (
+                  <SummaryLine
+                    label={words.discountLine}
+                    value={`− ${formatMoney(appliedDiscount)}`}
+                  />
+                ) : null}
+                {isPositiveMoney(lateFee) ? (
+                  <SummaryLine label={words.lateFeeLine} value={formatMoney(lateFee)} />
+                ) : null}
+                <View style={styles.totalLine}>
+                  <ThemedText variant="bodyStrong">{copy.fees.collect.reviewTotal}</ThemedText>
+                  <ThemedText variant="title" testID="fee-collect-review-total">
+                    {formatMoney(grandTotal)}
+                  </ThemedText>
+                </View>
               </View>
 
               <View style={styles.reviewFacts}>
-                <ThemedText variant="meta">
-                  {copy.fees.collect.reviewMode}: {paymentModeLabel(mode)}
-                </ThemedText>
-                <ThemedText variant="meta">
-                  {copy.fees.collect.reviewDate}:{" "}
-                  {formatReadableDate(paymentDate)}
-                </ThemedText>
                 {fields.reference && reference.trim().length > 0 ? (
                   <ThemedText variant="meta">
                     {copy.fees.collect.reviewReference}: {reference.trim()}
@@ -1200,8 +1338,12 @@ export function CollectPaymentScreen() {
                 ) : null}
                 {fields.chequeDate && chequeDate ? (
                   <ThemedText variant="meta">
-                    {copy.fees.collect.chequeDateLabel}:{" "}
-                    {formatReadableDate(chequeDate)}
+                    {copy.fees.collect.chequeDateLabel}: {formatReadableDate(chequeDate)}
+                  </ThemedText>
+                ) : null}
+                {isPositiveMoney(leftNow) ? (
+                  <ThemedText variant="meta" color={colors.tone.critical.fg}>
+                    {words.stillDue(formatMoney(leftNow))}
                   </ThemedText>
                 ) : null}
               </View>
@@ -1226,7 +1368,7 @@ export function CollectPaymentScreen() {
           footer={
             <View style={styles.sheetFooter}>
               <CapsuleButton
-                title={copy.common.cancel}
+                title={words.edit}
                 variant="secondary"
                 size="compact"
                 onPress={() => setReview(false)}
@@ -1253,23 +1395,58 @@ export function CollectPaymentScreen() {
   );
 }
 
+const MODE_ICON: Record<PaymentMode, AppIconName> = {
+  cash: "collect",
+  upi: "modeUpi",
+  cheque: "modeCheque",
+  neft_rtgs: "modeBank",
+  card: "modeCard",
+  dd: "modeDraft",
+};
+
+function AddLink({
+  icon,
+  label,
+  onPress,
+  testID,
+}: {
+  icon: AppIconName;
+  label: string;
+  onPress: () => void;
+  testID: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={styles.addLink}
+      testID={testID}
+    >
+      <AppIcon name={icon} size={20} color={colors.accentDeep} />
+      <ThemedText variant="bodyStrong" color={colors.accentDeep}>
+        {label}
+      </ThemedText>
+    </Pressable>
+  );
+}
+
 function SummaryLine({
   label,
   value,
-  strong = false,
+  trailing,
 }: {
   label: string;
   value: string;
-  strong?: boolean;
+  trailing?: ReactNode;
 }) {
   return (
     <View style={styles.summaryLine}>
-      <ThemedText variant={strong ? "bodyStrong" : "meta"}>{label}</ThemedText>
-      <ThemedText
-        variant={strong ? "bodyStrong" : "meta"}
-        numberOfLines={1}
-        maxFontSizeMultiplier={1.2}
-      >
+      <ThemedText variant="body" numberOfLines={2} style={styles.flexShrink}>
+        {label}
+      </ThemedText>
+      {trailing}
+      <View style={styles.flex} />
+      <ThemedText variant="bodyStrong" numberOfLines={1} maxFontSizeMultiplier={1.2}>
         {value}
       </ThemedText>
     </View>
@@ -1277,31 +1454,201 @@ function SummaryLine({
 }
 
 const styles = StyleSheet.create({
-  summaryLine: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: spacing.md,
-  },
   body: {
-    gap: spacing.lg,
+    gap: spacing.md,
+    marginTop: spacing.sm,
   },
   skeletons: {
     gap: spacing.md,
   },
-  summary: {
-    gap: spacing.xs,
-  },
-  sectionHead: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: spacing.md,
-  },
-  // The hint shrinks (and ellipsizes) so "Pay full balance" never leaves the
-  // screen.
-  sectionHeadText: {
+  flex: {
     flex: 1,
     minWidth: 0,
+  },
+  flexShrink: {
+    flexShrink: 1,
+  },
+  wide: {
+    alignSelf: "stretch",
+  },
+  dim: {
+    opacity: 0.5,
+  },
+  amountCard: {
+    gap: spacing.xs,
+  },
+  amountHead: {
+    minHeight: 26,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  // A real field, so the amount reads as something to change.
+  bigField: {
+    marginTop: spacing.xs,
+    minHeight: 60,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.sm,
+    backgroundColor: colors.field,
+  },
+  bigRupee: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.hero,
+    color: colors.ink,
+  },
+  bigInput: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: spacing.xs,
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.hero,
+    color: colors.ink,
+    fontVariant: ["tabular-nums"],
+  },
+  lateRow: {
+    minHeight: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  chipScroll: {
+    marginTop: spacing.sm,
+    marginHorizontal: -spacing.lg,
+  },
+  chips: {
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
+  chip: {
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.full,
+    backgroundColor: colors.canvas,
+  },
+  chipOn: {
+    backgroundColor: colors.accentTint,
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  context: {
+    marginTop: spacing.sm,
+    marginHorizontal: -spacing.lg,
+    marginBottom: -spacing.lg,
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.hairline,
+  },
+  coverHead: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
+  },
+  cover: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+  },
+  coverDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.hairline,
+  },
+  ok: {
+    width: 20,
+    height: 20,
+    borderRadius: radius.full,
+    backgroundColor: colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  // Part paid: an amber ring beside the "₹100 of ₹1,200" text.
+  part: {
+    width: 20,
+    height: 20,
+    borderRadius: radius.full,
+    borderWidth: 2,
+    borderColor: colors.tone.caution.fg,
+    backgroundColor: colors.tone.caution.bg,
+  },
+  coverFoot: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.hairline,
+  },
+  adjustLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  sectionLabel: {
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.xs,
+  },
+  modes: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  mode: {
+    width: "31.5%",
+    height: 64,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+  },
+  modeOn: {
+    backgroundColor: colors.accentTint,
+    borderWidth: 2,
+    borderColor: colors.accent,
+  },
+  fields: {
+    gap: spacing.md,
+  },
+  addLink: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  totals: {
+    gap: spacing.xs,
+  },
+  summaryLine: {
+    minHeight: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  totalLine: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+    marginTop: spacing.xs,
+    paddingTop: spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.hairline,
   },
   row: {
     flexDirection: "row",
@@ -1349,28 +1696,11 @@ const styles = StyleSheet.create({
     minHeight: touch.min,
     justifyContent: "center",
   },
-  flex: {
-    flex: 1,
-  },
-  reviewStudent: {
+  receipt: {
     gap: spacing.xxs,
-  },
-  reviewLines: {
-    gap: spacing.sm,
-  },
-  reviewLine: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.md,
-  },
-  reviewTotal: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.md,
-    paddingTop: spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.hairline,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    backgroundColor: colors.canvas,
   },
   reviewFacts: {
     gap: spacing.xxs,
@@ -1380,15 +1710,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "flex-end",
     gap: spacing.sm,
-  },
-  footerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.md,
-  },
-  footerTotal: {
-    flexShrink: 1,
-    gap: spacing.xxs,
   },
 });

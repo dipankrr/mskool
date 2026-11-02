@@ -65,6 +65,8 @@ export function ScreenFrame({
   padForTabBar = false,
   action,
   secondaryAction,
+  utilityActions,
+  titleInTopRow = false,
   overflowAction,
   stickyHeader,
   footer,
@@ -84,6 +86,13 @@ export function ScreenFrame({
   action?: HeaderAction;
   /** A quieter utility action to the left of `action` (settings gear). */
   secondaryAction?: HeaderAction;
+  /** More icon-only utilities, left of `secondaryAction` (print). */
+  utilityActions?: HeaderAction[];
+  /**
+   * The title and meta sit on the top row, left of the actions, instead of
+   * under them. Only for a screen with no back control (a tab root).
+   */
+  titleInTopRow?: boolean;
   /** A three-dots menu: always the rightmost control, after `action`. */
   overflowAction?: HeaderAction;
   /** Runs edge to edge under the title and stays put while the body scrolls. */
@@ -110,7 +119,24 @@ export function ScreenFrame({
   // gesture bar. Under the tabs the bar's space already carries the inset.
   const bottom = padForTabBar ? tabSpace : insets.bottom + spacing.xl;
   const showTopRow = Boolean(
-    backAccessibilityLabel || action || secondaryAction || overflowAction,
+    backAccessibilityLabel ||
+      action ||
+      secondaryAction ||
+      overflowAction ||
+      (utilityActions && utilityActions.length > 0),
+  );
+  const inlineTitle = titleInTopRow && !backAccessibilityLabel;
+  const titleBlock = (
+    <View style={inlineTitle ? styles.inlineHead : styles.head}>
+      <ThemedText variant="title" testID={titleTestID} numberOfLines={inlineTitle ? 1 : undefined}>
+        {title}
+      </ThemedText>
+      {meta ? (
+        <ThemedText variant="meta" style={inlineTitle ? null : styles.meta} numberOfLines={inlineTitle ? 1 : undefined}>
+          {meta}
+        </ThemedText>
+      ) : null}
+    </View>
   );
 
   return (
@@ -163,11 +189,16 @@ export function ScreenFrame({
                 >
                   <AppIcon name="chevronLeft" size={22} color={colors.ink} />
                 </Pressable>
+              ) : inlineTitle ? (
+                titleBlock
               ) : (
                 <View style={styles.topSpacer} />
               )}
-              {action || secondaryAction || overflowAction ? (
+              {action || secondaryAction || overflowAction || utilityActions?.length ? (
                 <View style={styles.actions}>
+                  {(utilityActions ?? []).map((utility) => (
+                    <HeaderActionButton key={utility.label} action={utility} />
+                  ))}
                   {secondaryAction ? (
                     <HeaderActionButton action={secondaryAction} />
                   ) : null}
@@ -179,16 +210,7 @@ export function ScreenFrame({
               ) : null}
             </View>
           ) : null}
-          <View style={styles.head}>
-            <ThemedText variant="title" testID={titleTestID}>
-              {title}
-            </ThemedText>
-            {meta ? (
-              <ThemedText variant="meta" style={styles.meta}>
-                {meta}
-              </ThemedText>
-            ) : null}
-          </View>
+          {inlineTitle && showTopRow ? <View style={styles.inlineGap} /> : titleBlock}
           {stickyHeader ? <View style={styles.sticky}>{stickyHeader}</View> : null}
           {children}
         </ScrollView>
@@ -328,6 +350,13 @@ const styles = StyleSheet.create({
   },
   head: {
     marginBottom: spacing.md,
+  },
+  inlineHead: {
+    flex: 1,
+    minWidth: 0,
+  },
+  inlineGap: {
+    height: spacing.sm,
   },
   sticky: {
     marginHorizontal: -gutter,

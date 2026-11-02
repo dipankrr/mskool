@@ -237,6 +237,20 @@ export function FeesScreen({
               }
             : undefined
         }
+        titleInTopRow
+        utilityActions={
+          schoolId
+            ? [
+                {
+                  label: feesCopy.print.listsTitle,
+                  icon: "print",
+                  iconOnly: true,
+                  onPress: () => setSheet("print"),
+                  testID: "fees-print",
+                },
+              ]
+            : undefined
+        }
         secondaryAction={
           canSetup
             ? {
@@ -401,19 +415,6 @@ export function FeesScreen({
                 {words.report}
               </ThemedText>
               <AppIcon name="chevronRight" size={16} color={colors.accentDeep} />
-            </Pressable>
-          ) : null}
-          {schoolId ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setSheet("print")}
-              style={styles.reportLink}
-              testID="fees-print-link"
-            >
-              <AppIcon name="print" size={16} color={colors.accentDeep} />
-              <ThemedText variant="meta" color={colors.accentDeep}>
-                {feesCopy.print.listsLink}
-              </ThemedText>
             </Pressable>
           ) : null}
         </>

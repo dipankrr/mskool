@@ -108,6 +108,12 @@ const iconMap = {
   call: { ios: "phone.fill", android: "call" },
   /** Remove a row from a local draft (a band, a paper part). */
   trash: { ios: "trash", android: "delete" },
+  // Payment modes on collect.
+  modeUpi: { ios: "iphone", android: "smartphone" },
+  modeCheque: { ios: "signature", android: "draw" },
+  modeBank: { ios: "building.columns.fill", android: "account-balance" },
+  modeCard: { ios: "creditcard", android: "credit-card" },
+  modeDraft: { ios: "doc.text", android: "article" },
 } as const satisfies Record<
   string,
   { ios: SFSymbol; android: keyof typeof MaterialIcons.glyphMap }

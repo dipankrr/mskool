@@ -909,3 +909,271 @@ export function friendlyDueName(description: string): string {
       (_, year: string, month: string) => `${monthLabel(Number(month))} ${year}`,
     );
 }
+
+// ---------------------------------------------------------------------------
+// Collect and the student page: what an amount pays, and the dues in groups
+// ---------------------------------------------------------------------------
+
+/** "Tuition Fee — 2026-04" → "Tuition Fee": the fee without its month. */
+export function feeNameOf(description: string | null | undefined): string {
+  const text = description?.trim() ?? "";
+  if (!text) return "Due";
+  return text.replace(/ — once$/, "").replace(/ — \d{4}-(0[1-9]|1[0-2])$/, "");
+}
+
+/** "2026-04" → "Apr". */
+export function monthShortOf(key: string): string {
+  return monthLabel(Number(key.slice(5, 7))).slice(0, 3);
+}
+
+/** "2026-04" → "April". */
+export function monthNameOf(key: string): string {
+  return monthLabel(Number(key.slice(5, 7)));
+}
+
+/**
+ * One payable line as collect sees it. `month` is the due's month, or null for
+ * a balance carried in from an earlier session.
+ */
+export type CollectLine = {
+  key: string;
+  month: string | null;
+  name: string;
+  balance: string;
+};
+
+/** One line of "This pays". */
+export type CoverRow = {
+  key: string;
+  label: string;
+  detail: string | null;
+  amount: string;
+  /** Pays all of it, or only part of it. */
+  full: boolean;
+};
+
+type CoverEntry = { line: CollectLine; amount: bigint; balance: bigint };
+type CoverGroup = { key: string; month: string | null; entries: CoverEntry[] };
+
+/**
+ * What the amounts on collect pay, oldest first, in the fewest rows that are
+ * still exact. Months paid in full in a row fold into one range ("April –
+ * October, 7 months"); a month paid in part says how much of it. When the
+ * money lands inside one month only, each fee gets its own row, because then
+ * the cashier picked fees, not months.
+ */
+export function coverRows(
+  lines: CollectLine[],
+  amounts: Record<string, string>,
+): CoverRow[] {
+  const groups: CoverGroup[] = [];
+  for (const line of lines) {
+    const raw = parseMoney(amounts[line.key] ?? "") ?? 0n;
+    const balance = parseMoney(line.balance) ?? 0n;
+    const amount = raw > balance ? balance : raw < 0n ? 0n : raw;
+    const key = line.month ?? "previous";
+    let group = groups.find((entry) => entry.key === key);
+    if (!group) {
+      group = { key, month: line.month, entries: [] };
+      groups.push(group);
+    }
+    group.entries.push({ line, amount, balance });
+  }
+
+  const paid = groups
+    .map((group) => ({
+      group,
+      amount: group.entries.reduce((sum, entry) => sum + entry.amount, 0n),
+      balance: group.entries.reduce((sum, entry) => sum + entry.balance, 0n),
+    }))
+    .filter((entry) => entry.amount > 0n);
+
+  const only = paid.length === 1 ? paid[0] : undefined;
+  if (only) {
+    const picked = only.group.entries.filter((entry) => entry.amount > 0n);
+    if (picked.length > 1) {
+      return picked.map((entry) => ({
+        key: entry.line.key,
+        label: entry.line.name,
+        detail:
+          entry.amount < entry.balance
+            ? `${formatMoney(toMoneyString(entry.amount))} of ${formatMoney(toMoneyString(entry.balance))}`
+            : only.group.month
+              ? monthNameOf(only.group.month)
+              : null,
+        amount: toMoneyString(entry.amount),
+        full: entry.amount >= entry.balance,
+      }));
+    }
+  }
+
+  const rows: CoverRow[] = [];
+  let run: typeof paid = [];
+  const flush = () => {
+    const first = run[0]?.group.month;
+    const last = run[run.length - 1]?.group.month;
+    if (!first || !last) return;
+    rows.push({
+      key: `${first}..${last}`,
+      label:
+        run.length === 1 ? monthNameOf(first) : `${monthNameOf(first)} – ${monthNameOf(last)}`,
+      detail: run.length === 1 ? null : `${run.length} months`,
+      amount: toMoneyString(run.reduce((sum, entry) => sum + entry.amount, 0n)),
+      full: true,
+    });
+    run = [];
+  };
+  for (const entry of paid) {
+    const full = entry.amount >= entry.balance;
+    if (entry.group.month !== null && full) {
+      run.push(entry);
+      continue;
+    }
+    flush();
+    rows.push({
+      key: entry.group.key,
+      label: entry.group.month ? monthNameOf(entry.group.month) : "Previous dues",
+      detail: full
+        ? null
+        : `${formatMoney(toMoneyString(entry.amount))} of ${formatMoney(toMoneyString(entry.balance))}`,
+      amount: toMoneyString(entry.amount),
+      full,
+    });
+  }
+  flush();
+  return rows;
+}
+
+/** A one-tap amount on collect. */
+export type CollectShortcut = { id: string; label: string; amount: string };
+
+/**
+ * The amounts a parent usually means, each a running total oldest first, so
+ * tapping one is the same as typing it. "All due" is everything up to this
+ * month; "Up to Oct" stops before this month; "Previous dues" is the earlier
+ * session's balance alone; later months are paying ahead, and only months
+ * whose dues already exist. An amount already offered is not offered twice.
+ */
+export function collectShortcuts(
+  lines: CollectLine[],
+  currentMonth: string,
+  aheadLimit = 3,
+): CollectShortcut[] {
+  const sum = (rows: CollectLine[]) =>
+    rows.reduce((total, line) => total + (parseMoney(line.balance) ?? 0n), 0n);
+  const previous = lines.filter((line) => line.month === null);
+  const before = lines.filter((line) => line.month !== null && line.month < currentMonth);
+  const now = lines.filter((line) => line.month === currentMonth);
+  const ahead = lines.filter((line) => line.month !== null && line.month > currentMonth);
+
+  const out: { id: string; label: string; amount: bigint }[] = [];
+  const dueNow = sum(previous) + sum(before) + sum(now);
+  if (dueNow > 0n) out.push({ id: "all", label: "All due", amount: dueNow });
+  const lastBefore = before[before.length - 1]?.month;
+  if (now.length > 0 && lastBefore) {
+    out.push({
+      id: "before",
+      label: `Up to ${monthShortOf(lastBefore)}`,
+      amount: sum(previous) + sum(before),
+    });
+  }
+  if (previous.length > 0) {
+    out.push({ id: "previous", label: "Previous dues", amount: sum(previous) });
+  }
+
+  const aheadMonths = [...new Set(ahead.map((line) => line.month ?? ""))].sort().slice(0, aheadLimit);
+  aheadMonths.forEach((month, index) => {
+    const through = ahead.filter((line) => (line.month ?? "") <= month);
+    out.push({
+      id: `ahead:${month}`,
+      label: dueNow === 0n && index === 0 ? monthNameOf(month) : `Up to ${monthShortOf(month)}`,
+      amount: dueNow + sum(through),
+    });
+  });
+
+  const seen = new Set<bigint>();
+  const unique: CollectShortcut[] = [];
+  for (const entry of out) {
+    if (entry.amount <= 0n || seen.has(entry.amount)) continue;
+    seen.add(entry.amount);
+    unique.push({ id: entry.id, label: entry.label, amount: toMoneyString(entry.amount) });
+  }
+  return unique;
+}
+
+/**
+ * Collect opened from "Pay" on a month or on one due: only those lines are
+ * filled, each with its whole balance. `month:2026-04`, `fee:Tuition Fee`,
+ * `due:<id>` or `previous`; anything else fills nothing. Only lines due up to
+ * `through` (a month key) count for a fee, so paying a fee never pays ahead.
+ */
+export function focusAmounts(
+  lines: (CollectLine & { id: string })[],
+  focus: string,
+  through = "9999-12",
+): Record<string, string> {
+  const match = (line: CollectLine & { id: string }) => {
+    if (focus === "previous") return line.month === null;
+    if (focus.startsWith("fee:")) {
+      return line.name === focus.slice(4) && line.month !== null && line.month <= through;
+    }
+    if (focus.startsWith("month:")) return line.month === focus.slice(6);
+    if (focus.startsWith("due:")) return line.id === focus.slice(4);
+    return false;
+  };
+  const out: Record<string, string> = {};
+  for (const line of lines) {
+    if (match(line) && (parseMoney(line.balance) ?? 0n) > 0n) {
+      out[line.key] = toInputAmount(line.balance);
+    }
+  }
+  return out;
+}
+
+/** "Paying April 2026", "Paying previous dues", "Paying Tuition Fee". */
+export function focusLabel(
+  lines: (CollectLine & { id: string })[],
+  focus: string,
+): string | null {
+  if (focus === "previous") return "Previous dues";
+  if (focus.startsWith("fee:")) return focus.slice(4);
+  if (focus.startsWith("month:")) {
+    const key = focus.slice(6);
+    return `${monthNameOf(key)} ${key.slice(0, 4)}`;
+  }
+  if (focus.startsWith("due:")) {
+    const line = lines.find((entry) => entry.id === focus.slice(4));
+    if (!line) return null;
+    return line.month ? `${line.name}, ${monthNameOf(line.month)}` : line.name;
+  }
+  return null;
+}
+
+/** A student's dues, grouped for "Every due". */
+export type DueGroup<T> = { key: string; label: string; balance: string; rows: T[] };
+
+/**
+ * Dues under their month (oldest first) or under their fee (in the order each
+ * fee first falls due). A group's balance is what is still open in it.
+ */
+export function groupDues<
+  T extends {
+    dueDate: string;
+    description?: string | null;
+    balanceAmount: string | null;
+  },
+>(rows: T[], by: "month" | "fee"): DueGroup<T>[] {
+  const groups: DueGroup<T>[] = [];
+  for (const row of oldestFirst(rows)) {
+    const key = by === "month" ? monthKeyOf(row.dueDate) : feeNameOf(row.description);
+    let group = groups.find((entry) => entry.key === key);
+    if (!group) {
+      const label = by === "month" ? `${monthNameOf(key)} ${key.slice(0, 4)}` : key;
+      group = { key, label, balance: "0.00", rows: [] };
+      groups.push(group);
+    }
+    group.rows.push(row);
+    group.balance = sumMoney([group.balance, row.balanceAmount ?? "0.00"]);
+  }
+  return groups;
+}

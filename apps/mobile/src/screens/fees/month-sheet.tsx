@@ -10,7 +10,8 @@ import { StatTile } from "../../components/stat-tile";
 import { ThemedText } from "../../components/themed-text";
 import { usePermissions } from "../../hooks/use-permissions";
 import { copy } from "../../lib/copy";
-import { installmentTitle } from "../../lib/fees";
+import { installmentTitle, monthNameOf } from "../../lib/fees";
+import { feesCopy } from "../../lib/fees-copy";
 import { todayIso } from "../../lib/format";
 import { formatMoney, isPositiveMoney } from "../../lib/money";
 import { trpc } from "../../lib/trpc";
@@ -35,6 +36,7 @@ export function MonthSheet({
   label,
   onClose,
   onWaive,
+  onPay,
 }: {
   organizationId: string;
   studentId: string;
@@ -43,6 +45,8 @@ export function MonthSheet({
   label: string;
   onClose: () => void;
   onWaive: (installment: { id: string; title: string }) => void;
+  /** Collect with one due (`due:<id>`) or the whole month (`month:2026-04`). */
+  onPay?: (focus: string) => void;
 }) {
   const { has } = usePermissions();
   const cell = trpc.fees.matrix.cell.useQuery({
@@ -137,6 +141,7 @@ export function MonthSheet({
                           ? () => onWaive({ id: installment.id, title })
                           : undefined
                       }
+                      onPay={onPay ? () => onPay(`due:${installment.id}`) : undefined}
                       first={index === 0}
                     />
                   );
@@ -152,13 +157,22 @@ export function MonthSheet({
         </>
       }
       footer={
-        <CapsuleButton
-          title={copy.fees.desk.closeAction}
-          variant="secondary"
-          size="compact"
-          onPress={onClose}
-          testID="fee-month-close"
-        />
+        onPay && isPositiveMoney(cell.data?.balanceAmount) ? (
+          <CapsuleButton
+            title={feesCopy.everyDue.payMonth(monthNameOf(month), formatMoney(cell.data?.balanceAmount))}
+            icon="collect"
+            onPress={() => onPay(`month:${month}`)}
+            testID="fee-month-pay"
+          />
+        ) : (
+          <CapsuleButton
+            title={copy.fees.desk.closeAction}
+            variant="secondary"
+            size="compact"
+            onPress={onClose}
+            testID="fee-month-close"
+          />
+        )
       }
     />
   );

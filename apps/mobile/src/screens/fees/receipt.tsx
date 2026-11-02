@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Share, StyleSheet, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
+import { AppIcon } from "../../components/app-icon";
 import { CapsuleButton } from "../../components/capsule-button";
 import { Card } from "../../components/card";
 import { EmptyState } from "../../components/empty-state";
@@ -31,7 +32,8 @@ import { formatReadableDate } from "../../lib/format";
 import { formatMoney, parseMoney } from "../../lib/money";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
-import { spacing } from "../../theme/tokens";
+import { radius, spacing } from "../../theme/tokens";
+import { shareDocument } from "../../lib/fee-print";
 import { PrintSheet } from "./print-sheet";
 import { PaymentStatusPill, SectionHead } from "./status";
 
@@ -56,6 +58,8 @@ export function ReceiptScreen() {
     studentId?: string;
     studentName?: string;
     className?: string;
+    /** "1" when collect just recorded this payment. */
+    recorded?: string;
   }>();
   const { organizationId, schoolId, ready, yearPending } = useActiveContext();
   const branchName = useActiveBranchName();
@@ -66,6 +70,8 @@ export function ReceiptScreen() {
 
   const [shareError, setShareError] = useState<unknown>(null);
   const [printing, setPrinting] = useState(false);
+  const [sharingPdf, setSharingPdf] = useState(false);
+  const justRecorded = params.recorded === "1";
   const [paper, setPaper] = useState<ReceiptLayout | null>(null);
   const utils = trpc.useUtils();
 
@@ -174,6 +180,24 @@ export function ReceiptScreen() {
     }
   };
 
+  // Straight to the share menu on the school's usual paper: WhatsApp in two taps.
+  const sharePdf = async () => {
+    if (!payment || !organizationId || !schoolId) return;
+    setShareError(null);
+    setSharingPdf(true);
+    try {
+      const document = await utils.fees.document.receipt.fetch(
+        { organizationId, schoolId, id: payment.id },
+        { staleTime: 0 },
+      );
+      await shareDocument(document, printWords.receiptTitle);
+    } catch (cause) {
+      setShareError(cause);
+    } finally {
+      setSharingPdf(false);
+    }
+  };
+
   const frame = (children: ReactNode, footerSlot?: ReactNode) => (
     <ScreenFrame
       title={copy.fees.receipt.title}
@@ -271,6 +295,40 @@ export function ReceiptScreen() {
 
   return frame(
     <View style={styles.body}>
+      {justRecorded ? (
+        <Card style={styles.recorded} testID="fee-receipt-recorded">
+          <View style={styles.recordedBadge}>
+            <AppIcon name="check" size={32} color={colors.accentDeep} />
+          </View>
+          <ThemedText variant="hero" numberOfLines={1} maxFontSizeMultiplier={1.15}>
+            {formatMoney(total)}
+          </ThemedText>
+          <ThemedText variant="name" numberOfLines={2} style={styles.center}>
+            {feesCopy.receipt.receivedFrom(studentName)}
+          </ThemedText>
+          <ThemedText variant="meta" style={styles.center}>
+            {[paymentModeLabel(payment.paymentMode), formatReadableDate(payment.paymentDate), payment.receiptNumber].join(" · ")}
+          </ThemedText>
+          <View style={styles.recordedActions}>
+            <CapsuleButton
+              title={feesCopy.receipt.sharePdf}
+              icon="share"
+              size="compact"
+              loading={sharingPdf}
+              onPress={() => void sharePdf()}
+              testID="fee-receipt-share-pdf"
+            />
+            <CapsuleButton
+              title={feesCopy.receipt.printIt}
+              icon="print"
+              variant="secondary"
+              size="compact"
+              onPress={() => setPrinting(true)}
+              testID="fee-receipt-print-now"
+            />
+          </View>
+        </Card>
+      ) : null}
       <Card style={styles.hero}>
         <View style={styles.heroTop}>
           <View style={styles.heroText}>
@@ -507,6 +565,28 @@ function Fact({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
+  recorded: {
+    alignItems: "center",
+    gap: spacing.xs,
+    paddingVertical: spacing.xl,
+  },
+  recordedBadge: {
+    width: 64,
+    height: 64,
+    marginBottom: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: colors.accentTint,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  center: {
+    textAlign: "center",
+  },
+  recordedActions: {
+    alignSelf: "stretch",
+    marginTop: spacing.md,
+    gap: spacing.sm,
+  },
   body: {
     gap: spacing.lg,
   },
