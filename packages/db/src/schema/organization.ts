@@ -63,14 +63,12 @@ export const boardTypeEnum = pgEnum("board_type", [
 ]);
 
 /**
- * When a billed student's dues are created (ADR-051). `all_now` writes the
- * whole session at billing (the original behaviour); the monthly modes write
- * dues up to the current month and add later months as they arrive —
- * `monthly_auto` through the API's daily sweep, `monthly_manual` when staff
- * press "Generate dues". A month's price is the same either way (ADR-050).
+ * Who adds each new month's dues (ADR-058). Billing creates dues up to the
+ * current month either way. `monthly_auto` adds the rest through the API's
+ * sweep; `monthly_manual` is "Pause automatic", where staff add them. Creating
+ * the whole session is a one-time action, not a mode.
  */
 export const feeGenerationModeEnum = pgEnum("fee_generation_mode", [
-  "all_now",
   "monthly_auto",
   "monthly_manual",
 ]);
@@ -113,7 +111,7 @@ export const schools = pgTable(
     establishedOn: date(),
     logoUrl: text(),
 
-    feeGenerationMode: feeGenerationModeEnum().notNull().default("all_now"),
+    feeGenerationMode: feeGenerationModeEnum().notNull().default("monthly_auto"),
 
     isActive: boolean().notNull().default(true),
 

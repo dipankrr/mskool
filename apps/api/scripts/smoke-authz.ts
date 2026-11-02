@@ -2135,7 +2135,7 @@ async function main() {
         eq(feeInstallments.paymentStatus, "unpaid"),
       ),
     )
-    .orderBy(feeInstallments.installmentNumber)
+    .orderBy(feeInstallments.dueDate, feeInstallments.periodKey)
     .limit(1);
   const target = open[0];
   if (!target) throw new Error("No open installment to collect — re-run the seed.");

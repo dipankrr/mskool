@@ -32,7 +32,7 @@ import { env } from "./env";
 export const feesWebhookRouter: express.Router = express.Router();
 
 function signatureIsValid(rawBody: Buffer, provided: string | undefined): boolean {
-  if (!provided) return false;
+  if (!provided || !env.FEE_WEBHOOK_SECRET) return false;
   const expected = createHmac("sha256", env.FEE_WEBHOOK_SECRET)
     .update(rawBody)
     .digest("hex");
@@ -45,6 +45,12 @@ feesWebhookRouter.post(
   "/api/webhooks/fees",
   express.raw({ type: "application/json", limit: "256kb" }),
   async (req: Request, res: Response) => {
+    // There is no gateway yet. Without a configured secret this route does not
+    // exist, so nothing can forge a payment against a default value.
+    if (!env.FEE_WEBHOOK_SECRET) {
+      res.status(404).end();
+      return;
+    }
     const raw = req.body as Buffer;
     if (!signatureIsValid(raw, req.header("x-fee-webhook-signature"))) {
       // Deliberately generic: confirming whether the signature or the payload
@@ -74,11 +80,14 @@ feesWebhookRouter.post(
         paymentStatus: payment.paymentStatus,
       });
     } catch (error) {
-      // The gateway retries on 5xx; a deterministic business refusal (dues
-      // exceeded, student unknown) must be a 422 so it does not retry
-      // forever, but the wording stays internal.
+      // The gateway retries on 5xx. A deliberate refusal (dues exceeded, student
+      // unknown) is a 422 so it does not retry forever. Anything else, such as a
+      // database outage, is a 500: it received money and must try again.
       console.error("[fees-webhook] rejected:", error);
-      res.status(422).json({ error: "Payment could not be recorded." });
+      const refused = error instanceof Error && error.name === "ServiceRefusal";
+      res
+        .status(refused ? 422 : 500)
+        .json({ error: "Payment could not be recorded." });
     }
   },
 );

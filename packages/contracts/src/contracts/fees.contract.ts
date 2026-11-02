@@ -7,6 +7,7 @@ import {
   feeStructureLines,
   feeStructures,
   financialTransactions,
+  feeLinePeriods,
   lateFeeRules,
   openingBalances,
   paymentAllocations,
@@ -36,7 +37,11 @@ import { z } from "zod";
  */
 const isoDate = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "Use an ISO date: YYYY-MM-DD.");
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Use an ISO date: YYYY-MM-DD.")
+  .refine((value) => {
+    const parsed = new Date(`${value}T00:00:00Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+  }, "That date does not exist.");
 
 /**
  * HARD RULE 4's input face: money arrives as a DECIMAL STRING — never a JS
@@ -47,7 +52,7 @@ const isoDate = z
  */
 const money = z
   .string()
-  .regex(/^\d+(\.\d{1,2})?$/, "Use a decimal amount like 1250.00.");
+  .regex(/^\d{1,8}(\.\d{1,2})?$/, "Use a decimal amount like 1250.00.");
 
 /** The payment modes, shared with the select-schema shape below. */
 export const feePaymentModeSchema = z.enum([
@@ -148,6 +153,7 @@ export const createFeeStructureSchema = createInsertSchema(feeStructures, {
     organizationId: true,
     schoolId: true,
     isActive: true,
+    billingStartedAt: true, // set by Start billing, never sent
     createdBy: true,
     createdAt: true,
     updatedAt: true,
@@ -167,6 +173,7 @@ export const updateFeeStructureSchema = createInsertSchema(feeStructures, {
     schoolId: true,
     academicYearId: true, // not patchable — the year is the template's address
     classId: true, // not patchable — moving would orphan resolved assignments
+    billingStartedAt: true, // set by Start billing, never sent
     createdBy: true,
     createdAt: true,
     updatedAt: true,
@@ -181,56 +188,80 @@ export type UpdateFeeStructureInput = z.infer<typeof updateFeeStructureSchema>;
 export const feeStructureLineSelectSchema = createSelectSchema(feeStructureLines);
 export type FeeStructureLine = z.infer<typeof feeStructureLineSelectSchema>;
 
+export const feeLineFrequencySchema = z.enum([
+  "monthly",
+  "quarterly",
+  "half_yearly",
+  "term_wise",
+  "once",
+]);
+export type FeeLineFrequency = z.infer<typeof feeLineFrequencySchema>;
+
+export const feeWhoPaysSchema = z.enum(["everyone", "new_students"]);
+
 /**
- * One head's annual amount inside a structure. `feeStructureId` is the named
- * parent; the head is re-read in scope by the service. Uniqueness
- * (structure, head) is the database's `fee_structure_lines_structure_head_uq`
- * (ADR-022) — not pre-checked here.
+ * One fee inside a structure: how often, how much per period, who pays, and
+ * which periods it charges. Leave `periodKeys` out and a new line starts from
+ * the months the school charges. Uniqueness (structure, head) is the database's
+ * `fee_structure_lines_structure_head_uq` (ADR-022), not pre-checked here.
  */
-export const createFeeStructureLineSchema = createInsertSchema(feeStructureLines, {
-  annualAmount: money,
-  applicableFromMonth: z.number().int().min(1).max(12),
-  applicableToMonth: z.number().int().min(1).max(12),
-})
-  .omit({
-    id: true,
-    organizationId: true,
-    schoolId: true,
-    feeStructureId: true, // addressed as the explicit parent by the router
-    createdAt: true,
-  })
-  .refine((v) => v.applicableFromMonth <= v.applicableToMonth, {
-    message: "The applicable range cannot end before it starts.",
-    path: ["applicableToMonth"],
-  });
+export const createFeeStructureLineSchema = z.object({
+  feeHeadId: z.uuid(),
+  frequency: feeLineFrequencySchema,
+  amount: money,
+  whoPays: feeWhoPaysSchema.optional(),
+  periodKeys: z.array(z.string().min(1).max(60)).optional(),
+});
 export type CreateFeeStructureLineInput = z.infer<typeof createFeeStructureLineSchema>;
 
-/** The amount, the frequency, the month range. The head is not patchable. */
-export const updateFeeStructureLineSchema = createInsertSchema(feeStructureLines, {
-  annualAmount: money,
-  applicableFromMonth: z.number().int().min(1).max(12),
-  applicableToMonth: z.number().int().min(1).max(12),
-})
-  .omit({
-    id: true,
-    organizationId: true,
-    schoolId: true,
-    feeStructureId: true,
-    feeHeadId: true, // moving a line between heads would muddy the ledger
-    createdAt: true,
-  })
-  .partial()
-  .refine(
-    (v) =>
-      v.applicableFromMonth === undefined ||
-      v.applicableToMonth === undefined ||
-      v.applicableFromMonth <= v.applicableToMonth,
-    {
-      message: "The applicable range cannot end before it starts.",
-      path: ["applicableToMonth"],
-    },
-  );
+/** The head is not patchable. A created due keeps its own amount. */
+export const updateFeeStructureLineSchema = z.object({
+  frequency: feeLineFrequencySchema.optional(),
+  amount: money.optional(),
+  whoPays: feeWhoPaysSchema.optional(),
+  periodKeys: z.array(z.string().min(1).max(60)).optional(),
+});
 export type UpdateFeeStructureLineInput = z.infer<typeof updateFeeStructureLineSchema>;
+
+export const feeLinePeriodSelectSchema = createSelectSchema(feeLinePeriods);
+export type FeeLinePeriod = z.infer<typeof feeLinePeriodSelectSchema>;
+
+/** A structure line with its schedule, one row per period it charges. */
+export const feeStructureLineWithPeriodsSchema = feeStructureLineSelectSchema.extend({
+  periods: z.array(feeLinePeriodSelectSchema),
+});
+
+/** Changes one schedule row. */
+export const updateLinePeriodSchema = z
+  .object({ amount: money.optional(), dueDate: isoDate.optional() })
+  .refine((v) => v.amount !== undefined || v.dueDate !== undefined, {
+    message: "Change the amount or the due date.",
+  });
+export type UpdateLinePeriodInput = z.infer<typeof updateLinePeriodSchema>;
+
+export const periodOptionSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  startDate: isoDate,
+  endDate: isoDate,
+  dueDate: isoDate,
+  termId: z.uuid().nullable(),
+});
+
+/** One school's fee choices for one session. */
+export const feeSessionSettingsSchema = z.object({
+  chargedMonths: z.array(z.string().regex(/^\d{4}-\d{2}$/)),
+  dueDay: z.number().int().min(1).max(31),
+  receiptPrefix: z.string().min(1).max(20),
+  nextReceiptNumber: z.number().int().min(1),
+});
+export const updateFeeSessionSettingsSchema = feeSessionSettingsSchema.partial().extend({
+  receiptPrefix: z
+    .string()
+    .regex(/^[A-Za-z0-9]{1,20}$/, "Use letters and numbers only.")
+    .optional(),
+});
+export type UpdateFeeSessionSettingsInput = z.infer<typeof updateFeeSessionSettingsSchema>;
 
 // ---------------------------------------------------------------------------
 // Late fee rules
@@ -241,9 +272,9 @@ export type LateFeeRule = z.infer<typeof lateFeeRuleSelectSchema>;
 
 /**
  * A school-wide rule when `feeStructureId` is null, or one narrowed to a
- * structure. Precedence between them is F4's policy (`computeLateFee`
- * prefers the structure-named rule), not a constraint — two overlapping
- * active rules are representable and the resolver documents its choice.
+ * structure. Precedence is `pickLateFeeRule`'s policy, not a constraint: the
+ * rule in effect when the due fell due, the latest start winning and a
+ * structure-named rule breaking a tie.
  */
 export const createLateFeeRuleSchema = createInsertSchema(lateFeeRules, {
   value: money,
@@ -348,6 +379,11 @@ export const createConcessionSchema = createInsertSchema(feeConcessions, {
     schoolId: true,
     studentFeeAssignmentId: true, // addressed as the explicit parent
     concessionAmount: true, // computed by the service, never sent
+    coveredPeriods: true, // fixed by the service when created
+    status: true,
+    voidedAt: true,
+    voidedBy: true,
+    voidReason: true,
     approvedBy: true, // the caller's identity
     approvedAt: true,
     createdBy: true,
@@ -358,6 +394,10 @@ export const createConcessionSchema = createInsertSchema(feeConcessions, {
     path: ["validTo"],
   });
 export type CreateConcessionInput = z.infer<typeof createConcessionSchema>;
+
+export const voidConcessionSchema = z.object({
+  reason: z.string().min(1).max(500),
+});
 
 // ---------------------------------------------------------------------------
 // The billing engine (F4)
@@ -372,6 +412,8 @@ export type CreateConcessionInput = z.infer<typeof createConcessionSchema>;
  */
 export const assignFeeStructureSchema = z.object({
   enrollmentId: z.uuid(),
+  // Needed only when a class has several structures and nothing decides it.
+  feeStructureId: z.uuid().optional(),
   // Defaults to the enrollment's effective date in the service.
   feeEffectiveFrom: isoDate.optional(),
   joiningMonthFullCharge: z.boolean().optional(),
@@ -411,7 +453,7 @@ const billClassStudentSchema = z.object({
  * or month by month — automatically by the API's daily sweep, or when staff
  * generate them.
  */
-export const feeGenerationModeSchema = z.enum(["all_now", "monthly_auto", "monthly_manual"]);
+export const feeGenerationModeSchema = z.enum(["monthly_auto", "monthly_manual"]);
 export type FeeGenerationModeValue = z.infer<typeof feeGenerationModeSchema>;
 
 /** "Generate dues up to {date}" for a session, optionally one class. */
@@ -465,11 +507,45 @@ export type GenerateInstallmentsInput = z.infer<typeof generateInstallmentsSchem
 export const createOpeningBalanceSchema = z.object({
   studentId: z.uuid(),
   academicYearId: z.uuid(),
-  originAcademicYearId: z.uuid(),
+  // Left out when the dues predate the school's use of the app.
+  originAcademicYearId: z.uuid().nullish(),
   amount: money,
   description: z.string().min(1).max(255).nullish(),
 });
 export type CreateOpeningBalanceInput = z.infer<typeof createOpeningBalanceSchema>;
+
+export const voidOpeningBalanceSchema = z.object({
+  reason: z.string().min(1).max(255),
+});
+export type VoidOpeningBalanceInput = z.infer<typeof voidOpeningBalanceSchema>;
+
+/** A bill that is not part of any fee structure: a dress, a notebook, a fine. */
+export const createOneOffChargeSchema = z.object({
+  studentId: z.uuid(),
+  academicYearId: z.uuid(),
+  // Left out, it goes under the school's hidden one-off charges type.
+  feeHeadId: z.uuid().nullish(),
+  description: z.string().min(1).max(150),
+  amount: money,
+  dueDate: isoDate.optional(),
+  // Paid on the spot: the charge and its receipt are made together, or neither.
+  paid: z
+    .object({
+      paymentMode: feeCounterPaymentModeSchema,
+      // Defaults to today.
+      paymentDate: isoDate.optional(),
+      transactionReference: z.string().min(1).max(150).nullish(),
+      bankName: z.string().min(1).max(100).nullish(),
+      chequeDate: isoDate.nullish(),
+      clientReference: z.string().min(1).max(150).nullish(),
+    })
+    .refine(
+      (v) => v.paymentMode !== "cheque" || Boolean(v.transactionReference && v.bankName),
+      { message: "A cheque needs its number and bank.", path: ["transactionReference"] },
+    )
+    .optional(),
+});
+export type CreateOneOffChargeInput = z.infer<typeof createOneOffChargeSchema>;
 
 // ---------------------------------------------------------------------------
 // Collection and the ledger (F5)
@@ -514,13 +590,30 @@ export const recordPaymentSchema = z.object({
   paymentMode: feeCounterPaymentModeSchema,
   allocations: z.array(paymentAllocationInputSchema),
   openingBalanceAllocations: z.array(paymentOpeningBalanceAllocationInputSchema).optional(),
+  // Taken off at the counter, per due, with a reason. Needs the concession permission.
+  discounts: z.array(paymentAllocationInputSchema).optional(),
+  discountReason: z.string().min(1).max(255).nullish(),
+  // Forgive the late fee on this payment. Needs the concession permission.
+  waiveLateFee: z.boolean().optional(),
   transactionReference: z.string().min(1).max(150).nullish(),
   bankName: z.string().min(1).max(100).nullish(),
   chequeDate: isoDate.nullish(),
   remarks: z.string().min(1).max(500).nullish(),
   clientReference: z.string().min(1).max(150).nullish(),
-});
+}).refine(
+  (v) => v.paymentMode !== "cheque" || Boolean(v.transactionReference && v.bankName),
+  { message: "A cheque needs its number and bank.", path: ["transactionReference"] },
+);
 export type RecordPaymentInput = z.infer<typeof recordPaymentSchema>;
+
+/** What a payment would cost before it is recorded. */
+export const quotePaymentSchema = z.object({
+  studentId: z.uuid(),
+  academicYearId: z.uuid(),
+  paymentDate: isoDate,
+  allocations: z.array(paymentAllocationInputSchema),
+});
+export type QuotePaymentInput = z.infer<typeof quotePaymentSchema>;
 
 export const paymentTransitionSchema = z.object({
   paymentId: z.uuid(),
@@ -615,8 +708,10 @@ export const paymentDetailAllocationSchema = z.object({
   feeHeadId: z.uuid(),
   feeHeadName: z.string(),
   description: z.string().nullable(),
-  installmentNumber: z.number().int(),
+  periodKey: z.string(),
   dueDate: z.string(),
+  lateFeeAmount: z.string(),
+  discountAmount: z.string(),
 });
 export type PaymentDetailAllocation = z.infer<typeof paymentDetailAllocationSchema>;
 
@@ -625,8 +720,8 @@ export const paymentDetailOpeningBalanceAllocationSchema = z.object({
   openingBalanceId: z.uuid(),
   amountAllocated: z.string(),
   description: z.string().nullable(),
-  originAcademicYearId: z.uuid(),
-  originAcademicYearName: z.string(),
+  originAcademicYearId: z.uuid().nullable(),
+  originAcademicYearName: z.string().nullable(),
 });
 export type PaymentDetailOpeningBalanceAllocation = z.infer<
   typeof paymentDetailOpeningBalanceAllocationSchema
@@ -759,6 +854,8 @@ export type FeeMatrixAmounts = z.infer<typeof feeMatrixAmountsSchema>;
  * offset in the ledger (ADR-049).
  */
 export const feeMatrixTotalsSchema = feeMatrixAmountsSchema.extend({
+  // Unpaid up to the end of this month. balanceAmount also holds later months.
+  dueNowAmount: money,
   lateFeePaidAmount: money,
 });
 export type FeeMatrixTotals = z.infer<typeof feeMatrixTotalsSchema>;
@@ -879,3 +976,197 @@ export const feeMatrixOutputSchema = z.object({
   pageInfo: feeMatrixPageInfoSchema,
 });
 export type FeeMatrixOutput = z.infer<typeof feeMatrixOutputSchema>;
+
+// ---------------------------------------------------------------------------
+// The Fees dashboard and the student fee page
+// ---------------------------------------------------------------------------
+
+export const feeDashboardInputSchema = z.object({
+  organizationId: z.uuid(),
+  academicYearId: z.uuid(),
+});
+export type FeeDashboardInput = z.infer<typeof feeDashboardInputSchema>;
+
+/**
+ * Every figure the top of the dashboard shows, with one definition each:
+ *
+ * - `dueThisMonth`: still unpaid on dues that fall in this calendar month.
+ * - `allTimeDue`: everything still unpaid up to now, with previous dues.
+ * - `collectedThisMonth`: cash received this month by payment date, whichever
+ *   month it paid for, net of refunds. Pending cheques are apart, in `pending`.
+ */
+export const feeDashboardOutputSchema = z.object({
+  month: z.string(),
+  monthLabel: z.string(),
+  dueThisMonth: z.string(),
+  billedThisMonth: z.string(),
+  paidOnThisMonth: z.string(),
+  collectedThisMonth: z.string(),
+  collectedToday: z.string(),
+  receiptsToday: z.number().int(),
+  allTimeDue: z.string(),
+  laterThisSession: z.string(),
+  studentsWithDue: z.number().int(),
+  studentsBilled: z.number().int(),
+  studentsNotBilled: z.number().int(),
+  // Only while automatic is paused: how many dues are waiting to be added.
+  paused: z.object({ missingDues: z.number().int() }).nullable(),
+  pending: z.object({ count: z.number().int(), amount: z.string() }),
+  trend: z.array(z.object({ month: z.string(), label: z.string(), balance: z.string() })),
+  setup: z.object({
+    hasFeeTypes: z.boolean(),
+    structures: z.number().int(),
+    structuresNotStarted: z.number().int(),
+  }),
+});
+export type FeeDashboardOutput = z.infer<typeof feeDashboardOutputSchema>;
+
+/** What the Fee setup screen shows, in one read. */
+export const feeSetupStatusSchema = z.object({
+  classes: z.array(
+    z.object({
+      id: z.uuid(),
+      name: z.string(),
+      hasStructure: z.boolean(),
+      billedStudents: z.number().int(),
+    }),
+  ),
+  structures: z.array(
+    z.object({
+      id: z.uuid(),
+      name: z.string(),
+      className: z.string(),
+      started: z.boolean(),
+      lineCount: z.number().int(),
+      waitingStudents: z.number().int(),
+    }),
+  ),
+  previousDuesStudents: z.number().int(),
+});
+export type FeeSetupStatus = z.infer<typeof feeSetupStatusSchema>;
+
+/** A background "create these dues now". `rest` is the whole remaining session. */
+export const startFeeDuesRunSchema = z.object({
+  academicYearId: z.uuid(),
+  upTo: z.enum(["this_month", "rest"]),
+  classId: z.uuid().nullish(),
+});
+export type StartFeeDuesRunInput = z.infer<typeof startFeeDuesRunSchema>;
+
+export const feeDuesRunSchema = z.object({
+  id: z.uuid(),
+  status: z.enum(["running", "done", "failed"]),
+  through: isoDate,
+  studentCount: z.number().int(),
+  studentsWithNewDues: z.number().int(),
+  insertedCount: z.number().int(),
+  failedCount: z.number().int(),
+  startedAt: z.date(),
+  finishedAt: z.date().nullable(),
+});
+export type FeeDuesRun = z.infer<typeof feeDuesRunSchema>;
+
+export const feeDashboardListInputSchema = feeDashboardInputSchema.extend({
+  search: z.string().trim().max(100).optional(),
+  classId: z.uuid().optional(),
+  sectionId: z.uuid().optional(),
+  show: z.enum(["owes", "paid", "not_billed", "all"]).default("owes"),
+  sort: z.enum(["oldest", "highest", "name"]).default("oldest"),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+});
+export type FeeDashboardListInput = z.infer<typeof feeDashboardListInputSchema>;
+
+export const feeDashboardRowSchema = z.object({
+  studentId: z.uuid(),
+  studentName: z.string(),
+  admissionNumber: z.string(),
+  className: z.string(),
+  sectionName: z.string().nullable(),
+  rollNumber: z.string().nullable(),
+  enrollmentStatus: z.string(),
+  billed: z.boolean(),
+  dueNow: z.string(),
+  thisMonth: z.string(),
+  overdue: z.string(),
+  previousDues: z.string(),
+  later: z.string(),
+  overdueMonths: z.number().int(),
+  oldestDueDate: z.string().nullable(),
+  lastPaymentDate: z.string().nullable(),
+  lastPaymentAmount: z.string().nullable(),
+});
+export type FeeDashboardRow = z.infer<typeof feeDashboardRowSchema>;
+
+export const feeDashboardListOutputSchema = z.object({
+  rows: z.array(feeDashboardRowSchema),
+  total: z.number().int(),
+  totalDue: z.string(),
+  page: z.number().int(),
+  totalPages: z.number().int(),
+});
+export type FeeDashboardListOutput = z.infer<typeof feeDashboardListOutputSchema>;
+
+export const feeStudentSummaryInputSchema = feeDashboardInputSchema.extend({
+  studentId: z.uuid(),
+});
+export type FeeStudentSummaryInput = z.infer<typeof feeStudentSummaryInputSchema>;
+
+/** Everything the student fee page shows, in one call. */
+export const feeStudentSummarySchema = z.object({
+  student: z.object({
+    id: z.uuid(),
+    name: z.string(),
+    admissionNumber: z.string(),
+    className: z.string().nullable(),
+    sectionName: z.string().nullable(),
+    rollNumber: z.string().nullable(),
+    enrollmentId: z.uuid().nullable(),
+    enrollmentStatus: z.string().nullable(),
+  }),
+  feeRecord: z
+    .object({
+      id: z.uuid(),
+      status: z.string(),
+      structureId: z.uuid(),
+      structureName: z.string(),
+      effectiveFrom: z.string(),
+      isNewStudent: z.boolean(),
+    })
+    .nullable(),
+  structureChoices: z.array(z.object({ id: z.uuid(), name: z.string() })),
+  totals: z.object({
+    dueNow: z.string(),
+    thisMonth: z.string(),
+    overdue: z.string(),
+    previousDues: z.string(),
+    later: z.string(),
+    paid: z.string(),
+    concession: z.string(),
+    discount: z.string(),
+  }),
+  months: z.array(
+    z.object({
+      month: z.string(),
+      label: z.string(),
+      net: z.string(),
+      paid: z.string(),
+      balance: z.string(),
+      state: z.enum(["overdue", "due", "upcoming", "paid", "none"]),
+    }),
+  ),
+  dues: z.array(feeInstallmentSelectSchema),
+  previousDues: z.array(openingBalanceSelectSchema),
+  concessions: z.array(
+    z.object({
+      id: z.uuid(),
+      concessionType: z.string(),
+      calculationType: z.string(),
+      value: z.string(),
+      concessionAmount: z.string(),
+      reason: z.string().nullable(),
+    }),
+  ),
+  recentPayments: z.array(feePaymentSelectSchema.extend({ refundedAmount: z.string() })),
+});
+export type FeeStudentSummary = z.infer<typeof feeStudentSummarySchema>;

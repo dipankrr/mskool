@@ -5,6 +5,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   numeric,
   pgEnum,
   pgTable,
@@ -12,12 +13,13 @@ import {
   smallint,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
-import { academicYears, classes, studentEnrollments, terms } from "./academic";
+import { academicYears, classes, sections, studentEnrollments, terms } from "./academic";
 import { organizations, schools } from "./organization";
 import { students } from "./people";
 
@@ -94,6 +96,9 @@ export const feeHeads = pgTable(
 
     isActive: boolean().notNull().default(true),
 
+    // Made by the app, for one-off charges. Never listed or chosen by staff.
+    isSystem: boolean().notNull().default(false),
+
     createdBy: text().references(() => user.id),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
@@ -106,20 +111,18 @@ export const feeHeads = pgTable(
     // A school's fee heads are a vocabulary — the same name twice is a
     // data-entry accident the accountant would pay for at reconciliation.
     uniqueIndex("fee_heads_school_name_uq").on(t.schoolId, t.name),
+    uniqueIndex("fee_heads_one_system_uq")
+      .on(t.schoolId)
+      .where(sql`"is_system"`),
     index("fee_heads_school_idx").on(t.schoolId),
     index("fee_heads_org_idx").on(t.organizationId),
   ],
 );
 
-export const feeInstallmentModeEnum = pgEnum("fee_installment_mode", [
-  "upfront", // all at once at year start
-  "term_wise", // one batch per term — the recommended default
-  "monthly", // one installment per month
-]);
-
 /**
- * The class-level fee TEMPLATE for one academic year: which heads apply to a
- * class, for how much, and how the year's payments split.
+ * A fee TEMPLATE for one academic year: which heads a class or some of its
+ * sections pay, and each one's schedule. A class may have several, linked to
+ * sections through `fee_structure_sections` (Class 11 Science and Commerce).
  *
  * NOT a scope node (hard rule 12 names school/class/section only) — a
  * structure's authority rides on the school-scoped `fee_structure:*` grant.
@@ -147,10 +150,11 @@ export const feeStructures = pgTable(
     // "Class 6 Fee Structure 2025-26"
     name: varchar({ length: 150 }).notNull(),
 
-    // The default cadence lines inherit when they do not name their own.
-    installmentMode: feeInstallmentModeEnum().notNull().default("term_wise"),
-
     isActive: boolean().notNull().default(true),
+
+    // "Start billing": null until someone switches it on. Students present at
+    // this moment are existing; anyone admitted later is billed automatically.
+    billingStartedAt: timestamp({ withTimezone: true }),
 
     createdBy: text().references(() => user.id),
 
@@ -161,38 +165,32 @@ export const feeStructures = pgTable(
       .$onUpdate(() => new Date()),
   },
   (t) => [
-    // ONE structure per class per year — the resolver's disambiguation rule as
-    // much as a tidiness rule. Two structures for the same class+year would
-    // make "assign the class fee" ambiguous; the service relies on this
-    // index finding at most one row.
-    uniqueIndex("fee_structures_class_year_uq").on(
-      t.schoolId,
-      t.academicYearId,
-      t.classId,
-    ),
+    // Names only need to be unique among live structures, so a retired one
+    // never blocks its replacement.
+    uniqueIndex("fee_structures_class_year_name_uq")
+      .on(t.schoolId, t.academicYearId, t.classId, t.name)
+      .where(sql`is_active = TRUE`),
     index("fee_structures_school_year_idx").on(t.schoolId, t.academicYearId),
     index("fee_structures_org_idx").on(t.organizationId),
   ],
 );
 
-export const feeInstallmentFrequencyEnum = pgEnum("fee_installment_frequency", [
-  "inherit", // follow the structure's installment_mode
+/** How often a fee line charges. A line's schedule holds one row per period. */
+export const feeLineFrequencyEnum = pgEnum("fee_line_frequency", [
   "monthly",
   "quarterly",
   "half_yearly",
-  "annual", // full amount once, in the first applicable installment
   "term_wise",
+  "once",
 ]);
 
+export const feeWhoPaysEnum = pgEnum("fee_who_pays", ["everyone", "new_students"]);
+
 /**
- * One fee head's entry inside a structure: the annual amount and how that
- * amount splits across the year.
- *
- * `installment_frequency = 'inherit'` (the default) defers to the
- * structure's mode; the RESOLUTION happens at generation time (F4), never at
- * read time — a line's meaning for an already-generated installment is
- * frozen into the installment row, so a later mode change touches only
- * future generation runs.
+ * One fee head's entry inside a structure: how often it charges and how much
+ * per period. Its schedule rows (`fee_line_periods`) are what dues are made
+ * from; a due already created keeps its own amount, so a later edit only
+ * reaches dues not created yet.
  */
 export const feeStructureLines = pgTable(
   "fee_structure_lines",
@@ -211,25 +209,17 @@ export const feeStructureLines = pgTable(
       .notNull()
       .references(() => feeHeads.id),
 
-    // CHECKed >= 0, not > 0: a head can ride in a structure at zero (e.g. a
-    // waived-for-this-class activity fee) without forbidding the row.
-    annualAmount: numeric({ precision: 10, scale: 2 }).notNull(),
-
-    installmentFrequency: feeInstallmentFrequencyEnum()
-      .notNull()
-      .default("inherit"),
-
-    // Which months of the year this head applies to — tuition 1–12, an
-    // admission fee 4–4. The generator slices monthly amounts through this
-    // range; term-wise and coarser frequencies use it only as a gate.
-    applicableFromMonth: smallint().notNull().default(1),
-    applicableToMonth: smallint().notNull().default(12),
+    frequency: feeLineFrequencyEnum().notNull().default("monthly"),
+    // Per period: 1000.00 a month. A schedule row can differ from this.
+    // CHECKed >= 0, not > 0: a head can ride in a structure at zero.
+    amount: numeric({ precision: 10, scale: 2 }).notNull(),
+    whoPays: feeWhoPaysEnum().notNull().default("everyone"),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    // One entry per head per structure — the annual amount is per head, so a
-    // second row for the same head would double-charge it at generation.
+    // One entry per head per structure: a second row for the same head would
+    // double-charge it at generation.
     uniqueIndex("fee_structure_lines_structure_head_uq").on(
       t.feeStructureId,
       t.feeHeadId,
@@ -237,21 +227,159 @@ export const feeStructureLines = pgTable(
     index("fee_structure_lines_structure_idx").on(t.feeStructureId),
     index("fee_structure_lines_org_idx").on(t.organizationId),
 
-    check(
-      "fee_structure_lines_amount_non_negative",
-      sql`"annual_amount" >= 0`,
-    ),
-    check(
-      "fee_structure_lines_month_range",
-      sql`("applicable_from_month" BETWEEN 1 AND 12)
-          AND ("applicable_to_month" BETWEEN 1 AND 12)`,
-    ),
-    check(
-      "fee_structure_lines_month_order",
-      sql`"applicable_from_month" <= "applicable_to_month"`,
-    ),
+    check("fee_structure_lines_amount_non_negative", sql`"amount" >= 0`),
   ],
 );
+
+/**
+ * THE SCHEDULE: what one fee line charges, one row per period. This is the
+ * source of truth for a due's amount and date, so "December off", "1,200 from
+ * October" and "Term 1 costs more than Term 2" are all just rows.
+ *
+ * `periodKey` names the period and becomes the due's identity: `2026-11`,
+ * `q:2026-10`, `h:2026-04`, `term:<uuid>` or `once`. It stays stable when other
+ * rows are added or removed, which a position number does not.
+ *
+ * Editing a row never touches a due already created (a created due never
+ * changes); it only prices dues not created yet.
+ */
+export const feeLinePeriods = pgTable(
+  "fee_line_periods",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    organizationId: uuid()
+      .notNull()
+      .references(() => organizations.id),
+    schoolId: uuid()
+      .notNull()
+      .references(() => schools.id),
+    feeStructureLineId: uuid()
+      .notNull()
+      .references(() => feeStructureLines.id),
+
+    periodKey: varchar({ length: 60 }).notNull(),
+    label: varchar({ length: 100 }).notNull(),
+    startDate: date().notNull(),
+    endDate: date().notNull(),
+    dueDate: date().notNull(),
+    amount: numeric({ precision: 10, scale: 2 }).notNull(),
+    termId: uuid().references(() => terms.id),
+
+    // Someone changed this row by hand, so re-saving the line keeps it.
+    amountEdited: boolean().notNull().default(false),
+    dueDateEdited: boolean().notNull().default(false),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("fee_line_periods_line_key_uq").on(t.feeStructureLineId, t.periodKey),
+    index("fee_line_periods_school_idx").on(t.schoolId),
+    index("fee_line_periods_org_idx").on(t.organizationId),
+
+    check("fee_line_periods_amount_non_negative", sql`"amount" >= 0`),
+    check("fee_line_periods_date_order", sql`"end_date" >= "start_date"`),
+  ],
+);
+
+/**
+ * Which sections a fee structure covers, when a class has more than one
+ * structure (Class 11 Science and Commerce). A section belongs to at most one
+ * structure. A structure with no rows here covers the whole class.
+ */
+export const feeStructureSections = pgTable(
+  "fee_structure_sections",
+  {
+    feeStructureId: uuid()
+      .notNull()
+      .references(() => feeStructures.id),
+    sectionId: uuid()
+      .notNull()
+      .references(() => sections.id),
+  },
+  (t) => [
+    primaryKey({ columns: [t.feeStructureId, t.sectionId] }),
+    uniqueIndex("fee_structure_sections_section_uq").on(t.sectionId),
+  ],
+);
+
+/**
+ * One school's fee choices for one session, asked once in setup: the months it
+ * charges (new lines start from these) and the day a monthly fee falls due.
+ * `dueDay` runs 1 to 31; a month shorter than that uses its last day, so 31
+ * means "the last day of the month".
+ */
+export const feeSessionSettings = pgTable(
+  "fee_session_settings",
+  {
+    schoolId: uuid()
+      .notNull()
+      .references(() => schools.id),
+    academicYearId: uuid()
+      .notNull()
+      .references(() => academicYears.id),
+    organizationId: uuid()
+      .notNull()
+      .references(() => organizations.id),
+
+    // `YYYY-MM` keys, in session order. Empty means every month of the session.
+    chargedMonths: jsonb().$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    dueDay: smallint().notNull().default(1),
+
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    primaryKey({ columns: [t.schoolId, t.academicYearId] }),
+    check("fee_session_settings_due_day", sql`"due_day" BETWEEN 1 AND 31`),
+  ],
+);
+
+export const feeDuesRunStatusEnum = pgEnum("fee_dues_run_status", ["running", "done", "failed"]);
+
+/**
+ * A school-wide "create these dues now". It runs one student at a time, which
+ * can outlast a phone's request, so it runs in the background and leaves its
+ * result here. One at a time per session. Running it again is always safe,
+ * because it only fills what is missing.
+ */
+export const feeDuesRuns = pgTable(
+  "fee_dues_runs",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    organizationId: uuid()
+      .notNull()
+      .references(() => organizations.id),
+    schoolId: uuid()
+      .notNull()
+      .references(() => schools.id),
+    academicYearId: uuid()
+      .notNull()
+      .references(() => academicYears.id),
+    classId: uuid().references(() => classes.id),
+    through: date().notNull(),
+
+    status: feeDuesRunStatusEnum().notNull().default("running"),
+    studentCount: integer().notNull().default(0),
+    studentsWithNewDues: integer().notNull().default(0),
+    insertedCount: integer().notNull().default(0),
+    failedCount: integer().notNull().default(0),
+
+    startedBy: text().references(() => user.id),
+    startedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("fee_dues_runs_one_running_uq")
+      .on(t.schoolId, t.academicYearId)
+      .where(sql`"status" = 'running'`),
+    index("fee_dues_runs_school_year_idx").on(t.schoolId, t.academicYearId, t.startedAt),
+    index("fee_dues_runs_org_idx").on(t.organizationId),
+  ],
+);
+
+export const lateFeeApplyPerEnum = pgEnum("late_fee_apply_per", ["fee", "month"]);
 
 export const lateFeeCalculationTypeEnum = pgEnum("late_fee_calculation_type", [
   "flat", // fixed amount after the due date
@@ -291,6 +419,8 @@ export const lateFeeRules = pgTable(
     // The amount (flat / per_day) or percentage (percentage).
     value: numeric({ precision: 8, scale: 2 }).notNull(),
     maxLateFee: numeric({ precision: 10, scale: 2 }),
+    // April's tuition and lab fee overdue: one late fee (month) or two (fee).
+    applyPer: lateFeeApplyPerEnum().notNull().default("month"),
 
     isActive: boolean().notNull().default(true),
     effectiveFrom: date().notNull(),
@@ -399,12 +529,10 @@ export const feeAssignmentStatusEnum = pgEnum("fee_assignment_status", [
 ]);
 
 /**
- * THE RESOLVED FEE RECORD — what one student owes for one year, snapshotted
- * from their class's structure at assignment time. This snapshot is the
- * domain's opening promise (DOMAIN.md §5): a school revising its structure in
- * October must not alter invoices already raised, so `base_annual_amount` and
- * `net_annual_amount` are COPIES, and later structure edits reach only
- * students assigned after the edit.
+ * THE RESOLVED FEE RECORD: one student's billing for one year. It names the
+ * structure and the date billing starts from. A school revising a structure in
+ * October must not alter dues already raised (DOMAIN.md §5): dues carry their
+ * own amounts, and an edit only reaches dues not created yet.
  *
  * One per student per year (the unique index) — the year anchor's fee shadow,
  * hanging off the enrollment. Mid-session admissions generate installments
@@ -434,17 +562,13 @@ export const studentFeeAssignments = pgTable(
       .notNull()
       .references(() => feeStructures.id),
 
-    // Snapshotted at assignment — see the table comment. `base` is before
-    // concessions, `net` after; the two are the audit trail of what the
-    // concessions bought.
-    baseAnnualAmount: numeric({ precision: 10, scale: 2 }).notNull(),
-    netAnnualAmount: numeric({ precision: 10, scale: 2 }).notNull(),
-
     feeEffectiveFrom: date().notNull(),
     // The school's policy for mid-session joiners: the joining month is
     // charged IN FULL regardless of the day they arrived. Default TRUE —
     // charging a full month for 25 days is the common Indian-school rule.
     joiningMonthFullCharge: boolean().notNull().default(true),
+    // Decided once at billing; drives lines that only new students pay.
+    isNewStudent: boolean().notNull().default(false),
 
     status: feeAssignmentStatusEnum().notNull().default("active"),
 
@@ -486,16 +610,16 @@ export const feeConcessionCalculationEnum = pgEnum("fee_concession_calculation",
   "percentage",
 ]);
 
+export const feeConcessionStatusEnum = pgEnum("fee_concession_status", ["active", "void"]);
+
 /**
- * A per-student discount on top of an assignment. Does NOT replace the base
- * structure — it adjusts it, which is why the assignment keeps its base
- * snapshot and this row carries its own audit trail.
+ * A per-student discount on top of an assignment. It is a RULE applied to each
+ * due it covers, written when added.
  *
- * `concession_amount` is COMPUTED AND STORED at write time (the service
- * resolves flat vs percentage against the base, percentage rounding DOWN —
- * the school never over-discounts), so the audit record states exactly what
- * was granted even if the base or the rule later changes. A NULL `feeHeadId`
- * applies to ALL heads; a named head confines the concession to one line.
+ * `concession_amount` is what was actually applied across `covered_periods`
+ * when it was created, percentage rounding DOWN, so the audit record states
+ * exactly what the student got. A NULL `feeHeadId` applies to ALL heads; a
+ * named head confines the concession to one line.
  */
 export const feeConcessions = pgTable(
   "fee_concessions",
@@ -530,6 +654,15 @@ export const feeConcessions = pgTable(
     validFrom: date().notNull(),
     // NULL = full year.
     validTo: date(),
+
+    // `<feeHeadId>:<periodKey>` for every period this concession covers, fixed
+    // when it is created: what was already paid then stays out, so it can
+    // never drift as months get paid or created.
+    coveredPeriods: jsonb().$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    status: feeConcessionStatusEnum().notNull().default("active"),
+    voidedAt: timestamp({ withTimezone: true }),
+    voidedBy: text().references(() => user.id),
+    voidReason: varchar({ length: 500 }),
 
     createdBy: text().references(() => user.id),
 
@@ -616,6 +749,10 @@ export const studentOptionalFeeSubscriptions = pgTable(
     ),
     index("student_optional_fee_subscriptions_school_idx").on(t.schoolId),
     index("student_optional_fee_subscriptions_org_idx").on(t.organizationId),
+    // One running subscription per service: a second would bill a month twice.
+    uniqueIndex("student_optional_fee_subscriptions_one_active_uq")
+      .on(t.studentId, t.academicYearId, t.feeHeadId)
+      .where(sql`status = 'active'`),
   ],
 );
 
@@ -656,9 +793,8 @@ export const feeInstallments = pgTable(
     schoolId: uuid()
       .notNull()
       .references(() => schools.id),
-    studentFeeAssignmentId: uuid()
-      .notNull()
-      .references(() => studentFeeAssignments.id),
+    // NULL only for a one-off charge on a student who has no fee record.
+    studentFeeAssignmentId: uuid().references(() => studentFeeAssignments.id),
     studentId: uuid()
       .notNull()
       .references(() => students.id),
@@ -671,7 +807,8 @@ export const feeInstallments = pgTable(
     // Populated exactly when the generating frequency was term-wise.
     termId: uuid().references(() => terms.id),
 
-    installmentNumber: smallint().notNull(),
+    // The due's identity: the schedule row's key, or `one:<uuid>` for a one-off.
+    periodKey: varchar({ length: 60 }).notNull(),
     // "April 2025 Tuition Fee"
     description: varchar({ length: 150 }),
 
@@ -680,6 +817,8 @@ export const feeInstallments = pgTable(
     // discount; `net_amount` their difference.
     amount: numeric({ precision: 10, scale: 2 }).notNull(),
     concessionAmount: numeric({ precision: 10, scale: 2 }).notNull().default("0"),
+    // Given at the counter. Kept apart from concessions, which recompute.
+    discountAmount: numeric({ precision: 10, scale: 2 }).notNull().default("0"),
     netAmount: numeric({ precision: 10, scale: 2 }).notNull(),
 
     dueDate: date().notNull(),
@@ -698,6 +837,8 @@ export const feeInstallments = pgTable(
     lateFeeApplicable: numeric({ precision: 10, scale: 2 }).notNull().default("0"),
     lateFeeCharged: numeric({ precision: 10, scale: 2 }).notNull().default("0"),
     lateFeeWaived: numeric({ precision: 10, scale: 2 }).notNull().default("0"),
+    // One-off charges such as a dress or notebook never attract a late fee.
+    lateFeeExempt: boolean().notNull().default(false),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true })
@@ -707,11 +848,12 @@ export const feeInstallments = pgTable(
   },
   (t) => [
     // The generator's idempotency anchor: a re-run matches on this triple and
-    // fills only what is missing, like the calendar generator.
-    uniqueIndex("fee_installments_assignment_head_number_uq").on(
+    // fills only what is missing. Keyed on the period, not a position, so
+    // editing a schedule can neither skip nor duplicate a due.
+    uniqueIndex("fee_installments_assignment_head_period_uq").on(
       t.studentFeeAssignmentId,
       t.feeHeadId,
-      t.installmentNumber,
+      t.periodKey,
     ),
     // The accountant's due list: "every unpaid installment due by date X".
     index("fee_installments_school_due_date_idx").on(t.schoolId, t.dueDate),
@@ -726,7 +868,7 @@ export const feeInstallments = pgTable(
     check("fee_installments_amount_non_negative", sql`"amount" >= 0`),
     check(
       "fee_installments_net_matches_parts",
-      sql`"net_amount" = "amount" - "concession_amount"`,
+      sql`"net_amount" = "amount" - "concession_amount" - "discount_amount"`,
     ),
     // Backstop under the apportionment clamp: the maths caps each head's
     // concession TOTAL at its annual amount, but the database holds the line
@@ -737,7 +879,7 @@ export const feeInstallments = pgTable(
     ),
     check(
       "fee_installments_concession_capped",
-      sql`"concession_amount" <= "amount"`,
+      sql`"concession_amount" + "discount_amount" <= "amount"`,
     ),
     check(
       "fee_installments_paid_capped",
@@ -755,11 +897,13 @@ export const openingBalanceStatusEnum = pgEnum("opening_balance_status", [
   "partial",
   "paid",
   "waived",
+  "cancelled",
 ]);
 
 /**
- * DUES CARRIED FORWARD across an academic-year boundary, tagged with the year
- * they came FROM. Deliberately separate from the current year's assignment —
+ * DUES CARRIED FORWARD, tagged with the year they came FROM, or with no origin
+ * when they predate the school's use of the app. Deliberately separate from the
+ * current year's assignment —
  * last year's dues must stay auditable as last year's even while sitting on
  * this year's statement, and per-year fee structures must not absorb them.
  */
@@ -780,10 +924,9 @@ export const openingBalances = pgTable(
     academicYearId: uuid()
       .notNull()
       .references(() => academicYears.id),
-    // The year the dues came from.
-    originAcademicYearId: uuid()
-      .notNull()
-      .references(() => academicYears.id),
+    // The year the dues came from. NULL means from before the school used the
+    // app, so there is no session to point at.
+    originAcademicYearId: uuid().references(() => academicYears.id),
 
     amount: numeric({ precision: 10, scale: 2 }).notNull(),
     // "Carried forward from 2024-25"
@@ -805,11 +948,9 @@ export const openingBalances = pgTable(
       .$onUpdate(() => new Date()),
   },
   (t) => [
-    uniqueIndex("opening_balances_student_year_origin_uq").on(
-      t.studentId,
-      t.academicYearId,
-      t.originAcademicYearId,
-    ),
+    unique("opening_balances_student_year_origin_uq")
+      .on(t.studentId, t.academicYearId, t.originAcademicYearId)
+      .nullsNotDistinct(),
     index("opening_balances_student_year_idx").on(t.studentId, t.academicYearId),
     index("opening_balances_org_idx").on(t.organizationId),
 
@@ -887,6 +1028,8 @@ export const feePayments = pgTable(
     amount: numeric({ precision: 10, scale: 2 }).notNull(),
     // Late fee frozen at payment time — immune to future rule changes.
     lateFeeAmount: numeric({ precision: 10, scale: 2 }).notNull().default("0"),
+    // Taken off at the counter; never cash, and undone if the payment fails.
+    discountAmount: numeric({ precision: 10, scale: 2 }).notNull().default("0"),
     // GENERATED ALWAYS AS amount + late_fee_amount.
     totalAmount: numeric({ precision: 10, scale: 2 }).generatedAlwaysAs(
       sql`"amount" + "late_fee_amount"`,
@@ -936,6 +1079,7 @@ export const feePayments = pgTable(
 
     check("fee_payments_amount_positive", sql`"amount" > 0`),
     check("fee_payments_late_fee_non_negative", sql`"late_fee_amount" >= 0`),
+    check("fee_payments_discount_non_negative", sql`"discount_amount" >= 0`),
   ],
 );
 
@@ -964,6 +1108,10 @@ export const paymentAllocations = pgTable(
       .references(() => feeInstallments.id),
 
     amountAllocated: numeric({ precision: 10, scale: 2 }).notNull(),
+    // What this payment charged on this due, so a bounce undoes exactly that.
+    lateFeeAmount: numeric({ precision: 10, scale: 2 }).notNull().default("0"),
+    lateFeeWaived: numeric({ precision: 10, scale: 2 }).notNull().default("0"),
+    discountAmount: numeric({ precision: 10, scale: 2 }).notNull().default("0"),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
@@ -976,7 +1124,8 @@ export const paymentAllocations = pgTable(
     index("payment_allocations_installment_idx").on(t.installmentId),
     index("payment_allocations_org_idx").on(t.organizationId),
 
-    check("payment_allocations_amount_positive", sql`"amount_allocated" > 0`),
+    // Zero is valid when a discount covers the whole due.
+    check("payment_allocations_amount_non_negative", sql`"amount_allocated" >= 0`),
   ],
 );
 
@@ -1131,6 +1280,7 @@ export const financialTransactions = pgTable(
     index("financial_transactions_student_year_idx").on(t.studentId, t.academicYearId),
     index("financial_transactions_school_type_idx").on(t.schoolId, t.transactionType),
     index("financial_transactions_org_idx").on(t.organizationId),
+    index("financial_transactions_school_receipt_idx").on(t.schoolId, t.receiptNumber),
 
     check("financial_transactions_amount_positive", sql`"amount" > 0`),
   ],

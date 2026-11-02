@@ -13,7 +13,7 @@ export const env = createEnv({
    * exists so a development environment boots without it. Rotating it is the
    * provider's job to match.
    */
-  FEE_WEBHOOK_SECRET: z.string().min(16).default("dev-fee-webhook-secret"),
+  FEE_WEBHOOK_SECRET: z.string().min(16).optional(),
   /**
    * Testing escape hatch for the express-rate-limit middlewares in server.ts.
    * Default keeps production protected; set DISABLE_RATE_LIMIT=true in the
@@ -37,6 +37,6 @@ export const env = createEnv({
    * default like the homework sweeper (tests drive the sweep directly); the
    * production .env enables it. Hourly is plenty: it only fills gaps.
    */
-  FEES_WORKER_DISABLED: z.enum(["true", "false"]).default("true"),
+  FEES_WORKER_DISABLED: z.enum(["true", "false"]).default("false"),
   FEES_WORKER_TICK_SECONDS: z.coerce.number().int().min(60).max(86400).default(3600),
 });

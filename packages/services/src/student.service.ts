@@ -1,3 +1,4 @@
+import { feesBillingService } from "./fees-billing.service";
 import {
   atSchoolLevel,
   requireSchoolId,
@@ -384,6 +385,10 @@ export class StudentService {
         .set({ status: "active" })
         .where(eq(students.id, studentId))
         .returning();
+      // Dues from today on are owed again; the months away stay cancelled.
+      if (latest) {
+        await feesBillingService.reopenDuesOnRejoining(tx, scope, latest.enrollment.id);
+      }
       return student ?? null;
     });
   }

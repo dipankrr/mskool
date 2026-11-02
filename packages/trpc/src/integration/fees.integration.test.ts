@@ -142,6 +142,30 @@ async function enroll(studentId: string) {
   });
 }
 
+/** ₹1,000 a month of tuition, and a lab fee of ₹1,440 in Term 1 and ₹960 in Term 2. */
+async function addStandardLines(
+  scope: FeeWorld["scopeA"],
+  structureId: string,
+  tuitionHeadId: string,
+  labHeadId: string,
+) {
+  await feesService.createFeeStructureLine(scope, structureId, {
+    feeHeadId: tuitionHeadId,
+    frequency: "monthly",
+    amount: "1000.00",
+  });
+  const lab = await feesService.createFeeStructureLine(scope, structureId, {
+    feeHeadId: labHeadId,
+    frequency: "term_wise",
+    amount: "1200.00",
+  });
+  const lines = await feesService.listFeeStructureLines(scope, structureId);
+  const periods = lines.find((line) => line.id === lab.id)?.periods ?? [];
+  const [first, second] = periods;
+  if (first) await feesService.updateLinePeriod(scope, first.id, { amount: "1440.00" });
+  if (second) await feesService.updateLinePeriod(scope, second.id, { amount: "960.00" });
+}
+
 /** Assign + generate. Each call makes a FRESH assignment (per-run students). */
 async function assignAndGenerate(studentId: string, effectiveFrom?: string) {
   const enrollment = await enroll(studentId);
@@ -165,7 +189,7 @@ const installmentsOf = (assignmentId: string) =>
     .select()
     .from(feeInstallments)
     .where(eq(feeInstallments.studentFeeAssignmentId, assignmentId))
-    .orderBy(feeInstallments.installmentNumber);
+    .orderBy(feeInstallments.dueDate, feeInstallments.periodKey);
 
 beforeAll(async () => {
   // Org + school through the services: the school gets its scope_nodes row
@@ -266,29 +290,9 @@ beforeAll(async () => {
       academicYearId: year.id,
       classId: klass.id,
       name: "Fee 6 Structure",
-      installmentMode: "monthly",
     },
     adminUser.id,
   );
-
-  await db.insert(feeStructureLines).values([
-    {
-      organizationId: orgA.id,
-      schoolId: schoolA.id,
-      feeStructureId: structure.id,
-      feeHeadId: tuitionHead.id,
-      annualAmount: "12000.00",
-      installmentFrequency: "monthly",
-    },
-    {
-      organizationId: orgA.id,
-      schoolId: schoolA.id,
-      feeStructureId: structure.id,
-      feeHeadId: labHead.id,
-      annualAmount: "2400.00",
-      installmentFrequency: "term_wise",
-    },
-  ]);
 
   // Terms for the term-wise line: Apr–Sep (60%), Oct–Mar (40%).
   await termService.createTerm(scopeA, {
@@ -307,6 +311,7 @@ beforeAll(async () => {
     endDate: "2026-03-31",
     weightage: "40.00",
   });
+  await addStandardLines(scopeA, structure.id, tuitionHead.id, labHead.id);
 
   // The world is live from here: the helpers read it.
   w = {
@@ -502,7 +507,7 @@ describe("fees: collection", () => {
       },
       w.adminId,
     );
-    expect(payment.paymentStatus).toBe("pending"); // UPI enters pending
+    expect(payment.paymentStatus).toBe("cleared"); // UPI is not held
   });
 
   it("the SAME clientReference twice returns the ORIGINAL payment — one receipt", async () => {
@@ -773,7 +778,7 @@ describe("fees: the ledger and the gateway path", () => {
       amount: "1500.00", // 1000 (oldest) + 500 (next)
       paymentDate: "2025-04-15",
     });
-    expect(payment.paymentStatus).toBe("pending"); // online_portal enters pending
+    expect(payment.paymentStatus).toBe("cleared"); // the gateway's notification is the fact
 
     const replay = await feesCollectionService.recordGatewayPayment({
       organizationId: w.orgAId,
@@ -1941,7 +1946,7 @@ describe("fees: S3 the cross-tenant IDOR matrix", () => {
     expect(await feesService.listFeeStructureLines(w.scopeB, f.structureId)).toHaveLength(0);
     expect(
       await feesService.updateFeeStructureLine(w.scopeB, f.lineId, {
-        annualAmount: "12000.00",
+        amount: "1000.00",
       }),
     ).toBeNull();
   });
@@ -1979,28 +1984,10 @@ describe("fees: student fee status matrix", () => {
         academicYearId: w.yearAId,
         classId: klass.id,
         name: `Fee Matrix Structure ${RUN}`,
-        installmentMode: "monthly",
-      },
+        },
       w.adminId,
     );
-    await db.insert(feeStructureLines).values([
-      {
-        organizationId: w.orgAId,
-        schoolId: w.schoolAId,
-        feeStructureId: structure.id,
-        feeHeadId: w.tuitionHeadId,
-        annualAmount: "12000.00",
-        installmentFrequency: "monthly",
-      },
-      {
-        organizationId: w.orgAId,
-        schoolId: w.schoolAId,
-        feeStructureId: structure.id,
-        feeHeadId: w.labHeadId,
-        annualAmount: "2400.00",
-        installmentFrequency: "term_wise",
-      },
-    ]);
+    await addStandardLines(w.scopeA, structure.id, w.tuitionHeadId, w.labHeadId);
 
     const createMatrixStudent = async (tag: string) => freshStudent(`MX-${tag}`);
     const enrollMatrix = async (studentId: string) =>
@@ -2182,7 +2169,7 @@ describe("fees: student fee status matrix", () => {
     expect(result!.months).toHaveLength(12);
     expect(byId.get(matrix.unassignedStudentId)?.assignmentState).toBe("unassigned");
     expect(byId.get(matrix.unassignedStudentId)?.generationState).toBe("not_assigned");
-    expect(byId.get(matrix.ungeneratedStudentId)?.generationState).toBe("not_generated");
+    expect(byId.get(matrix.ungeneratedStudentId)?.generationState).toBe("generated");
     expect(byId.get(matrix.multiStudentId)?.sectionName).toBe("MX-A");
     expect(byId.get(matrix.midStudentId)?.cells[0]).toMatchObject({
       assessedAmount: "0.00",
@@ -2428,7 +2415,11 @@ describe("fees: student fee status matrix", () => {
       true,
     );
     expect(notGenerated!.rows.map((row) => row.studentId)).toEqual(
-      expect.arrayContaining([matrix.unassignedStudentId, matrix.ungeneratedStudentId]),
+      expect.arrayContaining([matrix.unassignedStudentId]),
+    );
+    // Billing is one state (ADR-058): billed with no dues yet just owes nothing.
+    expect(notGenerated!.rows.some((row) => row.studentId === matrix.ungeneratedStudentId)).toBe(
+      false,
     );
     expect(notGenerated!.rows.some((row) => row.studentId === matrix.cancelledStudentId)).toBe(
       false,
@@ -2442,7 +2433,6 @@ describe("fees: student fee status matrix", () => {
     expect(attention!.rows.map((row) => row.studentId)).toEqual(
       expect.arrayContaining([
         matrix.unassignedStudentId,
-        matrix.ungeneratedStudentId,
         matrix.openingStudentId,
         matrix.multiStudentId,
       ]),
@@ -2593,8 +2583,10 @@ describe("fees: mobile backend gaps (ADR-049)", () => {
       feeHeadId: w.tuitionHeadId,
       feeHeadName: "Tuition Fee",
       description: tuition.description,
-      installmentNumber: tuition.installmentNumber,
+      periodKey: tuition.periodKey,
       dueDate: tuition.dueDate,
+      lateFeeAmount: "0.00",
+      discountAmount: "0.00",
     });
     expect(byInstallment.get(lab.id)?.feeHeadName).toBe("Lab Fee");
     expect(byInstallment.get(lab.id)?.amountAllocated).toBe(lab.netAmount);
@@ -2865,8 +2857,9 @@ describe("fees: mobile backend gaps (ADR-049)", () => {
           studentId: student.id,
           academicYearId: w.yearAId,
           paymentDate: "2025-06-20",
-          paymentMode: "upi",
-          transactionReference: "UPI-G12",
+          // Held: UPI clears at once now, and a cleared payment can't be cancelled.
+          paymentMode: "neft_rtgs",
+          transactionReference: "NEFT-G12",
           allocations: [{ installmentId: third.id, amount: third.netAmount }],
         },
         w.adminId,
@@ -3155,17 +3148,13 @@ describe("fees: bill a whole class (billClass)", () => {
         academicYearId: w.yearAId,
         classId,
         name: `Fee Bulk Structure ${RUN}`,
-        installmentMode: "monthly",
-      },
+        },
       w.adminId,
     );
-    await db.insert(feeStructureLines).values({
-      organizationId: w.orgAId,
-      schoolId: w.schoolAId,
-      feeStructureId: structure.id,
+    await feesService.createFeeStructureLine(w.scopeA, structure.id, {
       feeHeadId: w.tuitionHeadId,
-      annualAmount: "12000.00",
-      installmentFrequency: "monthly",
+      frequency: "monthly",
+      amount: "1000.00",
     });
 
     const enrollInto = async (tag: string, sectionId: string) => {
@@ -3280,13 +3269,13 @@ describe("fees: bill a whole class (billClass)", () => {
     }
   });
 
-  it("a class with no active fee chart refuses as a whole", async () => {
+  it("a class with no active fee structure refuses as a whole", async () => {
     const result = await feesBillingService.billClass(
       w.scopeA,
       { academicYearId: w.yearAId, classId: bareClassId },
       w.adminId,
     );
-    expect(result.refusal).toMatch(/no active fee chart/i);
+    expect(result.refusal).toMatch(/no active fee structure/i);
     expect(result.feeStructureId).toBeNull();
     expect([result.billedCount, result.skippedCount, result.refusedCount]).toEqual([0, 0, 0]);
   });
@@ -3393,8 +3382,8 @@ describe("fees: month-by-month generation (ADR-051)", () => {
     const all = await installmentsOf(once.id);
     const steppedRows = await installmentsOf(stepped.id);
     expect(steppedRows).toHaveLength(all.length);
-    const key = (r: { feeHeadId: string; installmentNumber: number }) =>
-      `${r.feeHeadId}:${r.installmentNumber}`;
+    const key = (r: { feeHeadId: string; periodKey: string }) =>
+      `${r.feeHeadId}:${r.periodKey}`;
     const byKey = new Map(all.map((r) => [key(r), r]));
     for (const row of steppedRows) {
       const twin = byKey.get(key(row));
@@ -3428,23 +3417,16 @@ describe("fees: month-by-month generation (ADR-051)", () => {
     expect(again.inserted).toBe(0);
   }, 180_000);
 
-  it("the school's mode decides the cut-off when none is asked", async () => {
+  it("billing stops at this month unless asked otherwise, paused or not", async () => {
     try {
       await feesBillingService.setFeeGenerationMode(w.scopeA, "monthly_manual");
       expect(await feesBillingService.getFeeGenerationMode(w.scopeA)).toEqual({
         mode: "monthly_manual",
       });
-      expect(
-        await feesBillingService.resolveThrough(db, w.schoolAId, undefined),
-      ).toBe(endOfThisMonth());
-      expect(await feesBillingService.resolveThrough(db, w.schoolAId, "all")).toBeNull();
-
-      await feesBillingService.setFeeGenerationMode(w.scopeA, "all_now");
-      expect(
-        await feesBillingService.resolveThrough(db, w.schoolAId, undefined),
-      ).toBeNull();
+      expect(feesBillingService.resolveThrough(undefined)).toBe(endOfThisMonth());
+      expect(feesBillingService.resolveThrough("all")).toBeNull();
     } finally {
-      await feesBillingService.setFeeGenerationMode(w.scopeA, "all_now");
+      await feesBillingService.setFeeGenerationMode(w.scopeA, "monthly_auto");
     }
   });
 
@@ -3456,7 +3438,8 @@ describe("fees: month-by-month generation (ADR-051)", () => {
     const assignment = await assignOnly(student.id);
     expect(await installmentsOf(assignment.id)).toHaveLength(0);
 
-    // all_now school: the sweep leaves it alone.
+    // Paused: the sweep leaves it alone.
+    await feesBillingService.setFeeGenerationMode(w.scopeA, "monthly_manual");
     await feesBillingService.runMonthlySweep({ schoolIds: [w.schoolAId] });
     expect(await installmentsOf(assignment.id)).toHaveLength(0);
 
@@ -3470,7 +3453,7 @@ describe("fees: month-by-month generation (ADR-051)", () => {
       expect(rows.length).toBeGreaterThan(0);
       expect(rows.every((r) => r.dueDate <= endOfThisMonth())).toBe(true);
     } finally {
-      await feesBillingService.setFeeGenerationMode(w.scopeA, "all_now");
+      await feesBillingService.setFeeGenerationMode(w.scopeA, "monthly_auto");
     }
   }, 180_000);
 });

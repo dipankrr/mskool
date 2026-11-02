@@ -1,5 +1,6 @@
 import { atSchoolLevel } from "./academic.service";
 import { ENROLLED_STATUSES, todayInIst, type LeftStatus } from "./enrollment-status";
+import { feesBillingService } from "./fees-billing.service";
 import { scopeWhere, type DataScope, type ScopeColumns } from "@repo/authz";
 import type {
   CreateEnrollmentInput,
@@ -445,27 +446,31 @@ export class EnrollmentService {
       throw new Error("A leaving date cannot be before the student joined.");
     }
 
-    const [updated] = await db
-      .update(studentEnrollments)
-      .set({
-        enrollmentStatus: to,
-        leftOn,
-        leavingReason: input.reason?.trim() || null,
-        leftBy: actorUserId,
-      })
-      .where(
-        and(
-          eq(studentEnrollments.id, enrollmentId),
-          eq(studentEnrollments.enrollmentStatus, enrollment.enrollmentStatus),
-        ),
-      )
-      .returning();
-    if (!updated) {
-      throw new Error(
-        "This enrollment changed state a moment ago. Refresh to see the current state.",
-      );
-    }
-    return updated;
+    return db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(studentEnrollments)
+        .set({
+          enrollmentStatus: to,
+          leftOn,
+          leavingReason: input.reason?.trim() || null,
+          leftBy: actorUserId,
+        })
+        .where(
+          and(
+            eq(studentEnrollments.id, enrollmentId),
+            eq(studentEnrollments.enrollmentStatus, enrollment.enrollmentStatus),
+          ),
+        )
+        .returning();
+      if (!updated) {
+        throw new Error(
+          "This enrollment changed state a moment ago. Refresh to see the current state.",
+        );
+      }
+      // Dues after the leaving date stop being owed.
+      await feesBillingService.cancelDuesAfterLeaving(tx, enrollmentId, leftOn);
+      return updated;
+    });
   }
 
   /**

@@ -1789,7 +1789,6 @@ async function main() {
         academicYearId: currentYearA.id,
         classId: classA.id,
         name: `Class 6 Fees ${currentYearA.name}`,
-        installmentMode: "monthly",
       },
       adminUser.id,
     ));
@@ -1804,18 +1803,11 @@ async function main() {
       ),
     );
   if (!existingLine) {
-    await feesService.createFeeStructureLine(
-      scopeA,
-      feeStructureRow.id,
-      {
-        feeHeadId: tuitionHead.id,
-        annualAmount: "12000.00",
-        applicableFromMonth: 1,
-        applicableToMonth: 12,
-        installmentFrequency: "monthly",
-      },
-      adminUser.id,
-    );
+    await feesService.createFeeStructureLine(scopeA, feeStructureRow.id, {
+      feeHeadId: tuitionHead.id,
+      frequency: "monthly",
+      amount: "1000.00",
+    });
   }
 
   const [feeAssignment] = await db
@@ -1863,7 +1855,7 @@ async function main() {
           eq(feeInstallments.paymentStatus, "unpaid"),
         ),
       )
-      .orderBy(feeInstallments.installmentNumber)
+      .orderBy(feeInstallments.dueDate, feeInstallments.periodKey)
       .limit(1);
     const firstOpen = open[0];
     if (firstOpen) {

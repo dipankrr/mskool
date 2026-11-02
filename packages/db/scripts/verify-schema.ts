@@ -110,8 +110,6 @@ async function main() {
         'terms_weightage_range',
         'attendance_policies_threshold_range',
         'fee_structure_lines_amount_non_negative',
-        'fee_structure_lines_month_range',
-        'fee_structure_lines_month_order',
         'late_fee_rules_value_positive',
         'late_fee_rules_date_order',
         'fee_concessions_value_positive',
@@ -127,7 +125,7 @@ async function main() {
         'opening_balances_amount_positive',
         'fee_payments_amount_positive',
         'fee_payments_late_fee_non_negative',
-        'payment_allocations_amount_positive',
+        'payment_allocations_amount_non_negative',
         'fee_refunds_amount_positive',
         'financial_transactions_amount_positive',
         'grading_scale_bands_bounds',
@@ -145,7 +143,7 @@ async function main() {
     ORDER BY con.conname
   `;
   for (const c of constraints) console.log(`  ${c.table_name}.${c.constraint_name}`);
-  report("all CHECK constraints exist", constraints.length === 38, `found ${constraints.length}/38`);
+  report("all CHECK constraints exist", constraints.length === 36, `found ${constraints.length}/36`);
 
   // contype 'x' is an EXCLUDE constraint. drizzle-kit cannot see these at all,
   // so their absence would be silent — hence checking the catalog directly.
@@ -911,25 +909,20 @@ async function main() {
       q: Queryable,
       name: string,
       classId = enrClass.id,
-      mode = "term_wise",
     ) =>
       q`INSERT INTO fee_structures
-          (organization_id, school_id, academic_year_id, class_id, name, installment_mode)
-        VALUES (${org.id}, ${school.id}, ${enrYear.id}, ${classId}, ${name}, ${mode})`;
+          (organization_id, school_id, academic_year_id, class_id, name)
+        VALUES (${org.id}, ${school.id}, ${enrYear.id}, ${classId}, ${name})`;
 
     const feeLine = (
       q: Queryable,
       structureId: string,
       headId: string,
       amount: string,
-      fromMonth = 1,
-      toMonth = 12,
     ) =>
       q`INSERT INTO fee_structure_lines
-          (organization_id, school_id, fee_structure_id, fee_head_id,
-           annual_amount, applicable_from_month, applicable_to_month)
-        VALUES (${org.id}, ${school.id}, ${structureId}, ${headId},
-                ${amount}, ${fromMonth}, ${toMonth})`;
+          (organization_id, school_id, fee_structure_id, fee_head_id, frequency, amount)
+        VALUES (${org.id}, ${school.id}, ${structureId}, ${headId}, 'monthly', ${amount})`;
 
     const lateFeeRule = (
       q: Queryable,
@@ -959,16 +952,19 @@ async function main() {
     await expectAccept(tx, "a structure is accepted", (q) => feeStructure(q, "Class 6 2030-31"));
     await expectReject(
       tx,
-      "a SECOND structure for the same class+year is rejected",
-      "fee_structures_class_year_uq",
-      (q) => feeStructure(q, "Class 6 2030-31 duplicate"),
+      "a SECOND live structure with the same name for a class+year is rejected",
+      "fee_structures_class_year_name_uq",
+      (q) => feeStructure(q, "Class 6 2030-31"),
+    );
+    await expectAccept(tx, "a second structure for the class under another name is accepted", (q) =>
+      feeStructure(q, "Class 6 2030-31 Commerce"),
     );
     // The resolver reads "the structure for class C in year Y" — a second
     // school's class is a different addressable node, so its structure is free.
     await expectAccept(tx, "a structure for the same class NAME in a DIFFERENT year is accepted", (q) =>
       q`INSERT INTO fee_structures
-          (organization_id, school_id, academic_year_id, class_id, name, installment_mode)
-        VALUES (${org.id}, ${school.id}, ${nextEnrYear.id}, ${enrClass.id}, 'Class 6 2031-32', 'monthly')`,
+          (organization_id, school_id, academic_year_id, class_id, name)
+        VALUES (${org.id}, ${school.id}, ${nextEnrYear.id}, ${enrClass.id}, 'Class 6 2031-32')`,
     );
 
     const [head] = await tx<{ id: string }[]>`
@@ -1006,21 +1002,9 @@ async function main() {
     `;
     await expectReject(
       tx,
-      "a NEGATIVE annual amount is rejected",
+      "a NEGATIVE amount is rejected",
       "fee_structure_lines_amount_non_negative",
       (q) => feeLine(q, structure.id, labHead.id, "-1.00"),
-    );
-    await expectReject(
-      tx,
-      "an out-of-range applicable month is rejected",
-      "fee_structure_lines_month_range",
-      (q) => feeLine(q, structure.id, labHead.id, "100.00", 1, 13),
-    );
-    await expectReject(
-      tx,
-      "an inverted applicable-month range is rejected",
-      "fee_structure_lines_month_order",
-      (q) => feeLine(q, structure.id, labHead.id, "100.00", 9, 4),
     );
 
     await expectAccept(tx, "a late-fee rule is accepted", (q) => lateFeeRule(q, "50.00"));
@@ -1083,9 +1067,9 @@ async function main() {
     ) =>
       q`INSERT INTO student_fee_assignments
           (organization_id, school_id, student_id, enrollment_id, academic_year_id,
-           fee_structure_id, base_annual_amount, net_annual_amount, fee_effective_from)
+           fee_structure_id, fee_effective_from)
         VALUES (${org.id}, ${school.id}, ${studentId}, ${enrollmentId}, ${enrYear.id},
-                ${structure.id}, '12000.00', '11000.00', '2030-04-01')`;
+                ${structure.id}, '2030-04-01')`;
 
     await expectAccept(tx, "a fee assignment is accepted", (q) =>
       assignment(q, enrStudent.id, feeEnrollment.id),
@@ -1112,10 +1096,10 @@ async function main() {
     ) =>
       q`INSERT INTO fee_installments
           (organization_id, school_id, student_fee_assignment_id, student_id,
-           academic_year_id, fee_head_id, installment_number, amount,
+           academic_year_id, fee_head_id, period_key, amount,
            concession_amount, net_amount, due_date, paid_amount)
         VALUES (${org.id}, ${school.id}, ${feeAssignment.id}, ${enrStudent.id},
-                ${enrYear.id}, ${headId}, ${number}, ${amount},
+                ${enrYear.id}, ${headId}, ${String(number)}, ${amount},
                 ${concession}, ${net}, '2030-04-10', ${paid})`;
 
     await expectAccept(tx, "an installment is accepted", (q) =>
@@ -1123,8 +1107,8 @@ async function main() {
     );
     await expectReject(
       tx,
-      "a duplicate installment (assignment, head, number) is rejected",
-      "fee_installments_assignment_head_number_uq",
+      "a duplicate due (assignment, head, period) is rejected",
+      "fee_installments_assignment_head_period_uq",
       (q) => installment(q, head.id, 1, "1000.00", "0.00", "1000.00", "0"),
     );
     await expectReject(
@@ -1167,10 +1151,10 @@ async function main() {
     await expectAccept(tx, "a waived installment with paid_amount 0 is accepted", (q) =>
       q`INSERT INTO fee_installments
           (organization_id, school_id, student_fee_assignment_id, student_id,
-           academic_year_id, fee_head_id, installment_number, amount,
+           academic_year_id, fee_head_id, period_key, amount,
            concession_amount, net_amount, due_date, paid_amount, payment_status)
         VALUES (${org.id}, ${school.id}, ${feeAssignment.id}, ${enrStudent.id},
-                ${enrYear.id}, ${clampHead.id}, 4, '500.00', '500.00', '0.00',
+                ${enrYear.id}, ${clampHead.id}, '4', '500.00', '500.00', '0.00',
                 '2030-05-10', '0', 'waived')`,
     );
 
@@ -1179,7 +1163,7 @@ async function main() {
     await expectAccept(tx, "the generated balance computes 700.00", async (q) => {
       const [row] = await q<{ balance_amount: string }[]>`
         SELECT balance_amount FROM fee_installments
-        WHERE student_fee_assignment_id = ${feeAssignment.id} AND installment_number = 1
+        WHERE student_fee_assignment_id = ${feeAssignment.id} AND period_key = '1'
       `;
       if (row.balance_amount !== "700.00") {
         throw new Error(`generated balance is ${row.balance_amount}, expected 700.00`);
@@ -1261,7 +1245,7 @@ async function main() {
     `;
     const [firstInstallment] = await tx<{ id: string }[]>`
       SELECT id FROM fee_installments WHERE student_fee_assignment_id = ${feeAssignment.id}
-        AND installment_number = 1
+        AND period_key = '1'
     `;
     const allocation = (q: Queryable, amount: string) =>
       q`INSERT INTO payment_allocations

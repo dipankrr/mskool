@@ -4,8 +4,28 @@ import {
   createFeeStructureLineSchema,
   createFeeStructureSchema,
   createLateFeeRuleSchema,
+  createOneOffChargeSchema,
   createOpeningBalanceSchema,
   createSubscriptionSchema,
+  feeDashboardInputSchema,
+  feeDashboardListInputSchema,
+  feeDashboardListOutputSchema,
+  feeDashboardOutputSchema,
+  feeDuesRunSchema,
+  feeSetupStatusSchema,
+  startFeeDuesRunSchema,
+  feeStudentSummaryInputSchema,
+  feeStudentSummarySchema,
+  feeLineFrequencySchema,
+  feeLinePeriodSelectSchema,
+  feeSessionSettingsSchema,
+  feeStructureLineWithPeriodsSchema,
+  periodOptionSchema,
+  quotePaymentSchema,
+  updateFeeSessionSettingsSchema,
+  updateLinePeriodSchema,
+  voidConcessionSchema,
+  voidOpeningBalanceSchema,
   duesListSchema,
   assignFeeStructureSchema,
   billClassOutputSchema,
@@ -41,6 +61,7 @@ import {
 import {
   feesBillingService,
   feesCollectionService,
+  feesDashboardService,
   feesService,
 } from "@repo/services";
 import { TRPCError } from "@trpc/server";
@@ -66,11 +87,12 @@ import { router, staffListProcedure, staffProcedure } from "../trpc";
  * discount's name in the permission system), and late-fee rules,
  * subscriptions, and opening balances ride the `fee_structure` family —
  * they are configuration. Money movement is `fee_payment:*`; taking money
- * back is `fee_refund:*`; forgiving is `fee_waiver:approve`; the ledger read
- * is `fee_report:read`. The SENSITIVE set already covers the acts that must
- * skip the Redis snapshot: `fee_payment:approve` (the bounce/reverse/cancel
- * transitions), `fee_waiver:approve`, `fee_waiver:create`,
- * `fee_refund:approve`.
+ * back is `fee_refund:create`: whoever holds it can refund, with no separate
+ * approval; forgiving is `fee_waiver:approve`; a discount or a forgiven late fee
+ * at the counter rides `fee_waiver:create`; the ledger read is `fee_report:read`.
+ * The SENSITIVE set covers the acts that must skip the Redis snapshot:
+ * `fee_payment:approve` (the bounce/reverse/cancel transitions),
+ * `fee_waiver:approve`, `fee_waiver:create`, `fee_refund:create`.
  */
 
 const notFound = () =>
@@ -106,7 +128,7 @@ export const feesRouter = router({
           method: "PATCH",
           path: "/fee-settings/generation-mode",
           tags: ["fees"],
-          summary: "Choose all dues at billing, or month by month (auto or manual)",
+          summary: "Pause or resume adding each month's dues automatically",
           protect: true,
         },
       })
@@ -114,6 +136,164 @@ export const feesRouter = router({
       .output(z.object({ mode: feeGenerationModeSchema }))
       .mutation(({ ctx, input }) =>
         feesBillingService.setFeeGenerationMode(ctx.scope, input.mode),
+      ),
+
+    getSession: staffProcedure("fee_structure:read")
+      .meta({
+        openapi: {
+          method: "GET",
+          path: "/fee-settings/session",
+          tags: ["fees"],
+          summary: "A session's fee months, due day and receipt numbering",
+          protect: true,
+        },
+      })
+      .input(z.object({ academicYearId: z.uuid(), ...schoolParent.shape }))
+      .output(feeSessionSettingsSchema)
+      .query(({ ctx, input }) =>
+        feesBillingService.getSessionSettings(ctx.scope, input.academicYearId),
+      ),
+
+    setSession: staffProcedure("fee_structure:update")
+      .meta({
+        openapi: {
+          method: "PATCH",
+          path: "/fee-settings/session",
+          tags: ["fees"],
+          summary: "Set a session's fee months, due day and receipt numbering",
+          protect: true,
+        },
+      })
+      .input(
+        z.object({
+          academicYearId: z.uuid(),
+          data: updateFeeSessionSettingsSchema,
+          ...schoolParent.shape,
+        }),
+      )
+      .output(feeSessionSettingsSchema)
+      .mutation(({ ctx, input }) =>
+        feesBillingService.setSessionSettings(ctx.scope, input.academicYearId, input.data),
+      ),
+  }),
+
+  // -------------------------------------------------------------------------
+  // The Fees dashboard and the student fee page
+  // -------------------------------------------------------------------------
+  dashboard: router({
+    overview: staffListProcedure("fee_report:read")
+      .meta({
+        openapi: {
+          method: "GET",
+          path: "/fees/dashboard",
+          tags: ["fees"],
+          summary: "Every figure at the top of the Fees dashboard",
+          protect: true,
+        },
+      })
+      .input(feeDashboardInputSchema)
+      .output(feeDashboardOutputSchema)
+      .query(async ({ ctx, input }) => {
+        const overview = await feesDashboardService.overview(
+          ctx.scopes,
+          input,
+          ctx.canWithin(READ_HISTORY),
+        );
+        if (!overview) throw notFound();
+        return overview;
+      }),
+
+    list: staffListProcedure("fee_report:read")
+      .meta({
+        openapi: {
+          method: "GET",
+          path: "/fees/dashboard/students",
+          tags: ["fees"],
+          summary: "Students on the Fees dashboard: who owes, who paid, who is not billed",
+          protect: true,
+        },
+      })
+      .input(feeDashboardListInputSchema)
+      .output(feeDashboardListOutputSchema)
+      .query(async ({ ctx, input }) => {
+        const list = await feesDashboardService.list(ctx.scopes, input, ctx.canWithin(READ_HISTORY));
+        if (!list) throw notFound();
+        return list;
+      }),
+
+    student: staffListProcedure("fee_report:read")
+      .meta({
+        openapi: {
+          method: "GET",
+          path: "/fees/dashboard/students/{studentId}",
+          tags: ["fees"],
+          summary: "Everything the student fee page shows",
+          protect: true,
+        },
+      })
+      .input(feeStudentSummaryInputSchema)
+      .output(feeStudentSummarySchema)
+      .query(async ({ ctx, input }) => {
+        const summary = await feesDashboardService.studentSummary(
+          ctx.scopes,
+          input,
+          ctx.canWithin(READ_HISTORY),
+        );
+        if (!summary) throw notFound();
+        return summary;
+      }),
+
+    setup: staffProcedure("fee_structure:read")
+      .meta({
+        openapi: {
+          method: "GET",
+          path: "/fees/setup-status",
+          tags: ["fees"],
+          summary: "What the Fee setup screen shows: classes, structures, who is waiting",
+          protect: true,
+        },
+      })
+      .input(z.object({ academicYearId: z.uuid(), ...schoolParent.shape }))
+      .output(feeSetupStatusSchema)
+      .query(({ ctx, input }) =>
+        feesDashboardService.setupStatus(ctx.scope, input.academicYearId),
+      ),
+  }),
+
+  // -------------------------------------------------------------------------
+  // Creating dues for everyone in the background
+  // -------------------------------------------------------------------------
+  duesRun: router({
+    start: staffProcedure("student_fee_assignment:update")
+      .meta({
+        openapi: {
+          method: "POST",
+          path: "/fee-dues-runs",
+          tags: ["fees"],
+          summary: "Start creating dues for everyone, in the background",
+          protect: true,
+        },
+      })
+      .input(z.object({ data: startFeeDuesRunSchema, ...schoolParent.shape }))
+      .output(feeDuesRunSchema)
+      .mutation(({ ctx, input }) =>
+        feesBillingService.startDuesRun(ctx.scope, input.data, ctx.userId),
+      ),
+
+    latest: staffProcedure("fee_structure:read")
+      .meta({
+        openapi: {
+          method: "GET",
+          path: "/fee-dues-runs/latest",
+          tags: ["fees"],
+          summary: "The latest run and how it went",
+          protect: true,
+        },
+      })
+      .input(z.object({ academicYearId: z.uuid(), ...schoolParent.shape }))
+      .output(feeDuesRunSchema.nullable())
+      .query(({ ctx, input }) =>
+        feesBillingService.latestDuesRun(ctx.scope, input.academicYearId),
       ),
   }),
 
@@ -320,7 +500,7 @@ export const feesRouter = router({
       .input(z.object({ id: z.uuid(), data: createFeeStructureLineSchema, ...schoolParent.shape }))
       .output(feeStructureLineSelectSchema)
       .mutation(({ ctx, input }) =>
-        feesService.createFeeStructureLine(ctx.scope, input.id, input.data, ctx.userId),
+        feesService.createFeeStructureLine(ctx.scope, input.id, input.data),
       ),
 
     listLines: staffProcedure("fee_structure:read")
@@ -334,8 +514,112 @@ export const feesRouter = router({
         },
       })
       .input(z.object({ id: z.uuid(), ...schoolParent.shape }))
-      .output(z.array(feeStructureLineSelectSchema))
+      .output(z.array(feeStructureLineWithPeriodsSchema))
       .query(({ ctx, input }) => feesService.listFeeStructureLines(ctx.scope, input.id)),
+
+    periodOptions: staffProcedure("fee_structure:read")
+      .meta({
+        openapi: {
+          method: "GET",
+          path: "/fee-structures/period-options",
+          tags: ["fees"],
+          summary: "The periods a fee line of a given frequency could charge this session",
+          protect: true,
+        },
+      })
+      .input(
+        z.object({
+          academicYearId: z.uuid(),
+          frequency: feeLineFrequencySchema,
+          ...schoolParent.shape,
+        }),
+      )
+      .output(z.array(periodOptionSchema))
+      .query(({ ctx, input }) =>
+        feesService.listPeriodOptions(ctx.scope, input.academicYearId, input.frequency),
+      ),
+
+    updatePeriod: staffProcedure("fee_structure:update")
+      .meta({
+        openapi: {
+          method: "PATCH",
+          path: "/fee-line-periods/{id}",
+          tags: ["fees"],
+          summary: "Change one row of a fee line's schedule",
+          protect: true,
+        },
+      })
+      .input(z.object({ id: z.uuid(), data: updateLinePeriodSchema, ...schoolParent.shape }))
+      .output(feeLinePeriodSelectSchema)
+      .mutation(async ({ ctx, input }) => {
+        const period = await feesService.updateLinePeriod(ctx.scope, input.id, input.data);
+        if (!period) throw notFound();
+        return period;
+      }),
+
+    listSections: staffProcedure("fee_structure:read")
+      .meta({
+        openapi: {
+          method: "GET",
+          path: "/fee-structures/{id}/sections",
+          tags: ["fees"],
+          summary: "The sections a structure covers",
+          protect: true,
+        },
+      })
+      .input(z.object({ id: z.uuid(), ...schoolParent.shape }))
+      .output(z.array(z.uuid()))
+      .query(({ ctx, input }) => feesService.listStructureSections(ctx.scope, input.id)),
+
+    setSections: staffProcedure("fee_structure:update")
+      .meta({
+        openapi: {
+          method: "PUT",
+          path: "/fee-structures/{id}/sections",
+          tags: ["fees"],
+          summary: "Link a structure to sections, when a class has several structures",
+          protect: true,
+        },
+      })
+      .input(z.object({ id: z.uuid(), sectionIds: z.array(z.uuid()), ...schoolParent.shape }))
+      .output(z.object({ sectionIds: z.array(z.uuid()) }))
+      .mutation(({ ctx, input }) =>
+        feesService.setStructureSections(ctx.scope, input.id, input.sectionIds),
+      ),
+
+    startBilling: staffProcedure("student_fee_assignment:create")
+      .meta({
+        openapi: {
+          method: "POST",
+          path: "/fee-structures/{id}/start-billing",
+          tags: ["fees"],
+          summary: "Start billing a structure: bills everyone it covers, then new admissions",
+          protect: true,
+        },
+      })
+      .input(z.object({ id: z.uuid(), ...schoolParent.shape }))
+      .output(billClassOutputSchema)
+      .mutation(({ ctx, input }) =>
+        feesBillingService.startBilling(ctx.scope, input.id, ctx.userId),
+      ),
+
+    removeLateFeeRule: staffProcedure("fee_structure:update")
+      .meta({
+        openapi: {
+          method: "DELETE",
+          path: "/fee-late-fee-rules/{id}",
+          tags: ["fees"],
+          summary: "Switch a late fee rule off (payments already made keep theirs)",
+          protect: true,
+        },
+      })
+      .input(z.object({ id: z.uuid(), ...schoolParent.shape }))
+      .output(lateFeeRuleSelectSchema)
+      .mutation(async ({ ctx, input }) => {
+        const rule = await feesService.deactivateLateFeeRule(ctx.scope, input.id);
+        if (!rule) throw notFound();
+        return rule;
+      }),
 
     updateLine: staffProcedure("fee_structure:update")
       .meta({
@@ -489,14 +773,41 @@ export const feesRouter = router({
           method: "POST",
           path: "/fee-assignments",
           tags: ["fees"],
-          summary: "Resolve the class fee structure onto an enrollment",
+          summary: "Bill one student: their fee record and their dues together",
           protect: true,
         },
       })
       .input(z.object({ data: assignFeeStructureSchema, ...schoolParent.shape }))
+      .output(studentFeeAssignmentSelectSchema.extend({ installmentsCreated: z.number().int() }))
+      .mutation(async ({ ctx, input }) => {
+        const { assignment, inserted } = await feesBillingService.billEnrollment(
+          ctx.scope,
+          input.data,
+          ctx.userId,
+        );
+        return { ...assignment, installmentsCreated: inserted };
+      }),
+
+    setStatus: staffProcedure("student_fee_assignment:update")
+      .meta({
+        openapi: {
+          method: "PATCH",
+          path: "/fee-assignments/{id}/status",
+          tags: ["fees"],
+          summary: "Suspend, cancel or restore a student's billing",
+          protect: true,
+        },
+      })
+      .input(
+        z.object({
+          id: z.uuid(),
+          status: z.enum(["active", "suspended", "cancelled"]),
+          ...schoolParent.shape,
+        }),
+      )
       .output(studentFeeAssignmentSelectSchema)
       .mutation(({ ctx, input }) =>
-        feesBillingService.assignFeeStructure(ctx.scope, input.data, ctx.userId),
+        feesBillingService.setAssignmentStatus(ctx.scope, input.id, input.status),
       ),
 
     billClass: staffProcedure("student_fee_assignment:create")
@@ -583,6 +894,24 @@ export const feesRouter = router({
         feesService
           .createConcession(ctx.scope, input.id, input.data, ctx.userId)
           .then((c) => ({ concessionAmount: c.concessionAmount })),
+      ),
+
+    voidConcession: staffProcedure("fee_waiver:create")
+      .meta({
+        openapi: {
+          method: "POST",
+          path: "/fee-concessions/{id}/void",
+          tags: ["fees"],
+          summary: "Withdraw a concession; unpaid dues go back to full",
+          protect: true,
+        },
+      })
+      .input(z.object({ id: z.uuid(), data: voidConcessionSchema, ...schoolParent.shape }))
+      .output(z.object({ id: z.uuid() }))
+      .mutation(({ ctx, input }) =>
+        feesService
+          .voidConcession(ctx.scope, input.id, input.data.reason, ctx.userId)
+          .then((c) => ({ id: c.id })),
       ),
   }),
 
@@ -674,6 +1003,51 @@ export const feesRouter = router({
       .mutation(({ ctx, input }) =>
         feesCollectionService.waiveInstallment(ctx.scope, input.id, ctx.userId),
       ),
+
+    cancel: staffProcedure("student_fee_assignment:update")
+      .meta({
+        openapi: {
+          method: "POST",
+          path: "/fee-installments/{id}/cancel",
+          tags: ["fees"],
+          summary: "Cancel a due created by mistake (never-paid only)",
+          protect: true,
+        },
+      })
+      .input(z.object({ id: z.uuid(), ...schoolParent.shape }))
+      .output(feeInstallmentSelectSchema)
+      .mutation(async ({ ctx, input }) => {
+        const due = await feesBillingService.cancelDue(ctx.scope, input.id);
+        if (!due) throw notFound();
+        return due;
+      }),
+
+    addOneOff: staffProcedure("student_fee_assignment:update")
+      .meta({
+        openapi: {
+          method: "POST",
+          path: "/fee-installments/one-off",
+          tags: ["fees"],
+          summary: "Add a one-off charge on a student, such as a dress or notebook",
+          protect: true,
+        },
+      })
+      .input(z.object({ data: createOneOffChargeSchema, ...schoolParent.shape }))
+      .output(
+        z.object({
+          due: feeInstallmentSelectSchema.nullable(),
+          payment: feePaymentSelectSchema.nullable(),
+        }),
+      )
+      .mutation(({ ctx, input }) => {
+        if (input.data.paid && !ctx.can("fee_payment:create")) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Your role can't record a payment.",
+          });
+        }
+        return feesCollectionService.addOneOffCharge(ctx.scope, input.data, ctx.userId);
+      }),
   }),
 
   // -------------------------------------------------------------------------
@@ -692,9 +1066,24 @@ export const feesRouter = router({
       })
       .input(z.object({ data: recordPaymentSchema, ...schoolParent.shape }))
       .output(feePaymentSelectSchema)
-      .mutation(({ ctx, input }) =>
-        feesCollectionService.recordPayment(ctx.scope, input.data, ctx.userId),
-      ),
+      .mutation(({ ctx, input }) => {
+        const givesSomethingOff =
+          (input.data.discounts?.length ?? 0) > 0 || input.data.waiveLateFee === true;
+        if (givesSomethingOff && !ctx.can("fee_waiver:create")) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Your role can't give a discount or forgive a late fee.",
+          });
+        }
+        return feesCollectionService.recordPayment(ctx.scope, input.data, ctx.userId);
+      }),
+
+    // What a payment would cost, late fee included, before recording it. Its
+    // input is a list, so it stays off the REST surface.
+    quote: staffProcedure("fee_payment:create")
+      .input(z.object({ data: quotePaymentSchema, ...schoolParent.shape }))
+      .output(z.object({ lateFeeAmount: z.string() }))
+      .query(({ ctx, input }) => feesCollectionService.quotePayment(ctx.scope, input.data)),
 
     detail: staffProcedure("fee_payment:read")
       .meta({
@@ -884,5 +1273,27 @@ export const feesRouter = router({
       .mutation(({ ctx, input }) =>
         feesBillingService.createOpeningBalance(ctx.scope, input.data, ctx.userId),
       ),
+
+    cancelOpeningBalance: staffProcedure("fee_structure:update")
+      .meta({
+        openapi: {
+          method: "POST",
+          path: "/fee-opening-balances/{id}/cancel",
+          tags: ["fees"],
+          summary: "Cancel previous dues entered by mistake (nothing paid yet)",
+          protect: true,
+        },
+      })
+      .input(z.object({ id: z.uuid(), data: voidOpeningBalanceSchema, ...schoolParent.shape }))
+      .output(openingBalanceSelectSchema)
+      .mutation(async ({ ctx, input }) => {
+        const balance = await feesBillingService.cancelOpeningBalance(
+          ctx.scope,
+          { id: input.id, reason: input.data.reason },
+          ctx.userId,
+        );
+        if (!balance) throw notFound();
+        return balance;
+      }),
   }),
 });

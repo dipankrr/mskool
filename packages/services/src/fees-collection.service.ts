@@ -1,17 +1,21 @@
-import { ENROLLED_STATUSES } from "./enrollment-status";
+import { ENROLLED_STATUSES, todayInIst } from "./enrollment-status";
+import { assertSessionOpen, feesBillingService } from "./fees-billing.service";
+import { refuse } from "./service-error";
 import { atSchoolLevel, requireSchoolId, yearVisibilityWhere } from "./academic.service";
 import {
   allocateOldestFirst,
-  computeLateFee,
   daysInMonth,
+  endOfMonthIso,
   fromCents,
   isoOf,
   monthsBetween,
+  priceLateFees,
   toCents,
 } from "./fees-maths";
 import { feesService } from "./fees.service";
 import { escapeLike, scopeWhere, type DataScope, type ScopeColumns } from "@repo/authz";
 import type {
+  CreateOneOffChargeInput,
   FeeMatrixCellInput,
   FeeMatrixCellOutput,
   FeeMatrixInput,
@@ -22,6 +26,7 @@ import type {
   LedgerCashEffect,
   PaymentDetailOutput,
   PaymentTransitionInput,
+  QuotePaymentInput,
   RecordPaymentInput,
   RecordRefundInput,
 } from "@repo/contracts";
@@ -42,7 +47,7 @@ import {
   studentFeeAssignments,
   students,
 } from "@repo/db/schema";
-import { and, asc, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import { and, asc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 
 /**
  * FEES — collection and the ledger. Phase 4, chunk F5.
@@ -164,8 +169,12 @@ function fullName(parts: {
     .join(" ");
 }
 
-/** The modes that confirm money at the desk; everything else enters `pending`. */
-const IMMEDIATE_MODES = new Set(["cash"]);
+/**
+ * The modes where the money has arrived by the time it is recorded. Cheque, DD
+ * and NEFT wait to be cleared. If a UPI payment turns out not to have landed,
+ * Reverse puts it right.
+ */
+const IMMEDIATE_MODES = new Set(["cash", "upi", "card", "online_portal"]);
 const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
 
 type MatrixInstallment = {
@@ -178,6 +187,20 @@ type MatrixInstallment = {
   dueDate: string;
   paymentStatus: "unpaid" | "partial" | "paid" | "waived" | "cancelled";
 };
+
+/** A real calendar date not in the future, inside the session. */
+function assertMoneyDate(
+  label: string,
+  date: string,
+  session: { startDate: string; endDate: string },
+) {
+  if (date > todayInIst()) {
+    throw refuse("BAD_REQUEST", `${label} can't be in the future.`);
+  }
+  if (date < session.startDate || date > session.endDate) {
+    throw refuse("BAD_REQUEST", `${label} must fall inside the session's dates.`);
+  }
+}
 
 type MatrixAccumulator = {
   assessedCents: bigint;
@@ -195,8 +218,8 @@ type MatrixAccumulator = {
 type MatrixOpeningBalanceRow = {
   amount: string;
   paidAmount: string;
-  status: "unpaid" | "partial" | "paid" | "waived";
-  originAcademicYearId: string;
+  status: "unpaid" | "partial" | "paid" | "waived" | "cancelled";
+  originAcademicYearId: string | null;
 };
 
 type MatrixOpeningBalanceAccumulator = {
@@ -341,7 +364,7 @@ function addOpeningBalance(
   accumulator.amountCents += amountCents;
   accumulator.paidCents += paidCents;
   accumulator.balanceCents += balanceCents;
-  accumulator.originAcademicYearIds.add(row.originAcademicYearId);
+  if (row.originAcademicYearId) accumulator.originAcademicYearIds.add(row.originAcademicYearId);
   accumulator.rowCount += 1;
   if (row.status === "waived") accumulator.waivedCount += 1;
 }
@@ -440,14 +463,85 @@ export class FeesCollectionService {
    * refusal is exceeding one (paying ahead within generated installments is
    * v1 core — the Locked decision).
    */
+  /**
+   * A one-off charge, paid on the spot if asked. Both happen in one transaction,
+   * so a payment that is refused leaves no charge behind. A retry with the same
+   * reference finds the first payment and doesn't charge twice.
+   */
+  async addOneOffCharge(
+    scope: DataScope,
+    input: CreateOneOffChargeInput,
+    actorId: string | null,
+  ) {
+    const { paid, ...charge } = input;
+    if (!paid) {
+      const due = await feesBillingService.createOneOffCharge(scope, charge);
+      return { due, payment: null };
+    }
+    const schoolId = requireSchoolId(scope);
+    if (paid.clientReference) {
+      const [existing] = await db
+        .select()
+        .from(feePayments)
+        .where(
+          and(
+            eq(feePayments.schoolId, schoolId),
+            eq(feePayments.clientReference, paid.clientReference),
+          ),
+        );
+      if (existing) {
+        if (existing.studentId !== input.studentId) {
+          throw refuse("CONFLICT", "This payment reference was already used for a different payment.");
+        }
+        return { due: null, payment: existing };
+      }
+    }
+    return db.transaction(async (tx) => {
+      const due = await feesBillingService.createOneOffCharge(scope, charge, tx);
+      if (!due) throw new Error("Failed to add the charge.");
+      const payment = await this.recordPayment(
+        scope,
+        {
+          studentId: input.studentId,
+          academicYearId: input.academicYearId,
+          paymentDate: paid.paymentDate ?? todayInIst(),
+          paymentMode: paid.paymentMode,
+          transactionReference: paid.transactionReference,
+          bankName: paid.bankName,
+          chequeDate: paid.chequeDate,
+          clientReference: paid.clientReference,
+          allocations: [{ installmentId: due.id, amount: due.netAmount }],
+        },
+        actorId,
+        { tx },
+      );
+      return { due, payment };
+    });
+  }
+
   async recordPayment(
     scope: DataScope,
     input: RecordPaymentInput,
     actorId: string | null,
-    opts?: { mode?: "online_portal" },
+    opts?: { mode?: "online_portal"; tx?: Tx },
   ) {
     const schoolId = requireSchoolId(scope);
     const openingAllocations = input.openingBalanceAllocations ?? [];
+    const discounts = input.discounts ?? [];
+    const allocatedIds = input.allocations.map((a) => a.installmentId);
+    if (new Set(allocatedIds).size !== allocatedIds.length) {
+      throw refuse("BAD_REQUEST", "An installment can appear only once in a payment.");
+    }
+    if (new Set(discounts.map((d) => d.installmentId)).size !== discounts.length) {
+      throw refuse("BAD_REQUEST", "An installment can be discounted only once in a payment.");
+    }
+    if (discounts.some((d) => toCents(d.amount) <= 0n)) {
+      throw refuse("BAD_REQUEST", "A discount must be an amount above zero.");
+    }
+    const discountCents = discounts.reduce((acc, d) => acc + toCents(d.amount), 0n);
+    if (discountCents > 0n && !input.discountReason?.trim()) {
+      throw refuse("BAD_REQUEST", "Add a short reason for the discount.");
+    }
     const installmentCents = input.allocations.reduce(
       (acc, a) => acc + toCents(a.amount),
       0n,
@@ -455,19 +549,19 @@ export class FeesCollectionService {
     const openingCents = openingAllocations.reduce((acc, a) => acc + toCents(a.amount), 0n);
     const allocationCents = installmentCents + openingCents;
     if (allocationCents <= 0n) {
-      throw new Error("A payment must allocate a positive amount.");
+      throw refuse("BAD_REQUEST", "A payment must allocate a positive amount.");
     }
     if (openingAllocations.some((a) => toCents(a.amount) <= 0n)) {
-      throw new Error("Each opening balance allocation must be a positive amount.");
+      throw refuse("BAD_REQUEST", "Each opening balance allocation must be a positive amount.");
     }
     if (
       new Set(openingAllocations.map((a) => a.openingBalanceId)).size !==
       openingAllocations.length
     ) {
-      throw new Error("An opening balance can appear only once in a payment.");
+      throw refuse("BAD_REQUEST", "An opening balance can appear only once in a payment.");
     }
 
-    return db.transaction(async (tx) => {
+    return (opts?.tx ?? db).transaction(async (tx) => {
       // Idempotency first — before the receipt sequence is touched, so a
       // replayed retry cannot even burn a number. S1 (F1): a hit is a
       // promise about a SPECIFIC payload — a reused key on a different
@@ -486,7 +580,8 @@ export class FeesCollectionService {
           const sameStudent = existing.studentId === input.studentId;
           const sameAmount = toCents(existing.amount) === allocationCents;
           if (!sameStudent || !sameAmount) {
-            throw new Error(
+            throw refuse(
+              "CONFLICT",
               "This payment reference was already used for a different payment.",
             );
           }
@@ -501,8 +596,22 @@ export class FeesCollectionService {
           and(eq(students.id, input.studentId), eq(students.schoolId, schoolId)),
         );
       if (!student) {
-        throw new Error("Student not found in this school.");
+        throw refuse("BAD_REQUEST", "Student not found in this school.");
       }
+
+      const [session] = await tx
+        .select({
+          startDate: academicYears.startDate,
+          endDate: academicYears.endDate,
+        })
+        .from(academicYears)
+        .where(
+          and(eq(academicYears.id, input.academicYearId), eq(academicYears.schoolId, schoolId)),
+        );
+      if (!session) {
+        throw refuse("BAD_REQUEST", "Academic year not found in this school.");
+      }
+      await assertSessionOpen(tx, input.academicYearId);
 
       // The receipt sequence: row-locked (created on first use) so two
       // concurrent cashiers serialize. The unique index on
@@ -511,13 +620,6 @@ export class FeesCollectionService {
         .insert(receiptNumberSequences)
         .values({ schoolId, academicYearId: input.academicYearId })
         .onConflictDoNothing();
-      const [year] = await tx
-        .select({ name: academicYears.name })
-        .from(academicYears)
-        .where(eq(academicYears.id, input.academicYearId));
-      if (!year) {
-        throw new Error("Academic year not found.");
-      }
       const [seq] = await tx
         .select({
           lastNumber: receiptNumberSequences.lastNumber,
@@ -544,16 +646,19 @@ export class FeesCollectionService {
             eq(receiptNumberSequences.academicYearId, input.academicYearId),
           ),
         );
-      const receiptNumber = `${seq.prefix}-${year.name.split("-")[0]}-${String(nextNumber).padStart(5, "0")}`;
+      // Named after the session's first month, not its free-text name: the
+      // counter restarts each session, and two sessions never start in the same
+      // month, so two receipts can never collide.
+      const sessionCode = session.startDate.slice(2, 7).replace("-", "");
+      const receiptNumber = `${seq.prefix}-${sessionCode}-${String(nextNumber).padStart(5, "0")}`;
 
       // The installments, ROW-LOCKED IN DETERMINISTIC ID ORDER, then the
       // carried-forward balances the same way — every path takes installment
       // locks before opening-balance locks, so the order is global.
-      const lateFeeCents =
-        input.allocations.length > 0
-          ? await this.lockInstallmentsAndPriceLateFee(tx, scope, schoolId, input)
-          : 0n;
+      const priced = await this.lockAndPrice(tx, scope, schoolId, input);
+      const lateFeeCents = priced.lateFeeCents;
       await this.lockOpeningBalances(tx, schoolId, input, openingAllocations);
+      assertMoneyDate("The payment date", input.paymentDate, session);
 
       // S1 (F4): the persisted mode is the wire mode unless the webhook's
       // system path overrides it internally. recordGatewayPayment inherits
@@ -571,6 +676,7 @@ export class FeesCollectionService {
           receiptNumber,
           amount: fromCents(allocationCents),
           lateFeeAmount: fromCents(lateFeeCents),
+          discountAmount: fromCents(discountCents),
           paymentDate: input.paymentDate,
           paymentMode: persistedMode,
           transactionReference: input.transactionReference ?? null,
@@ -590,19 +696,41 @@ export class FeesCollectionService {
         throw new Error("Failed to record payment.");
       }
 
-      if (input.allocations.length > 0) {
+      const discountOf = new Map(discounts.map((d) => [d.installmentId, toCents(d.amount)]));
+      const amountOf = new Map(input.allocations.map((a) => [a.installmentId, a.amount]));
+      const touched = [...new Set([...amountOf.keys(), ...discountOf.keys()])];
+      if (touched.length > 0) {
         await tx.insert(paymentAllocations).values(
-          input.allocations.map((a) => ({
+          touched.map((installmentId) => ({
             organizationId: scope.organizationId,
             schoolId,
             paymentId: payment.id,
-            installmentId: a.installmentId,
-            amountAllocated: a.amount,
+            installmentId,
+            amountAllocated: amountOf.get(installmentId) ?? "0",
+            lateFeeAmount: fromCents(priced.charges.get(installmentId) ?? 0n),
+            lateFeeWaived: fromCents(priced.waived.get(installmentId) ?? 0n),
+            discountAmount: fromCents(discountOf.get(installmentId) ?? 0n),
           })),
         );
       }
 
-      await this.applyToInstallments(tx, input.allocations);
+      // The discount reduces what the due asks for, then the money lands on it.
+      for (const [installmentId, cents] of discountOf) {
+        await tx
+          .update(feeInstallments)
+          .set({
+            discountAmount: sql`${feeInstallments.discountAmount} + ${fromCents(cents)}::numeric`,
+            netAmount: sql`${feeInstallments.netAmount} - ${fromCents(cents)}::numeric`,
+          })
+          .where(eq(feeInstallments.id, installmentId));
+      }
+      await this.recordLateFeeOnDues(tx, priced.charges, priced.waived, 1n);
+      await this.applyToInstallments(tx, [
+        ...input.allocations,
+        ...discounts
+          .filter((d) => !amountOf.has(d.installmentId))
+          .map((d) => ({ installmentId: d.installmentId, amount: "0" })),
+      ]);
       await this.applyToOpeningBalances(tx, openingAllocations);
 
       // The ledger: the installment principal, one row per carried-forward
@@ -644,6 +772,23 @@ export class FeesCollectionService {
           createdBy: actorId ?? null,
         });
       }
+      if (discountCents > 0n) {
+        await tx.insert(financialTransactions).values({
+          organizationId: scope.organizationId,
+          schoolId,
+          studentId: input.studentId,
+          academicYearId: input.academicYearId,
+          transactionType: "concession_applied",
+          direction: "debit",
+          amount: fromCents(discountCents),
+          referenceId: payment.id,
+          referenceTable: "fee_payments",
+          receiptNumber,
+          description: `Discount on ${receiptNumber}: ${input.discountReason?.trim()}`,
+          transactionDate: input.paymentDate,
+          createdBy: actorId ?? null,
+        });
+      }
       if (lateFeeCents > 0n) {
         await tx.insert(financialTransactions).values({
           organizationId: scope.organizationId,
@@ -667,62 +812,71 @@ export class FeesCollectionService {
   }
 
   /**
-   * Locks the allocated installments in id order, re-checks every balance
-   * inside the lock, and prices the late fee on those locked balances.
-   * Returns the late fee in paise; the caller freezes it on the payment.
+   * Locks the allocated dues in id order, re-checks every balance inside the
+   * lock, and prices the late fee on those locked balances, never trusting the
+   * client. All the student's dues in the session are locked, because a
+   * per-month late fee has to see what other dues that month have been charged.
    */
-  private async lockInstallmentsAndPriceLateFee(
+  private async lockAndPrice(
     tx: Tx,
     scope: DataScope,
     schoolId: string,
     input: RecordPaymentInput,
-  ): Promise<bigint> {
-    // The installments, ROW-LOCKED IN DETERMINISTIC ID ORDER — the deadlock
-    // prevention. Balances are re-checked INSIDE the transaction.
-    const allocationIds = input.allocations.map((a) => a.installmentId);
+  ): Promise<{ lateFeeCents: bigint; charges: Map<string, bigint>; waived: Map<string, bigint> }> {
+    const discounts = input.discounts ?? [];
+    const discountOf = new Map(discounts.map((d) => [d.installmentId, toCents(d.amount)]));
+    const touchedIds = new Set([
+      ...input.allocations.map((a) => a.installmentId),
+      ...discountOf.keys(),
+    ]);
+    if (touchedIds.size === 0) {
+      return { lateFeeCents: 0n, charges: new Map(), waived: new Map() };
+    }
+
     const locked = await tx
-      .select({
-        id: feeInstallments.id,
-        studentId: feeInstallments.studentId,
-        academicYearId: feeInstallments.academicYearId,
-        studentFeeAssignmentId: feeInstallments.studentFeeAssignmentId,
-        dueDate: feeInstallments.dueDate,
-        netAmount: feeInstallments.netAmount,
-        paidAmount: feeInstallments.paidAmount,
-        paymentStatus: feeInstallments.paymentStatus,
-      })
+      .select()
       .from(feeInstallments)
       .where(
         and(
-          inArray(feeInstallments.id, allocationIds),
+          eq(feeInstallments.studentId, input.studentId),
+          eq(feeInstallments.academicYearId, input.academicYearId),
           eq(feeInstallments.schoolId, schoolId),
         ),
       )
       .orderBy(asc(feeInstallments.id))
       .for("update");
+    const byId = new Map(locked.map((row) => [row.id, row]));
+    const amountOf = new Map(input.allocations.map((a) => [a.installmentId, toCents(a.amount)]));
 
-    const byId = new Map(locked.map((i) => [i.id, i]));
-    for (const allocation of input.allocations) {
-      const inst = byId.get(allocation.installmentId);
-      if (!inst) {
-        throw new Error("One of the installments does not exist in this school.");
-      }
-      if (inst.studentId !== input.studentId) {
-        throw new Error("Every allocated installment must belong to the paying student.");
-      }
-      // S1 (F2): a year-X payment cannot allocate year-Y installments —
-      // ledger year-scoped reads would otherwise misreport.
-      if (inst.academicYearId !== input.academicYearId) {
-        throw new Error(
-          "Every allocated installment must belong to the payment's academic year.",
+    for (const id of touchedIds) {
+      const due = byId.get(id);
+      if (!due) {
+        // Say why, without revealing anything about another branch's rows.
+        const [elsewhere] = await tx
+          .select({
+            studentId: feeInstallments.studentId,
+            academicYearId: feeInstallments.academicYearId,
+          })
+          .from(feeInstallments)
+          .where(and(eq(feeInstallments.id, id), eq(feeInstallments.schoolId, schoolId)));
+        if (!elsewhere) {
+          throw refuse("BAD_REQUEST", "One of the installments does not exist in this school.");
+        }
+        throw refuse(
+          "BAD_REQUEST",
+          elsewhere.studentId !== input.studentId
+            ? "Every allocated installment must belong to the paying student."
+            : "Every allocated installment must belong to the payment's academic year.",
         );
       }
-      if (inst.paymentStatus === "waived" || inst.paymentStatus === "cancelled") {
-        throw new Error("A waived or cancelled installment cannot be paid.");
+      if (due.paymentStatus === "waived" || due.paymentStatus === "cancelled") {
+        throw refuse("CONFLICT", "A waived or cancelled installment cannot be paid.");
       }
-      const balance = toCents(inst.netAmount) - toCents(inst.paidAmount);
-      if (toCents(allocation.amount) > balance) {
-        throw new Error(
+      const balance = toCents(due.netAmount) - toCents(due.paidAmount);
+      const asked = (amountOf.get(id) ?? 0n) + (discountOf.get(id) ?? 0n);
+      if (asked > balance) {
+        throw refuse(
+          "BAD_REQUEST",
           "An allocation exceeds the installment's outstanding balance. The outstanding amount is " +
             fromCents(balance) +
             ".",
@@ -730,45 +884,104 @@ export class FeesCollectionService {
       }
     }
 
-    // S1 (F3): late fee is computed live on the locked balances and
-    // frozen when charged — never trusted from the client. One
-    // installment list, one assignment; a mixed allocation is a refusal.
-    const assignmentIds = new Set(locked.map((i) => i.studentFeeAssignmentId));
-    if (assignmentIds.size !== 1) {
-      throw new Error("Every allocated installment must belong to one fee assignment.");
+    const priced = await this.priceDues(locked, amountOf, input.paymentDate, scope);
+    if (input.waiveLateFee) {
+      return { lateFeeCents: 0n, charges: new Map(), waived: priced };
     }
-    const [assignmentId] = [...assignmentIds];
-    const [assignment] = await tx
-      .select({ feeStructureId: studentFeeAssignments.feeStructureId })
-      .from(studentFeeAssignments)
-      .where(eq(studentFeeAssignments.id, assignmentId as string));
-    if (!assignment) {
-      throw new Error("Fee assignment not found in this school.");
+    const lateFeeCents = [...priced.values()].reduce((acc, cents) => acc + cents, 0n);
+    return { lateFeeCents, charges: priced, waived: new Map() };
+  }
+
+  /** What late fee a payment would charge on each due. */
+  private async priceDues(
+    rows: (typeof feeInstallments.$inferSelect)[],
+    amountOf: Map<string, bigint>,
+    asOf: string,
+    scope: DataScope,
+  ): Promise<Map<string, bigint>> {
+    const paying = rows.filter((row) => (amountOf.get(row.id) ?? 0n) > 0n);
+    if (paying.length === 0) return new Map();
+
+    const assignmentId = rows.find((row) => row.studentFeeAssignmentId)?.studentFeeAssignmentId;
+    let structureId: string | null = null;
+    if (assignmentId) {
+      const [assignment] = await db
+        .select({ feeStructureId: studentFeeAssignments.feeStructureId })
+        .from(studentFeeAssignments)
+        .where(eq(studentFeeAssignments.id, assignmentId));
+      structureId = assignment?.feeStructureId ?? null;
     }
     const rules = await feesService.listActiveLateFeeRules([atSchoolLevel(scope)]);
-    let lateFeeCents = 0n;
-    for (const allocation of input.allocations) {
-      const inst = byId.get(allocation.installmentId);
-      if (!inst) continue;
-      lateFeeCents += computeLateFee(
-        {
-          dueDate: inst.dueDate,
-          balanceCents: toCents(inst.netAmount) - toCents(inst.paidAmount),
-        },
-        rules.map((r) => ({
-          feeStructureId: r.feeStructureId,
-          gracePeriodDays: r.gracePeriodDays ?? 0,
-          calculationType: r.calculationType,
-          valueCents: toCents(r.value),
-          maxLateFeeCents: r.maxLateFee ? toCents(r.maxLateFee) : null,
-          effectiveFrom: r.effectiveFrom,
-          effectiveTo: r.effectiveTo,
+
+    return priceLateFees(
+      rows
+        .filter((row) => row.paymentStatus !== "waived" && row.paymentStatus !== "cancelled")
+        .map((row) => ({
+          id: row.id,
+          dueDate: row.dueDate,
+          balanceCents: toCents(row.netAmount) - toCents(row.paidAmount),
+          chargedCents: toCents(row.lateFeeCharged),
+          waivedCents: toCents(row.lateFeeWaived),
+          exempt: row.lateFeeExempt,
+          beingPaid: (amountOf.get(row.id) ?? 0n) > 0n,
         })),
-        assignment.feeStructureId,
-        input.paymentDate,
-      );
+      rules.map((rule) => ({
+        feeStructureId: rule.feeStructureId,
+        gracePeriodDays: rule.gracePeriodDays ?? 0,
+        calculationType: rule.calculationType,
+        valueCents: toCents(rule.value),
+        maxLateFeeCents: rule.maxLateFee ? toCents(rule.maxLateFee) : null,
+        applyPer: rule.applyPer,
+        effectiveFrom: rule.effectiveFrom,
+        effectiveTo: rule.effectiveTo,
+      })),
+      structureId,
+      asOf,
+    );
+  }
+
+  /** Remembers late fee charged or forgiven on each due, so it is never repeated. */
+  private async recordLateFeeOnDues(
+    tx: Tx,
+    charges: Map<string, bigint>,
+    waived: Map<string, bigint>,
+    sign: 1n | -1n,
+  ) {
+    const ids = new Set([...charges.keys(), ...waived.keys()]);
+    for (const id of ids) {
+      const charge = fromCents(sign * (charges.get(id) ?? 0n));
+      const forgiven = fromCents(sign * (waived.get(id) ?? 0n));
+      await tx
+        .update(feeInstallments)
+        .set({
+          lateFeeCharged: sql`${feeInstallments.lateFeeCharged} + ${charge}::numeric`,
+          lateFeeWaived: sql`${feeInstallments.lateFeeWaived} + ${forgiven}::numeric`,
+        })
+        .where(eq(feeInstallments.id, id));
     }
-    return lateFeeCents;
+  }
+
+  /**
+   * What a payment would cost before it is recorded, so the parent hears the
+   * full amount first. Nothing is written. The real charge is still worked out
+   * under lock when the payment is recorded.
+   */
+  async quotePayment(scope: DataScope, input: QuotePaymentInput) {
+    const schoolId = requireSchoolId(scope);
+    const rows = await db
+      .select()
+      .from(feeInstallments)
+      .where(
+        and(
+          eq(feeInstallments.studentId, input.studentId),
+          eq(feeInstallments.academicYearId, input.academicYearId),
+          eq(feeInstallments.schoolId, schoolId),
+        ),
+      );
+    const amountOf = new Map(input.allocations.map((a) => [a.installmentId, toCents(a.amount)]));
+    const priced = await this.priceDues(rows, amountOf, input.paymentDate, scope);
+    const lateFeeCents = [...priced.values()].reduce((acc, cents) => acc + cents, 0n);
+    return { lateFeeAmount: fromCents(lateFeeCents) };
   }
 
   /**
@@ -785,6 +998,7 @@ export class FeesCollectionService {
         .select({
           netAmount: feeInstallments.netAmount,
           paidAmount: feeInstallments.paidAmount,
+          discountAmount: feeInstallments.discountAmount,
         })
         .from(feeInstallments)
         .where(eq(feeInstallments.id, delta.installmentId))
@@ -794,8 +1008,15 @@ export class FeesCollectionService {
       }
       const paid = toCents(inst.paidAmount) + toCents(delta.amount);
       const net = toCents(inst.netAmount);
-      const status =
-        paid <= 0n ? "unpaid" : paid >= net ? "paid" : "partial";
+      // A due a discount covered whole has nothing left to ask for.
+      const settledByDiscount = net === 0n && toCents(inst.discountAmount) > 0n;
+      const status = settledByDiscount
+        ? "paid"
+        : paid <= 0n
+          ? "unpaid"
+          : paid >= net
+            ? "paid"
+            : "partial";
       await tx
         .update(feeInstallments)
         .set({ paidAmount: fromCents(paid < 0n ? 0n : paid), paymentStatus: status })
@@ -842,22 +1063,24 @@ export class FeesCollectionService {
     for (const allocation of allocations) {
       const balance = byId.get(allocation.openingBalanceId);
       if (!balance) {
-        throw new Error("One of the opening balances does not exist in this school.");
+        throw refuse("BAD_REQUEST", "One of the opening balances does not exist in this school.");
       }
       if (balance.studentId !== input.studentId) {
-        throw new Error("Every opening balance paid must belong to the paying student.");
+        throw refuse("BAD_REQUEST", "Every opening balance paid must belong to the paying student.");
       }
       if (balance.academicYearId !== input.academicYearId) {
-        throw new Error(
+        throw refuse(
+          "BAD_REQUEST",
           "An opening balance is paid in the academic year it was carried into.",
         );
       }
-      if (balance.status === "waived") {
-        throw new Error("A waived opening balance cannot be paid.");
+      if (balance.status === "waived" || balance.status === "cancelled") {
+        throw refuse("CONFLICT", "A waived or cancelled balance cannot be paid.");
       }
       const owed = toCents(balance.amount) - toCents(balance.paidAmount);
       if (toCents(allocation.amount) > owed) {
-        throw new Error(
+        throw refuse(
+          "BAD_REQUEST",
           "An allocation exceeds the opening balance still owed. The outstanding amount is " +
             fromCents(owed < 0n ? 0n : owed) +
             ".",
@@ -915,6 +1138,20 @@ export class FeesCollectionService {
       .where(eq(paymentAllocations.paymentId, payment.id))
       .orderBy(asc(feeInstallments.dueDate), asc(paymentAllocations.installmentId));
     const portions = await this.openingBalancePortions(tx, payment);
+    // Id order, the same global order recording takes, so these can't deadlock.
+    if (allocations.length > 0) {
+      await tx
+        .select({ id: feeInstallments.id })
+        .from(feeInstallments)
+        .where(
+          inArray(
+            feeInstallments.id,
+            allocations.map((a) => a.installmentId),
+          ),
+        )
+        .orderBy(asc(feeInstallments.id))
+        .for("update");
+    }
     const lines: HeldLine[] = [
       ...allocations.map((a) => ({
         kind: "installment" as const,
@@ -1017,10 +1254,11 @@ export class FeesCollectionService {
         )
         .for("update");
       if (!payment) {
-        throw new Error("Payment not found in this school.");
+        throw refuse("NOT_FOUND", "Payment not found in this school.");
       }
       if (!opts.from.includes(payment.paymentStatus as "pending" | "cleared")) {
-        throw new Error(
+        throw refuse(
+          "CONFLICT",
           `A ${payment.paymentStatus} payment cannot move to ${opts.to}.`,
         );
       }
@@ -1029,11 +1267,22 @@ export class FeesCollectionService {
       // already took its share back, and must not be re-opened twice.
       const lines = await this.heldLines(tx, payment);
       const heldCents = lines.reduce((acc, l) => acc + l.heldCents, 0n);
-      if (heldCents === 0n && opts.to !== "cancelled") {
-        throw new Error(
+      const { lateFeeLeftCents, refundedCents } = await this.refundPosition(tx, payment, heldCents);
+      if (opts.to === "bounced" && refundedCents > 0n) {
+        // The cheque never paid, yet cash already went back. No offset can show
+        // that honestly, so a person has to settle it first.
+        throw refuse(
+          "CONFLICT",
+          "This payment already has a refund against it, so it can't be marked bounced. Recover the refund first, then reverse the payment.",
+        );
+      }
+      if (heldCents === 0n && lateFeeLeftCents === 0n && opts.to !== "cancelled") {
+        throw refuse(
+          "CONFLICT",
           `This payment has been fully refunded; there is nothing left to mark ${opts.to}.`,
         );
       }
+      await this.undoPaymentOnDues(tx, payment);
       await this.reopenLines(
         tx,
         lines.map((l) => ({ line: l, cents: l.heldCents })),
@@ -1068,14 +1317,31 @@ export class FeesCollectionService {
           referenceTable: "fee_payments",
           receiptNumber: payment.receiptNumber,
           description: `${input.reason} (${payment.receiptNumber})`,
-          transactionDate: new Date().toISOString().slice(0, 10),
+          transactionDate: todayInIst(),
           createdBy: actorId,
         });
       }
       // ADR-049: the late fee frozen on this payment never arrived (bounce,
       // cancel) or went back with it (reversal) — offset its credit too, as
       // its own row so each debit mirrors one credit.
-      if (toCents(payment.lateFeeAmount) > 0n) {
+      if (toCents(payment.discountAmount) > 0n) {
+        await tx.insert(financialTransactions).values({
+          organizationId: scope.organizationId,
+          schoolId,
+          studentId: payment.studentId,
+          academicYearId: payment.academicYearId,
+          transactionType: "concession_applied",
+          direction: "credit",
+          amount: payment.discountAmount,
+          referenceId: payment.id,
+          referenceTable: "fee_payments",
+          receiptNumber: payment.receiptNumber,
+          description: `Discount undone: ${input.reason} (${payment.receiptNumber})`,
+          transactionDate: todayInIst(),
+          createdBy: actorId,
+        });
+      }
+      if (lateFeeLeftCents > 0n) {
         await tx.insert(financialTransactions).values({
           organizationId: scope.organizationId,
           schoolId,
@@ -1083,18 +1349,77 @@ export class FeesCollectionService {
           academicYearId: payment.academicYearId,
           transactionType: opts.transactionType,
           direction: "debit",
-          amount: payment.lateFeeAmount,
+          amount: fromCents(lateFeeLeftCents),
           referenceId: payment.id,
           referenceTable: "fee_payments",
           receiptNumber: payment.receiptNumber,
           description: `Late fee reversed: ${input.reason} (${payment.receiptNumber})`,
-          transactionDate: new Date().toISOString().slice(0, 10),
+          transactionDate: todayInIst(),
           createdBy: actorId,
         });
       }
 
       return updated;
     });
+  }
+
+  /**
+   * What refunds have taken from a payment so far. A refund takes the principal
+   * first and only then the late fee, so what is left of the late fee follows
+   * from the total.
+   */
+  private async refundPosition(
+    tx: Tx,
+    payment: { id: string; lateFeeAmount: string },
+    heldCents: bigint,
+  ) {
+    const prior = await tx
+      .select({ refundAmount: feeRefunds.refundAmount })
+      .from(feeRefunds)
+      .where(eq(feeRefunds.originalPaymentId, payment.id));
+    const refundedCents = prior.reduce((acc, r) => acc + toCents(r.refundAmount), 0n);
+    const [paid] = await tx
+      .select({ amount: feePayments.amount })
+      .from(feePayments)
+      .where(eq(feePayments.id, payment.id));
+    const principalCents = toCents(paid?.amount ?? "0");
+    const lateRefunded = refundedCents > principalCents ? refundedCents - principalCents : 0n;
+    const lateFeeLeftCents = toCents(payment.lateFeeAmount) - lateRefunded;
+    return { refundedCents, lateFeeLeftCents, refundableCents: heldCents + lateFeeLeftCents };
+  }
+
+  /**
+   * Takes back what this payment did to its dues besides the money: the late fee
+   * it charged or forgave, and any discount. Then the due can be charged again
+   * if it is paid later.
+   */
+  private async undoPaymentOnDues(tx: Tx, payment: { id: string }) {
+    const allocations = await tx
+      .select({
+        installmentId: paymentAllocations.installmentId,
+        lateFeeAmount: paymentAllocations.lateFeeAmount,
+        lateFeeWaived: paymentAllocations.lateFeeWaived,
+        discountAmount: paymentAllocations.discountAmount,
+      })
+      .from(paymentAllocations)
+      .where(eq(paymentAllocations.paymentId, payment.id));
+    const charges = new Map<string, bigint>();
+    const waived = new Map<string, bigint>();
+    for (const row of allocations) {
+      charges.set(row.installmentId, toCents(row.lateFeeAmount));
+      waived.set(row.installmentId, toCents(row.lateFeeWaived));
+      const discount = toCents(row.discountAmount);
+      if (discount > 0n) {
+        await tx
+          .update(feeInstallments)
+          .set({
+            discountAmount: sql`${feeInstallments.discountAmount} - ${fromCents(discount)}::numeric`,
+            netAmount: sql`${feeInstallments.netAmount} + ${fromCents(discount)}::numeric`,
+          })
+          .where(eq(feeInstallments.id, row.installmentId));
+      }
+    }
+    await this.recordLateFeeOnDues(tx, charges, waived, -1n);
   }
 
   /** A pending (or, at some schools, cleared) payment confirms: money arrived. */
@@ -1113,10 +1438,10 @@ export class FeesCollectionService {
         )
         .for("update");
       if (!payment) {
-        throw new Error("Payment not found in this school.");
+        throw refuse("NOT_FOUND", "Payment not found in this school.");
       }
       if (payment.paymentStatus !== "pending") {
-        throw new Error(`A ${payment.paymentStatus} payment cannot be cleared.`);
+        throw refuse("CONFLICT", `A ${payment.paymentStatus} payment cannot be cleared.`);
       }
 
       const [updated] = await tx
@@ -1191,19 +1516,31 @@ export class FeesCollectionService {
         )
         .for("update");
       if (!payment) {
-        throw new Error("Payment not found in this school.");
+        throw refuse("NOT_FOUND", "Payment not found in this school.");
       }
       if (payment.paymentStatus !== "cleared") {
-        throw new Error(
+        throw refuse(
+          "CONFLICT",
           `Only a cleared payment can be refunded; this one is ${payment.paymentStatus}.`,
         );
       }
+      if (input.refundDate > todayInIst()) {
+        throw refuse("BAD_REQUEST", "The refund date can't be in the future.");
+      }
+      if (input.refundDate < payment.paymentDate) {
+        throw refuse("BAD_REQUEST", "The refund date can't be before the payment date.");
+      }
+      if (refundCents <= 0n) {
+        throw refuse("BAD_REQUEST", "Enter a refund amount above zero.");
+      }
 
       const lines = await this.heldLines(tx, payment);
-      const refundable = lines.reduce((acc, l) => acc + l.heldCents, 0n);
-      if (refundCents > refundable) {
-        throw new Error(
-          `The refund exceeds what this payment still holds. Refundable: ${fromCents(refundable)}.`,
+      const heldCents = lines.reduce((acc, l) => acc + l.heldCents, 0n);
+      const { refundableCents } = await this.refundPosition(tx, payment, heldCents);
+      if (refundCents > refundableCents) {
+        throw refuse(
+          "BAD_REQUEST",
+          `The refund exceeds what this payment still holds. Refundable: ${fromCents(refundableCents)}.`,
         );
       }
 
@@ -1275,12 +1612,16 @@ export class FeesCollectionService {
         )
         .for("update");
       if (!installment) {
-        throw new Error("Installment not found in this school.");
+        throw refuse("NOT_FOUND", "Installment not found in this school.");
       }
       if (installment.paymentStatus !== "unpaid" || installment.paidAmount !== "0.00") {
-        throw new Error(
+        throw refuse(
+          "CONFLICT",
           "Only a never-paid installment can be waived. Money already received must be refunded instead.",
         );
+      }
+      if (toCents(installment.netAmount) === 0n) {
+        throw refuse("CONFLICT", "There is nothing to waive: a concession already covers this due.");
       }
 
       const [updated] = await tx
@@ -1304,7 +1645,7 @@ export class FeesCollectionService {
         referenceId: installment.id,
         referenceTable: "fee_installments",
         description: installment.description ?? "Fee waiver",
-        transactionDate: new Date().toISOString().slice(0, 10),
+        transactionDate: todayInIst(),
         createdBy: actorId,
       });
 
@@ -1324,8 +1665,22 @@ export class FeesCollectionService {
   async recordGatewayPayment(input: GatewayPaymentInput) {
     const schoolId = await this.schoolOfStudent(input.organizationId, input.studentId);
     if (!schoolId) {
-      throw new Error("Student not found.");
+      throw refuse("NOT_FOUND", "Student not found.");
     }
+
+    // A replayed notification gets the original receipt. This has to come before
+    // allocation: once the first one has paid the dues, there is nothing left to
+    // allocate and the replay would be refused.
+    const [replayed] = await db
+      .select()
+      .from(feePayments)
+      .where(
+        and(
+          eq(feePayments.schoolId, schoolId),
+          eq(feePayments.clientReference, input.gatewayOrderId),
+        ),
+      );
+    if (replayed) return replayed;
 
     const systemScope: DataScope = {
       organizationId: input.organizationId,
@@ -1348,6 +1703,7 @@ export class FeesCollectionService {
         and(
           eq(feeInstallments.studentId, input.studentId),
           eq(feeInstallments.schoolId, schoolId),
+          inArray(feeInstallments.paymentStatus, ["unpaid", "partial"]),
         ),
       );
 
@@ -1360,7 +1716,8 @@ export class FeesCollectionService {
       })),
     );
     if (!allocations || allocations.length === 0) {
-      throw new Error(
+      throw refuse(
+        "CONFLICT",
         "The payment exceeds the student's outstanding dues, which the portal does not accept.",
       );
     }
@@ -1383,8 +1740,8 @@ export class FeesCollectionService {
         studentId: input.studentId,
         academicYearId: yearRow.academicYearId,
         paymentDate: input.paymentDate,
-        // Dummy wire mode (pending like the portal); the persisted mode
-        // comes from opts below and is what the ledger sees.
+        // Dummy wire mode; the persisted mode comes from opts below and is what
+        // the ledger sees.
         paymentMode: "upi",
         allocations: allocations.map((a) => ({
           installmentId: a.installmentId,
@@ -1556,6 +1913,7 @@ export class FeesCollectionService {
           .where(
             and(
               eq(openingBalances.academicYearId, year.id),
+              ne(openingBalances.status, "cancelled"),
               inArray(openingBalances.studentId, studentIds),
               scopeWhere(scopes.map(atSchoolLevel), MATRIX_OPENING_BALANCE_SCOPE),
             ),
@@ -1638,15 +1996,21 @@ export class FeesCollectionService {
     const cohortOpeningAccumulator = emptyOpeningBalanceAccumulator();
     const computedRows: FeeMatrixOutput["rows"] = [];
 
+    const monthEnd = endOfMonthIso(asOf);
+    let cohortDueNowCents = 0n;
     for (const cohortRow of cohort) {
       const studentInstallments = installmentsByStudent.get(cohortRow.studentId) ?? [];
       const rowAccumulator = emptyMatrixAccumulator();
+      let rowDueNowCents = 0n;
       const cellAccumulators = new Map<string, MatrixAccumulator>(
         months.map((month) => [month.key, emptyMatrixAccumulator()]),
       );
 
       for (const installment of studentInstallments) {
         addMatrixInstallment(rowAccumulator, installment);
+        if (installment.paymentStatus !== "cancelled" && installment.dueDate <= monthEnd) {
+          rowDueNowCents += matrixInstallmentBalance(installment);
+        }
         const month = installment.dueDate.slice(0, 7);
         const cellAccumulator = cellAccumulators.get(month);
         if (cellAccumulator) addMatrixInstallment(cellAccumulator, installment);
@@ -1659,8 +2023,10 @@ export class FeesCollectionService {
 
       const lateFeeCents = lateFeeCentsByStudent.get(cohortRow.studentId) ?? 0n;
       cohortLateFeeCents += lateFeeCents;
+      cohortDueNowCents += rowDueNowCents;
       const totals = {
         ...matrixAmounts(rowAccumulator, asOf),
+        dueNowAmount: fromCents(rowDueNowCents),
         lateFeePaidAmount: fromCents(lateFeeCents),
       };
       const assignmentState: FeeMatrixOutput["rows"][number]["assignmentState"] =
@@ -1668,9 +2034,7 @@ export class FeesCollectionService {
       const generationState: FeeMatrixOutput["rows"][number]["generationState"] =
         cohortRow.assignmentId === null
           ? "not_assigned"
-          : studentInstallments.length === 0
-            ? "not_generated"
-            : "generated";
+          : "generated";
       const row: FeeMatrixOutput["rows"][number] = {
         enrollmentStatus: cohortRow.enrollmentStatus,
         studentId: cohortRow.studentId,
@@ -1725,6 +2089,7 @@ export class FeesCollectionService {
     const cohortAmounts = matrixAmounts(cohortAccumulator, asOf);
     const cohortTotals = {
       ...cohortAmounts,
+      dueNowAmount: fromCents(cohortDueNowCents),
       lateFeePaidAmount: fromCents(cohortLateFeeCents),
       studentCount: computedRows.length,
       assignedCount: computedRows.filter((row) => row.assignmentId !== null).length,
@@ -1922,6 +2287,8 @@ export class FeesCollectionService {
             ? sql`${feeInstallments.dueDate} <= ${filters.dueOnOrBefore}`
             : undefined,
           inArray(feeInstallments.paymentStatus, ["unpaid", "partial"]),
+          // A due a concession covers whole has nothing left to collect.
+          sql`${feeInstallments.netAmount} > ${feeInstallments.paidAmount}`,
         ),
       )
       .orderBy(asc(feeInstallments.dueDate));
@@ -1998,8 +2365,10 @@ export class FeesCollectionService {
         feeHeadId: feeInstallments.feeHeadId,
         feeHeadName: feeHeads.name,
         description: feeInstallments.description,
-        installmentNumber: feeInstallments.installmentNumber,
+        periodKey: feeInstallments.periodKey,
         dueDate: feeInstallments.dueDate,
+        lateFeeAmount: paymentAllocations.lateFeeAmount,
+        discountAmount: paymentAllocations.discountAmount,
       })
       .from(paymentAllocations)
       .innerJoin(
@@ -2020,7 +2389,7 @@ export class FeesCollectionService {
       .orderBy(
         asc(feeInstallments.dueDate),
         asc(feeHeads.name),
-        asc(feeInstallments.installmentNumber),
+        asc(feeInstallments.periodKey),
       );
 
     const portions = await this.openingBalancePortions(db, payment);
@@ -2033,7 +2402,7 @@ export class FeesCollectionService {
             originAcademicYearName: academicYears.name,
           })
           .from(openingBalances)
-          .innerJoin(academicYears, eq(academicYears.id, openingBalances.originAcademicYearId))
+          .leftJoin(academicYears, eq(academicYears.id, openingBalances.originAcademicYearId))
           .where(
             and(
               inArray(

@@ -14,6 +14,7 @@ import { feesWebhookRouter } from "./fees-webhook";
 import { mountPortalClaim } from "./portal-claim";
 import { mountPublicStorageRoute, mountStorageRoute } from "./storage";
 import { homeworkWorkerHealth } from "./homework-worker";
+import { feesWorkerHealth } from "./fees-worker";
 import { env } from "./env";
 
 type Server = import("express").Application;
@@ -239,6 +240,12 @@ export function createServer(): Server {
         startedAt: homeworkWorkerHealth.startedAt,
         lastSweepAt: homeworkWorkerHealth.lastSweepAt,
         lastSummary: homeworkWorkerHealth.lastSummary,
+      },
+      feesSweeper: {
+        enabled: env.FEES_WORKER_DISABLED !== "true",
+        startedAt: feesWorkerHealth.startedAt,
+        lastSweepAt: feesWorkerHealth.lastSweepAt,
+        lastSummary: feesWorkerHealth.lastSummary,
       },
     }),
   );

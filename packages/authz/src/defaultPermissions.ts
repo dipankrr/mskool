@@ -108,10 +108,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "fee_structure:read",
     "fee_payment:read",
     "fee_payment:approve",
-    "fee_waiver:read",
     "fee_waiver:approve",
+    "fee_refund:create",
     "fee_refund:read",
-    "fee_refund:approve",
     "fee_report:read",
     "fee_report:export",
     "student_fee_assignment:read",
@@ -286,8 +285,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "leave:read",
   ],
 
-  // Collects money and runs the fee ledger. Deliberately cannot approve its own
-  // waivers or refunds — that is the separation of duties an auditor looks for.
+  // Collects money and runs the fee ledger. Clearing cheques and forgiving dues
+  // stay with the principal. Refunds go by this permission alone.
   accountant: [
     "fee_head:create",
     "fee_head:read",
@@ -297,13 +296,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "fee_structure:update",
     "fee_payment:create",
     "fee_payment:read",
-    "fee_payment:update",
-    "fee_payment:export",
     "student_fee_assignment:create",
     "student_fee_assignment:read",
     "student_fee_assignment:update",
     "fee_waiver:create",
-    "fee_waiver:read",
     "fee_refund:create",
     "fee_refund:read",
     "fee_report:read",

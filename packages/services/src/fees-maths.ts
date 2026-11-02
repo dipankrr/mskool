@@ -7,9 +7,8 @@
  * The service wrappers that load facts and call these live in
  * fees-billing.service.ts.
  *
- * Money arithmetic is BigInt paise end to end (hard rule 4). Every "share"
- * division FLOORS and the LAST bucket absorbs the remainder, so
- * `sum(installments) === net annual` holds exactly — asserted in the tests.
+ * Money arithmetic is BigInt paise end to end (hard rule 4). Every division
+ * FLOORS, so the school never over-discounts by a rounding artefact.
  */
 
 // ---------------------------------------------------------------------------
@@ -35,9 +34,11 @@ export function toCents(amount: string): bigint {
 
 /** 125050n → "1250.50". */
 export function fromCents(cents: bigint): string {
-  const whole = cents / 100n;
-  const frac = cents % 100n;
-  return `${whole}.${frac.toString().padStart(2, "0")}`;
+  const sign = cents < 0n ? "-" : "";
+  const abs = cents < 0n ? -cents : cents;
+  const whole = abs / 100n;
+  const frac = abs % 100n;
+  return `${sign}${whole}.${frac.toString().padStart(2, "0")}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -98,453 +99,337 @@ export function daysLateOf(dueDate: string, asOf: string): number {
 }
 
 // ---------------------------------------------------------------------------
-// Pure bucket maths — the installment split and its audit
+// Pure schedule maths: what a fee line charges, one row per period
 // ---------------------------------------------------------------------------
 
-/** One generated installment's shape, before the database sees it. */
-export interface Bucket {
-  installmentNumber: number;
-  /** The head's share for the period, in paise. */
-  amountCents: bigint;
+export type LineFrequency = "monthly" | "quarterly" | "half_yearly" | "term_wise" | "once";
+
+/** One period a line could charge, before anyone has priced it. */
+export interface PeriodOption {
+  key: string;
+  label: string;
+  startDate: string;
+  endDate: string;
   dueDate: string;
-  description: string;
-  periodMonth: number | null;
-  periodYear: number | null;
   termId: string | null;
 }
 
-export interface SplitLineInput {
-  annualAmountCents: bigint;
-  frequency: "inherit" | "monthly" | "quarterly" | "half_yearly" | "annual" | "term_wise";
-  structureMode: "upfront" | "term_wise" | "monthly";
-  applicableFromMonth: number;
-  applicableToMonth: number;
-  yearStart: string;
-  yearEnd: string;
-  /** The mid-session boundary: no bucket may start before it. */
-  effectiveFrom: string;
-  joiningMonthFullCharge: boolean;
-  feeHeadId: string;
-  headName: string;
-  terms: { id: string; name: string; startDate: string; endDate: string; weightage: string }[];
+export interface SessionShape {
+  startDate: string;
+  endDate: string;
+  terms: { id: string; name: string; startDate: string; endDate: string }[];
+}
+
+const MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+const later = (a: string, b: string) => (a > b ? a : b);
+const earlier = (a: string, b: string) => (a < b ? a : b);
+
+/** `dueDay` in a month, using the last day when the month is shorter. */
+export function dueDateIn(year: number, month: number, dueDay: number): string {
+  return isoOf(year, month, Math.min(dueDay, daysInMonth(year, month)));
+}
+
+export function monthKey(year: number, month: number): string {
+  return `${year}-${String(month).padStart(2, "0")}`;
 }
 
 /**
- * Splits one line's annual amount into installment buckets.
- *
- * **A period's price never depends on when the student joined.** Each
- * period's share is worked out over the WHOLE year (floored shares, the last
- * period absorbing the remainder, so a full-year student's buckets sum to the
- * annual amount exactly), and a student who joins mid-session is billed only
- * the periods they are enrolled for. A Class 6 child joining in October pays
- * October–March at the same ₹1,000 a month as everyone else — not the year's
- * ₹12,000 squeezed into six months (DOMAIN.md §5: "mid-session admission
- * generates only remaining installments").
- *
- * - `upfront` / `annual`: one bucket for the full amount at the effective
- *   date. These are one-time charges (admission, annual fees) and are owed in
- *   full whenever the student joins.
- * - `monthly`: one bucket per applicable month from the effective date; the
- *   joining month is prorated by remaining days unless
- *   `joiningMonthFullCharge` (the common Indian full-month rule).
- * - `quarterly` / `half_yearly`: the year's applicable months grouped into
- *   consecutive 3-/6-month buckets anchored at the year's first month; a
- *   bucket the student joins part-way through is charged for the months they
- *   attend (floored).
- * - `term_wise`: the terms overlapping the applicable window, weighted by
- *   their weightage share; terms that ended before the student joined are not
- *   billed, and the term they join in is billed in full.
- *
- * `installmentNumber` counts the student's own buckets from 1, as before
- * this rule changed, so regenerating an assignment billed earlier matches its
- * existing rows instead of adding a second set.
+ * Every period a line of this frequency could charge in a session. Quarters and
+ * half-years count from the session's first month, so a June to May session
+ * gets June to August as its first quarter. A due date falls on `dueDay` of the
+ * period's first month and is never before the session starts.
  */
-export function splitIntoBuckets(input: SplitLineInput): Bucket[] {
-  const resolved =
-    input.frequency === "inherit" ? input.structureMode : input.frequency;
-  const effective = input.effectiveFrom > input.yearStart ? input.effectiveFrom : input.yearStart;
-  const eff = parseIso(effective);
-  const inWindow = (month: number) =>
-    month >= input.applicableFromMonth && month <= input.applicableToMonth;
-  const attended = (m: { year: number; month: number }) =>
-    m.year > eff.year || (m.year === eff.year && m.month >= eff.month);
+export function periodOptions(
+  frequency: LineFrequency,
+  session: SessionShape,
+  dueDay: number,
+): PeriodOption[] {
+  const months = monthsBetween(session.startDate, session.endDate);
 
-  const make = (
-    n: number,
-    amountCents: bigint,
-    dueDate: string,
-    describe: string,
-    period: { month: number | null; year: number | null },
-    termId: string | null,
-  ): Bucket => ({
-    installmentNumber: n,
-    amountCents,
-    dueDate,
-    description: describe,
-    periodMonth: period.month,
-    periodYear: period.year,
-    termId,
-  });
-
-  /** Equal floored shares of the annual amount; the last absorbs the rest. */
-  const equalShares = (count: number): bigint[] => {
-    const base = input.annualAmountCents / BigInt(count);
-    return Array.from({ length: count }, (_, i) =>
-      i === count - 1 ? input.annualAmountCents - base * BigInt(count - 1) : base,
-    );
-  };
-
-  const yearMonths = monthsBetween(input.yearStart, input.yearEnd).filter((m) =>
-    inWindow(m.month),
-  );
-
-  if (resolved === "upfront" || resolved === "annual" || yearMonths.length === 0) {
-    // One bucket, full amount, due at the effective date: a one-time charge
-    // is owed whole whenever the student joins.
+  if (frequency === "once") {
     return [
-      make(
-        1,
-        input.annualAmountCents,
-        effective,
-        `${input.headName} — full year`,
-        { month: null, year: null },
-        null,
-      ),
+      {
+        key: "once",
+        label: "Once",
+        startDate: session.startDate,
+        endDate: session.endDate,
+        dueDate: session.startDate,
+        termId: null,
+      },
     ];
   }
 
-  if (resolved === "monthly") {
-    const shares = equalShares(yearMonths.length);
-    const out: Bucket[] = [];
-    yearMonths.forEach((m, i) => {
-      if (!attended(m)) return;
-      let cents = shares[i] ?? 0n;
-      const isJoiningMonth = m.year === eff.year && m.month === eff.month;
-      if (isJoiningMonth && !input.joiningMonthFullCharge) {
-        // Prorate the joining month by its remaining days, floored. The
-        // shortfall is the school's choice, never a rounding drift.
-        const dim = daysInMonth(m.year, m.month);
-        const remaining = daysBetweenInclusive(effective, isoOf(m.year, m.month, dim));
-        cents = (cents * BigInt(remaining)) / BigInt(dim);
-      }
-      out.push(
-        make(
-          out.length + 1,
-          cents,
-          isoOf(m.year, m.month, 1),
-          `${input.headName} — ${isoOf(m.year, m.month, 1).slice(0, 7)}`,
-          { month: m.month, year: m.year },
-          null,
-        ),
-      );
-    });
-    return out;
+  if (frequency === "term_wise") {
+    return session.terms.map((term) => ({
+      key: `term:${term.id}`,
+      label: term.name,
+      startDate: later(term.startDate, session.startDate),
+      endDate: earlier(term.endDate, session.endDate),
+      dueDate: later(term.startDate, session.startDate),
+      termId: term.id,
+    }));
   }
 
-  if (resolved === "term_wise") {
-    // Terms overlapping the applicable window, weighted by their share of
-    // the window — the head's money follows the window's terms, not the year's.
-    const windowTerms = input.terms.filter((t) =>
-      monthsBetween(
-        t.startDate > input.yearStart ? t.startDate : input.yearStart,
-        t.endDate < input.yearEnd ? t.endDate : input.yearEnd,
-      ).some((m) => inWindow(m.month)),
-    );
-    if (windowTerms.length === 0) {
-      // No terms configured for the window: the money is still owed once.
-      return [
-        make(
-          1,
-          input.annualAmountCents,
-          effective,
-          `${input.headName} — full year`,
-          { month: null, year: null },
-          null,
-        ),
-      ];
-    }
-    const totalWeightCents = windowTerms.reduce((acc, t) => acc + toCents(t.weightage), 0n);
-    // Floored weightage shares; the LAST term absorbs the remainder.
-    const shares = windowTerms.map(
-      (t) => (input.annualAmountCents * toCents(t.weightage)) / totalWeightCents,
-    );
-    const distributed = shares.reduce((a, b) => a + b, 0n);
-    shares[shares.length - 1] =
-      (shares[shares.length - 1] ?? 0n) + (input.annualAmountCents - distributed);
-    const out: Bucket[] = [];
-    windowTerms.forEach((t, i) => {
-      // A term that ended before the student joined is not theirs to pay.
-      if (t.endDate < effective) return;
-      out.push(
-        make(
-          out.length + 1,
-          shares[i] ?? 0n,
-          t.startDate > effective ? t.startDate : effective,
-          `${input.headName} — ${t.name}`,
-          { month: null, year: null },
-          t.id,
-        ),
-      );
-    });
-    return out;
+  if (frequency === "monthly") {
+    return months.map(({ year, month }) => ({
+      key: monthKey(year, month),
+      label: `${MONTH_NAMES[month - 1]} ${year}`,
+      startDate: later(isoOf(year, month, 1), session.startDate),
+      endDate: earlier(isoOf(year, month, daysInMonth(year, month)), session.endDate),
+      dueDate: later(dueDateIn(year, month, dueDay), session.startDate),
+      termId: null,
+    }));
   }
 
-  // quarterly / half_yearly: group the year's applicable months into
-  // consecutive buckets anchored at the year's first month. Every non-empty
-  // bucket gets an equal share of the year; the last absorbs the remainder.
-  const size = resolved === "quarterly" ? 3 : 6;
-  const yearStartMonth = parseIso(input.yearStart);
-  const anchor = yearStartMonth.year * 12 + (yearStartMonth.month - 1);
-  const groups = new Map<number, { year: number; month: number }[]>();
-  for (const m of yearMonths) {
-    const idx = Math.floor((m.year * 12 + (m.month - 1) - anchor) / size);
-    const bucket = groups.get(idx) ?? [];
-    bucket.push(m);
-    groups.set(idx, bucket);
-  }
-  const ordered = [...groups.entries()].sort(([a], [b]) => a - b);
-  const shares = equalShares(ordered.length);
-  const out: Bucket[] = [];
-  ordered.forEach(([, months], i) => {
-    const present = months.filter(attended);
-    if (present.length === 0) return;
-    const full = shares[i] ?? 0n;
-    // Joined part-way through the period: pay for the months attended.
-    const cents =
-      present.length === months.length
-        ? full
-        : (full * BigInt(present.length)) / BigInt(months.length);
-    const first = present[0] ?? months[0] ?? yearStartMonth;
-    out.push(
-      make(
-        out.length + 1,
-        cents,
-        isoOf(first.year, first.month, 1),
-        `${input.headName} — ${resolved} ${i + 1}`,
-        { month: null, year: null },
-        null,
+  const size = frequency === "quarterly" ? 3 : 6;
+  const prefix = frequency === "quarterly" ? "q" : "h";
+  const out: PeriodOption[] = [];
+  for (let i = 0; i < months.length; i += size) {
+    const first = months[i];
+    const last = months[Math.min(i + size - 1, months.length - 1)];
+    if (!first || !last) continue;
+    const firstName = MONTH_NAMES[first.month - 1] ?? "";
+    const lastName = MONTH_NAMES[last.month - 1] ?? "";
+    out.push({
+      key: `${prefix}:${monthKey(first.year, first.month)}`,
+      label: `${firstName.slice(0, 3)} to ${lastName.slice(0, 3)} ${last.year}`,
+      startDate: later(isoOf(first.year, first.month, 1), session.startDate),
+      endDate: earlier(
+        isoOf(last.year, last.month, daysInMonth(last.year, last.month)),
+        session.endDate,
       ),
-    );
-  });
+      dueDate: later(dueDateIn(first.year, first.month, dueDay), session.startDate),
+      termId: null,
+    });
+  }
   return out;
 }
 
-/** What a line actually bills this student: the sum of their buckets. */
-export function billedAmountCents(input: SplitLineInput): bigint {
-  return splitIntoBuckets(input).reduce((acc, b) => acc + b.amountCents, 0n);
+/** The months of a session a period spans, used when a student joins part-way. */
+function monthsIn(startDate: string, endDate: string) {
+  return monthsBetween(startDate, endDate).length;
 }
 
 // ---------------------------------------------------------------------------
-// Pure concession apportionment
+// Pure dues planning: one student's dues, from the schedule
 // ---------------------------------------------------------------------------
 
-export interface ConcessionRow {
-  feeHeadId: string | null;
-  /** The stored audit amount, in paise. */
-  amountCents: bigint;
-}
-
-/**
- * Distributes the assignment's concessions across its heads: a named-head
- * concession goes to that head whole; an all-heads concession is shared
- * proportionally to the heads' annual amounts (FLOORED — the school never
- * over-discounts), remainder to the largest head.
- *
- * **The stacked-concession clamp:** each head's TOTAL is capped at that
- * head's annual amount. `createConcession` validates each concession against
- * its base individually, but two individually-valid concessions can sum past
- * the fee (a 60% merit scholarship plus a 50% staff-ward discount past 100%),
- * and without this cap the apportionment would hand installments concession
- * shares exceeding their amounts — negative net dues. The cap is applied HERE
- * so every caller (generation, recompute, the gateway path) inherits it.
- *
- * Returns the per-head concession totals. A head absent from the map
- * conceded nothing.
- */
-export function headConcessionTotals(
-  concessionRows: ConcessionRow[],
-  headAnnuals: { feeHeadId: string; annualCents: bigint }[],
-): Map<string, bigint> {
-  const totals = new Map<string, bigint>();
-  const annualOf = new Map(headAnnuals.map((h) => [h.feeHeadId, h.annualCents]));
-  const totalAnnual = headAnnuals.reduce((acc, h) => acc + h.annualCents, 0n);
-  if (totalAnnual === 0n) return totals;
-
-  const add = (headId: string, cents: bigint) => {
-    const current = totals.get(headId) ?? 0n;
-    const cap = annualOf.get(headId);
-    // Clamp at the head's annual: discounts can zero a fee, never invert it.
-    const next = cap !== undefined && current + cents > cap ? cap : current + cents;
-    totals.set(headId, next);
-  };
-
-  for (const c of concessionRows) {
-    if (c.feeHeadId) {
-      add(c.feeHeadId, c.amountCents);
-      continue;
-    }
-    // All-heads: proportional share per head, floor; remainder to the
-    // largest head so the sum is exact.
-    let distributed = 0n;
-    const shares = headAnnuals.map((h) => ({
-      headId: h.feeHeadId,
-      share: (h.annualCents * c.amountCents) / totalAnnual,
-    }));
-    for (const s of shares) distributed += s.share;
-    const remainder = c.amountCents - distributed;
-    if (remainder > 0n) {
-      const largest = headAnnuals.reduce((a, b) => (b.annualCents > a.annualCents ? b : a));
-      const hit = shares.find((s) => s.headId === largest.feeHeadId);
-      if (hit) hit.share += remainder;
-    }
-    for (const s of shares) add(s.headId, s.share);
-  }
-  return totals;
-}
-
-/**
- * S2 (F5) — per-bucket concession shares honoring validity windows. A
- * concession contributes to a bucket iff `validFrom <= bucket.dueDate` AND
- * (`validTo == null` OR `bucket.dueDate <= validTo`): a Jun–Aug sibling
- * discount silently discounting the whole year was the finding.
- *
- * Two stages, both exact:
- * 1. Resolve each concession to THIS head's amount — a named-head
- *    concession counts whole for its head only; an all-heads concession is
- *    split proportionally to head annuals (floored, remainder to the largest
- *    head), the same split `headConcessionTotals` performs, kept
- *    per-concession so windows stay attached.
- * 2. Spread each resolved amount over its COVERED buckets proportionally to
- *    bucket amounts (floored, remainder to the last covered bucket), capped
- *    per bucket at the bucket's amount, against a head-annual budget shared
- *    across concessions (the H1 clamp, composed with windows): stacked
- *    concessions zero a fee, never invert it.
- *
- * A concession whose window covers NO bucket contributes nothing — it stays
- * a recorded audit row, not a discount. With full-year windows the spread is
- * the old `headConcessionTotals` + `apportionHeadTotal` pairing (modulo the
- * per-bucket cap, which only ever bites where the old code would have
- * written a negative net for the 0012 CHECK to refuse).
- */
-export interface WindowedConcession {
-  feeHeadId: string | null;
-  amountCents: bigint;
-  validFrom: string;
-  validTo: string | null;
-}
-
-export interface WindowedBucket {
+/** One schedule row, as the planner needs it. */
+export interface ScheduleRow {
+  feeHeadId: string;
+  headName: string;
+  frequency: LineFrequency;
+  whoPays: "everyone" | "new_students";
+  periodKey: string;
+  label: string;
+  startDate: string;
+  endDate: string;
   dueDate: string;
   amountCents: bigint;
+  termId: string | null;
 }
 
-export function windowedConcessionShares(
-  concessions: WindowedConcession[],
-  headId: string,
-  buckets: WindowedBucket[],
-  headAnnuals: { feeHeadId: string; annualCents: bigint }[],
-): bigint[] {
-  const zero = buckets.map(() => 0n);
-  if (buckets.length === 0) return zero;
-  const totalAnnual = headAnnuals.reduce((acc, h) => acc + h.annualCents, 0n);
-  if (totalAnnual <= 0n) return zero;
-  const headAnnual =
-    headAnnuals.find((h) => h.feeHeadId === headId)?.annualCents ?? 0n;
-  const largest = headAnnuals.reduce((a, b) =>
-    b.annualCents > a.annualCents ? b : a,
-  );
+export interface PlanInput {
+  rows: ScheduleRow[];
+  /** Nothing before this date is billed. */
+  effectiveFrom: string;
+  joiningMonthFullCharge: boolean;
+  isNewStudent: boolean;
+  /** No due is late before billing started: earlier due dates move up to it. */
+  billingStartedOn: string | null;
+  /** Spans the student was away (left, then rejoined). Periods inside are skipped. */
+  awayRanges: { from: string; to: string }[];
+}
 
-  // Stage 1 — this head's per-concession amounts.
-  type Resolved = { amountCents: bigint; validFrom: string; validTo: string | null };
-  const resolved: Resolved[] = [];
-  for (const c of concessions) {
-    if (c.amountCents <= 0n) continue;
-    if (c.feeHeadId) {
-      if (c.feeHeadId === headId) {
-        resolved.push({
-          amountCents: c.amountCents,
-          validFrom: c.validFrom,
-          validTo: c.validTo,
-        });
-      }
-      continue;
-    }
-    const parts = headAnnuals.map((h) => ({
-      headId: h.feeHeadId,
-      share: (h.annualCents * c.amountCents) / totalAnnual,
-    }));
-    const distributed = parts.reduce((acc, p) => acc + p.share, 0n);
-    const remainder = c.amountCents - distributed;
-    for (const p of parts) {
-      if (p.headId !== headId) continue;
-      const share = p.share + (remainder > 0n && p.headId === largest.feeHeadId ? remainder : 0n);
-      if (share > 0n) {
-        resolved.push({
-          amountCents: share,
-          validFrom: c.validFrom,
-          validTo: c.validTo,
-        });
-      }
-    }
-  }
-
-  // Stage 2 — sequential spread against the head-annual budget.
-  const out = buckets.map(() => 0n);
-  let budget = headAnnual;
-  for (const s of resolved) {
-    if (budget <= 0n) break;
-    const covered: { idx: number; amountCents: bigint }[] = [];
-    buckets.forEach((b, idx) => {
-      if (s.validFrom <= b.dueDate && (s.validTo === null || b.dueDate <= s.validTo)) {
-        covered.push({ idx, amountCents: b.amountCents });
-      }
-    });
-    if (covered.length === 0) continue;
-    const effective = s.amountCents < budget ? s.amountCents : budget;
-    const weightTotal = covered.reduce((acc, b) => acc + b.amountCents, 0n);
-    let parts: bigint[];
-    if (weightTotal <= 0n) {
-      parts = covered.map(() => 0n);
-    } else {
-      parts = covered.map((b) => (effective * b.amountCents) / weightTotal);
-      const distributed = parts.reduce((acc, p) => acc + p, 0n);
-      const last = parts.length - 1;
-      parts[last] = (parts[last] ?? 0n) + (effective - distributed);
-    }
-    let spent = 0n;
-    covered.forEach((b, k) => {
-      const part = parts[k] ?? 0n;
-      const room = b.amountCents - (out[b.idx] ?? 0n);
-      let capped = 0n;
-      if (part > 0n && room > 0n) {
-        capped = part < room ? part : room;
-      }
-      out[b.idx] = (out[b.idx] ?? 0n) + capped;
-      spent += capped;
-    });
-    budget -= spent;
-  }
-  return out;
+/** One due this student should have, before the database sees it. */
+export interface PlannedDue {
+  feeHeadId: string;
+  periodKey: string;
+  description: string;
+  amountCents: bigint;
+  dueDate: string;
+  periodMonth: number | null;
+  periodYear: number | null;
+  termId: string | null;
+  /** Services are priced outside concessions (a recorded trade-off). */
+  concessionEligible: boolean;
 }
 
 /**
- * Splits ONE head's concession total across that head's buckets: floored
- * proportional shares, the LAST bucket absorbing the remainder, so the
- * installments' concession sum equals the head total exactly.
+ * A student's full set of dues for the session. A period's price never depends
+ * on when the student joined (ADR-050): the schedule holds the price, and a
+ * joiner just starts part-way down it.
+ *
+ * - `once`: owed whole whenever the student joins.
+ * - `monthly`: from the joining month. The joining month is charged in full
+ *   unless the school prorates it by remaining days.
+ * - `quarterly` / `half_yearly`: a period joined part-way is charged for the
+ *   months attended, floored.
+ * - `term_wise`: a term that ended before they joined is not theirs to pay; the
+ *   term they join in is charged in full.
  */
-export function apportionHeadTotal(
-  headTotalCents: bigint,
-  bucketAmounts: bigint[],
-): bigint[] {
-  const total = bucketAmounts.reduce((a, b) => a + b, 0n);
-  if (total === 0n) return bucketAmounts.map(() => 0n);
-  const shares = bucketAmounts.map((a) => (headTotalCents * a) / total);
-  const distributed = shares.reduce((a, b) => a + b, 0n);
-  const remainder = headTotalCents - distributed;
-  if (shares.length > 0 && remainder !== 0n) {
-    shares[shares.length - 1] = (shares[shares.length - 1] ?? 0n) + remainder;
+export function planDues(input: PlanInput): PlannedDue[] {
+  const out: PlannedDue[] = [];
+  const floorDue = input.billingStartedOn
+    ? later(input.effectiveFrom, input.billingStartedOn)
+    : input.effectiveFrom;
+
+  for (const row of input.rows) {
+    if (row.whoPays === "new_students" && !input.isNewStudent) continue;
+
+    const base = {
+      feeHeadId: row.feeHeadId,
+      periodKey: row.periodKey,
+      termId: row.termId,
+      concessionEligible: true,
+    };
+
+    if (row.frequency === "once") {
+      out.push({
+        ...base,
+        description: row.headName,
+        amountCents: row.amountCents,
+        dueDate: later(row.dueDate, floorDue),
+        periodMonth: null,
+        periodYear: null,
+      });
+      continue;
+    }
+
+    if (row.endDate < input.effectiveFrom) continue;
+    if (input.awayRanges.some((r) => r.from < row.startDate && row.endDate < r.to)) continue;
+
+    let amountCents = row.amountCents;
+    if (input.effectiveFrom > row.startDate) {
+      if (row.frequency === "monthly" && !input.joiningMonthFullCharge) {
+        const days = daysBetweenInclusive(row.startDate, row.endDate);
+        const remaining = daysBetweenInclusive(input.effectiveFrom, row.endDate);
+        amountCents = (amountCents * BigInt(remaining)) / BigInt(days);
+      } else if (row.frequency === "quarterly" || row.frequency === "half_yearly") {
+        const total = monthsIn(row.startDate, row.endDate);
+        const attended = monthsIn(input.effectiveFrom, row.endDate);
+        if (attended < total) amountCents = (amountCents * BigInt(attended)) / BigInt(total);
+      }
+    }
+
+    const isMonth = row.frequency === "monthly";
+    const start = parseIso(row.startDate);
+    out.push({
+      ...base,
+      description: isMonth
+        ? `${row.headName} — ${monthKey(start.year, start.month)}`
+        : `${row.headName} — ${row.label}`,
+      amountCents,
+      dueDate: later(row.dueDate, floorDue),
+      periodMonth: isMonth ? start.month : null,
+      periodYear: isMonth ? start.year : null,
+    });
+  }
+  return out.sort((a, b) =>
+    a.dueDate === b.dueDate
+      ? a.feeHeadId === b.feeHeadId
+        ? a.periodKey.localeCompare(b.periodKey)
+        : a.feeHeadId.localeCompare(b.feeHeadId)
+      : a.dueDate.localeCompare(b.dueDate),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Pure concession rules
+// ---------------------------------------------------------------------------
+
+/** A due's stable name inside a concession's covered list. */
+export function concessionKey(feeHeadId: string, periodKey: string): string {
+  return `${feeHeadId}:${periodKey}`;
+}
+
+export interface ConcessionRule {
+  calculationType: "flat" | "percentage";
+  /** Paise for flat. For percentage, the percent in paise: 10% is 1000n. */
+  valueCents: bigint;
+  coveredPeriods: string[];
+}
+
+/**
+ * What every due gets off, across all of a student's concessions, in the order
+ * they were granted. A percentage is that share of each covered due, rounding
+ * down. A flat amount is spread over its covered dues in proportion to their
+ * amounts, floored, the last covered due absorbing the rest. Stacked
+ * concessions can never take a due below zero.
+ *
+ * Because each concession fixes its covered periods when it is created, this
+ * gives the same answer however many months have been created or paid since.
+ */
+export function concessionShares(
+  rules: ConcessionRule[],
+  dues: { key: string; amountCents: bigint }[],
+): Map<string, bigint> {
+  const shares = new Map<string, bigint>();
+  const amountOf = new Map(dues.map((d) => [d.key, d.amountCents]));
+
+  for (const rule of rules) {
+    const covered = rule.coveredPeriods.filter((key) => amountOf.has(key));
+    if (covered.length === 0) continue;
+
+    const parts = new Map<string, bigint>();
+    if (rule.calculationType === "percentage") {
+      for (const key of covered) {
+        parts.set(key, ((amountOf.get(key) ?? 0n) * rule.valueCents) / 10000n);
+      }
+    } else {
+      const total = covered.reduce((acc, key) => acc + (amountOf.get(key) ?? 0n), 0n);
+      if (total <= 0n) continue;
+      const budget = rule.valueCents < total ? rule.valueCents : total;
+      let given = 0n;
+      covered.forEach((key, index) => {
+        const part =
+          index === covered.length - 1
+            ? budget - given
+            : (budget * (amountOf.get(key) ?? 0n)) / total;
+        parts.set(key, part);
+        given += part;
+      });
+    }
+
+    for (const [key, part] of parts) {
+      const room = (amountOf.get(key) ?? 0n) - (shares.get(key) ?? 0n);
+      const take = part < room ? part : room;
+      if (take > 0n) shares.set(key, (shares.get(key) ?? 0n) + take);
+    }
   }
   return shares;
+}
+
+/** The dues a new concession covers: eligible, in its window, not already paid. */
+export function coveredPeriodsFor(
+  dues: PlannedDue[],
+  frozenKeys: Set<string>,
+  concession: { feeHeadId: string | null; validFrom: string; validTo: string | null },
+): string[] {
+  return dues
+    .filter(
+      (d) =>
+        d.concessionEligible &&
+        (concession.feeHeadId === null || d.feeHeadId === concession.feeHeadId) &&
+        concession.validFrom <= d.dueDate &&
+        (concession.validTo === null || d.dueDate <= concession.validTo) &&
+        !frozenKeys.has(concessionKey(d.feeHeadId, d.periodKey)),
+    )
+    .map((d) => concessionKey(d.feeHeadId, d.periodKey));
 }
 
 // ---------------------------------------------------------------------------
@@ -559,50 +444,56 @@ export interface LateFeeRuleLike {
   valueCents: bigint;
   /** Cap in paise, or null = uncapped. */
   maxLateFeeCents: bigint | null;
+  /** One late fee per due, or one per month across a student's dues. */
+  applyPer?: "fee" | "month";
   effectiveFrom: string;
   effectiveTo: string | null;
 }
 
 /**
- * LIVE late fee for display — never written to a payment; the collection
- * flow (F5) freezes what it charges. Selection: the structure-named rule
- * beats the school-wide rule; among candidates, the LATEST effective_from
- * covering `asOf` wins. Grace period shifts the clock, not the rule.
- *
- * - flat: the value once, after the grace window.
- * - percentage: that share of the CURRENT balance, once.
- * - per_day: the value × each day past the grace window, until paid —
- *   which is why an uncapped per_day rule is a policy accident (the
- *   contract allows it; the rule screen is where the cap is urged).
+ * The rule for a due: the one in effect when it FELL DUE, so a rule added today
+ * never reaches a due that was already late. Among candidates the latest
+ * effective_from wins, and a structure-named rule breaks a tie.
  */
-export function computeLateFee(
-  installment: { dueDate: string; balanceCents: bigint },
+export function pickLateFeeRule(
   rules: LateFeeRuleLike[],
   structureId: string | null,
-  asOf: string,
-): bigint {
+  dueDate: string,
+): LateFeeRuleLike | null {
   const candidates = rules
     .filter((r) => r.feeStructureId === null || r.feeStructureId === structureId)
-    .filter((r) => r.effectiveFrom <= asOf && (!r.effectiveTo || r.effectiveTo >= asOf))
+    .filter((r) => r.effectiveFrom <= dueDate && (!r.effectiveTo || r.effectiveTo >= dueDate))
     .sort((a, b) => {
       if (a.effectiveFrom !== b.effectiveFrom) {
         return a.effectiveFrom < b.effectiveFrom ? 1 : -1;
       }
-      // A structure-named rule beats a school-wide one at the same start.
       return (b.feeStructureId ? 1 : 0) - (a.feeStructureId ? 1 : 0);
     });
-  const rule = candidates[0];
-  if (!rule) return 0n;
+  return candidates[0] ?? null;
+}
 
-  const lateDays = daysLateOf(installment.dueDate, asOf) - rule.gracePeriodDays;
-  if (lateDays <= 0) return 0n;
-  if (installment.balanceCents <= 0n) return 0n;
+/**
+ * The full late fee a rule asks for on a balance, as of a date.
+ *
+ * - flat: the value, once, after the grace window.
+ * - percentage: that share of the balance.
+ * - per_day: the value for each day past the grace window. Uncapped, this is a
+ *   policy accident, which is why the rule screen urges a cap.
+ */
+export function lateFeeOwed(
+  rule: LateFeeRuleLike,
+  dueDate: string,
+  balanceCents: bigint,
+  asOf: string,
+): bigint {
+  const lateDays = daysLateOf(dueDate, asOf) - rule.gracePeriodDays;
+  if (lateDays <= 0 || balanceCents <= 0n) return 0n;
 
   let fee = 0n;
   if (rule.calculationType === "flat") {
     fee = rule.valueCents;
   } else if (rule.calculationType === "percentage") {
-    fee = (installment.balanceCents * rule.valueCents) / 10000n;
+    fee = (balanceCents * rule.valueCents) / 10000n;
   } else {
     fee = rule.valueCents * BigInt(lateDays);
   }
@@ -610,6 +501,82 @@ export function computeLateFee(
     fee = rule.maxLateFeeCents;
   }
   return fee;
+}
+
+/** The late fee one due would owe today, ignoring what was already charged. */
+export function computeLateFee(
+  installment: { dueDate: string; balanceCents: bigint },
+  rules: LateFeeRuleLike[],
+  structureId: string | null,
+  asOf: string,
+): bigint {
+  const rule = pickLateFeeRule(rules, structureId, installment.dueDate);
+  return rule ? lateFeeOwed(rule, installment.dueDate, installment.balanceCents, asOf) : 0n;
+}
+
+/** One of a student's dues, as the late-fee pricing needs it. */
+export interface LateFeeDue {
+  id: string;
+  dueDate: string;
+  balanceCents: bigint;
+  chargedCents: bigint;
+  waivedCents: bigint;
+  exempt: boolean;
+  /** This payment puts money on it, which is what triggers a charge. */
+  beingPaid: boolean;
+}
+
+/**
+ * THE LATE FEE IS CHARGED ONCE. What a payment owes is what the rule asks for,
+ * less what was already charged or forgiven, so paying a due in parts cannot
+ * charge it again. A per-day rule still charges the days added since.
+ *
+ * Rules are per fee or per month. Per month treats a student's overdue dues in
+ * one calendar month as one: April's tuition and lab fee cost one late fee, and
+ * the charge lands on the first due being paid in that month.
+ *
+ * Returns what to charge on each due being paid. Dues not being paid are read
+ * only to see what their month has already been charged.
+ */
+export function priceLateFees(
+  dues: LateFeeDue[],
+  rules: LateFeeRuleLike[],
+  structureId: string | null,
+  asOf: string,
+): Map<string, bigint> {
+  const charges = new Map<string, bigint>();
+  const months = new Map<string, LateFeeDue[]>();
+
+  for (const due of dues) {
+    if (due.exempt) continue;
+    const rule = pickLateFeeRule(rules, structureId, due.dueDate);
+    if (!rule) continue;
+
+    if ((rule.applyPer ?? "month") === "fee") {
+      if (!due.beingPaid) continue;
+      const owed = lateFeeOwed(rule, due.dueDate, due.balanceCents, asOf);
+      const charge = owed - due.chargedCents - due.waivedCents;
+      if (charge > 0n) charges.set(due.id, charge);
+      continue;
+    }
+
+    const key = due.dueDate.slice(0, 7);
+    months.set(key, [...(months.get(key) ?? []), due]);
+  }
+
+  for (const group of months.values()) {
+    const target = group.find((d) => d.beingPaid);
+    if (!target) continue;
+    const oldest = group.reduce((a, b) => (a.dueDate < b.dueDate ? a : b));
+    const rule = pickLateFeeRule(rules, structureId, oldest.dueDate);
+    if (!rule) continue;
+    const balance = group.reduce((acc, d) => acc + d.balanceCents, 0n);
+    const owed = lateFeeOwed(rule, oldest.dueDate, balance, asOf);
+    const already = group.reduce((acc, d) => acc + d.chargedCents + d.waivedCents, 0n);
+    const charge = owed - already;
+    if (charge > 0n) charges.set(target.id, charge);
+  }
+  return charges;
 }
 
 // ---------------------------------------------------------------------------

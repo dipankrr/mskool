@@ -86,6 +86,9 @@ export const generateCalendarSchema = z
     academicYearId: z.uuid(),
     workingWeekdays: z.array(weekdaySchema).min(1).max(7),
     halfDayWeekdays: z.array(weekdaySchema).max(7).optional(),
+    // The school's first day on the app, for a school joining mid-session:
+    // earlier days get no row, so they don't count as working days.
+    startFrom: isoDate.optional(),
   })
   .refine(
     (v) =>

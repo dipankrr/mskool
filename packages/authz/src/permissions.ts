@@ -28,10 +28,10 @@ export const RESOURCE_ACTIONS = {
   // fee_head:create.
   fee_head: ["create", "read", "update", "delete"],
   fee_structure: ["create", "read", "update", "delete"],
-  fee_payment: ["create", "read", "update", "delete", "approve", "export"],
+  fee_payment: ["create", "read", "approve"],
   student_fee_assignment: ["create", "read", "update", "delete"],
-  fee_waiver: ["create", "read", "update", "delete", "approve"],
-  fee_refund: ["create", "read", "approve"],
+  fee_waiver: ["create", "update", "delete", "approve"],
+  fee_refund: ["create", "read"],
   fee_report: ["read", "export"],
 
   // ── Staff ─────────────────────────────────────────────────────────────────
@@ -169,10 +169,9 @@ export const RESOURCE_CATEGORIES: Record<string, Resource[]> = {
  */
 export const SENSITIVE_PERMISSIONS = new Set<Permission>([
   "fee_payment:approve",
-  "fee_payment:delete",
   "fee_waiver:approve",
   "fee_waiver:create",
-  "fee_refund:approve",
+  "fee_refund:create",
   "marks:publish",
   "marks:delete",
   "report_card:publish",

@@ -1,4 +1,5 @@
 import { atSchoolLevel, requireSchoolId, yearVisibilityWhere } from "./academic.service";
+import { refuse } from "./service-error";
 import { scopeWhere, type DataScope } from "@repo/authz";
 import type {
   GenerateCalendarInput,
@@ -221,7 +222,15 @@ export class AttendanceService {
       createdFromTemplate: boolean;
       createdBy: string | null;
     }[] = [];
-    const cursor = new Date(`${year.startDate}T00:00:00Z`);
+    // ISO dates compare as strings. A start outside the session is the caller's
+    // mistake, not a date to quietly move.
+    if (
+      input.startFrom &&
+      (input.startFrom < year.startDate || input.startFrom > year.endDate)
+    ) {
+      throw refuse("BAD_REQUEST", "Pick a start date inside this session.");
+    }
+    const cursor = new Date(`${input.startFrom ?? year.startDate}T00:00:00Z`);
     const end = new Date(`${year.endDate}T00:00:00Z`);
     while (cursor <= end) {
       const iso = cursor.toISOString().slice(0, 10);

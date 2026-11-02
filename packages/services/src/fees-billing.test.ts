@@ -1,595 +1,515 @@
 import { describe, expect, it } from "vitest";
 import {
   allocateOldestFirst,
-  apportionHeadTotal,
   computeLateFee,
+  concessionKey,
+  concessionShares,
+  coveredPeriodsFor,
   daysInMonth,
-  headConcessionTotals,
-  monthsBetween,
-  splitIntoBuckets,
+  dueDateIn,
   fromCents,
+  monthsBetween,
+  periodOptions,
+  pickLateFeeRule,
+  planDues,
+  priceLateFees,
   toCents,
-  windowedConcessionShares,
   type LateFeeRuleLike,
-  type SplitLineInput,
+  type LineFrequency,
+  type PlanInput,
+  type ScheduleRow,
 } from "./fees-maths";
 
-/**
- * The phase's unit-test core: the money maths. Every rule from the plan's
- * "Money-safety discipline" layer 4 lives here — floored shares, the last
- * bucket absorbing the remainder, percentage rounding DOWN, late fee frozen
- * logic. These tests are PURE: no database, no mocks, deterministic dates.
- */
-
-const baseLine: SplitLineInput = {
-  annualAmountCents: 1_200_000n, // 12000.00
-  frequency: "inherit",
-  structureMode: "monthly",
-  applicableFromMonth: 1,
-  applicableToMonth: 12,
-  yearStart: "2030-04-01",
-  yearEnd: "2031-03-31",
-  effectiveFrom: "2030-04-01",
-  joiningMonthFullCharge: true,
-  feeHeadId: "head-1",
-  headName: "Tuition Fee",
-  terms: [],
+const APRIL_SESSION = {
+  startDate: "2026-04-01",
+  endDate: "2027-03-31",
+  terms: [
+    { id: "t1", name: "Term 1", startDate: "2026-04-01", endDate: "2026-09-30" },
+    { id: "t2", name: "Term 2", startDate: "2026-10-01", endDate: "2027-03-31" },
+  ],
 };
 
-const sum = (buckets: { amountCents: bigint }[]) =>
-  buckets.reduce((acc, b) => acc + b.amountCents, 0n);
+function schedule(
+  frequency: LineFrequency,
+  amountCents: bigint,
+  overrides: Partial<ScheduleRow> = {},
+  session = APRIL_SESSION,
+  keep?: (key: string) => boolean,
+): ScheduleRow[] {
+  return periodOptions(frequency, session, 1)
+    .filter((o) => (keep ? keep(o.key) : true))
+    .map((o) => ({
+      feeHeadId: "tuition",
+      headName: "Tuition Fee",
+      frequency,
+      whoPays: "everyone",
+      periodKey: o.key,
+      label: o.label,
+      startDate: o.startDate,
+      endDate: o.endDate,
+      dueDate: o.dueDate,
+      amountCents,
+      termId: o.termId,
+      ...overrides,
+    }));
+}
+
+function plan(rows: ScheduleRow[], overrides: Partial<PlanInput> = {}) {
+  return planDues({
+    rows,
+    effectiveFrom: "2026-04-01",
+    joiningMonthFullCharge: true,
+    isNewStudent: false,
+    billingStartedOn: null,
+    awayRanges: [],
+    ...overrides,
+  });
+}
 
 describe("date helpers", () => {
-  it("monthsBetween spans an Indian academic year", () => {
-    const months = monthsBetween("2030-04-01", "2031-03-31");
-    expect(months).toHaveLength(12);
-    expect(months[0]).toEqual({ year: 2030, month: 4 });
-    expect(months[11]).toEqual({ year: 2031, month: 3 });
+  it("knows leap February and walks months across a year end", () => {
+    expect(daysInMonth(2028, 2)).toBe(29);
+    expect(monthsBetween("2026-11-15", "2027-02-01").map((m) => m.month)).toEqual([11, 12, 1, 2]);
   });
 
-  it("daysInMonth handles leap February", () => {
-    expect(daysInMonth(2032, 2)).toBe(29);
-    expect(daysInMonth(2030, 2)).toBe(28);
+  it("uses the month's last day when the due day does not exist", () => {
+    expect(dueDateIn(2026, 2, 31)).toBe("2026-02-28");
+    expect(dueDateIn(2026, 4, 31)).toBe("2026-04-30");
+    expect(dueDateIn(2026, 4, 10)).toBe("2026-04-10");
   });
 });
 
-describe("splitIntoBuckets — monthly", () => {
-  it("splits evenly with no remainder", () => {
-    const buckets = splitIntoBuckets(baseLine);
-    expect(buckets).toHaveLength(12);
-    expect(sum(buckets)).toBe(1_200_000n);
-    expect(buckets.every((b) => b.amountCents === 100_000n)).toBe(true);
+describe("periodOptions", () => {
+  it("monthly: one row per session month, due on the due day", () => {
+    const rows = periodOptions("monthly", APRIL_SESSION, 10);
+    expect(rows).toHaveLength(12);
+    expect(rows[0]).toMatchObject({ key: "2026-04", label: "April 2026", dueDate: "2026-04-10" });
+    expect(rows[11]).toMatchObject({ key: "2027-03", label: "March 2027", dueDate: "2027-03-10" });
   });
 
-  it("the LAST bucket absorbs the remainder (1000.00 / 3)", () => {
-    const buckets = splitIntoBuckets({
-      ...baseLine,
-      annualAmountCents: 100_000n,
-      yearStart: "2030-01-01",
-      yearEnd: "2030-12-31",
-      applicableFromMonth: 1,
-      applicableToMonth: 3, // Jan–Mar only: three monthly buckets
-      effectiveFrom: "2030-01-01",
-    });
-    expect(buckets).toHaveLength(3);
-    expect(sum(buckets)).toBe(100_000n);
-    expect(buckets[0]?.amountCents).toBe(33_333n);
-    expect(buckets[2]?.amountCents).toBe(33_334n);
+  it("works for any session, not just April to March", () => {
+    const june = { startDate: "2026-06-01", endDate: "2027-05-31", terms: [] };
+    expect(periodOptions("monthly", june, 1)[0]?.key).toBe("2026-06");
+    expect(periodOptions("quarterly", june, 1).map((o) => o.key)).toEqual([
+      "q:2026-06",
+      "q:2026-09",
+      "q:2026-12",
+      "q:2027-03",
+    ]);
+    const calendar = { startDate: "2026-01-01", endDate: "2026-12-31", terms: [] };
+    expect(periodOptions("half_yearly", calendar, 1).map((o) => o.key)).toEqual([
+      "h:2026-01",
+      "h:2026-07",
+    ]);
   });
 
-  it("a mid-session joiner pays the SAME monthly rate for the months left", () => {
-    const buckets = splitIntoBuckets({
-      ...baseLine,
-      effectiveFrom: "2030-10-01", // joins in October of an Apr–Mar year
-    });
-    expect(buckets).toHaveLength(6);
-    expect(buckets[0]?.periodMonth).toBe(10);
-    // ₹1,000 a month like everyone else — not ₹12,000 squeezed into six.
-    expect(buckets.every((b) => b.amountCents === 100_000n)).toBe(true);
-    expect(sum(buckets)).toBe(600_000n);
-    // Numbering is the student's own, from 1.
-    expect(buckets[0]?.installmentNumber).toBe(1);
+  it("handles a short session and never dates a due before it starts", () => {
+    const short = { startDate: "2026-10-15", endDate: "2027-03-31", terms: [] };
+    const rows = periodOptions("monthly", short, 1);
+    expect(rows).toHaveLength(6);
+    expect(rows[0]).toMatchObject({ startDate: "2026-10-15", dueDate: "2026-10-15" });
   });
 
-  it("prorates the joining month when joiningMonthFullCharge is false", () => {
-    const buckets = splitIntoBuckets({
-      ...baseLine,
-      effectiveFrom: "2030-10-16", // 16 days left in October (31 days)
+  it("term rows come from the session's terms; once is one row", () => {
+    expect(periodOptions("term_wise", APRIL_SESSION, 1).map((o) => o.key)).toEqual([
+      "term:t1",
+      "term:t2",
+    ]);
+    expect(periodOptions("once", APRIL_SESSION, 1).map((o) => o.key)).toEqual(["once"]);
+  });
+});
+
+describe("planDues: which months charge", () => {
+  it("December off and April off are just rows that are not there", () => {
+    const rows = schedule("monthly", 100000n, {}, APRIL_SESSION, (key) =>
+      !["2026-04", "2026-12"].includes(key),
+    );
+    const dues = plan(rows);
+    expect(dues).toHaveLength(10);
+    expect(dues.map((d) => d.periodKey)).not.toContain("2026-12");
+    expect(dues.map((d) => d.periodKey)).not.toContain("2026-04");
+  });
+
+  it("April to February crosses the new year", () => {
+    const rows = schedule("monthly", 100000n, {}, APRIL_SESSION, (key) => key !== "2027-03");
+    const dues = plan(rows);
+    expect(dues).toHaveLength(11);
+    expect(dues.at(-1)?.periodKey).toBe("2027-02");
+  });
+
+  it("a mid-session school ticks October to March and nothing earlier exists", () => {
+    const rows = schedule("monthly", 100000n, {}, APRIL_SESSION, (key) => key >= "2026-10");
+    expect(plan(rows).map((d) => d.periodKey)[0]).toBe("2026-10");
+    expect(plan(rows)).toHaveLength(6);
+  });
+
+  it("an edited row wins over the line's amount", () => {
+    const rows = schedule("monthly", 100000n).map((row) =>
+      row.periodKey >= "2026-10" ? { ...row, amountCents: 120000n } : row,
+    );
+    const dues = plan(rows);
+    expect(dues.find((d) => d.periodKey === "2026-09")?.amountCents).toBe(100000n);
+    expect(dues.find((d) => d.periodKey === "2026-10")?.amountCents).toBe(120000n);
+  });
+});
+
+describe("planDues: joining part-way", () => {
+  it("a period's price never depends on when the student joined (ADR-050)", () => {
+    const dues = plan(schedule("monthly", 100000n), { effectiveFrom: "2026-10-15" });
+    expect(dues).toHaveLength(6);
+    expect(dues.every((d) => d.amountCents === 100000n)).toBe(true);
+    expect(dues[0]?.periodKey).toBe("2026-10");
+  });
+
+  it("prorates the joining month by remaining days only when told to", () => {
+    const dues = plan(schedule("monthly", 310000n), {
+      effectiveFrom: "2026-10-16",
       joiningMonthFullCharge: false,
     });
-    expect(buckets).toHaveLength(6);
-    // The joining month is the monthly rate × its day fraction, floored
-    // (1000.00 × 16/31 = 516.12); later months are the full rate.
-    const remaining = 31 - 16 + 1;
-    expect(buckets[0]?.amountCents).toBe((100_000n * BigInt(remaining)) / 31n);
-    expect(buckets[1]?.amountCents).toBe(100_000n);
+    expect(dues[0]?.amountCents).toBe(160000n);
+    expect(dues[1]?.amountCents).toBe(310000n);
   });
 
-  it("charges the joining month IN FULL by default (the Indian rule)", () => {
-    const buckets = splitIntoBuckets({
-      ...baseLine,
-      effectiveFrom: "2030-10-30",
-    });
-    expect(buckets).toHaveLength(6);
-    expect(buckets[0]?.amountCents).toBe(100_000n);
+  it("a quarter joined part-way is charged for months attended", () => {
+    const dues = plan(schedule("quarterly", 300000n), { effectiveFrom: "2026-05-10" });
+    expect(dues[0]).toMatchObject({ periodKey: "q:2026-04", amountCents: 200000n });
+    expect(dues[1]).toMatchObject({ periodKey: "q:2026-07", amountCents: 300000n });
   });
 
-  it("a joiner after the last applicable month owes nothing for that line", () => {
-    const buckets = splitIntoBuckets({
-      ...baseLine,
-      applicableFromMonth: 7,
-      applicableToMonth: 9, // a July–September activity fee
-      effectiveFrom: "2030-10-01",
-    });
-    expect(buckets).toHaveLength(0);
+  it("a term that ended is not theirs to pay; the term they join in is full", () => {
+    const dues = plan(schedule("term_wise", 500000n), { effectiveFrom: "2026-11-01" });
+    expect(dues).toHaveLength(1);
+    expect(dues[0]).toMatchObject({ periodKey: "term:t2", amountCents: 500000n });
   });
 
-  it("respects the applicable month range", () => {
-    const buckets = splitIntoBuckets({
-      ...baseLine,
-      applicableFromMonth: 7,
-      applicableToMonth: 9, // a quarter-long activity fee
-    });
-    expect(buckets).toHaveLength(3);
-    expect(sum(buckets)).toBe(1_200_000n);
+  it("a one-time fee is owed whole whenever they join, due that day", () => {
+    const dues = plan(schedule("once", 500000n), { effectiveFrom: "2026-11-20" });
+    expect(dues[0]).toMatchObject({ amountCents: 500000n, dueDate: "2026-11-20" });
+  });
+
+  it("never dates a due before the student joined", () => {
+    const dues = plan(schedule("monthly", 100000n), { effectiveFrom: "2026-10-15" });
+    expect(dues[0]?.dueDate).toBe("2026-10-15");
+    expect(dues[1]?.dueDate).toBe("2026-11-01");
   });
 });
 
-describe("splitIntoBuckets — term_wise", () => {
-  const terms = [
-    {
-      id: "t1",
-      name: "Term 1",
-      startDate: "2030-04-01",
-      endDate: "2030-09-30",
-      weightage: "60.00",
-    },
-    {
-      id: "t2",
-      name: "Term 2",
-      startDate: "2030-10-01",
-      endDate: "2031-03-31",
-      weightage: "40.00",
-    },
-  ];
-
-  it("splits by weightage with the remainder in the last term", () => {
-    const buckets = splitIntoBuckets({
-      ...baseLine,
-      frequency: "term_wise",
-      structureMode: "monthly",
-      terms,
-    });
-    expect(buckets).toHaveLength(2);
-    expect(buckets[0]?.amountCents).toBe(720_000n); // 60%
-    expect(buckets[1]?.amountCents).toBe(480_000n); // 40%
-    expect(buckets[0]?.termId).toBe("t1");
-    expect(sum(buckets)).toBe(1_200_000n);
+describe("planDues: rules", () => {
+  it("no due is late before billing started", () => {
+    const dues = plan(schedule("monthly", 100000n), { billingStartedOn: "2026-10-15" });
+    const october = dues.find((d) => d.periodKey === "2026-10");
+    const november = dues.find((d) => d.periodKey === "2026-11");
+    expect(october?.dueDate).toBe("2026-10-15");
+    expect(november?.dueDate).toBe("2026-11-01");
   });
 
-  it("a joiner skips terms that already ended and pays the year's share for the rest", () => {
-    const buckets = splitIntoBuckets({
-      ...baseLine,
-      frequency: "term_wise",
-      effectiveFrom: "2030-11-01", // Term 1 ended in September
-      terms,
-    });
-    expect(buckets).toHaveLength(1);
-    expect(buckets[0]?.termId).toBe("t2");
-    expect(buckets[0]?.amountCents).toBe(480_000n); // Term 2's 40%, not 100%
-    expect(buckets[0]?.dueDate).toBe("2030-11-01");
+  it("new-students-only fees skip everyone else", () => {
+    const rows = schedule("once", 500000n, { whoPays: "new_students" });
+    expect(plan(rows, { isNewStudent: false })).toHaveLength(0);
+    expect(plan(rows, { isNewStudent: true })).toHaveLength(1);
   });
 
-  it("renormalises across the terms that survive the applicable range", () => {
-    const buckets = splitIntoBuckets({
-      ...baseLine,
-      frequency: "term_wise",
-      applicableFromMonth: 10,
-      applicableToMonth: 12, // only Term 2 overlaps
-      terms,
+  it("months a student was away are not billed; the months around them are", () => {
+    const dues = plan(schedule("monthly", 100000n), {
+      awayRanges: [{ from: "2026-07-20", to: "2026-10-05" }],
     });
-    expect(buckets).toHaveLength(1);
-    expect(buckets[0]?.amountCents).toBe(1_200_000n);
+    const keys = dues.map((d) => d.periodKey);
+    expect(keys).toContain("2026-07");
+    expect(keys).not.toContain("2026-08");
+    expect(keys).not.toContain("2026-09");
+    expect(keys).toContain("2026-10");
+  });
+
+  it("names a month's due so the app can read it", () => {
+    expect(plan(schedule("monthly", 100000n))[0]?.description).toBe("Tuition Fee — 2026-04");
+    expect(plan(schedule("term_wise", 100000n))[0]?.description).toBe("Tuition Fee — Term 1");
   });
 });
 
-describe("splitIntoBuckets — upfront and quarterly", () => {
-  it("upfront is ONE bucket at the effective date", () => {
-    const buckets = splitIntoBuckets({
-      ...baseLine,
-      frequency: "inherit",
-      structureMode: "upfront",
-    });
-    expect(buckets).toHaveLength(1);
-    expect(buckets[0]?.amountCents).toBe(1_200_000n);
-    expect(buckets[0]?.dueDate).toBe("2030-04-01");
-  });
+describe("concessionShares", () => {
+  const twelve = plan(schedule("monthly", 100000n));
+  const dues = twelve.map((d) => ({
+    key: concessionKey(d.feeHeadId, d.periodKey),
+    amountCents: d.amountCents,
+  }));
+  const covered = dues.map((d) => d.key);
 
-  it("quarterly groups the year's months into 3-month buckets", () => {
-    const buckets = splitIntoBuckets({
-      ...baseLine,
-      frequency: "quarterly",
-    });
-    expect(buckets).toHaveLength(4);
-    expect(sum(buckets)).toBe(1_200_000n);
-  });
-
-  it("a quarterly joiner pays full quarters ahead and the months left of the one they join", () => {
-    const buckets = splitIntoBuckets({
-      ...baseLine,
-      frequency: "quarterly",
-      effectiveFrom: "2030-11-01", // Q3 is Oct–Dec: two of its three months
-    });
-    expect(buckets).toHaveLength(2);
-    expect(buckets[0]?.amountCents).toBe(200_000n); // 3000.00 × 2/3
-    expect(buckets[1]?.amountCents).toBe(300_000n); // Q4 in full
-  });
-
-  it("upfront stays whole for a joiner: a one-time charge is owed in full", () => {
-    const buckets = splitIntoBuckets({
-      ...baseLine,
-      structureMode: "upfront",
-      effectiveFrom: "2030-10-01",
-    });
-    expect(buckets).toHaveLength(1);
-    expect(buckets[0]?.amountCents).toBe(1_200_000n);
-    expect(buckets[0]?.dueDate).toBe("2030-10-01");
-  });
-});
-
-describe("headConcessionTotals", () => {
-  const heads = [
-    { feeHeadId: "tuition", annualCents: 1_000_000n },
-    { feeHeadId: "lab", annualCents: 200_000n },
-  ];
-
-  it("a named-head concession goes to that head whole", () => {
-    const totals = headConcessionTotals(
-      [{ feeHeadId: "lab", amountCents: 20_000n }],
-      heads,
+  it("flat: spreads over its covered dues and gives exactly the amount", () => {
+    const shares = concessionShares(
+      [{ calculationType: "flat", valueCents: 120000n, coveredPeriods: covered }],
+      dues,
     );
-    expect(totals.get("lab")).toBe(20_000n);
-    expect(totals.get("tuition")).toBeUndefined();
+    expect(shares.get(covered[0] ?? "")).toBe(10000n);
+    const total = [...shares.values()].reduce((a, b) => a + b, 0n);
+    expect(total).toBe(120000n);
   });
 
-  it("an all-heads concession is shared proportionally, remainder to the largest", () => {
-    // 100.00 across 1000.00 + 200.00 → 83.33 + 16.66, remainder 0.01 → tuition.
-    const totals = headConcessionTotals(
-      [{ feeHeadId: null, amountCents: 10_000n }],
-      heads,
+  it("the regression: monthly billing no longer over-discounts", () => {
+    // The old code spread ₹1,200 over the 8 months created so far (₹150 each),
+    // then gave later months ₹100, for ₹1,600. The covered list is fixed now,
+    // so the answer is the same however many months exist.
+    const rule = { calculationType: "flat" as const, valueCents: 120000n, coveredPeriods: covered };
+    const allYear = concessionShares([rule], dues);
+    const eightMonths = concessionShares([rule], dues.slice(0, 8));
+    expect(allYear.get(covered[0] ?? "")).toBe(10000n);
+    // Rows not created yet are left out of `dues`; the plan always passes all of them.
+    expect([...allYear.values()].reduce((a, b) => a + b, 0n)).toBe(120000n);
+    expect(eightMonths.size).toBe(8);
+  });
+
+  it("percent: that share of each due, rounding down", () => {
+    const shares = concessionShares(
+      [{ calculationType: "percentage", valueCents: 3333n, coveredPeriods: [covered[0] ?? ""] }],
+      [{ key: covered[0] ?? "", amountCents: 100n }],
     );
-    expect(totals.get("tuition")).toBe(8_334n); // 83.33 + 0.01
-    expect(totals.get("lab")).toBe(1_666n);
-    expect((totals.get("tuition") ?? 0n) + (totals.get("lab") ?? 0n)).toBe(10_000n);
+    expect(shares.get(covered[0] ?? "")).toBe(33n);
+  });
+
+  it("stacked concessions can never take a due below zero", () => {
+    const shares = concessionShares(
+      [
+        { calculationType: "percentage", valueCents: 6000n, coveredPeriods: covered },
+        { calculationType: "percentage", valueCents: 6000n, coveredPeriods: covered },
+      ],
+      dues,
+    );
+    for (const key of covered) expect(shares.get(key)).toBe(100000n);
+  });
+
+  it("leaves paid months out when it is created, so the full flat amount lands", () => {
+    const frozen = new Set(covered.slice(0, 7));
+    const open = coveredPeriodsFor(twelve, frozen, {
+      feeHeadId: null,
+      validFrom: "2026-04-01",
+      validTo: null,
+    });
+    expect(open).toHaveLength(5);
+    const shares = concessionShares(
+      [{ calculationType: "flat", valueCents: 120000n, coveredPeriods: open }],
+      dues,
+    );
+    expect([...shares.values()].reduce((a, b) => a + b, 0n)).toBe(120000n);
+  });
+
+  it("respects its dates and a named head, and skips services", () => {
+    const rows = [
+      ...twelve,
+      { ...twelve[0], feeHeadId: "bus", periodKey: "2026-05", concessionEligible: false },
+    ] as typeof twelve;
+    const open = coveredPeriodsFor(rows, new Set(), {
+      feeHeadId: null,
+      validFrom: "2026-10-01",
+      validTo: "2026-11-30",
+    });
+    expect(open).toEqual([
+      concessionKey("tuition", "2026-10"),
+      concessionKey("tuition", "2026-11"),
+    ]);
+    expect(
+      coveredPeriodsFor(rows, new Set(), {
+        feeHeadId: "other",
+        validFrom: "2026-04-01",
+        validTo: null,
+      }),
+    ).toEqual([]);
   });
 });
 
-describe("apportionHeadTotal", () => {
-  it("sums exactly to the head total, remainder in the last share", () => {
-    const shares = apportionHeadTotal(1_000n, [333n, 333n, 334n]);
-    expect(shares.reduce((a, b) => a + b, 0n)).toBe(1_000n);
-  });
-
-  it("never hands a bucket a negative share", () => {
-    const shares = apportionHeadTotal(100n, [700n, 300n]);
-    expect(shares.every((s) => s >= 0n)).toBe(true);
-    expect(shares.reduce((a, b) => a + b, 0n)).toBe(100n);
-  });
-});
-
-describe("computeLateFee", () => {
-  const installment = { dueDate: "2030-04-10", balanceCents: 100_000n }; // 1000.00 due
-
+describe("late fee", () => {
   const rule = (overrides: Partial<LateFeeRuleLike> = {}): LateFeeRuleLike => ({
     feeStructureId: null,
     gracePeriodDays: 0,
     calculationType: "flat",
-    valueCents: 5_000n, // 50.00
+    valueCents: 10000n,
     maxLateFeeCents: null,
-    effectiveFrom: "2030-01-01",
+    applyPer: "month",
+    effectiveFrom: "2026-01-01",
     effectiveTo: null,
     ...overrides,
   });
-
-  it("returns zero with no applicable rule", () => {
-    expect(computeLateFee(installment, [], "s1", "2030-05-01")).toBe(0n);
+  const due = (overrides: Partial<Parameters<typeof priceLateFees>[0][number]> = {}) => ({
+    id: "a",
+    dueDate: "2026-04-01",
+    balanceCents: 100000n,
+    chargedCents: 0n,
+    waivedCents: 0n,
+    exempt: false,
+    beingPaid: true,
+    ...overrides,
   });
 
-  it("returns zero inside the grace window", () => {
+  it("flat, percent and per day still compute what they always did", () => {
     expect(
-      computeLateFee(installment, [rule({ gracePeriodDays: 7 })], "s1", "2030-04-17"),
+      computeLateFee({ dueDate: "2026-04-01", balanceCents: 100000n }, [rule()], null, "2026-04-02"),
+    ).toBe(10000n);
+    expect(
+      computeLateFee(
+        { dueDate: "2026-04-01", balanceCents: 100000n },
+        [rule({ calculationType: "percentage", valueCents: 500n })],
+        null,
+        "2026-04-02",
+      ),
+    ).toBe(5000n);
+    expect(
+      computeLateFee(
+        { dueDate: "2026-04-01", balanceCents: 100000n },
+        [rule({ calculationType: "per_day", valueCents: 1000n, maxLateFeeCents: 5000n })],
+        null,
+        "2026-04-30",
+      ),
+    ).toBe(5000n);
+  });
+
+  it("nothing before the grace ends, on the due date, or on a zero balance", () => {
+    expect(
+      computeLateFee(
+        { dueDate: "2026-04-01", balanceCents: 100000n },
+        [rule({ gracePeriodDays: 5 })],
+        null,
+        "2026-04-06",
+      ),
+    ).toBe(0n);
+    expect(
+      computeLateFee({ dueDate: "2026-04-01", balanceCents: 0n }, [rule()], null, "2026-05-01"),
     ).toBe(0n);
   });
 
-  it("charges the first day PAST the grace window", () => {
-    expect(
-      computeLateFee(installment, [rule({ gracePeriodDays: 7 })], "s1", "2030-04-18"),
-    ).toBe(5_000n);
+  it("the regression: paying in parts charges a flat late fee once", () => {
+    const first = priceLateFees([due()], [rule()], null, "2026-11-01");
+    expect(first.get("a")).toBe(10000n);
+    const second = priceLateFees(
+      [due({ balanceCents: 99900n, chargedCents: 10000n })],
+      [rule()],
+      null,
+      "2026-11-01",
+    );
+    expect(second.size).toBe(0);
   });
 
-  it("flat: the value once, regardless of how late", () => {
-    expect(computeLateFee(installment, [rule()], "s1", "2030-09-01")).toBe(5_000n);
+  it("a part payment's lower balance never charges a percent fee again", () => {
+    const percent = rule({ calculationType: "percentage", valueCents: 1000n });
+    expect(priceLateFees([due()], [percent], null, "2026-11-01").get("a")).toBe(10000n);
+    const second = priceLateFees(
+      [due({ balanceCents: 50000n, chargedCents: 10000n })],
+      [percent],
+      null,
+      "2026-11-01",
+    );
+    expect(second.size).toBe(0);
   });
 
-  it("percentage: that share of the CURRENT balance, once", () => {
-    expect(
-      computeLateFee(installment, [rule({ calculationType: "percentage", valueCents: 200n })], "s1", "2030-05-01"),
-    ).toBe(2_000n); // 2% of 1000.00 = 20.00
+  it("per day keeps charging only for the days added since", () => {
+    const perDay = rule({ calculationType: "per_day", valueCents: 1000n, applyPer: "fee" });
+    const later = priceLateFees(
+      [due({ chargedCents: 5000n })],
+      [perDay],
+      null,
+      "2026-04-11",
+    );
+    expect(later.get("a")).toBe(5000n);
   });
 
-  it("per_day: value × days late", () => {
-    expect(
-      computeLateFee(installment, [rule({ calculationType: "per_day", valueCents: 100n })], "s1", "2030-04-20"),
-    ).toBe(1_000n); // 10 days × 1.00
+  it("per month: April's tuition and lab fee cost one late fee", () => {
+    const charges = priceLateFees(
+      [due({ id: "tuition" }), due({ id: "lab", balanceCents: 20000n })],
+      [rule()],
+      null,
+      "2026-11-01",
+    );
+    expect(charges.get("tuition")).toBe(10000n);
+    expect(charges.has("lab")).toBe(false);
   });
 
-  it("caps at max_late_fee", () => {
-    expect(
-      computeLateFee(
-        installment,
-        [rule({ calculationType: "per_day", valueCents: 100n, maxLateFeeCents: 500n })],
-        "s1",
-        "2030-05-20",
-      ),
-    ).toBe(500n);
+  it("per month: paying the other fee later does not charge the month again", () => {
+    const charges = priceLateFees(
+      [
+        due({ id: "tuition", chargedCents: 10000n, beingPaid: false, balanceCents: 0n }),
+        due({ id: "lab", balanceCents: 20000n }),
+      ],
+      [rule()],
+      null,
+      "2026-11-01",
+    );
+    expect(charges.size).toBe(0);
   });
 
-  it("a structure-named rule beats a school-wide rule", () => {
-    expect(
-      computeLateFee(
-        installment,
-        [rule({ valueCents: 5_000n }), rule({ feeStructureId: "s1", valueCents: 9_900n })],
-        "s1",
-        "2030-05-01",
-      ),
-    ).toBe(9_900n);
+  it("per fee: each overdue fee is charged", () => {
+    const charges = priceLateFees(
+      [due({ id: "tuition" }), due({ id: "lab", balanceCents: 20000n })],
+      [rule({ applyPer: "fee" })],
+      null,
+      "2026-11-01",
+    );
+    expect(charges.get("tuition")).toBe(10000n);
+    expect(charges.get("lab")).toBe(10000n);
   });
 
-  it("the LATEST effective_from wins among overlapping rules", () => {
-    expect(
-      computeLateFee(
-        installment,
-        [rule({ valueCents: 5_000n }), rule({ valueCents: 7_500n, effectiveFrom: "2030-04-15" })],
-        "s1",
-        "2030-05-01",
-      ),
-    ).toBe(7_500n);
+  it("separate months are charged separately, and only if being paid", () => {
+    const charges = priceLateFees(
+      [due({ id: "apr" }), due({ id: "may", dueDate: "2026-05-01", beingPaid: false })],
+      [rule()],
+      null,
+      "2026-11-01",
+    );
+    expect(charges.get("apr")).toBe(10000n);
+    expect(charges.has("may")).toBe(false);
   });
 
-  it("a paid-up installment accrues nothing", () => {
-    expect(
-      computeLateFee(
-        { dueDate: "2030-04-10", balanceCents: 0n },
-        [rule()],
-        "s1",
-        "2030-05-01",
-      ),
-    ).toBe(0n);
+  it("a one-off charge never attracts a late fee, and forgiven stays forgiven", () => {
+    expect(priceLateFees([due({ exempt: true })], [rule()], null, "2026-11-01").size).toBe(0);
+    expect(priceLateFees([due({ waivedCents: 10000n })], [rule()], null, "2026-11-01").size).toBe(0);
+  });
+
+  it("a rule added today does not reach a due that was already late", () => {
+    const newRule = rule({ effectiveFrom: "2026-11-01" });
+    expect(pickLateFeeRule([newRule], null, "2026-04-01")).toBeNull();
+    expect(pickLateFeeRule([newRule], null, "2026-12-01")).toBe(newRule);
+  });
+
+  it("the latest rule in effect wins, and a structure's rule breaks a tie", () => {
+    const school = rule({ effectiveFrom: "2026-01-01" });
+    const newer = rule({ effectiveFrom: "2026-03-01" });
+    const named = rule({ effectiveFrom: "2026-03-01", feeStructureId: "s1" });
+    expect(pickLateFeeRule([school, newer], null, "2026-04-01")).toBe(newer);
+    expect(pickLateFeeRule([newer, named], "s1", "2026-04-01")).toBe(named);
+    expect(pickLateFeeRule([named], "s2", "2026-04-01")).toBeNull();
   });
 });
 
 describe("money helpers", () => {
-  it("round-trips paise", () => {
-    expect(fromCents(toCents("1250.50"))).toBe("1250.50");
-    expect(fromCents(toCents("1250"))).toBe("1250.00");
-    expect(toCents("0.01")).toBe(1n);
+  it("round-trips paise exactly", () => {
+    expect(toCents("1250.50")).toBe(125050n);
+    expect(toCents("12")).toBe(1200n);
+    expect(fromCents(125050n)).toBe("1250.50");
+    expect(fromCents(5n)).toBe("0.05");
   });
 
-  it("refuses floats-in-disguise", () => {
-    expect(() => toCents("1e3")).toThrow();
-    expect(() => toCents("12.999")).toThrow();
-    expect(() => toCents("")).toThrow();
+  it("carries a sign instead of corrupting a negative", () => {
+    expect(fromCents(-5n)).toBe("-0.05");
+    expect(fromCents(-125050n)).toBe("-1250.50");
+    expect(toCents("-0.05")).toBe(-5n);
   });
 
-  it("accepts a LEADING MINUS (the re-open path's negative deltas)", () => {
-    // The collection flow subtracts allocations with "-800.00"-style
-    // strings; the sign is parsed here so callers never hand-roll it.
-    // Database columns remain CHECKed non-negative themselves.
-    expect(toCents("-5.00")).toBe(-500n);
+  it("refuses a third decimal", () => {
+    expect(() => toCents("1.234")).toThrow();
   });
 });
 
-describe("allocateOldestFirst — the gateway's server-side allocation", () => {
-  const outstanding = [
-    { installmentId: "apr", dueDate: "2030-04-10", balanceCents: 100_000n },
-    { installmentId: "jul", dueDate: "2030-07-10", balanceCents: 100_000n },
-    { installmentId: "oct", dueDate: "2030-10-10", balanceCents: 100_000n },
+describe("allocateOldestFirst", () => {
+  const dues = [
+    { installmentId: "b", dueDate: "2026-05-01", balanceCents: 1000n },
+    { installmentId: "a", dueDate: "2026-04-01", balanceCents: 1000n },
   ];
 
-  it("fills the OLDEST due first", () => {
-    const result = allocateOldestFirst(150_000n, outstanding);
-    expect(result).toEqual([
-      { installmentId: "apr", amountCents: 100_000n },
-      { installmentId: "jul", amountCents: 50_000n },
+  it("fills oldest first and stops at the total", () => {
+    expect(allocateOldestFirst(1500n, dues)).toEqual([
+      { installmentId: "a", amountCents: 1000n },
+      { installmentId: "b", amountCents: 500n },
     ]);
   });
 
-  it("consumes a total exactly equal to the dues", () => {
-    const result = allocateOldestFirst(300_000n, outstanding);
-    expect(result).toHaveLength(3);
-    expect(
-      result?.reduce((acc, a) => acc + a.amountCents, 0n),
-    ).toBe(300_000n);
-  });
-
-  it("REFUSES a total exceeding the outstanding balances (no surplus wallet)", () => {
-    expect(allocateOldestFirst(300_001n, outstanding)).toBeNull();
-  });
-
-  it("refuses zero and negative totals", () => {
-    expect(allocateOldestFirst(0n, outstanding)).toBeNull();
-  });
-
-  it("skips installments already fully paid", () => {
-    const result = allocateOldestFirst(100_000n, [
-      { installmentId: "apr", dueDate: "2030-04-10", balanceCents: 0n },
-      ...outstanding.slice(1),
-    ]);
-    expect(result).toEqual([{ installmentId: "jul", amountCents: 100_000n }]);
-  });
-});
-
-describe("headConcessionTotals — the stacked-concession clamp (H1)", () => {
-  const heads = [
-    { feeHeadId: "tuition", annualCents: 1_000_000n },
-    { feeHeadId: "lab", annualCents: 200_000n },
-  ];
-
-  it("two individually-valid named concessions cannot pass the head's annual", () => {
-    // 60% + 50% = 110% of the tuition — both valid alone; stacked, capped.
-    const totals = headConcessionTotals(
-      [
-        { feeHeadId: "tuition", amountCents: 600_000n },
-        { feeHeadId: "tuition", amountCents: 500_000n },
-      ],
-      heads,
-    );
-    expect(totals.get("tuition")).toBe(1_000_000n); // capped at annual
-  });
-
-  it("an all-heads concession plus a named one clamps per head", () => {
-    // 50% of everything (600k/100k floored) + 60% tuition → capped at 1M.
-    const totals = headConcessionTotals(
-      [
-        { feeHeadId: null, amountCents: 600_000n },
-        { feeHeadId: "tuition", amountCents: 600_000n },
-      ],
-      heads,
-    );
-    expect(totals.get("tuition")).toBe(1_000_000n); // 500k + 600k → 1M cap
-    expect(totals.get("lab")).toBe(100_000n); // its share, under its cap
-  });
-
-  it("the clamp composes with apportionment: no bucket gets a negative net", () => {
-    // 100% concession on a head with uneven buckets.
-    const totals = headConcessionTotals(
-      [{ feeHeadId: "tuition", amountCents: 1_500_000n }],
-      heads,
-    );
-    expect(totals.get("tuition")).toBe(1_000_000n); // capped
-    const shares = apportionHeadTotal(1_000_000n, [333_333n, 333_333n, 333_334n]);
-    for (const s of shares) expect(s >= 0n).toBe(true);
-    // Every bucket's share <= its amount: net never negative.
-    const amounts = [333_333n, 333_333n, 333_334n];
-    shares.forEach((s, i) => expect(s <= (amounts[i] ?? 0n)).toBe(true));
-  });
-
-  it("a head with zero annual concedes nothing even if a concession names it", () => {
-    const totals = headConcessionTotals(
-      [{ feeHeadId: "free", amountCents: 50_000n }],
-      [...heads, { feeHeadId: "free", annualCents: 0n }],
-    );
-    expect(totals.get("free")).toBe(0n); // cap 0 — a free head cannot discount
-  });
-});
-
-describe("windowedConcessionShares — validity windows (S2/F5)", () => {
-  const heads = [
-    { feeHeadId: "tuition", annualCents: 1_200_000n },
-    { feeHeadId: "lab", annualCents: 240_000n },
-  ];
-  // 12 monthly tuition buckets, 1000.00 each, due the first of Apr–Mar.
-  const buckets12 = Array.from({ length: 12 }, (_, i) => {
-    const month = ((3 + i) % 12) + 1;
-    const year = month >= 4 ? 2030 : 2031;
-    return {
-      dueDate: `${year}-${String(month).padStart(2, "0")}-01`,
-      amountCents: 100_000n,
-    };
-  });
-
-  it("a Jun–Aug named concession discounts ONLY June, July and August", () => {
-    const shares = windowedConcessionShares(
-      [
-        {
-          feeHeadId: "tuition",
-          amountCents: 300_000n,
-          validFrom: "2030-06-01",
-          validTo: "2030-08-31",
-        },
-      ],
-      "tuition",
-      buckets12,
-      heads,
-    );
-    expect(shares).toHaveLength(12);
-    // Apr idx0, May idx1, Jun idx2, Jul idx3, Aug idx4.
-    expect(shares.slice(0, 2).every((s) => s === 0n)).toBe(true);
-    expect(shares.slice(2, 5).every((s) => s === 100_000n)).toBe(true);
-    expect(shares.slice(5).every((s) => s === 0n)).toBe(true);
-    expect(shares.reduce((a, b) => a + b, 0n)).toBe(300_000n);
-  });
-
-  it("an all-heads concession with a window covers only its months, proportionally", () => {
-    // 1440.00 across everything, Jun–Aug: tuition's share is
-    // 144000 × 1200000/1440000 = 120000, over 3 covered buckets.
-    const shares = windowedConcessionShares(
-      [
-        {
-          feeHeadId: null,
-          amountCents: 144_000n,
-          validFrom: "2030-06-01",
-          validTo: "2030-08-31",
-        },
-      ],
-      "tuition",
-      buckets12,
-      heads,
-    );
-    expect(shares.slice(0, 2).every((s) => s === 0n)).toBe(true);
-    expect(shares.slice(2, 5).every((s) => s === 40_000n)).toBe(true);
-    expect(shares.slice(5).every((s) => s === 0n)).toBe(true);
-    expect(shares.reduce((a, b) => a + b, 0n)).toBe(120_000n);
-  });
-
-  it("a named concession for ANOTHER head never leaks across", () => {
-    const shares = windowedConcessionShares(
-      [
-        {
-          feeHeadId: "lab",
-          amountCents: 240_000n,
-          validFrom: "2030-04-01",
-          validTo: null,
-        },
-      ],
-      "tuition",
-      buckets12,
-      heads,
-    );
-    expect(shares.every((s) => s === 0n)).toBe(true);
-  });
-
-  it("stacked full-year concessions still clamp at the head annual (H1 composes)", () => {
-    const shares = windowedConcessionShares(
-      [
-        { feeHeadId: "tuition", amountCents: 720_000n, validFrom: "2030-04-01", validTo: null },
-        { feeHeadId: "tuition", amountCents: 720_000n, validFrom: "2030-04-01", validTo: null },
-      ],
-      "tuition",
-      buckets12,
-      heads,
-    );
-    expect(shares.reduce((a, b) => a + b, 0n)).toBe(1_200_000n);
-    for (const [i, s] of shares.entries()) {
-      expect(s >= 0n).toBe(true);
-      expect(s <= (buckets12[i]?.amountCents ?? 0n)).toBe(true);
-    }
-  });
-
-  it("a window covering no bucket contributes nothing (recorded, not discounted)", () => {
-    const shares = windowedConcessionShares(
-      [
-        {
-          feeHeadId: "tuition",
-          amountCents: 300_000n,
-          validFrom: "2031-06-01",
-          validTo: "2031-08-31",
-        },
-      ],
-      "tuition",
-      buckets12,
-      heads,
-    );
-    expect(shares.every((s) => s === 0n)).toBe(true);
+  it("refuses more than is owed, or nothing", () => {
+    expect(allocateOldestFirst(2001n, dues)).toBeNull();
+    expect(allocateOldestFirst(0n, dues)).toBeNull();
   });
 });

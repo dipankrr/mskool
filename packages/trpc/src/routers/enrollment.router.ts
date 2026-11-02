@@ -5,7 +5,7 @@ import {
   studentSelectSchema,
   updateEnrollmentSchema,
 } from "@repo/contracts";
-import { enrollmentService } from "@repo/services";
+import { enrollmentService, feesBillingService } from "@repo/services";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -170,7 +170,11 @@ export const enrollmentRouter = router({
       // A duplicate (student, year) is refused by the unique index and worded
       // by translateErrors (ADR-022); foreign parents by the service's
       // in-transaction re-reads.
-      return enrollmentService.createEnrollment(ctx.scope, input.data);
+      const enrollment = await enrollmentService.createEnrollment(ctx.scope, input.data);
+      // Billing follows admission once the class has started billing. It never
+      // fails the admission; the student stays on "not billed" if it can't decide.
+      await feesBillingService.billIfReady(ctx.scope, enrollment.id, ctx.userId);
+      return enrollment;
     }),
 
   // Labels only — the contract omits everything the status machine and hard
