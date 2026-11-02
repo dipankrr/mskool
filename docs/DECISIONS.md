@@ -2764,3 +2764,44 @@ so where that matters. Its totals use the same "due now" line as the app.
 does not close the earlier session's dues, so staff must not collect both. Gateway, receipt PDF,
 CSV import of previous dues, class-wide one-off charges, per-student pause on one fee line, web
 parity. See section 7 of the plan.
+
+## ADR-059 - Fee documents are HTML from the API, made into PDFs on the phone
+
+**Context.** Fees needs printed papers: receipts at the counter, due notices sent home, lists for
+the office, and a no-dues certificate. Many schools only have an A4 printer, some a small thermal
+one, and most will send the PDF on WhatsApp. Headings may be in Bengali or Hindi.
+
+**Decision.** The API fills a template and returns finished HTML with a page size
+(`fees.document.*`). The phone turns it into a named PDF with `expo-print`, then opens Android's
+print screen or the share sheet. Templates live in `packages/services/src/fee-documents/`, so a
+layout fix ships with an API deploy and needs no app release, and web can later print the same
+HTML. There is no separate PDF machine.
+
+Eight documents: receipt (A4 full, A4 half with two copies or one on the top or bottom half, 58mm
+and 80mm thermal), student statement, due notices (1, 2 or 4 per sheet, optional UPI QR), who owes,
+day book, cheque list, no-dues certificate, fee structure sheet. A receipt prints what was recorded
+on the payment and stamps CANCELLED, BOUNCED or REFUNDED from its status. A long receipt moves to a
+full page rather than being cut off. A no-dues certificate is refused while anything is due, now or
+later, or a payment is waiting to clear.
+
+A school's own heading lines, footer, signature line, document titles, logo, amount-in-words
+switch, usual receipt paper and UPI QR live in `fee_print_settings` (0045), one row per school. The
+school's name and address always print from its record. Regional text is what the school types;
+labels and figures stay English. The QR is either the school's UPI ID, made into a `upi://pay`
+link per student with the amount and admission number, or one uploaded image. Nothing in mskool
+hears about a UPI payment; staff record it as usual.
+
+Printing writes nothing to the fee tables. Every read goes through the existing scoped services.
+
+**Checked.** On an Android emulator: 18 notices with a QR each, a logo and Bengali and Hindi
+headings made a 312 KB PDF in about 5 seconds; letters joined correctly with the phone's own fonts.
+The 58mm receipt fits on one page in Android's print screen.
+
+**Rejected.** Server-made PDFs with Chromium: a separate machine for no gain now. A lightweight PDF
+library: Bengali and Hindi need text shaping it may not do. Templates in the app: a layout fix would
+need a store release. A duplicate stamp and print log: little use once a PDF can be forwarded.
+`expo-updates`: not needed once templates live on the API.
+
+**Deferred.** Direct Bluetooth printing to thermal printers (needs a native library and a printer to
+test on). Web printing. A refund voucher, collection report and tuition fee certificate. A gateway
+and a QR linked to the system. A numbered, recorded no-dues certificate.

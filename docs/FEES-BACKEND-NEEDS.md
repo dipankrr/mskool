@@ -8,7 +8,7 @@ Still missing:
 
 1. **Refund list endpoint.** The ledger's `fee_refund` rows are the read path today. The student
    read carries a per-receipt refunded total.
-2. **Receipt PDF.** A listed go-live need.
+2. **Receipt PDF.** Built as ADR-059: eight documents, made into PDFs on the phone.
 3. **A real fee report.** "View detailed fee report" on the dashboard only opens Payments.
 4. **Gateway.** The webhook route answers 404 until `FEE_WEBHOOK_SECRET` is set, and no gateway is
    wired up.
