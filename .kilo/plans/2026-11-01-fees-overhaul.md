@@ -307,10 +307,17 @@ Neon database.
 | Unit tests | services 179, trpc 42, authz 88, web 115, mobile 42 suites / 735, after the second round |
 | `pnpm db:verify` | passes |
 | `pnpm check:openapi` | generates |
-| Fee integration (`test:integration fees`) | 96 of 98 on the last full run; the other two (a dropped database connection, and a class number a new test reused) passed when rerun after fixing the test |
+| Full `test:integration` | 356 of 357 across 17 files. The one failure was a test reusing the class name `Late`; `fees-overhaul` then passed 28 of 28 |
+| Empty database | All 44 migrations apply, `db:verify` passes, `db:seed` passes after a fix for the new payment-date rule |
+| `smoke-authz`, on that empty database | 234 of 241, every fee check passing. Three `school.list` cells went stale with `4c76521`, which gave teaching roles `school:read`. Four family-link revoke checks fail in code the fee commits didn't touch; cause not traced |
+| Create remaining months, pressed on the emulator | 134 dues for 17 students in about 35 seconds, no duplicates, due-now totals unchanged |
 
-**Not run:** the rest of `pnpm test:integration`, `smoke-authz`, `db:seed` on the new `seed.ts` (typechecked
-only), web Playwright including `e2e/fees-counter.spec.ts`.
+**Not run:** web Playwright, including `e2e/fees-counter.spec.ts`.
+
+**Don't run the default `pnpm db:seed` on the demo database.** It is written for 2025-26 and makes that
+the current session. The demo uses `pnpm db:seed -- --current-session`. The default seed was run on it
+once on 2026-11-02: both branches were set back to 2026-27 afterwards, but 2024-25 and 2025-26 now hold
+seed rows, including 12 unpaid dues on Aditi Sharma in 2025-26. They don't show while 2026-27 is current.
 
 ### Device walk: Android emulator, Main Campus
 - **1.0x:** dashboard, More info, Filter sheet, student page, month strip, More, Collect search,
