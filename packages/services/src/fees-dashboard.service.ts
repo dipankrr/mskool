@@ -10,6 +10,7 @@ import type {
   FeeSetupStatus,
   FeeStudentSummary,
   FeeStudentSummaryInput,
+  FeeYearMonthState,
 } from "@repo/contracts";
 import { db } from "@repo/db";
 import {
@@ -516,7 +517,7 @@ export class FeesDashboardService {
 
   async list(
     scopes: DataScope[],
-    input: FeeDashboardListInput,
+    input: Omit<FeeDashboardListInput, "view"> & Partial<Pick<FeeDashboardListInput, "view">>,
     includeHistory: boolean,
   ): Promise<FeeDashboardListOutput | null> {
     const session = await this.sessionOf(scopes, input.academicYearId, includeHistory);
@@ -689,6 +690,16 @@ export class FeesDashboardService {
       : [];
     const lastOf = new Map(lastPayments.map((row) => [row.studentId, row]));
 
+    const year =
+      input.view === "year"
+        ? await this.yearMonths(
+            scopes,
+            session,
+            month,
+            rows.map((row) => row.studentId),
+          )
+        : null;
+
     const total = counted?.total ?? 0;
     return {
       rows: rows.map((row) => ({
@@ -709,12 +720,103 @@ export class FeesDashboardService {
         oldestDueDate: row.oldestDueDate,
         lastPaymentDate: lastOf.get(row.studentId)?.date ?? null,
         lastPaymentAmount: lastOf.get(row.studentId)?.amount ?? null,
+        ...(year
+          ? { monthStates: year.statesOf(row.studentId), monthPaid: year.paidOf(row.studentId) }
+          : {}),
       })),
       total,
       totalDue: counted?.totalDue ?? "0.00",
       page: input.page,
       totalPages: Math.max(1, Math.ceil(total / input.pageSize)),
+      ...(year ? { months: year.months } : {}),
     };
+  }
+
+  /**
+   * The year view's months, for the students on one page. A month's state uses
+   * the same rules as the student page: waived and cancelled dues don't count,
+   * and a month up to `current` is owed now. Only dues that exist are read, so
+   * a month whose dues aren't created yet is empty.
+   */
+  private async yearMonths(
+    scopes: DataScope[],
+    session: { id: string; startDate: string; endDate: string },
+    current: string,
+    studentIds: string[],
+  ) {
+    const COUNTED = sql`${feeInstallments.paymentStatus} NOT IN ('cancelled', 'waived')`;
+    const [withDues, perMonth] = await Promise.all([
+      db
+        .selectDistinct({ key: sql<string>`to_char(${feeInstallments.dueDate}, 'YYYY-MM')` })
+        .from(feeInstallments)
+        .where(
+          and(
+            eq(feeInstallments.academicYearId, session.id),
+            COUNTED,
+            scopeWhere(scopes.map(atSchoolLevel), INSTALLMENT_SCOPE),
+          ),
+        ),
+      studentIds.length
+        ? db
+            .select({
+              studentId: feeInstallments.studentId,
+              key: sql<string>`to_char(${feeInstallments.dueDate}, 'YYYY-MM')`,
+              paid: sql<string>`coalesce(sum(${feeInstallments.paidAmount}), 0)::text`,
+              balance: sql<string>`coalesce(sum(greatest(${BALANCE}, 0)) filter (where ${OPEN_DUE}), 0)::text`,
+            })
+            .from(feeInstallments)
+            .where(
+              and(
+                eq(feeInstallments.academicYearId, session.id),
+                inArray(feeInstallments.studentId, studentIds),
+                COUNTED,
+                scopeWhere(scopes.map(atSchoolLevel), INSTALLMENT_SCOPE),
+              ),
+            )
+            .groupBy(feeInstallments.studentId, sql`to_char(${feeInstallments.dueDate}, 'YYYY-MM')`)
+        : Promise.resolve([]),
+    ]);
+
+    const hasDues = new Set(withDues.map((row) => row.key));
+    const months = monthsBetween(session.startDate, session.endDate)
+      .map((m) => ({
+        key: monthKey(m.year, m.month),
+        label: (MONTH_LABELS[m.month - 1] ?? "").slice(0, 3),
+      }))
+      // A month up to now with no dues anywhere is a month without fees. Later
+      // months stay, because their dues may simply not be created yet.
+      .filter((m) => m.key > current || hasDues.has(m.key))
+      .map((m) => ({ ...m, current: m.key === current }));
+
+    const byStudent = new Map<string, Map<string, { paid: bigint; balance: bigint }>>();
+    for (const row of perMonth) {
+      const entries = byStudent.get(row.studentId) ?? new Map();
+      entries.set(row.key, { paid: toCents(row.paid), balance: toCents(row.balance) });
+      byStudent.set(row.studentId, entries);
+    }
+
+    const statesOf = (studentId: string): FeeYearMonthState[] =>
+      months.map(({ key }) => {
+        const entry = byStudent.get(studentId)?.get(key);
+        if (!entry) return "none";
+        if (entry.balance === 0n) return "paid";
+        if (entry.paid > 0n) return "partial";
+        return key > current ? "upcoming" : "due";
+      });
+
+    // Whole percent paid of what the month asks for after concessions. A part
+    // paid month never rounds to 0 or 100, so its box always shows both colours.
+    const paidOf = (studentId: string): number[] =>
+      months.map(({ key }) => {
+        const entry = byStudent.get(studentId)?.get(key);
+        if (!entry) return 0;
+        const owed = entry.paid + entry.balance;
+        if (owed === 0n || entry.balance === 0n) return entry.paid > 0n || owed === 0n ? 100 : 0;
+        const percent = Number((entry.paid * 100n) / owed);
+        return entry.paid > 0n ? Math.min(99, Math.max(1, percent)) : 0;
+      });
+
+    return { months, statesOf, paidOf };
   }
 
   /** Everything the student fee page shows, in one call. */

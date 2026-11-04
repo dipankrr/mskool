@@ -1175,4 +1175,50 @@ describe("dashboard reads", () => {
     );
     expect(paid?.total).toBe(0);
   }, 120_000);
+
+  it("the year view adds each student's months and picks the same students as the list", async () => {
+    const s = await billed("YEAR");
+    const notBilled = await student("YEARNB");
+    const dues = await duesOf(s.id);
+    const april = dues.find((d) => d.feeHeadId === w.tuitionId && d.dueDate.startsWith("2025-04"));
+    const may = dues.filter((d) => d.dueDate.startsWith("2025-05"));
+    await pay(s.id, [
+      { installmentId: april?.id ?? "", amount: "100.00" },
+      ...may.map((d) => ({ installmentId: d.id, amount: d.netAmount })),
+    ]);
+
+    const scopes = [w.scope];
+    const input = {
+      organizationId: w.scope.organizationId,
+      academicYearId: w.yearId,
+      search: `${RUN}-YEAR`,
+      show: "all" as const,
+      sort: "name" as const,
+      page: 1,
+      pageSize: 25,
+    };
+    const list = await feesDashboardService.list(scopes, { ...input, view: "list" }, true);
+    const year = await feesDashboardService.list(scopes, { ...input, view: "year" }, true);
+
+    // The list itself doesn't change, and doesn't pay for the months.
+    expect(list?.months).toBeUndefined();
+    expect(list?.rows[0]?.monthStates).toBeUndefined();
+    expect(year?.rows.map((row) => row.studentId)).toEqual(list?.rows.map((row) => row.studentId));
+    expect(year?.total).toBe(list?.total);
+    expect(year?.totalDue).toBe(list?.totalDue);
+
+    // The session has ended, so its last month is "now" and every month is owed.
+    expect(year?.months).toHaveLength(12);
+    expect(year?.months?.[0]).toEqual({ key: "2025-04", label: "Apr", current: false });
+    expect(year?.months?.at(-1)?.current).toBe(true);
+
+    const states = year?.rows.find((row) => row.studentId === s.id)?.monthStates;
+    expect(states?.slice(0, 3)).toEqual(["partial", "paid", "due"]);
+    // April asks for ₹1,200 and ₹100 of it is paid.
+    expect(year?.rows.find((row) => row.studentId === s.id)?.monthPaid?.slice(0, 3)).toEqual([8, 100, 0]);
+    expect(year?.rows.find((row) => row.studentId === notBilled.id)?.monthStates).toEqual(
+      Array(12).fill("none"),
+    );
+    await assertAgreement(s.id);
+  }, 120_000);
 });

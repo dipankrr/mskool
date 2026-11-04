@@ -845,6 +845,51 @@ export function splitByMonth(
  * The generator names monthly dues "Tuition Fee — 2026-11"; people say
  * "Tuition Fee — November 2026". Only a trailing year-month is rewritten.
  */
+export type YearMonthState = "paid" | "due" | "partial" | "upcoming" | "none";
+
+/**
+ * The year view's "Nov: 7 of 12 cleared": of the students with a fee in the
+ * current month, how many have nothing left in it. Null when the current month
+ * isn't shown or nobody has a fee in it.
+ */
+export function clearedInMonth(
+  months: { current: boolean }[],
+  rows: { monthStates?: YearMonthState[] }[],
+): { cleared: number; total: number } | null {
+  const index = months.findIndex((month) => month.current);
+  if (index < 0) return null;
+  let cleared = 0;
+  let total = 0;
+  for (const row of rows) {
+    const state = row.monthStates?.[index] ?? "none";
+    if (state === "none") continue;
+    total += 1;
+    if (state === "paid") cleared += 1;
+  }
+  return total > 0 ? { cleared, total } : null;
+}
+
+/**
+ * What a screen reader says for one student's boxes: the months grouped by
+ * state, so "April, May due. June cleared." instead of twelve words in a row.
+ */
+export function yearRowSpoken(
+  months: { label: string }[],
+  states: YearMonthState[] | undefined,
+  words: Record<YearMonthState, string>,
+): string {
+  const groups = new Map<YearMonthState, string[]>();
+  months.forEach((month, index) => {
+    const state = states?.[index] ?? "none";
+    if (state === "none") return;
+    groups.set(state, [...(groups.get(state) ?? []), month.label]);
+  });
+  return (["due", "partial", "paid", "upcoming"] as const)
+    .filter((state) => groups.has(state))
+    .map((state) => `${(groups.get(state) ?? []).join(", ")} ${words[state]}`)
+    .join(". ");
+}
+
 export function friendlyDueName(description: string): string {
   return description
     .replace(/ — once$/, "")

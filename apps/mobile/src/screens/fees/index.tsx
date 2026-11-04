@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { useEffect, useMemo, useState, useRef } from "react";
+import { LayoutAnimation, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { router, type Href } from "expo-router";
 import Animated from "react-native-reanimated";
 import { keepPreviousData } from "@tanstack/react-query";
@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 
 import { AppIcon } from "../../components/app-icon";
 import { CapsuleButton } from "../../components/capsule-button";
+import { Card } from "../../components/card";
 import { ChoiceSheet } from "../../components/choice-sheet";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorCard } from "../../components/error-card";
@@ -30,19 +31,21 @@ import { feesCopy } from "../../lib/fees-copy";
 import { formatMoney } from "../../lib/money";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
-import { fontFamily, fontSize, gutter, radius, spacing } from "../../theme/tokens";
+import { fontFamily, fontSize, gutter, motion, radius, spacing } from "../../theme/tokens";
 import {
   AttentionCards,
   SmallStat,
   TotalDueCard,
   type AttentionCard,
 } from "./dashboard-cards";
-import { DashboardRow } from "./dashboard-row";
+import { DashboardRow, type DashboardRowData } from "./dashboard-row";
 import { DuesSheet } from "./dues-sheet";
+import { YearMatrix } from "./year-matrix";
 import { FeesPrintSheet } from "./fees-print-sheet";
 
 type Show = "owes" | "paid" | "not_billed" | "all";
 type Sort = "oldest" | "highest" | "name";
+type ListView = "list" | "year";
 
 const PAGE_SIZE = 25;
 const words = feesCopy.dashboard;
@@ -83,6 +86,14 @@ export function FeesScreen({
   const [search, setSearch] = useState("");
   const [show, setShow] = useState<Show>("owes");
   const [sort, setSort] = useState<Sort>("oldest");
+  const [view, setView] = useState<ListView>("list");
+  // Rows stay open until tapped again, so two students can be compared.
+  const [openRows, setOpenRows] = useState<ReadonlySet<string>>(new Set());
+  // Where the search box sits in the scroll body, so focusing it can bring it
+  // to the top with the list under it.
+  const scrollRef = useRef<ScrollView>(null);
+  const bodyY = useRef(0);
+  const searchY = useRef(0);
   const [classId, setClassId] = useState<string | null>(null);
   const [sectionId, setSectionId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -118,6 +129,7 @@ export function FeesScreen({
       sort,
       page,
       pageSize: PAGE_SIZE,
+      view,
     },
     { enabled, placeholderData: keepPreviousData },
   );
@@ -267,6 +279,7 @@ export function FeesScreen({
         titleTestID="fees-title"
         padForTabBar={variant === "tab"}
         onScroll={variant === "tab" ? hideTabBarOnScroll : undefined}
+        scrollRef={scrollRef}
       >
         {children}
       </ScreenFrame>
@@ -369,10 +382,24 @@ export function FeesScreen({
   }
 
   const rows = list.data?.rows ?? [];
+  const openStudent = (row: DashboardRowData) =>
+    router.push({
+      pathname: "/fees/student/[studentId]",
+      params: {
+        studentId: row.studentId,
+        admissionNumber: row.admissionNumber,
+        studentName: row.studentName,
+      },
+    });
   const noSetup = !data.setup.hasFeeTypes || data.setup.structures === 0;
 
   return frame(
-    <View style={styles.body}>
+    <View
+      style={styles.body}
+      onLayout={(event) => {
+        bodyY.current = event.nativeEvent.layout.y;
+      }}
+    >
       {!sessionOpen ? (
         <Notice
           tone="caution"
@@ -436,7 +463,12 @@ export function FeesScreen({
         />
       </Pressable>
 
-      <View style={styles.searchWrap}>
+      <View
+        style={styles.searchWrap}
+        onLayout={(event) => {
+          searchY.current = event.nativeEvent.layout.y;
+        }}
+      >
         <AppIcon name="search" size={18} color={colors.muted} />
         <TextInput
           value={query}
@@ -447,6 +479,12 @@ export function FeesScreen({
           autoCapitalize="none"
           returnKeyType="search"
           accessibilityLabel={words.search}
+          onFocus={() =>
+            scrollRef.current?.scrollTo({
+              y: Math.max(0, bodyY.current + searchY.current - spacing.sm),
+              animated: true,
+            })
+          }
           style={styles.searchInput}
           testID="fees-search"
         />
@@ -472,7 +510,7 @@ export function FeesScreen({
       >
         {canFilter ? (
           <FilterPill
-            label={classes.data?.find((row) => row.id === classId)?.name ?? words.classLabel}
+            label={classes.data?.find((row) => row.id === classId)?.name ?? words.allClasses}
             accessibilityLabel={words.classLabel}
             selected={Boolean(classId)}
             dropdown
@@ -482,7 +520,7 @@ export function FeesScreen({
         ) : null}
         {canFilter && classId && sectionOptions.length > 0 ? (
           <FilterPill
-            label={sectionOptions.find((row) => row.id === sectionId)?.label ?? words.sectionShort}
+            label={sectionOptions.find((row) => row.id === sectionId)?.label ?? words.allSectionsShort}
             accessibilityLabel={words.sectionLabel}
             selected={Boolean(sectionId)}
             dropdown
@@ -495,6 +533,7 @@ export function FeesScreen({
             key={id}
             label={words.show[id]}
             selected={show === id}
+            clearable
             // Tapping the chip that's on turns it off, which shows everyone.
             onPress={() => {
               setShow(show === id ? "all" : id);
@@ -507,16 +546,22 @@ export function FeesScreen({
 
       {list.data ? (
         <View style={styles.listHead}>
-          <ThemedText
-            variant="meta"
-            numberOfLines={1}
-            style={styles.count}
-            testID="fees-count"
+          <View
+            style={styles.countRow}
+            accessible
+            accessibilityLabel={
+              show === "paid" || show === "not_billed"
+                ? words.countNoTotal(list.data.total)
+                : words.count(list.data.total, formatMoney(list.data.totalDue))
+            }
           >
-            {show === "paid" || show === "not_billed"
-              ? words.countNoTotal(list.data.total)
-              : words.count(list.data.total, formatMoney(list.data.totalDue))}
-          </ThemedText>
+            <AppIcon name="students" size={16} color={colors.muted} />
+            <ThemedText variant="meta" numberOfLines={1} style={styles.count} testID="fees-count">
+              {show === "paid" || show === "not_billed"
+                ? String(list.data.total)
+                : words.countShort(list.data.total, formatMoney(list.data.totalDue))}
+            </ThemedText>
+          </View>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`${words.sort}: ${words.sorts[sort]}`}
@@ -530,6 +575,25 @@ export function FeesScreen({
               {words.sorts[sort]}
             </ThemedText>
           </Pressable>
+          <View style={styles.viewToggle} accessibilityRole="radiogroup">
+            {(["list", "year"] as const).map((id) => (
+              <Pressable
+                key={id}
+                accessibilityRole="radio"
+                accessibilityLabel={id === "list" ? words.listView : words.yearView}
+                accessibilityState={{ selected: view === id }}
+                onPress={() => setView(id)}
+                style={[styles.viewOption, view === id ? styles.viewOptionOn : null]}
+                testID={`fees-view-${id}`}
+              >
+                <AppIcon
+                  name={id === "list" ? "viewCompact" : "viewYear"}
+                  size={18}
+                  color={view === id ? colors.accentDeep : colors.muted}
+                />
+              </Pressable>
+            ))}
+          </View>
         </View>
       ) : null}
 
@@ -545,25 +609,57 @@ export function FeesScreen({
             <Skeleton key={key} height={96} />
           ))}
         </View>
+      ) : rows.length > 0 && view === "year" ? (
+        // The list's previous page is kept while a new one loads; it has no
+        // months until the year read arrives.
+        list.data?.months ? (
+          <YearMatrix
+            title={academicYear.name}
+            months={list.data.months}
+            rows={rows}
+            showCleared={list.data.totalPages <= 1}
+            onOpen={openStudent}
+          />
+        ) : (
+          <Skeleton height={320} />
+        )
       ) : rows.length > 0 ? (
-        <View style={styles.rows}>
-          {rows.map((row) => (
+        <Card padless style={styles.list}>
+          {rows.map((row, index) => (
             <DashboardRow
               key={row.studentId}
               row={row}
-              onPress={() =>
-                router.push({
-                  pathname: "/fees/student/[studentId]",
-                  params: {
-                    studentId: row.studentId,
-                    admissionNumber: row.admissionNumber,
-                    studentName: row.studentName,
-                  },
-                })
+              first={index === 0}
+              open={openRows.has(row.studentId)}
+              onToggle={() => {
+                // Rows ease open and shut instead of jumping.
+                LayoutAnimation.configureNext(
+                  LayoutAnimation.create(motion.base, "easeInEaseOut", "opacity"),
+                );
+                setOpenRows((current) => {
+                  const next = new Set(current);
+                  if (next.has(row.studentId)) next.delete(row.studentId);
+                  else next.add(row.studentId);
+                  return next;
+                });
+              }}
+              onOpen={() => openStudent(row)}
+              onCollect={
+                canCollect
+                  ? () =>
+                      router.push({
+                        pathname: "/fees/collect/[studentId]",
+                        params: {
+                          studentId: row.studentId,
+                          studentName: row.studentName,
+                          className: [row.className, row.sectionName].filter(Boolean).join(" · "),
+                        },
+                      })
+                  : undefined
               }
             />
           ))}
-        </View>
+        </Card>
       ) : noSetup ? (
         <EmptyState
           icon="fees"
@@ -725,6 +821,7 @@ function FilterPill({
   accessibilityLabel,
   selected,
   dropdown = false,
+  clearable = false,
   onPress,
   testID,
 }: {
@@ -732,6 +829,8 @@ function FilterPill({
   accessibilityLabel?: string;
   selected: boolean;
   dropdown?: boolean;
+  /** Shows a cross while on: tapping again turns it off. */
+  clearable?: boolean;
   onPress: () => void;
   testID: string;
 }) {
@@ -755,6 +854,9 @@ function FilterPill({
       >
         {label}
       </ThemedText>
+      {clearable && selected ? (
+        <AppIcon name="closeCircle" size={16} color={colors.accentDeep} />
+      ) : null}
       {dropdown ? (
         <AppIcon
           name="chevronDown"
@@ -838,12 +940,40 @@ const styles = StyleSheet.create({
   },
   sort: {
     minHeight: 32,
+    flexShrink: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xxs,
   },
-  count: {
+  viewToggle: {
+    flexDirection: "row",
+    gap: spacing.xxs,
+    padding: spacing.xxs,
+    borderRadius: radius.full,
+    backgroundColor: colors.field,
+  },
+  viewOption: {
+    width: 40,
+    height: 36,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  viewOptionOn: {
+    backgroundColor: colors.surface,
+  },
+  countRow: {
     flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  count: {
+    flexShrink: 1,
+  },
+  list: {
+    overflow: "hidden",
   },
   rows: {
     gap: spacing.sm,

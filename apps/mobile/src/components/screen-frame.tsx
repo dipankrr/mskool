@@ -8,7 +8,7 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import type { NativeScrollEvent, NativeSyntheticEvent } from "react-native";
 
 import { colors } from "../theme/brand-admin";
@@ -74,6 +74,7 @@ export function ScreenFrame({
   onRefresh,
   refreshing = false,
   onScroll,
+  scrollRef,
   children,
 }: {
   title: string;
@@ -110,6 +111,8 @@ export function ScreenFrame({
   onRefresh?: () => void;
   refreshing?: boolean;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  /** The body's scroll view, for a screen that scrolls a field into view. */
+  scrollRef?: Ref<ScrollView>;
   children: ReactNode;
 }) {
   const tabSpace = useTabBarSpace();
@@ -153,6 +156,7 @@ export function ScreenFrame({
         behavior="padding"
       >
         <ScrollView
+          ref={scrollRef}
           style={styles.scroll}
           contentContainerStyle={[
             styles.content,

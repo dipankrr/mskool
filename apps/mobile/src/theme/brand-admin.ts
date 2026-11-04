@@ -23,7 +23,17 @@ const palette = {
   /** Active-tab wash; the only translucent accent fill. */
   emeraldStrong: "rgba(15, 122, 68, 0.12)",
   red: "#B42318",
+  redSoftFg: "rgba(180, 35, 24, 0.2)",
   redTint: "#FEF3F2",
+  /** A due that exists but isn't owed yet: red, held back. */
+  redSoft: "rgba(180, 35, 24, 0.10)",
+  /** Marks "now" across a grid (the year view's current month). */
+  blueWash: "rgba(21, 112, 239, 0.10)",
+  /** A future month already paid: green, held back like a due-later red. */
+  emeraldSoft: "rgba(15, 122, 68, 0.14)",
+  emeraldSoftFg: "rgba(15, 122, 68, 0.4)",
+  /** A tick or cross on a solid year-view box: present, not shouting. */
+  glyphSoft: "rgba(255, 255, 255, 0.6)",
   amber: "#B54708",
   amberTint: "#FFFAEB",
   slate: "#475467",
@@ -76,6 +86,16 @@ export const colors = {
   chevron: palette.chevron,
   /** Modal scrim. */
   scrim: palette.scrim,
+  /** A future due not paid yet: lighter than an owed one, never mistaken for none. */
+  dueLater: palette.redSoft,
+  dueLaterFg: palette.redSoftFg,
+  /** A future month already paid, and its tick. */
+  paidLater: palette.emeraldSoft,
+  paidLaterFg: palette.emeraldSoftFg,
+  /** Ticks and crosses on solid year-view boxes. */
+  glyphSoft: palette.glyphSoft,
+  /** The current month's column in the year view. */
+  nowWash: palette.blueWash,
   /** Sheet grabber. */
   grabber: palette.grabber,
   tone,

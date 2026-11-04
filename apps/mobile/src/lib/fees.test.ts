@@ -24,6 +24,8 @@ import {
   paymentModeLabel,
   referenceFields,
   splitByMonth,
+  clearedInMonth,
+  yearRowSpoken,
 } from "./fees";
 
 const ALLOW_ALL = () => true;
@@ -438,5 +440,44 @@ describe("friendlyDueName", () => {
     expect(friendlyDueName("Admission Fee — full year")).toBe(
       "Admission Fee — full year",
     );
+  });
+});
+
+describe("year view", () => {
+  const months = [
+    { label: "Apr", current: false },
+    { label: "May", current: false },
+    { label: "Jun", current: true },
+  ];
+
+  it("counts cleared students only among those with a fee this month", () => {
+    expect(
+      clearedInMonth(months, [
+        { monthStates: ["paid", "paid", "paid"] },
+        { monthStates: ["due", "due", "partial"] },
+        { monthStates: ["none", "none", "none"] },
+        {},
+      ]),
+    ).toEqual({ cleared: 1, total: 2 });
+  });
+
+  it("says nothing when the current month isn't shown or nobody has a fee in it", () => {
+    expect(clearedInMonth([{ current: false }], [{ monthStates: ["paid"] }])).toBeNull();
+    expect(clearedInMonth(months, [{ monthStates: ["paid", "paid", "none"] }])).toBeNull();
+  });
+
+  it("reads a row's months grouped by state, leaving out months with no fee", () => {
+    const words = {
+      paid: "cleared",
+      due: "due",
+      partial: "part paid",
+      upcoming: "not due yet",
+      none: "no fee",
+    };
+    expect(yearRowSpoken(months, ["due", "paid", "due"], words)).toBe("Apr, Jun due. May cleared");
+    expect(yearRowSpoken(months, ["none", "partial", "upcoming"], words)).toBe(
+      "May part paid. Jun not due yet",
+    );
+    expect(yearRowSpoken(months, undefined, words)).toBe("");
   });
 });

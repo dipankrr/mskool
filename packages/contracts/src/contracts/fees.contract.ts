@@ -1074,8 +1074,19 @@ export const feeDashboardListInputSchema = feeDashboardInputSchema.extend({
   sort: z.enum(["oldest", "highest", "name"]).default("oldest"),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  /** "year" adds each student's months, for the year view. The list itself is unchanged. */
+  view: z.enum(["list", "year"]).default("list"),
 });
 export type FeeDashboardListInput = z.infer<typeof feeDashboardListInputSchema>;
+
+/**
+ * One student's month in the year view. paid: nothing left; due: nothing paid
+ * and owed by now; upcoming: created for a later month, nothing paid; partial:
+ * some paid and some left, in any month (the month's place says whether the
+ * rest is owed yet); none: no due in that month.
+ */
+export const feeYearMonthStateSchema = z.enum(["paid", "due", "partial", "upcoming", "none"]);
+export type FeeYearMonthState = z.infer<typeof feeYearMonthStateSchema>;
 
 export const feeDashboardRowSchema = z.object({
   studentId: z.uuid(),
@@ -1095,6 +1106,10 @@ export const feeDashboardRowSchema = z.object({
   oldestDueDate: z.string().nullable(),
   lastPaymentDate: z.string().nullable(),
   lastPaymentAmount: z.string().nullable(),
+  /** Year view only: one state per month in `months`, in the same order. */
+  monthStates: z.array(feeYearMonthStateSchema).optional(),
+  /** Year view only: how much of each month is paid, 0 to 100, same order as `monthStates`. */
+  monthPaid: z.array(z.number().int().min(0).max(100)).optional(),
 });
 export type FeeDashboardRow = z.infer<typeof feeDashboardRowSchema>;
 
@@ -1104,6 +1119,14 @@ export const feeDashboardListOutputSchema = z.object({
   totalDue: z.string(),
   page: z.number().int(),
   totalPages: z.number().int(),
+  /**
+   * Year view only: the session's months, leaving out a month up to now that
+   * has no dues anywhere in the school (a month without fees). `current` is
+   * the month "due now" counts up to.
+   */
+  months: z
+    .array(z.object({ key: z.string(), label: z.string(), current: z.boolean() }))
+    .optional(),
 });
 export type FeeDashboardListOutput = z.infer<typeof feeDashboardListOutputSchema>;
 

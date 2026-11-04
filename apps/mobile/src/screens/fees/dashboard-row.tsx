@@ -1,10 +1,9 @@
-import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/trpc";
 
 import { AppIcon } from "../../components/app-icon";
-import { Card } from "../../components/card";
+import { CapsuleButton } from "../../components/capsule-button";
 import { ThemedText } from "../../components/themed-text";
 import { feesCopy } from "../../lib/fees-copy";
 import { formatReadableDate } from "../../lib/format";
@@ -34,17 +33,25 @@ function statusLine(row: DashboardRowData) {
 }
 
 /**
- * One student, compact by default: who they are and what they owe. "More info"
- * opens the breakdown in place. Tapping the rest of the row opens their page.
+ * One student as a row in the list: who they are and what they owe. Tapping
+ * opens the breakdown in place, with the two next steps; it stays open until
+ * tapped again, and the list keeps track of which are open.
  */
 export function DashboardRow({
   row,
-  onPress,
+  open,
+  first,
+  onToggle,
+  onOpen,
+  onCollect,
 }: {
   row: DashboardRowData;
-  onPress: () => void;
+  open: boolean;
+  first: boolean;
+  onToggle: () => void;
+  onOpen: () => void;
+  onCollect?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   const words = feesCopy.dashboard;
   const status = statusLine(row);
   const owes = isPositiveMoney(row.dueNow);
@@ -58,12 +65,13 @@ export function DashboardRow({
     .join(" · ");
 
   return (
-    <Card padless style={styles.card}>
+    <View style={[styles.item, first ? null : styles.divider]}>
       <Pressable
         accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
         accessibilityLabel={`${row.studentName}. ${classLine}. ${formatMoney(row.dueNow)}. ${status.text}.`}
-        accessibilityHint={words.openStudent}
-        onPress={onPress}
+        accessibilityHint={open ? words.lessInfo : words.moreInfo}
+        onPress={onToggle}
         style={({ pressed }) => [styles.main, pressed ? styles.pressed : null]}
         testID={`fees-row-${row.studentId}`}
       >
@@ -98,50 +106,54 @@ export function DashboardRow({
             {status.text}
           </ThemedText>
         </View>
+        <AppIcon name={open ? "chevronUp" : "chevronDown"} size={18} color={colors.chevron} />
       </Pressable>
-
-      {row.billed || owes ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ expanded: open }}
-          accessibilityLabel={open ? words.lessInfo : words.moreInfo}
-          onPress={() => setOpen((value) => !value)}
-          style={styles.moreRow}
-          hitSlop={4}
-          testID={`fees-row-more-${row.studentId}`}
-        >
-          <ThemedText variant="meta" color={colors.accentDeep}>
-            {open ? words.lessInfo : words.moreInfo}
-          </ThemedText>
-          <AppIcon
-            name={open ? "chevronUp" : "chevronDown"}
-            size={16}
-            color={colors.accentDeep}
-          />
-        </Pressable>
-      ) : null}
 
       {open ? (
         <View style={styles.details} testID={`fees-row-details-${row.studentId}`}>
-          <Fact label={words.thisMonth} value={formatMoney(row.thisMonth)} />
-          <Fact label={words.overdue} value={formatMoney(row.overdue)} />
-          {isPositiveMoney(row.previousDues) ? (
-            <Fact label={words.previous} value={formatMoney(row.previousDues)} />
+          {row.billed || owes ? (
+            <>
+              <Fact label={words.thisMonth} value={formatMoney(row.thisMonth)} />
+              <Fact label={words.overdue} value={formatMoney(row.overdue)} />
+              {isPositiveMoney(row.previousDues) ? (
+                <Fact label={words.previous} value={formatMoney(row.previousDues)} />
+              ) : null}
+              {isPositiveMoney(row.later) ? (
+                <Fact label={words.later} value={formatMoney(row.later)} />
+              ) : null}
+              <Fact
+                label={words.lastPayment}
+                value={
+                  row.lastPaymentDate
+                    ? `${formatMoney(row.lastPaymentAmount)} · ${formatReadableDate(row.lastPaymentDate)}`
+                    : words.noPaymentYet
+                }
+              />
+            </>
           ) : null}
-          {isPositiveMoney(row.later) ? (
-            <Fact label={words.later} value={formatMoney(row.later)} />
-          ) : null}
-          <Fact
-            label={words.lastPayment}
-            value={
-              row.lastPaymentDate
-                ? `${formatMoney(row.lastPaymentAmount)} · ${formatReadableDate(row.lastPaymentDate)}`
-                : words.noPaymentYet
-            }
-          />
+          <View style={styles.actions}>
+            <CapsuleButton
+              title={words.openFees}
+              variant="secondary"
+              size="compact"
+              onPress={onOpen}
+              style={styles.action}
+              testID={`fees-row-open-${row.studentId}`}
+            />
+            {onCollect && owes ? (
+              <CapsuleButton
+                title={words.collect}
+                icon="collect"
+                size="compact"
+                onPress={onCollect}
+                style={styles.action}
+                testID={`fees-row-collect-${row.studentId}`}
+              />
+            ) : null}
+          </View>
         </View>
       ) : null}
-    </Card>
+    </View>
   );
 }
 
@@ -159,44 +171,49 @@ function Fact({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
-  card: {
-    overflow: "hidden",
+  item: {
+    backgroundColor: colors.surface,
+  },
+  divider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.hairline,
   },
   main: {
     minHeight: 64,
     flexDirection: "row",
-    justifyContent: "space-between",
+    alignItems: "center",
     gap: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
   },
   pressed: {
     backgroundColor: colors.field,
   },
   who: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
   amount: {
     alignItems: "flex-end",
     gap: 2,
   },
-  moreRow: {
-    minHeight: 40,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xxs,
-    paddingHorizontal: spacing.md,
-  },
   details: {
     gap: spacing.xs,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
   },
   fact: {
     flexDirection: "row",
     justifyContent: "space-between",
     gap: spacing.md,
+  },
+  actions: {
+    marginTop: spacing.sm,
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  action: {
+    flex: 1,
   },
 });

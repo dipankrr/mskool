@@ -104,6 +104,8 @@ const iconMap = {
   /** A list's two densities: names only, or full cards. */
   viewCompact: { ios: "list.bullet", android: "view-headline" },
   viewCards: { ios: "rectangle.grid.1x2.fill", android: "view-agenda" },
+  /** The Fees tab's year view: every student, month by month. */
+  viewYear: { ios: "square.grid.3x3.fill", android: "grid-on" },
   camera: { ios: "camera.fill", android: "photo-camera" },
   call: { ios: "phone.fill", android: "call" },
   /** Remove a row from a local draft (a band, a paper part). */
