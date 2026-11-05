@@ -10,6 +10,7 @@
     "dev": "dotenv -e .env -- turbo run dev",
     "build": "dotenv -e .env -- turbo run build",
     "build:api": "pnpm --filter @repo/api build",
+    "build:hostinger": "pnpm install --prod=false --frozen-lockfile && pnpm run build:api",
     "lint": "turbo run lint",
     "check-types": "turbo run check-types",
     "test": "turbo run test",
