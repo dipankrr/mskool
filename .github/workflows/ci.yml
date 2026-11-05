@@ -43,6 +43,12 @@ jobs:
       - name: Typecheck
         run: pnpm check-types
 
+      # This is the exact artifact Hostinger runs. Typechecking alone cannot
+      # catch an ESM/CJS bundle boot regression or a wrong emitted filename.
+      # Building is hermetic: tsup does not connect to Postgres or Redis.
+      - name: Build deployable API bundle
+        run: pnpm build:api
+
       - name: Unit tests
         run: pnpm test
 

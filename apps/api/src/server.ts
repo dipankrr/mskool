@@ -168,7 +168,17 @@ export function createServer(): Server {
 
   // better-auth mounts its own routes (sign-in, session, etc.) at /api/auth/* —
   // it needs the RAW body, so it's mounted BEFORE express.json().
-  app.all("/api/auth/*", toNodeHandler(auth));
+  //
+  // `trust proxy` above has already resolved the real client from the hosting
+  // proxy's X-Forwarded-For. Copy that into a header we own and better-auth
+  // reads (advanced.ipAddress), overwriting any client-supplied value: its
+  // limiter otherwise ignores a multi-hop XFF chain and puts every user in one
+  // shared bucket. See packages/auth/src/index.ts.
+  const authHandler = toNodeHandler(auth);
+  app.all("/api/auth/*", (req, res) => {
+    req.headers["x-client-ip"] = req.ip ?? req.socket.remoteAddress ?? "";
+    return authHandler(req, res);
+  });
 
   /**
    * The fee gateway webhook (ADR-009) also needs the RAW body — its HMAC

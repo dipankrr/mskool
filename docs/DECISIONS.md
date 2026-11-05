@@ -2805,3 +2805,39 @@ need a store release. A duplicate stamp and print log: little use once a PDF can
 **Deferred.** Direct Bluetooth printing to thermal printers (needs a native library and a printer to
 test on). Web printing. A refund voucher, collection report and tuition fee certificate. A gateway
 and a QR linked to the system. A numbered, recorded no-dues certificate.
+
+## ADR-060 - The API ships as one self-contained bundle to Hostinger Web Apps
+
+**Context.** There was no deploy path. The monorepo's packages export raw TypeScript
+(`@repo/db`, `@repo/services`, `@repo/trpc`), and `apps/api`'s build externalised them, so the
+emitted file could only run inside the workspace with a TypeScript loader. The target is a
+Hostinger Web App: one managed Node process, built from the repository root. Hostinger deploys an
+Express app's whole root including `node_modules`, starts it on incoming traffic, and stops it
+after an idle period. It has no Docker, no local Redis and no inbound WebSockets, and caps a
+request at 120 seconds. Postgres is Neon, Redis is Upstash, and object bytes already live in
+Postgres.
+
+**Decision.** `apps/api` builds with `tsup` into a single `dist/index.mjs` that bundles the
+workspace packages and every npm dependency. A `createRequire(import.meta.url)` banner gives
+Express's CJS dependencies the `require()` they call lazily. `package.json` `main`/`start` point at
+the `.mjs`, and declaration emit is off: nothing consumes `@repo/api` types, and the dts worker
+fails on TypeScript 6's `baseUrl` deprecation. Hostinger runs the root `build:api` script
+(`pnpm --filter @repo/api build`), leaves the Express output directory empty, and runs the
+root-relative entry `apps/api/dist/index.mjs`. The self-contained artifact does not depend on the
+host's deployed workspace layout.
+
+Because the hosting proxy appends to `X-Forwarded-For`, Express resolves the client through
+`trust proxy` and writes it to `x-client-ip`; better-auth's limiter reads only that header. Without
+it, every user shares one rate-limit bucket.
+
+**Consequences.** The deploy artifact needs no `node_modules` and no TypeScript at runtime; a 6 MB
+bundle and its source map are the whole server. Any future native module must be externalised, and
+the bundle must be booted after dependency upgrades. Builds install the full monorepo, which is
+heavy. Hostinger's idle process suspension means the in-process sweepers are not reliable there;
+keep them disabled until a finishing cron entry point exists, or choose an always-on host. The
+plan's single process and 120-second request cap are deployment constraints.
+
+**Rejected.** Running `tsx src/index.ts` in production: ships the sources and the full workspace.
+`pnpm deploy --prod`: unnecessary once one artifact contains the workspace code. A Dockerfile or
+VPS: more operations than this testing stage needs. Relying on raw workspace exports at runtime:
+they point at TypeScript source and make the deploy dependent on a host-specific loader/layout.

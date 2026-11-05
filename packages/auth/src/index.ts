@@ -58,6 +58,19 @@ export const auth = betterAuth({
   baseURL: env.BETTER_AUTH_URL,
   trustedOrigins,
 
+  /**
+   * Better-auth's own rate limiter keys on a client IP. Behind a hosting
+   * proxy that appends to X-Forwarded-For, the header has more than one
+   * address and better-auth ignores it — every user lands in one shared
+   * bucket. apps/api overwrites `x-client-ip` from Express's already-trusted
+   * `req.ip` (see the /api/auth mount), so this is the one header to read.
+   */
+  advanced: {
+    ipAddress: {
+      ipAddressHeaders: ["x-client-ip"],
+    },
+  },
+
   database: drizzleAdapter(db, { provider: "pg" }),
 
   emailAndPassword: {

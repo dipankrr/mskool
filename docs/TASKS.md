@@ -6,6 +6,25 @@ Phased backlog. **Update this file when you finish a chunk** — the next agent 
 
 ## ▶ Resume here
 
+**API DEPLOY PATH - BUILT AND VERIFIED LOCALLY, NOT DEPLOYED, 2026-11-04.** Record:
+`docs/DEPLOYMENT.md`, ADR-060. `apps/api` now builds one self-contained `dist/index.mjs` (workspace
+and npm dependencies bundled; a `createRequire` banner keeps Express's CJS requires working),
+`main`/`start` point at it, and declaration emit is off (nothing consumes `@repo/api` types, and the
+dts worker fails on TypeScript 6's `baseUrl` deprecation). Better-auth's limiter now reads
+`x-client-ip`, which the `/api/auth` mount fills from Express's trusted `req.ip`; the hosting
+proxy's multi-hop `X-Forwarded-For` otherwise put every user in one rate-limit bucket. Verified
+against the real Neon/Upstash endpoints: production-mode boot, `/health`, `/docs`, `/openapi.json`,
+CORS, sign-in → `me.get` → sign-out, a DB-backed public read, Redis ping, and the forwarded IP
+recorded on the session. **Gates:** `pnpm check-types` 9/9, `pnpm build:api` green
+(the generated `dist/` is gitignored); CI now builds that exact deploy artifact. **Not done:**
+the Hostinger deploy itself (needs a pushed
+`main`), a production Neon branch and migration run, a mobile build against
+`https://api.mskool.in`, and a finishing cron entry point. Review 2026-11-05 corrected the
+Hostinger settings: Express output stays empty, entry is root-relative
+`apps/api/dist/index.mjs`. Hostinger stops idle processes, so both in-process workers must stay
+disabled there until cron exists (or the API moves to an always-on host). First smoke test uses
+the temporary URL and existing fake-data services; connect `api.mskool.in` after it passes.
+
 **FEES YEAR VIEW - BUILT ON `feat/fees-pdf`, 2026-11-04, NOT PUSHED.** The Fees tab gains a list/year toggle. The year view is one row per student and one box per month (paid, part paid, owed, not yet owed, no dues) from the same list read and filters; colour is never the only signal (ticks, crosses, split boxes, the row reads its months aloud). `feeDashboardListInputSchema` gains `view` (default `list`) and the output gains optional `months`, `monthStates` and `monthPaid`, so `FeesDashboardService.list` reads months only when asked and the list pays nothing extra. Boxes are too small to tap, so a row opens the student's page. **Gates:** `pnpm check-types` 9/9, mobile jest `fees` 40/40. **Not done:** the new year-view case in `fees-overhaul.integration.test.ts` has never run against a database; no device walk yet; no ADR for the `view` field.
 
 **FEE PDFS - BUILT ON `feat/fees-pdf`, 2026-11-02, NOT PUSHED.** ADR-059; design and record in `.kilo/plans/2026-11-02-fees-pdf.md`. The API returns finished HTML for eight documents (receipt in six paper layouts, statement, due notices with optional UPI QR, who owes, day book, cheque list, no-dues certificate, structure sheet); the phone makes a named PDF and opens Android's print screen or the share sheet. Fee setup gains a Printing row (`fee_print_settings`, 0045, applied to the `.env` database). Needs a new app build (expo-print, expo-sharing, expo-file-system). **Gates:** check-types (only the owner's `tmp-seed-fees-demo.ts` fails), mobile lint, services 211, mobile 735, fee documents integration 9/9. **Walked on the emulator:** receipt share and print (A4 half, 58mm), 18 due notices with QR, logo and Bengali/Hindi heading in about 5 s, Printing sheet, structure print button; other documents rendered through the API in Chromium. **Not checked:** a real printer of any kind, a cheap phone, iOS, statement and no-dues from the student page on a device, the dashboard Print sheet's other choices on a device. The demo school now carries Bengali and Hindi heading lines, a footer, a test logo and a UPI ID set during the walk.

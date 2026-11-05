@@ -201,6 +201,7 @@ silently substitute a web layout.
 | `docs/CONVENTIONS.md` | Naming, Drizzle patterns, anti-patterns with rationale |
 | `docs/DECISIONS.md` | **ADR log. Read before changing any architectural choice.** |
 | `docs/MOBILE_PLAN.md` | Mobile build order + per-domain endpoint tables (ADR-043) |
+| `docs/DEPLOYMENT.md` | Hostinger API deploy: artifact, env vars, migrations, limits |
 | `docs/TASKS.md` | Phased backlog + "resume here". Update as you work. |
 | `docs/reference/` | Original raw SQL and the authz prototype it was ported from |
 

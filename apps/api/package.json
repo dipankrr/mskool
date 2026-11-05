@@ -2,8 +2,7 @@
   "name": "@repo/api",
   "version": "0.0.0",
   "private": true,
-  "main": "./dist/server.js",
-  "types": "./dist/server.d.ts",
+  "main": "./dist/index.mjs",
   "exports": {
     ".": "./src/index.ts",
     "./server": "./src/server.ts"
@@ -11,7 +10,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsup",
-    "start": "node dist/index.js",
+    "start": "node dist/index.mjs",
     "check-types": "tsc --noEmit",
     "lint": "eslint .",
     "db:seed": "tsx scripts/seed.ts",
