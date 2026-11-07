@@ -69,6 +69,7 @@ describe("sectionTotals", () => {
     const totals = sectionTotals(byStudent, ["a", "b", "c", "d"]);
     expect(totals).toEqual({
       present: 130,
+      attended: 130,
       absent: 30,
       late: 6,
       halfDay: 0,
@@ -112,6 +113,7 @@ describe("sectionTotals", () => {
     const totals = sectionTotals(summaryByStudent([]), ["a", "b"]);
     expect(totals).toEqual({
       present: 0,
+      attended: 0,
       absent: 0,
       late: 0,
       halfDay: 0,
@@ -123,6 +125,13 @@ describe("sectionTotals", () => {
       workingDays: null,
     });
     expect(averagePercent(totals)).toBeNull();
+  });
+
+  it("averages days attended, so late counts when the school says so", () => {
+    const byStudent = summaryByStudent([
+      row("a", "annual", { workingDays: 10, daysPresent: 6, daysLate: 2, daysAttended: 8 }),
+    ]);
+    expect(averagePercent(sectionTotals(byStudent, ["a"]))).toBe(80);
   });
 
   it("does not divide by zero for all-zero counts", () => {

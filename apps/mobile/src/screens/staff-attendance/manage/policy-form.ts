@@ -19,6 +19,8 @@ export type PolicyForm = {
   threshold: string;
   /** Raw text; an integer 0–120. */
   late: string;
+  /** Whether a Late day counts as attended in the percentage (ADR-061). */
+  lateCountsAsPresent: boolean;
 };
 
 export type PolicyFormErrors = {
@@ -37,6 +39,7 @@ export function initialPolicyForm(
     dailyStatusRule: string;
     thresholdPercentage: number | null;
     lateArrivalMinutes: number;
+    lateCountsAsPresent?: boolean;
   } | null,
 ): PolicyForm {
   if (!policy) {
@@ -45,6 +48,7 @@ export function initialPolicyForm(
       rule: "homeroom_authoritative",
       threshold: "",
       late: "15",
+      lateCountsAsPresent: true,
     };
   }
   return {
@@ -58,6 +62,7 @@ export function initialPolicyForm(
         ? ""
         : String(policy.thresholdPercentage),
     late: String(policy.lateArrivalMinutes),
+    lateCountsAsPresent: policy.lateCountsAsPresent ?? true,
   };
 }
 
@@ -91,6 +96,7 @@ export function toPolicyPayload(form: PolicyForm): {
   dailyStatusRule: DailyStatusRule;
   thresholdPercentage: number | null;
   lateArrivalMinutes: number;
+  lateCountsAsPresent: boolean;
 } {
   return {
     markingMode: form.mode,
@@ -100,5 +106,6 @@ export function toPolicyPayload(form: PolicyForm): {
         ? Number(form.threshold.trim())
         : null,
     lateArrivalMinutes: Number(form.late.trim()),
+    lateCountsAsPresent: form.lateCountsAsPresent,
   };
 }

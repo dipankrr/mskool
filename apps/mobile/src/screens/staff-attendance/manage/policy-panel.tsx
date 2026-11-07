@@ -9,12 +9,14 @@ import { EmptyState } from "../../../components/empty-state";
 import { ErrorCard } from "../../../components/error-card";
 import { SectionLabel } from "../../../components/section-label";
 import { Skeleton } from "../../../components/skeleton";
+import { SwitchRow } from "../../../components/switch-row";
 import { ThemedText } from "../../../components/themed-text";
 import { useActiveContext } from "../../../hooks/use-active-context";
 import { usePermissions } from "../../../hooks/use-permissions";
 import { copy } from "../../../lib/copy";
 import { trpc } from "../../../lib/trpc";
 import { colors } from "../../../theme/brand-admin";
+import { ConfirmSheet } from "../../homework/confirm-sheet";
 import { radius, spacing } from "../../../theme/tokens";
 import { useAttendanceSection } from "../use-attendance-section";
 import { Field } from "./field";
@@ -125,6 +127,7 @@ function PolicyBody({
     dailyStatusRule: string;
     thresholdPercentage: number | null;
     lateArrivalMinutes: number;
+    lateCountsAsPresent?: boolean;
   } | null;
   organizationId: string;
   schoolId: string;
@@ -136,6 +139,9 @@ function PolicyBody({
 }) {
   const utils = trpc.useUtils();
   const [form, setForm] = useState<PolicyForm>(() => initialPolicyForm(initial));
+  // Changing the late rule re-counts the session, so the save asks first.
+  const [confirmLate, setConfirmLate] = useState(false);
+  const savedLateRule = initialPolicyForm(initial).lateCountsAsPresent;
 
   const periodsQuery = trpc.attendance.period.list.useQuery(
     { organizationId, sectionId: sectionId ?? "" },
@@ -147,8 +153,11 @@ function PolicyBody({
 
   const upsert = trpc.attendance.policy.upsert.useMutation({
     onSuccess: () => {
+      setConfirmLate(false);
       onSaved();
       void utils.attendance.policy.get.invalidate();
+      // The re-count changed every percentage this session.
+      void utils.attendance.summary.invalidate();
     },
   });
 
@@ -160,13 +169,20 @@ function PolicyBody({
     onEdited();
   };
 
-  const submit = () => {
-    if (hasErrors) return;
+  const send = () =>
     upsert.mutate({
       organizationId,
       schoolId,
       data: toPolicyPayload(form),
     });
+
+  const submit = () => {
+    if (hasErrors) return;
+    if (form.lateCountsAsPresent !== savedLateRule) {
+      setConfirmLate(true);
+      return;
+    }
+    send();
   };
 
   const showCaution =
@@ -285,6 +301,17 @@ function PolicyBody({
           error={errors.late}
           testID="policy-late"
         />
+        <SwitchRow
+          label={copy.attendance.manage.policy.lateCountsLabel}
+          value={form.lateCountsAsPresent}
+          onChange={(lateCountsAsPresent) => update({ lateCountsAsPresent })}
+          help={
+            form.lateCountsAsPresent
+              ? copy.attendance.manage.policy.lateCountsHelpOn
+              : copy.attendance.manage.policy.lateCountsHelpOff
+          }
+          testID="policy-late-counts"
+        />
       </View>
 
       {upsert.error ? (
@@ -320,6 +347,20 @@ function PolicyBody({
           style={styles.save}
         />
       )}
+
+      {confirmLate ? (
+        <ConfirmSheet
+          title={copy.attendance.manage.policy.lateConfirmTitle}
+          body={copy.attendance.manage.policy.lateConfirmBody(form.lateCountsAsPresent)}
+          confirmLabel={copy.attendance.manage.policy.lateConfirm}
+          keepLabel={copy.attendance.manage.policy.lateKeep}
+          submitting={upsert.isPending}
+          error={upsert.error}
+          onConfirm={send}
+          onClose={() => setConfirmLate(false)}
+          testIDPrefix="policy-late-confirm"
+        />
+      ) : null}
     </>
   );
 }

@@ -26,6 +26,8 @@ export type SummaryRow = {
   daysLate: number;
   daysHalfDay: number;
   daysOnLeave: number;
+  /** Present plus late when the school counts late (ADR-061); the percentage's numerator. */
+  daysAttended?: number;
   /** Generated stored column: never null in practice, nullable in the API. */
   attendancePercentage: string | null;
 };
@@ -99,6 +101,8 @@ export function sortSummaryRoster(
 export type SectionTotals = {
   /** Σ daysPresent over students with rows. */
   present: number;
+  /** Σ daysAttended over students with rows: what the average counts. */
+  attended: number;
   /** Σ daysAbsent over students with rows. */
   absent: number;
   /** Σ daysLate over students with rows. */
@@ -130,6 +134,7 @@ export function sectionTotals(
   rosterIds: readonly string[],
 ): SectionTotals {
   let present = 0;
+  let attended = 0;
   let absent = 0;
   let late = 0;
   let halfDay = 0;
@@ -147,6 +152,7 @@ export function sectionTotals(
       continue;
     }
     present += row.daysPresent;
+    attended += row.daysAttended ?? row.daysPresent;
     absent += row.daysAbsent;
     late += row.daysLate;
     halfDay += row.daysHalfDay;
@@ -160,6 +166,7 @@ export function sectionTotals(
 
   return {
     present,
+    attended,
     absent,
     late,
     halfDay,
@@ -196,10 +203,10 @@ export function presentSharePercentForTotals(totals: SectionTotals): number | nu
   return (totals.present / totals.markedStatusDays) * 100;
 }
 
-/** Σpresent ÷ Σworking as a percentage, or null when nothing is marked. */
+/** Σattended ÷ Σworking as a percentage, or null when nothing is marked. */
 export function averagePercent(totals: SectionTotals): number | null {
   if (totals.working === 0) return null;
-  return (totals.present / totals.working) * 100;
+  return (totals.attended / totals.working) * 100;
 }
 
 /**

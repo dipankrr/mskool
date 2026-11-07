@@ -1386,7 +1386,7 @@ export const copy = {
       daysMarked: (count: number) => (count === 1 ? "Day marked" : "Days marked"),
       officialRateLabel: "Official year rate",
       officialRateNote:
-        "Present against the session calendar. Half days are marked, not present.",
+        "Days attended against the session calendar since the student joined. Half days are marked, not present.",
       howCalculated: "How this is calculated",
       presentOfMarked: (present: number, marked: number) => `${present}/${marked}`,
       presentShareLabel: "Present share",
@@ -1406,7 +1406,7 @@ export const copy = {
           "The student with the most marked days. Present, absent, late, half day and on-leave all count. The bar compares that against the session's working calendar.",
         officialTitle: "Official year rate",
         officialBody:
-          "Present days divided by the session's full working calendar. It rises as days are marked and is the figure exam eligibility reads. Half day is a marked day but does not count as present here.",
+          "Days attended divided by the session's working days since the student joined, the days still to come included. It rises as days are marked. Late counts as attended when the school's policy says so; half day never does. Exam eligibility and results use the same count, up to today.",
         markedTitle: "Present share of marked days",
         markedBody:
           "Present days divided by all marked days for that student, including half days. It is a day-to-day read, not a policy threshold.",
@@ -1662,6 +1662,18 @@ export const copy = {
         lateLabel: "Late arrival window",
         lateHelp: "A mark later than this many minutes past the period's start reads as late.",
         minutesSuffix: "min",
+        lateCountsLabel: "Count late as present",
+        lateCountsHelpOn: "A late day counts toward the attendance percentage.",
+        lateCountsHelpOff: "A late day lowers the attendance percentage, like an absence.",
+        lateConfirmTitle: "Re-count this session's attendance?",
+        lateConfirmBody: (countsPresent: boolean) =>
+          `${
+            countsPresent
+              ? "Late days will count as present."
+              : "Late days will no longer count as present."
+          } Every attendance percentage for this session is worked out again, including months and terms already finished. Report cards already published keep their printed figures. Earlier sessions don't change.`,
+        lateConfirm: "Save and re-count",
+        lateKeep: "Go back",
         caution: (section: string) =>
           `Period-wise marking needs ${section}'s periods — add them before the first marking.`,
         cautionAction: "Add periods",

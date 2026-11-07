@@ -12,6 +12,7 @@ function form(patch: Partial<PolicyForm> = {}): PolicyForm {
     rule: "threshold_percentage",
     threshold: "80",
     late: "15",
+    lateCountsAsPresent: true,
     ...patch,
   };
 }
@@ -23,6 +24,7 @@ describe("initialPolicyForm", () => {
       rule: "homeroom_authoritative",
       threshold: "",
       late: "15",
+      lateCountsAsPresent: true,
     });
   });
 
@@ -33,13 +35,26 @@ describe("initialPolicyForm", () => {
         dailyStatusRule: "threshold_percentage",
         thresholdPercentage: 80,
         lateArrivalMinutes: 20,
+        lateCountsAsPresent: false,
       }),
     ).toEqual({
       mode: "period_wise",
       rule: "threshold_percentage",
       threshold: "80",
       late: "20",
+      lateCountsAsPresent: false,
     });
+  });
+
+  it("treats a policy saved before the late rule as late = present", () => {
+    expect(
+      initialPolicyForm({
+        markingMode: "daily",
+        dailyStatusRule: "homeroom_authoritative",
+        thresholdPercentage: null,
+        lateArrivalMinutes: 15,
+      }).lateCountsAsPresent,
+    ).toBe(true);
   });
 });
 
@@ -79,12 +94,17 @@ describe("validatePolicyForm", () => {
 });
 
 describe("toPolicyPayload", () => {
+  it("sends the late rule as chosen", () => {
+    expect(toPolicyPayload(form({ lateCountsAsPresent: false })).lateCountsAsPresent).toBe(false);
+  });
+
   it("sends the threshold only when the rule reads it", () => {
     expect(toPolicyPayload(form())).toEqual({
       markingMode: "period_wise",
       dailyStatusRule: "threshold_percentage",
       thresholdPercentage: 80,
       lateArrivalMinutes: 15,
+      lateCountsAsPresent: true,
     });
     expect(
       toPolicyPayload(
@@ -95,6 +115,7 @@ describe("toPolicyPayload", () => {
       dailyStatusRule: "homeroom_authoritative",
       thresholdPercentage: null,
       lateArrivalMinutes: 15,
+      lateCountsAsPresent: true,
     });
   });
 });
