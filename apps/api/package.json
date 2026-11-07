@@ -21,7 +21,8 @@
     "smoke:authz": "tsx scripts/smoke-authz.ts",
     "check:openapi": "tsx scripts/check-openapi.ts",
     "check:builders": "tsx scripts/check-builders.ts",
-    "db:migrate:site-media": "tsx scripts/migrate-site-media.ts"
+    "db:migrate:site-media": "tsx scripts/migrate-site-media.ts",
+    "attendance:recompute": "tsx scripts/recompute-attendance.ts"
   },
   "dependencies": {
     "@repo/auth": "workspace:*",

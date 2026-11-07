@@ -33,7 +33,8 @@
     "check:builders": "pnpm --filter @repo/api check:builders",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
     "db:seed:site": "dotenv -e .env -- pnpm --filter @repo/api db:seed:site",
-    "db:migrate:site-media": "dotenv -e .env -- pnpm --filter @repo/api db:migrate:site-media"
+    "db:migrate:site-media": "dotenv -e .env -- pnpm --filter @repo/api db:migrate:site-media",
+    "attendance:recompute": "dotenv -e .env -- pnpm --filter @repo/api attendance:recompute"
   },
   "devDependencies": {
     "@types/node": "^22.8.6",

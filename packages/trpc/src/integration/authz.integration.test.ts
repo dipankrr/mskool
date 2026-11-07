@@ -2716,12 +2716,14 @@ describe("attendance — the marking flow", () => {
     expect(monthly!.daysLate).toBe(july.filter((r) => r.status === "late").length);
 
     // The annual row exists, and the percentage is the DATABASE's generated
-    // column — present/working, rounded to two decimals.
+    // column — attended/working, rounded to two decimals. The fixture
+    // school's policy counts late as attended (the default, ADR-061).
     const annual = summaries.find((s: { periodType: string }) => s.periodType === "annual");
     expect(annual).toBeDefined();
     expect(annual!.workingDays).toBe(expectedYearWorking);
+    expect(annual!.daysAttended).toBe(annual!.daysPresent + annual!.daysLate);
     const expectedPct =
-      Math.round((annual.daysPresent / annual.workingDays) * 100 * 100) / 100;
+      Math.round((annual.daysAttended / annual.workingDays) * 100 * 100) / 100;
     expect(Number(annual.attendancePercentage)).toBeCloseTo(expectedPct, 2);
   });
 });

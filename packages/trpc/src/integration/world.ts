@@ -336,6 +336,15 @@ async function findOrCreateEnrollment(
     sectionId?: string;
   },
 ) {
+  // Fixture students joined on the year's first day. ADR-061 counts working
+  // days from the enrolment date, so a fixture dated "the day the world was
+  // first built" would silently shrink every attendance figure.
+  const [year] = await db
+    .select({ startDate: academicYears.startDate })
+    .from(academicYears)
+    .where(eq(academicYears.id, input.academicYearId));
+  const enrollmentDate = year?.startDate;
+
   const [existing] = await db
     .select()
     .from(studentEnrollments)
@@ -345,9 +354,22 @@ async function findOrCreateEnrollment(
         eq(studentEnrollments.academicYearId, input.academicYearId),
       ),
     );
-  if (existing) return existing;
+  if (existing) {
+    if (enrollmentDate && existing.enrollmentDate !== enrollmentDate) {
+      const [repaired] = await db
+        .update(studentEnrollments)
+        .set({ enrollmentDate })
+        .where(eq(studentEnrollments.id, existing.id))
+        .returning();
+      return repaired ?? existing;
+    }
+    return existing;
+  }
 
-  return enrollmentService.createEnrollment(scope, input);
+  return enrollmentService.createEnrollment(scope, {
+    ...input,
+    ...(enrollmentDate ? { enrollmentDate } : {}),
+  });
 }
 
 async function findOrCreateStudent(

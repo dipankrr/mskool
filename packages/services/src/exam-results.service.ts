@@ -1,4 +1,5 @@
 import { ENROLLED_STATUSES } from "./enrollment-status";
+import { attendanceToDate, type AttendanceToDate } from "./attendance-to-date";
 import { requireSchoolId } from "./academic.service";
 import { scopeWhere, type DataScope } from "@repo/authz";
 import type { SubmitRevisionInput } from "@repo/contracts";
@@ -6,7 +7,6 @@ import { db } from "@repo/db";
 import {
   academicYears,
   authzAuditLog,
-  attendanceSummary,
   classes,
   classSubjectMappings,
   examClassPublication,
@@ -625,21 +625,19 @@ export class ExamResultsService {
       }
     }
 
-    const attendanceRows = await tx
-      .select({
-        studentId: attendanceSummary.studentId,
-        pct: attendanceSummary.attendancePercentage,
-      })
-      .from(attendanceSummary)
-      .where(
-        and(
-          inArray(attendanceSummary.studentId, studentIds),
-          eq(attendanceSummary.academicYearId, term.academicYearId),
-          eq(attendanceSummary.periodType, "term"),
-          eq(attendanceSummary.termId, termId),
-        ),
-      );
-    const attendanceOf = new Map(attendanceRows.map((a) => [a.studentId, a.pct]));
+    // ADR-061: the term's "so far" figure (days on the books up to today),
+    // so a result computed mid-term never fails a student on days that have
+    // not happened, or on days before they joined.
+    const attendanceToDateOf = await attendanceToDate(tx, {
+      schoolId: term.schoolId,
+      academicYearId: term.academicYearId,
+      studentIds,
+      from: term.startDate,
+      to: term.endDate,
+    });
+    const attendanceOf = new Map(
+      [...attendanceToDateOf].map(([id, a]) => [id, a.percentage] as const),
+    );
 
     const scale = await this.resolveDefaultScale(tx, schoolId);
     const perClass = new Map<
@@ -1077,26 +1075,18 @@ export class ExamResultsService {
       .innerJoin(subjectTypes, eq(classSubjectMappings.subjectTypeId, subjectTypes.id))
       .where(and(inArray(termAssessments.studentId, studentIds), eq(termAssessments.termId, termId)));
 
-    const attendanceRows = termRow
-      ? await tx
-          .select({
-            studentId: attendanceSummary.studentId,
-            workingDays: attendanceSummary.workingDays,
-            daysPresent: attendanceSummary.daysPresent,
-            pct: attendanceSummary.attendancePercentage,
-          })
-          .from(attendanceSummary)
-          .where(
-            and(
-              inArray(attendanceSummary.studentId, studentIds),
-              eq(attendanceSummary.academicYearId, termRow.academicYearId),
-              eq(attendanceSummary.periodType, "term"),
-              eq(attendanceSummary.termId, termId),
-            ),
-          )
-      : [];
-    const attendanceOf = new Map<string, (typeof attendanceRows)[number]>();
-    for (const a of attendanceRows) if (!attendanceOf.has(a.studentId)) attendanceOf.set(a.studentId, a);
+    // ADR-061: the card prints the term's "so far" figure - days attended
+    // (late included when the school counts it) over the days the student
+    // was on the books, up to the day the card is assembled.
+    const attendanceOf = termRow
+      ? await attendanceToDate(tx, {
+          schoolId: termRow.schoolId,
+          academicYearId: termRow.academicYearId,
+          studentIds,
+          from: termRow.startDate,
+          to: termRow.endDate,
+        })
+      : new Map<string, AttendanceToDate>();
 
     for (const studentId of studentIds) {
       const student = studentOf.get(studentId);
@@ -1185,13 +1175,15 @@ export class ExamResultsService {
           rankInSection: termResult?.rankInSection ?? null,
           rankInClass: termResult?.rankInClass ?? null,
         },
-        attendance: attendance
-          ? {
-              workingDays: attendance.workingDays,
-              daysPresent: attendance.daysPresent,
-              percentage: attendance.pct,
-            }
-          : null,
+        attendance:
+          attendance
+            ? {
+                workingDays: attendance.workingDays,
+                // The snapshot field keeps its name; it now carries days attended.
+                daysPresent: attendance.daysAttended,
+                percentage: attendance.percentage,
+              }
+            : null,
         termAssessments: assessmentRows
           .filter((a) => a.studentId === studentId)
           .map((a) => ({

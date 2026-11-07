@@ -29,6 +29,9 @@ import {
 } from "@repo/db/schema";
 import { and, asc, eq, gt, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 
+import { countAttendance, monthBounds } from "./attendance-counting";
+import { loadCountingInputs } from "./attendance-to-date";
+
 /**
  * ATTENDANCE — Phase 3. Configuration layer (C2): calendar, policy, periods.
  * Marking flow (C5): `markAttendance`, the daily-status derivation, and
@@ -430,6 +433,10 @@ export class AttendanceService {
     const organizationId = scope.organizationId;
 
     return db.transaction(async (tx) => {
+      const [before] = await tx
+        .select({ lateCountsAsPresent: attendancePolicies.lateCountsAsPresent })
+        .from(attendancePolicies)
+        .where(eq(attendancePolicies.schoolId, schoolId));
       const [policy] = await tx
         .insert(attendancePolicies)
         .values({ ...input, organizationId, schoolId, updatedBy: actorId })
@@ -440,6 +447,13 @@ export class AttendanceService {
         .returning();
       if (!policy) {
         throw new Error("Failed to upsert the attendance policy.");
+      }
+      // ADR-061: the late rule decides the percentage, so a change re-counts
+      // the CURRENT session's summaries in the same transaction. Closed
+      // sessions keep the figures they were run with.
+      const wasLatePresent = before?.lateCountsAsPresent ?? true;
+      if (policy.lateCountsAsPresent !== wasLatePresent) {
+        await recomputeCurrentSession(tx, organizationId, schoolId);
       }
       return policy;
     });
@@ -821,16 +835,24 @@ export class AttendanceService {
       if (inserts.length > 0) {
         await tx.insert(attendanceRecords).values(inserts);
       }
-      for (const u of updates) {
-        await tx
-          .update(attendanceRecords)
-          .set({
-            status: u.status,
-            updatedBy: actorId,
-            // Don't-wipe: reason undefined = not sent = keep what is stored.
-            ...(u.reason !== undefined ? { correctionReason: u.reason } : {}),
-          })
-          .where(eq(attendanceRecords.id, u.id));
+      if (updates.length > 0) {
+        // One statement for every re-marked row. Don't-wipe: a reason not
+        // sent arrives as NULL and COALESCE keeps what is stored.
+        const rows = sql.join(
+          updates.map(
+            (u) =>
+              sql`(${u.id}::uuid, ${u.status}::attendance_status, ${u.reason ?? null}::varchar)`,
+          ),
+          sql`, `,
+        );
+        await tx.execute(sql`
+          UPDATE ${attendanceRecords}
+          SET status = v.status,
+              updated_by = ${actorId},
+              correction_reason = COALESCE(v.reason, ${attendanceRecords.correctionReason}),
+              updated_at = now()
+          FROM (VALUES ${rows}) AS v(id, status, reason)
+          WHERE ${attendanceRecords.id} = v.id`);
       }
 
       // ---- the daily-status derivation, same transaction ----
@@ -935,22 +957,25 @@ export class AttendanceService {
       // One answer per student per day. INSERT carries the snapshot; UPDATE
       // re-marks the answer only — the update path never touches class or
       // section, so history cannot be re-homed through a re-mark.
-      for (const [studentId, s] of derived) {
+      // One multi-row statement for the whole register.
+      if (derived.size > 0) {
         await tx
           .insert(dailyAttendanceStatus)
-          .values({
-            organizationId,
-            schoolId,
-            studentId,
-            academicYearId: yearId,
-            date: input.date,
-            classId: section.classId,
-            sectionId: section.id,
-            status: s.status,
-            periodsPresent: s.periodsPresent,
-            periodsTotal: s.periodsTotal,
-            derivationMode: s.derivationMode,
-          })
+          .values(
+            [...derived].map(([studentId, s]) => ({
+              organizationId,
+              schoolId,
+              studentId,
+              academicYearId: yearId,
+              date: input.date,
+              classId: section.classId,
+              sectionId: section.id,
+              status: s.status,
+              periodsPresent: s.periodsPresent,
+              periodsTotal: s.periodsTotal,
+              derivationMode: s.derivationMode,
+            })),
+          )
           .onConflictDoUpdate({
             target: [
               dailyAttendanceStatus.studentId,
@@ -958,17 +983,18 @@ export class AttendanceService {
               dailyAttendanceStatus.date,
             ],
             set: {
-              status: s.status,
-              derivationMode: s.derivationMode,
-              periodsPresent: s.periodsPresent,
-              periodsTotal: s.periodsTotal,
+              status: sql`excluded.status`,
+              derivationMode: sql`excluded.derivation_mode`,
+              periodsPresent: sql`excluded.periods_present`,
+              periodsTotal: sql`excluded.periods_total`,
               updatedAt: new Date(),
             },
           });
       }
 
       // Hard rule 5's read-model, kept in step inside the same transaction.
-      await recomputeSummaries(tx, organizationId, schoolId, yearId, studentIds);
+      // Only this date's month, its term and the year can have moved.
+      await recomputeSummaries(tx, organizationId, schoolId, yearId, studentIds, [input.date]);
 
       return { marked: entryByStudent.size };
     });
@@ -1084,25 +1110,73 @@ export class AttendanceService {
 // Summary recompute internals
 // ---------------------------------------------------------------------------
 
-/** The day types that count toward the working-days denominator. */
-const WORKING_DAY_TYPES = new Set(["working", "exam_day", "half_day"]);
-
 type SummaryTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/** Students per recompute pass when a whole session is re-counted. */
+const SESSION_BATCH = 300;
+
+/**
+ * Re-counts every summary of one school's current session: everyone with a
+ * mark in it. Used when the late rule changes and by the one-time ADR-061
+ * backfill. Returns how many students were re-counted (0 without a current
+ * session).
+ */
+export async function recomputeCurrentSession(
+  tx: SummaryTx,
+  organizationId: string,
+  schoolId: string,
+): Promise<number> {
+  const [year] = await tx
+    .select({ id: academicYears.id })
+    .from(academicYears)
+    .where(and(eq(academicYears.schoolId, schoolId), eq(academicYears.isCurrent, true)));
+  if (!year) return 0;
+  const marked = await tx
+    .selectDistinct({ studentId: dailyAttendanceStatus.studentId })
+    .from(dailyAttendanceStatus)
+    .where(
+      and(
+        eq(dailyAttendanceStatus.schoolId, schoolId),
+        eq(dailyAttendanceStatus.academicYearId, year.id),
+      ),
+    );
+  const ids = marked.map((m) => m.studentId);
+  for (let i = 0; i < ids.length; i += SESSION_BATCH) {
+    await recomputeSummaries(
+      tx,
+      organizationId,
+      schoolId,
+      year.id,
+      ids.slice(i, i + SESSION_BATCH),
+    );
+  }
+  return ids.length;
+}
+
+/** Rows per multi-row upsert: well under Postgres's bind-parameter limit. */
+const SUMMARY_CHUNK = 400;
 
 /**
  * Recomputes the monthly, term, and annual summary rows for the given
- * students from daily status + the calendar. Called at the end of every
- * mark, INSIDE the mark's transaction (hard rule 5's read-model must not
- * drift from the status layer it summarizes), and by the explicit
- * `recomputeSummary` op for backfills.
+ * students from daily status + the calendar (ADR-061). Called at the end of
+ * every mark, INSIDE the mark's transaction (hard rule 5's read-model must
+ * not drift from the status layer it summarizes), by the explicit
+ * `recomputeSummary` op, and when the school's late rule changes.
  *
- * The working-days denominator is CALENDAR TRUTH — every working, exam, and
- * half day in the period, whether or not anyone was marked — never "days
- * someone happened to mark". No mid-period cap: a month half over shows its
- * full planned denominator, so a percentage can only rise as days fill in.
- * Counts come from `daily_attendance_status` (never records — hard rule 5).
- * Half day has its own display bucket; it is deliberately NOT added to
- * `days_present`, so the official percentage remains an all-day figure.
+ * The working-days denominator is CALENDAR TRUTH over the whole period —
+ * every working, exam, and half day, whether or not anyone was marked — but
+ * only the days the student was on the books (`attendance-counting.ts`). No
+ * mid-period cap: this row is the "how much of the period is done" view; the
+ * "so far" figure is `attendanceToDate`. Half day has its own bucket and is
+ * never attended; late is attended when the school's policy says so.
+ *
+ * `touchedDates` narrows the work to what a save can change: those dates'
+ * months, the terms containing them, and the year. Without it, every month
+ * the student has marks in and every term.
+ *
+ * Every write is a multi-row upsert, a handful of statements whatever the
+ * number of students (a one-row-at-a-time loop made a 15-student save take
+ * 24 s on the remote database).
  */
 async function recomputeSummaries(
   tx: SummaryTx,
@@ -1110,90 +1184,105 @@ async function recomputeSummaries(
   schoolId: string,
   academicYearId: string,
   studentIds: string[],
+  touchedDates?: readonly string[],
 ) {
   if (studentIds.length === 0) return;
 
-  const calendarDays = await tx
-    .select({ date: academicCalendar.date, dayType: academicCalendar.dayType })
-    .from(academicCalendar)
-    .where(
-      and(
-        eq(academicCalendar.schoolId, schoolId),
-        eq(academicCalendar.academicYearId, academicYearId),
-      ),
-    );
+  // One statement: calendar, late rule, year, terms, enrolments, statuses.
+  const inputs = await loadCountingInputs(tx, { schoolId, academicYearId, studentIds });
+  const year = inputs.year;
+  const yearTerms = inputs.terms;
+  if (!year) return;
 
-  const statusRows = await tx
-    .select({
-      studentId: dailyAttendanceStatus.studentId,
-      date: dailyAttendanceStatus.date,
-      status: dailyAttendanceStatus.status,
-    })
-    .from(dailyAttendanceStatus)
-    .where(
-      and(
-        eq(dailyAttendanceStatus.academicYearId, academicYearId),
-        inArray(dailyAttendanceStatus.studentId, studentIds),
-      ),
-    );
+  const touchedMonths = touchedDates ? new Set(touchedDates.map((d) => d.slice(0, 7))) : null;
+  const termsToWrite = touchedDates
+    ? yearTerms.filter((t) => touchedDates.some((d) => d >= t.startDate && d <= t.endDate))
+    : yearTerms;
 
-  const yearTerms = await tx
-    .select({ id: terms.id, startDate: terms.startDate, endDate: terms.endDate })
-    .from(terms)
-    .where(eq(terms.academicYearId, academicYearId));
+  const now = new Date();
+  const base = { organizationId, schoolId, academicYearId };
+  const monthly: (typeof attendanceSummary.$inferInsert)[] = [];
+  const termRows: (typeof attendanceSummary.$inferInsert)[] = [];
+  const annual: (typeof attendanceSummary.$inferInsert)[] = [];
 
-  const rowsByStudent = new Map<string, typeof statusRows>();
-  for (const row of statusRows) {
-    const list = rowsByStudent.get(row.studentId);
-    if (list) list.push(row);
-    else rowsByStudent.set(row.studentId, [row]);
+  for (const studentId of new Set(studentIds)) {
+    const statuses = inputs.statusesByStudent.get(studentId) ?? [];
+    // A student with no marks this year has no rows (unchanged behaviour).
+    if (statuses.length === 0) continue;
+    const ranges = inputs.rangesByStudent.get(studentId) ?? [];
+    const count = (from: string, to: string) =>
+      countAttendance({
+        workingDates: inputs.workingDates,
+        statuses,
+        ranges,
+        from,
+        to,
+        lateCountsAsPresent: inputs.lateCountsAsPresent,
+      });
+
+    // MONTHLY — one row per calendar month the student has marks in.
+    const months = new Set(statuses.map((s) => s.date.slice(0, 7)));
+    for (const key of months) {
+      if (touchedMonths && !touchedMonths.has(key)) continue;
+      const { from, to } = monthBounds(key);
+      monthly.push({
+        ...base,
+        studentId,
+        termId: null,
+        periodType: "monthly",
+        month: Number(key.slice(5, 7)),
+        year: Number(key.slice(0, 4)),
+        ...count(from, to),
+        updatedAt: now,
+      });
+    }
+
+    for (const term of termsToWrite) {
+      termRows.push({
+        ...base,
+        studentId,
+        termId: term.id,
+        periodType: "term",
+        month: null,
+        year: null,
+        ...count(term.startDate, term.endDate),
+        updatedAt: now,
+      });
+    }
+
+    annual.push({
+      ...base,
+      studentId,
+      termId: null,
+      periodType: "annual",
+      month: null,
+      year: null,
+      ...count(year.startDate, year.endDate),
+      updatedAt: now,
+    });
   }
 
-  const countSlice = (rows: typeof statusRows, inRange: (iso: string) => boolean) => {
-    const workingDays = calendarDays.filter(
-      (c) => inRange(c.date) && WORKING_DAY_TYPES.has(c.dayType),
-    ).length;
-    return {
-      workingDays,
-      daysPresent: rows.filter((r) => r.status === "present").length,
-      daysAbsent: rows.filter((r) => r.status === "absent").length,
-      daysLate: rows.filter((r) => r.status === "late").length,
-      daysHalfDay: rows.filter((r) => r.status === "half_day").length,
-      daysOnLeave: rows.filter((r) => r.status === "on_leave").length,
-    };
+  const countsFromExcluded = {
+    workingDays: sql`excluded.working_days`,
+    daysPresent: sql`excluded.days_present`,
+    daysAbsent: sql`excluded.days_absent`,
+    daysLate: sql`excluded.days_late`,
+    daysHalfDay: sql`excluded.days_half_day`,
+    daysOnLeave: sql`excluded.days_on_leave`,
+    daysAttended: sql`excluded.days_attended`,
+    updatedAt: sql`excluded.updated_at`,
   };
 
-  const countsSet = (c: ReturnType<typeof countSlice>) => ({
-    workingDays: c.workingDays,
-    daysPresent: c.daysPresent,
-    daysAbsent: c.daysAbsent,
-    daysLate: c.daysLate,
-    daysHalfDay: c.daysHalfDay,
-    daysOnLeave: c.daysOnLeave,
-    updatedAt: new Date(),
-  });
-
-  for (const [studentId, rows] of rowsByStudent) {
-    // MONTHLY — one row per calendar month the student has status rows in.
-    // ISO dates sort lexicographically, so the "YYYY-MM" prefix is the month
-    // test and no Date arithmetic is needed anywhere here.
-    const months = new Set(rows.map((r) => r.date.slice(0, 7)));
-    for (const ym of months) {
-      const monthRows = rows.filter((r) => r.date.startsWith(ym));
-      const counts = countSlice(monthRows, (iso) => iso.startsWith(ym));
-      await tx
+  // The three kinds of row touch disjoint rows, so their upserts go out
+  // together. Sent through `execute`, which postgres-js pipelines on the
+  // transaction's connection; the query builder's own await does not.
+  const writes: Promise<unknown>[] = [];
+  for (let i = 0; i < monthly.length; i += SUMMARY_CHUNK) {
+    writes.push(
+      tx.execute(
+        tx
         .insert(attendanceSummary)
-        .values({
-          organizationId,
-          schoolId,
-          studentId,
-          academicYearId,
-          termId: null,
-          periodType: "monthly",
-          month: Number(ym.slice(5, 7)),
-          year: Number(ym.slice(0, 4)),
-          ...counts,
-        })
+        .values(monthly.slice(i, i + SUMMARY_CHUNK))
         .onConflictDoUpdate({
           target: [
             attendanceSummary.studentId,
@@ -1202,58 +1291,18 @@ async function recomputeSummaries(
             attendanceSummary.year,
           ],
           targetWhere: sql`period_type = 'monthly'`,
-          set: countsSet(counts),
-        });
-    }
-
-    // ANNUAL — the year's one row.
-    const annualCounts = countSlice(rows, () => true);
-    await tx
-      .insert(attendanceSummary)
-      .values({
-        organizationId,
-        schoolId,
-        studentId,
-        academicYearId,
-        termId: null,
-        periodType: "annual",
-        month: null,
-        year: null,
-        ...annualCounts,
-      })
-      .onConflictDoUpdate({
-        target: [attendanceSummary.studentId, attendanceSummary.academicYearId],
-        targetWhere: sql`period_type = 'annual'`,
-        set: countsSet(annualCounts),
-      });
-  }
-
-  // TERM — one row per term of the year, for every touched student. Recomputed
-  // from the same source rows even when a term was not the one marked: the
-  // summary is always a pure function of status + calendar, never an
-  // increment, so recomputing more than needed is free of drift.
-  for (const term of yearTerms) {
-    for (const [studentId, rows] of rowsByStudent) {
-      const termRows = rows.filter(
-        (r) => r.date >= term.startDate && r.date <= term.endDate,
-      );
-      const counts = countSlice(
-        termRows,
-        (iso) => iso >= term.startDate && iso <= term.endDate,
-      );
-      await tx
-        .insert(attendanceSummary)
-        .values({
-          organizationId,
-          schoolId,
-          studentId,
-          academicYearId,
-          termId: term.id,
-          periodType: "term",
-          month: null,
-          year: null,
-          ...counts,
+          set: countsFromExcluded,
         })
+        .getSQL(),
+      ),
+    );
+  }
+  for (let i = 0; i < termRows.length; i += SUMMARY_CHUNK) {
+    writes.push(
+      tx.execute(
+        tx
+        .insert(attendanceSummary)
+        .values(termRows.slice(i, i + SUMMARY_CHUNK))
         .onConflictDoUpdate({
           target: [
             attendanceSummary.studentId,
@@ -1261,10 +1310,28 @@ async function recomputeSummaries(
             attendanceSummary.termId,
           ],
           targetWhere: sql`period_type = 'term'`,
-          set: countsSet(counts),
-        });
-    }
+          set: countsFromExcluded,
+        })
+        .getSQL(),
+      ),
+    );
   }
+  for (let i = 0; i < annual.length; i += SUMMARY_CHUNK) {
+    writes.push(
+      tx.execute(
+        tx
+        .insert(attendanceSummary)
+        .values(annual.slice(i, i + SUMMARY_CHUNK))
+        .onConflictDoUpdate({
+          target: [attendanceSummary.studentId, attendanceSummary.academicYearId],
+          targetWhere: sql`period_type = 'annual'`,
+          set: countsFromExcluded,
+        })
+        .getSQL(),
+      ),
+    );
+  }
+  await Promise.all(writes);
 }
 
 export const attendanceService = new AttendanceService();

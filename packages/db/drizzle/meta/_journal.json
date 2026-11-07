@@ -323,6 +323,13 @@
       "when": 1793603215289,
       "tag": "0045_fees_print_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1794039512100,
+      "tag": "0046_attendance_counting",
+      "breakpoints": true
     }
   ]
 }

@@ -46,6 +46,9 @@ export * from "./enrollment.service";
 // Attendance: calendar (the marking gate), marking policy, periods. The
 // marking flow and the record layer append to this file in C5.
 export * from "./attendance.service";
+// How attendance is counted (ADR-061): the pure rules and the "so far" read.
+export * from "./attendance-counting";
+export * from "./attendance-to-date";
 
 // Fees: the configuration layer — heads, structures, lines, late-fee rules,
 // subscriptions, concessions. The billing engine (F4) and collection (F5)

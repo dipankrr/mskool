@@ -156,6 +156,10 @@ export const attendancePolicies = pgTable(
     // Minutes after the period's start time beyond which a mark is Late
     // rather than Present. Informational in v1 — the marker sees it.
     lateArrivalMinutes: smallint().notNull().default(15),
+    // Whether a Late day counts as attended in the percentage (ADR-061).
+    // Changing it recomputes the current session's summaries only; closed
+    // sessions keep the figures they were run with.
+    lateCountsAsPresent: boolean().notNull().default(true),
 
     updatedBy: text().references(() => user.id),
 
@@ -523,7 +527,15 @@ export const attendanceSummaryPeriodEnum = pgEnum("attendance_summary_period", [
  * The working-days denominator is CALENDAR TRUTH, not "days someone happened
  * to mark": `recomputeSummary` counts the year's `working`/`exam_day`/
  * `half_day` calendar rows, which is why the calendar had to land in this
- * phase.
+ * phase. Since ADR-061 it counts only the days the student was on the books
+ * (from joining, minus any left-and-rejoined gap), still over the whole
+ * period: this row is the "how much of the period is done" view. Decisions
+ * (results, eligibility, families) read the "so far" figure from
+ * `attendance-counting.ts` instead, which stops at today.
+ *
+ * `days_attended` is what the percentage counts: present days, plus late
+ * days when the school's policy counts late as present. `days_present` stays
+ * the pure Present bucket for display.
  *
  * **Uniqueness is THREE partial unique indexes, not the reference's single
  * composite key.** The composite `(student, year, type, month, year)` puts
@@ -573,11 +585,13 @@ export const attendanceSummary = pgTable(
     daysLate: smallint().notNull().default(0),
     daysHalfDay: smallint().notNull().default(0),
     daysOnLeave: smallint().notNull().default(0),
+    // Present + (late, when the policy counts it). The percentage's numerator.
+    daysAttended: smallint().notNull().default(0),
 
     // GENERATED ALWAYS AS — see the table comment. Never written by code.
     attendancePercentage: numeric({ precision: 5, scale: 2 }).generatedAlwaysAs(
       sql`CASE WHEN working_days = 0 THEN 0
-          ELSE round((days_present::decimal / working_days) * 100, 2) END`,
+          ELSE round((days_attended::decimal / working_days) * 100, 2) END`,
     ),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),

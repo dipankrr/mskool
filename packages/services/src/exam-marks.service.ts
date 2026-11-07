@@ -1,4 +1,5 @@
 import { ENROLLED_STATUSES } from "./enrollment-status";
+import { attendanceToDate } from "./attendance-to-date";
 import {
   atSchoolLevel,
   requireSchoolId,
@@ -15,7 +16,6 @@ import {
   studentEnrollments as studentEnrollmentsSection,
   studentSubjectResults,
   studentEnrollments,
-  attendanceSummary,
   classSubjectMappings,
   examClassPublication,
   examComponents,
@@ -156,34 +156,24 @@ export class ExamMarksService {
         and(eq(passCriteria.schoolId, schoolId), eq(passCriteria.academicYearId, academicYearId)),
       );
 
+    // ADR-061: the "so far" figure for the term - days on the books up to
+    // today - not the stored whole-term row, which mid-term counts days that
+    // have not happened yet and made almost everyone look short.
+    const [term] = await tx
+      .select({ startDate: terms.startDate, endDate: terms.endDate })
+      .from(terms)
+      .where(eq(terms.id, termId));
+    const attendance = await attendanceToDate(tx, {
+      schoolId,
+      academicYearId,
+      studentIds: cohortRows.map((r) => r.studentId),
+      from: term?.startDate,
+      to: term?.endDate,
+    });
+
     const results: { studentId: string; isEligible: boolean }[] = [];
     for (const { studentId } of cohortRows) {
-      // Attendance: the term row when present, else the annual row.
-      const [termRow] = await tx
-        .select({ pct: attendanceSummary.attendancePercentage })
-        .from(attendanceSummary)
-        .where(
-          and(
-            eq(attendanceSummary.studentId, studentId),
-            eq(attendanceSummary.academicYearId, academicYearId),
-            eq(attendanceSummary.periodType, "term"),
-            eq(attendanceSummary.termId, termId),
-          ),
-        );
-      let pct = termRow?.pct ?? null;
-      if (pct === null) {
-        const [annualRow] = await tx
-          .select({ pct: attendanceSummary.attendancePercentage })
-          .from(attendanceSummary)
-          .where(
-            and(
-              eq(attendanceSummary.studentId, studentId),
-              eq(attendanceSummary.academicYearId, academicYearId),
-              eq(attendanceSummary.periodType, "annual"),
-            ),
-          );
-        pct = annualRow?.pct ?? "0.00";
-      }
+      const pct = attendance.get(studentId)?.percentage ?? "0.00";
 
       // Resolved criteria: the class override wins over the school default.
       const [enrollment] = await tx

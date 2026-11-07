@@ -1,3 +1,4 @@
+import { attendanceToDate } from "./attendance-to-date";
 import { ENROLLED_STATUSES } from "./enrollment-status";
 import { scopeWhere, type DataScope } from "@repo/authz";
 import type {
@@ -16,7 +17,6 @@ import {
   academicYears,
   annualResultPolicies,
   annualResultPolicyTerms,
-  attendanceSummary,
   authzAuditLog,
   classSubjectMappings,
   classes,
@@ -660,20 +660,11 @@ export class ExamAnnualService {
         scaleBands: scale?.bands ?? null,
       });
 
-      const attendanceRows = await tx
-        .select({
-          studentId: attendanceSummary.studentId,
-          pct: attendanceSummary.attendancePercentage,
-        })
-        .from(attendanceSummary)
-        .where(
-          and(
-            eq(attendanceSummary.academicYearId, academicYearId),
-            eq(attendanceSummary.periodType, "annual"),
-            inArray(attendanceSummary.studentId, studentIds),
-          ),
-        );
-      const attendance = new Map(attendanceRows.map((a) => [a.studentId, a.pct]));
+      // ADR-061: the year's "so far" figure (days on the books up to today).
+      const attendanceToDateOf = await attendanceToDate(tx, { schoolId, academicYearId, studentIds });
+      const attendance = new Map(
+        [...attendanceToDateOf].map(([id, a]) => [id, a.percentage] as const),
+      );
 
       const now = new Date();
       const snapshot = {
@@ -1341,22 +1332,8 @@ export class ExamAnnualService {
       .where(and(inArray(studentTermResults.termId, termIds), inArray(studentTermResults.studentId, studentIds)));
     const termResultOf = new Map(termResults.map((t) => [`${t.studentId}|${t.termId}`, t]));
 
-    const attendanceRows = await tx
-      .select({
-        studentId: attendanceSummary.studentId,
-        workingDays: attendanceSummary.workingDays,
-        daysPresent: attendanceSummary.daysPresent,
-        pct: attendanceSummary.attendancePercentage,
-      })
-      .from(attendanceSummary)
-      .where(
-        and(
-          eq(attendanceSummary.academicYearId, academicYearId),
-          eq(attendanceSummary.periodType, "annual"),
-          inArray(attendanceSummary.studentId, studentIds),
-        ),
-      );
-    const attendanceOf = new Map(attendanceRows.map((a) => [a.studentId, a]));
+    // ADR-061: the card prints the year's "so far" figure.
+    const attendanceOf = await attendanceToDate(tx, { schoolId, academicYearId, studentIds });
 
     const finalOf = new Map(finals.map((f) => [f.studentId, f]));
     const rosterOf = new Map(roster.map((r) => [r.studentId, r]));
@@ -1461,8 +1438,9 @@ export class ExamAnnualService {
         attendance: attendance
           ? {
               workingDays: attendance.workingDays,
-              daysPresent: attendance.daysPresent,
-              percentage: attendance.pct,
+              // The snapshot field keeps its name; it now carries days attended.
+              daysPresent: attendance.daysAttended,
+              percentage: attendance.percentage,
             }
           : null,
         generatedAt: nowIso,
