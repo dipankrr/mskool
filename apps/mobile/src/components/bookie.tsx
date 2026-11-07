@@ -29,6 +29,7 @@ import { bookie } from "../theme/brand-bookie";
 
 export type BookieMood = "calm" | "happy";
 export type BookieLook = "ahead" | "left" | "right" | "up";
+export type BookieColors = { body: string; depth: string; ink: string; white: string };
 
 const VIEW_BOX = "160 300 704 560";
 const ASPECT = 560 / 704;
@@ -65,6 +66,7 @@ export function Bookie({
   animate = true,
   outline = true,
   label,
+  colors = bookie,
   style,
   testID,
 }: {
@@ -78,6 +80,8 @@ export function Bookie({
   outline?: boolean;
   /** Screen-reader label. Leave unset when Bookie is decoration. */
   label?: string;
+  /** Override the brand colours (the family theme passes its own block). */
+  colors?: BookieColors;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }) {
@@ -138,26 +142,26 @@ export function Bookie({
         {outline ? (
           <Path
             d={BODY}
-            fill={bookie.white}
-            stroke={bookie.white}
+            fill={colors.white}
+            stroke={colors.white}
             strokeWidth={44}
             strokeLinejoin="round"
           />
         ) : null}
-        <Path d={DEPTH} fill={bookie.depth} />
-        <Path d={BODY} fill={bookie.body} />
-        <Path d="M512 476 V728" stroke={bookie.depth} strokeWidth={12} strokeLinecap="round" />
+        <Path d={DEPTH} fill={colors.depth} />
+        <Path d={BODY} fill={colors.body} />
+        <Path d="M512 476 V728" stroke={colors.depth} strokeWidth={12} strokeLinecap="round" />
         {mood === "happy" ? (
-          <Path d={SMILE} fill="none" stroke={bookie.ink} strokeWidth={16} strokeLinecap="round" />
+          <Path d={SMILE} fill="none" stroke={colors.ink} strokeWidth={16} strokeLinecap="round" />
         ) : null}
       </Svg>
       <Animated.View style={[StyleSheet.absoluteFill, { transformOrigin: EYE_ORIGIN }, blinkStyle]}>
         <Svg width={size} height={height} viewBox={VIEW_BOX}>
           {[EYE_LEFT, EYE_RIGHT].map((x) => (
             <G key={x}>
-              <Circle cx={x} cy={EYE_Y} r={80} fill={bookie.white} />
-              <Circle cx={x + gaze.dx} cy={EYE_Y + gaze.dy} r={46} fill={bookie.ink} />
-              <Circle cx={x + gaze.dx + 18} cy={EYE_Y + gaze.dy - 20} r={16} fill={bookie.white} />
+              <Circle cx={x} cy={EYE_Y} r={80} fill={colors.white} />
+              <Circle cx={x + gaze.dx} cy={EYE_Y + gaze.dy} r={46} fill={colors.ink} />
+              <Circle cx={x + gaze.dx + 18} cy={EYE_Y + gaze.dy - 20} r={16} fill={colors.white} />
             </G>
           ))}
         </Svg>

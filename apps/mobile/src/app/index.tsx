@@ -9,9 +9,9 @@ import { useMe } from "../hooks/use-me";
 
 /**
  * Post-login dispatch (Step 0). Staff-kind → staff shell, forced-change →
- * change screen first, signed-out → login. There is no family shell yet
- * (Step 9): a family session lands on an honest staff-only notice, never a
- * dead end and never staff screens.
+ * change screen first, family (owns a child) → the family shell,
+ * signed-out → login. A login with neither (no staff grant, no linked child)
+ * lands on an honest notice with sign-out, never a dead end.
  */
 export default function Index() {
   const {
@@ -19,6 +19,7 @@ export default function Index() {
     sessionPending,
     me,
     isStaff,
+    isFamily,
     mustChangePassword,
     isFetched,
     isError,
@@ -61,13 +62,16 @@ export default function Index() {
   if (isStaff) {
     return <Redirect href="/home" />;
   }
+  if (isFamily) {
+    return <Redirect href="/family/home" />;
+  }
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>{copy.auth.appName}</Text>
       <Text style={styles.body}>
-        Signed in as {me?.user.name ?? me?.user.email ?? "a family login"}. This
-        preview build serves staff only — the family shell arrives later.
+        Signed in as {me?.user.name ?? me?.user.email ?? "this login"}. It has no
+        school access or linked child yet. Ask the school office.
       </Text>
       <Button
         title={copy.auth.signOutAction}

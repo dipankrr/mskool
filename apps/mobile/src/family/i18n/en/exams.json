@@ -1,0 +1,45 @@
+{
+  "next": "Next exam",
+  "startsIn_one": "Starts tomorrow",
+  "startsIn_other": "Starts in {{count}} days",
+  "startsToday": "Starts today",
+  "onNow": "On now",
+  "current": "Coming up",
+  "past": "Done",
+  "none": {
+    "title": "No exams yet",
+    "body": "When the school sets a date sheet, it shows up here."
+  },
+  "papers_one": "{{count}} paper",
+  "papers_other": "{{count}} papers",
+  "type": {
+    "regular": "Exam",
+    "supplementary": "Supplementary",
+    "improvement": "Improvement",
+    "mock": "Mock test",
+    "test": "Class test"
+  },
+  "typeTerm": "{{type}} · {{term}}",
+  "state": {
+    "upcoming": "Upcoming",
+    "ongoing": "On now",
+    "marks_being_checked": "Marks being checked",
+    "results_out": "Results out"
+  },
+  "stateNote": {
+    "marks_being_checked": "The papers are done. Teachers are checking the marks.",
+    "results_out": "Results are out. The school shares the report card."
+  },
+  "sheet": {
+    "back": "Back",
+    "dateSheet": "Date sheet",
+    "today": "Today",
+    "next": "Next",
+    "time": "{{time}} · {{duration}}",
+    "venue": "Room {{venue}}",
+    "maxMarks": "{{marks}} marks",
+    "part": "{{name}} {{marks}}",
+    "noPapers": "No papers for this class yet."
+  },
+  "rowSub": "{{dates}} · {{state}}"
+}

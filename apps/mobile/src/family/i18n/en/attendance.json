@@ -1,0 +1,67 @@
+{
+  "title": "Attendance",
+  "yearSoFar": "This session so far",
+  "yearDays": "{{attended}} of {{working}} working days",
+  "yearNone": "Nothing marked yet this session",
+  "period": {
+    "month": "Month",
+    "term": "Term",
+    "year": "Year"
+  },
+  "previous": "Previous",
+  "next": "Next",
+  "counts": {
+    "present": "Present",
+    "absent": "Absent",
+    "late": "Late",
+    "halfDay": "Half day",
+    "leave": "Leave",
+    "working": "Working days"
+  },
+  "lateCounts": "Late days count as present at this school.",
+  "lateNotCounted": "Late days don't count as present at this school.",
+  "noCounts": "Nothing marked yet for this period.",
+  "noTerms": "This session has no terms yet.",
+  "calendar": {
+    "title": "Calendar",
+    "weekdays": {
+      "mon": "M",
+      "tue": "T",
+      "wed": "W",
+      "thu": "T",
+      "fri": "F",
+      "sat": "S",
+      "sun": "S"
+    },
+    "dayA11y": "{{date}}: {{status}}"
+  },
+  "look": {
+    "present": "Present",
+    "absent": "Absent",
+    "late": "Late",
+    "halfDay": "Half day",
+    "leave": "On leave",
+    "holiday": "Holiday",
+    "notMarked": "Not marked",
+    "upcoming": "Coming up",
+    "notEnrolled": "Before joining",
+    "none": "No school"
+  },
+  "rank": {
+    "title": "Section ranking",
+    "headline": "Rank {{rank}} of {{count}}",
+    "in": "In {{section}}, by attendance so far",
+    "top": "Top of the section",
+    "youName": "{{name}} (you)",
+    "hidden": "The school shows only your own rank.",
+    "running": "This period is still running, so ranks can change.",
+    "reason": {
+      "no_section": "Not ranked: no section yet.",
+      "not_enrolled": "Not ranked: not enrolled in this period.",
+      "not_started": "Not ranked yet: this period hasn't started.",
+      "no_marks": "Not ranked yet: nothing marked so far.",
+      "too_few_days": "Not ranked yet: needs {{count}} working days."
+    }
+  },
+  "periodSummary": "{{attended}} of {{working}} working days · {{percent}}"
+}

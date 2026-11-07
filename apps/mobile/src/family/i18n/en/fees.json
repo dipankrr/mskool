@@ -1,0 +1,86 @@
+{
+  "dueNow": "Due now",
+  "allPaid": "All paid",
+  "allPaidBody": "Nothing is due right now.",
+  "overdue": "{{amount}} overdue",
+  "thisMonth": "{{amount}} due this month",
+  "notSet": {
+    "title": "Fees aren't set yet",
+    "body": "The school hasn't set up fees for this session. They'll show here once it does."
+  },
+  "tiles": {
+    "paid": "Paid this session",
+    "concession": "Concession",
+    "later": "Still to come"
+  },
+  "months": "Months",
+  "monthA11y": "{{month}}: {{state}}, {{balance}} left",
+  "monthState": {
+    "overdue": "Overdue",
+    "due": "Due",
+    "upcoming": "Upcoming",
+    "paid": "Paid",
+    "none": "Nothing billed"
+  },
+  "showAll": "Show all months",
+  "dues": "To pay",
+  "duesFor": "{{month}}",
+  "duesNone": "Nothing to pay.",
+  "dueOn": "Due {{date}}",
+  "overdueSince": "Overdue since {{date}}",
+  "paidOn": "Paid",
+  "partPaid": "{{paid}} of {{net}} paid",
+  "previousDues": "From earlier sessions",
+  "previousDue": "Previous dues",
+  "concessions": "Concessions",
+  "concessionType": {
+    "sibling_discount": "Sibling discount",
+    "staff_ward": "Staff ward",
+    "merit_scholarship": "Merit scholarship",
+    "need_based": "Need-based",
+    "rte_waiver": "RTE waiver",
+    "management_discount": "Management discount",
+    "other": "Concession"
+  },
+  "payments": "Payments",
+  "paymentsNone": "No payments yet this session.",
+  "paymentSub": "{{date}} · {{mode}}",
+  "mode": {
+    "cash": "Cash",
+    "upi": "UPI",
+    "cheque": "Cheque",
+    "neft_rtgs": "Bank transfer",
+    "card": "Card",
+    "dd": "Demand draft",
+    "online": "Online",
+    "other": "Other"
+  },
+  "status": {
+    "pending": "Pending",
+    "cleared": "Received",
+    "bounced": "Bounced",
+    "reversed": "Reversed",
+    "cancelled": "Cancelled"
+  },
+  "statusNote": {
+    "pending": "The school is waiting for the bank to confirm this payment.",
+    "bounced": "This payment did not go through. The dues it covered are open again.",
+    "reversed": "This payment was returned. The dues it covered are open again.",
+    "cancelled": "This payment was cancelled. No money moved."
+  },
+  "refunded": "{{amount}} refunded",
+  "statement": "Download statement",
+  "receipt": {
+    "title": "Receipt {{number}}",
+    "back": "Back",
+    "paidFor": "What it paid",
+    "lateFee": "Late fee {{amount}}",
+    "share": "Share receipt",
+    "print": "Print",
+    "shareTitle": "Fee receipt",
+    "lateFeeRow": "Late fee"
+  },
+  "documentFailed": "Couldn't make the PDF. Try again.",
+  "dueTitle": "{{head}} · {{month}}",
+  "paymentSubStatus": "{{date}} · {{mode}} · {{status}}"
+}

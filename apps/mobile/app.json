@@ -38,7 +38,8 @@
       "expo-secure-store",
       "expo-image-picker",
       "./plugins/with-cmake-path-limit",
-      "expo-sharing"
+      "expo-sharing",
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true,

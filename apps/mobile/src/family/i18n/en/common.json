@@ -1,0 +1,82 @@
+{
+  "appName": "mskool",
+  "retry": "Try again",
+  "close": "Close",
+  "back": "Back",
+  "cancel": "Cancel",
+  "done": "Done",
+  "loading": "Loading…",
+  "empty": "Nothing here yet",
+  "offline": "You're offline. Showing your last update.",
+  "error": {
+    "title": "Couldn't load this",
+    "body": "Check your connection and try again."
+  },
+  "monthShort": {
+    "1": "Jan",
+    "2": "Feb",
+    "3": "Mar",
+    "4": "Apr",
+    "5": "May",
+    "6": "Jun",
+    "7": "Jul",
+    "8": "Aug",
+    "9": "Sep",
+    "10": "Oct",
+    "11": "Nov",
+    "12": "Dec"
+  },
+  "monthLong": {
+    "1": "January",
+    "2": "February",
+    "3": "March",
+    "4": "April",
+    "5": "May",
+    "6": "June",
+    "7": "July",
+    "8": "August",
+    "9": "September",
+    "10": "October",
+    "11": "November",
+    "12": "December"
+  },
+  "weekdayShort": {
+    "0": "Sun",
+    "1": "Mon",
+    "2": "Tue",
+    "3": "Wed",
+    "4": "Thu",
+    "5": "Fri",
+    "6": "Sat"
+  },
+  "weekdayLong": {
+    "0": "Sunday",
+    "1": "Monday",
+    "2": "Tuesday",
+    "3": "Wednesday",
+    "4": "Thursday",
+    "5": "Friday",
+    "6": "Saturday"
+  },
+  "date": {
+    "dayMonth": "{{day}} {{month}}",
+    "dayMonthYear": "{{day}} {{month}} {{year}}",
+    "weekdayDayMonth": "{{weekday}}, {{day}} {{month}}",
+    "monthYear": "{{month}} {{year}}",
+    "range": "{{from}} – {{to}}"
+  },
+  "time": {
+    "clock": "{{hour}}:{{minute}} {{period}}",
+    "am": "AM",
+    "pm": "PM"
+  },
+  "duration": {
+    "minutes_one": "{{count}} min",
+    "minutes_other": "{{count}} min",
+    "hours_one": "{{count}} hr",
+    "hours_other": "{{count}} hr",
+    "hoursMinutes": "{{hours}} hr {{minutes}} min"
+  },
+  "percent": "{{value}}%",
+  "childLine": "{{name}}, {{detail}}"
+}

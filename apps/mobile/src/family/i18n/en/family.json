@@ -1,0 +1,38 @@
+{
+  "tabs": {
+    "home": "Home",
+    "attendance": "Attendance",
+    "fees": "Fees",
+    "exams": "Exams"
+  },
+  "switcher": {
+    "title": "Choose a child",
+    "hint": "Switch child",
+    "line": "{{name}}, {{class}}",
+    "classSection": "{{class}} · {{section}}",
+    "classOnly": "{{class}}"
+  },
+  "noChildren": {
+    "title": "No children linked yet",
+    "body": "Ask the school office to link your phone number to your child."
+  },
+  "home": {
+    "title": "Hi, {{name}}",
+    "attendanceTitle": "Attendance this month",
+    "attendanceNone": "Nothing marked yet this month",
+    "attendanceDays": "{{attended}} of {{working}} days",
+    "feesTitle": "Fees",
+    "feesDue": "Due now",
+    "feesClear": "All paid",
+    "feesNotSet": "The school hasn't set fees yet",
+    "examTitle": "Next exam",
+    "examNone": "No upcoming exams",
+    "examFrom": "From {{date}}",
+    "signOut": "Sign out",
+    "signOutFailed": "Couldn't sign out. Check your connection and try again."
+  },
+  "soon": {
+    "title": "Coming soon",
+    "body": "This part of the app is on its way."
+  }
+}
