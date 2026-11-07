@@ -330,6 +330,13 @@
       "when": 1794039512100,
       "tag": "0046_attendance_counting",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1794048569869,
+      "tag": "0047_family_ranking_switch",
+      "breakpoints": true
     }
   ]
 }

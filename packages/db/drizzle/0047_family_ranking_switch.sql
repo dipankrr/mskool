@@ -1,0 +1,1 @@
+ALTER TABLE "attendance_policies" ADD COLUMN "family_ranking_visible" boolean DEFAULT true NOT NULL;

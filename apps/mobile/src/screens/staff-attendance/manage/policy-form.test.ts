@@ -13,6 +13,7 @@ function form(patch: Partial<PolicyForm> = {}): PolicyForm {
     threshold: "80",
     late: "15",
     lateCountsAsPresent: true,
+    familyRankingVisible: true,
     ...patch,
   };
 }
@@ -25,6 +26,7 @@ describe("initialPolicyForm", () => {
       threshold: "",
       late: "15",
       lateCountsAsPresent: true,
+      familyRankingVisible: true,
     });
   });
 
@@ -36,6 +38,7 @@ describe("initialPolicyForm", () => {
         thresholdPercentage: 80,
         lateArrivalMinutes: 20,
         lateCountsAsPresent: false,
+        familyRankingVisible: true,
       }),
     ).toEqual({
       mode: "period_wise",
@@ -43,6 +46,7 @@ describe("initialPolicyForm", () => {
       threshold: "80",
       late: "20",
       lateCountsAsPresent: false,
+      familyRankingVisible: true,
     });
   });
 
@@ -94,6 +98,10 @@ describe("validatePolicyForm", () => {
 });
 
 describe("toPolicyPayload", () => {
+  it("sends the ranking switch as chosen", () => {
+    expect(toPolicyPayload(form({ familyRankingVisible: false })).familyRankingVisible).toBe(false);
+  });
+
   it("sends the late rule as chosen", () => {
     expect(toPolicyPayload(form({ lateCountsAsPresent: false })).lateCountsAsPresent).toBe(false);
   });
@@ -105,6 +113,7 @@ describe("toPolicyPayload", () => {
       thresholdPercentage: 80,
       lateArrivalMinutes: 15,
       lateCountsAsPresent: true,
+      familyRankingVisible: true,
     });
     expect(
       toPolicyPayload(
@@ -116,6 +125,7 @@ describe("toPolicyPayload", () => {
       thresholdPercentage: null,
       lateArrivalMinutes: 15,
       lateCountsAsPresent: true,
+      familyRankingVisible: true,
     });
   });
 });

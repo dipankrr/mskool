@@ -2883,3 +2883,47 @@ figure until reissued.
 **Rejected.** A separate "so far" figure only for families: report cards and results would keep the
 wrong number. A late rule that applies from a date forward: one session would count the same day
 two ways. Re-counting closed sessions on a setting change: rewrites decisions already made.
+
+## ADR-062 - Family reads: one child per call, school from the child, narrow shapes
+
+**Context.** The family app (parents and students, one login can cover several children, even in
+different schools or organisations) needs attendance, fees and the exam date sheet. The portal
+track so far had only the enrolment list, homework and published report cards. Staff services
+take a `DataScope` from the session; a family session has no scope, only its owned children.
+
+**Decision.**
+1. Every family read takes one `studentId` and starts at `resolvePortalChild`: a child outside
+   the login's portal-access list is NOT_FOUND (never FORBIDDEN, so ids cannot be probed), and
+   the school, organisation and year come from the child's enrolment (default: the current
+   year's, else the latest). Staff services are reused with a scope built from the child's
+   school, and any id under the child (a payment) is checked against the child first.
+2. Each read has its own hand-written contract in `portal.contract.ts`, never a table-derived or
+   staff schema, so a new staff column cannot reach families by default. Parent and student
+   logins see exactly the same data.
+3. Routes: `portalAttendance.month / overview / ranking`, `portalFees.summary / payment / receipt
+   / statement`, `portalExam.schedule.list / detail`. Ownership only, never `can()`.
+4. Attendance figures are the "so far" count (ADR-061) from daily status. The ranking ranks the
+   child's section, actively enrolled students only, on the shown two-decimal percentage. Ties
+   share a rank (1, 2, 2, 4) and are ordered by name; the top list holds everyone ranked 10th or
+   better, with full names and no ids or counts. A student needs 15 counted working days for a
+   term or the year, and half the school's working days so far for a month. No section means no
+   ranking. `attendance_policies.family_ranking_visible` (default on, migration 0047, a mobile
+   switch on the marking policy) hides the top list; the child's own rank stays.
+5. Fees mirror the admin student fee page: the same totals and months, dues with head names,
+   previous dues, concessions with type and amount only (no reason), every payment of the
+   session with its status (bounced and cancelled too) and refunded amount; no collector, no
+   staff remarks or reversal reasons on screen. Receipt and statement are the counter's printed
+   HTML (ADR-059).
+6. The date sheet shows exams from `scheduled` onward (mock and class tests included; a draft is
+   never shown) with the child's own papers per ADR-052, preferring a section paper over a
+   class-wide one, and each paper's parts with max marks. The family state is upcoming, ongoing,
+   marks being checked, or results out (the class is published). No eligibility, pass marks,
+   weightages or marks.
+
+**Consequences.** Families see the same fee figures as the counter. The ranking is computed per
+request from daily status (about 40 students), so no new table. Results and report cards for
+families stay on published cards only and are rethought separately.
+
+**Rejected.** Returning staff schemas with fields stripped in the router: one forgotten field leaks.
+FORBIDDEN for another family's child: confirms the id exists. First name plus initial in the top
+list: the owner chose full names.

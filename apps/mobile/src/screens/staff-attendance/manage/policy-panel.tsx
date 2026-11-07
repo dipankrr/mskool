@@ -128,6 +128,7 @@ function PolicyBody({
     thresholdPercentage: number | null;
     lateArrivalMinutes: number;
     lateCountsAsPresent?: boolean;
+    familyRankingVisible?: boolean;
   } | null;
   organizationId: string;
   schoolId: string;
@@ -311,6 +312,20 @@ function PolicyBody({
               : copy.attendance.manage.policy.lateCountsHelpOff
           }
           testID="policy-late-counts"
+        />
+      </View>
+
+      <View style={styles.group}>
+        <SwitchRow
+          label={copy.attendance.manage.policy.rankingLabel}
+          value={form.familyRankingVisible}
+          onChange={(familyRankingVisible) => update({ familyRankingVisible })}
+          help={
+            form.familyRankingVisible
+              ? copy.attendance.manage.policy.rankingHelpOn
+              : copy.attendance.manage.policy.rankingHelpOff
+          }
+          testID="policy-family-ranking"
         />
       </View>
 

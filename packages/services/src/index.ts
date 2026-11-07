@@ -116,3 +116,11 @@ export * from "./homework-worker.service";
 // Public sites: the org website engine — draft/publish split, the anonymous
 // published-snapshot read. ADR-041.
 export * from "./public-site.service";
+
+// Family reads (ADR-062): the child resolver every portal read starts from,
+// the attendance ranking rules, and the family attendance reads.
+export * from "./portal-child";
+export * from "./attendance-ranking";
+export * from "./portal-attendance.service";
+export * from "./portal-fees.service";
+export * from "./portal-exam-schedule.service";

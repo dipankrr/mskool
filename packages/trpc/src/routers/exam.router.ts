@@ -47,8 +47,13 @@ import {
   publicationRowSchema,
   studentEntriesOutputSchema,
   classSetOutputSchema,
+  portalChildInputSchema,
+  portalExamDetailInputSchema,
+  portalExamDetailSchema,
+  portalExamListSchema,
 } from "@repo/contracts";
 import {
+  portalExamScheduleService,
   examAnnualService,
   examConfigService,
   examMarksService,
@@ -655,6 +660,22 @@ export const examRouter = router({
  * else (hard rule 8). No live marks, no drafts, nothing unpublished.
  */
 export const portalExamRouter = router({
+  // The family date sheet (ADR-062): exams from scheduled onward, the
+  // child's own papers, never marks (those come only as published cards).
+  schedule: router({
+    list: studentProcedure
+      .meta({ openapi: { method: "GET", path: "/portal/exam/schedule", tags: ["portal"], summary: "The child's exams for the session", protect: true } })
+      .input(portalChildInputSchema)
+      .output(portalExamListSchema)
+      .query(({ ctx, input }) => portalExamScheduleService.list(ctx.studentIds, input)),
+
+    detail: studentProcedure
+      .meta({ openapi: { method: "GET", path: "/portal/exam/schedule/{examId}", tags: ["portal"], summary: "The child's date sheet for one exam", protect: true } })
+      .input(portalExamDetailInputSchema)
+      .output(portalExamDetailSchema)
+      .query(({ ctx, input }) => portalExamScheduleService.detail(ctx.studentIds, input)),
+  }),
+
   results: router({
     list: studentProcedure
       .meta({ openapi: { method: "GET", path: "/portal/exam/results", tags: ["portal"], summary: "The family's current report cards", protect: true } })

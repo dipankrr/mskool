@@ -160,6 +160,9 @@ export const attendancePolicies = pgTable(
     // Changing it recomputes the current session's summaries only; closed
     // sessions keep the figures they were run with.
     lateCountsAsPresent: boolean().notNull().default(true),
+    // Whether families see the section's top 10 on the attendance ranking.
+    // Off: the ranking read returns the child's own rank only (ADR-062).
+    familyRankingVisible: boolean().notNull().default(true),
 
     updatedBy: text().references(() => user.id),
 

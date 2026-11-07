@@ -79,3 +79,7 @@ export * from "./contracts/id_card.contract";
 // Public sites: the org website's content vocabulary — sections, cards,
 // theme. NOT drizzle-zod; org_public_sites stores this as jsonb (ADR-041).
 export * from "./contracts/public_site.contract";
+
+// Family reads (ADR-062): the narrow parent/student shapes for portalAttendance,
+// portalFees and portalExam.schedule. Hand-written, never table-derived.
+export * from "./contracts/portal.contract";

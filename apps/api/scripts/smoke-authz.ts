@@ -1135,6 +1135,41 @@ async function main() {
     portalList.ok ? `got ${portalList.data?.length}` : `code ${portalList.code}`,
   );
 
+  // THE FAMILY READS (ADR-062): the owned child reads; any other child is
+  // NOT_FOUND (never FORBIDDEN, so ids cannot be probed); a staff login with
+  // no portal access never reaches them.
+  const ownedChildId = enrollmentSectioned!.studentId;
+  const foreignChildId = (enrollmentB ?? enrollmentsA.find((e) => e.studentId !== ownedChildId))!.studentId;
+  for (const path of [
+    "portalAttendance.overview",
+    "portalFees.summary",
+    "portalExam.schedule.list",
+  ]) {
+    const own = await query(parentCookie, path, { studentId: ownedChildId });
+    report(`the parent reads ${path} for the owned child`, own.ok, own.ok ? "ok" : `code ${own.code}`);
+    const foreign = await query(parentCookie, path, { studentId: foreignChildId });
+    report(
+      `${path} for another family's child is NOT_FOUND`,
+      !foreign.ok && foreign.code === "NOT_FOUND",
+      foreign.ok ? "AUTHORIZED — a leak" : `code ${foreign.code}`,
+    );
+    const staff = await query(principalCookie, path, { studentId: ownedChildId });
+    report(
+      `a staff login without portal access is refused ${path}`,
+      !staff.ok && staff.code === "FORBIDDEN",
+      staff.ok ? "AUTHORIZED — a leak" : `code ${staff.code}`,
+    );
+  }
+  const ranking = await query(parentCookie, "portalAttendance.ranking", {
+    studentId: ownedChildId,
+    period: "year",
+  });
+  report(
+    "the ranking carries no other child's id",
+    ranking.ok && (ranking.data as any).top.every((r: any) => !("studentId" in r)),
+    ranking.ok ? `top ${(ranking.data as any).top.length}` : `code ${ranking.code}`,
+  );
+
   console.log("\nattendance — the marking flow over HTTP (Phase 3)");
 
   // 2025-07-01 is a Tuesday inside the demo year, and neither of the seed's
@@ -2744,6 +2779,13 @@ async function main() {
       (revokedMe.data as any)?.portal === null &&
       (await getSessionAlive(portalCookie)),
     revokedMe.ok ? "portal null, session alive" : `code ${revokedMe.code}`,
+  );
+
+  const revokedFees = await query(portalCookie, "portalFees.summary", { studentId: student1.id });
+  report(
+    "the revoked login loses the family reads",
+    !revokedFees.ok && revokedFees.code === "FORBIDDEN",
+    revokedFees.ok ? "AUTHORIZED — a leak" : `code ${revokedFees.code}`,
   );
 
   const relink = await mutate(principalCookie, "portalAccess.ensureLink", {

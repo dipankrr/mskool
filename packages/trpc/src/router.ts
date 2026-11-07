@@ -13,6 +13,8 @@ import { idCardRouter } from "./routers/id_card.router";
 import { publicSiteRouter } from "./routers/public_site.router";
 import { meRouter } from "./routers/me.router";
 import { portalAccessRouter } from "./routers/portal-access.router";
+import { portalAttendanceRouter } from "./routers/portal-attendance.router";
+import { portalFeesRouter } from "./routers/portal-fees.router";
 import { roleRouter } from "./routers/role.router";
 import { schoolRouter } from "./routers/school.router";
 import { staffRouter } from "./routers/staff.router";
@@ -66,6 +68,11 @@ export const appRouter = router({
   // action is its own permission; audit rows + session revocation are the
   // service's business.
   portalAccess: portalAccessRouter,
+  // Family reads (ADR-062), ownership only like every portal door: the
+  // child's attendance month, overview and section ranking, all "so far".
+  portalAttendance: portalAttendanceRouter,
+  // The child's fees, read-only: summary, one payment, receipt, statement.
+  portalFees: portalFeesRouter,
   // The employment register and its login provisioning (ADR-008, ADR-035):
   // staff.list/byId/create/update/deactivate + the login acts.
   staff: staffRouter,

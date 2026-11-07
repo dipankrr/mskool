@@ -21,6 +21,8 @@ export type PolicyForm = {
   late: string;
   /** Whether a Late day counts as attended in the percentage (ADR-061). */
   lateCountsAsPresent: boolean;
+  /** Whether families see the section top 10 on the ranking (ADR-062). */
+  familyRankingVisible: boolean;
 };
 
 export type PolicyFormErrors = {
@@ -40,6 +42,7 @@ export function initialPolicyForm(
     thresholdPercentage: number | null;
     lateArrivalMinutes: number;
     lateCountsAsPresent?: boolean;
+    familyRankingVisible?: boolean;
   } | null,
 ): PolicyForm {
   if (!policy) {
@@ -49,6 +52,7 @@ export function initialPolicyForm(
       threshold: "",
       late: "15",
       lateCountsAsPresent: true,
+      familyRankingVisible: true,
     };
   }
   return {
@@ -63,6 +67,7 @@ export function initialPolicyForm(
         : String(policy.thresholdPercentage),
     late: String(policy.lateArrivalMinutes),
     lateCountsAsPresent: policy.lateCountsAsPresent ?? true,
+    familyRankingVisible: policy.familyRankingVisible ?? true,
   };
 }
 
@@ -97,6 +102,7 @@ export function toPolicyPayload(form: PolicyForm): {
   thresholdPercentage: number | null;
   lateArrivalMinutes: number;
   lateCountsAsPresent: boolean;
+  familyRankingVisible: boolean;
 } {
   return {
     markingMode: form.mode,
@@ -107,5 +113,6 @@ export function toPolicyPayload(form: PolicyForm): {
         : null,
     lateArrivalMinutes: Number(form.late.trim()),
     lateCountsAsPresent: form.lateCountsAsPresent,
+    familyRankingVisible: form.familyRankingVisible,
   };
 }

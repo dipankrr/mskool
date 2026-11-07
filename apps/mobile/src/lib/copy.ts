@@ -1665,6 +1665,9 @@ export const copy = {
         lateCountsLabel: "Count late as present",
         lateCountsHelpOn: "A late day counts toward the attendance percentage.",
         lateCountsHelpOff: "A late day lowers the attendance percentage, like an absence.",
+        rankingLabel: "Show class top 10 to families",
+        rankingHelpOn: "Parents and students see the top 10 of their section and their own rank.",
+        rankingHelpOff: "Parents and students see only their own rank in the section.",
         lateConfirmTitle: "Re-count this session's attendance?",
         lateConfirmBody: (countsPresent: boolean) =>
           `${
