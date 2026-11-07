@@ -2,6 +2,7 @@ import { db } from "@repo/db";
 import {
   academicYears,
   classes,
+  schools,
   sections,
   studentEnrollments,
   students,
@@ -125,4 +126,40 @@ export async function resolvePortalChild(
       isCurrent: row.isCurrent,
     },
   };
+}
+
+/**
+ * Every child this login owns, each with its current (else latest)
+ * enrolment: the family app’s switcher. Children without any enrolment
+ * are left out. Ordered by first name, so the list is stable.
+ */
+export async function listPortalChildren(ownedStudentIds: readonly string[]) {
+  const children = [];
+  for (const studentId of ownedStudentIds) {
+    let child: PortalChild;
+    try {
+      child = await resolvePortalChild(ownedStudentIds, studentId);
+    } catch {
+      continue;
+    }
+    const [school] = await db
+      .select({ name: schools.name })
+      .from(schools)
+      .where(eq(schools.id, child.schoolId));
+    children.push({
+      studentId,
+      firstName: child.firstName,
+      name: fullName(child),
+      schoolName: school?.name ?? "",
+      className: child.className,
+      sectionName: child.sectionName,
+      rollNumber: child.rollNumber,
+      academicYear: {
+        id: child.academicYearId,
+        name: child.year.name,
+        isCurrent: child.year.isCurrent,
+      },
+    });
+  }
+  return children.sort((a, b) => a.firstName.localeCompare(b.firstName));
 }

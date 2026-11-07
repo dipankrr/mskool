@@ -4,8 +4,9 @@ import {
   leaveEnrollmentSchema,
   studentSelectSchema,
   updateEnrollmentSchema,
+  portalChildSummarySchema,
 } from "@repo/contracts";
-import { enrollmentService, feesBillingService } from "@repo/services";
+import { enrollmentService, feesBillingService, listPortalChildren } from "@repo/services";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -307,4 +308,19 @@ const portalEnrollmentSubRouter = router({
  */
 export const portalRouter = router({
   enrollment: portalEnrollmentSubRouter,
+  /** ADR-062 follow-up: the family app’s child switcher. */
+  children: router({
+    list: studentProcedure
+      .meta({
+        openapi: {
+          method: "GET",
+          path: "/portal/children",
+          tags: ["portal"],
+          summary: "The signed-in family’s children, each with the current class",
+          protect: true,
+        },
+      })
+      .output(z.array(portalChildSummarySchema))
+      .query(({ ctx }) => listPortalChildren(ctx.studentIds)),
+  }),
 });

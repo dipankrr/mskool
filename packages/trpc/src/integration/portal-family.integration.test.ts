@@ -176,6 +176,29 @@ describe("family reads: who may read", () => {
   }, 60_000);
 });
 
+describe("family children list", () => {
+  it("lists only this login’s children with their class, and refuses a staff login", async () => {
+    const sibling = await makeUser("sibling-parent");
+    const zoe = await admit("Zoe", "2025-04-01", world.section6aId);
+    const amy = await admit("Amy", "2025-04-01");
+    await grant(sibling, zoe.id);
+    await grant(sibling, amy.id);
+
+    const list = await callerFor(sibling).portal.children.list();
+    expect(list.map((c) => c.firstName)).toEqual(["Amy", "Zoe"]);
+    const z = list.find((c) => c.studentId === zoe.id)!;
+    expect(z.name).toBe(`Zoe Fam${RUN}`);
+    expect(z.sectionName).not.toBeNull();
+    expect(z.className.length).toBeGreaterThan(0);
+    expect(z.schoolName.length).toBeGreaterThan(0);
+    expect(list.find((c) => c.studentId === amy.id)!.sectionName).toBeNull();
+    // Another family’s child never appears.
+    expect(list.some((c) => c.studentId === world.ownedStudentId)).toBe(false);
+
+    await expectCode(callerFor(world.users.adminA).portal.children.list(), "FORBIDDEN");
+  }, 60_000);
+});
+
 describe("family attendance", () => {
   let workingDates: string[] = [];
   let ana: { id: string };

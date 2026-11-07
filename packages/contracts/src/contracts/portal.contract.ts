@@ -26,6 +26,23 @@ export const portalChildInputSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Children: the switcher
+// ---------------------------------------------------------------------------
+
+/** One owned child, for the family app’s child switcher and headers. */
+export const portalChildSummarySchema = z.object({
+  studentId: z.uuid(),
+  firstName: z.string(),
+  name: z.string(),
+  schoolName: z.string(),
+  className: z.string(),
+  sectionName: z.string().nullable(),
+  rollNumber: z.string().nullable(),
+  academicYear: z.object({ id: z.uuid(), name: z.string(), isCurrent: z.boolean() }),
+});
+export type PortalChildSummary = z.infer<typeof portalChildSummarySchema>;
+
+// ---------------------------------------------------------------------------
 // Attendance
 // ---------------------------------------------------------------------------
 
