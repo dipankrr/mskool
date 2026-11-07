@@ -2841,3 +2841,45 @@ plan's single process and 120-second request cap are deployment constraints.
 `pnpm deploy --prod`: unnecessary once one artifact contains the workspace code. A Dockerfile or
 VPS: more operations than this testing stage needs. Relying on raw workspace exports at runtime:
 they point at TypeScript source and make the deploy dependent on a host-specific loader/layout.
+## ADR-061 - Attendance counts from the day a student joined, and late is a school setting
+
+**Context.** `attendance_summary` divided present days by every working day of the whole period,
+from the first day of the session, including days that had not happened yet and days before the
+student enrolled. Term results (`minAttendancePct`), the attendance printed on report cards and
+exam eligibility all read it, so a student admitted mid-year could fail a term on attendance for
+days before she was enrolled, and mid-term eligibility made almost everyone look short. Late was
+never counted as present. Separately, an attendance save took about 24 s for 15 students on the
+remote database: the save and the summary recompute wrote one row at a time.
+
+**Decision.**
+1. A student's working days run from the enrolment date, minus every gap between leaving and
+   rejoining (`leaving_history`), and stop on the day they left. Marks dated before the recorded
+   enrolment date move the start back to the first mark, so marked days are never outside their
+   own denominator. The rules live once, in `attendance-counting.ts` (pure, unit-tested).
+2. The stored summary rows keep counting the whole period (the admin "how much of the year is
+   done" view), but only over the student's own days. A new `days_attended` column (present, plus
+   late when the school counts it) is the generated percentage's numerator; `days_present` stays the
+   pure Present bucket.
+3. Decisions read the "so far" figure, `attendanceToDate`: the same counts stopped at today (IST).
+   Term results, report cards (term and annual), annual results and exam eligibility use it. A
+   student with no marks in the period has no figure, never a 0%. The snapshot field
+   `attendance.daysPresent` keeps its name and now carries days attended.
+4. `attendance_policies.late_counts_as_present` (default true) decides whether late counts.
+   Changing it re-counts the school's CURRENT session in the same transaction; closed sessions
+   keep the figures they were run with, and published cards keep their printed figures. Mobile
+   asks before saving a change; web does not show the setting yet.
+5. A save writes in multi-row statements, the summary recompute covers only the saved date's
+   month, its term and the year, and the counting inputs are one SQL statement. Each separate query
+   inside a transaction costs a full round trip (about 0.2 s remote), and query-builder awaits are
+   not pipelined, so the remaining writes go out through `execute` together.
+6. Migration 0046 adds the columns; `pnpm attendance:recompute` re-counts every school's current
+   session once per environment.
+
+**Consequences.** A 15-student save went from about 24 s to about 2.4 s on the remote database.
+Mid-session percentages on staff screens still read low for everyone, by design; families, the
+ranking and decisions use the so-far figure. Report cards printed before this keep their old
+figure until reissued.
+
+**Rejected.** A separate "so far" figure only for families: report cards and results would keep the
+wrong number. A late rule that applies from a date forward: one session would count the same day
+two ways. Re-counting closed sessions on a setting change: rewrites decisions already made.
