@@ -127,6 +127,19 @@ describe("sectionTotals", () => {
     expect(averagePercent(totals)).toBeNull();
   });
 
+  it("present share counts late days when the school counts late as present", () => {
+    const value = row("a", "annual", {
+      daysPresent: 4,
+      daysLate: 2,
+      daysAbsent: 1,
+      daysHalfDay: 0,
+      daysOnLeave: 0,
+      daysAttended: 6,
+    });
+    expect(presentSharePercent(value)).toBeCloseTo((6 / 7) * 100, 5);
+    expect(presentSharePercent({ ...value, daysAttended: 4 })).toBeCloseTo((4 / 7) * 100, 5);
+  });
+
   it("averages days attended, so late counts when the school says so", () => {
     const byStudent = summaryByStudent([
       row("a", "annual", { workingDays: 10, daysPresent: 6, daysLate: 2, daysAttended: 8 }),

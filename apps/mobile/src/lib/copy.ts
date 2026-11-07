@@ -1390,7 +1390,7 @@ export const copy = {
       howCalculated: "How this is calculated",
       presentOfMarked: (present: number, marked: number) => `${present}/${marked}`,
       presentShareLabel: "Present share",
-      presentShareNote: "Present days out of all marked days.",
+      presentShareNote: "Days attended out of all marked days. Late counts when the school counts late as present.",
       markToday: "Mark today's attendance",
       noMarksTitle: "No attendance yet",
       noMarksBody: "Mark today's register to start the year.",
@@ -1409,7 +1409,7 @@ export const copy = {
           "Days attended divided by the session's working days since the student joined, the days still to come included. It rises as days are marked. Late counts as attended when the school's policy says so; half day never does. Exam eligibility and results use the same count, up to today.",
         markedTitle: "Present share of marked days",
         markedBody:
-          "Present days divided by all marked days for that student, including half days. It is a day-to-day read, not a policy threshold.",
+          "Days attended divided by all marked days for that student, including half days. Late counts as attended when the school's policy says so. It is a day-to-day read, not a policy threshold.",
         close: "Close",
       },
       detail: {

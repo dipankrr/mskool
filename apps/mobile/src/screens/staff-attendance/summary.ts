@@ -83,8 +83,8 @@ export function sortSummaryRoster(
       const shareA = presentSharePercent(rowA) ?? 0;
       const shareB = presentSharePercent(rowB) ?? 0;
       if (shareA !== shareB) return shareB - shareA;
-      if (rowA.daysPresent !== rowB.daysPresent) {
-        return rowB.daysPresent - rowA.daysPresent;
+      if (attendedDays(rowA) !== attendedDays(rowB)) {
+        return attendedDays(rowB) - attendedDays(rowA);
       }
     } else {
       if (rowA.daysAbsent !== rowB.daysAbsent) {
@@ -152,7 +152,7 @@ export function sectionTotals(
       continue;
     }
     present += row.daysPresent;
-    attended += row.daysAttended ?? row.daysPresent;
+    attended += attendedDays(row);
     absent += row.daysAbsent;
     late += row.daysLate;
     halfDay += row.daysHalfDay;
@@ -190,17 +190,25 @@ export function markedDaysForRow(row: SummaryRow): number {
   );
 }
 
-/** Present days ÷ all marked statuses for one student; null before any mark. */
+/**
+ * Days attended for one student: present, plus late when the school's policy
+ * counts late as present (ADR-061). Falls back to present for an older API.
+ */
+export function attendedDays(row: SummaryRow): number {
+  return row.daysAttended ?? row.daysPresent;
+}
+
+/** Days attended ÷ all marked statuses for one student; null before any mark. */
 export function presentSharePercent(row: SummaryRow): number | null {
   const marked = markedDaysForRow(row);
   if (marked === 0) return null;
-  return (row.daysPresent / marked) * 100;
+  return (attendedDays(row) / marked) * 100;
 }
 
-/** Present days ÷ all marked statuses across the section; null before any mark. */
+/** Days attended ÷ all marked statuses across the section; null before any mark. */
 export function presentSharePercentForTotals(totals: SectionTotals): number | null {
   if (totals.markedStatusDays === 0) return null;
-  return (totals.present / totals.markedStatusDays) * 100;
+  return (totals.attended / totals.markedStatusDays) * 100;
 }
 
 /** Σattended ÷ Σworking as a percentage, or null when nothing is marked. */

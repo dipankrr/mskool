@@ -31,6 +31,7 @@ import { statusTone } from "./status-meta";
 import { StudentSummarySheet } from "./student-summary-sheet";
 import { SummaryInfoSheet } from "./summary-info-sheet";
 import {
+  attendedDays,
   averagePercent,
   coveragePercent,
   formatPercent,
@@ -76,7 +77,7 @@ const SummaryLine = memo(function SummaryLine({
   const marked = row ? markedDaysForRow(row) : 0;
   const presentOfMarked =
     row && marked > 0
-      ? copy.attendance.summary.presentOfMarked(row.daysPresent, marked)
+      ? copy.attendance.summary.presentOfMarked(attendedDays(row), marked)
       : copy.attendance.summary.noValue;
   const parts: MetaPart[] = row
     ? [
