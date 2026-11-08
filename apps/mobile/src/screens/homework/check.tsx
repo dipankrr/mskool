@@ -70,7 +70,7 @@ export function CheckScreen() {
   const [typed, setTyped] = useState("");
   const [padError, setPadError] = useState<string | null>(null);
   const [sheetFor, setSheetFor] = useState<string | null>(null);
-  const [saved, setSaved] = useState<{ sectionId: string; done: number; total: number; followUp: RegisterRow[] } | null>(null);
+  const [saved, setSaved] = useState<{ sectionId: string; done: number; total: number; followUp: { row: RegisterRow; status: CheckStatus }[] } | null>(null);
 
   const changes = changedResults(rows, drafts);
   const counts = countDrafts(drafts);
@@ -85,10 +85,12 @@ export function CheckScreen() {
         sectionId,
         done: result.counts.done,
         total: rows.length,
-        followUp: rows.filter((r) => {
-          const d = drafts[r.studentAssignmentId];
-          return d?.checkStatus === "not_done" || d?.checkStatus === "incomplete";
-        }),
+        // Kept with the status as saved: the drafts are cleared below.
+        followUp: rows
+          .map((row) => ({ row, status: drafts[row.studentAssignmentId]?.checkStatus ?? null }))
+          .filter((x): x is { row: RegisterRow; status: CheckStatus } =>
+            x.status === "not_done" || x.status === "incomplete",
+          ),
       });
     },
   });
@@ -154,9 +156,9 @@ export function CheckScreen() {
           {saved.followUp.length > 0 ? (
             <View style={styles.followUp}>
               <ThemedText variant="sectionLabel">{text.followUp}</ThemedText>
-              {saved.followUp.map((r) => (
+              {saved.followUp.map(({ row: r, status }) => (
                 <ThemedText key={r.studentAssignmentId} variant="body">
-                  {`${r.rollNumber ? `${r.rollNumber}. ` : ""}${r.name} · ${text.statuses[drafts[r.studentAssignmentId]?.checkStatus ?? "not_done"]}`}
+                  {`${r.rollNumber ? `${r.rollNumber}. ` : ""}${r.name} · ${text.statuses[status]}`}
                 </ThemedText>
               ))}
             </View>
