@@ -302,6 +302,46 @@ agreed.
 5. **H5 Reading ticks, class diary, child record, principal view.**
 6. **H6 Notifications:** needs push infrastructure, which doesn't exist yet.
 
+### H2 slice plan (Home, Give, Check)
+
+**Actor and context.** A subject or class teacher between periods, one hand, a mid-range Android,
+sometimes on a weak connection. Built on the H1 API (ADR-064); frames 1, 5 to 11 and 14 to 20.
+
+**Routes.** `(tabs)/homework` (Home), `homework/give` (the four steps), `homework/check`
+(`id` + `sectionId`). Thin route files; bodies in `screens/homework/`.
+
+**Screens and states**
+- **Home.** To check (one card per homework and section, "Check now"), Out now, Drafts, and a
+  Give button for callers with `homework:create`. States: loading skeletons; error with Retry;
+  no session year; nothing given yet (empty state with Give); all checked (frame 2). Quizzes show
+  as a read-only card until H4. Pull to refresh.
+- **Give, step 1: type.** Homework, Practice, Project, Reading; Quiz shows "comes with the quiz
+  update" until H4. "Same as last time" (from `defaults.lastId`) prefills classes and choices.
+- **Step 2: classes.** One card per subject with tick chips per section, size and an amber dot
+  when that class already has homework due tomorrow; "Select all"; picking another subject's
+  chip switches subject and clears. One subject and one section: the step is skipped. States:
+  loading, error, no classes assigned (a sentence saying who sets this up).
+- **Step 3: the work.** Title and details (Homework, Practice, Project) with up to 10 photos
+  (camera or library, resized on the phone, uploaded straight away with a per-photo spinner and
+  retry); Reading asks book and pages. Validation inline.
+- **Step 4: when and how.** Due chips (Tomorrow, the next school day after, Pick; Project: 1 or
+  2 weeks), comes-back tiles (only those the type allows), grading segment (hidden for tick and
+  nothing) with an "out of" stepper for marks, "About how long" chips, and More (late window).
+  The chips at the top repeat steps 1 to 3 and jump back. Footer: Draft and Give.
+- **After Give.** Back on Home with a toast "Given to 6A, 6B" and **Undo** for 15 minutes'
+  worth of the toast's life (the server decides if Undo is still allowed).
+- **Check.** Counts at the top (Done, Incomplete, Not done, Left), the class in roll order,
+  "All done" marks every unset child Done, a tap cycles Done, Incomplete, Not done, Absent.
+  Children absent today (work brought to class) start as Absent. Marks: a sticky number pad
+  that moves down the roll; Grade: the school's letters; Remark: three big buttons. Hold a child
+  for status, a note the student sees and quick chips. Save, then a summary with who to follow
+  up and "Next: 6B" when another section of the same homework waits. Re-opening shows what was
+  saved. A failed save keeps every mark and offers Retry; leaving with unsaved marks asks first.
+
+**Acceptance.** Give to two sections in under 20 seconds from "Same as last time"; check 32
+notebooks with three exceptions in under 60 seconds; both on a mid-range Android, with text at
+1.3x still usable; nothing shows as saved before the server confirms.
+
 ## 9. Decisions
 
 **Agreed with the owner (2026-11-08)**
