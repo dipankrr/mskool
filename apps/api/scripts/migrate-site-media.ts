@@ -1,13 +1,12 @@
 /**
- * One-shot migration: static site media → the object store (ADR-042).
+ * Seeds the demo site's media into the public bucket (ADR-063).
  *
  * Reads the webp files from apps/web/public/sites/ujjwal (kept on disk as
- * seed input, purged from git), uploads each as a PUBLIC object through
- * storageService.putObject, and rewrites every `/sites/ujjwal/...` URL in
- * the Ujjwal site content to `/api/public/storage/{id}`. Re-runnable: each
- * run mints fresh objects and replaces the content wholesale; the previous
- * generation's public objects are deleted first so the store does not grow
- * orphaned generations forever.
+ * seed input, purged from git), stores each as `site_media` through
+ * storageService.ingest, and rewrites every `/sites/ujjwal/...` URL in the
+ * Ujjwal site content to `/api/public/storage/{id}`. Re-runnable: each run
+ * stores fresh files and replaces the content wholesale; the previous
+ * generation is marked deleted first, and the storage sweeper removes it.
  *
  * Files whose decoded bytes exceed the service cap are skipped loudly —
  * none should, the conversion step caps gallery images well below it.
@@ -17,7 +16,7 @@ import path from "node:path";
 import { publicSiteContentSchema } from "@repo/contracts";
 import { db } from "@repo/db";
 import { orgPublicSites, organizations, storageObjects } from "@repo/db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { storageService } from "@repo/services";
 import { UJJWAL_SITE_CONTENT } from "./ujjwal-site-content";
 
@@ -57,29 +56,38 @@ async function main() {
   const urls = collectStaticUrls(UJJWAL_SITE_CONTENT);
   console.log(`Migrating ${urls.length} media files into the object store…`);
 
-  // Delete the previous generation of public objects BEFORE uploading, so a
-  // re-run replaces rather than accumulates. Only visibility=public rows of
-  // this org are touched — student photos and ID-card assets are private.
+  // Let the previous generation go BEFORE storing, so a re-run replaces
+  // rather than accumulates. Only this org's site media is touched.
   const stale = await db
-    .delete(storageObjects)
-    .where(and(eq(storageObjects.organizationId, org.id), eq(storageObjects.visibility, "public")))
+    .update(storageObjects)
+    .set({ status: "deleted", deletedAt: new Date() })
+    .where(
+      and(
+        eq(storageObjects.organizationId, org.id),
+        eq(storageObjects.purpose, "site_media"),
+        ne(storageObjects.status, "deleted"),
+      ),
+    )
     .returning({ id: storageObjects.id });
-  console.log(`  - deleted ${stale.length} stale public objects`);
+  console.log(`  - marked ${stale.length} stale site files deleted`);
 
   const urlMap = new Map<string, string>();
   for (const staticUrl of urls) {
     const rel = staticUrl.slice(STATIC_PREFIX.length);
-    const ext = path.extname(rel).toLowerCase();
-    const contentType = ext === ".png" ? "image/png" : "image/webp";
     const bytes = await readFile(path.join(MEDIA_DIR, rel));
 
-    const meta = await storageService.putObject({
+    // Attached: the content JSON is the only reference until site media gets
+    // its own table, and the sweeper cannot see inside it.
+    const stored = await storageService.ingest({
       organizationId: org.id,
-      contentType,
+      schoolId: null,
+      purpose: "site_media",
+      parentId: null,
+      uploadedBy: null,
       bytes,
-      visibility: "public",
+      attached: true,
     });
-    urlMap.set(staticUrl, `/api/public/storage/${meta.id}`);
+    urlMap.set(staticUrl, `/api/public/storage/${stored.id}`);
     console.log(`  + ${rel} -> ${urlMap.get(staticUrl)} (${Math.round(bytes.length / 1024)} KB)`);
   }
 

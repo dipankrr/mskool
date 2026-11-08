@@ -1300,6 +1300,9 @@ export const updateFeePrintSettingsSchema = z
 export type UpdateFeePrintSettingsInput = z.infer<typeof updateFeePrintSettingsSchema>;
 
 export const uploadFeePrintImageSchema = z.object({
+  // Which slot the image is for: the two are stored with different rules
+  // (a QR is never lossy-compressed), ADR-063.
+  kind: z.enum(["logo", "upi_qr"]).default("logo"),
   contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
   dataBase64: z
     .string()

@@ -271,27 +271,15 @@ export const studentRouter = router({
     .input(z.object({ id: z.uuid(), data: uploadStudentPhotoInput }))
     .output(z.object({ objectId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      const bytes = Buffer.from(input.data.dataBase64, "base64");
-
       // A payload that fails to decode round-trips as an empty buffer — the
-      // service's empty/oversize guards turn that into wording, not a 500.
-      const meta = await storageService.putObject({
-        organizationId: ctx.scope.organizationId,
-        contentType: input.data.contentType,
-        bytes,
-        createdBy: ctx.userId,
-      });
-
-      // Upserts the pointer and deletes the replaced object's bytes in one
-      // transaction (one live photo per student — ADR-038).
-      await idCardService.setStudentPhoto(
+      // storage service's empty/oversize guards turn that into wording.
+      const objectId = await idCardService.uploadStudentPhoto(
         ctx.scope,
         input.id,
-        meta.id,
+        Buffer.from(input.data.dataBase64, "base64"),
         ctx.userId,
       );
-
-      return { objectId: meta.id };
+      return { objectId };
     }),
 
   removePhoto: staffProcedure("student:update", {

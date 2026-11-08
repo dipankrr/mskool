@@ -1370,6 +1370,9 @@ export const feePrintSettings = pgTable(
   (t) => [
     uniqueIndex("fee_print_settings_school_uq").on(t.schoolId),
     index("fee_print_settings_org_idx").on(t.organizationId),
+    // ADR-063: the storage sweeper deletes through these foreign keys.
+    index("fee_print_settings_logo_idx").on(t.logoObjectId),
+    index("fee_print_settings_upi_image_idx").on(t.upiImageObjectId),
   ],
 );
 

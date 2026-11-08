@@ -29,8 +29,8 @@ export * from "./fees";
 // computed chain; published cards. Phase 5 (ADR-032).
 export * from "./exam";
 
-// Storage: binary objects (the ADR-038 driver seam) and the student photo
-// that points at one. Slice 2a, ID cards.
+// Storage: metadata for files kept in S3-compatible buckets (ADR-063) and the
+// student photo that points at one.
 export * from "./storage";
 
 // ID cards: per-school student ID card templates. Slice 2a.

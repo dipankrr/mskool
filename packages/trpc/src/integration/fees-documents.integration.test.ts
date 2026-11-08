@@ -14,6 +14,7 @@ import { academicYears, feeHeads, feeInstallments, user } from "@repo/db/schema"
 import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { beforeAll, describe, expect, it } from "vitest";
+import { TINY_PNG, useMemoryStore } from "./storage-fixtures";
 
 /**
  * Printed fee documents against a real database: what each one includes and
@@ -92,6 +93,7 @@ async function schoolIn(name: string) {
 }
 
 beforeAll(async () => {
+  useMemoryStore();
   const scope = await schoolIn("Print");
   const otherScope = await schoolIn("Other");
   const [year] = await db
@@ -178,7 +180,7 @@ describe("print settings", () => {
       headerText: "ডেমো ট্রাস্ট\nRecognised by the Board",
       titles: { receipt: "Money Receipt" },
       showAmountInWords: false,
-    });
+    }, w.adminId);
     const s = await billed("SETTINGS");
     const payment = await pay(s.id, s.dues.slice(0, 1));
     const html = (await feeDocumentsService.receipt(w.scope, payment.id, undefined))?.html ?? "";
@@ -189,25 +191,66 @@ describe("print settings", () => {
 
     // Another school's settings stay untouched.
     expect((await feeDocumentsService.getPrintSettings(w.otherScope)).headerText).toBe("");
-    await feeDocumentsService.updatePrintSettings(w.scope, { showAmountInWords: true });
+    await feeDocumentsService.updatePrintSettings(w.scope, { showAmountInWords: true }, w.adminId);
   }, 120_000);
 
   it("refuse a QR with nothing behind it, and an image from another organization", async () => {
     await expect(
-      feeDocumentsService.updatePrintSettings(w.scope, { upiMode: "upi_id", upiId: null }),
+      feeDocumentsService.updatePrintSettings(w.scope, { upiMode: "upi_id", upiId: null }, w.adminId),
     ).rejects.toThrow("UPI ID");
-    await expect(feeDocumentsService.updatePrintSettings(w.scope, { upiMode: "image" })).rejects.toThrow(
-      "QR image",
-    );
-    const foreign = await storageService.putObject({
+    await expect(
+      feeDocumentsService.updatePrintSettings(w.scope, { upiMode: "image" }, w.adminId),
+    ).rejects.toThrow("QR image");
+    const foreign = await storageService.ingest({
       organizationId: w.otherScope.organizationId,
-      contentType: "image/png",
-      bytes: Buffer.from("not really a png"),
+      schoolId: w.otherScope.schoolId,
+      purpose: "fee_print_logo",
+      parentId: w.otherScope.schoolId,
+      uploadedBy: w.adminId,
+      bytes: TINY_PNG,
     });
     await expect(
-      feeDocumentsService.updatePrintSettings(w.scope, { logoObjectId: foreign.id }),
-    ).rejects.toThrow("isn't available");
+      feeDocumentsService.updatePrintSettings(w.scope, { logoObjectId: foreign.id }, w.adminId),
+    ).rejects.toThrow("can't be used here");
+
+    // A QR uploaded as a logo is the wrong kind of file for the QR slot.
+    const logo = await feeDocumentsService.uploadPrintImage(
+      w.scope,
+      { kind: "logo", contentType: "image/png", dataBase64: TINY_PNG.toString("base64") },
+      w.adminId,
+    );
+    await expect(
+      feeDocumentsService.updatePrintSettings(
+        w.scope,
+        { upiMode: "image", upiImageObjectId: logo.objectId },
+        w.adminId,
+      ),
+    ).rejects.toThrow("can't be used here");
   }, 60_000);
+
+  it("print the school's own logo, and let a replaced one go", async () => {
+    const first = await feeDocumentsService.uploadPrintImage(
+      w.scope,
+      { kind: "logo", contentType: "image/png", dataBase64: TINY_PNG.toString("base64") },
+      w.adminId,
+    );
+    await feeDocumentsService.updatePrintSettings(w.scope, { logoObjectId: first.objectId }, w.adminId);
+    const s = await billed("LOGO");
+    const payment = await pay(s.id, s.dues.slice(0, 1));
+    const html = (await feeDocumentsService.receipt(w.scope, payment.id, "a4_full"))?.html ?? "";
+    expect(html).toContain("data:image/webp;base64,");
+
+    const second = await feeDocumentsService.uploadPrintImage(
+      w.scope,
+      { kind: "logo", contentType: "image/png", dataBase64: TINY_PNG.toString("base64") },
+      w.adminId,
+    );
+    await feeDocumentsService.updatePrintSettings(w.scope, { logoObjectId: second.objectId }, w.adminId);
+    expect((await storageService.getMeta(w.scope.organizationId, first.objectId))?.status).toBe("deleted");
+    expect((await storageService.getMeta(w.scope.organizationId, second.objectId))?.status).toBe("ready");
+    await feeDocumentsService.updatePrintSettings(w.scope, { logoObjectId: null }, w.adminId);
+    expect((await storageService.getMeta(w.scope.organizationId, second.objectId))?.status).toBe("deleted");
+  }, 120_000);
 });
 
 describe("due notices and lists", () => {
@@ -229,7 +272,7 @@ describe("due notices and lists", () => {
       upiMode: "upi_id",
       upiId: "school@okaxis",
       upiPayeeName: "Print School",
-    });
+    }, w.adminId);
     const withQr = await feeDocumentsService.notices(
       w.scope,
       { academicYearId: w.yearId, classId: w.classId, perPage: 4 },
@@ -238,7 +281,7 @@ describe("due notices and lists", () => {
     const notices = withQr?.html.match(/class="notice"/g)?.length ?? 0;
     expect(notices).toBeGreaterThan(0);
     expect(withQr?.html.match(/<svg/g)).toHaveLength(notices);
-    await feeDocumentsService.updatePrintSettings(w.scope, { upiMode: "off" });
+    await feeDocumentsService.updatePrintSettings(w.scope, { upiMode: "off" }, w.adminId);
 
     const owing = await feeDocumentsService.defaulters(
       w.scope,

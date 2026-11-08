@@ -196,14 +196,17 @@ export const publicSiteRouter = router({
     .input(z.object({ data: uploadSiteImageInput }))
     .output(z.object({ url: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const bytes = Buffer.from(input.data.dataBase64, "base64");
-      const meta = await storageService.putObject({
+      // Stored attached: until site media gets its own table (ADR-063), the
+      // only reference is the content JSON, which the sweeper cannot see.
+      const stored = await storageService.ingest({
         organizationId: input.organizationId,
-        contentType: input.data.contentType,
-        bytes,
-        createdBy: ctx.userId,
-        visibility: "public",
+        schoolId: null,
+        purpose: "site_media",
+        parentId: null,
+        uploadedBy: ctx.userId,
+        bytes: Buffer.from(input.data.dataBase64, "base64"),
+        attached: true,
       });
-      return { url: `/api/public/storage/${meta.id}` };
+      return { url: `/api/public/storage/${stored.id}` };
     }),
 });

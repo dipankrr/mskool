@@ -39,4 +39,14 @@ export const env = createEnv({
    */
   FEES_WORKER_DISABLED: z.enum(["true", "false"]).default("false"),
   FEES_WORKER_TICK_SECONDS: z.coerce.number().int().min(60).max(86400).default(3600),
+  /**
+   * ADR-063 — the storage sweeper (abandoned uploads, unattached files, files
+   * marked deleted, the weekly bucket check). A kill switch like the others:
+   * missing/false means RUN. Cleanup is never urgent, so a suspended host only
+   * delays it.
+   */
+  STORAGE_WORKER_DISABLED: z.enum(["true", "false"]).default("false"),
+  STORAGE_WORKER_TICK_SECONDS: z.coerce.number().int().min(60).max(86400).default(600),
+  // Files removed per step per tick; a backlog drains over a few ticks.
+  STORAGE_WORKER_BATCH: z.coerce.number().int().min(1).max(1000).default(200),
 });

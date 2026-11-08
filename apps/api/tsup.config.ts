@@ -18,7 +18,13 @@ export default defineConfig({
    * TypeScript; bundling keeps the runtime independent of that source layout
    * and makes the same artifact portable to other Node hosts.
    */
-  noExternal: [/.*/],
+  noExternal: [/^(?!sharp$).*/],
+  /**
+   * sharp (ADR-063 image processing) ships a native binary per platform, which
+   * cannot live inside a JS bundle. It stays a runtime import, resolved from
+   * apps/api's own node_modules, which the host's build install provides.
+   */
+  external: ["sharp"],
   /**
    * Express and its CJS dependencies call require() lazily (depd, body-parser).
    * esbuild's ESM output stubs those out and throws "Dynamic require of ...

@@ -44,7 +44,7 @@ import { storageObjects } from "./storage";
  *  - uuid primary keys (hard rule 10), `timestamptz` (rule 11), and BOTH
  *    `organizationId` + `schoolId` on every table so `scopeWhere` applies
  *    (hard rule 1) — the reference carried only school_id.
- *  - File references point at `storage_objects` (ADR-038 seam), not the
+ *  - File references point at `storage_objects` (ADR-063), not the
  *    reference's `files` table.
  *  - Target resolution reads `student_enrollments` (the year anchor). The
  *    reference's `student_subject_enrollments` elective path does not exist
@@ -502,7 +502,7 @@ export const assignmentResources = pgTable(
       .notNull()
       .references(() => assignments.id, { onDelete: "cascade" }),
     resourceType: assignmentResourceTypeEnum().notNull(),
-    // ADR-038: object pointer, served through the stable /api/storage/:id route.
+    // ADR-063: points at a stored file; reads hand out a signed link.
     objectId: uuid().references(() => storageObjects.id),
     url: text(),
     title: varchar({ length: 250 }),
@@ -510,6 +510,8 @@ export const assignmentResources = pgTable(
   },
   (t) => [
     index("assignment_resources_assignment_idx").on(t.assignmentId),
+    // ADR-063: the storage sweeper deletes through these foreign keys.
+    index("assignment_resources_object_idx").on(t.objectId),
     check(
       "assignment_resources_shape",
       sql`(resource_type = 'file' AND object_id IS NOT NULL) OR
@@ -713,7 +715,10 @@ export const submissionFiles = pgTable(
       .references(() => storageObjects.id),
     sortOrder: integer().notNull().default(0),
   },
-  (t) => [index("submission_files_submission_idx").on(t.submissionId)],
+  (t) => [
+    index("submission_files_submission_idx").on(t.submissionId),
+    index("submission_files_object_idx").on(t.objectId),
+  ],
 );
 
 // ---------------------------------------------------------------------------
@@ -776,7 +781,10 @@ export const evaluationFiles = pgTable(
       .notNull()
       .references(() => storageObjects.id),
   },
-  (t) => [index("evaluation_files_evaluation_idx").on(t.evaluationId)],
+  (t) => [
+    index("evaluation_files_evaluation_idx").on(t.evaluationId),
+    index("evaluation_files_object_idx").on(t.objectId),
+  ],
 );
 
 export const assignmentRubricScores = pgTable(
@@ -975,6 +983,7 @@ export const questionBankItems = pgTable(
       t.classId,
       t.difficulty,
     ),
+    index("question_bank_items_image_idx").on(t.imageObjectId),
   ],
 );
 
@@ -996,7 +1005,10 @@ export const questionOptions = pgTable(
     isCorrect: boolean().notNull().default(false),
     sortOrder: integer().notNull().default(0),
   },
-  (t) => [index("question_options_question_idx").on(t.questionId)],
+  (t) => [
+    index("question_options_question_idx").on(t.questionId),
+    index("question_options_image_idx").on(t.imageObjectId),
+  ],
 );
 
 // ---------------------------------------------------------------------------
@@ -1069,6 +1081,7 @@ export const assignmentQuestions = pgTable(
       t.position,
     ),
     index("assignment_questions_assignment_idx").on(t.assignmentId),
+    index("assignment_questions_image_idx").on(t.imageObjectId),
   ],
 );
 
@@ -1173,5 +1186,8 @@ export const questionAttemptAnswerFiles = pgTable(
       .references(() => storageObjects.id),
     sortOrder: integer().notNull().default(0),
   },
-  (t) => [index("question_attempt_answer_files_answer_idx").on(t.answerId)],
+  (t) => [
+    index("question_attempt_answer_files_answer_idx").on(t.answerId),
+    index("question_attempt_answer_files_object_idx").on(t.objectId),
+  ],
 );

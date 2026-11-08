@@ -15,6 +15,7 @@ import { mountPortalClaim } from "./portal-claim";
 import { mountPublicStorageRoute, mountStorageRoute } from "./storage";
 import { homeworkWorkerHealth } from "./homework-worker";
 import { feesWorkerHealth } from "./fees-worker";
+import { storageWorkerHealth } from "./storage-worker";
 import { env } from "./env";
 
 type Server = import("express").Application;
@@ -256,6 +257,12 @@ export function createServer(): Server {
         startedAt: feesWorkerHealth.startedAt,
         lastSweepAt: feesWorkerHealth.lastSweepAt,
         lastSummary: feesWorkerHealth.lastSummary,
+      },
+      storageSweeper: {
+        enabled: env.STORAGE_WORKER_DISABLED !== "true",
+        startedAt: storageWorkerHealth.startedAt,
+        lastSweepAt: storageWorkerHealth.lastSweepAt,
+        lastSummary: storageWorkerHealth.lastSummary,
       },
     }),
   );

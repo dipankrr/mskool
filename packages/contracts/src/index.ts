@@ -80,6 +80,10 @@ export * from "./contracts/id_card.contract";
 // theme. NOT drizzle-zod; org_public_sites stores this as jsonb (ADR-041).
 export * from "./contracts/public_site.contract";
 
+// Storage (ADR-063): purposes, upload links, and the image reference every
+// read returns instead of a bare object id.
+export * from "./contracts/storage.contract";
+
 // Family reads (ADR-062): the narrow parent/student shapes for portalAttendance,
 // portalFees and portalExam.schedule. Hand-written, never table-derived.
 export * from "./contracts/portal.contract";

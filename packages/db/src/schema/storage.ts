@@ -1,8 +1,8 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
-  customType,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -12,45 +12,61 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
-import { organizations } from "./organization";
+import { organizations, schools } from "./organization";
 import { students } from "./people";
 
 /**
- * STORAGE — binary objects and the student photo that points at one (ADR-038).
+ * STORAGE — metadata for files whose bytes live in an S3-compatible bucket
+ * (ADR-063). Postgres never holds the bytes.
  *
- * The driver seam lives in `@repo/services` (storage.service.ts): v1 keeps the
- * bytes right here in Postgres, and the R2 driver later changes WHERE bytes
- * live without touching anything else, because every reference in the system
- * stores an OBJECT ID, never a URL. URLs are always the stable app route
- * `GET /api/storage/:id`, served by apps/api with a session + tenancy check —
- * so a driver migration is a byte copy plus an env flip.
- *
- * Uploads arrive through tRPC as base64 with a hard cap and an image
- * content-type allowlist (contract side); the service re-checks the decoded
- * size. Nothing here is under hard rule 2's protected list — an object's bytes
- * are a blob, and `deleteObject` is a real DELETE that only ever fires on an
- * object no row references any more (a replaced photo).
+ * A row is created when an upload is handed out (`pending`), becomes `ready`
+ * once the server has checked and re-encoded the file, gets `attached_at`
+ * when a record links it, and is marked `deleted` when nothing should use it
+ * any more; the storage sweeper then removes the row and the bytes. Every
+ * column that points at a file is a foreign key here with `restrict`, so the
+ * sweeper can never remove a file a record still uses.
  */
 
 /**
- * Postgres `bytea`. Drizzle has no builtin for it; postgres.js hands bytea
- * back as a Node Buffer in both directions, so the data/driver types match.
+ * The kind of file and the rules that go with it (size, versions, bucket,
+ * retention). Named for what the file IS, never for the table that points at
+ * it, so a domain redesign does not rename purposes. Values are only ever
+ * added; removing one means rebuilding the type.
  */
-const bytea = customType<{ data: Buffer; driverData: Buffer }>({
-  dataType() {
-    return "bytea";
-  },
-});
+export const storagePurposeEnum = pgEnum("storage_purpose", [
+  "student_photo",
+  "staff_photo",
+  "id_card_asset",
+  "fee_print_logo",
+  "fee_upi_qr",
+  "site_media",
+  "homework_teacher_file",
+  "homework_student_file",
+]);
+
+export const storageObjectStatusEnum = pgEnum("storage_object_status", [
+  "pending",
+  "ready",
+  "deleted",
+]);
 
 /**
- * Object visibility (ADR-038 amendment). `private` (default) objects are
- * served only through the session-authenticated, tenancy-checked
- * `/api/storage/:id`. `public` objects — landing-page media, by explicit
- * upload choice — are additionally served, unauthenticated, from
- * `/api/public/storage/:id`. A row is NEVER public by accident: the column
- * defaults private and flips only through an explicit write.
+ * Which bucket the file lives in. Public files (site media) are served from
+ * the public bucket's own domain with no signature; everything else is
+ * private and reached only through a signed link the API hands out with the
+ * record that authorises it.
  */
 export const objectVisibilityEnum = pgEnum("object_visibility", ["private", "public"]);
+
+/** One stored version of a file, as the processor wrote it. */
+export type StorageVariant = {
+  name: string;
+  path: string;
+  contentType: string;
+  sizeBytes: number;
+  width: number;
+  height: number;
+};
 
 export const storageObjects = pgTable(
   "storage_objects",
@@ -59,39 +75,52 @@ export const storageObjects = pgTable(
     organizationId: uuid()
       .notNull()
       .references(() => organizations.id),
+    // Empty for organisation-level files (site media).
+    schoolId: uuid().references(() => schools.id),
 
-    visibility: objectVisibilityEnum().notNull().default("private"),
+    purpose: storagePurposeEnum().notNull(),
+    visibility: objectVisibilityEnum().notNull(),
+    status: storageObjectStatusEnum().notNull().default("pending"),
 
-    // Allowlist lives in the contract; stored verbatim so the serving route
-    // can answer with the exact type uploaded.
-    contentType: varchar({ length: 100 }).notNull(),
-    sizeBytes: integer().notNull(),
-    // Content fingerprint — duplicate-detection bookkeeping, not addressing.
-    // Objects are addressed by their uuid id (hard rule 10).
-    sha256: varchar({ length: 64 }).notNull(),
+    // The record the file was uploaded for (a student, an assignment, a
+    // template). Attaching checks it, so re-saving a record keeps its files
+    // and nobody can link a file uploaded for someone else.
+    parentId: uuid(),
 
-    data: bytea().notNull(),
+    // The display version's path in the bucket. Stored, never recomputed, so
+    // a later path layout leaves old rows valid.
+    path: varchar({ length: 300 }).notNull(),
+    variants: jsonb().$type<StorageVariant[]>().notNull().default([]),
 
-    createdBy: text().references(() => user.id),
+    // Detected from the bytes by the server, never the client's claim. Empty
+    // until the file is processed.
+    contentType: varchar({ length: 100 }),
+    // Every version together, so usage matches what the bucket bills.
+    sizeBytes: integer().notNull().default(0),
+    width: integer(),
+    height: integer(),
+
+    uploadedBy: text().references(() => user.id),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp({ withTimezone: true })
-      .notNull()
-      .defaultNow()
-      .$onUpdate(() => new Date()),
+    readyAt: timestamp({ withTimezone: true }),
+    attachedAt: timestamp({ withTimezone: true }),
+    deletedAt: timestamp({ withTimezone: true }),
   },
   (t) => [
-    index("storage_objects_org_idx").on(t.organizationId),
-    index("storage_objects_org_sha_idx").on(t.organizationId, t.sha256),
+    index("storage_objects_org_purpose_idx").on(t.organizationId, t.purpose),
+    index("storage_objects_status_created_idx").on(t.status, t.createdAt),
+    index("storage_objects_unattached_idx")
+      .on(t.readyAt)
+      .where(sql`status = 'ready' AND attached_at IS NULL`),
   ],
 );
 
 /**
  * THE STUDENT'S PHOTO — exactly one live row per student (hard unique), so
  * "the photo of this child" is a lookup, never a "latest of" query. A
- * re-upload upserts this row and deletes the replaced object's bytes; history
- * of what was printed before is NOT kept here deliberately — the printed card
- * is the record, and ID cards expire yearly.
+ * re-upload re-points this row and marks the replaced file deleted; history
+ * is not kept — the printed card is the record.
  */
 export const studentPhotos = pgTable(
   "student_photos",
@@ -115,6 +144,7 @@ export const studentPhotos = pgTable(
   (t) => [
     // One photo per student. The upsert path keys on this.
     uniqueIndex("student_photos_student_uq").on(t.studentId),
+    index("student_photos_object_idx").on(t.objectId),
   ],
 );
 

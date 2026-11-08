@@ -356,7 +356,9 @@ export const feesRouter = router({
     update: staffProcedure("fee_structure:update")
       .input(z.object({ data: updateFeePrintSettingsSchema, ...schoolParent.shape }))
       .output(feePrintSettingsSchema)
-      .mutation(({ ctx, input }) => feeDocumentsService.updatePrintSettings(ctx.scope, input.data)),
+      .mutation(({ ctx, input }) =>
+        feeDocumentsService.updatePrintSettings(ctx.scope, input.data, ctx.userId),
+      ),
 
     uploadImage: staffProcedure("fee_structure:update")
       .input(z.object({ data: uploadFeePrintImageSchema, ...schoolParent.shape }))

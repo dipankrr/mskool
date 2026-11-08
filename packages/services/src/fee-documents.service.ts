@@ -152,6 +152,7 @@ export class FeeDocumentsService {
   async updatePrintSettings(
     scope: DataScope,
     input: UpdateFeePrintSettingsInput,
+    userId: string,
   ): Promise<FeePrintSettings> {
     const schoolId = requireSchoolId(scope);
     const current = await this.getPrintSettings(scope);
@@ -165,16 +166,34 @@ export class FeeDocumentsService {
     if (next.upiMode === "image" && !next.upiImageObjectId) {
       throw refuse("BAD_REQUEST", "Upload the QR image, or turn the QR off.");
     }
-    // Only this organization's own images can be pointed at.
-    for (const objectId of [next.logoObjectId, next.upiImageObjectId]) {
-      if (objectId && !(await storageService.getMeta(scope.organizationId, objectId))) {
-        throw refuse("BAD_REQUEST", "That image isn't available. Upload it again.");
+    await db.transaction(async (tx) => {
+      // Only images uploaded for this school's printing, of the right kind,
+      // can be pointed at (ADR-063); a replaced or cleared one is let go.
+      const slots = [
+        { purpose: "fee_print_logo" as const, before: current.logoObjectId, after: next.logoObjectId },
+        { purpose: "fee_upi_qr" as const, before: current.upiImageObjectId, after: next.upiImageObjectId },
+      ];
+      for (const slot of slots) {
+        if (slot.after && slot.after !== slot.before) {
+          await storageService.attach(tx, {
+            organizationId: scope.organizationId,
+            purpose: slot.purpose,
+            parentId: schoolId,
+            userId,
+            objectIds: [slot.after],
+          });
+        }
       }
-    }
-    await db
-      .insert(feePrintSettings)
-      .values({ ...next, organizationId: scope.organizationId, schoolId })
-      .onConflictDoUpdate({ target: feePrintSettings.schoolId, set: { ...next, updatedAt: new Date() } });
+      await tx
+        .insert(feePrintSettings)
+        .values({ ...next, organizationId: scope.organizationId, schoolId })
+        .onConflictDoUpdate({ target: feePrintSettings.schoolId, set: { ...next, updatedAt: new Date() } });
+      await storageService.markDeleted(
+        tx,
+        scope.organizationId,
+        slots.flatMap((s) => (s.before && s.before !== s.after ? [s.before] : [])),
+      );
+    });
     return next;
   }
 
@@ -183,14 +202,17 @@ export class FeeDocumentsService {
     input: UploadFeePrintImageInput,
     userId: string,
   ): Promise<{ objectId: string }> {
-    requireSchoolId(scope);
-    const meta = await storageService.putObject({
+    const schoolId = requireSchoolId(scope);
+    // Until the printing screen uploads straight to the bucket (ADR-063).
+    const stored = await storageService.ingest({
       organizationId: scope.organizationId,
-      contentType: input.contentType,
+      schoolId,
+      purpose: input.kind === "upi_qr" ? "fee_upi_qr" : "fee_print_logo",
+      parentId: schoolId,
+      uploadedBy: userId,
       bytes: Buffer.from(input.dataBase64, "base64"),
-      createdBy: userId,
     });
-    return { objectId: meta.id };
+    return { objectId: stored.id };
   }
 
   /** The school as it prints: its record, plus what it has set for printing. */

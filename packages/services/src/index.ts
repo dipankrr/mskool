@@ -93,9 +93,17 @@ export * from "./staff.service";
 // Roles: granting, revoking, and reading role assignments (ADR-005, ADR-035).
 export * from "./role.service";
 
-// Storage: the ADR-038 object-store seam (postgres driver v1, R2 declared)
-// and the student photo pointer's read half. Slice 2a, ID cards.
+// Storage (ADR-063): files in S3-compatible buckets — upload links, processing,
+// attaching, read links — and the sweeper that deletes what nothing uses.
 export * from "./storage.service";
+export * from "./storage-worker.service";
+export {
+  MemoryObjectStore,
+  StorageNotConfiguredError,
+  getObjectStore,
+  setObjectStoreForTests,
+  type ObjectStore,
+} from "./storage/object-store";
 
 // ID cards: template CRUD, the starter-design adopt, and the card-data
 // resolver the print page renders against. Slice 2a.

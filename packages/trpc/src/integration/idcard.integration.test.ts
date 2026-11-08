@@ -15,15 +15,15 @@ import { beforeAll, describe, expect, it } from "vitest";
  *     section, roll), the registry facts, the school + session context, and
  *     is NO-widening filtered (a section teacher sees her section only) —
  *     and a foreign-org student id returns nothing, never someone else's card;
- *   - the storage round-trip: put → pointer → get, replacement deletes the
- *     replaced bytes, and every read is tenancy-checked including the
- *     serving route's membership-checked `getForUser`.
+ *   - the photo round-trip (ADR-063, in-memory bucket): store → pointer →
+ *     bytes, replacement marks the replaced file deleted, and every read is
+ *     tenancy-checked including the transitional route's `readForMember`.
  *
  * FIXTURE ISOLATION: borrows the authz suite's world (orgs `authz-itg-a/b`)
  * for schools, students and enrollments, and adds its OWN templates and
  * storage objects keyed on the run timestamp, so nothing collides with the
  * authz assertions and nothing is ever deleted from the fixture (hard rule 2)
- * except the storage bytes the feature itself owns (ADR-038 §4).
+ * except the storage files the feature itself owns (ADR-063).
  */
 
 import type { DataScope } from "@repo/authz";
@@ -31,6 +31,7 @@ import { db } from "@repo/db";
 import { idCardTemplates } from "@repo/db/schema";
 import { idCardService, storageService } from "@repo/services";
 import { and, eq } from "drizzle-orm";
+import { TINY_PNG, useMemoryStore } from "./storage-fixtures";
 import { buildWorld } from "./world";
 
 const RUN = Date.now();
@@ -234,29 +235,17 @@ describe("id cards & storage (slice 2a)", () => {
     expect(bCards.map((card) => card.studentId)).toEqual([world.studentB1Id]);
   });
 
-  it("stores a photo, points the student at it, and replaces it byte-for-byte", async () => {
+  it("stores a photo, points the student at it, and lets the replaced one go", async () => {
+    useMemoryStore();
     const world = await buildWorld();
 
-    // The upload flow's write half (the router decodes base64 → bytes).
-    const first = await storageService.putObject({
-      organizationId: orgAId,
-      contentType: "image/jpeg",
-      bytes: Buffer.from(`photo-a-${RUN}`),
-      createdBy: adminAId,
-    });
-
-    await idCardService.setStudentPhoto(
+    const firstId = await idCardService.uploadStudentPhoto(
       scopeA1,
       world.ownedStudentId,
-      first.id,
+      TINY_PNG,
       adminAId,
     );
-
-    const pointer = await storageService.getStudentPhotoObjectId(
-      scopeA1,
-      world.ownedStudentId,
-    );
-    expect(pointer).toBe(first.id);
+    expect(await storageService.getStudentPhotoObjectId(scopeA1, world.ownedStudentId)).toBe(firstId);
 
     // The card-data payload now carries the photo object id.
     const cards = await idCardService.cardData(scopeA1, {
@@ -264,75 +253,83 @@ describe("id cards & storage (slice 2a)", () => {
       sectionId: section6aId,
     });
     const owned = cards.find((card) => card.admissionNumber === "ITG-0001");
-    expect(owned?.photoObjectId).toBe(first.id);
+    expect(owned?.photoObjectId).toBe(firstId);
 
-    // Replacement: a second upload upserts the pointer and deletes the
-    // replaced object's bytes (ADR-038 §4).
-    const second = await storageService.putObject({
-      organizationId: orgAId,
-      contentType: "image/jpeg",
-      bytes: Buffer.from(`photo-b-${RUN}`),
-      createdBy: adminAId,
-    });
-    await idCardService.setStudentPhoto(
+    // Replacement re-points the row and marks the replaced file deleted;
+    // the sweeper removes its bytes later.
+    const secondId = await idCardService.uploadStudentPhoto(
       scopeA1,
       world.ownedStudentId,
-      second.id,
+      TINY_PNG,
       adminAId,
     );
-
-    expect(await storageService.getBytes(orgAId, first.id)).toBeNull();
-    const fresh = await storageService.getBytes(orgAId, second.id);
-    expect(fresh?.contentType).toBe("image/jpeg");
-    expect(fresh?.data.toString()).toBe(`photo-b-${RUN}`);
+    expect((await storageService.getMeta(orgAId, firstId))?.status).toBe("deleted");
+    expect(await storageService.getBytes(orgAId, firstId)).toBeNull();
+    const fresh = await storageService.getBytes(orgAId, secondId);
+    // Re-encoded, never served as uploaded.
+    expect(fresh?.contentType).toBe("image/webp");
   });
 
-  it("serving-route read answers only a caller with an ACTIVE membership in the object's org", async () => {
+  it("refuses a photo uploaded for another student", async () => {
+    useMemoryStore();
     const world = await buildWorld();
-    const object = await storageService.putObject({
+    const forOwned = await storageService.ingest({
       organizationId: orgAId,
-      contentType: "image/png",
-      bytes: Buffer.from(`bg-${RUN}`),
-      createdBy: adminAId,
+      schoolId: world.schoolA1Id,
+      purpose: "student_photo",
+      parentId: world.ownedStudentId,
+      uploadedBy: adminAId,
+      bytes: TINY_PNG,
+    });
+    await expect(
+      idCardService.setStudentPhoto(scopeA1, world.section6bStudentId, forOwned.id, adminAId),
+    ).rejects.toThrow("can't be used here");
+  });
+
+  it("transitional route read answers only a caller with an ACTIVE membership in the file's org", async () => {
+    useMemoryStore();
+    const world = await buildWorld();
+    const object = await storageService.ingest({
+      organizationId: orgAId,
+      schoolId: world.schoolA1Id,
+      purpose: "id_card_asset",
+      parentId: null,
+      uploadedBy: adminAId,
+      bytes: TINY_PNG,
+      attached: true,
     });
 
-    // Admin A holds an org grant → bytes.
-    const own = await storageService.getForUser(world.users.adminA, object.id);
-    expect(own?.data.toString()).toBe(`bg-${RUN}`);
+    // Admin A holds an org grant → the bytes.
+    expect((await storageService.readForMember(world.users.adminA, object.id))?.contentType).toBe(
+      "image/webp",
+    );
 
-    // Admin B holds grants only in org B → the same null as a bad id. A
-    // wrong-tenant probe reveals nothing.
-    expect(await storageService.getForUser(world.users.adminB, object.id)).toBeNull();
-    expect(await storageService.getForUser(world.users.adminB, "00000000-0000-4000-8000-000000000000")).toBeNull();
+    // Admin B holds grants only in org B → the same null as a bad id.
+    expect(await storageService.readForMember(world.users.adminB, object.id)).toBeNull();
+    expect(
+      await storageService.readForMember(world.users.adminB, "00000000-0000-4000-8000-000000000000"),
+    ).toBeNull();
 
     // And the plain org-filtered read never crosses tenants either.
     expect(await storageService.getBytes(orgBId, object.id)).toBeNull();
   });
 
-  it("removePhoto takes the pointer AND the bytes, scoped to the student's own school", async () => {
+  it("removePhoto takes the pointer and lets the file go, scoped to the student's own school", async () => {
+    useMemoryStore();
     const world = await buildWorld();
-    const object = await storageService.putObject({
-      organizationId: orgAId,
-      contentType: "image/webp",
-      bytes: Buffer.from(`gone-${RUN}`),
-      createdBy: adminAId,
-    });
-    await idCardService.setStudentPhoto(
+    const objectId = await idCardService.uploadStudentPhoto(
       scopeA1,
       world.section6bStudentId,
-      object.id,
+      TINY_PNG,
       adminAId,
     );
 
-    const removed = await idCardService.removeStudentPhoto(
-      scopeA1,
-      world.section6bStudentId,
-    );
+    const removed = await idCardService.removeStudentPhoto(scopeA1, world.section6bStudentId);
     expect(removed).toBe(true);
     expect(
       await storageService.getStudentPhotoObjectId(scopeA1, world.section6bStudentId),
     ).toBeNull();
-    expect(await storageService.getBytes(orgAId, object.id)).toBeNull();
+    expect((await storageService.getMeta(orgAId, objectId))?.status).toBe("deleted");
 
     // Removing again is an honest false, not an error.
     expect(
@@ -373,15 +370,19 @@ describe("id cards & storage (slice 2a)", () => {
     ]);
   });
 
-  it("gallery clone produces an OWNED row in the caller's school and byte-copies its assets", async () => {
+  it("gallery clone produces an OWNED row in the caller's school and copies its assets", async () => {
+    useMemoryStore();
     const world = await buildWorld();
 
     // The published A1 design references a background asset owned by org A.
-    const asset = await storageService.putObject({
+    const asset = await storageService.ingest({
       organizationId: orgAId,
-      contentType: "image/png",
-      bytes: Buffer.from(`gallery-bg-${RUN}`),
-      createdBy: adminAId,
+      schoolId: world.schoolA1Id,
+      purpose: "id_card_asset",
+      parentId: null,
+      uploadedBy: adminAId,
+      bytes: TINY_PNG,
+      attached: true,
     });
     await idCardService.updateTemplate(scopeA1, defaultTemplateId, {
       canvas: { backgroundAssetId: asset.id },
@@ -403,18 +404,19 @@ describe("id cards & storage (slice 2a)", () => {
     expect(clone?.isDefault).toBe(false);
     expect(clone?.elements).toHaveLength(3);
 
-    // The background is a NEW object owned by org B, byte-identical.
+    // The background is a NEW file owned by org B, identical to the source.
     const newAssetId = (clone?.canvas as { backgroundAssetId: string })
       .backgroundAssetId;
     expect(newAssetId).toBeDefined();
     expect(newAssetId).not.toBe(asset.id);
     const copied = await storageService.getBytes(orgBId, newAssetId);
-    expect(copied?.data.toString()).toBe(`gallery-bg-${RUN}`);
+    const original = await storageService.getBytes(orgAId, asset.id);
+    expect(copied?.data.equals(original?.data ?? Buffer.alloc(0))).toBe(true);
 
-    // The serving route's rule is untouched: org B still cannot read org A's
-    // original object — the clone carries the COPY, never a cross-org ref.
+    // Tenancy is untouched: org B still cannot read org A's original file —
+    // the clone carries the COPY, never a cross-org ref.
     expect(await storageService.getBytes(orgBId, asset.id)).toBeNull();
-    expect(await storageService.getForUser(world.users.adminB, asset.id)).toBeNull();
+    expect(await storageService.readForMember(world.users.adminB, asset.id)).toBeNull();
 
     // An UNPUBLISHED row and a made-up id are the same null — the endpoint
     // never reveals which private template ids exist.

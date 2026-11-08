@@ -18,6 +18,7 @@ import { portalFeesRouter } from "./routers/portal-fees.router";
 import { roleRouter } from "./routers/role.router";
 import { schoolRouter } from "./routers/school.router";
 import { staffRouter } from "./routers/staff.router";
+import { storageRouter } from "./routers/storage.router";
 import { studentRouter } from "./routers/student.router";
 import { subjectRouter } from "./routers/subject.router";
 
@@ -95,6 +96,9 @@ export const appRouter = router({
   // {slug}.mskool.in renders through (published snapshot only); the rest is
   // the staff editor track, gated public_site:read/edit/publish.
   publicSite: publicSiteRouter,
+  // Storage (ADR-063): storage.complete, the step every direct upload shares.
+  // Upload links come from each domain's own gated endpoint.
+  storage: storageRouter,
 });
 
 

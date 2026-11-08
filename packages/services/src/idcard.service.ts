@@ -22,7 +22,6 @@ import {
   idCardTemplates,
   schools,
   sections,
-  storageObjects,
   studentEnrollments,
   studentGuardians,
   studentPhotos,
@@ -306,16 +305,20 @@ export class IdCardService {
     input: { contentType: string; dataBase64: string },
     userId: string,
   ): Promise<string> {
-    requireSchoolId(scope);
+    const schoolId = requireSchoolId(scope);
 
-    const bytes = Buffer.from(input.dataBase64, "base64");
-    const meta = await storageService.putObject({
+    // Stored attached: until template assets get their own table (ADR-063),
+    // the only reference is the design's JSON, which the sweeper cannot see.
+    const stored = await storageService.ingest({
       organizationId: scope.organizationId,
-      contentType: input.contentType,
-      bytes,
-      createdBy: userId,
+      schoolId,
+      purpose: "id_card_asset",
+      parentId: null,
+      uploadedBy: userId,
+      bytes: Buffer.from(input.dataBase64, "base64"),
+      attached: true,
     });
-    return meta.id;
+    return stored.id;
   }
 
 
@@ -386,13 +389,12 @@ export class IdCardService {
    * the same probe-never-answers property as everywhere else: an unpublished
    * or foreign-PRIVATE row returns null, indistinguishable from a bad id.
    *
-   * Uploaded assets (a background, a logo) are BYTE-COPIED into the cloner's
-   * org via `storageService.copyObjectToOrg` and the clone references the
-   * COPIES — the coherent option given ADR-038's serving route is
-   * membership-gated per org: stripping refs would silently degrade the
-   * design, and making the source objects readable cross-org would punch a
-   * hole in the route's tenancy rule. Copies commit BEFORE the row, so a
-   * mid-flow failure leaves at worst an orphan object, never a dangling ref.
+   * Uploaded assets (a background, a logo) are COPIED into the cloner's org
+   * via `storageService.copyToOrg` (inside the bucket) and the clone
+   * references the COPIES: files belong to one organisation (ADR-063), so
+   * stripping refs would silently degrade the design and sharing the
+   * source files would cross the tenancy line. Copies commit BEFORE the row,
+   * so a mid-flow failure leaves at worst an orphan file, never a dangling ref.
    */
   async clonePublishedTemplate(
     scope: DataScope,
@@ -429,10 +431,11 @@ export class IdCardService {
     // saved row can never point back at the source org's private object.
     const assetRewrites = new Map<string, string>();
     for (const assetId of collectTemplateAssetIds(design)) {
-      const copy = await storageService.copyObjectToOrg({
+      const copy = await storageService.copyToOrg({
         sourceObjectId: assetId,
         targetOrganizationId: scope.organizationId,
-        createdBy: userId,
+        targetSchoolId: schoolId,
+        uploadedBy: userId,
       });
       assetRewrites.set(assetId, copy.id);
     }
@@ -652,23 +655,9 @@ export class IdCardService {
 
   // ── The student photo ───────────────────────────────────────────────────
 
-  /**
-   * Points `student_photos` at a fresh object (the upload flow's write half).
-   * One transaction: upsert the row (the unique student index makes this an
-   * update for a re-upload), then delete the REPLACED object's bytes — never
-   * before the pointer moved, so a crash mid-flow leaves two objects and one
-   * pointer, never a pointer with no bytes.
-   */
-  async setStudentPhoto(
-    scope: DataScope,
-    studentId: string,
-    objectId: string,
-    userId: string,
-  ): Promise<void> {
+  /** The student must exist INSIDE this school: the foreign key proves existence, never tenancy. */
+  private async requireStudentInSchool(scope: DataScope, studentId: string) {
     const schoolId = requireSchoolId(scope);
-
-    // The student must exist INSIDE this school — the FK proves existence,
-    // never tenancy.
     const [student] = await db
       .select({ id: students.id })
       .from(students)
@@ -682,15 +671,61 @@ export class IdCardService {
     if (!student) {
       throw new Error("Student not found in this school.");
     }
+    return schoolId;
+  }
 
-    // The replaced pointer, read BEFORE the upsert — after it, the old id is
-    // gone. (One live row per student, so this is at most one.)
-    const [existing] = await db
-      .select({ objectId: studentPhotos.objectId })
-      .from(studentPhotos)
-      .where(eq(studentPhotos.studentId, studentId));
+  /**
+   * Stores photo bytes the server received and points the student at them.
+   * Until the photo screens upload straight to the bucket (ADR-063).
+   */
+  async uploadStudentPhoto(
+    scope: DataScope,
+    studentId: string,
+    bytes: Buffer,
+    userId: string,
+  ): Promise<string> {
+    const schoolId = await this.requireStudentInSchool(scope, studentId);
+    const stored = await storageService.ingest({
+      organizationId: scope.organizationId,
+      schoolId,
+      purpose: "student_photo",
+      parentId: studentId,
+      uploadedBy: userId,
+      bytes,
+    });
+    await this.setStudentPhoto(scope, studentId, stored.id, userId);
+    return stored.id;
+  }
+
+  /**
+   * Points `student_photos` at an uploaded photo. One transaction: link the
+   * file to this student (refused unless it was uploaded for them, ADR-063),
+   * upsert the row (the unique student index makes a re-upload an update),
+   * and mark the replaced file deleted for the storage sweeper.
+   */
+  async setStudentPhoto(
+    scope: DataScope,
+    studentId: string,
+    objectId: string,
+    userId: string,
+  ): Promise<void> {
+    await this.requireStudentInSchool(scope, studentId);
 
     await db.transaction(async (tx) => {
+      const [existing] = await tx
+        .select({ objectId: studentPhotos.objectId })
+        .from(studentPhotos)
+        .where(eq(studentPhotos.studentId, studentId))
+        .for("update");
+
+      await storageService.attach(tx, {
+        organizationId: scope.organizationId,
+        purpose: "student_photo",
+        parentId: studentId,
+        userId,
+        objectIds: [objectId],
+      });
+
       await tx
         .insert(studentPhotos)
         .values({ studentId, objectId, uploadedBy: userId })
@@ -699,27 +734,16 @@ export class IdCardService {
           set: { objectId, uploadedBy: userId, updatedAt: new Date() },
         });
 
-      // Bytes of the REPLACED object go only after the pointer moved, inside
-      // the same transaction — a crash mid-flow leaves two objects and one
-      // pointer, never a pointer with no bytes. The new object (the just-set
-      // pointer) is exempt by the id comparison.
       if (existing && existing.objectId !== objectId) {
-        await tx
-          .delete(storageObjects)
-          .where(
-            and(
-              eq(storageObjects.id, existing.objectId),
-              eq(storageObjects.organizationId, scope.organizationId),
-            ),
-          );
+        await storageService.markDeleted(tx, scope.organizationId, [existing.objectId]);
       }
     });
   }
 
   /**
-   * Removes the student's photo: the pointer row goes and the bytes go with
-   * it. Hard rule 2 does not cover photo blobs (ADR-038 §4) — the printed
-   * card is the record.
+   * Removes the student's photo: the pointer row goes and the file is marked
+   * deleted for the storage sweeper. Hard rule 2 does not cover photo files;
+   * the printed card is the record.
    */
   async removeStudentPhoto(scope: DataScope, studentId: string): Promise<boolean> {
     const schoolId = requireSchoolId(scope);
@@ -739,17 +763,8 @@ export class IdCardService {
     if (!photo) return false;
 
     await db.transaction(async (tx) => {
-      await tx
-        .delete(studentPhotos)
-        .where(eq(studentPhotos.studentId, studentId));
-      await tx
-        .delete(storageObjects)
-        .where(
-          and(
-            eq(storageObjects.id, photo.objectId),
-            eq(storageObjects.organizationId, scope.organizationId),
-          ),
-        );
+      await tx.delete(studentPhotos).where(eq(studentPhotos.studentId, studentId));
+      await storageService.markDeleted(tx, scope.organizationId, [photo.objectId]);
     });
 
     return true;

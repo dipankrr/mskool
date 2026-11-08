@@ -337,6 +337,20 @@
       "when": 1794048569869,
       "tag": "0047_family_ranking_switch",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1794137025795,
+      "tag": "0048_storage_drop_bytes",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1794137037092,
+      "tag": "0049_storage_buckets",
+      "breakpoints": true
     }
   ]
 }

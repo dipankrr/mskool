@@ -4,19 +4,19 @@ import { auth } from "@repo/auth";
 import { storageService } from "@repo/services";
 
 /**
- * THE OBJECT ROUTE (ADR-038) — `GET /api/storage/:id`.
+ * TRANSITIONAL OBJECT ROUTES — `GET /api/storage/:id` and
+ * `GET /api/public/storage/:id`.
  *
- * Object URLs are stable app routes, never driver URLs: the bytes may move to
- * R2 one day, this route stays. Every reference in the system (photo
- * pointers, template backgrounds, logo assets) stores an object ID, so the
- * browser builds `/api/storage/<id>` and this handler does the rest.
+ * ADR-063 retires these: files live in buckets, and every read hands out a
+ * ready-made link with the record that authorises it. Until each screen reads
+ * those links, these routes keep today's URLs working by streaming the file
+ * from the bucket (never redirecting: the mobile client sends its session
+ * cookie as a plain header, which would follow a redirect to the bucket).
+ * They go when the last screen stops building `/api/storage/...` URLs.
  *
- * Session-authenticated (better-auth cookie), and tenancy-checked INSIDE the
- * service: `getForUser` resolves the object's owning organization and demands
- * an active role assignment (not revoked, not expired) for the caller there —
- * a foreign-org id is the same 404 as a made-up one. See ADR-038 for why the
- * response is immutable-cacheable: replacement writes a NEW object id, so an
- * id's bytes never change.
+ * Same rules as before: the private route needs a session with an active
+ * role in the file's organisation; the public route serves public files
+ * only. A foreign, missing or unready id is the same 404.
  */
 export function mountStorageRoute(app: Express) {
   app.get("/api/storage/:id", async (req: Request, res: Response) => {
@@ -36,17 +36,8 @@ export function mountStorageRoute(app: Express) {
     }
 
     try {
-      const object = await storageService.getForUser(session.user.id, id);
-
-      if (!object) {
-        res.status(404).json({ error: "Not found" });
-        return;
-      }
-
-      // Only images are ever stored (the upload contract's allowlist); the
-      // serving route re-asserts it so a stray row can never become a
-      // non-image response.
-      if (!object.contentType.startsWith("image/")) {
+      const object = await storageService.readForMember(session.user.id, id);
+      if (!object || !object.contentType.startsWith("image/")) {
         res.status(404).json({ error: "Not found" });
         return;
       }
@@ -55,13 +46,11 @@ export function mountStorageRoute(app: Express) {
         .status(200)
         .set("Content-Type", object.contentType)
         .set("Content-Length", String(object.data.length))
-        // Private: the bytes are tenant data. Immutable: ids are never
-        // re-pointed — replacement mints a new id.
+        // Private: the bytes are tenant data. Immutable: a replacement is a
+        // new id, so an id's bytes never change.
         .set("Cache-Control", "private, max-age=31536000, immutable")
         .send(object.data);
     } catch (error) {
-      // The declared-but-unbuilt R2 driver lands here as a named error —
-      // honest 500, message in the server log, nothing leaked.
       console.error("[storage] serving object failed:", error);
       res.status(500).json({ error: "Something went wrong." });
     }
@@ -69,15 +58,8 @@ export function mountStorageRoute(app: Express) {
 }
 
 /**
- * THE PUBLIC OBJECT ROUTE (ADR-038 amendment) — `GET /api/public/storage/:id`.
- *
- * Serves ONLY objects explicitly uploaded with visibility `public` (landing
- * page media, ADR-041). A private object and a nonexistent id are the same
- * 404, so the route cannot probe which ids exist. No session by design —
- * visibility is the authorization. Public + immutable caching: ids are never
- * re-pointed, replacement mints a new id. Own limiter: this is the one
- * endpoint an anonymous scraper can hammer, and the general limiter must not
- * be consumed by it.
+ * Own limiter: this is the one endpoint an anonymous scraper can hammer, and
+ * the general limiter must not be consumed by it.
  */
 const publicStorageLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -88,33 +70,29 @@ const publicStorageLimiter = rateLimit({
 });
 
 export function mountPublicStorageRoute(app: Express) {
-  app.get(
-    "/api/public/storage/:id",
-    publicStorageLimiter,
-    async (req: Request, res: Response) => {
-      const id = String(req.params.id);
-      if (!id || !/^[0-9a-fA-F-]{36}$/.test(id)) {
+  app.get("/api/public/storage/:id", publicStorageLimiter, async (req: Request, res: Response) => {
+    const id = String(req.params.id);
+    if (!id || !/^[0-9a-fA-F-]{36}$/.test(id)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    try {
+      const object = await storageService.readForPublic(id);
+      if (!object || !object.contentType.startsWith("image/")) {
         res.status(404).json({ error: "Not found" });
         return;
       }
 
-      try {
-        const object = await storageService.getPublicObject(id);
-        if (!object || !object.contentType.startsWith("image/")) {
-          res.status(404).json({ error: "Not found" });
-          return;
-        }
-
-        res
-          .status(200)
-          .set("Content-Type", object.contentType)
-          .set("Content-Length", String(object.data.length))
-          .set("Cache-Control", "public, max-age=31536000, immutable")
-          .send(object.data);
-      } catch (error) {
-        console.error("[storage] serving public object failed:", error);
-        res.status(500).json({ error: "Something went wrong." });
-      }
-    },
-  );
+      res
+        .status(200)
+        .set("Content-Type", object.contentType)
+        .set("Content-Length", String(object.data.length))
+        .set("Cache-Control", "public, max-age=31536000, immutable")
+        .send(object.data);
+    } catch (error) {
+      console.error("[storage] serving public object failed:", error);
+      res.status(500).json({ error: "Something went wrong." });
+    }
+  });
 }

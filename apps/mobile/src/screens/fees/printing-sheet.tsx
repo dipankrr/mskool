@@ -107,7 +107,11 @@ export function PrintingSheet({
       const saved = await upload.mutateAsync({
         organizationId,
         schoolId,
-        data: { contentType: "image/jpeg", dataBase64 },
+        data: {
+          kind: target === "upiImageObjectId" ? "upi_qr" : "logo",
+          contentType: "image/jpeg",
+          dataBase64,
+        },
       });
       patch({ [target]: saved.objectId });
     } catch (cause) {

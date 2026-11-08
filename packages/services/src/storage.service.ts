@@ -1,219 +1,647 @@
 import type { DataScope } from "@repo/authz";
+import {
+  UPLOAD_MAX_BYTES,
+  type CompletedUpload,
+  type ImageRef,
+  type StoragePurpose,
+  type UploadRequest,
+  type UploadTicket,
+} from "@repo/contracts";
 import { db } from "@repo/db";
-import { roleAssignments, storageObjects, studentPhotos, students } from "@repo/db/schema";
-import { createHash } from "node:crypto";
-import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
-import { env } from "./env";
-import { PHOTO_MAX_BYTES } from "@repo/contracts";
+import {
+  roleAssignments,
+  storageObjects,
+  studentPhotos,
+  students,
+  type StorageVariant,
+} from "@repo/db/schema";
+import { randomUUID } from "node:crypto";
+import { and, count, eq, gt, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { requireSchoolId } from "./academic.service";
+import { refuse } from "./service-error";
+import { ImageRejectedError, processImage } from "./storage/image";
+import { buildImageRef } from "./storage/links";
+import { getObjectStore } from "./storage/object-store";
+import { PURPOSES, objectPrefix, uploadKey } from "./storage/purposes";
 
 /**
- * STORAGE — the object store behind the ADR-038 driver seam.
+ * STORAGE (ADR-063) — files live in S3-compatible buckets; this service owns
+ * their rows in `storage_objects` and every move between states.
  *
- * The interface is put / get / delete (+meta). Driver A (`postgres`) keeps the
- * bytes in `storage_objects.data`; driver B (`r2`) is DECLARED, NOT BUILT —
- * selecting it fails loudly here, at the one seam a future R2 driver replaces.
- * Nothing outside this file knows or cares where bytes live, because every
- * reference in the system stores an OBJECT ID and every URL is the stable app
- * route `GET /api/storage/:id` — a driver migration is a byte copy plus an env
- * flip, never a URL migration.
+ * The upload flow: a domain endpoint, behind its own permission gate, calls
+ * `createUploads` and hands the client a link to PUT the file to `tmp/{id}`.
+ * The client calls `complete`, which checks the bytes, writes the purpose's
+ * versions and marks the row `ready`. The domain's save then calls `attach`
+ * inside its own transaction. Replacing or removing a file is `markDeleted`
+ * in that same transaction; the storage sweeper removes the bytes later.
+ *
+ * Reads never expose object ids for a client to turn into URLs: callers that
+ * have authorised a record ask for `imageRefs` and return ready-made links.
  *
  * Tenancy is structural (hard rule 1): every method takes the organizationId
- * as a REQUIRED argument and filters by it, so a wrong-tenant id and a
- * nonexistent one are the same null. The one exception proves the rule —
- * `getForUser` exists for the serving route, which knows the CALLER but not
- * the object's org yet; it resolves the org first and then verifies the
- * caller's active membership INSIDE the service, answering null unless both
- * hold. No unfiltered row ever escapes.
+ * (or the uploader, for `complete`) and filters by it.
  */
 
-/** The decoded-byte ceiling, restated here as the service-side backstop. */
-const MAX_UPLOAD_BYTES = PHOTO_MAX_BYTES;
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type Executor = typeof db | Tx;
 
-interface PutObjectInput {
-  organizationId: string;
-  contentType: string;
-  bytes: Buffer;
-  createdBy?: string;
-  /**
-   * `public` objects are additionally served unauthenticated from
-   * `/api/public/storage/:id` (ADR-038 amendment): landing-page media the
-   * org deliberately chose to expose. Defaults private — nothing is public
-   * by accident.
-   */
-  visibility?: "private" | "public";
-}
+// An upload link is good for ten minutes; a cheap phone on a bad network
+// sends a few hundred KB well inside that.
+const UPLOAD_LINK_SECONDS = 10 * 60;
+// Uploads handed out but not yet completed, per organisation. A rate limit
+// on top of the endpoint's own.
+const MAX_PENDING_PER_ORG = 300;
+// Processed files never change (a replacement is a new id), so caches may
+// keep them for a year.
+const PRIVATE_CACHE = "private, max-age=31536000, immutable";
+const PUBLIC_CACHE = "public, max-age=31536000, immutable";
 
-export interface StorageObjectMeta {
+export interface StoredFileMeta {
   id: string;
   organizationId: string;
-  contentType: string;
+  purpose: StoragePurpose;
+  status: "pending" | "ready" | "deleted";
+  contentType: string | null;
   sizeBytes: number;
-  sha256: string;
 }
 
+const metaColumns = {
+  id: storageObjects.id,
+  organizationId: storageObjects.organizationId,
+  purpose: storageObjects.purpose,
+  status: storageObjects.status,
+  contentType: storageObjects.contentType,
+  sizeBytes: storageObjects.sizeBytes,
+};
+
+const imageColumns = {
+  id: storageObjects.id,
+  visibility: storageObjects.visibility,
+  variants: storageObjects.variants,
+  width: storageObjects.width,
+  height: storageObjects.height,
+};
+
+// Processed bytes for server-side readers (fee PDFs embed the logo and QR).
+// Files never change, so entries never go stale; the cap bounds memory.
+const BYTES_CACHE_LIMIT = 64;
+const bytesCache = new Map<string, { contentType: string; data: Buffer }>();
+
 export class StorageService {
-  // ── The driver seam ─────────────────────────────────────────────────────
-  // Driver A is not even an object yet — the Postgres statements below ARE
-  // the driver. When R2 lands: extract these bodies behind the interface,
-  // key on env.STORAGE_DRIVER here, and migrate bytes out of band. The
-  // public surface of this class does not change.
-
-  private requireDriver(): "postgres" {
-    if (env.STORAGE_DRIVER === "r2") {
-      // Named and loud: a config flip before the driver exists must fail at
-      // the first use, not silently keep writing to Postgres.
-      throw new Error(
-        "STORAGE_DRIVER=r2 is not built yet — the R2 driver is a declared seam (ADR-038), not shipped code.",
-      );
-    }
-    return "postgres";
-  }
-
-  // ── Writes ──────────────────────────────────────────────────────────────
+  // ── Uploads ─────────────────────────────────────────────────────────────
 
   /**
-   * Stores bytes for an organization. Duplicate detection is bookkeeping
-   * (sha256 is recorded, indexed per org) but NOT deduplicated — two uploads
-   * of the same image are two objects, because object identity must not
-   * depend on content when rows point at ids (replacing one student's photo
-   * must never disturb another's).
+   * Hands out upload links. The caller has already decided this user may
+   * upload files of this purpose for `parentId` (null when the record does
+   * not exist yet, such as a new homework). Refuses files over the purpose's
+   * cap and organisations with too many uploads already in flight.
    */
-  async putObject(input: PutObjectInput): Promise<StorageObjectMeta> {
-    this.requireDriver();
-
-    // Backstop to the contract's base64 length bound — REST callers bypass
-    // no gate, but the service owns its own invariant.
-    if (input.bytes.length === 0) {
-      throw new Error("The file is empty — upload something.");
+  async createUploads(input: {
+    organizationId: string;
+    schoolId: string | null;
+    purpose: StoragePurpose;
+    parentId: string | null;
+    uploadedBy: string;
+    files: UploadRequest[];
+  }): Promise<UploadTicket[]> {
+    const rules = PURPOSES[input.purpose];
+    for (const file of input.files) {
+      if (file.sizeBytes > rules.maxUploadBytes) {
+        throw refuse(
+          "BAD_REQUEST",
+          `That file is larger than ${Math.floor(rules.maxUploadBytes / (1024 * 1024))} MB. Choose a smaller one.`,
+        );
+      }
     }
-    if (input.bytes.length > MAX_UPLOAD_BYTES) {
-      throw new Error(
-        `The file is larger than ${Math.floor(MAX_UPLOAD_BYTES / 1024)} KB — resize or compress it first.`,
+
+    const [inFlight] = await db
+      .select({ n: count() })
+      .from(storageObjects)
+      .where(
+        and(
+          eq(storageObjects.organizationId, input.organizationId),
+          eq(storageObjects.status, "pending"),
+          gt(storageObjects.createdAt, sql`now() - interval '1 day'`),
+        ),
+      );
+    if ((inFlight?.n ?? 0) + input.files.length > MAX_PENDING_PER_ORG) {
+      throw refuse(
+        "CONFLICT",
+        "Too many uploads are in progress. Wait for them to finish, then try again.",
       );
     }
 
-    const sha256 = createHash("sha256").update(input.bytes).digest("hex");
+    const ids = input.files.map(() => randomUUID());
+    await db.insert(storageObjects).values(
+      ids.map((id) => ({
+        id,
+        organizationId: input.organizationId,
+        schoolId: input.schoolId,
+        purpose: input.purpose,
+        visibility: rules.bucket,
+        status: "pending" as const,
+        parentId: input.parentId,
+        // Until `complete` writes the versions, the row points at the upload.
+        path: uploadKey(id),
+        uploadedBy: input.uploadedBy,
+      })),
+    );
+
+    const store = getObjectStore();
+    const expiresAt = new Date(Date.now() + UPLOAD_LINK_SECONDS * 1000).toISOString();
+    return Promise.all(
+      ids.map(async (id, i) => {
+        const file = input.files[i]!;
+        const link = await store.presignPut("private", uploadKey(id), {
+          contentType: file.contentType,
+          contentLength: file.sizeBytes,
+          expiresInSeconds: UPLOAD_LINK_SECONDS,
+        });
+        return {
+          objectId: id,
+          url: link.url,
+          method: "PUT" as const,
+          headers: link.headers,
+          expiresAt,
+        };
+      }),
+    );
+  }
+
+  /**
+   * Processes uploads the caller made. Each file is answered on its own, so
+   * one bad page of a homework does not sink the others. Only the uploader
+   * can complete an upload, and only once.
+   */
+  async complete(userId: string, objectIds: string[]): Promise<CompletedUpload[]> {
+    const rows = await db
+      .select({
+        id: storageObjects.id,
+        organizationId: storageObjects.organizationId,
+        purpose: storageObjects.purpose,
+        visibility: storageObjects.visibility,
+        status: storageObjects.status,
+      })
+      .from(storageObjects)
+      .where(and(inArray(storageObjects.id, objectIds), eq(storageObjects.uploadedBy, userId)));
+    const byId = new Map(rows.map((r) => [r.id, r]));
+
+    const results: CompletedUpload[] = [];
+    for (const objectId of objectIds) {
+      const row = byId.get(objectId);
+      if (!row || row.status === "deleted") {
+        results.push({
+          ok: false,
+          objectId,
+          reason: "That upload was not found. Upload the file again.",
+        });
+        continue;
+      }
+      if (row.status === "ready") {
+        // Completing twice is harmless: answer with the processed file.
+        const [image] = await this.imageRefsFor([objectId]);
+        if (image) results.push({ ok: true, objectId, image });
+        continue;
+      }
+      results.push(await this.processUpload(row));
+    }
+    return results;
+  }
+
+  private async processUpload(row: {
+    id: string;
+    organizationId: string;
+    purpose: StoragePurpose;
+    visibility: "private" | "public";
+  }): Promise<CompletedUpload> {
+    const store = getObjectStore();
+    const rules = PURPOSES[row.purpose];
+    const tmp = uploadKey(row.id);
+
+    const reject = async (reason: string): Promise<CompletedUpload> => {
+      await store.delete("private", [tmp]);
+      await db
+        .update(storageObjects)
+        .set({ status: "deleted", deletedAt: sql`now()` })
+        .where(and(eq(storageObjects.id, row.id), eq(storageObjects.status, "pending")));
+      return { ok: false, objectId: row.id, reason };
+    };
+
+    // Size first, from the bucket's own record: an oversize file is refused
+    // before a single byte of it is pulled into the API.
+    const head = await store.head("private", tmp);
+    if (!head) {
+      return {
+        ok: false,
+        objectId: row.id,
+        reason: "The file hasn't finished uploading. Try again.",
+      };
+    }
+    if (head.sizeBytes === 0) return reject("That file is empty. Choose a photo and try again.");
+    if (head.sizeBytes > rules.maxUploadBytes || head.sizeBytes > UPLOAD_MAX_BYTES) {
+      return reject("That file is too large. Choose a smaller one.");
+    }
+
+    const bytes = await store.get("private", tmp);
+    if (!bytes) {
+      return {
+        ok: false,
+        objectId: row.id,
+        reason: "The file hasn't finished uploading. Try again.",
+      };
+    }
+
+    let written: StorageVariant[];
+    try {
+      written = await this.writeVariants(row, bytes);
+    } catch (error) {
+      if (error instanceof ImageRejectedError) return reject(error.message);
+      throw error;
+    }
+
+    const display = written[0]!;
+    const [ready] = await db
+      .update(storageObjects)
+      .set({
+        status: "ready",
+        path: display.path,
+        variants: written,
+        contentType: display.contentType,
+        sizeBytes: written.reduce((sum, v) => sum + v.sizeBytes, 0),
+        width: display.width,
+        height: display.height,
+        readyAt: sql`now()`,
+      })
+      .where(and(eq(storageObjects.id, row.id), eq(storageObjects.status, "pending")))
+      .returning(imageColumns);
+    await store.delete("private", [tmp]);
+
+    if (!ready) {
+      // Another request completed it first; answer with that result.
+      const [image] = await this.imageRefsFor([row.id]);
+      return image
+        ? { ok: true, objectId: row.id, image }
+        : {
+            ok: false,
+            objectId: row.id,
+            reason: "That upload was not found. Upload the file again.",
+          };
+    }
+    return { ok: true, objectId: row.id, image: await buildImageRef(ready) };
+  }
+
+  /** Encodes the purpose's versions and writes them under the object's prefix. */
+  private async writeVariants(
+    row: {
+      id: string;
+      organizationId: string;
+      purpose: StoragePurpose;
+      visibility: "private" | "public";
+    },
+    bytes: Buffer,
+  ): Promise<StorageVariant[]> {
+    const rules = PURPOSES[row.purpose];
+    const processed = await processImage(bytes, rules.variants);
+    const prefix = objectPrefix(row.organizationId, row.purpose, row.id);
+    const store = getObjectStore();
+
+    const written: StorageVariant[] = [];
+    for (const v of processed) {
+      const path = `${prefix}${v.name}.${v.extension}`;
+      await store.put(rules.bucket, path, v.body, {
+        contentType: v.contentType,
+        cacheControl: rules.bucket === "public" ? PUBLIC_CACHE : PRIVATE_CACHE,
+      });
+      written.push({
+        name: v.name,
+        path,
+        contentType: v.contentType,
+        sizeBytes: v.body.length,
+        width: v.width,
+        height: v.height,
+      });
+    }
+    return written;
+  }
+
+  /**
+   * Stores bytes the server already has (seeds, scripts, and the base64
+   * endpoints until each moves to direct uploads). Same processing as an
+   * upload; the row comes back `ready` and must still be attached, unless
+   * `attached` says the caller references it where no foreign key can see
+   * (ID-card template JSON and site content, until their link tables land),
+   * so the sweeper must leave it alone.
+   */
+  async ingest(input: {
+    organizationId: string;
+    schoolId: string | null;
+    purpose: StoragePurpose;
+    parentId: string | null;
+    uploadedBy: string | null;
+    bytes: Buffer;
+    attached?: boolean;
+  }): Promise<{ id: string }> {
+    const rules = PURPOSES[input.purpose];
+    if (input.bytes.length === 0) {
+      throw refuse("BAD_REQUEST", "That file is empty. Choose a photo and try again.");
+    }
+    if (input.bytes.length > rules.maxUploadBytes) {
+      throw refuse("BAD_REQUEST", "That file is too large. Choose a smaller one.");
+    }
 
     const [row] = await db
       .insert(storageObjects)
       .values({
         organizationId: input.organizationId,
-        contentType: input.contentType,
-        sizeBytes: input.bytes.length,
-        sha256,
-        data: input.bytes,
-        createdBy: input.createdBy ?? null,
-        visibility: input.visibility ?? "private",
+        schoolId: input.schoolId,
+        purpose: input.purpose,
+        visibility: rules.bucket,
+        status: "pending",
+        parentId: input.parentId,
+        path: "tmp/",
+        uploadedBy: input.uploadedBy,
       })
-      .returning({
-        id: storageObjects.id,
-        organizationId: storageObjects.organizationId,
-        contentType: storageObjects.contentType,
-        sizeBytes: storageObjects.sizeBytes,
-        sha256: storageObjects.sha256,
-      });
+      .returning({ id: storageObjects.id });
+    if (!row) throw new Error("Failed to record the file.");
 
-    if (!row) throw new Error("Failed to store the file.");
+    let written: StorageVariant[];
+    try {
+      written = await this.writeVariants(
+        {
+          id: row.id,
+          organizationId: input.organizationId,
+          purpose: input.purpose,
+          visibility: rules.bucket,
+        },
+        input.bytes,
+      );
+    } catch (error) {
+      await db
+        .update(storageObjects)
+        .set({ status: "deleted", deletedAt: sql`now()` })
+        .where(eq(storageObjects.id, row.id));
+      if (error instanceof ImageRejectedError) throw refuse("BAD_REQUEST", error.message);
+      throw error;
+    }
 
-    return row;
+    const display = written[0]!;
+    await db
+      .update(storageObjects)
+      .set({
+        status: "ready",
+        path: display.path,
+        variants: written,
+        contentType: display.contentType,
+        sizeBytes: written.reduce((sum, v) => sum + v.sizeBytes, 0),
+        width: display.width,
+        height: display.height,
+        readyAt: sql`now()`,
+        attachedAt: input.attached ? sql`now()` : null,
+      })
+      .where(eq(storageObjects.id, row.id));
+    return { id: row.id };
   }
 
-  /**
-   * Deletes an object's bytes for real. NOT a hard-rule-2 violation: storage
-   * objects are blobs, not user/student/payment/attendance/result records,
-   * and the only caller is the photo-replacement flow, which has already
-   * re-pointed `student_photos` at the new object (the FK is
-   * `onDelete: restrict`, so a still-referenced delete fails loudly rather
-   * than dangling).
-   */
-  async deleteObject(organizationId: string, objectId: string): Promise<boolean> {
-    this.requireDriver();
+  // ── Linking files to records ────────────────────────────────────────────
 
-    const rows = await db
-      .delete(storageObjects)
+  /**
+   * Links ready files to a record, inside the caller's transaction. A file
+   * not yet attached must have been uploaded by `userId` for this parent (or
+   * for no parent yet); a file already attached may only be re-linked to the
+   * same parent, which is what re-saving a record does. Anything else is
+   * refused, so nobody can link a file uploaded for someone else.
+   */
+  async attach(
+    tx: Executor,
+    input: {
+      organizationId: string;
+      purpose: StoragePurpose;
+      parentId: string;
+      userId: string;
+      objectIds: string[];
+    },
+  ): Promise<void> {
+    const ids = [...new Set(input.objectIds)];
+    if (ids.length === 0) return;
+
+    const linked = await tx
+      .update(storageObjects)
+      .set({
+        parentId: input.parentId,
+        attachedAt: sql`coalesce(${storageObjects.attachedAt}, now())`,
+      })
       .where(
         and(
-          eq(storageObjects.id, objectId),
-          eq(storageObjects.organizationId, organizationId),
+          inArray(storageObjects.id, ids),
+          eq(storageObjects.organizationId, input.organizationId),
+          eq(storageObjects.purpose, input.purpose),
+          eq(storageObjects.status, "ready"),
+          or(
+            and(
+              isNull(storageObjects.attachedAt),
+              eq(storageObjects.uploadedBy, input.userId),
+              or(isNull(storageObjects.parentId), eq(storageObjects.parentId, input.parentId)),
+            ),
+            and(isNotNull(storageObjects.attachedAt), eq(storageObjects.parentId, input.parentId)),
+          ),
         ),
       )
       .returning({ id: storageObjects.id });
 
-    return rows.length > 0;
+    if (linked.length !== ids.length) {
+      throw refuse(
+        "BAD_REQUEST",
+        "One of the files can't be used here. Upload it again and retry.",
+      );
+    }
+  }
+
+  /**
+   * Marks files no record should use any more (a replaced photo, a removed
+   * page), inside the caller's transaction. The sweeper deletes the bytes
+   * and the rows; the foreign keys stop it if a record still points at one.
+   */
+  async markDeleted(tx: Executor, organizationId: string, objectIds: string[]): Promise<void> {
+    if (objectIds.length === 0) return;
+    await tx
+      .update(storageObjects)
+      .set({ status: "deleted", deletedAt: sql`now()` })
+      .where(
+        and(
+          inArray(storageObjects.id, objectIds),
+          eq(storageObjects.organizationId, organizationId),
+          ne(storageObjects.status, "deleted"),
+        ),
+      );
+  }
+
+  /**
+   * Copies a file into another organisation as a new object (the ID-card
+   * gallery's clone). The caller has proved the source may be copied; the
+   * bytes are copied inside the bucket, never pulled into the API. The copy
+   * comes back attached: today its only reference is template JSON.
+   */
+  async copyToOrg(input: {
+    sourceObjectId: string;
+    targetOrganizationId: string;
+    targetSchoolId: string | null;
+    uploadedBy: string;
+  }): Promise<{ id: string }> {
+    const [source] = await db
+      .select()
+      .from(storageObjects)
+      .where(and(eq(storageObjects.id, input.sourceObjectId), eq(storageObjects.status, "ready")));
+    if (!source) {
+      throw refuse("NOT_FOUND", "An image this design uses no longer exists.");
+    }
+
+    const [row] = await db
+      .insert(storageObjects)
+      .values({
+        organizationId: input.targetOrganizationId,
+        schoolId: input.targetSchoolId,
+        purpose: source.purpose,
+        visibility: source.visibility,
+        status: "pending",
+        path: "tmp/",
+        uploadedBy: input.uploadedBy,
+      })
+      .returning({ id: storageObjects.id });
+    if (!row) throw new Error("Failed to record the copied file.");
+
+    const store = getObjectStore();
+    const prefix = objectPrefix(input.targetOrganizationId, source.purpose, row.id);
+    const variants: StorageVariant[] = [];
+    for (const v of source.variants) {
+      const path = `${prefix}${v.path.slice(v.path.lastIndexOf("/") + 1)}`;
+      await store.copy(source.visibility, v.path, path);
+      variants.push({ ...v, path });
+    }
+
+    await db
+      .update(storageObjects)
+      .set({
+        status: "ready",
+        path: variants[0]?.path ?? source.path,
+        variants,
+        contentType: source.contentType,
+        sizeBytes: source.sizeBytes,
+        width: source.width,
+        height: source.height,
+        readyAt: sql`now()`,
+        attachedAt: sql`now()`,
+      })
+      .where(eq(storageObjects.id, row.id));
+    return { id: row.id };
   }
 
   // ── Reads ───────────────────────────────────────────────────────────────
 
-  /** Metadata without bytes — the template renderer's background/logo lookups. */
-  async getMeta(
-    organizationId: string,
-    objectId: string,
-  ): Promise<StorageObjectMeta | null> {
+  /** Metadata without bytes, scoped to the organisation. */
+  async getMeta(organizationId: string, objectId: string): Promise<StoredFileMeta | null> {
     const [row] = await db
-      .select({
-        id: storageObjects.id,
-        organizationId: storageObjects.organizationId,
-        contentType: storageObjects.contentType,
-        sizeBytes: storageObjects.sizeBytes,
-        sha256: storageObjects.sha256,
-      })
+      .select(metaColumns)
       .from(storageObjects)
       .where(
-        and(
-          eq(storageObjects.id, objectId),
-          eq(storageObjects.organizationId, organizationId),
-        ),
+        and(eq(storageObjects.id, objectId), eq(storageObjects.organizationId, organizationId)),
       );
-
-    return row ?? null;
-  }
-
-  /** The bytes themselves — same tenancy filter as the meta read. */
-  async getBytes(
-    organizationId: string,
-    objectId: string,
-  ): Promise<{ contentType: string; data: Buffer } | null> {
-    const [row] = await db
-      .select({
-        contentType: storageObjects.contentType,
-        data: storageObjects.data,
-      })
-      .from(storageObjects)
-      .where(
-        and(
-          eq(storageObjects.id, objectId),
-          eq(storageObjects.organizationId, organizationId),
-        ),
-      );
-
     return row ?? null;
   }
 
   /**
-   * THE SERVING ROUTE'S READ — the one method that starts from the CALLER
-   * instead of an org id, because `GET /api/storage/:id` learns the tenant
-   * only by loading the object. It loads the org, then demands an ACTIVE
-   * role assignment (not revoked, not expired) for that caller in that org;
-   * anything else answers null, and a wrong-tenant probe is indistinguishable
-   * from a made-up id. The unfiltered first SELECT never escapes this file —
-   * only the membership-checked verdict does.
+   * The processed bytes, for server-side readers that embed an image (fee
+   * PDFs). Scoped to the organisation and cached in memory.
    */
-  async getForUser(
-    userId: string,
+  async getBytes(
+    organizationId: string,
     objectId: string,
   ): Promise<{ contentType: string; data: Buffer } | null> {
-    this.requireDriver();
+    const cached = bytesCache.get(objectId);
+    if (cached) return cached;
 
     const [row] = await db
       .select({
-        organizationId: storageObjects.organizationId,
+        visibility: storageObjects.visibility,
+        path: storageObjects.path,
         contentType: storageObjects.contentType,
-        data: storageObjects.data,
       })
       .from(storageObjects)
-      .where(eq(storageObjects.id, objectId));
+      .where(
+        and(
+          eq(storageObjects.id, objectId),
+          eq(storageObjects.organizationId, organizationId),
+          eq(storageObjects.status, "ready"),
+        ),
+      );
+    if (!row?.contentType) return null;
 
+    const data = await getObjectStore().get(row.visibility, row.path);
+    if (!data) return null;
+
+    const entry = { contentType: row.contentType, data };
+    if (bytesCache.size >= BYTES_CACHE_LIMIT) {
+      const oldest = bytesCache.keys().next().value;
+      if (oldest) bytesCache.delete(oldest);
+    }
+    bytesCache.set(objectId, entry);
+    return entry;
+  }
+
+  /**
+   * Ready-made image references for files the caller has ALREADY authorised
+   * through the record that points at them. Scoped to the organisation; a
+   * file that is not ready is simply absent from the map.
+   */
+  async imageRefs(
+    organizationId: string,
+    objectIds: (string | null | undefined)[],
+  ): Promise<Map<string, ImageRef>> {
+    const ids = [...new Set(objectIds.filter((id): id is string => Boolean(id)))];
+    const refs = new Map<string, ImageRef>();
+    if (ids.length === 0) return refs;
+
+    const rows = await db
+      .select(imageColumns)
+      .from(storageObjects)
+      .where(
+        and(
+          inArray(storageObjects.id, ids),
+          eq(storageObjects.organizationId, organizationId),
+          eq(storageObjects.status, "ready"),
+        ),
+      );
+    const now = new Date();
+    for (const row of rows) refs.set(row.id, await buildImageRef(row, now));
+    return refs;
+  }
+
+  /** Unscoped by design: only for objects the caller itself just created or verified. */
+  private async imageRefsFor(objectIds: string[]): Promise<ImageRef[]> {
+    const rows = await db
+      .select(imageColumns)
+      .from(storageObjects)
+      .where(and(inArray(storageObjects.id, objectIds), eq(storageObjects.status, "ready")));
+    return Promise.all(rows.map((row) => buildImageRef(row)));
+  }
+
+  /**
+   * TRANSITIONAL — backs `GET /api/storage/:id` until every screen reads
+   * image references. Same rule the old route had: the caller needs an
+   * active role in the file's organisation. Answers the bytes, or null for a
+   * missing, foreign or unready file alike. The route streams them rather
+   * than redirecting, because today's mobile client sends its session
+   * cookie as a plain header, which would follow a redirect to the bucket.
+   */
+  async readForMember(
+    userId: string,
+    objectId: string,
+  ): Promise<{ contentType: string; data: Buffer } | null> {
+    const [row] = await db
+      .select({
+        organizationId: storageObjects.organizationId,
+      })
+      .from(storageObjects)
+      .where(and(eq(storageObjects.id, objectId), eq(storageObjects.status, "ready")));
     if (!row) return null;
 
     const [membership] = await db
@@ -224,120 +652,37 @@ export class StorageService {
           eq(roleAssignments.userId, userId),
           eq(roleAssignments.organizationId, row.organizationId),
           isNull(roleAssignments.revokedAt),
-          or(
-            isNull(roleAssignments.expiresAt),
-            gt(roleAssignments.expiresAt, sql`now()`),
-          ),
+          or(isNull(roleAssignments.expiresAt), gt(roleAssignments.expiresAt, sql`now()`)),
         ),
       )
       .limit(1);
-
     if (!membership) return null;
 
-    return { contentType: row.contentType, data: row.data };
+    return this.getBytes(row.organizationId, objectId);
   }
 
-  /**
-   * THE PUBLIC READ (ADR-038 amendment) — the anonymous door for `public`
-   * visibility objects, backing `/api/public/storage/:id`. Answers null for
-   * a private object exactly as for a missing one: the route cannot be used
-   * to probe which ids exist. No tenancy argument — visibility IS the
-   * authorization here; the org column travels only for bookkeeping.
-   */
-  async getPublicObject(
-    objectId: string,
-  ): Promise<{ contentType: string; data: Buffer } | null> {
-    this.requireDriver();
-
+  /** TRANSITIONAL — backs `GET /api/public/storage/:id`: public files only. */
+  async readForPublic(objectId: string): Promise<{ contentType: string; data: Buffer } | null> {
     const [row] = await db
-      .select({
-        contentType: storageObjects.contentType,
-        data: storageObjects.data,
-      })
+      .select({ organizationId: storageObjects.organizationId })
       .from(storageObjects)
       .where(
-        and(eq(storageObjects.id, objectId), eq(storageObjects.visibility, "public")),
-      )
-      .limit(1);
-
-    return row ?? null;
-  }
-
-  /**
-   * THE CLONE FLOW'S READ — a deliberate cross-org byte copy for the
-   * community gallery (slice 2b). The one unfiltered SELECT in this class
-   * besides `getForUser`, and it is justified the same way: the CALLER has
-   * already been verified one level up. `IdCardService.clonePublishedTemplate`
-   * loads the source template unfiltered ONLY after proving it is PUBLISHED,
-   * and only then may call this — publishing a design is the owner's act of
-   * making its imagery copyable, so the bytes move into the cloner's org as a
-   * NEW object (a new id) and the cloned design references the copy. The
-   * serving route's membership rule is never relaxed: org B still cannot read
-   * org A's original object, before or after the clone.
-   *
-   * Runs OUTSIDE any transaction deliberately: the copy commits first, the
-   * template row second — a failure between the two leaves an orphan object
-   * in the cloner's org (the same tolerance ADR-038 §4 grants the photo
-   * flow), never a template row referencing bytes that are not there.
-   */
-  async copyObjectToOrg(input: {
-    sourceObjectId: string;
-    targetOrganizationId: string;
-    createdBy?: string;
-  }): Promise<StorageObjectMeta> {
-    this.requireDriver();
-
-    const [source] = await db
-      .select({
-        contentType: storageObjects.contentType,
-        sizeBytes: storageObjects.sizeBytes,
-        sha256: storageObjects.sha256,
-        data: storageObjects.data,
-      })
-      .from(storageObjects)
-      .where(eq(storageObjects.id, input.sourceObjectId));
-
-    if (!source) {
-      throw new Error("The image this design references no longer exists.");
-    }
-
-    const [row] = await db
-      .insert(storageObjects)
-      .values({
-        organizationId: input.targetOrganizationId,
-        contentType: source.contentType,
-        sizeBytes: source.sizeBytes,
-        sha256: source.sha256,
-        data: source.data,
-        createdBy: input.createdBy ?? null,
-      })
-      .returning({
-        id: storageObjects.id,
-        organizationId: storageObjects.organizationId,
-        contentType: storageObjects.contentType,
-        sizeBytes: storageObjects.sizeBytes,
-        sha256: storageObjects.sha256,
-      });
-
-    if (!row) throw new Error("Failed to copy the image into your organisation.");
-    return row;
+        and(
+          eq(storageObjects.id, objectId),
+          eq(storageObjects.visibility, "public"),
+          eq(storageObjects.status, "ready"),
+        ),
+      );
+    return row ? this.getBytes(row.organizationId, objectId) : null;
   }
 
   // ── The student photo (one live row per student) ────────────────────────
 
   /**
-   * The student's current photo object id, for the detail page and the
-   * card-data payload. Scoped through the STUDENT (hard rule 1 — the filter
-   * rides the students table, not the photo row, which carries no org
-   * columns of its own).
+   * The student's current photo object id. Scoped through the STUDENT (hard
+   * rule 1 — the filter rides the students table, not the photo row).
    */
-  async getStudentPhotoObjectId(
-    scope: DataScope,
-    studentId: string,
-  ): Promise<string | null> {
-    // The photo is school-attributed through the student; an org-level scope
-    // has no branch to attribute to, so it is refused like any other
-    // school-scoped read (requireSchoolId words it).
+  async getStudentPhotoObjectId(scope: DataScope, studentId: string): Promise<string | null> {
     const schoolId = requireSchoolId(scope);
 
     const [row] = await db
