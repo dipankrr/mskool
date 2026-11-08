@@ -1940,6 +1940,7 @@ export const copy = {
       lateTag: "Late",
       typed: "Typed answer",
       noPhotos: "No photos",
+      photosCount: (n: number) => `${n} ${n === 1 ? "photo" : "photos"}`,
       redo: "Redo",
       redoTitle: "Send back to redo",
       redoBody: "The student sees this note and sends again.",

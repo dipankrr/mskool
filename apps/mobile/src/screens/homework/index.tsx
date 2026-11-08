@@ -160,7 +160,7 @@ export function HomeworkScreen() {
                       size="compact"
                       onPress={() =>
                         router.push({
-                          pathname: "/homework/check",
+                          pathname: item.homework.comesBack === "sent" ? "/homework/review" : "/homework/check",
                           params: {
                             id: item.homework.id,
                             sectionId: item.sectionId,
