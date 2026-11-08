@@ -65,6 +65,17 @@ export default function StaffTabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="homework"
+        options={{
+          title: copy.nav.homework,
+          // Hidden until Give and Check land (H2); then: homework:read.
+          href: null,
+          tabBarIcon: ({ color }) => (
+            <AppIcon name="homework" color={color} size={22} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="fees"
         options={{
           title: copy.nav.fees,
