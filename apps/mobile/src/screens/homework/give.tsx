@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Alert, StyleSheet, View } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
 import type { ComesBack, GradingMode } from "@repo/contracts";
 
@@ -51,8 +51,11 @@ export function GiveScreen() {
 
   const [step, setStep] = useState<Step>(0);
   const [kind, setKind] = useState<GiveKind | null>(null);
-  const [pickedSubjectId, setSubjectId] = useState<string | null>(null);
-  const [pickedSectionIds, setSectionIds] = useState<string[]>([]);
+  // Opened from a class page ("Give to 6A"): that class is already picked.
+  const preset = useLocalSearchParams<{ sectionId?: string; subjectId?: string }>();
+  const fromClass = Boolean(preset.sectionId && preset.subjectId);
+  const [pickedSubjectId, setSubjectId] = useState<string | null>(preset.subjectId ?? null);
+  const [pickedSectionIds, setSectionIds] = useState<string[]>(preset.sectionId ? [preset.sectionId] : []);
   const [work, setWork] = useState({ title: "", details: "", book: "", pages: "" });
   const [showErrors, setShowErrors] = useState(false);
   const [photoMessage, setPhotoMessage] = useState<string | null>(null);
@@ -180,7 +183,7 @@ export function GiveScreen() {
   // Back walks the steps; on the first step it leaves (guarded below).
   usePreventRemove(!finished && step > 0, () => {
     if (create.isPending) return;
-    setStep((s) => (s === 2 && singleClass ? 0 : ((s - 1) as Step)));
+    setStep((s) => (s === 2 && (singleClass || fromClass) ? 0 : ((s - 1) as Step)));
   });
   useUnsavedChanges(dirty && step === 0, {
     title: text.leaveTitle,
@@ -205,7 +208,7 @@ export function GiveScreen() {
       resetChoices();
       setDueDay(null);
     }
-    setStep(singleClass ? 2 : 1);
+    setStep(singleClass || fromClass ? 2 : 1);
   };
 
   const toggleSection = (sid: string, sec: string) => {
