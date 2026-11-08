@@ -49,7 +49,7 @@ function Chip({ label, on, onPress, testID }: { label: string; on: boolean; onPr
 }
 
 /** A due-date picker: the type's presets plus any day. */
-function DuePicker({ kind, day, onDay }: { kind: GiveKind; day: string; onDay: (d: string) => void }) {
+export function DuePicker({ kind, day, onDay }: { kind: GiveKind; day: string; onDay: (d: string) => void }) {
   const today = localDateToIso(new Date());
   const presets = duePresets(kind, today);
   const custom = !presets.some((p) => p.day === day);

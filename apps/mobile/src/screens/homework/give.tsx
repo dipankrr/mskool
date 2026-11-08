@@ -9,6 +9,7 @@ import { ErrorCard } from "../../components/error-card";
 import { Notice } from "../../components/notice";
 import { ScreenFrame } from "../../components/screen-frame";
 import { StepProgress } from "../../components/step-progress";
+import { ThemedText } from "../../components/themed-text";
 import { useActiveContext } from "../../hooks/use-active-context";
 import { useUnsavedChanges } from "../../hooks/use-unsaved-changes";
 import { copy } from "../../lib/copy";
@@ -26,6 +27,9 @@ import {
 } from "../../lib/homework";
 import { trpc } from "../../lib/trpc";
 import { spacing } from "../../theme/tokens";
+import { toSnapshotQuestion, type QuestionDraft } from "../../lib/homework-questions";
+import { DuePicker } from "./detail-sheets";
+import { QuizRulesStep, QuizWorkStep, type QuizRules } from "./give-quiz";
 import { ClassesStep, Crumbs, KIND_ICON, KindStep, StepQuestion, WhenStep, WorkStep, todayLocal } from "./give-steps";
 import { showGivenToast } from "./toast-store";
 import { usePhotoUploads } from "./use-photo-uploads";
@@ -63,6 +67,12 @@ export function GiveScreen() {
   const [lateDays, setLateDays] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
   const [finished, setFinished] = useState(false);
+  // A quiz rides the same four steps; its step 3 is questions, its step 4 the close time and rules.
+  const [isQuiz, setIsQuiz] = useState(false);
+  const [questions, setQuestions] = useState<QuestionDraft[]>([]);
+  const [rules, setRules] = useState<QuizRules>({ showScore: true, showAnswers: true });
+  const [quizBusy, setQuizBusy] = useState(false);
+  const [quizError, setQuizError] = useState<unknown>(null);
 
   const pairsQuery = trpc.homework.pairs.useQuery(scopeInput, {
     enabled: Boolean(organizationId),
@@ -109,6 +119,8 @@ export function GiveScreen() {
 
   const create = trpc.homework.create.useMutation({
     onSuccess: (hw, vars) => {
+      // A quiz finishes in submitQuiz, after its questions are attached.
+      if (vars.kind === "quiz") return;
       setFinished(true);
       void utils.homework.home.invalidate();
       void utils.homework.list.invalidate();
@@ -116,6 +128,46 @@ export function GiveScreen() {
       router.dismissTo("/homework" as never);
     },
   });
+
+  const setQuestionsMut = trpc.homework.questions.set.useMutation();
+  const giveMut = trpc.homework.give.useMutation();
+
+  /** Create the quiz as a draft, attach its questions, then give it: three calls, one tap. */
+  const submitQuiz = async (giveNow: boolean) => {
+    if (!subjectId || sectionIds.length === 0 || !organizationId) return;
+    setQuizBusy(true);
+    setQuizError(null);
+    const p = { organizationId, sectionId: sectionIds[0]!, subjectId };
+    try {
+      const hw = await create.mutateAsync({
+        ...p,
+        kind: "quiz",
+        sectionIds,
+        title: work.title.trim(),
+        dueAt: dueInstant(due),
+        give: false,
+      });
+      await setQuestionsMut.mutateAsync({
+        ...p,
+        id: hw.id,
+        questions: questions.map((d, i) => toSnapshotQuestion(d, i + 1)),
+        settings: {
+          showScore: rules.showScore ? "after_submit" : "after_close",
+          showAnswers: rules.showAnswers ? "after_close" : "never",
+        },
+      });
+      if (giveNow) await giveMut.mutateAsync({ ...p, id: hw.id });
+      setFinished(true);
+      void utils.homework.home.invalidate();
+      void utils.homework.list.invalidate();
+      showGivenToast({ id: hw.id, labels, draft: !giveNow, sectionId: p.sectionId, subjectId });
+      router.dismissTo("/homework" as never);
+    } catch (cause) {
+      setQuizError(cause);
+    } finally {
+      setQuizBusy(false);
+    }
+  };
 
   const errors = {
     title: kind !== "reading" && !work.title.trim() ? text.titleRequired : undefined,
@@ -144,9 +196,12 @@ export function GiveScreen() {
     setMinutes(undefined);
   };
 
-  const pickKind = (k: GiveKind) => {
+  const pickKind = (picked: GiveKind | "quiz") => {
+    const quiz = picked === "quiz";
+    const k: GiveKind = quiz ? "homework" : picked;
+    setIsQuiz(quiz);
     setKind(k);
-    if (k !== kind) {
+    if (k !== kind || quiz !== isQuiz) {
       resetChoices();
       setDueDay(null);
     }
@@ -184,6 +239,10 @@ export function GiveScreen() {
     };
 
   const submit = (give: boolean) => {
+    if (isQuiz) {
+      void submitQuiz(give);
+      return;
+    }
     if (!kind || !subjectId || sectionIds.length === 0 || !organizationId) return;
     const dueAt = dueInstant(due);
     const closeAt = lateDays > 0 ? new Date(new Date(dueAt).getTime() + lateDays * 86_400_000).toISOString() : undefined;
@@ -223,6 +282,10 @@ export function GiveScreen() {
     if (step === 1 && sectionIds.length > 0) setStep(2);
     if (step === 2) {
       setShowErrors(true);
+      if (isQuiz) {
+        if (work.title.trim() && questions.length > 0) setStep(3);
+        return;
+      }
       if (!workValid) return;
       if (uploads.busy || uploads.failed) {
         setPhotoMessage(uploads.busy ? text.photosWaiting : text.photoFailed);
@@ -243,7 +306,9 @@ export function GiveScreen() {
 
   const subjectName = pairs.find((p) => p.subjectId === subjectId)?.subjectName ?? "";
   const crumbs = [
-    ...(kind ? [{ label: text.kinds[kind], icon: KIND_ICON[kind], onPress: () => setStep(0) }] : []),
+    ...(kind
+      ? [{ label: isQuiz ? text.kinds.quiz : text.kinds[kind], icon: KIND_ICON[isQuiz ? "quiz" : kind], onPress: () => setStep(0) }]
+      : []),
     ...(subjectName ? [{ label: subjectName, onPress: singleClass ? undefined : () => setStep(1) }] : []),
     ...(labels ? [{ label: labels, onPress: singleClass ? undefined : () => setStep(1) }] : []),
     ...(step === 3 ? [{ label: kind === "reading" ? work.book : work.title, onPress: () => setStep(2) }] : []),
@@ -260,9 +325,10 @@ export function GiveScreen() {
       footer={
         step === 0 ? undefined : (
           <View style={styles.footer}>
-            {create.isError ? (
+            {create.isError && !isQuiz ? (
               <Notice tone="critical" message={toFriendlyError(create.error).message} testID="give-error" />
             ) : null}
+            {quizError ? <Notice tone="critical" message={toFriendlyError(quizError).message} testID="give-quiz-error" /> : null}
             {step === 1 ? (
               <CapsuleButton
                 title={sectionIds.length ? text.nextWithClasses(labels, students) : text.next}
@@ -279,16 +345,16 @@ export function GiveScreen() {
                   title={text.draft}
                   variant="secondary"
                   onPress={() => submit(false)}
-                  disabled={create.isPending}
+                  disabled={create.isPending || quizBusy}
                   testID="give-draft"
                   style={styles.draft}
                 />
                 <CapsuleButton
-                  title={create.isPending ? text.giving : text.giveTo(labels)}
+                  title={create.isPending || quizBusy ? text.giving : text.giveTo(labels)}
                   icon="check"
                   onPress={() => submit(true)}
-                  loading={create.isPending}
-                  disabled={create.isPending}
+                  loading={create.isPending || quizBusy}
+                  disabled={create.isPending || quizBusy}
                   testID="give-submit"
                   style={styles.grow}
                 />
@@ -300,7 +366,7 @@ export function GiveScreen() {
     >
       {step > 0 ? <Crumbs items={crumbs} /> : null}
 
-      {step === 0 ? <KindStep value={kind} onPick={pickKind} sameAsLast={sameAsLast} /> : null}
+      {step === 0 ? <KindStep value={isQuiz ? "quiz" : kind} onPick={pickKind} sameAsLast={sameAsLast} /> : null}
 
       {step === 1 ? (
         <ClassesStep
@@ -320,7 +386,30 @@ export function GiveScreen() {
         />
       ) : null}
 
-      {step === 2 && kind ? (
+      {step === 2 && isQuiz ? (
+        <View>
+          <StepQuestion>{text.workTitle}</StepQuestion>
+          <QuizWorkStep
+            title={work.title}
+            onTitle={(v) => setWork((w) => ({ ...w, title: v }))}
+            titleError={showErrors && !work.title.trim() ? text.titleRequired : undefined}
+            questions={questions}
+            onQuestions={setQuestions}
+            questionsError={showErrors && questions.length === 0 ? text.quizNeedsQuestion : undefined}
+          />
+        </View>
+      ) : null}
+
+      {step === 3 && isQuiz ? (
+        <View style={styles.quizWhen}>
+          <StepQuestion meta={formatDue(dueInstant(due))}>{text.whenTitle}</StepQuestion>
+          <StepLabel>{text.closes}</StepLabel>
+          <DuePicker kind="homework" day={due} onDay={setDueDay} />
+          <QuizRulesStep rules={rules} onRules={setRules} />
+        </View>
+      ) : null}
+
+      {step === 2 && kind && !isQuiz ? (
         <View>
           <StepQuestion>{text.workTitle}</StepQuestion>
           <WorkStep
@@ -337,7 +426,7 @@ export function GiveScreen() {
         </View>
       ) : null}
 
-      {step === 3 && kind ? (
+      {step === 3 && kind && !isQuiz ? (
         <View>
           <StepQuestion meta={formatDue(dueInstant(due))}>{text.whenTitle}</StepQuestion>
           <WhenStep
@@ -374,7 +463,17 @@ export function GiveScreen() {
   );
 }
 
+function StepLabel({ children }: { children: string }) {
+  return (
+    <ThemedText variant="sectionLabel" style={styles.stepLabel}>
+      {children}
+    </ThemedText>
+  );
+}
+
 const styles = StyleSheet.create({
+  quizWhen: { gap: spacing.md },
+  stepLabel: { marginTop: spacing.sm },
   footer: { gap: spacing.sm },
   stretch: { alignSelf: "stretch" },
   row: { flexDirection: "row", gap: spacing.sm },

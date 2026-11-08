@@ -181,7 +181,7 @@ export function HomeworkScreen() {
                 <SectionLabel style={styles.label}>{text.home.quizzes}</SectionLabel>
                 <View style={styles.cards}>
                   {data.quizzes.map((hw) => (
-                    <HomeworkRow key={hw.id} hw={hw} meta={text.home.quizLater} />
+                    <HomeworkRow key={hw.id} hw={hw} meta={`${dueLine(hw.closeAt)} · ${copy.homework.detail.progressHandedIn(hw.sections.reduce((n, s) => n + s.submitted + s.checked, 0), hw.sections.reduce((n, s) => n + s.total, 0))}${hw.answersToMark ? ` · ${copy.homework.quiz.toMark} ${hw.answersToMark}` : ""}`} />
                   ))}
                 </View>
               </>

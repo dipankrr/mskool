@@ -301,7 +301,7 @@ const SECTION_ROUTE: Record<string, { label: string; path: string } | null> = {
   sent: { label: text.review, path: "/homework/review" },
   tick: { label: text.ticks, path: "/homework/ticks" },
   none: null,
-  questions: null,
+  questions: { label: text.results, path: "/homework/quiz" },
 };
 
 type SectionCounts = { total: number; toCheck: number; checked: number; submitted: number; missing: number; redo: number };
@@ -319,6 +319,10 @@ function sectionProgress(comesBack: string, s: SectionCounts) {
       warn: s.missing,
       waiting: s.submitted > 0,
     };
+  }
+  if (comesBack === "questions") {
+    const done = s.submitted + s.checked;
+    return { line: text.progressHandedIn(done, s.total), value: done, warn: s.missing, waiting: s.submitted > 0 };
   }
   if (comesBack === "tick") {
     return { line: text.progressTicked(s.submitted, s.total), value: s.submitted, warn: 0, waiting: false };

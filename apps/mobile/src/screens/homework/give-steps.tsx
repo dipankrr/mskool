@@ -85,8 +85,8 @@ export function KindStep({
   onPick,
   sameAsLast,
 }: {
-  value: GiveKind | null;
-  onPick: (kind: GiveKind) => void;
+  value: GiveKind | "quiz" | null;
+  onPick: (kind: GiveKind | "quiz") => void;
   sameAsLast: { label: string; onPress: () => void } | null;
 }) {
   const kinds: (GiveKind | "quiz")[] = ["homework", "practice", "project", "reading", "quiz"];
@@ -95,7 +95,7 @@ export function KindStep({
       <StepQuestion>{text.whatTitle}</StepQuestion>
       <View style={styles.tiles}>
         {kinds.map((kind) => {
-          const soon = kind === "quiz";
+          const soon = false;
           const on = value === kind;
           return (
             <Pressable
@@ -104,7 +104,7 @@ export function KindStep({
               accessibilityState={{ selected: on, disabled: soon }}
               accessibilityLabel={`${text.kinds[kind]}. ${soon ? text.quizSoon : text.kindNotes[kind]}`}
               disabled={soon}
-              onPress={() => onPick(kind as GiveKind)}
+              onPress={() => onPick(kind)}
               style={({ pressed }) => [
                 styles.tile,
                 on ? styles.tileOn : null,
