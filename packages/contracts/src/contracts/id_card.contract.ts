@@ -1,6 +1,7 @@
 import { idCardTemplates } from "@repo/db/schema";
 import { createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
+import { imageRefSchema } from "./storage.contract";
 
 /**
  * ID CARDS — the template vocabulary and the card-data payload (slice 2a).
@@ -28,7 +29,7 @@ export const idCardOrientationSchema = z.enum(["landscape", "portrait"]);
 export type IdCardOrientation = z.infer<typeof idCardOrientationSchema>;
 
 /**
- * Full-card background image — a storage object id, served by /api/storage.
+ * Full-card background image — a storage object id; template reads carry its link (ADR-063).
  *
  * `widthMm`/`heightMm` are the CARD's physical size when the school departs
  * from CR80 (an ID card built around a pre-printed background sheet, say).
@@ -89,7 +90,7 @@ const elementBase = {
 
 /**
  * The element union. `photo` renders the student's photo (cardData's
- * photoObjectId), `qr` encodes the studentId, `logo` renders the school logo
+ * photo), `qr` encodes the studentId, `logo` renders the school logo
  * (assetId if the school uploaded one — a 2b+ surface; the renderer shows
  * nothing when absent rather than breaking the card).
  */
@@ -156,6 +157,16 @@ export type IdCardElementInput = IdCardTemplateDataInput["elements"][number];
 
 export const idCardTemplateSelectSchema = createSelectSchema(idCardTemplates);
 export type IdCardTemplateRow = z.infer<typeof idCardTemplateSelectSchema>;
+
+/**
+ * A template as the screens read it: the row plus its backgrounds and logos
+ * ready to show, keyed by asset id (ADR-063). An id missing from `images`
+ * renders as an empty slot.
+ */
+export const idCardTemplateWithImagesSchema = idCardTemplateSelectSchema.extend({
+  images: z.record(z.string(), imageRefSchema),
+});
+export type IdCardTemplateWithImages = z.infer<typeof idCardTemplateWithImagesSchema>;
 
 /**
  * Creates and adopts share one shape — adopting IS creating, from a starter
@@ -291,56 +302,10 @@ export const idCardStudentCardSchema = z.object({
   motherName: z.string().nullable(),
   /** The session's end date (ISO) — the card expires with the session. */
   validTill: z.string(),
-  photoObjectId: z.string().uuid().nullable(),
+  /** The student's photo, ready to print (ADR-063). */
+  photo: imageRefSchema.nullable(),
   schoolName: z.string(),
 });
 export type IdCardStudentCard = z.infer<typeof idCardStudentCardSchema>;
 
-// ---------------------------------------------------------------------------
-// Photo upload (on the student surface)
-// ---------------------------------------------------------------------------
 
-/**
- * Decoded-byte ceiling. Deliberately INSIDE the API's 1 MB JSON body limit
- * even after base64 inflation (~4/3): 512 KB decoded → ~683 KB encoded, which
- * fits with room for the envelope. A 300×400 JPEG lands far below this.
- */
-export const PHOTO_MAX_BYTES = 512 * 1024;
-
-export const PHOTO_CONTENT_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-] as const;
-
-const base64Shape = /^[A-Za-z0-9+/]*={0,2}$/;
-
-export const uploadStudentPhotoInput = z.object({
-  contentType: z.enum(PHOTO_CONTENT_TYPES),
-  // Length bound first (base64 is ~4/3 of decoded), then the alphabet — a
-  // misencoded payload should fail as "not an image encoding", not pass
-  // length and die at decode.
-  dataBase64: z
-    .string()
-    .max(Math.ceil(PHOTO_MAX_BYTES / 3) * 4)
-    .regex(base64Shape, "The photo data is not valid base64."),
-});
-export type UploadStudentPhotoInput = z.infer<typeof uploadStudentPhotoInput>;
-
-/**
- * THE TEMPLATE'S OWN ASSETS (slice 2b) — a card background, a school logo.
- * Same cap and allowlist as the photo (they share the 512 KB ceiling and the
- * API's 1 MB body), and the client is again the only place bytes are
- * resized. The designer re-points `canvas.backgroundAssetId` / a logo
- * element's `assetId` at the returned object id; removing the reference
- * deliberately does NOT delete the bytes (reference-checking every other
- * template's jsonb before a delete is not worth it — orphan objects are an
- * accepted cost, ADR-038 §4's tolerance).
- */
-export const uploadTemplateAssetInput = uploadStudentPhotoInput;
-export type UploadTemplateAssetInput = z.infer<typeof uploadTemplateAssetInput>;
-
-export const uploadedTemplateAssetSchema = z.object({
-  objectId: z.uuid(),
-});
-export type UploadedTemplateAsset = z.infer<typeof uploadedTemplateAssetSchema>;

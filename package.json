@@ -35,6 +35,7 @@
     "db:seed:site": "dotenv -e .env -- pnpm --filter @repo/api db:seed:site",
     "db:migrate:site-media": "dotenv -e .env -- pnpm --filter @repo/api db:migrate:site-media",
     "check:storage": "dotenv -e .env -- pnpm --filter @repo/api check:storage",
+    "storage:cors": "dotenv -e .env -- pnpm --filter @repo/api storage:cors",
     "attendance:recompute": "dotenv -e .env -- pnpm --filter @repo/api attendance:recompute"
   },
   "devDependencies": {

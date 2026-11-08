@@ -15,7 +15,7 @@ import { feesCopy } from "../../lib/fees-copy";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { spacing } from "../../theme/tokens";
-import { photoToWireBase64 } from "../students/photo-matching";
+import { prepareImage, putToUploadLink } from "../../lib/image-upload";
 
 const words = feesCopy.printing;
 const paperWords = feesCopy.print.paper;
@@ -25,17 +25,13 @@ type UpiMode = "off" | "upi_id" | "image";
 const PAPERS = Object.keys(paperWords) as Paper[];
 const KINDS = Object.keys(words.titleDefaults) as (keyof typeof words.titleDefaults)[];
 
-async function pickImage(): Promise<string | null> {
+async function pickImage() {
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ["images"],
     quality: 1,
     exif: false,
   });
-  const asset = result.canceled ? null : result.assets[0];
-  if (!asset) return null;
-  const base64 = await photoToWireBase64(asset.uri, asset.width, asset.height);
-  if (!base64) throw new Error(words.tooLarge);
-  return base64;
+  return result.canceled ? null : (result.assets[0] ?? null);
 }
 
 /**
@@ -56,7 +52,8 @@ export function PrintingSheet({
   const utils = trpc.useUtils();
   const current = trpc.fees.printing.get.useQuery({ organizationId, schoolId });
   const save = trpc.fees.printing.update.useMutation();
-  const upload = trpc.fees.printing.uploadImage.useMutation();
+  const uploadLink = trpc.fees.printing.imageUpload.useMutation();
+  const [uploading, setUploading] = useState(false);
 
   const [draft, setDraft] = useState<{
     headerText: string;
@@ -102,20 +99,27 @@ export function PrintingSheet({
   const uploadImage = async (target: "logoObjectId" | "upiImageObjectId") => {
     setError(null);
     try {
-      const dataBase64 = await pickImage();
-      if (!dataBase64) return;
-      const saved = await upload.mutateAsync({
+      const asset = await pickImage();
+      if (!asset) return;
+      setUploading(true);
+      // A QR is sent as lossless PNG so no scanner ever sees a blurred code.
+      const isQr = target === "upiImageObjectId";
+      const image = await prepareImage(asset.uri, asset.width, asset.height, 1200, isQr ? "png" : "jpeg");
+      const ticket = await uploadLink.mutateAsync({
         organizationId,
         schoolId,
         data: {
-          kind: target === "upiImageObjectId" ? "upi_qr" : "logo",
-          contentType: "image/jpeg",
-          dataBase64,
+          kind: isQr ? "upi_qr" : "logo",
+          file: { contentType: image.contentType, sizeBytes: image.sizeBytes },
         },
       });
-      patch({ [target]: saved.objectId });
+      await putToUploadLink(ticket, image);
+      // Saving the settings checks the file and links it (ADR-063).
+      patch({ [target]: ticket.objectId });
     } catch (cause) {
       setError(cause);
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -162,7 +166,7 @@ export function PrintingSheet({
             icon="check"
             size="compact"
             loading={save.isPending}
-            disabled={!value || upload.isPending}
+            disabled={!value || uploading}
             onPress={() => void submit()}
             testID="fee-printing-save"
           />
@@ -199,7 +203,7 @@ export function PrintingSheet({
               title={value.logoObjectId ? words.replace : words.upload}
               variant="secondary"
               size="mini"
-              loading={upload.isPending}
+              loading={uploading}
               onPress={() => void uploadImage("logoObjectId")}
               testID="fee-printing-logo"
             />
@@ -330,7 +334,7 @@ export function PrintingSheet({
                 title={value.upiImageObjectId ? words.replace : words.upload}
                 variant="secondary"
                 size="mini"
-                loading={upload.isPending}
+                loading={uploading}
                 onPress={() => void uploadImage("upiImageObjectId")}
                 testID="fee-printing-qr-image"
               />

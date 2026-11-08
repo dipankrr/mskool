@@ -6,6 +6,7 @@ import {
   ListObjectsV2Command,
   NoSuchKey,
   NotFound,
+  PutBucketCorsCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -64,6 +65,8 @@ export interface ObjectStore {
     key: string,
     opts: { signingDate: Date; expiresInSeconds: number },
   ): Promise<string>;
+  /** Lets these web origins PUT uploads and read files from the browser. */
+  setCors(bucket: Bucket, origins: string[]): Promise<void>;
 }
 
 /** Thrown on first use when the bucket settings are missing. */
@@ -208,6 +211,25 @@ export class S3ObjectStore implements ObjectStore {
       { expiresIn: opts.expiresInSeconds, signingDate: opts.signingDate },
     );
   }
+
+  async setCors(bucket: Bucket, origins: string[]) {
+    await this.client.send(
+      new PutBucketCorsCommand({
+        Bucket: this.buckets[bucket],
+        CORSConfiguration: {
+          CORSRules: [
+            {
+              AllowedOrigins: origins,
+              AllowedMethods: ["PUT", "GET", "HEAD"],
+              AllowedHeaders: ["content-type"],
+              ExposeHeaders: ["etag"],
+              MaxAgeSeconds: 3600,
+            },
+          ],
+        },
+      }),
+    );
+  }
 }
 
 function isMissing(error: unknown) {
@@ -284,6 +306,12 @@ export class MemoryObjectStore implements ObjectStore {
     opts: { signingDate: Date; expiresInSeconds: number },
   ) {
     return `memory://${bucket}/${key}?signed=${opts.signingDate.toISOString()}&expires=${opts.expiresInSeconds}`;
+  }
+
+  readonly cors = new Map<Bucket, string[]>();
+
+  async setCors(bucket: Bucket, origins: string[]) {
+    this.cors.set(bucket, origins);
   }
 }
 

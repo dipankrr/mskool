@@ -210,6 +210,35 @@ export class StorageService {
     return results;
   }
 
+  /**
+   * Processes any of these files the caller uploaded but has not completed,
+   * so a domain save can take ids straight from the client's PUT without a
+   * separate `storage.complete` call. A refused file throws its reason;
+   * files that are already ready, or someone else's, are left for `attach`
+   * to judge.
+   */
+  async ensureReady(userId: string, objectIds: string[]): Promise<void> {
+    const ids = [...new Set(objectIds)];
+    if (ids.length === 0) return;
+    const pending = await db
+      .select({ id: storageObjects.id })
+      .from(storageObjects)
+      .where(
+        and(
+          inArray(storageObjects.id, ids),
+          eq(storageObjects.uploadedBy, userId),
+          eq(storageObjects.status, "pending"),
+        ),
+      );
+    if (pending.length === 0) return;
+    const results = await this.complete(
+      userId,
+      pending.map((row) => row.id),
+    );
+    const refused = results.find((result) => !result.ok);
+    if (refused && !refused.ok) throw refuse("BAD_REQUEST", refused.reason);
+  }
+
   private async processUpload(row: {
     id: string;
     organizationId: string;
@@ -327,12 +356,9 @@ export class StorageService {
   }
 
   /**
-   * Stores bytes the server already has (seeds, scripts, and the base64
-   * endpoints until each moves to direct uploads). Same processing as an
-   * upload; the row comes back `ready` and must still be attached, unless
-   * `attached` says the caller references it where no foreign key can see
-   * (ID-card template JSON and site content, until their link tables land),
-   * so the sweeper must leave it alone.
+   * Stores bytes the server already has (seeds, scripts, tests). Same
+   * processing as an upload; the row comes back `ready` and must still be
+   * attached, or the sweeper removes it after a day.
    */
   async ingest(input: {
     organizationId: string;
@@ -341,7 +367,6 @@ export class StorageService {
     parentId: string | null;
     uploadedBy: string | null;
     bytes: Buffer;
-    attached?: boolean;
   }): Promise<{ id: string }> {
     const rules = PURPOSES[input.purpose];
     if (input.bytes.length === 0) {
@@ -398,7 +423,6 @@ export class StorageService {
         width: display.width,
         height: display.height,
         readyAt: sql`now()`,
-        attachedAt: input.attached ? sql`now()` : null,
       })
       .where(eq(storageObjects.id, row.id));
     return { id: row.id };
@@ -419,7 +443,8 @@ export class StorageService {
       organizationId: string;
       purpose: StoragePurpose;
       parentId: string;
-      userId: string;
+      /** Null only for server-side code (seeds, scripts), never a request. */
+      userId: string | null;
       objectIds: string[];
     },
   ): Promise<void> {
@@ -441,7 +466,9 @@ export class StorageService {
           or(
             and(
               isNull(storageObjects.attachedAt),
-              eq(storageObjects.uploadedBy, input.userId),
+              input.userId === null
+                ? isNull(storageObjects.uploadedBy)
+                : eq(storageObjects.uploadedBy, input.userId),
               or(isNull(storageObjects.parentId), eq(storageObjects.parentId, input.parentId)),
             ),
             and(isNotNull(storageObjects.attachedAt), eq(storageObjects.parentId, input.parentId)),
@@ -481,7 +508,8 @@ export class StorageService {
    * Copies a file into another organisation as a new object (the ID-card
    * gallery's clone). The caller has proved the source may be copied; the
    * bytes are copied inside the bucket, never pulled into the API. The copy
-   * comes back attached: today its only reference is template JSON.
+   * comes back ready and unattached, uploaded by the copier, for the caller
+   * to link.
    */
   async copyToOrg(input: {
     sourceObjectId: string;
@@ -531,7 +559,6 @@ export class StorageService {
         width: source.width,
         height: source.height,
         readyAt: sql`now()`,
-        attachedAt: sql`now()`,
       })
       .where(eq(storageObjects.id, row.id));
     return { id: row.id };
@@ -625,58 +652,6 @@ export class StorageService {
       .from(storageObjects)
       .where(and(inArray(storageObjects.id, objectIds), eq(storageObjects.status, "ready")));
     return Promise.all(rows.map((row) => buildImageRef(row)));
-  }
-
-  /**
-   * TRANSITIONAL — backs `GET /api/storage/:id` until every screen reads
-   * image references. Same rule the old route had: the caller needs an
-   * active role in the file's organisation. Answers the bytes, or null for a
-   * missing, foreign or unready file alike. The route streams them rather
-   * than redirecting, because today's mobile client sends its session
-   * cookie as a plain header, which would follow a redirect to the bucket.
-   */
-  async readForMember(
-    userId: string,
-    objectId: string,
-  ): Promise<{ contentType: string; data: Buffer } | null> {
-    const [row] = await db
-      .select({
-        organizationId: storageObjects.organizationId,
-      })
-      .from(storageObjects)
-      .where(and(eq(storageObjects.id, objectId), eq(storageObjects.status, "ready")));
-    if (!row) return null;
-
-    const [membership] = await db
-      .select({ userId: roleAssignments.userId })
-      .from(roleAssignments)
-      .where(
-        and(
-          eq(roleAssignments.userId, userId),
-          eq(roleAssignments.organizationId, row.organizationId),
-          isNull(roleAssignments.revokedAt),
-          or(isNull(roleAssignments.expiresAt), gt(roleAssignments.expiresAt, sql`now()`)),
-        ),
-      )
-      .limit(1);
-    if (!membership) return null;
-
-    return this.getBytes(row.organizationId, objectId);
-  }
-
-  /** TRANSITIONAL — backs `GET /api/public/storage/:id`: public files only. */
-  async readForPublic(objectId: string): Promise<{ contentType: string; data: Buffer } | null> {
-    const [row] = await db
-      .select({ organizationId: storageObjects.organizationId })
-      .from(storageObjects)
-      .where(
-        and(
-          eq(storageObjects.id, objectId),
-          eq(storageObjects.visibility, "public"),
-          eq(storageObjects.status, "ready"),
-        ),
-      );
-    return row ? this.getBytes(row.organizationId, objectId) : null;
   }
 
   // ── The student photo (one live row per student) ────────────────────────

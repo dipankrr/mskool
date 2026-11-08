@@ -4,8 +4,11 @@ import type {
   CreateIdCardTemplateInput,
   IdCardStudentCard,
   IdCardTemplateData,
+  ImageRef,
   PublishedIdCardTemplate,
   UpdateIdCardTemplateInput,
+  UploadRequest,
+  UploadTicket,
 } from "@repo/contracts";
 import {
   idCardCanvasSchema,
@@ -19,6 +22,7 @@ import {
   academicYears,
   classes,
   guardians,
+  idCardTemplateAssets,
   idCardTemplates,
   schools,
   sections,
@@ -111,6 +115,8 @@ export class IdCardService {
     userId: string,
   ) {
     const schoolId = requireSchoolId(scope);
+    const assets = templateAssetIds(input);
+    await storageService.ensureReady(userId, assets);
 
     return db.transaction(async (tx) => {
       if (input.isDefault) {
@@ -140,6 +146,13 @@ export class IdCardService {
         .returning();
 
       if (!row) throw new Error("Failed to create the template.");
+      await syncTemplateAssets(tx, {
+        organizationId: scope.organizationId,
+        templateId: row.id,
+        before: [],
+        after: assets,
+        userId,
+      });
       return row;
     });
   }
@@ -156,8 +169,22 @@ export class IdCardService {
     scope: DataScope,
     templateId: string,
     input: UpdateIdCardTemplateInput,
+    userId: string,
   ) {
     const schoolId = requireSchoolId(scope);
+    // Files new to the design are processed before anything is linked.
+    const current = await this.getTemplateById(scope, templateId);
+    const before = current ? templateAssetIds(current) : [];
+    const touched = templateAssetIds({
+      canvas: input.canvas,
+      elements: input.elements,
+      backCanvas: input.backCanvas,
+      backElements: input.backElements,
+    });
+    await storageService.ensureReady(
+      userId,
+      touched.filter((id) => !before.includes(id)),
+    );
 
     return db.transaction(async (tx) => {
       if (input.isDefault) {
@@ -209,6 +236,15 @@ export class IdCardService {
         )
         .returning();
 
+      if (row) {
+        await syncTemplateAssets(tx, {
+          organizationId: scope.organizationId,
+          templateId,
+          before,
+          after: templateAssetIds(row),
+          userId,
+        });
+      }
       return row ?? null;
     });
   }
@@ -300,25 +336,45 @@ export class IdCardService {
    * The reference is set by a separate template update — the upload never
    * mutates a design itself, so a failed design edit cannot orphan a ref.
    */
-  async uploadTemplateAsset(
+  async templateAssetUpload(
     scope: DataScope,
-    input: { contentType: string; dataBase64: string },
+    file: UploadRequest,
     userId: string,
-  ): Promise<string> {
+  ): Promise<UploadTicket> {
     const schoolId = requireSchoolId(scope);
-
-    // Stored attached: until template assets get their own table (ADR-063),
-    // the only reference is the design's JSON, which the sweeper cannot see.
-    const stored = await storageService.ingest({
+    // No parent yet: the design that uses it may not be saved. Saving the
+    // design links it (ADR-063).
+    const [ticket] = await storageService.createUploads({
       organizationId: scope.organizationId,
       schoolId,
       purpose: "id_card_asset",
       parentId: null,
       uploadedBy: userId,
-      bytes: Buffer.from(input.dataBase64, "base64"),
-      attached: true,
+      files: [file],
     });
-    return stored.id;
+    if (!ticket) throw new Error("No upload link was created.");
+    return ticket;
+  }
+
+  /**
+   * The templates with their backgrounds and logos ready to show, keyed by
+   * asset id. The caller has already read these templates under its scope.
+   */
+  async withImages<T extends TemplateDesignColumns & { organizationId: string }>(
+    rows: T[],
+  ): Promise<(T & { images: Record<string, ImageRef> })[]> {
+    const organizationId = rows[0]?.organizationId;
+    if (!organizationId) return rows.map((row) => ({ ...row, images: {} }));
+    const refs = await storageService.imageRefs(organizationId, rows.flatMap(templateAssetIds));
+    return rows.map((row) => ({
+      ...row,
+      images: Object.fromEntries(
+        templateAssetIds(row).flatMap((id) => {
+          const ref = refs.get(id);
+          return ref ? [[id, ref] as const] : [];
+        }),
+      ),
+    }));
   }
 
 
@@ -488,6 +544,13 @@ export class IdCardService {
         .returning();
 
       if (!row) throw new Error("Failed to create the template.");
+      await syncTemplateAssets(tx, {
+        organizationId: scope.organizationId,
+        templateId: row.id,
+        before: [],
+        after: templateAssetIds(row),
+        userId,
+      });
       return row;
     });
   }
@@ -612,6 +675,12 @@ export class IdCardService {
     const fullName = (first: string, last: string | null) =>
       last ? `${first} ${last}` : first;
 
+    // These students are already authorised, so their photos may be linked.
+    const photos = await storageService.imageRefs(
+      scope.organizationId,
+      rows.map((row) => row.photoObjectId),
+    );
+
     const byStudent = new Map<string, IdCardStudentCard>();
     for (const row of rows) {
       const links = guardianRows.filter((g) => g.studentId === row.student.id);
@@ -642,7 +711,7 @@ export class IdCardService {
         guardianName: primary ? fullName(primary.firstName, primary.lastName) : null,
         motherName: mother ? fullName(mother.firstName, mother.lastName) : null,
         validTill: year.endDate,
-        photoObjectId: row.photoObjectId ?? null,
+        photo: row.photoObjectId ? (photos.get(row.photoObjectId) ?? null) : null,
         schoolName: school.name,
       });
     }
@@ -675,8 +744,40 @@ export class IdCardService {
   }
 
   /**
-   * Stores photo bytes the server received and points the student at them.
-   * Until the photo screens upload straight to the bucket (ADR-063).
+   * An upload link for this student's photo (ADR-063). The caller has passed
+   * the student:update gate; the client PUTs the file and then calls
+   * `setStudentPhoto` with the returned id.
+   */
+  async studentPhotoUpload(
+    scope: DataScope,
+    studentId: string,
+    file: UploadRequest,
+    userId: string,
+  ): Promise<UploadTicket> {
+    const schoolId = await this.requireStudentInSchool(scope, studentId);
+    const [ticket] = await storageService.createUploads({
+      organizationId: scope.organizationId,
+      schoolId,
+      purpose: "student_photo",
+      parentId: studentId,
+      uploadedBy: userId,
+      files: [file],
+    });
+    if (!ticket) throw new Error("No upload link was created.");
+    return ticket;
+  }
+
+  /** The student's photo, ready to show, or null. */
+  async getStudentPhoto(scope: DataScope, studentId: string): Promise<ImageRef | null> {
+    const objectId = await storageService.getStudentPhotoObjectId(scope, studentId);
+    if (!objectId) return null;
+    const refs = await storageService.imageRefs(scope.organizationId, [objectId]);
+    return refs.get(objectId) ?? null;
+  }
+
+  /**
+   * Stores photo bytes the server already has and points the student at them
+   * (seeds and tests; the screens upload straight to the bucket).
    */
   async uploadStudentPhoto(
     scope: DataScope,
@@ -710,6 +811,8 @@ export class IdCardService {
     userId: string,
   ): Promise<void> {
     await this.requireStudentInSchool(scope, studentId);
+    // A file the caller just PUT is processed here, before anything is linked.
+    await storageService.ensureReady(userId, [objectId]);
 
     await db.transaction(async (tx) => {
       const [existing] = await tx
@@ -800,6 +903,83 @@ function collectTemplateAssetIds(design: IdCardTemplateData): string[] {
     }
   }
   return [...ids];
+}
+
+/** The design columns a template row or update carries. */
+type TemplateDesignColumns = {
+  canvas?: unknown;
+  elements?: unknown;
+  backCanvas?: unknown;
+  backElements?: unknown;
+};
+
+/**
+ * Every asset id in a row or update's design columns, read loosely: stored
+ * JSON is not re-validated here, only searched for ids.
+ */
+function templateAssetIds(design: TemplateDesignColumns): string[] {
+  const ids = new Set<string>();
+  for (const canvas of [design.canvas, design.backCanvas]) {
+    const id = (canvas as { backgroundAssetId?: unknown } | null | undefined)?.backgroundAssetId;
+    if (typeof id === "string") ids.add(id);
+  }
+  for (const elements of [design.elements, design.backElements]) {
+    if (!Array.isArray(elements)) continue;
+    for (const element of elements as { type?: unknown; assetId?: unknown }[]) {
+      if (element?.type === "logo" && typeof element.assetId === "string") ids.add(element.assetId);
+    }
+  }
+  return [...ids];
+}
+
+/**
+ * Keeps `id_card_template_assets` in step with a design (ADR-063): files new
+ * to it are linked (only ones uploaded for this template, or for no template
+ * yet), and files it no longer uses are let go for the storage sweeper.
+ */
+async function syncTemplateAssets(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  input: {
+    organizationId: string;
+    templateId: string;
+    before: string[];
+    after: string[];
+    userId: string;
+  },
+) {
+  const added = input.after.filter((id) => !input.before.includes(id));
+  const removed = input.before.filter((id) => !input.after.includes(id));
+
+  if (added.length > 0) {
+    await storageService.attach(tx, {
+      organizationId: input.organizationId,
+      purpose: "id_card_asset",
+      parentId: input.templateId,
+      userId: input.userId,
+      objectIds: added,
+    });
+    await tx
+      .insert(idCardTemplateAssets)
+      .values(
+        added.map((objectId) => ({
+          templateId: input.templateId,
+          objectId,
+          organizationId: input.organizationId,
+        })),
+      )
+      .onConflictDoNothing();
+  }
+  if (removed.length > 0) {
+    await tx
+      .delete(idCardTemplateAssets)
+      .where(
+        and(
+          eq(idCardTemplateAssets.templateId, input.templateId),
+          inArray(idCardTemplateAssets.objectId, removed),
+        ),
+      );
+    await storageService.markDeleted(tx, input.organizationId, removed);
+  }
 }
 
 function requireAssetRewrite(

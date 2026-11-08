@@ -13,6 +13,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
 import { organizations, schools } from "./organization";
+import { storageObjects } from "./storage";
 
 /**
  * ID CARDS — per-school student ID card templates (slice 2a, ADR-038 era).
@@ -106,6 +107,33 @@ export const idCardTemplates = pgTable(
       .where(sql`is_default`),
     index("id_card_templates_org_idx").on(t.organizationId),
     index("id_card_templates_school_idx").on(t.schoolId),
+  ],
+);
+
+/**
+ * The images a template's design uses (ADR-063): its backgrounds and logos.
+ * The design keeps asset ids in JSON, which a foreign key cannot see; this
+ * table is what lets the database refuse to delete a file a template still
+ * uses. The template service keeps it in step with the design on every save.
+ */
+export const idCardTemplateAssets = pgTable(
+  "id_card_template_assets",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    templateId: uuid()
+      .notNull()
+      .references(() => idCardTemplates.id),
+    objectId: uuid()
+      .notNull()
+      .references(() => storageObjects.id, { onDelete: "restrict" }),
+    organizationId: uuid()
+      .notNull()
+      .references(() => organizations.id),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("id_card_template_assets_uq").on(t.templateId, t.objectId),
+    index("id_card_template_assets_object_idx").on(t.objectId),
   ],
 );
 

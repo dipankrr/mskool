@@ -54,7 +54,7 @@ import {
   type StudentFormField,
 } from "./student-form";
 import { StudentMoreFields } from "./student-more-fields";
-import { photoUploadBody, StudentPhotoView, type PickedImage } from "./student-photo";
+import { StudentPhotoView, useStudentPhotoUploader, type PickedImage } from "./student-photo";
 
 /**
  * Admit a student (plan `.kilo/plans/2026-11-01-admit-flow.md`): who, which
@@ -199,7 +199,7 @@ function AdmitFlow({
   const createStudent = trpc.student.create.useMutation();
   const createEnrollment = trpc.enrollment.create.useMutation();
   const addGuardian = trpc.guardian.add.useMutation();
-  const uploadPhoto = trpc.student.uploadPhoto.useMutation();
+  const photoUploader = useStudentPhotoUploader();
 
   const rows = useMemo(() => register.data ?? [], [register.data]);
   const studentErrors = useMemo(() => {
@@ -299,15 +299,7 @@ function AdmitFlow({
   const runTask = async (studentId: string, task: AdmitTask): Promise<AdmitTask> => {
     try {
       if (task.kind === "photo") {
-        const saved = await uploadPhoto.mutateAsync({
-          organizationId,
-          id: studentId,
-          data: await photoUploadBody(task.photo),
-        });
-        utils.student.photo.setData(
-          { organizationId, id: studentId },
-          { objectId: saved.objectId },
-        );
+        await photoUploader.upload(organizationId, studentId, task.photo);
       } else if (task.kind === "enrollment") {
         await createEnrollment.mutateAsync({
           organizationId,

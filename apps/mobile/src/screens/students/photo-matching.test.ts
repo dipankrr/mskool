@@ -1,10 +1,8 @@
 import {
   admissionFromFileName,
-  fitsWireLimit,
   matchByAdmission,
   matchByOrder,
   photosInCaptureOrder,
-  resizePlan,
   rosterInMarkingOrder,
   type PickedPhoto,
   type RosterEntry,
@@ -126,22 +124,5 @@ describe("admissionFromFileName", () => {
     expect(admissionFromFileName("2026-0001 .jpg")).toBe("2026-0001");
     expect(admissionFromFileName(null)).toBeNull();
     expect(admissionFromFileName(".jpg")).toBeNull();
-  });
-});
-
-describe("resize ladder", () => {
-  it("shrinks per attempt and stops", () => {
-    expect(resizePlan(0)).toEqual({ maxEdge: 800, quality: 0.8 });
-    expect(resizePlan(2)).toEqual({ maxEdge: 400, quality: 0.6 });
-    expect(resizePlan(3)).toBeNull();
-  });
-
-  it("checks the decoded ceiling on the base64", () => {
-    // 512 KB decoded ↔ exactly 699,050 base64 chars (bytes × 4/3, floored).
-    const bytes = 512 * 1024;
-    expect(fitsWireLimit("A".repeat(Math.floor((bytes * 4) / 3)))).toBe(true);
-    expect(fitsWireLimit("A".repeat(Math.floor((bytes * 4) / 3) + 1))).toBe(
-      false,
-    );
   });
 });

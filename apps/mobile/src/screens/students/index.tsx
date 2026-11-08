@@ -31,8 +31,6 @@ import { useHideTabBarOnScroll, useTabBarSpace } from "../../components/tab-bar"
 import { ThemedText } from "../../components/themed-text";
 import { useActiveContext, useBranchMeta } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
-import { env } from "../../env";
-import { authClient } from "../../lib/auth";
 import { copy } from "../../lib/copy";
 import { formatReadableDate } from "../../lib/format";
 import { trpc } from "../../lib/trpc";
@@ -102,12 +100,6 @@ export function StudentsScreen({
   useEffect(() => {
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
   }, [view, sort, filters, search]);
-
-  // The photo route needs the session cookie, which lives in SecureStore.
-  const [cookie, setCookie] = useState<string | null>(null);
-  useEffect(() => {
-    void Promise.resolve(authClient.getCookie()).then((value) => setCookie(value || null));
-  }, []);
 
   const base = {
     organizationId: organizationId ?? "",
@@ -186,9 +178,9 @@ export function StudentsScreen({
           {item.label ?? copy.students.list.noClass}
         </ThemedText>
       ) : (
-        <StudentRow row={item.row} cookie={cookie} />
+        <StudentRow row={item.row} />
       ),
-    [cookie],
+    [],
   );
 
   const addAction = canCreate
@@ -417,7 +409,6 @@ export function StudentsScreen({
         data={items}
         keyExtractor={(item) => item.key}
         renderItem={renderItem}
-        extraData={cookie}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         contentContainerStyle={[
@@ -670,27 +661,19 @@ function Attention({
   );
 }
 
-function RowPhoto({
-  objectId,
-  name,
-  cookie,
-}: {
-  objectId: string | null;
-  name: string;
-  cookie: string | null;
-}) {
+function RowPhoto({ photo, name }: { photo: RosterRow["photo"]; name: string }) {
   const [failed, setFailed] = useState(false);
-  if (objectId && cookie && !failed) {
+  if (photo && !failed) {
     return (
       <Image
         source={{
-          uri: `${env.EXPO_PUBLIC_API_URL}/api/storage/${objectId}`,
-          headers: { Cookie: cookie },
-          // A replaced photo gets a new object, so the id is a safe cache key.
-          cacheKey: objectId,
+          // A signed link that changes every few hours (ADR-063); the file
+          // behind an id never changes, so the id is the cache key.
+          uri: photo.url,
+          cacheKey: photo.id,
         }}
         cachePolicy="disk"
-        recyclingKey={objectId}
+        recyclingKey={photo.id}
         contentFit="cover"
         transition={120}
         onError={() => setFailed(true)}
@@ -708,7 +691,7 @@ function RowPhoto({
   );
 }
 
-function StudentRow({ row, cookie }: { row: RosterRow; cookie: string | null }) {
+function StudentRow({ row }: { row: RosterRow }) {
   const name = [row.firstName, row.middleName, row.lastName].filter(Boolean).join(" ");
   const status = row.enrollmentStatus as EnrollmentStatus | null;
   const gone = row.status === "inactive";
@@ -737,7 +720,7 @@ function StudentRow({ row, cookie }: { row: RosterRow; cookie: string | null }) 
       style={({ pressed }) => [styles.row, pressed ? styles.rowPressed : null]}
       testID={`student-row-${row.id}`}
     >
-      <RowPhoto objectId={row.photoObjectId} name={name} cookie={cookie} />
+      <RowPhoto photo={row.photo} name={name} />
       <View style={styles.rowText}>
         <ThemedText variant="name" numberOfLines={1}>
           {name}

@@ -274,6 +274,7 @@ export function StudentDetailScreen() {
         <View style={styles.heroTop}>
           <StudentPhotoView
             uri={photo.uri}
+            cacheKey={photo.cacheKey}
             name={name}
             size={84}
             busy={photo.busy}

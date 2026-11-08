@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -8,35 +8,45 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useActiveContext } from "@/features/session/active-context";
 import { copy } from "@/lib/copy";
 import { errorMessage } from "@/lib/errors";
+import { prepareImage, putToUploadLink } from "@/lib/image-upload";
 import { trpc } from "@/lib/trpc/client";
 
 /**
- * THE STUDENT'S PHOTO CARD (slice 2a, ADR-038).
+ * THE STUDENT'S PHOTO CARD (ADR-063).
  *
- * Resizes in-canvas to ~300×400 JPEG BEFORE upload — the only place bytes are
- * touched. The contract's allowlist + byte cap are the server's backstop; the
- * resize is what makes the cap a non-event for a phone photo. One photo per
- * student: a replace upserts and the replaced object's bytes are deleted
- * server-side, so the visible image (cached by its immutable object id)
- * simply changes id.
+ * Uploads go straight to the bucket: the browser shrinks the photo, asks for
+ * an upload link, PUTs the file, and `student.setPhoto` has the server check
+ * it and make it the student's. One photo per student: a replace lets the old
+ * file go, and the visible image (cached by its id) simply changes id.
  */
 
-const TARGET_W = 300;
-const TARGET_H = 400;
+/**
+ * Uploads a chosen file as a student's photo; shared with the bulk-photo
+ * workbench. Throws a readable error when the browser cannot read the image.
+ */
+export function useStudentPhotoUploader() {
+  const utils = trpc.useUtils();
+  const link = trpc.student.photoUpload.useMutation();
+  const save = trpc.student.setPhoto.useMutation();
 
-/** Shared with the bulk-photo workbench — the ONE place bytes are resized. */
-export async function fileToResizedBase64(file: File): Promise<string | null> {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(TARGET_W / bitmap.width, TARGET_H / bitmap.height, 1);
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-  const base64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
-  return base64.length > 0 ? base64 : null;
+  return useCallback(
+    async (organizationId: string, studentId: string, file: File) => {
+      const image = await prepareImage(file, 1200);
+      if (!image) throw new Error(copy.idCards.photo.unreadable);
+      const ticket = await link.mutateAsync({
+        organizationId,
+        id: studentId,
+        file: { contentType: image.contentType, sizeBytes: image.sizeBytes },
+      });
+      await putToUploadLink(ticket, image);
+      const saved = await save.mutateAsync({ organizationId, id: studentId, objectId: ticket.objectId });
+      utils.student.photo.setData({ organizationId, id: studentId }, { photo: saved.photo });
+      return saved.photo;
+    },
+    // The mutation objects are stable across renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [utils],
+  );
 }
 
 export function StudentPhotoCard({ studentId }: { studentId: string }) {
@@ -50,17 +60,7 @@ export function StudentPhotoCard({ studentId }: { studentId: string }) {
   );
 
   const utils = trpc.useUtils();
-  const upload = trpc.student.uploadPhoto.useMutation({
-    onSuccess: async () => {
-      toast.success(copy.idCards.photo.uploaded);
-      await utils.student.photo.invalidate();
-      setBusy(false);
-    },
-    onError: (error) => {
-      toast.error(errorMessage(error));
-      setBusy(false);
-    },
-  });
+  const uploadPhoto = useStudentPhotoUploader();
   const remove = trpc.student.removePhoto.useMutation({
     onSuccess: async () => {
       toast.success(copy.idCards.photo.removed);
@@ -79,19 +79,11 @@ export function StudentPhotoCard({ studentId }: { studentId: string }) {
     if (!file) return;
     setBusy(true);
     try {
-      const base64 = await fileToResizedBase64(file);
-      if (!base64) {
-        toast.error(copy.idCards.photo.tooLarge);
-        setBusy(false);
-        return;
-      }
-      await upload.mutateAsync({
-        organizationId,
-        id: studentId,
-        data: { contentType: "image/jpeg", dataBase64: base64 },
-      });
-    } catch {
-      toast.error(copy.idCards.photo.tooLarge);
+      await uploadPhoto(organizationId, studentId, file);
+      toast.success(copy.idCards.photo.uploaded);
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
       setBusy(false);
     }
   }
@@ -103,9 +95,9 @@ export function StudentPhotoCard({ studentId }: { studentId: string }) {
       </CardHeader>
       <CardContent className="flex items-start gap-4">
         <div className="flex h-[100px] w-[75px] shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted/40 text-xs text-muted-foreground">
-          {photo.isLoading ? null : photo.data?.objectId ? (
+          {photo.isLoading ? null : photo.data?.photo ? (
             <img
-              src={`/api/storage/${photo.data.objectId}`}
+              src={photo.data.photo.url}
               alt=""
               className="h-full w-full object-cover"
             />
@@ -133,11 +125,11 @@ export function StudentPhotoCard({ studentId }: { studentId: string }) {
                 disabled={busy}
                 onClick={() => fileInput.current?.click()}
               >
-                {photo.data?.objectId
+                {photo.data?.photo
                   ? copy.idCards.photo.replace
                   : copy.idCards.photo.upload}
               </Button>
-              {photo.data?.objectId ? (
+              {photo.data?.photo ? (
                 <Button
                   variant="ghost"
                   size="sm"

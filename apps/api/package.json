@@ -22,6 +22,7 @@
     "check:openapi": "tsx scripts/check-openapi.ts",
     "check:builders": "tsx scripts/check-builders.ts",
     "check:storage": "tsx scripts/check-storage.ts",
+    "storage:cors": "tsx scripts/storage-cors.ts",
     "db:migrate:site-media": "tsx scripts/migrate-site-media.ts",
     "attendance:recompute": "tsx scripts/recompute-attendance.ts"
   },

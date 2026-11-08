@@ -20,7 +20,7 @@ import {
   feeReceiptLayoutSchema,
   feeSetupStatusSchema,
   updateFeePrintSettingsSchema,
-  uploadFeePrintImageSchema,
+  feePrintImageUploadSchema,
   startFeeDuesRunSchema,
   feeStudentSummaryInputSchema,
   feeStudentSummarySchema,
@@ -65,6 +65,7 @@ import {
   updateFeeHeadSchema,
   updateFeeStructureLineSchema,
   updateFeeStructureSchema,
+  uploadTicketSchema,
 } from "@repo/contracts";
 import {
   feeDocumentsService,
@@ -360,11 +361,12 @@ export const feesRouter = router({
         feeDocumentsService.updatePrintSettings(ctx.scope, input.data, ctx.userId),
       ),
 
-    uploadImage: staffProcedure("fee_structure:update")
-      .input(z.object({ data: uploadFeePrintImageSchema, ...schoolParent.shape }))
-      .output(z.object({ objectId: z.uuid() }))
+    // A link to PUT the logo or UPI QR to; `update` then links it (ADR-063).
+    imageUpload: staffProcedure("fee_structure:update")
+      .input(z.object({ data: feePrintImageUploadSchema, ...schoolParent.shape }))
+      .output(uploadTicketSchema)
       .mutation(({ ctx, input }) =>
-        feeDocumentsService.uploadPrintImage(ctx.scope, input.data, ctx.userId),
+        feeDocumentsService.printImageUpload(ctx.scope, input.data, ctx.userId),
       ),
   }),
 

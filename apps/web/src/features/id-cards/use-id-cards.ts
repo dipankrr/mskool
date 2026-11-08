@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import type { IdCardTemplateDataInput } from "@repo/contracts";
@@ -10,6 +10,9 @@ import { copy } from "@/lib/copy";
 import { errorMessage } from "@/lib/errors";
 import { trpc } from "@/lib/trpc/client";
 import type { IdCardTemplateRow } from "@/lib/trpc/types";
+import { prepareImage, putToUploadLink } from "@/lib/image-upload";
+
+import { rememberImages } from "./asset-images";
 import { parseTemplateData } from "./template";
 
 /**
@@ -40,13 +43,18 @@ export type TemplateChoice = {
 export function useIdCardTemplates() {
   const { organizationId } = useActiveContext();
 
-  return trpc.idCard.template.list.useQuery(
+  const query = trpc.idCard.template.list.useQuery(
     { organizationId },
     {
       enabled: Boolean(organizationId),
       staleTime: 30_000,
     },
   );
+  // Each template carries its backgrounds' and logos' links (ADR-063).
+  useEffect(() => {
+    for (const row of query.data ?? []) rememberImages(row.images);
+  }, [query.data]);
+  return query;
 }
 
 /**
@@ -160,51 +168,53 @@ export function useStudentSelection() {
 // ── Slice 2b — designer, publish, gallery ──────────────────────────────────
 
 /**
- * Resizes a background/logo image BEFORE upload — the client is the only
- * place bytes are touched (ADR-038). The longest side is capped at 860px
- * (a CR80 card at ~250dpi in either orientation), re-encoded as JPEG; the
- * result lands far below the 512 KB contract cap.
+ * A background or logo's image as sent: no more than 2000px on its long side
+ * (a CR80 card at well over 300dpi), PNG kept lossless so line art and logos
+ * stay sharp. The server re-encodes it either way (ADR-063).
  */
-export async function fileToTemplateAssetBase64(
-  file: File,
-): Promise<string | null> {
-  const MAX_SIDE = 860;
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(MAX_SIDE / Math.max(bitmap.width, bitmap.height), 1);
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-  const base64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
-  return base64.length > 0 ? base64 : null;
+function prepareTemplateAsset(file: File) {
+  return prepareImage(file, 2000, file.type === "image/png" ? "png" : "jpeg");
 }
 
 /**
- * THE TEMPLATE'S OWN ASSET UPLOAD (background, logo) — stores the object via
- * the storage seam and returns its id; the caller re-points the design ref
- * with an ordinary draft edit. A branch must be chosen (the asset is
- * org-owned but the gate is `id_card:manage` at school level).
+ * THE TEMPLATE'S OWN ASSET UPLOAD (background, logo), straight to the bucket
+ * (ADR-063): an upload link, the PUT, then `storage.complete` so the
+ * designer can show it at once. Answers the asset id; the caller re-points
+ * the design ref with an ordinary draft edit, and saving the template links
+ * the file. A branch must be chosen (the gate is `id_card:manage` at school
+ * level).
  */
 export function useUploadTemplateAsset() {
   const { writeScopeArgs } = useActiveContext();
-  const mutation = trpc.idCard.template.uploadAsset.useMutation({
-    onError: (error) => toast.error(errorMessage(error)),
-  });
+  const link = trpc.idCard.template.assetUpload.useMutation();
+  const complete = trpc.storage.complete.useMutation();
 
   return {
-    ...mutation,
-    submit: async (input: { dataBase64: string }) => {
+    submit: async (file: File): Promise<string | null> => {
       const scope = writeScopeArgs();
       if (!scope) throw new Error("A branch must be chosen first.");
-      const result = await mutation.mutateAsync({
-        ...scope,
-        contentType: "image/jpeg",
-        dataBase64: input.dataBase64,
-      });
-      return result.objectId;
+      const image = await prepareTemplateAsset(file);
+      if (!image) {
+        toast.error(copy.idCards.photo.unreadable);
+        return null;
+      }
+      try {
+        const ticket = await link.mutateAsync({
+          ...scope,
+          file: { contentType: image.contentType, sizeBytes: image.sizeBytes },
+        });
+        await putToUploadLink(ticket, image);
+        const [result] = await complete.mutateAsync({ objectIds: [ticket.objectId] });
+        if (!result?.ok) {
+          toast.error(result?.reason ?? copy.idCards.photo.unreadable);
+          return null;
+        }
+        rememberImages([result.image]);
+        return ticket.objectId;
+      } catch (error) {
+        toast.error(errorMessage(error));
+        return null;
+      }
     },
   };
 }

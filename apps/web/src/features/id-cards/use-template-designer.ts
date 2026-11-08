@@ -9,6 +9,7 @@ import { useActiveContext } from "@/features/session/active-context";
 import { copy } from "@/lib/copy";
 import { errorMessage } from "@/lib/errors";
 import { trpc } from "@/lib/trpc/client";
+import { rememberImages } from "./asset-images";
 import { parseTemplateData } from "./template";
 
 /**
@@ -61,6 +62,10 @@ export function useTemplateDesigner(templateId: string) {
     { organizationId, id: templateId },
     { enabled: Boolean(organizationId) && has("id_card:manage"), retry: false },
   );
+  // The design's backgrounds and logos, ready to show (ADR-063).
+  useEffect(() => {
+    if (row.data) rememberImages(row.data.images);
+  }, [row.data]);
 
   /**
    * Null when the row's jsonb predates or postdates the current contract.

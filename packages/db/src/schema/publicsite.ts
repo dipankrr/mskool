@@ -1,5 +1,16 @@
-import { boolean, integer, jsonb, pgTable, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  timestamp,
+  uniqueIndex,
+  uuid,
+  varchar,
+} from "drizzle-orm/pg-core";
 import { organizations } from "./organization";
+import { storageObjects } from "./storage";
 
 /**
  * The public website of an organization, served at `{org-slug}.mskool.in`.
@@ -53,5 +64,32 @@ export const orgPublicSites = pgTable(
   (t) => [
     // One site per organization — the subdomain namespace is the org slug.
     uniqueIndex("org_public_sites_org_uq").on(t.organizationId),
+  ],
+);
+
+/**
+ * The images a site uses (ADR-063). Content keeps them as `storage:{id}`
+ * tokens inside JSON, which a foreign key cannot see; this table is what lets
+ * the database refuse to delete a file the draft or the published site still
+ * uses. The site service keeps it in step on every save and publish.
+ */
+export const publicSiteMedia = pgTable(
+  "public_site_media",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    siteId: uuid()
+      .notNull()
+      .references(() => orgPublicSites.id),
+    objectId: uuid()
+      .notNull()
+      .references(() => storageObjects.id, { onDelete: "restrict" }),
+    organizationId: uuid()
+      .notNull()
+      .references(() => organizations.id),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("public_site_media_uq").on(t.siteId, t.objectId),
+    index("public_site_media_object_idx").on(t.objectId),
   ],
 );

@@ -21,7 +21,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { useActiveContext } from "@/features/session/active-context";
 import { copy } from "@/lib/copy";
-import { fileToTemplateAssetBase64, useUploadTemplateAsset } from "./use-id-cards";
+import { useUploadTemplateAsset } from "./use-id-cards";
 
 import { CanvasSettings, ElementProperties, FieldPalette } from "./designer-properties";
 import { DesignerCanvas } from "./designer-canvas";
@@ -60,7 +60,7 @@ const SAMPLE_CARD = {
   guardianName: "Rakesh Sharma",
   motherName: "Nisha Sharma",
   validTill: "2027-03-31",
-  photoObjectId: null,
+  photo: null,
   schoolName: "Sunrise Public School",
 };
 
@@ -71,14 +71,12 @@ export function TemplateDesigner({ templateId }: { templateId: string }) {
   const uploadAsset = useUploadTemplateAsset();
   const [uploading, setUploading] = useState(false);
 
-  /** Upload through the storage seam, then let the caller re-point a ref. */
+  /** Upload straight to the bucket, then let the caller re-point a ref. */
   const handleUpload = useCallback(
     async (file: File): Promise<string | null> => {
       setUploading(true);
       try {
-        const dataBase64 = await fileToTemplateAssetBase64(file);
-        if (!dataBase64) return null;
-        return await uploadAsset.submit({ dataBase64 });
+        return await uploadAsset.submit(file);
       } catch {
         return null;
       } finally {

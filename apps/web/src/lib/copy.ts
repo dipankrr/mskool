@@ -2274,13 +2274,13 @@ export const copy = {
     photo: {
       title: "Photo",
       empty: "No photo yet",
-      hint: "A passport photo prints on the ID card. It is resized to 300×400 before upload.",
+      hint: "A passport photo prints on the ID card.",
       upload: "Upload photo",
       replace: "Replace",
       remove: "Remove photo",
       uploaded: "Photo uploaded.",
       removed: "Photo removed.",
-      tooLarge: "That image is too large after resize — choose a smaller photo.",
+      unreadable: "This browser can't read that image. Use a JPEG, PNG or WebP photo.",
     },
     // The card-data catalog — what a text element can bind to. The binding
     // list IS the payload's public surface; these labels are its names.

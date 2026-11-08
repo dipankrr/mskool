@@ -1,4 +1,5 @@
 import { feesBillingService } from "./fees-billing.service";
+import { storageService } from "./storage.service";
 import {
   atSchoolLevel,
   requireSchoolId,
@@ -479,9 +480,18 @@ export class StudentService {
       .limit(limit + 1)
       .offset(offset);
 
+    const page = rows.slice(0, limit);
+    // The roster already authorised these students, so their photos may be
+    // linked (ADR-063). Every scope here belongs to one organisation.
+    const photos = await storageService.imageRefs(
+      scopes[0]?.organizationId ?? "",
+      page.map((row) => row.photoObjectId),
+    );
+
     return {
-      rows: rows.slice(0, limit).map(({ yearStatus, latestStatus, ...row }) => ({
+      rows: page.map(({ yearStatus, latestStatus, photoObjectId, ...row }) => ({
         ...row,
+        photo: photoObjectId ? (photos.get(photoObjectId) ?? null) : null,
         // A student who has gone is described by how they left, even in an older
         // session's list; otherwise the selected year says what's happening.
         enrollmentStatus:

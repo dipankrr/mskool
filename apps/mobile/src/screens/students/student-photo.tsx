@@ -1,18 +1,17 @@
-import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Image, Pressable, StyleSheet, View } from "react-native";
+import { useCallback, useRef } from "react";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 
 import { AppIcon } from "../../components/app-icon";
 import { initials } from "../../components/avatar";
 import { ChoiceSheet } from "../../components/choice-sheet";
 import { ThemedText } from "../../components/themed-text";
-import { env } from "../../env";
-import { authClient } from "../../lib/auth";
 import { copy } from "../../lib/copy";
+import { prepareImage, putToUploadLink } from "../../lib/image-upload";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { radius, spacing } from "../../theme/tokens";
-import { photoToWireBase64 } from "./photo-matching";
 
 /**
  * One student's photo, wherever it appears: the profile's hero and the admit
@@ -42,32 +41,36 @@ async function pickStudentPhoto(source: PhotoSource): Promise<PickedImage | null
   return asset ? { uri: asset.uri, width: asset.width, height: asset.height } : null;
 }
 
-/** The picked image as the wire's base64, or a refusal the desk can read. */
-export async function photoUploadBody(photo: PickedImage) {
-  const dataBase64 = await photoToWireBase64(photo.uri, photo.width, photo.height);
-  if (!dataBase64) throw new Error(copy.photos.tooLarge);
-  return { contentType: "image/jpeg" as const, dataBase64 };
-}
-
 /**
- * The stored photo as a data URI: RN's Image doesn't carry the session cookie
- * the storage route needs, and that cookie lives in SecureStore, so it rides
- * the header explicitly.
+ * Uploads a picked photo as a student's photo (ADR-063): shrink it on the
+ * phone, ask for an upload link, PUT the file straight to the bucket, then
+ * `setPhoto` has the server check it and make it the student's. Answers the
+ * new photo, ready to show, and puts it in the photo read's cache.
  */
-async function fetchPhotoUri(objectId: string): Promise<string | null> {
-  const cookies = await authClient.getCookie();
-  const response = await fetch(`${env.EXPO_PUBLIC_API_URL}/api/storage/${objectId}`, {
-    credentials: "omit",
-    ...(cookies ? { headers: { Cookie: cookies } } : {}),
-  });
-  if (!response.ok) return null;
-  const blob = await response.blob();
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => resolve(null);
-    reader.readAsDataURL(blob);
-  });
+export function useStudentPhotoUploader() {
+  const utils = trpc.useUtils();
+  const link = trpc.student.photoUpload.useMutation();
+  const save = trpc.student.setPhoto.useMutation();
+
+  const upload = useCallback(
+    async (organizationId: string, studentId: string, photo: PickedImage) => {
+      const image = await prepareImage(photo.uri, photo.width, photo.height, 1200);
+      const ticket = await link.mutateAsync({
+        organizationId,
+        id: studentId,
+        file: { contentType: image.contentType, sizeBytes: image.sizeBytes },
+      });
+      await putToUploadLink(ticket, image);
+      const saved = await save.mutateAsync({ organizationId, id: studentId, objectId: ticket.objectId });
+      utils.student.photo.setData({ organizationId, id: studentId }, { photo: saved.photo });
+      return saved.photo;
+    },
+    // The mutation objects are stable across renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [utils],
+  );
+
+  return { upload, busy: link.isPending || save.isPending };
 }
 
 /** Reads, replaces and removes one student's stored photo. */
@@ -80,47 +83,28 @@ export function useStudentPhoto(
   const query = trpc.student.photo.useQuery(input, {
     enabled: canRead && Boolean(organizationId) && Boolean(studentId),
   });
-  const objectId = query.data?.objectId ?? null;
-
-  const [loaded, setLoaded] = useState<{ objectId: string; uri: string } | null>(null);
-  useEffect(() => {
-    if (!objectId) return;
-    let stale = false;
-    fetchPhotoUri(objectId)
-      .then((uri) => {
-        if (!stale && uri) setLoaded({ objectId, uri });
-      })
-      // A failed render keeps the initials: never a broken image.
-      .catch(() => undefined);
-    return () => {
-      stale = true;
-    };
-  }, [objectId]);
+  const photo = query.data?.photo ?? null;
 
   const utils = trpc.useUtils();
-  const uploadMutation = trpc.student.uploadPhoto.useMutation();
+  const uploader = useStudentPhotoUploader();
   const removeMutation = trpc.student.removePhoto.useMutation();
 
-  const upload = async (photo: PickedImage) => {
-    const saved = await uploadMutation.mutateAsync({
-      ...input,
-      data: await photoUploadBody(photo),
-    });
-    // The mutation names the new object, so the cached "no photo" goes now.
-    // Re-reading could still be answered from that cache for up to a minute.
-    utils.student.photo.setData(input, { objectId: saved.objectId });
+  const upload = async (picked: PickedImage) => {
+    if (!organizationId || !studentId) return;
+    await uploader.upload(organizationId, studentId, picked);
   };
 
   const remove = async () => {
     await removeMutation.mutateAsync(input);
-    utils.student.photo.setData(input, { objectId: null });
+    utils.student.photo.setData(input, { photo: null });
   };
 
   return {
-    hasPhoto: objectId !== null,
-    // Keyed by object, so a replaced or removed photo can never linger.
-    uri: loaded && loaded.objectId === objectId ? loaded.uri : null,
-    busy: uploadMutation.isPending || removeMutation.isPending,
+    hasPhoto: photo !== null,
+    uri: photo?.url ?? null,
+    // The link changes every few hours; the file behind an id never does.
+    cacheKey: photo?.id ?? null,
+    busy: uploader.busy || removeMutation.isPending,
     upload,
     remove,
     refetch: query.refetch,
@@ -182,6 +166,7 @@ export function PhotoSourceSheet({
 /** The round photo, or initials or a camera glyph until there is one. */
 export function StudentPhotoView({
   uri,
+  cacheKey = null,
   name,
   size,
   busy = false,
@@ -191,6 +176,8 @@ export function StudentPhotoView({
   testID,
 }: {
   uri: string | null;
+  /** The stored photo's id; caches the file across changing links. */
+  cacheKey?: string | null;
   /** Null before a name is typed: the empty circle shows a camera instead. */
   name: string | null;
   size: number;
@@ -204,7 +191,14 @@ export function StudentPhotoView({
   const face = (
     <>
       {uri ? (
-        <Image source={{ uri }} style={[styles.face, circle]} testID={testID && `${testID}-image`} />
+        <Image
+          source={cacheKey ? { uri, cacheKey } : { uri }}
+          cachePolicy="disk"
+          contentFit="cover"
+          style={[styles.face, circle]}
+          testID={testID && `${testID}-image`}
+          accessibilityIgnoresInvertColors
+        />
       ) : (
         <View style={[styles.face, styles.empty, circle]}>
           {name ? (

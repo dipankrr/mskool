@@ -19,8 +19,19 @@ import { beforeAll, describe, expect, it } from "vitest";
  */
 
 import { db } from "@repo/db";
-import { storageObjects, studentPhotos } from "@repo/db/schema";
-import { idCardService, storageService, storageWorkerService } from "@repo/services";
+import {
+  idCardTemplateAssets,
+  orgPublicSites,
+  publicSiteMedia,
+  storageObjects,
+  studentPhotos,
+} from "@repo/db/schema";
+import {
+  idCardService,
+  publicSiteService,
+  storageService,
+  storageWorkerService,
+} from "@repo/services";
 import { eq, sql } from "drizzle-orm";
 import { TINY_PNG, useMemoryStore } from "./storage-fixtures";
 import { buildWorld } from "./world";
@@ -216,4 +227,103 @@ describe("the sweeper", () => {
     expect(pointer?.objectId).toBe(photoId);
     expect(await storageService.getBytes(world.orgAId, photoId)).not.toBeNull();
   }, 120_000);
+});
+
+describe("ID-card template images", () => {
+  it("a saved design links its background; dropping it lets the file go", async () => {
+    const scope = {
+      organizationId: world.orgAId,
+      schoolId: world.schoolA1Id,
+      classId: null,
+      sectionId: null,
+    };
+    const ticket = await idCardService.templateAssetUpload(
+      scope,
+      { contentType: "image/png", sizeBytes: TINY_PNG.length },
+      world.users.adminA,
+    );
+    await store.put("private", tmpKey(ticket.objectId), TINY_PNG, {
+      contentType: "image/png",
+      cacheControl: "no-store",
+    });
+
+    const template = await idCardService.createTemplate(
+      scope,
+      {
+        name: `Storage ITG ${Date.now()}`,
+        orientation: "landscape",
+        canvas: { backgroundAssetId: ticket.objectId },
+        elements: [],
+        isDefault: false,
+      },
+      world.users.adminA,
+    );
+    const linked = await db
+      .select()
+      .from(idCardTemplateAssets)
+      .where(eq(idCardTemplateAssets.templateId, template.id));
+    expect(linked.map((row) => row.objectId)).toEqual([ticket.objectId]);
+    const [withImages] = await idCardService.withImages([template]);
+    expect(withImages?.images[ticket.objectId]?.url).toContain("/id_card_asset/");
+
+    await idCardService.updateTemplate(
+      scope,
+      template.id,
+      { canvas: { backgroundAssetId: null } },
+      world.users.adminA,
+    );
+    expect(
+      await db.select().from(idCardTemplateAssets).where(eq(idCardTemplateAssets.templateId, template.id)),
+    ).toHaveLength(0);
+    expect((await storageService.getMeta(world.orgAId, ticket.objectId))?.status).toBe("deleted");
+  });
+});
+
+describe("site images", () => {
+  it("are stored as tokens, read back as links, and let go once no content uses them", async () => {
+    const orgScope = { organizationId: world.orgAId, schoolId: null, classId: null, sectionId: null };
+    await publicSiteService.ensureForOrg(world.orgAId);
+
+    const ticket = await publicSiteService.imageUpload(
+      orgScope,
+      world.orgAId,
+      { contentType: "image/png", sizeBytes: TINY_PNG.length },
+      world.users.adminA,
+    );
+    await store.put("private", tmpKey(ticket.objectId), TINY_PNG, {
+      contentType: "image/png",
+      cacheControl: "no-store",
+    });
+    const { url } = await publicSiteService.imageReady(
+      orgScope,
+      world.orgAId,
+      ticket.objectId,
+      world.users.adminA,
+    );
+    expect(url).toContain(`/site_media/${ticket.objectId}/`);
+
+    // The editor saves the link; the database keeps a token, never a URL.
+    const content = { sections: [], chrome: { logo: url } } as never;
+    await publicSiteService.saveDraft({ scope: orgScope, organizationId: world.orgAId, content });
+    const [row] = await db
+      .select({ draft: orgPublicSites.draftContent, id: orgPublicSites.id })
+      .from(orgPublicSites)
+      .where(eq(orgPublicSites.organizationId, world.orgAId));
+    expect(row?.draft).toEqual({ sections: [], chrome: { logo: `storage:${ticket.objectId}` } });
+
+    // Reading turns the token back into the link.
+    const site = await publicSiteService.getForOrg(orgScope, world.orgAId);
+    expect((site?.draftContent as { chrome: { logo: string } }).chrome.logo).toBe(url);
+
+    // A draft without the image lets it go (nothing published uses it).
+    await publicSiteService.saveDraft({
+      scope: orgScope,
+      organizationId: world.orgAId,
+      content: { sections: [], chrome: { logo: "" } } as never,
+    });
+    expect(
+      await db.select().from(publicSiteMedia).where(eq(publicSiteMedia.siteId, row!.id)),
+    ).toHaveLength(0);
+    expect((await storageService.getMeta(world.orgAId, ticket.objectId))?.status).toBe("deleted");
+  });
 });

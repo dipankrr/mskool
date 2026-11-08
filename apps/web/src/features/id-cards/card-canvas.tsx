@@ -9,6 +9,7 @@ import type {
   IdCardTemplateDataInput,
 } from "@repo/contracts";
 
+import { useAssetUrl } from "./asset-images";
 import { resolveBinding } from "./template";
 
 /**
@@ -20,8 +21,9 @@ import { resolveBinding } from "./template";
  *
  * The browser invents nothing here either: a binding the card payload cannot
  * satisfy renders empty, and a missing object is an empty slot, never a
- * broken card. Objects load from `/api/storage/:id` (ADR-038) — session
- * cookies flow, no signed URLs.
+ * broken card. Images are ready-made links (ADR-063): the student's photo
+ * rides the card payload, and backgrounds and logos come from the template
+ * reads through `useAssetUrl`.
  */
 
 /** One element's inner content — the visual, without any positioning. */
@@ -61,8 +63,8 @@ export function ElementContent({
   }
 
   if (element.type === "photo") {
-    const photoUrl = card?.photoObjectId
-      ? `/api/storage/${card.photoObjectId}`
+    const photoUrl = card?.photo
+      ? card.photo.url
       : null;
     return photoUrl ? (
       <img
@@ -91,7 +93,11 @@ export function ElementContent({
 
   // logo — renders only if a logo asset was uploaded; a missing asset is an
   // empty slot, never a broken card.
-  const logoUrl = element.assetId ? `/api/storage/${element.assetId}` : null;
+  return <LogoImage assetId={element.assetId ?? null} />;
+}
+
+function LogoImage({ assetId }: { assetId: string | null }) {
+  const logoUrl = useAssetUrl(assetId);
   return logoUrl ? (
     <img
       src={logoUrl}
@@ -134,9 +140,7 @@ export function ElementBox({
 
 /** The full-card background image, object-cover like a printed pre-cut card. */
 export function CardBackground({ template }: { template: IdCardTemplateDataInput }) {
-  const backgroundUrl = template.canvas.backgroundAssetId
-    ? `/api/storage/${template.canvas.backgroundAssetId}`
-    : null;
+  const backgroundUrl = useAssetUrl(template.canvas.backgroundAssetId);
   return backgroundUrl ? (
     <img
       src={backgroundUrl}

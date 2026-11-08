@@ -16,6 +16,22 @@ import { randomUUID } from "node:crypto";
 import { beforeAll, describe, expect, it } from "vitest";
 import { TINY_PNG, useMemoryStore } from "./storage-fixtures";
 
+let store: ReturnType<typeof useMemoryStore>;
+
+/** The printing screen's path (ADR-063): a link, the PUT, then the save links it. */
+async function uploadPrintImage(kind: "logo" | "upi_qr") {
+  const ticket = await feeDocumentsService.printImageUpload(
+    w.scope,
+    { kind, file: { contentType: "image/png", sizeBytes: TINY_PNG.length } },
+    w.adminId,
+  );
+  await store.put("private", `tmp/${ticket.objectId}`, TINY_PNG, {
+    contentType: "image/png",
+    cacheControl: "no-store",
+  });
+  return { objectId: ticket.objectId };
+}
+
 /**
  * Printed fee documents against a real database: what each one includes and
  * refuses, and that a school never prints another school's records.
@@ -93,7 +109,7 @@ async function schoolIn(name: string) {
 }
 
 beforeAll(async () => {
-  useMemoryStore();
+  store = useMemoryStore();
   const scope = await schoolIn("Print");
   const otherScope = await schoolIn("Other");
   const [year] = await db
@@ -214,11 +230,7 @@ describe("print settings", () => {
     ).rejects.toThrow("can't be used here");
 
     // A QR uploaded as a logo is the wrong kind of file for the QR slot.
-    const logo = await feeDocumentsService.uploadPrintImage(
-      w.scope,
-      { kind: "logo", contentType: "image/png", dataBase64: TINY_PNG.toString("base64") },
-      w.adminId,
-    );
+    const logo = await uploadPrintImage("logo");
     await expect(
       feeDocumentsService.updatePrintSettings(
         w.scope,
@@ -229,22 +241,14 @@ describe("print settings", () => {
   }, 60_000);
 
   it("print the school's own logo, and let a replaced one go", async () => {
-    const first = await feeDocumentsService.uploadPrintImage(
-      w.scope,
-      { kind: "logo", contentType: "image/png", dataBase64: TINY_PNG.toString("base64") },
-      w.adminId,
-    );
+    const first = await uploadPrintImage("logo");
     await feeDocumentsService.updatePrintSettings(w.scope, { logoObjectId: first.objectId }, w.adminId);
     const s = await billed("LOGO");
     const payment = await pay(s.id, s.dues.slice(0, 1));
     const html = (await feeDocumentsService.receipt(w.scope, payment.id, "a4_full"))?.html ?? "";
     expect(html).toContain("data:image/webp;base64,");
 
-    const second = await feeDocumentsService.uploadPrintImage(
-      w.scope,
-      { kind: "logo", contentType: "image/png", dataBase64: TINY_PNG.toString("base64") },
-      w.adminId,
-    );
+    const second = await uploadPrintImage("logo");
     await feeDocumentsService.updatePrintSettings(w.scope, { logoObjectId: second.objectId }, w.adminId);
     expect((await storageService.getMeta(w.scope.organizationId, first.objectId))?.status).toBe("deleted");
     expect((await storageService.getMeta(w.scope.organizationId, second.objectId))?.status).toBe("ready");

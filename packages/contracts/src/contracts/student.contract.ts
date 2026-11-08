@@ -1,3 +1,4 @@
+import { imageRefSchema } from "./storage.contract";
 import { students } from "@repo/db/schema";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -98,7 +99,8 @@ export const studentRosterRow = z.object({
   sectionId: z.uuid().nullable(),
   sectionName: z.string().nullable(),
   rollNumber: z.string().nullable(),
-  photoObjectId: z.uuid().nullable(),
+  /** The student's photo, ready to show (ADR-063). */
+  photo: imageRefSchema.nullable(),
   hasGuardian: z.boolean(),
 });
 export type StudentRosterRow = z.infer<typeof studentRosterRow>;
@@ -163,7 +165,7 @@ export type UpdateStudentInput = z.infer<typeof updateStudentSchema>;
  * facts (class, section, roll) so the review grid can show who each file
  * is about. The zip itself never reaches the server — the browser matches
  * filenames against this read, and each confirmed photo goes through the
- * ordinary `uploadPhoto` mutation. Capped at 500 names per call; a bigger
+ * ordinary photo upload (`photoUpload`, then `setPhoto`). Capped at 500 names per call; a bigger
  * zip is matched in pages.
  */
 export const studentsByAdmissionsInput = z.object({

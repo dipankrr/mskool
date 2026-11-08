@@ -8,9 +8,11 @@ import {
   studentsByAdmissionsInput,
   studentsByAdmissionsOutput,
   updateStudentSchema,
-  uploadStudentPhotoInput,
+  imageRefSchema,
+  uploadRequestSchema,
+  uploadTicketSchema,
 } from "@repo/contracts";
-import { idCardService, storageService, studentService } from "@repo/services";
+import { idCardService, studentService } from "@repo/services";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -84,7 +86,7 @@ export const studentRouter = router({
   // The bulk-photo matcher's read: strict cover (the caller addresses the
   // branch whose register the zip claims to match), active students only,
   // school-level clipped. The zip never uploads — the browser matches
-  // filenames against this, and each confirmed photo rides uploadPhoto.
+  // filenames against this, and each confirmed photo rides photoUpload/setPhoto.
   byAdmissions: staffProcedure("student:read")
     .meta({
       openapi: {
@@ -223,21 +225,19 @@ export const studentRouter = router({
 
   // ── The student's photo (slice 2a, ADR-038) ─────────────────────────────
   // Gated on `student:update` / `student:read` — a photo is part of the
-  // student's record, not its own permission surface. The upload is base64
-  // through tRPC (no multipart), capped and content-type-allowlisted by the
-  // contract; the client resizes before upload.
+  // student's record, not its own permission surface. Uploads go straight to
+  // the bucket (ADR-063): `photoUpload` hands out the link, the client PUTs
+  // the file, and `setPhoto` processes and links it.
 
-  /** The current photo's storage object id — the detail page and print pass. */
+  /** The current photo, ready to show — the detail page. */
   photo: staffProcedure("student:read", {
     resolveOwner: resolveStudentOwner,
     gate: "overlap",
   })
     .input(z.object({ id: z.uuid() }))
-    .output(z.object({ objectId: z.string().uuid().nullable() }))
+    .output(z.object({ photo: imageRefSchema.nullable() }))
     .query(({ ctx, input }) =>
-      storageService
-        .getStudentPhotoObjectId(ctx.scope, input.id)
-        .then((objectId) => ({ objectId })),
+      idCardService.getStudentPhoto(ctx.scope, input.id).then((photo) => ({ photo })),
     ),
 
   /** Brings back a student who left, reopening their latest enrollment (ADR-057). */
@@ -256,30 +256,38 @@ export const studentRouter = router({
       return student;
     }),
 
-  uploadPhoto: staffProcedure("student:update", {
+  /** A link to PUT this student's new photo to (ADR-063). */
+  photoUpload: staffProcedure("student:update", {
+    resolveOwner: resolveStudentOwner,
+  })
+    .input(z.object({ id: z.uuid(), file: uploadRequestSchema }))
+    .output(uploadTicketSchema)
+    .mutation(({ ctx, input }) =>
+      idCardService.studentPhotoUpload(ctx.scope, input.id, input.file, ctx.userId),
+    ),
+
+  /**
+   * Makes an uploaded file the student's photo: processes it if it has just
+   * been PUT, links it (only a file uploaded for this student), and lets the
+   * replaced one go.
+   */
+  setPhoto: staffProcedure("student:update", {
     resolveOwner: resolveStudentOwner,
   })
     .meta({
       openapi: {
-        method: "POST",
+        method: "PUT",
         path: "/students/{id}/photo",
         tags: ["students"],
-        summary: "Upload (or replace) the student's photo",
+        summary: "Set the student's photo to an uploaded file",
         protect: true,
       },
     })
-    .input(z.object({ id: z.uuid(), data: uploadStudentPhotoInput }))
-    .output(z.object({ objectId: z.string().uuid() }))
+    .input(z.object({ id: z.uuid(), objectId: z.uuid() }))
+    .output(z.object({ photo: imageRefSchema.nullable() }))
     .mutation(async ({ ctx, input }) => {
-      // A payload that fails to decode round-trips as an empty buffer — the
-      // storage service's empty/oversize guards turn that into wording.
-      const objectId = await idCardService.uploadStudentPhoto(
-        ctx.scope,
-        input.id,
-        Buffer.from(input.data.dataBase64, "base64"),
-        ctx.userId,
-      );
-      return { objectId };
+      await idCardService.setStudentPhoto(ctx.scope, input.id, input.objectId, ctx.userId);
+      return { photo: await idCardService.getStudentPhoto(ctx.scope, input.id) };
     }),
 
   removePhoto: staffProcedure("student:update", {

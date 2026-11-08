@@ -29,10 +29,10 @@ import { toFriendlyError } from "../../lib/errors";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { spacing } from "../../theme/tokens";
+import { useStudentPhotoUploader } from "./student-photo";
 import {
   matchByAdmission,
   matchByOrder,
-  photoToWireBase64,
   rosterInMarkingOrder,
   type PickedPhoto,
   type RosterEntry,
@@ -46,8 +46,9 @@ type PhotoStatus = "uploading" | "done" | "failed";
  * pick from the gallery, the app matches photos to the roster — by capture
  * order in roll order (SECTION, the photographer's folder walk) or by file
  * name → admission number (REGISTER) — the grid shows every match before
- * anything uploads, and the uploads go sequentially through the ordinary
- * `student.uploadPhoto` with per-student results and retry-failed-only.
+ * anything uploads, and the uploads go sequentially, each straight to the
+ * bucket and then `student.setPhoto` (ADR-063), with per-student results and
+ * retry-failed-only.
  *
  * No zip on the phone: multi-select replaces the desktop's folder drop, which
  * is recorded in the slice plan. Clearing a row returns its photo to the
@@ -188,7 +189,7 @@ export function StudentPhotosScreen() {
   }, []);
 
   const utils = trpc.useUtils();
-  const upload = trpc.student.uploadPhoto.useMutation();
+  const photoUploader = useStudentPhotoUploader();
 
 
 
@@ -214,21 +215,12 @@ export function StudentPhotosScreen() {
             [target.studentId]: "uploading",
           }));
           try {
-            const base64 = await photoToWireBase64(target.photo.localUri, target.photo.width, target.photo.height);
-            if (!base64) {
-              setStatuses((current) => ({
-                ...current,
-                [target.studentId]: "failed",
-              }));
-              continue;
-            }
-            await upload.mutateAsync({
-              organizationId,
-              id: target.studentId,
-              data: { contentType: "image/jpeg", dataBase64: base64 },
+            await photoUploader.upload(organizationId, target.studentId, {
+              uri: target.photo.localUri,
+              width: target.photo.width,
+              height: target.photo.height,
             });
             await utils.student.byId.invalidate({ id: target.studentId });
-            await utils.student.photo.invalidate({ id: target.studentId });
             setStatuses((current) => ({
               ...current,
               [target.studentId]: "done",
@@ -244,8 +236,7 @@ export function StudentPhotosScreen() {
         setWorking(false);
       }
     },
-    // toWireBase64 is a pure ladder over its argument; upload/utils are stable.
-    [organizationId, upload, utils],
+    [organizationId, photoUploader, utils],
   );
 
   const frame = (children: ReactNode) => (

@@ -7,8 +7,9 @@ import {
   publishedIdCardTemplateSchema,
   closeIdCardTemplateInput,
   updateIdCardTemplateInput,
-  uploadStudentPhotoInput,
-  uploadedTemplateAssetSchema,
+  idCardTemplateWithImagesSchema,
+  uploadRequestSchema,
+  uploadTicketSchema,
 } from "@repo/contracts";
 import { idCardService } from "@repo/services";
 import { db } from "@repo/db";
@@ -47,8 +48,10 @@ export const idCardRouter = router({
           protect: true,
         },
       })
-      .output(z.array(idCardTemplateSelectSchema))
-      .query(({ ctx }) => idCardService.listTemplates(ctx.scopes)),
+      .output(z.array(idCardTemplateWithImagesSchema))
+      .query(async ({ ctx }) =>
+        idCardService.withImages(await idCardService.listTemplates(ctx.scopes)),
+      ),
 
     byId: staffProcedure("id_card:print", {
       resolveOwner: resolveTemplateOwner,
@@ -64,7 +67,7 @@ export const idCardRouter = router({
         },
       })
       .input(z.object({ id: z.uuid() }))
-      .output(idCardTemplateSelectSchema)
+      .output(idCardTemplateWithImagesSchema)
       .query(async ({ ctx, input }) => {
         const row = await idCardService.getTemplateById(ctx.scope, input.id);
         if (!row) {
@@ -73,7 +76,8 @@ export const idCardRouter = router({
             message: "Template not found.",
           });
         }
-        return row;
+        const [withImages] = await idCardService.withImages([row]);
+        return withImages!;
       }),
 
     create: staffProcedure("id_card:manage")
@@ -117,6 +121,7 @@ export const idCardRouter = router({
           ctx.scope,
           input.id,
           input.data,
+          ctx.userId,
         );
         if (!row) {
           throw new TRPCError({
@@ -212,29 +217,25 @@ export const idCardRouter = router({
       }),
 
     /**
-     * Stores a template asset (card background, school logo) and returns the
-     * object id — the designer re-points `canvas.backgroundAssetId` / a logo
-     * element at it with an ordinary update. Same cap and allowlist as the
-     * photo upload; the contract note records why removing a reference does
-     * not delete the bytes.
+     * A link to PUT a template asset (card background, school logo) to
+     * (ADR-063). The designer completes the upload to show it, points
+     * `canvas.backgroundAssetId` / a logo element at the id, and saving the
+     * template links the file; a file the design drops is let go.
      */
-    uploadAsset: staffProcedure("id_card:manage")
+    assetUpload: staffProcedure("id_card:manage")
       .meta({
         openapi: {
           method: "POST",
           path: "/id-cards/templates/asset",
           tags: ["id_cards"],
-          summary: "Upload an ID card template asset (background or logo)",
+          summary: "Get an upload link for an ID card template asset",
           protect: true,
         },
       })
-      // The photo shape, reused verbatim — same ceiling, same allowlist.
-      .input(uploadStudentPhotoInput)
-      .output(uploadedTemplateAssetSchema)
+      .input(z.object({ file: uploadRequestSchema }))
+      .output(uploadTicketSchema)
       .mutation(({ ctx, input }) =>
-        idCardService
-          .uploadTemplateAsset(ctx.scope, input, ctx.userId)
-          .then((objectId) => ({ objectId })),
+        idCardService.templateAssetUpload(ctx.scope, input.file, ctx.userId),
       ),
   }),
 

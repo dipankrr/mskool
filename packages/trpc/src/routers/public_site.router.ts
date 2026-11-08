@@ -1,10 +1,11 @@
 import {
   publicSitePayloadSchema,
   publicSiteContentInputSchema,
-  uploadSiteImageInput,
+  uploadRequestSchema,
+  uploadTicketSchema,
   type PublicSiteContentInput,
 } from "@repo/contracts";
-import { publicSiteService, storageService } from "@repo/services";
+import { publicSiteService } from "@repo/services";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { publicProcedure, router, staffProcedure } from "../trpc";
@@ -177,36 +178,31 @@ export const publicSiteRouter = router({
     }),
 
   /**
-   * THE EDITOR'S UPLOAD (ADR-042). Base64 through tRPC like every other
-   * upload (no multipart exists); the client resizes before sending. The
-   * object is born PUBLIC — landing-page media is exactly what this route
-   * exists to store — and the returned URL is what the editor writes into
-   * the content draft.
+   * THE EDITOR'S UPLOAD (ADR-063), straight to the public bucket:
+   * `imageUpload` hands out the link, the browser PUTs the file, and
+   * `imageReady` checks it, links it to the site and answers its public link
+   * for the draft. Saving the draft stores it as a token, never a URL.
    */
-  uploadImage: staffProcedure("public_site:edit")
+  imageUpload: staffProcedure("public_site:edit")
+    .input(z.object({ file: uploadRequestSchema }))
+    .output(uploadTicketSchema)
+    .mutation(({ ctx, input }) =>
+      publicSiteService.imageUpload(ctx.scope, input.organizationId, input.file, ctx.userId),
+    ),
+
+  imageReady: staffProcedure("public_site:edit")
     .meta({
       openapi: {
         method: "POST",
         path: "/public-site/images",
         tags: ["public-site"],
-        summary: "Upload a public site image",
+        summary: "Check an uploaded public site image and get its link",
         protect: true,
       },
     })
-    .input(z.object({ data: uploadSiteImageInput }))
+    .input(z.object({ objectId: z.uuid() }))
     .output(z.object({ url: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      // Stored attached: until site media gets its own table (ADR-063), the
-      // only reference is the content JSON, which the sweeper cannot see.
-      const stored = await storageService.ingest({
-        organizationId: input.organizationId,
-        schoolId: null,
-        purpose: "site_media",
-        parentId: null,
-        uploadedBy: ctx.userId,
-        bytes: Buffer.from(input.data.dataBase64, "base64"),
-        attached: true,
-      });
-      return { url: `/api/public/storage/${stored.id}` };
-    }),
+    .mutation(({ ctx, input }) =>
+      publicSiteService.imageReady(ctx.scope, input.organizationId, input.objectId, ctx.userId),
+    ),
 });

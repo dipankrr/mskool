@@ -16,8 +16,8 @@ import { beforeAll, describe, expect, it } from "vitest";
  *     is NO-widening filtered (a section teacher sees her section only) —
  *     and a foreign-org student id returns nothing, never someone else's card;
  *   - the photo round-trip (ADR-063, in-memory bucket): store → pointer →
- *     bytes, replacement marks the replaced file deleted, and every read is
- *     tenancy-checked including the transitional route's `readForMember`.
+ *     link, replacement marks the replaced file deleted, and every read is
+ *     tenancy-checked.
  *
  * FIXTURE ISOLATION: borrows the authz suite's world (orgs `authz-itg-a/b`)
  * for schools, students and enrollments, and adds its OWN templates and
@@ -212,7 +212,7 @@ describe("id cards & storage (slice 2a)", () => {
     // is string|null; a previous run's upload may still be pointed at.)
     expect(owned?.guardianName).toBeNull();
     expect(owned?.motherName).toBeNull();
-    expect(["string", "object"]).toContain(typeof owned?.photoObjectId);
+    expect(["object"]).toContain(typeof owned?.photo);
   });
 
   it("cardData is NO-widening filtered and cross-org students return nothing", async () => {
@@ -253,7 +253,8 @@ describe("id cards & storage (slice 2a)", () => {
       sectionId: section6aId,
     });
     const owned = cards.find((card) => card.admissionNumber === "ITG-0001");
-    expect(owned?.photoObjectId).toBe(firstId);
+    expect(owned?.photo?.id).toBe(firstId);
+    expect(owned?.photo?.url).toContain(`/student_photo/${firstId}/display.webp`);
 
     // Replacement re-points the row and marks the replaced file deleted;
     // the sweeper removes its bytes later.
@@ -286,34 +287,6 @@ describe("id cards & storage (slice 2a)", () => {
     ).rejects.toThrow("can't be used here");
   });
 
-  it("transitional route read answers only a caller with an ACTIVE membership in the file's org", async () => {
-    useMemoryStore();
-    const world = await buildWorld();
-    const object = await storageService.ingest({
-      organizationId: orgAId,
-      schoolId: world.schoolA1Id,
-      purpose: "id_card_asset",
-      parentId: null,
-      uploadedBy: adminAId,
-      bytes: TINY_PNG,
-      attached: true,
-    });
-
-    // Admin A holds an org grant → the bytes.
-    expect((await storageService.readForMember(world.users.adminA, object.id))?.contentType).toBe(
-      "image/webp",
-    );
-
-    // Admin B holds grants only in org B → the same null as a bad id.
-    expect(await storageService.readForMember(world.users.adminB, object.id)).toBeNull();
-    expect(
-      await storageService.readForMember(world.users.adminB, "00000000-0000-4000-8000-000000000000"),
-    ).toBeNull();
-
-    // And the plain org-filtered read never crosses tenants either.
-    expect(await storageService.getBytes(orgBId, object.id)).toBeNull();
-  });
-
   it("removePhoto takes the pointer and lets the file go, scoped to the student's own school", async () => {
     useMemoryStore();
     const world = await buildWorld();
@@ -342,9 +315,12 @@ describe("id cards & storage (slice 2a)", () => {
   it("gallery list returns ONLY published rows, including other orgs', with a design-only payload", async () => {
     // A1's template gets published through the ordinary update path — the
     // stamp is the service's, not the caller's input.
-    const published = await idCardService.updateTemplate(scopeA1, defaultTemplateId, {
-      isPublished: true,
-    });
+    const published = await idCardService.updateTemplate(
+      scopeA1,
+      defaultTemplateId,
+      { isPublished: true },
+      adminAId,
+    );
     expect(published?.isPublished).toBe(true);
     expect(published?.publishedAt).toBeInstanceOf(Date);
 
@@ -382,11 +358,18 @@ describe("id cards & storage (slice 2a)", () => {
       parentId: null,
       uploadedBy: adminAId,
       bytes: TINY_PNG,
-      attached: true,
     });
-    await idCardService.updateTemplate(scopeA1, defaultTemplateId, {
-      canvas: { backgroundAssetId: asset.id },
-    });
+    // Saving the design links the file to the template (ADR-063).
+    await idCardService.updateTemplate(
+      scopeA1,
+      defaultTemplateId,
+      { canvas: { backgroundAssetId: asset.id } },
+      adminAId,
+    );
+    const [withImages] = await idCardService.withImages([
+      (await idCardService.getTemplateById(scopeA1, defaultTemplateId))!,
+    ]);
+    expect(withImages?.images[asset.id]?.url).toContain(`/id_card_asset/${asset.id}/`);
 
     // Org B clones it, renaming on the way in.
     const renamed = templateName("cloned");
@@ -416,7 +399,6 @@ describe("id cards & storage (slice 2a)", () => {
     // Tenancy is untouched: org B still cannot read org A's original file —
     // the clone carries the COPY, never a cross-org ref.
     expect(await storageService.getBytes(orgBId, asset.id)).toBeNull();
-    expect(await storageService.readForMember(world.users.adminB, asset.id)).toBeNull();
 
     // An UNPUBLISHED row and a made-up id are the same null — the endpoint
     // never reveals which private template ids exist.

@@ -1,13 +1,8 @@
-import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
-
-import { copy } from "../../lib/copy";
-
 /**
  * The photo workbench's matching logic, pure and testable. Two modes mirror
  * the web's bulk uploader: photos map to the roster in order (SECTION) or by
- * file name → admission number (REGISTER). The upload payload itself —
- * resize, JPEG quality, the 512 KB decoded ceiling — is checked here as a
- * plan so the screen never ships an over-cap base64 to a refusal.
+ * file name → admission number (REGISTER). Resizing and uploading live in
+ * lib/image-upload (ADR-063).
  */
 
 export type RosterEntry = {
@@ -119,70 +114,4 @@ export function matchByAdmission(
     }
   }
   return { matches, unmatched };
-}
-
-// ---------------------------------------------------------------- resizing
-
-/** The wire ceiling, decoded: PHOTO_MAX_BYTES in the id-card contract. */
-export const PHOTO_MAX_DECODED_BYTES = 512 * 1024;
-
-export type ResizePlan = {
-  /** Long-edge cap the manipulator should apply. */
-  maxEdge: number;
-  /** JPEG quality 0..1. */
-  quality: number;
-};
-
-/** The resize ladder: each attempt shrinks until the base64 fits the ceiling. */
-export function resizePlan(attempt: number): ResizePlan | null {
-  switch (attempt) {
-    case 0:
-      return { maxEdge: 800, quality: 0.8 };
-    case 1:
-      return { maxEdge: 600, quality: 0.7 };
-    case 2:
-      return { maxEdge: 400, quality: 0.6 };
-    default:
-      return null;
-  }
-}
-
-/** Does this base64 payload fit the decoded ceiling? */
-export function fitsWireLimit(base64: string): boolean {
-  return (base64.length * 3) / 4 <= PHOTO_MAX_DECODED_BYTES;
-}
-
-/** The workbench's honest per-photo error when the ladder is exhausted. */
-export function tooLargeMessage(): string {
-  return copy.photos.tooLarge;
-}
-
-/**
- * One picked photo → the wire's base64, through the resize ladder. Shared by
- * the bulk workbench and the single-student photo sheet.
- */
-export async function photoToWireBase64(
-  localUri: string,
-  width: number,
-  height: number,
-): Promise<string | null> {
-  // Static import, not a lazy `await import`: Metro resolves the lazy form
-  // through a cached absolute path that goes stale after every pnpm
-  // reinstall (the 2026-10-25 "photo not uploading" failure), while the
-  // static form re-resolves through node_modules on each bundle.
-  for (let attempt = 0; ; attempt += 1) {
-    const plan = resizePlan(attempt);
-    if (!plan) return null;
-    const resize =
-      height >= width ? { height: plan.maxEdge } : { width: plan.maxEdge };
-    const rendered = await ImageManipulator.manipulate(localUri)
-      .resize(resize)
-      .renderAsync();
-    const saved = await rendered.saveAsync({
-      compress: plan.quality,
-      format: SaveFormat.JPEG,
-      base64: true,
-    });
-    if (saved.base64 && fitsWireLimit(saved.base64)) return saved.base64;
-  }
 }

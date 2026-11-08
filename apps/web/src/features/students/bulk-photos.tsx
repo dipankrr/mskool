@@ -35,7 +35,7 @@ import { useActiveContext } from "@/features/session/active-context";
 import { copy } from "@/lib/copy";
 import { errorMessage } from "@/lib/errors";
 import { trpc } from "@/lib/trpc/client";
-import { fileToResizedBase64 } from "@/features/students/photo-card";
+import { useStudentPhotoUploader } from "@/features/students/photo-card";
 
 /**
  * THE BULK PHOTO WORKBENCH — 300 photos without 300 page visits.
@@ -51,7 +51,7 @@ import { fileToResizedBase64 } from "@/features/students/photo-card";
  *   3. REVIEW the matches and upload — each photo renders beside the
  *      student it will be saved to; nothing is written until Confirm.
  *
- * Uploads run SEQUENTIALLY through the ordinary `student.uploadPhoto`
+ * Uploads run SEQUENTIALLY, each straight to the bucket and then `student.setPhoto` (ADR-063),
  * mutation — one permission check and one validated seam per photo — with
  * per-photo results and retry-failed-only, because 300 independent calls
  * always include one blip and that must be boring. Known edges, handled:
@@ -429,7 +429,7 @@ export function BulkPhotos() {
     setRegisterRows(next);
   }, [activeSession, byAdmissions, organizationId, photos, schoolId]);
 
-  const upload = trpc.student.uploadPhoto.useMutation();
+  const uploadPhoto = useStudentPhotoUploader();
 
   const runUpload = useCallback(
     async (pairs: UploadPair[]) => {
@@ -446,13 +446,7 @@ export function BulkPhotos() {
           if (!(await ensureDecoded(pair.photo))) {
             throw new Error(copy.bulkPhotos.heicHint);
           }
-          const base64 = await fileToResizedBase64(pair.photo.file);
-          if (!base64) throw new Error(copy.bulkPhotos.resizeFailed);
-          await upload.mutateAsync({
-            organizationId,
-            id: pair.studentId,
-            data: { contentType: "image/jpeg", dataBase64: base64 },
-          });
+          await uploadPhoto(organizationId, pair.studentId, pair.photo.file);
           setResults((r) => [
             ...r,
             { ...pair, ok: true },
@@ -475,7 +469,7 @@ export function BulkPhotos() {
       }
       await utils.student.photo.invalidate();
     },
-    [ensureDecoded, organizationId, upload, utils],
+    [ensureDecoded, organizationId, uploadPhoto, utils],
   );
 
   const matchedPairs: UploadPair[] = useMemo(() => {

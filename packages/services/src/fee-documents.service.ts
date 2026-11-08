@@ -35,8 +35,9 @@ import type {
   FeeDocumentNoticesInput,
   FeePrintSettings,
   FeeReceiptLayout,
+  FeePrintImageUploadInput,
   UpdateFeePrintSettingsInput,
-  UploadFeePrintImageInput,
+  UploadTicket,
 } from "@repo/contracts";
 import { db } from "@repo/db";
 import {
@@ -166,6 +167,11 @@ export class FeeDocumentsService {
     if (next.upiMode === "image" && !next.upiImageObjectId) {
       throw refuse("BAD_REQUEST", "Upload the QR image, or turn the QR off.");
     }
+    // A file the caller just PUT is processed before anything is linked.
+    await storageService.ensureReady(
+      userId,
+      [next.logoObjectId, next.upiImageObjectId].filter((id): id is string => Boolean(id)),
+    );
     await db.transaction(async (tx) => {
       // Only images uploaded for this school's printing, of the right kind,
       // can be pointed at (ADR-063); a replaced or cleared one is let go.
@@ -197,22 +203,27 @@ export class FeeDocumentsService {
     return next;
   }
 
-  async uploadPrintImage(
+  /**
+   * An upload link for the school's logo or UPI QR (ADR-063). The client PUTs
+   * the file, then saves the settings with the returned id; the save
+   * processes and links it.
+   */
+  async printImageUpload(
     scope: DataScope,
-    input: UploadFeePrintImageInput,
+    input: FeePrintImageUploadInput,
     userId: string,
-  ): Promise<{ objectId: string }> {
+  ): Promise<UploadTicket> {
     const schoolId = requireSchoolId(scope);
-    // Until the printing screen uploads straight to the bucket (ADR-063).
-    const stored = await storageService.ingest({
+    const [ticket] = await storageService.createUploads({
       organizationId: scope.organizationId,
       schoolId,
       purpose: input.kind === "upi_qr" ? "fee_upi_qr" : "fee_print_logo",
       parentId: schoolId,
       uploadedBy: userId,
-      bytes: Buffer.from(input.dataBase64, "base64"),
+      files: [input.file],
     });
-    return { objectId: stored.id };
+    if (!ticket) throw new Error("No upload link was created.");
+    return ticket;
   }
 
   /** The school as it prints: its record, plus what it has set for printing. */

@@ -16,6 +16,7 @@ import {
 } from "@repo/db/schema";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
+import { uploadRequestSchema } from "./storage.contract";
 
 /**
  * FEES — Phase 4. This file grows with the phase: F3 owns the configuration
@@ -1299,14 +1300,12 @@ export const updateFeePrintSettingsSchema = z
   .partial();
 export type UpdateFeePrintSettingsInput = z.infer<typeof updateFeePrintSettingsSchema>;
 
-export const uploadFeePrintImageSchema = z.object({
-  // Which slot the image is for: the two are stored with different rules
-  // (a QR is never lossy-compressed), ADR-063.
-  kind: z.enum(["logo", "upi_qr"]).default("logo"),
-  contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
-  dataBase64: z
-    .string()
-    .max(Math.ceil((512 * 1024) / 3) * 4)
-    .regex(/^[A-Za-z0-9+/]*={0,2}$/, "The image data is not valid base64."),
+/**
+ * An upload link for a printing image (ADR-063). Which slot it is for decides
+ * how it is stored: a QR is never lossy-compressed.
+ */
+export const feePrintImageUploadSchema = z.object({
+  kind: z.enum(["logo", "upi_qr"]),
+  file: uploadRequestSchema,
 });
-export type UploadFeePrintImageInput = z.infer<typeof uploadFeePrintImageSchema>;
+export type FeePrintImageUploadInput = z.infer<typeof feePrintImageUploadSchema>;

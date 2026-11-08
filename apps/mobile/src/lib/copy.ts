@@ -1341,6 +1341,9 @@ export const copy = {
     filterAll: "All students",
     filterSection: "Section",
   },
+  uploads: {
+    failed: "The photo didn't upload. Check the connection and try again.",
+  },
   profilePhoto: {
     add: "Add photo",
     change: "Change photo",

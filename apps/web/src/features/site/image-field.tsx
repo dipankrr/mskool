@@ -9,52 +9,25 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useActiveContext } from "@/features/session/active-context";
 import { errorMessage } from "@/lib/errors";
+import { prepareImage, putToUploadLink } from "@/lib/image-upload";
 import { trpc } from "@/lib/trpc/client";
 
 /**
- * THE EDITOR'S IMAGE FIELD — pick a file, not a URL. The browser resizes
- * client-side (same pattern as student photos: the client is the only place
- * bytes are resized, ADR-038) to max 1440px WebP, uploads through
- * publicSite.uploadImage (stored PUBLIC per ADR-042), and the returned
- * stable URL is written into the draft. The monospace input stays for the
- * rare paste-a-URL case.
+ * THE EDITOR'S IMAGE FIELD — pick a file, not a URL. The browser shrinks it,
+ * PUTs it straight to the public bucket with a link from
+ * `publicSite.imageUpload`, and `publicSite.imageReady` checks it and answers
+ * its public link, which is written into the draft (ADR-063). Saving the
+ * draft stores it as a token, so a later provider or CDN change breaks no
+ * content. The monospace input stays for the rare paste-a-URL case.
  */
-
-const MAX_DIMENSION = 1440;
-
-async function resizeToWebp(file: File): Promise<{ contentType: "image/webp"; dataBase64: string }> {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, MAX_DIMENSION / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.85));
-  if (!blob) throw new Error("Could not process the image.");
-
-  const dataUrl: string = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error("Could not read the processed image."));
-    reader.readAsDataURL(blob);
-  });
-  return { contentType: "image/webp", dataBase64: dataUrl.slice(dataUrl.indexOf(",") + 1) };
-}
 
 export function ImageField({ value, onChange }: { value: string; onChange: (next: string) => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const { organizationId } = useActiveContext();
 
-  const upload = trpc.publicSite.uploadImage.useMutation({
-    onSuccess: ({ url }) => {
-      onChange(url);
-      toast.success("Image uploaded — remember to publish.");
-    },
-    onError: (error) => toast.error(errorMessage(error)),
-  });
+  const link = trpc.publicSite.imageUpload.useMutation();
+  const ready = trpc.publicSite.imageReady.useMutation();
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -62,10 +35,19 @@ export function ImageField({ value, onChange }: { value: string; onChange: (next
     if (!file) return;
     setBusy(true);
     try {
-      const data = await resizeToWebp(file);
-      await upload.mutateAsync({ organizationId, data });
+      // PNG stays lossless so logos and graphics keep sharp edges.
+      const image = await prepareImage(file, 2000, file.type === "image/png" ? "png" : "jpeg");
+      if (!image) throw new Error("This browser can't read that image. Use a JPEG, PNG or WebP.");
+      const ticket = await link.mutateAsync({
+        organizationId,
+        file: { contentType: image.contentType, sizeBytes: image.sizeBytes },
+      });
+      await putToUploadLink(ticket, image);
+      const { url } = await ready.mutateAsync({ organizationId, objectId: ticket.objectId });
+      onChange(url);
+      toast.success("Image uploaded — remember to publish.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Upload failed.");
+      toast.error(errorMessage(error));
     } finally {
       setBusy(false);
     }

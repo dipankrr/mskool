@@ -4,9 +4,10 @@
  * Reads the webp files from apps/web/public/sites/ujjwal (kept on disk as
  * seed input, purged from git), stores each as `site_media` through
  * storageService.ingest, and rewrites every `/sites/ujjwal/...` URL in the
- * Ujjwal site content to `/api/public/storage/{id}`. Re-runnable: each run
- * stores fresh files and replaces the content wholesale; the previous
- * generation is marked deleted first, and the storage sweeper removes it.
+ * Ujjwal site content to a `storage:{id}` token, which reads turn into the
+ * public link. Re-runnable: each run stores fresh files and replaces the
+ * content wholesale; linking the new files lets the previous generation go,
+ * and the storage sweeper removes it.
  *
  * Files whose decoded bytes exceed the service cap are skipped loudly —
  * none should, the conversion step caps gallery images well below it.
@@ -15,9 +16,9 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { publicSiteContentSchema } from "@repo/contracts";
 import { db } from "@repo/db";
-import { orgPublicSites, organizations, storageObjects } from "@repo/db/schema";
-import { and, eq, ne } from "drizzle-orm";
-import { storageService } from "@repo/services";
+import { orgPublicSites, organizations } from "@repo/db/schema";
+import { eq } from "drizzle-orm";
+import { publicSiteService, storageService } from "@repo/services";
 import { UJJWAL_SITE_CONTENT } from "./ujjwal-site-content";
 
 const MEDIA_DIR = path.resolve("../../apps/web/public/sites/ujjwal");
@@ -56,28 +57,12 @@ async function main() {
   const urls = collectStaticUrls(UJJWAL_SITE_CONTENT);
   console.log(`Migrating ${urls.length} media files into the object store…`);
 
-  // Let the previous generation go BEFORE storing, so a re-run replaces
-  // rather than accumulates. Only this org's site media is touched.
-  const stale = await db
-    .update(storageObjects)
-    .set({ status: "deleted", deletedAt: new Date() })
-    .where(
-      and(
-        eq(storageObjects.organizationId, org.id),
-        eq(storageObjects.purpose, "site_media"),
-        ne(storageObjects.status, "deleted"),
-      ),
-    )
-    .returning({ id: storageObjects.id });
-  console.log(`  - marked ${stale.length} stale site files deleted`);
-
   const urlMap = new Map<string, string>();
+  const storedIds: string[] = [];
   for (const staticUrl of urls) {
     const rel = staticUrl.slice(STATIC_PREFIX.length);
     const bytes = await readFile(path.join(MEDIA_DIR, rel));
 
-    // Attached: the content JSON is the only reference until site media gets
-    // its own table, and the sweeper cannot see inside it.
     const stored = await storageService.ingest({
       organizationId: org.id,
       schoolId: null,
@@ -85,9 +70,9 @@ async function main() {
       parentId: null,
       uploadedBy: null,
       bytes,
-      attached: true,
     });
-    urlMap.set(staticUrl, `/api/public/storage/${stored.id}`);
+    storedIds.push(stored.id);
+    urlMap.set(staticUrl, `storage:${stored.id}`);
     console.log(`  + ${rel} -> ${urlMap.get(staticUrl)} (${Math.round(bytes.length / 1024)} KB)`);
   }
 
@@ -122,7 +107,10 @@ async function main() {
     })
     .where(eq(orgPublicSites.organizationId, org.id));
 
-  console.log(`\nDone. ${urlMap.size} URLs rewritten to /api/public/storage/{id}.`);
+  // Link the new files to the site; the previous generation is let go.
+  await publicSiteService.linkSeededMedia(org.id, storedIds);
+
+  console.log(`\nDone. ${urlMap.size} URLs rewritten to storage tokens.`);
   console.log("You can now remove apps/web/public/sites from the repo and disk seeds' git tracking.\n");
 }
 

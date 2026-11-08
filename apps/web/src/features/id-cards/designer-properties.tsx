@@ -2,6 +2,8 @@
 
 import { useRef } from "react";
 
+import { useAssetUrl } from "./asset-images";
+
 import type {
   IdCardBinding,
   IdCardTemplateData,
@@ -220,9 +222,8 @@ export function CanvasSettings({
         <Label>{d.background}</Label>
         {activeCanvas.backgroundAssetId ? (
           <div className="flex items-center gap-3">
-            <img
-              src={`/api/storage/${activeCanvas.backgroundAssetId}`}
-              alt=""
+            <AssetThumb
+              assetId={activeCanvas.backgroundAssetId}
               className="h-10 w-16 rounded border object-cover"
             />
             <Button
@@ -521,9 +522,8 @@ function LogoAssetField({
       <Label>{d.logoAsset}</Label>
       {element.assetId ? (
         <div className="flex items-center gap-3">
-          <img
-            src={`/api/storage/${element.assetId}`}
-            alt=""
+          <AssetThumb
+            assetId={element.assetId}
             className="h-10 w-10 rounded border object-contain"
           />
           <Button
@@ -565,4 +565,10 @@ function LogoAssetField({
       <p className="text-muted-foreground text-xs">{d.logoHint}</p>
     </div>
   );
+}
+
+/** A small preview of a background or logo, or nothing while it loads. */
+function AssetThumb({ assetId, className }: { assetId: string; className: string }) {
+  const url = useAssetUrl(assetId);
+  return url ? <img src={url} alt="" className={className} /> : <div className={className} />;
 }
