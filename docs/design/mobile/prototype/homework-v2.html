@@ -197,6 +197,62 @@ figcaption::before { content: counter(frame) " · "; font-weight: 700; color: va
 .sec small { font-size: 12px; color: var(--muted); }
 .sec.on { background: var(--tint); box-shadow: inset 0 0 0 1.5px var(--accent); }
 .dot { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 999px; background: var(--amb); display: inline-block; }
+
+/* Home v3 */
+.v3all { font-size: 14px; font-weight: 600; color: var(--deep); }
+.now { background: var(--ink); color: #fff; border-radius: 20px; padding: 14px 14px 10px; }
+.nowtop { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.nowlabel { font-size: 13px; font-weight: 600; letter-spacing: .4px; color: rgba(255,255,255,.7); text-transform: uppercase; }
+.nowcount { min-width: 26px; height: 26px; border-radius: 13px; background: var(--accent); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
+.nowrow { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid rgba(255,255,255,.1); }
+.nb { width: 38px; height: 38px; border-radius: 11px; background: rgba(255,255,255,.12); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex: none; }
+.nb.amb { background: rgba(181,71,8,.35); }
+.nt { font-size: 15px; font-weight: 600; }
+.nm { font-size: 12px; color: rgba(255,255,255,.6); margin-top: 1px; }
+.nk { height: 32px; padding: 0 12px; border-radius: 999px; background: #fff; color: var(--ink); display: inline-flex; align-items: center; font-size: 13px; font-weight: 700; flex: none; }
+.nk.dark { background: var(--ink); color: #fff; }
+.nowmore { font-size: 12px; color: rgba(255,255,255,.55); padding-top: 6px; border-top: 1px solid rgba(255,255,255,.1); }
+.calm { display: flex; align-items: center; gap: 12px; background: var(--tint); border-radius: 16px; padding: 12px 14px; }
+.calmtick { width: 32px; height: 32px; border-radius: 16px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; flex: none; }
+.week { display: flex; gap: 6px; }
+.day { flex: 1; height: 66px; border-radius: 14px; background: var(--surface); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; }
+.day b { font-size: 11px; font-weight: 600; color: var(--muted); }
+.day i { font-style: normal; font-size: 17px; font-weight: 700; }
+.day em { display: flex; gap: 3px; height: 6px; margin-top: 3px; }
+.day u { width: 6px; height: 6px; border-radius: 3px; background: var(--slate); text-decoration: none; }
+.day u.p { background: var(--accent); }
+.day u.r { background: var(--red); }
+.day.on { background: var(--ink); }
+.day.on b { color: rgba(255,255,255,.7); }
+.day.on i { color: #fff; }
+.day.on u { background: #fff; }
+.dlist { margin-top: 8px; padding: 2px 0; }
+.dl { display: flex; align-items: center; gap: 10px; padding: 9px 14px; min-height: 48px; }
+.dl + .dl { border-top: 1px solid var(--hair); }
+.dk { width: 8px; height: 30px; border-radius: 4px; flex: none; }
+.dk.hw { background: var(--accent); }
+.dk.rd { background: #2E90FA; }
+.dk.pj { background: var(--amb); }
+.dt { font-size: 15px; font-weight: 600; }
+.dm { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.dp { font-size: 13px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+.dp.ok { color: var(--deep); }
+.cgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cc { background: var(--surface); border-radius: 16px; padding: 12px; }
+.ch { display: flex; align-items: baseline; gap: 6px; }
+.ch b { font-size: 20px; font-weight: 700; }
+.ch span { font-size: 13px; color: var(--muted); font-weight: 600; }
+.cl { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.cl .amb, .cstats .amb { color: var(--amb); font-weight: 600; }
+.cbar { height: 4px; border-radius: 2px; background: var(--field); margin-top: 10px; overflow: hidden; }
+.cbar i { display: block; height: 100%; background: var(--accent); }
+.draftline { margin: 14px 4px 0; font-size: 14px; font-weight: 600; color: var(--muted); display: flex; justify-content: space-between; }
+.cstats { display: flex; gap: 8px; margin-top: 12px; }
+.cstats div { flex: 1; background: var(--surface); border-radius: 14px; padding: 10px; text-align: center; }
+.cstats b { display: block; font-size: 22px; font-weight: 700; }
+.cstats b.red { color: var(--red); }
+.cstats span { font-size: 12px; color: var(--muted); }
+.av { width: 34px; height: 34px; border-radius: 17px; background: var(--chip); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: var(--slate); flex: none; }
 </style>
 </head>
 <body>
@@ -229,6 +285,118 @@ figcaption::before { content: counter(frame) " · "; font-weight: 700; color: va
 <div class="intro">
   <h1>Teacher homework, v2</h1>
   <p>Version 2 (2026-11-08), after the owner's review of v1 (<code>homework.html</code>, kept as it was). <b>Give is stepped</b>, like the admission flow, in the same four steps for every type: what (Homework, Practice, Project, Reading, Quiz) → classes, grouped by subject → the work itself → when and how. Each type has defaults for <b>how it comes back</b> (brought to class, sent in the app, student ticks it, nothing) and <b>grading</b> (none, marks, grade, remark: Excellent / Good / Bad); work that comes back to the teacher is always checked on the Done list, and grading adds a score on top. <b>Quizzes have their own place</b> on Home. Reading gets a "who ticked" screen, "Diary" is now "All homework", and the copy says "student" throughout. There are no notifications yet, so nothing here promises one.</p>
+</div>
+
+<!-- ================================================================ -->
+<div class="group">0 · Home v3 (proposal, 2026-11-09): what needs me, this week, my classes</div>
+<div class="frames">
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="title"><h2>Homework</h2><span class="v3all">All homework</span></div>
+  <div class="body" style="margin-top:10px">
+    <div class="now">
+      <div class="nowtop"><span class="nowlabel">Needs you now</span><span class="nowcount">4</span></div>
+      <div class="nowrow"><span class="nb">6A</span><div class="grow"><div class="nt clip">Ex 4.2, Q1–10</div><div class="nm">Maths · brought to class · due today</div></div><span class="nk">Check</span></div>
+      <div class="nowrow"><span class="nb amb">7A</span><div class="grow"><div class="nt clip">Integers worksheet</div><div class="nm">Maths · 6 sent in the app</div></div><span class="nk">Review</span></div>
+      <div class="nowrow"><span class="nb">7A</span><div class="grow"><div class="nt clip">Chapter 5 quiz</div><div class="nm">3 written answers to mark</div></div><span class="nk">Mark</span></div>
+      <div class="nowmore">+1 more · 6B Ex 4.1</div>
+    </div>
+
+    <div class="section"><span class="label">This week</span><span class="meta">Nov 9 – 14</span></div>
+    <div class="week">
+      <span class="day"><b>Mon</b><i>9</i><em><u></u><u></u></em></span>
+      <span class="day on"><b>Tue</b><i>10</i><em><u></u><u></u><u></u></em></span>
+      <span class="day"><b>Wed</b><i>11</i><em><u></u></em></span>
+      <span class="day"><b>Thu</b><i>12</i><em></em></span>
+      <span class="day"><b>Fri</b><i>13</i><em><u class="p"></u></em></span>
+      <span class="day"><b>Sat</b><i>14</i><em><u class="r"></u></em></span>
+    </div>
+    <div class="card dlist">
+      <div class="dl"><span class="dk hw"></span><div class="grow"><div class="dt clip">Ex 4.3, Q1–6</div><div class="dm">6A, 6B · Maths · brought</div></div><span class="dp">0/62</span></div>
+      <div class="dl"><span class="dk rd"></span><div class="grow"><div class="dt clip">Jungle Book, ch 3</div><div class="dm">6A · reading · ticks</div></div><span class="dp">24/32</span></div>
+      <div class="dl"><span class="dk pj"></span><div class="grow"><div class="dt clip">Solar system model</div><div class="dm">7A · Science · project</div></div><span class="dp">2/28</span></div>
+    </div>
+
+    <div class="section"><span class="label">My classes</span></div>
+    <div class="cgrid">
+      <div class="cc"><div class="ch"><b>6A</b><span>Maths</span></div><div class="cl">2 out · <span class="amb">1 to check</span></div><div class="cbar"><i style="width:70%"></i></div></div>
+      <div class="cc"><div class="ch"><b>6B</b><span>Maths</span></div><div class="cl">1 out · <span class="amb">1 to check</span></div><div class="cbar"><i style="width:55%"></i></div></div>
+      <div class="cc"><div class="ch"><b>7A</b><span>Maths</span></div><div class="cl">1 quiz · <span class="amb">3 to mark</span></div><div class="cbar"><i style="width:64%"></i></div></div>
+      <div class="cc"><div class="ch"><b>7A</b><span>Science</span></div><div class="cl">1 project out</div><div class="cbar"><i style="width:8%"></i></div></div>
+    </div>
+    <div class="draftline">2 drafts <span>›</span></div>
+  </div>
+  <div class="float"><div class="cta"><svg width="20" height="20"><use href="#i-plus"/></svg>Give</div></div>
+  <div class="tabbar"><span><svg width="22" height="22"><use href="#i-home"/></svg>Home</span><span><svg width="22" height="22"><use href="#i-att"/></svg>Attendance</span><span><svg width="22" height="22"><use href="#i-people"/></svg>Students</span><span class="on"><svg width="22" height="22"><use href="#i-book"/></svg>Homework</span><span><svg width="22" height="22"><use href="#i-more"/></svg>More</span></div>
+</div>
+<figcaption><b>Home answers three questions, in order.</b> <b>Needs you now</b>: one dark card with every job waiting (check, review, mark), at most three shown, each one tap away. <b>This week</b>: a day strip with a dot per homework due (green project, red quiz closing); tapping a day lists that day's homework in one line each, with its progress number on the right. <b>My classes</b>: a small card per class and subject, how much is out and what waits, with a bar for how much of this week's work came back. Drafts shrink to one line. No long feed of cards.</figcaption>
+</figure>
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="title"><h2>Homework</h2><span class="v3all">All homework</span></div>
+  <div class="body" style="margin-top:10px">
+    <div class="calm"><span class="calmtick"><svg width="18" height="18"><use href="#i-check"/></svg></span><div class="grow"><div class="nt" style="color:var(--deep)">All checked</div><div class="nm" style="color:var(--muted)">Nothing waits for you. 6A's Ex 4.3 comes back tomorrow.</div></div></div>
+
+    <div class="section"><span class="label">This week</span><span class="meta">Nov 9 – 14</span></div>
+    <div class="week">
+      <span class="day on"><b>Mon</b><i>9</i><em><u></u></em></span>
+      <span class="day"><b>Tue</b><i>10</i><em><u></u></em></span>
+      <span class="day"><b>Wed</b><i>11</i><em></em></span>
+      <span class="day"><b>Thu</b><i>12</i><em></em></span>
+      <span class="day"><b>Fri</b><i>13</i><em></em></span>
+      <span class="day"><b>Sat</b><i>14</i><em></em></span>
+    </div>
+    <div class="card dlist">
+      <div class="dl"><span class="dk hw"></span><div class="grow"><div class="dt clip">Ex 4.2, Q1–10</div><div class="dm">6A · Maths · checked</div></div><span class="dp ok">✓ 32/32</span></div>
+    </div>
+
+    <div class="section"><span class="label">My classes</span></div>
+    <div class="cgrid">
+      <div class="cc"><div class="ch"><b>6A</b><span>Maths</span></div><div class="cl">1 out</div><div class="cbar"><i style="width:100%"></i></div></div>
+      <div class="cc"><div class="ch"><b>6B</b><span>Maths</span></div><div class="cl">Nothing out</div><div class="cbar"><i style="width:100%"></i></div></div>
+    </div>
+  </div>
+  <div class="float"><div class="cta"><svg width="20" height="20"><use href="#i-plus"/></svg>Give</div></div>
+  <div class="tabbar"><span><svg width="22" height="22"><use href="#i-home"/></svg>Home</span><span><svg width="22" height="22"><use href="#i-att"/></svg>Attendance</span><span><svg width="22" height="22"><use href="#i-people"/></svg>Students</span><span class="on"><svg width="22" height="22"><use href="#i-book"/></svg>Homework</span><span><svg width="22" height="22"><use href="#i-more"/></svg>More</span></div>
+</div>
+<figcaption><b>A quiet day stays quiet.</b> With nothing waiting, the dark card shrinks to one green line that says when the next work comes back, so the screen never looks empty or alarming. The week and the classes keep their place, so the teacher's eye always lands in the same spots.</figcaption>
+</figure>
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="head"><span class="back"><svg width="22" height="22"><use href="#i-back"/></svg></span><div class="grow"><div class="htitle">6A · Maths</div><div class="meta">32 students</div></div></div>
+  <div class="body">
+    <div class="cstats">
+      <div><b>86%</b><span>on time</span></div>
+      <div><b class="amb">1</b><span>to check</span></div>
+      <div><b class="red">4</b><span>owe work</span></div>
+    </div>
+    <div class="section"><span class="label">Out now</span></div>
+    <div class="card dlist">
+      <div class="dl"><span class="dk hw"></span><div class="grow"><div class="dt clip">Ex 4.3, Q1–6</div><div class="dm">Due Tue · brought to class</div></div><span class="dp">›</span></div>
+      <div class="dl"><span class="dk rd"></span><div class="grow"><div class="dt clip">Jungle Book, ch 3</div><div class="dm">Read by Sat · 24 of 32 ticked</div></div><span class="dp">›</span></div>
+    </div>
+    <div class="section"><span class="label">To check</span></div>
+    <div class="card dlist">
+      <div class="dl"><span class="dk hw"></span><div class="grow"><div class="dt clip">Ex 4.2, Q1–10</div><div class="dm">Due today · 0 of 32 checked</div></div><span class="nk dark">Check</span></div>
+    </div>
+    <div class="section"><span class="label">Owe work</span><span class="meta">this week</span></div>
+    <div class="card dlist">
+      <div class="dl"><span class="av">RV</span><div class="grow"><div class="dt">Rohan Verma</div><div class="dm">2 not done · 1 incomplete</div></div></div>
+      <div class="dl"><span class="av">TK</span><div class="grow"><div class="dt">Tanish Kapoor</div><div class="dm">1 not sent</div></div></div>
+    </div>
+    <div class="section"><span class="label">Earlier</span><span class="meta">All 14 ›</span></div>
+  </div>
+  <div class="float"><div class="cta"><svg width="20" height="20"><use href="#i-plus"/></svg>Give to 6A</div></div>
+</div>
+<figcaption><b>A class card opens that class</b>, the way teachers think: how this class is doing (on time, to check, who owes work), what is out, what waits, then earlier homework. "Give" here starts with 6A Maths already picked, so Give jumps to step 3.</figcaption>
+</figure>
+
 </div>
 
 <!-- ================================================================ -->

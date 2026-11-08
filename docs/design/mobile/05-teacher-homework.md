@@ -105,6 +105,8 @@ The assignment already has `title` (required), `description` (optional, long) an
 The create API takes a different input per type and validates it (Reading needs a book, a Quiz
 needs at least one question), then maps it onto the same columns.
 
+**Home v3 (2026-11-09, owner-approved):** Home is now group 0 of the mockup (needs you now, this week, my classes, and a class page), replacing frames 1 and 2's stacked lists. The class page also carries the class diary's useful part, who owes work.
+
 ## 4. Structure
 
 ```
