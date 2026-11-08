@@ -8,6 +8,7 @@ import common from "./en/common.json";
 import exams from "./en/exams.json";
 import family from "./en/family.json";
 import fees from "./en/fees.json";
+import homework from "./en/homework.json";
 import kit from "./en/kit.json";
 
 /**
@@ -32,7 +33,7 @@ export type LanguageCode = (typeof LANGUAGES)[number]["code"];
 export type Script = (typeof LANGUAGES)[number]["script"];
 
 export const resources = {
-  en: { common, auth, family, attendance, fees, exams, kit },
+  en: { common, auth, family, attendance, fees, exams, homework, kit },
 } as const;
 
 export const defaultNS = "common";
