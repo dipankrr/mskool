@@ -13,7 +13,7 @@ builds.
 | API (Express + tRPC + better-auth) | Hostinger **Web App** (Node 22) | A managed Node process, started on incoming traffic and stopped after an idle period. |
 | PostgreSQL | Neon | Pooled URL at runtime, direct URL for migrations. |
 | Redis | Upstash | Required: the authz cache is read on every authorized request. |
-| Object storage | `storage_objects` in Postgres | No disk volume or S3 bucket to provision. |
+| Object storage | Cloudflare R2 (S3-compatible), metadata in Postgres | One private and one public bucket per environment (ADR-063). |
 | Web | Not covered here | See [Web](#web) below. |
 | Mobile | EAS / local native build | Talks to the API over HTTPS. |
 
@@ -36,6 +36,11 @@ entry must run in plain Node without a TypeScript loader. A self-contained artif
 keeps the same start command portable to another Node host. Hostinger deploys the whole
 Express root (including `node_modules`) into `hbuilds/current/nodejs`, but the artifact does
 not depend on that layout. See ADR-060.
+
+One dependency stays outside the bundle: `sharp` (ADR-063 image processing) ships a native
+binary per platform, so `index.mjs` imports it at runtime from `apps/api`'s `node_modules`, which
+the build's `pnpm install` provides on the host. A deploy must boot and process an image before
+the first upload feature relies on it.
 
 `dist/server.mjs` is a second library/test entry; Hostinger runs only `index.mjs`. It is
 redundant in the hosted process but retained to avoid changing the API package's existing
@@ -108,6 +113,11 @@ checking the hosted one so there is one writer and one set of rate-limit observa
 | `HOMEWORK_WORKER_DISABLED` | `true` on Hostinger for now | Hostinger stops idle processes, so an in-process schedule is not reliable. |
 | `FEES_WORKER_DISABLED` | `true` on Hostinger for now | Same limitation; add a cron entry point or use an always-on host before enabling it. |
 | `DISABLE_RATE_LIMIT` | unset | `true` is a test-suite escape hatch; never in production. |
+| `STORAGE_ENDPOINT`, `STORAGE_REGION` | the R2 S3 endpoint, `auto` | Another S3-compatible provider takes its own endpoint and region. |
+| `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY` | the prod token | Scoped to the two prod buckets only. |
+| `STORAGE_PRIVATE_BUCKET`, `STORAGE_PUBLIC_BUCKET` | `mskool-prod-private`, `mskool-prod-public` | |
+| `PUBLIC_FILES_BASE_URL` | the public bucket's custom domain | No trailing slash. R2's `r2.dev` address is rate-limited and for testing only. |
+| `STORAGE_WORKER_DISABLED` | omit (runs) | Cleanup is not time-critical, so idle suspension only delays it. |
 
 Generate the auth secret:
 

@@ -2997,8 +2997,10 @@ discarded, not migrated.
    | `homework_student_file` | private | display 2000 long edge, thumb 320 | WebP q82 |
 
    The registry in `packages/services` is the only place these rules live: max bytes, accepted
-   types, bucket, versions and encoding, `canUpload(ctx, parent)`, optional retention, and
-   `detach(tx, objectIds)`. Contracts export the same names as a Zod enum. Adding a purpose is a
+   types, bucket, versions and encoding, optional retention, and `detach(tx, objectIds)`. Who
+   may upload for which record is not a storage rule: each domain hands out upload links from its
+   own endpoint, behind its own permission gate (a student's photo needs `student:update` on that
+   student), and only then calls the storage service. Contracts export the same names as a Zod enum. Adding a purpose is a
    migration (`ALTER TYPE … ADD VALUE`); purposes are named so they rarely need removing.
 
 7. **References are foreign keys, never JSON.** Every column that points at a file is a foreign key
@@ -3008,8 +3010,8 @@ discarded, not migrated.
    URL is built when the content is read.
 
 8. **Uploads go straight to the bucket.**
-   1. `storage.createUpload({ purpose, parent, contentType, size })` (and a batch form for bulk
-      photos) checks `canUpload`, the purpose's limits and a rate limit, caps uploads in progress
+   1. The domain's endpoint checks its permission, then `storageService.createUploads({ purpose,
+      parent, files })` (one or many files, for bulk photos) checks the purpose's limits, caps uploads in progress
       per organisation, inserts a `pending` row and returns a presigned PUT to `tmp/{id}` (about
       10 minutes, content type and length signed).
    2. The client resizes before upload at high quality (about 0.9) and uploads directly; the API
@@ -3067,6 +3069,15 @@ discarded, not migrated.
     If Hostinger cannot run it, the fallback is client-side encoding with server validation only
     (type from bytes, size, dimensions, no re-encode); files are served from the storage domain,
     never the app's, so an unencoded file cannot reach the app's cookies.
+
+**Transition.** The foundation (migrations 0048 and 0049) moves every byte into the buckets at
+once, but each screen moves to direct uploads in its own slice. Until then the base64 endpoints
+stay and call `storageService.ingest` (the same processing, run on bytes the server already has),
+and `/api/storage/:id` and `/api/public/storage/:id` stay with their old access rules, streaming
+the file from the bucket. They stream rather than redirect because the mobile client sends its
+session cookie as a plain header, which a redirect would carry to the bucket. ID-card assets and
+site media, whose only reference is JSON until their link tables land, are stored already
+attached so the sweeper leaves them alone. Each of these goes with the slice that replaces it.
 
 **Endpoint changes.** `student.uploadPhoto` becomes `student.setPhoto({ id, objectId })`;
 `removePhoto` stays. `fees.uploadImage` becomes `fees.setPrintImage({ kind, objectId })`.
