@@ -27,6 +27,7 @@ import {
 import { trpc } from "../../lib/trpc";
 import { spacing } from "../../theme/tokens";
 import { ClassesStep, Crumbs, KIND_ICON, KindStep, StepQuestion, WhenStep, WorkStep, todayLocal } from "./give-steps";
+import { showGivenToast } from "./toast-store";
 import { usePhotoUploads } from "./use-photo-uploads";
 
 const text = copy.homework.give;
@@ -111,10 +112,8 @@ export function GiveScreen() {
       setFinished(true);
       void utils.homework.home.invalidate();
       void utils.homework.list.invalidate();
-      router.dismissTo({
-        pathname: "/homework",
-        params: { given: hw.id, labels, draft: vars.give ? "0" : "1" },
-      } as never);
+      showGivenToast({ id: hw.id, labels, draft: !vars.give });
+      router.dismissTo("/homework" as never);
     },
   });
 
@@ -270,9 +269,10 @@ export function GiveScreen() {
                 onPress={continueFrom}
                 disabled={sectionIds.length === 0}
                 testID="give-next"
+                style={styles.stretch}
               />
             ) : step === 2 ? (
-              <CapsuleButton title={text.next} onPress={continueFrom} testID="give-next" />
+              <CapsuleButton title={text.next} onPress={continueFrom} testID="give-next" style={styles.stretch} />
             ) : (
               <View style={styles.row}>
                 <CapsuleButton
@@ -376,6 +376,7 @@ export function GiveScreen() {
 
 const styles = StyleSheet.create({
   footer: { gap: spacing.sm },
+  stretch: { alignSelf: "stretch" },
   row: { flexDirection: "row", gap: spacing.sm },
   draft: { minWidth: 104 },
   grow: { flex: 1 },

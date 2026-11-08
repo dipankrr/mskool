@@ -1,6 +1,6 @@
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router, useLocalSearchParams } from "expo-router";
+import { router } from "expo-router";
 import type { Href } from "expo-router";
 
 import { AppIcon } from "../../components/app-icon";
@@ -21,6 +21,7 @@ import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { gutter, radius, spacing } from "../../theme/tokens";
 import { GivenToast } from "./given-toast";
+import { showGivenToast, useGivenToast } from "./toast-store";
 
 const text = copy.homework;
 
@@ -56,11 +57,7 @@ export function HomeworkScreen() {
   const { has } = usePermissions();
   const canGive = has("homework:create");
   const tabSpace = useTabBarSpace();
-  const params = useLocalSearchParams<{ given?: string; labels?: string; draft?: string }>();
-  // Give hands back what it did through the route; the toast lives as long as the params.
-  const toast = params.given
-    ? { id: params.given, labels: params.labels ?? "", draft: params.draft === "1" }
-    : null;
+  const toast = useGivenToast();
 
   const home = trpc.homework.home.useQuery(
     { organizationId: organizationId ?? "", ...(schoolId ? { schoolId } : {}) },
@@ -198,7 +195,7 @@ export function HomeworkScreen() {
               homeworkId={toast.id}
               labels={toast.labels}
               draft={toast.draft}
-              onDone={() => router.setParams({ given: undefined, labels: undefined, draft: undefined })}
+              onDone={() => showGivenToast(null)}
             />
           ) : null}
           <CapsuleButton
@@ -291,6 +288,7 @@ const styles = StyleSheet.create({
   },
   fabButton: {
     minWidth: 120,
+    alignSelf: "flex-end",
   },
 });
 

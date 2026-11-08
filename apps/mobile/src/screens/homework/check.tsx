@@ -76,8 +76,8 @@ export function CheckScreen() {
   const counts = countDrafts(drafts);
 
   const save = trpc.homework.register.save.useMutation({
-    onSuccess: async (result) => {
-      await utils.homework.register.get.invalidate(input);
+    onSuccess: (result) => {
+      void utils.homework.register.get.invalidate(input);
       void utils.homework.home.invalidate();
       setEdits({});
       setSelected(null);
@@ -166,6 +166,7 @@ export function CheckScreen() {
               title={text.nextSection(sectionLabel(nextSection.className, nextSection.sectionName))}
               onPress={() => router.setParams({ sectionId: nextSection.sectionId })}
               testID="check-next-section"
+              style={styles.stretch}
             />
           ) : null}
           <CapsuleButton
@@ -173,6 +174,7 @@ export function CheckScreen() {
             variant={nextSection ? "secondary" : "primary"}
             onPress={() => router.back()}
             testID="check-back-home"
+            style={styles.stretch}
           />
         </View>
       </ScreenFrame>
@@ -187,14 +189,16 @@ export function CheckScreen() {
         <Count n={counts.notDone} label={text.statuses.not_done} tone="critical" />
         <Count n={counts.left} label={text.left} tone="neutral" />
       </View>
-      {counts.left > 0 && grading === "none" ? (
+      {grading === "none" ? (
         <CapsuleButton
           title={text.allDone}
           size="compact"
           variant="secondary"
           icon="checkCircle"
+          disabled={counts.left === 0}
           onPress={() => setEdits((all) => ({ ...all, ...markAllDone(drafts) }))}
           testID="check-all-done"
+          style={styles.allDone}
         />
       ) : null}
     </View>
@@ -290,6 +294,7 @@ export function CheckScreen() {
         loading={save.isPending}
         disabled={changes.length === 0 || save.isPending}
         testID="check-save"
+        style={styles.stretch}
       />
     </View>
   );
@@ -575,6 +580,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   footer: { gap: spacing.sm },
+  stretch: { alignSelf: "stretch" },
+  allDone: { alignSelf: "flex-start" },
   pad: { gap: spacing.sm },
   padHead: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   keys: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
