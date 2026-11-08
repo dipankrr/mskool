@@ -147,7 +147,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
-    backgroundColor: colors.field,
+    backgroundColor: colors.input,
+    borderWidth: 1,
+    borderColor: colors.inputLine,
     color: colors.ink,
   },
   message: {

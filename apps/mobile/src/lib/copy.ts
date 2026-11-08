@@ -1830,6 +1830,13 @@ export const copy = {
       given: (labels: string) => `Given to ${labels}`,
       undo: "Undo",
       undone: "Taken back. It's in your drafts.",
+      minutesShort: (m: number) => (m >= 60 ? `${m / 60} hr` : `${m}m`),
+      gradingHelp: {
+        none: "You only mark each student Done, Incomplete or Not done.",
+        marks: (max: string) => `Each student also gets marks out of ${max}.`,
+        grade: "Each student also gets one of the school's grade letters.",
+        remark: "Each student also gets Excellent, Good or Bad.",
+      },
       otherDay: "Other day",
       otherMinutes: "Other",
       minutesUnit: "min",

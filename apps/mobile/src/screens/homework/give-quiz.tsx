@@ -78,7 +78,7 @@ export function QuizWorkStep({
           </ThemedText>
         </View>
       ) : (
-        <View style={styles.list}>
+        <View style={styles.list} key={`list-${questions.length}-${editing === null && !picking ? "shown" : "behind"}`}>
           {questions.map((d, i) => (
             <Pressable
               key={i}
@@ -113,24 +113,23 @@ export function QuizWorkStep({
         </View>
       )}
       {questionsError ? <Notice tone="critical" message={questionsError} /> : null}
-      <View style={styles.buttons}>
-        <CapsuleButton
-          title={q.add}
-          icon="add"
-          variant="secondary"
-          onPress={() => setEditing("new")}
-          style={styles.half}
-          testID="give-question-add"
-        />
-        <CapsuleButton
-          title={q.fromBank}
-          icon="bank"
-          variant="secondary"
-          onPress={() => setPicking(true)}
-          style={styles.half}
-          testID="give-question-bank"
-        />
-      </View>
+      <CapsuleButton
+        title={questions.length ? q.add : q.addFirst}
+        icon="add"
+        variant="secondary"
+        onPress={() => setEditing("new")}
+        style={styles.stretch}
+        testID="give-question-add"
+      />
+      <CapsuleButton
+        title={q.fromBank}
+        icon="bank"
+        variant="secondary"
+        size="compact"
+        onPress={() => setPicking(true)}
+        style={styles.bank}
+        testID="give-question-bank"
+      />
       {picking ? (
         <HomeworkBankPickerSheet
           subjectId={subjectId}
@@ -226,7 +225,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: colors.accentTint,
   },
-  buttons: { flexDirection: "row", gap: spacing.sm },
-  half: { flex: 1 },
+  bank: { alignSelf: "center" },
   rules: { gap: spacing.sm },
 });

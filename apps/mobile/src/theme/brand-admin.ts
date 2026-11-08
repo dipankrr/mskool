@@ -78,8 +78,11 @@ export const colors = {
   accentStrong: palette.emeraldStrong,
   /** Text/icons on accent fills. */
   onAccent: palette.white,
-  /** Input and segmented fills. */
+  /** Segmented and quiet fills. */
   field: palette.field,
+  /** Text inputs: white on the grey page, outlined so they never melt into it. */
+  input: palette.white,
+  inputLine: "rgba(16, 24, 40, 0.16)",
   /** Neutral avatar and chip fills. */
   chip: palette.chip,
   /** Disclosure chevrons (decorative — contrast floor waived). */

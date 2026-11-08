@@ -171,7 +171,7 @@ export function MarksStepper({ value, onChange }: { value: number; onChange: (n:
   );
 }
 
-const MINUTES = [10, 15, 30, 45, 60] as const;
+const MINUTES = [15, 30, 45, 60] as const;
 
 /** About how long: common lengths as chips, and "Other" for any number of minutes. */
 export function MinutesChips({ value, onChange }: { value: number | null; onChange: (m: number | null) => void }) {
@@ -184,7 +184,7 @@ export function MinutesChips({ value, onChange }: { value: number | null; onChan
         {MINUTES.map((m) => (
           <Chip
             key={m}
-            label={text.minutes(m)}
+            label={text.minutesShort(m)}
             on={value === m && !other}
             onPress={() => {
               setOther(false);
@@ -259,7 +259,9 @@ const styles = StyleSheet.create({
     width: 88,
     height: 48,
     borderRadius: radius.md,
-    backgroundColor: colors.field,
+    backgroundColor: colors.input,
+    borderWidth: 1,
+    borderColor: colors.inputLine,
     textAlign: "center",
     fontSize: 18,
     fontWeight: "600",

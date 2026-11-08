@@ -140,7 +140,9 @@ const styles = StyleSheet.create({
     minHeight: 48,
     paddingHorizontal: spacing.md,
     borderRadius: radius.sm,
-    backgroundColor: colors.field,
+    backgroundColor: colors.input,
+    borderWidth: 1,
+    borderColor: colors.inputLine,
   },
   boxMultiline: {
     alignItems: "stretch",

@@ -13,7 +13,9 @@ import { copy } from "../../lib/copy";
 import { localDateToIso } from "../../lib/format";
 import {
   KIND_COMES_BACK,
+  dueInstant,
   gradingOptions,
+  timeLeft,
   sectionLabel,
   type GiveKind,
   type GivePairs,
@@ -418,11 +420,16 @@ export function WhenStep({
   return (
     <View style={styles.stack}>
       <View>
-        <FieldLabel>{kind === "reading" ? text.readBy : text.due}</FieldLabel>
+        <View style={styles.labelRow}>
+          <FieldLabel>{kind === "reading" ? text.readBy : text.due}</FieldLabel>
+          <ThemedText variant="chip" color={colors.tone[timeLeft(dueInstant(dueDay, dueTime)).tone].fg}>
+            {timeLeft(dueInstant(dueDay, dueTime)).label}
+          </ThemedText>
+        </View>
         <DueChips presets={presets} day={dueDay} onDay={onDueDay} time={dueTime} onTime={onDueTime} minimumDate={todayIso} />
       </View>
 
-      <View>
+      <View style={styles.part}>
         <FieldLabel>{text.comesBack}</FieldLabel>
         <View style={styles.opts}>
           {KIND_COMES_BACK[kind].map((v) => (
@@ -448,7 +455,7 @@ export function WhenStep({
       </View>
 
       {showGrading ? (
-        <View>
+        <View style={styles.part}>
           <FieldLabel>{text.grading}</FieldLabel>
           <SegmentBar
             label={text.grading}
@@ -456,6 +463,9 @@ export function WhenStep({
             options={grading.map((g) => ({ value: g, label: text.gradingOptions[g], testID: `give-grading-${g}` }))}
             onChange={onGradingMode}
           />
+          <ThemedText variant="meta" style={styles.gradingHelp}>
+            {gradingMode === "marks" ? text.gradingHelp.marks(String(maxMarks)) : text.gradingHelp[gradingMode]}
+          </ThemedText>
           {gradingMode === "marks" ? (
             <View style={styles.kvline}>
               <ThemedText variant="body">{text.outOf}</ThemedText>
@@ -464,10 +474,12 @@ export function WhenStep({
           ) : null}
         </View>
       ) : (
-        <Notice tone="neutral" message={comesBack === "tick" ? text.noGradingTick : text.noGradingNone} />
+        <View style={styles.part}>
+          <Notice tone="neutral" message={comesBack === "tick" ? text.noGradingTick : text.noGradingNone} />
+        </View>
       )}
 
-      <View>
+      <View style={styles.part}>
         <FieldLabel>{text.howLong}</FieldLabel>
         <MinutesChips value={minutes} onChange={onMinutes} />
       </View>
@@ -519,6 +531,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.chip,
   },
   fieldLabel: { marginBottom: spacing.sm },
+  labelRow: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
+  part: { paddingTop: spacing.lg, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(16, 24, 40, 0.14)" },
+  gradingHelp: { marginTop: spacing.sm },
   stack: { gap: spacing.lg, marginTop: spacing.md },
   grow: { flex: 1 },
   pressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },

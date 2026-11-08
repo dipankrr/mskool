@@ -115,7 +115,8 @@ export function GiveScreen() {
         ? d.gradingMode
         : allowedGrading[0]!;
   const maxMarks = maxMarksChoice ?? (d?.maxMarks ? Math.round(Number(d.maxMarks)) : 10);
-  const minutes = minutesChoice === undefined ? (d?.estimatedMinutes ?? null) : minutesChoice;
+  // Pre-picked: the subject's last choice, else 30 minutes.
+  const minutes = minutesChoice === undefined ? (d?.estimatedMinutes ?? 30) : minutesChoice;
 
   const pair = subjectId && sectionIds[0] ? { sectionId: sectionIds[0], subjectId } : null;
   const uploads = usePhotoUploads(pair);
