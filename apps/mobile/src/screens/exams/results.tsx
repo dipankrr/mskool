@@ -13,7 +13,7 @@ import { ScreenFrame } from "../../components/screen-frame";
 import { Skeleton } from "../../components/skeleton";
 import { StatusMeter } from "../../components/status-meter";
 import { ThemedText } from "../../components/themed-text";
-import { ConfirmSheet } from "../homework/confirm-sheet";
+import { ConfirmSheet } from "../../components/confirm-sheet";
 import { copy } from "../../lib/copy";
 import { errorMessage } from "../../lib/errors";
 import { formatTimestampDate } from "../../lib/format";

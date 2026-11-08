@@ -23,7 +23,7 @@ import type {
 } from "../../lib/exam-draft";
 import { colors } from "../../theme/brand-admin";
 import { spacing } from "../../theme/tokens";
-import { ConfirmSheet } from "../homework/confirm-sheet";
+import { ConfirmSheet } from "../../components/confirm-sheet";
 import { ChipRow } from "./chip-row";
 import type { Chip } from "./chip-row";
 import type { EntryComponent } from "./entry-row";

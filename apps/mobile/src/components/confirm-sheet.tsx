@@ -1,17 +1,16 @@
 import { StyleSheet, View } from "react-native";
 
-import { CapsuleButton } from "../../components/capsule-button";
-import { FormSheet } from "../../components/form-sheet";
-import { ThemedText } from "../../components/themed-text";
-import { copy } from "../../lib/copy";
-import { errorMessage } from "../../lib/errors";
-import { colors } from "../../theme/brand-admin";
-import { radius, spacing } from "../../theme/tokens";
+import { CapsuleButton } from "./capsule-button";
+import { FormSheet } from "./form-sheet";
+import { ThemedText } from "./themed-text";
+import { copy } from "../lib/copy";
+import { errorMessage } from "../lib/errors";
+import { colors } from "../theme/brand-admin";
+import { radius, spacing } from "../theme/tokens";
 
 /**
- * A lifecycle confirmation that carries no fields: publish and close change
- * what students see, so both ask first, but neither needs prose from the
- * teacher. The cancel flow keeps its own sheet because it collects a reason.
+ * A confirmation that carries no fields: an action that changes what others
+ * see asks first, but needs no prose from the person.
  *
  * This is a real sheet rather than `Alert.alert` for two reasons: the app
  * already speaks in sheets at decision points (the native dialog looked and
@@ -72,7 +71,7 @@ export function ConfirmSheet({
       {error ? (
         <View style={styles.error}>
           <ThemedText variant="meta" color={colors.tone.critical.fg}>
-            {copy.homework.actions.errorTitle}
+            {copy.confirm.errorTitle}
           </ThemedText>
           <ThemedText
             variant="meta"

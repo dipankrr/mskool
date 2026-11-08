@@ -21,7 +21,6 @@ export default function StaffTabsLayout() {
   const { hasAny } = usePermissions();
   const showAttendance = hasAny("attendance:read", "attendance:create");
   const showStudents = hasAny("student:read");
-  const showHomework = hasAny("homework:read");
   // The fee desk needs a usable read: the dues list is the matrix
   // (`fee_report:read`), while assignment reads drive the desk. A caller with
   // only `fee_payment:read` (class teacher) has no student-bearing fee read,
@@ -62,16 +61,6 @@ export default function StaffTabsLayout() {
           href: showStudents ? undefined : null,
           tabBarIcon: ({ color }) => (
             <AppIcon name="students" color={color} size={22} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="homework"
-        options={{
-          title: copy.nav.homework,
-          href: showHomework ? undefined : null,
-          tabBarIcon: ({ color }) => (
-            <AppIcon name="homework" color={color} size={22} />
           ),
         }}
       />

@@ -34,7 +34,7 @@ import {
 import type { MappingRow, PaperDraft, PartCopy } from "../../lib/exam-setup";
 import { colors } from "../../theme/brand-admin";
 import { radius, spacing } from "../../theme/tokens";
-import { ConfirmSheet } from "../homework/confirm-sheet";
+import { ConfirmSheet } from "../../components/confirm-sheet";
 import { ChipRow } from "./chip-row";
 import { PaperSheet } from "./paper-sheet";
 import { useClassMappings, useSetupActions, useSubjectTypes } from "./use-setup";

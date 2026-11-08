@@ -197,3 +197,14 @@ export function formatMonthLong(iso: string | null | undefined): string {
   const month = MONTHS_LONG[Number(iso.slice(5, 7)) - 1];
   return `${month} ${Number(iso.slice(0, 4))}`;
 }
+
+/** `08:00` (24-hour wire format) → `8:00 am`. */
+export function formatClock(hhmm: string): string {
+  const [hourText, minuteText] = hhmm.split(":");
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) return "—";
+  const suffix = hour < 12 ? "am" : "pm";
+  const twelve = hour % 12 === 0 ? 12 : hour % 12;
+  return `${twelve}:${pad(minute)} ${suffix}`;
+}

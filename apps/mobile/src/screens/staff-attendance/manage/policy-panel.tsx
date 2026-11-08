@@ -16,7 +16,7 @@ import { usePermissions } from "../../../hooks/use-permissions";
 import { copy } from "../../../lib/copy";
 import { trpc } from "../../../lib/trpc";
 import { colors } from "../../../theme/brand-admin";
-import { ConfirmSheet } from "../../homework/confirm-sheet";
+import { ConfirmSheet } from "../../../components/confirm-sheet";
 import { radius, spacing } from "../../../theme/tokens";
 import { useAttendanceSection } from "../use-attendance-section";
 import { Field } from "./field";

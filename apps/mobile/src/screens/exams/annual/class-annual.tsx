@@ -27,7 +27,7 @@ import { copy } from "../../../lib/copy";
 import { errorMessage } from "../../../lib/errors";
 import { colors } from "../../../theme/brand-admin";
 import { radius, spacing, touch } from "../../../theme/tokens";
-import { ConfirmSheet } from "../../homework/confirm-sheet";
+import { ConfirmSheet } from "../../../components/confirm-sheet";
 import { ChipRow } from "../chip-row";
 import type { Chip } from "../chip-row";
 import { useExamScope } from "../use-exam-data";

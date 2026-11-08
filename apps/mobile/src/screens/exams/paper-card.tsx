@@ -7,7 +7,7 @@ import { StatusPill } from "../../components/status-pill";
 import { ThemedText } from "../../components/themed-text";
 import { copy } from "../../lib/copy";
 import { formatShortWeekday } from "../../lib/format";
-import { formatClock } from "../../lib/homework";
+import { formatClock } from "../../lib/format";
 import { colors } from "../../theme/brand-admin";
 import { radius, spacing } from "../../theme/tokens";
 import type { ExamPaper } from "./types";

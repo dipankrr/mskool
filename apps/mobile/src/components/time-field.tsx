@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 import { DateTimePicker } from "@expo/ui/community/datetime-picker";
 
-import { formatClock } from "../lib/homework";
+import { formatClock } from "../lib/format";
 import { copy } from "../lib/copy";
 import { colors } from "../theme/brand-admin";
 import { radius, spacing } from "../theme/tokens";

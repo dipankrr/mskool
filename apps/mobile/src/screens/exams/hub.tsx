@@ -26,7 +26,7 @@ import type { PublicationRow } from "../../lib/exam-results";
 import { formatTimestampDate } from "../../lib/format";
 import { trpc } from "../../lib/trpc";
 import { spacing } from "../../theme/tokens";
-import { ConfirmSheet } from "../homework/confirm-sheet";
+import { ConfirmSheet } from "../../components/confirm-sheet";
 import { ChipRow } from "./chip-row";
 import type { Chip } from "./chip-row";
 import {
