@@ -1121,6 +1121,11 @@ export class HomeworkService {
     }
 
     const istDay = (d: Date) => new Date(d.getTime() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+    const todayStart = new Date(`${today}T00:00:00+05:30`);
+    const dow = new Date(`${today}T12:00:00Z`).getUTCDay(); // 0 = Sunday
+    const weekFrom = new Date(todayStart.getTime() + (dow === 0 ? 1 : 1 - dow) * 24 * 3600 * 1000);
+    const weekTo = new Date(weekFrom.getTime() + 7 * 24 * 3600 * 1000);
+    const weekStart = istDay(weekFrom);
     const live = all.filter((s) => s.status === "published" || s.status === "closed");
     const toCheck = live
       .filter((s) => (s.comesBack === "brought" || s.comesBack === "sent") && s.dueAt <= now)
@@ -1153,6 +1158,138 @@ export class HomeworkService {
       drafts: all.filter(
         (s) => (s.status === "draft" || s.status === "scheduled") && s.createdBy === access.userId,
       ),
+      // Home v3's day strip: this school week (Monday to Saturday, IST; on a
+      // Sunday, the week ahead) and everything given that falls due in it.
+      weekStart,
+      week: live
+        .filter((s) => s.dueAt >= weekFrom && s.dueAt < weekTo)
+        .sort((x, y) => x.dueAt.getTime() - y.dueAt.getTime()),
+    };
+  }
+
+  /**
+   * One class and subject (Home v3's class page): how the class is doing
+   * (on time over the last 30 days, what waits to be checked), the
+   * homework given to it, and the children who owe work this week.
+   */
+  async classView(access: HomeworkAccess, pair: TeachingPair) {
+    if (access.pairs && !access.pairs.some((p) => p.sectionId === pair.sectionId && p.subjectId === pair.subjectId)) {
+      throw refuse("NOT_FOUND", "That class could not be found.");
+    }
+    const [sec] = await db
+      .select({
+        sectionName: sections.name,
+        className: classes.name,
+        organizationId: sections.organizationId,
+        schoolId: sections.schoolId,
+      })
+      .from(sections)
+      .innerJoin(classes, eq(sections.classId, classes.id))
+      .where(and(eq(sections.id, pair.sectionId), or(...access.scopes.map((s) => scopeWhere(s, SECTION_COLS)))!));
+    if (!sec) throw refuse("NOT_FOUND", "That class could not be found.");
+
+    const idRows = await db
+      .select({ id: assignments.id })
+      .from(assignments)
+      .innerJoin(assignmentTargets, eq(assignmentTargets.assignmentId, assignments.id))
+      .where(
+        and(
+          eq(assignments.subjectId, pair.subjectId),
+          eq(assignmentTargets.sectionId, pair.sectionId),
+          inArray(assignments.status, ["published", "closed"]),
+        ),
+      )
+      .orderBy(desc(assignments.dueAt))
+      .limit(60);
+    const ids = idRows.map((r) => r.id);
+
+    const now = new Date();
+    const monthAgo = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
+    const [homework, subject, size, rows] = await Promise.all([
+      this.summaries(ids),
+      db.select({ name: subjects.name }).from(subjects).where(eq(subjects.id, pair.subjectId)),
+      db
+        .select({ n: count() })
+        .from(studentEnrollments)
+        .where(
+          and(
+            eq(studentEnrollments.sectionId, pair.sectionId),
+            inArray(studentEnrollments.enrollmentStatus, [...ACTIVE_ENROLLMENT]),
+          ),
+        ),
+      ids.length
+        ? db
+            .select({
+              sa: studentAssignments,
+              comesBack: assignments.comesBack,
+              studentId: students.id,
+              firstName: students.firstName,
+              middleName: students.middleName,
+              lastName: students.lastName,
+              rollNumber: studentEnrollments.rollNumber,
+            })
+            .from(studentAssignments)
+            .innerJoin(assignments, eq(studentAssignments.assignmentId, assignments.id))
+            .innerJoin(studentEnrollments, eq(studentAssignments.studentEnrollmentId, studentEnrollments.id))
+            .innerJoin(students, eq(studentEnrollments.studentId, students.id))
+            .where(
+              and(
+                inArray(studentAssignments.assignmentId, ids),
+                eq(studentAssignments.sectionId, pair.sectionId),
+                gte(studentAssignments.effectiveDueAt, monthAgo),
+                lte(studentAssignments.effectiveDueAt, now),
+              ),
+            )
+        : Promise.resolve([]),
+    ]);
+
+    // On time: work that comes back, due in the last 30 days, done (or sent / ticked) without being late.
+    const counted = rows.filter((r) => r.comesBack !== "none");
+    const onTime = counted.filter(
+      (r) =>
+        !r.sa.isLate &&
+        (r.sa.checkStatus === "done" || (r.sa.status === "submitted" && r.sa.checkStatus === null)),
+    ).length;
+
+    const owe = new Map<string, { studentId: string; name: string; rollNumber: string | null; notDone: number; incomplete: number; missing: number }>();
+    for (const r of rows) {
+      if (r.sa.effectiveDueAt < weekAgo) continue;
+      const kind =
+        r.sa.checkStatus === "not_done"
+          ? "notDone"
+          : r.sa.checkStatus === "incomplete"
+            ? "incomplete"
+            : r.sa.status === "missing"
+              ? "missing"
+              : null;
+      if (!kind) continue;
+      const entry = owe.get(r.studentId) ?? {
+        studentId: r.studentId,
+        name: fullName(r),
+        rollNumber: r.rollNumber,
+        notDone: 0,
+        incomplete: 0,
+        missing: 0,
+      };
+      entry[kind] += 1;
+      owe.set(r.studentId, entry);
+    }
+
+    const mine = homework.map((h) => ({ ...h, sections: h.sections.filter((s) => s.sectionId === pair.sectionId) }));
+    return {
+      sectionId: pair.sectionId,
+      subjectId: pair.subjectId,
+      sectionName: sec.sectionName,
+      className: sec.className,
+      subjectName: subject[0]?.name ?? "",
+      studentCount: size[0]?.n ?? 0,
+      onTimePct: counted.length ? Math.round((onTime / counted.length) * 100) : null,
+      toCheck: mine.reduce((n, h) => n + (h.sections[0]?.toCheck ?? 0), 0),
+      homework: mine,
+      owe: [...owe.values()]
+        .sort((x, y) => y.notDone + y.incomplete + y.missing - (x.notDone + x.incomplete + x.missing))
+        .slice(0, 20),
     };
   }
 

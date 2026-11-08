@@ -501,6 +501,47 @@ describe("homework (ADR-064)", () => {
     expect(await homeworkService.listComments(scopeA1, w.users.adminA, hw.id, sa.id)).toHaveLength(0);
   });
 
+  // ── Home v3 ─────────────────────────────────────────────────────────────
+
+  it("Home's week holds homework due this week; the class view counts who owes work", async () => {
+    const hw = await giveHomework({ title: title("class view") });
+    const access = { userId: w.users.adminA, scopes: [scopeA1], pairs: null };
+    const home = await homeworkService.home(access);
+    expect(home.weekStart).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const due = new Date(hw.dueAt);
+    const from = new Date(`${home.weekStart}T00:00:00+05:30`);
+    if (due >= from && due.getTime() < from.getTime() + 7 * 86_400_000) {
+      expect(home.week.some((h) => h.id === hw.id)).toBe(true);
+    }
+
+    // Mark the owned child Not done on work due an hour ago.
+    const past = new Date(Date.now() - 3600_000);
+    await db.update(assignments).set({ dueAt: past, closeAt: past }).where(eq(assignments.id, hw.id));
+    await db
+      .update(studentAssignments)
+      .set({ effectiveDueAt: past, effectiveCloseAt: past })
+      .where(eq(studentAssignments.assignmentId, hw.id));
+    const sa = await ownedSaOf(hw.id);
+    await homeworkService.saveRegister(scopeA1, w.users.adminA, {
+      id: hw.id,
+      ...pair6a,
+      results: [{ studentAssignmentId: sa.id, checkStatus: "not_done" }],
+    });
+    const view = await homeworkService.classView(access, pair6a);
+    expect(view.homework.some((h) => h.id === hw.id)).toBe(true);
+    expect(view.homework.every((h) => h.sections.every((s) => s.sectionId === w.section6aId))).toBe(true);
+    expect(view.owe.find((o) => o.studentId === w.ownedStudentId)?.notDone).toBeGreaterThan(0);
+    expect(view.onTimePct === null || (view.onTimePct >= 0 && view.onTimePct <= 100)).toBe(true);
+
+    // A subject teacher can't open a pair that isn't theirs.
+    await expect(
+      homeworkService.classView(
+        { userId: w.users.subjectS6A, scopes: [scopeA1], pairs: [pair6a] },
+        { sectionId: w.section6bId, subjectId: w.subjectA1MathId },
+      ),
+    ).rejects.toThrow(/could not be found/);
+  });
+
   // ── The worker ──────────────────────────────────────────────────────────
 
   it("the worker gives scheduled homework and marks unsent work missing, never brought work", async () => {

@@ -266,8 +266,37 @@ export const homeworkHomeSchema = z.object({
   outNow: z.array(homeworkSummarySchema),
   givenToday: z.array(homeworkSummarySchema),
   drafts: z.array(homeworkSummarySchema),
+  /** Monday of the school week shown (IST, YYYY-MM-DD). */
+  weekStart: z.string(),
+  /** Everything given that falls due this week, earliest first. */
+  week: z.array(homeworkSummarySchema),
 });
 export type HomeworkHome = z.infer<typeof homeworkHomeSchema>;
+
+/** One class and subject: how it is doing, its homework, who owes work. */
+export const classViewSchema = z.object({
+  sectionId: z.uuid(),
+  subjectId: z.uuid(),
+  sectionName: z.string(),
+  className: z.string(),
+  subjectName: z.string(),
+  studentCount: z.number().int(),
+  /** Work that comes back, due in the last 30 days, done on time; null with nothing due yet. */
+  onTimePct: z.number().int().nullable(),
+  toCheck: z.number().int(),
+  homework: z.array(homeworkSummarySchema),
+  owe: z.array(
+    z.object({
+      studentId: z.uuid(),
+      name: z.string(),
+      rollNumber: z.string().nullable(),
+      notDone: z.number().int(),
+      incomplete: z.number().int(),
+      missing: z.number().int(),
+    }),
+  ),
+});
+export type ClassView = z.infer<typeof classViewSchema>;
 
 /** Give step 2: the caller's classes, grouped by subject. */
 export const givePairsSchema = z.array(

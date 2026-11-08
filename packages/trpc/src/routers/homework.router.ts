@@ -5,6 +5,7 @@ import {
   attemptStaffSchema,
   bankItemDetailSchema,
   bankItemSelectSchema,
+  classViewSchema,
   createBankItemInput,
   createHomeworkInput,
   giveAgainInput,
@@ -148,6 +149,15 @@ export const homeworkRouter = router({
     .output(giveDefaultsSchema)
     .query(async ({ ctx, input }) =>
       homeworkService.giveDefaults(await accessFor(ctx), input.subjectId, input.kind),
+    ),
+
+  /** One class and subject (Home v3's class page). */
+  classView: staffListProcedure("homework:read")
+    .meta({ openapi: { method: "GET", path: "/homework/class", tags: ["homework"], summary: "One class and subject at a glance", protect: true } })
+    .input(z.object({ forSectionId: z.uuid(), subjectId: z.uuid() }))
+    .output(classViewSchema)
+    .query(async ({ ctx, input }) =>
+      homeworkService.classView(await accessFor(ctx), { sectionId: input.forSectionId, subjectId: input.subjectId }),
     ),
 
   byId: staffProcedure("homework:read", { resolveOwner: resolveAssignmentOwner, gate: "overlap" })
