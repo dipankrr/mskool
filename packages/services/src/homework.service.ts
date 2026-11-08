@@ -1035,6 +1035,7 @@ export class HomeworkService {
       mine?: boolean;
       before?: Date;
       dueFrom?: Date;
+      dueTo?: Date;
       limit: number;
     },
   ): Promise<string[]> {
@@ -1048,6 +1049,7 @@ export class HomeworkService {
     if (filters.mine) conds.push(eq(assignments.createdBy, access.userId));
     if (filters.before) conds.push(lt(assignments.createdAt, filters.before));
     if (filters.dueFrom) conds.push(gte(assignments.dueAt, filters.dueFrom));
+    if (filters.dueTo) conds.push(lt(assignments.dueAt, filters.dueTo));
     if (filters.search) {
       const term = `%${filters.search.replace(/[%_\\]/g, "\\$&")}%`;
       conds.push(or(ilike(assignments.title, term), ilike(assignments.topic, term))!);
@@ -1165,6 +1167,24 @@ export class HomeworkService {
         .filter((s) => s.dueAt >= weekFrom && s.dueAt < weekTo)
         .sort((x, y) => x.dueAt.getTime() - y.dueAt.getTime()),
     };
+  }
+
+  /**
+   * Home's day strip for any school week: everything given (or closed) that
+   * falls due in the seven days from `fromIso` (a Monday, IST).
+   */
+  async week(access: HomeworkAccess, fromIso: string) {
+    const from = new Date(`${fromIso}T00:00:00+05:30`);
+    if (Number.isNaN(from.getTime())) throw refuse("BAD_REQUEST", "That week isn't valid.");
+    const to = new Date(from.getTime() + 7 * 24 * 3600 * 1000);
+    const ids = await this.visibleIds(access, {
+      statuses: ["published", "closed"],
+      dueFrom: from,
+      dueTo: to,
+      limit: 300,
+    });
+    const all = await this.summaries(ids);
+    return all.sort((x, y) => x.dueAt.getTime() - y.dueAt.getTime());
   }
 
   /**

@@ -151,6 +151,13 @@ export const homeworkRouter = router({
       homeworkService.giveDefaults(await accessFor(ctx), input.subjectId, input.kind),
     ),
 
+  /** Home's day strip for another week (Monday, YYYY-MM-DD). */
+  week: staffListProcedure("homework:read")
+    .meta({ openapi: { method: "GET", path: "/homework/week", tags: ["homework"], summary: "Homework due in one school week", protect: true } })
+    .input(z.object({ from: z.iso.date() }))
+    .output(z.array(homeworkSummarySchema))
+    .query(async ({ ctx, input }) => homeworkService.week(await accessFor(ctx), input.from)),
+
   /** One class and subject (Home v3's class page). */
   classView: staffListProcedure("homework:read")
     .meta({ openapi: { method: "GET", path: "/homework/class", tags: ["homework"], summary: "One class and subject at a glance", protect: true } })

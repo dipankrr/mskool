@@ -508,6 +508,9 @@ describe("homework (ADR-064)", () => {
     const access = { userId: w.users.adminA, scopes: [scopeA1], pairs: null };
     const home = await homeworkService.home(access);
     expect(home.weekStart).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // Any week reads the same way; this week matches Home's own.
+    const sameWeek = await homeworkService.week(access, home.weekStart);
+    expect(sameWeek.map((h) => h.id).sort()).toEqual(home.week.map((h) => h.id).sort());
     const due = new Date(hw.dueAt);
     const from = new Date(`${home.weekStart}T00:00:00+05:30`);
     if (due >= from && due.getTime() < from.getTime() + 7 * 86_400_000) {
