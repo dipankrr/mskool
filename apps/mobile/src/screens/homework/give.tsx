@@ -112,7 +112,7 @@ export function GiveScreen() {
       setFinished(true);
       void utils.homework.home.invalidate();
       void utils.homework.list.invalidate();
-      showGivenToast({ id: hw.id, labels, draft: !vars.give });
+      showGivenToast({ id: hw.id, labels, draft: !vars.give, sectionId: vars.sectionId, subjectId: vars.subjectId });
       router.dismissTo("/homework" as never);
     },
   });

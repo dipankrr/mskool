@@ -184,6 +184,8 @@ export function HomeworkScreen() {
               homeworkId={toast.id}
               labels={toast.labels}
               draft={toast.draft}
+              sectionId={toast.sectionId}
+              subjectId={toast.subjectId}
               onDone={() => showGivenToast(null)}
             />
           ) : null}

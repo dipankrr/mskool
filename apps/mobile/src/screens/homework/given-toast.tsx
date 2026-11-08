@@ -22,21 +22,21 @@ export function GivenToast({
   homeworkId,
   labels,
   draft,
+  sectionId,
+  subjectId,
   onDone,
 }: {
   homeworkId: string;
   labels: string;
   draft: boolean;
+  sectionId: string;
+  subjectId: string;
   onDone: () => void;
 }) {
   const { organizationId } = useActiveContext();
   const utils = trpc.useUtils();
   const [message, setMessage] = useState(draft ? text.saved : text.given(labels));
   const [error, setError] = useState<string | null>(null);
-  const detail = trpc.homework.byId.useQuery(
-    { organizationId: organizationId ?? "", id: homeworkId },
-    { enabled: Boolean(organizationId) && !draft },
-  );
   const undo = trpc.homework.undoGive.useMutation({
     onSuccess: () => {
       setMessage(text.undone);
@@ -55,8 +55,7 @@ export function GivenToast({
     return () => clearTimeout(timer);
   }, [onDone, undo.isPending, message, error]);
 
-  const hw = detail.data;
-  const canUndo = !draft && !undo.isSuccess && hw && hw.status === "published";
+  const canUndo = !draft && !undo.isSuccess;
 
   return (
     <View style={styles.toast} accessibilityLiveRegion="polite" testID="homework-toast">
@@ -70,8 +69,8 @@ export function GivenToast({
             undo.mutate({
               organizationId: organizationId ?? "",
               id: homeworkId,
-              sectionId: hw.sections[0]!.sectionId,
-              subjectId: hw.subjectId,
+              sectionId,
+              subjectId,
             })
           }
           disabled={undo.isPending}
