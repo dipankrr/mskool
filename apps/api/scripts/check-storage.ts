@@ -111,8 +111,10 @@ async function main() {
       expiresInSeconds: 12 * 60 * 60,
     });
     const res = await fetch(url);
-    expect(res.ok, `HTTP ${res.status}: ${await res.text()}`);
-    expect(Buffer.from(await res.arrayBuffer()).equals(body), "bytes differ");
+    // Read the body once: it is the error text or the file.
+    const got = Buffer.from(await res.arrayBuffer());
+    expect(res.ok, `HTTP ${res.status}: ${got.toString()}`);
+    expect(got.equals(body), "bytes differ");
   });
   await step("presigned GET past its expiry is refused", async () => {
     const url = await store.presignGet("private", uploadKey, {
@@ -132,6 +134,19 @@ async function main() {
     const res = await fetch(`${signed.origin}${signed.pathname}`);
     expect(!res.ok, `HTTP ${res.status}: served without a signature`);
   });
+
+  // Public files are read with no signature at PUBLIC_FILES_BASE_URL.
+  await step(
+    "the public bucket serves files at PUBLIC_FILES_BASE_URL with no signature",
+    async () => {
+      const base = process.env.PUBLIC_FILES_BASE_URL?.replace(/\/+$/, "");
+      expect(base, "PUBLIC_FILES_BASE_URL is not set");
+      const res = await fetch(`${base}/${run}/public.txt`);
+      const got = Buffer.from(await res.arrayBuffer());
+      expect(res.ok, `HTTP ${res.status}: ${got.toString()}`);
+      expect(got.equals(body), "bytes differ");
+    },
+  );
 
   // Batch delete, including a key that does not exist.
   await step("delete in one batch, a missing key included", async () => {
