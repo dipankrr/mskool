@@ -9,6 +9,7 @@ import {
   nextSchoolDay,
   nextStatus,
   sectionLabel,
+  timeLeft,
   weeksAhead,
   type RegisterRow,
 } from "./homework";
@@ -44,6 +45,17 @@ describe("school days", () => {
   it("moves a week ahead off a Sunday", () => {
     expect(weeksAhead("2026-11-01", 1)).toBe("2026-11-09");
     expect(weeksAhead("2026-11-04", 2)).toBe("2026-11-18");
+  });
+});
+
+describe("time left", () => {
+  const now = new Date("2026-11-09T10:00:00Z");
+  const at = (ms: number) => new Date(now.getTime() + ms);
+  it("counts down in minutes, hours, then days", () => {
+    expect(timeLeft(at(40 * 60_000), now)).toEqual({ label: "⏰ 40m left", tone: "critical" });
+    expect(timeLeft(at(23 * 3600_000 + 59 * 60_000), now)).toEqual({ label: "⏰ 23h left", tone: "caution" });
+    expect(timeLeft(at(50 * 3600_000), now)).toEqual({ label: "⏰ 2d left", tone: "neutral" });
+    expect(timeLeft(at(-3 * 3600_000), now)).toEqual({ label: "Overdue 3h", tone: "critical" });
   });
 });
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -16,7 +16,8 @@ import { useActiveContext } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
 import { copy } from "../../lib/copy";
 import { localDateToIso } from "../../lib/format";
-import { dueLine, sectionLabel, shortDay, type HomeworkSummary } from "../../lib/homework";
+import { dueLine, sectionLabel, shortDay, timeLeft, type HomeworkSummary } from "../../lib/homework";
+import { KIND_COLOR, KindTile } from "./ui";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { gutter, radius, spacing } from "../../theme/tokens";
@@ -26,14 +27,6 @@ import { showGivenToast, useGivenToast } from "./toast-store";
 const text = copy.homework.home3;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** Each type's colour on the day strip and the day list (a type, never a state). */
-export const KIND_COLOR: Record<HomeworkSummary["kind"], string> = {
-  homework: colors.accent,
-  practice: colors.tone.neutral.fg,
-  project: colors.tone.caution.fg,
-  reading: "#2E90FA",
-  quiz: colors.tone.critical.fg,
-};
 
 type Job = { key: string; badge: string; warm: boolean; title: string; meta: string; action: string; go: () => void };
 
@@ -64,24 +57,37 @@ export function HomeworkScreen() {
   const data = home.data;
 
   const today = localDateToIso(new Date());
+  // The strip pages by week: 0 is this week (from Home's own read), others load on demand.
+  const [weekOffset, setWeekOffset] = useState(0);
+  const shownWeek = data ? addDays(data.weekStart, weekOffset * 7) : null;
+  const otherWeek = trpc.homework.week.useQuery(
+    { ...scope, from: shownWeek ?? "2000-01-03" },
+    { enabled: Boolean(organizationId && shownWeek && weekOffset !== 0), staleTime: 60_000 },
+  );
+  const weekItems = weekOffset === 0 ? data?.week : otherWeek.data;
   const weekDays = useMemo(
-    () => (data ? Array.from({ length: 6 }, (_, i) => addDays(data.weekStart, i)) : []),
-    [data],
+    () => (shownWeek ? Array.from({ length: 6 }, (_, i) => addDays(shownWeek, i)) : []),
+    [shownWeek],
   );
   const [picked, setPicked] = useState<string | null>(null);
+  const swipeFrom = useRef<number | null>(null);
+  const moveWeek = (by: number) => {
+    setWeekOffset((w) => w + by);
+    setPicked(null);
+  };
   const [showDrafts, setShowDrafts] = useState(false);
   // "Out" means due after the moment the screen opened (the tab remounts often enough).
   const [openedAt] = useState(() => Date.now());
-  const day = picked ?? (weekDays.includes(today) ? today : (weekDays[0] ?? today));
+  const day = picked && weekDays.includes(picked) ? picked : weekDays.includes(today) ? today : (weekDays[0] ?? today);
 
   const byDay = useMemo(() => {
     const m = new Map<string, HomeworkSummary[]>();
-    for (const hw of data?.week ?? []) {
+    for (const hw of weekItems ?? []) {
       const k = localDateToIso(new Date(hw.dueAt));
       m.set(k, [...(m.get(k) ?? []), hw]);
     }
     return m;
-  }, [data]);
+  }, [weekItems]);
 
   const jobs: Job[] = useMemo(() => {
     if (!data) return [];
@@ -172,7 +178,7 @@ export function HomeworkScreen() {
     weekDays.length === 6
       ? text.weekRange(
           `${MONTHS[Number(weekDays[0]!.slice(5, 7)) - 1]} ${Number(weekDays[0]!.slice(8, 10))}`,
-          `${Number(weekDays[5]!.slice(8, 10))}`,
+          `${MONTHS[Number(weekDays[5]!.slice(5, 7)) - 1]} ${Number(weekDays[5]!.slice(8, 10))}`,
         )
       : "";
 
@@ -288,10 +294,39 @@ export function HomeworkScreen() {
             )}
 
             <View style={styles.sectionHead}>
-              <SectionLabel>{text.thisWeek}</SectionLabel>
-              <ThemedText variant="meta">{weekLabel}</ThemedText>
+              <SectionLabel>{weekOffset === 0 ? text.thisWeek : weekOffset === 1 ? text.nextWeek : weekOffset === -1 ? text.lastWeek : weekLabel}</SectionLabel>
+              <View style={styles.weekNav}>
+                {weekOffset !== 0 ? (
+                  <Pressable accessibilityRole="button" onPress={() => moveWeek(-weekOffset)} hitSlop={8} style={styles.todayChip} testID="homework-week-today">
+                    <ThemedText variant="chip" color={colors.accentDeep}>
+                      {text.today}
+                    </ThemedText>
+                  </Pressable>
+                ) : null}
+                <Pressable accessibilityRole="button" accessibilityLabel={text.prevWeek} onPress={() => moveWeek(-1)} hitSlop={8} style={styles.weekArrow} testID="homework-week-prev">
+                  <AppIcon name="chevronLeft" size={18} color={colors.ink} />
+                </Pressable>
+                <ThemedText variant="meta" style={styles.weekLabel}>
+                  {weekLabel}
+                </ThemedText>
+                <Pressable accessibilityRole="button" accessibilityLabel={text.nextWeekA11y} onPress={() => moveWeek(1)} hitSlop={8} style={styles.weekArrow} testID="homework-week-next">
+                  <AppIcon name="chevronRight" size={18} color={colors.ink} />
+                </Pressable>
+              </View>
             </View>
-            <View style={styles.week}>
+            <View
+              style={styles.week}
+              onTouchStart={(e) => {
+                swipeFrom.current = e.nativeEvent.pageX;
+              }}
+              onTouchEnd={(e) => {
+                const from = swipeFrom.current;
+                swipeFrom.current = null;
+                if (from === null) return;
+                const dx = e.nativeEvent.pageX - from;
+                if (Math.abs(dx) > 60) moveWeek(dx < 0 ? 1 : -1);
+              }}
+            >
               {weekDays.map((d) => {
                 const on = d === day;
                 const items = byDay.get(d) ?? [];
@@ -321,7 +356,9 @@ export function HomeworkScreen() {
               })}
             </View>
             <View style={styles.list}>
-              {dayList.length === 0 ? (
+              {weekOffset !== 0 && otherWeek.isPending ? (
+                <Skeleton height={56} />
+              ) : dayList.length === 0 ? (
                 <ThemedText variant="meta" style={styles.empty}>
                   {text.nothingThisDay}
                 </ThemedText>
@@ -427,18 +464,30 @@ export function HomeworkScreen() {
   );
 }
 
-/** One homework in one line: a type colour, title, classes, and its progress number. */
+/**
+ * One homework in one row: its type tile, the title, the classes and subject,
+ * and on the right a countdown ("⏰ 23h left") or, once due, what waits, over
+ * how much came back.
+ */
 export function DayRow({ hw, first, hideClasses }: { hw: HomeworkSummary; first: boolean; hideClasses?: boolean }) {
   const total = hw.sections.reduce((n, s) => n + s.total, 0);
   const back = hw.sections.reduce((n, s) => n + s.submitted + s.checked + s.redo, 0);
-  const meta = [
-    hideClasses ? null : hw.sections.map((s) => sectionLabel(s.className, s.sectionName)).join(", "),
-    hideClasses ? dueLine(hw.dueAt) : hw.subjectName,
-    copy.homework.comesBackShort[hw.comesBack],
-  ]
+  const waiting = hw.sections.reduce((n, s) => n + s.toCheck, 0);
+  const meta = [hideClasses ? null : hw.sections.map((s) => sectionLabel(s.className, s.sectionName)).join(", "), hw.subjectName]
     .filter(Boolean)
     .join(" · ");
-  const showCount = hw.comesBack !== "none" && total > 0 && hw.status !== "draft" && hw.status !== "scheduled";
+  const isDraft = hw.status === "draft" || hw.status === "scheduled";
+  const due = new Date(hw.dueAt);
+  const past = due.getTime() <= new Date().getTime();
+  const left = timeLeft(due);
+  const pill: { label: string; tone: "critical" | "caution" | "neutral" | "positive" } = isDraft
+    ? { label: copy.homework.all.statusDraft, tone: "neutral" }
+    : !past
+      ? left
+      : waiting > 0
+        ? { label: copy.homework.home3.classToCheck(waiting), tone: "caution" }
+        : { label: copy.homework.home3.done, tone: "positive" };
+  const counts = hw.comesBack !== "none" && total > 0 && !isDraft;
   return (
     <Pressable
       accessibilityRole="button"
@@ -446,22 +495,27 @@ export function DayRow({ hw, first, hideClasses }: { hw: HomeworkSummary; first:
       style={({ pressed }) => [styles.dayRow, first ? null : styles.divider, pressed ? styles.pressed : null]}
       testID={`homework-row-${hw.id}`}
     >
-      <View style={[styles.kindBar, { backgroundColor: KIND_COLOR[hw.kind] }]} />
+      <KindTile kind={hw.kind} />
       <View style={styles.grow}>
         <ThemedText variant="bodyStrong" numberOfLines={1}>
           {hw.book ? `${hw.book} · ${hw.title}` : hw.title}
         </ThemedText>
-        <ThemedText variant="caption" numberOfLines={1}>
+        <ThemedText variant="meta" numberOfLines={1}>
           {meta}
         </ThemedText>
       </View>
-      {showCount ? (
-        <ThemedText variant="bodyStrong" color={back === total ? colors.accentDeep : colors.muted}>
-          {`${back}/${total}`}
-        </ThemedText>
-      ) : (
-        <AppIcon name="chevronRight" size={16} color={colors.chevron} />
-      )}
+      <View style={styles.rowRight}>
+        <View style={[styles.pill, { backgroundColor: colors.tone[pill.tone].bg }]}>
+          <ThemedText variant="chip" color={colors.tone[pill.tone].fg} numberOfLines={1}>
+            {pill.label}
+          </ThemedText>
+        </View>
+        {counts ? (
+          <ThemedText variant="caption" color={colors.muted}>
+            {copy.homework.home3.backOf(back, total)}
+          </ThemedText>
+        ) : null}
+      </View>
     </Pressable>
   );
 }
@@ -540,7 +594,7 @@ const styles = StyleSheet.create({
   },
   sectionHead: {
     flexDirection: "row",
-    alignItems: "baseline",
+    alignItems: "center",
     justifyContent: "space-between",
     marginTop: spacing.xl,
     marginBottom: spacing.sm,
@@ -571,7 +625,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.hairline },
-  kindBar: { width: 6, height: 32, borderRadius: 3 },
+  rowRight: { alignItems: "flex-end", gap: 2 },
+  pill: { height: 26, paddingHorizontal: spacing.sm, borderRadius: radius.full, justifyContent: "center" },
+  weekNav: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  weekArrow: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
+  weekLabel: { minWidth: 96, textAlign: "center" },
+  todayChip: { height: 28, paddingHorizontal: spacing.sm, borderRadius: radius.full, justifyContent: "center", backgroundColor: colors.accentTint },
   label: { marginTop: spacing.xl, marginBottom: spacing.sm },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   classCard: {

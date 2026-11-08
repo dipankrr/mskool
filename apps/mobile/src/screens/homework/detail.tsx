@@ -18,7 +18,7 @@ import { useActiveContext } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
 import { copy } from "../../lib/copy";
 import { toFriendlyError } from "../../lib/errors";
-import { dueLine, formatDue, sectionLabel } from "../../lib/homework";
+import { formatDue, sectionLabel, timeLeft } from "../../lib/homework";
 import { trpc } from "../../lib/trpc";
 import { colors, type Tone } from "../../theme/brand-admin";
 import { radius, spacing } from "../../theme/tokens";
@@ -139,8 +139,8 @@ export function HomeworkDetailScreen() {
                 {hw.title}
               </ThemedText>
             ) : null}
-            <ThemedText variant="bodyStrong" color={colors.accentDeep}>
-              {dueLine(hw.dueAt)}
+            <ThemedText variant="bodyStrong" color={colors.tone[timeLeft(hw.dueAt).tone].fg}>
+              {timeLeft(hw.dueAt).label}
             </ThemedText>
             <ThemedText variant="meta">{formatDue(hw.dueAt)}</ThemedText>
           </View>

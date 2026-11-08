@@ -26,12 +26,21 @@ export const KIND_ICONS: Record<Kind, AppIconName> = {
   quiz: "quiz",
 };
 
-/** Each type keeps the one accent but its own icon; size `lg` heads a detail screen. */
+/** Each type's colour (a type, never a state): tiles, the day strip's dots. */
+export const KIND_COLOR: Record<Kind, string> = {
+  homework: colors.accent,
+  practice: colors.tone.neutral.fg,
+  project: colors.tone.caution.fg,
+  reading: "#2E90FA",
+  quiz: colors.tone.critical.fg,
+};
+
+/** A type's icon on a soft wash of its colour; size `lg` heads a detail screen. */
 export function KindTile({ kind, size = "md" }: { kind: Kind; size?: "md" | "lg" }) {
   const big = size === "lg";
   return (
-    <View style={[styles.kindTile, big ? styles.kindTileLg : null]}>
-      <AppIcon name={KIND_ICONS[kind]} size={big ? 26 : 20} color={colors.accentDeep} />
+    <View style={[styles.kindTile, big ? styles.kindTileLg : null, { backgroundColor: `${KIND_COLOR[kind]}1F` }]}>
+      <AppIcon name={KIND_ICONS[kind]} size={big ? 26 : 20} color={KIND_COLOR[kind]} />
     </View>
   );
 }

@@ -149,6 +149,32 @@ export function dueLine(value: Date | string, now = new Date()): string {
   return d < now ? copy.homework.due.past(label) : copy.homework.due.on(label);
 }
 
+/** How long is left: under an hour in minutes, under a day in hours, else days. */
+function span(ms: number): string {
+  const minutes = Math.max(1, Math.round(ms / 60_000));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+/**
+ * "⏰ 40m left", "23h left", "2d left", or "Overdue 3h": the countdown the
+ * lists show instead of a date. The tone warns as the time runs out.
+ */
+export function timeLeft(
+  value: Date | string,
+  now = new Date(),
+): { label: string; tone: "critical" | "caution" | "neutral" } {
+  const due = typeof value === "string" ? new Date(value) : value;
+  const ms = due.getTime() - now.getTime();
+  if (ms <= 0) return { label: copy.homework.due.overdue(span(-ms)), tone: "critical" };
+  const label = copy.homework.due.left(span(ms));
+  if (ms < 3600_000) return { label, tone: "critical" };
+  if (ms < 24 * 3600_000) return { label, tone: "caution" };
+  return { label, tone: "neutral" };
+}
+
 // ── Classes ───────────────────────────────────────────────────────────────
 
 /** `6A` for Class 6, section A; `6 · Rose` when the section is a word. */
