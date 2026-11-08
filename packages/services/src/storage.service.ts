@@ -84,6 +84,8 @@ const imageColumns = {
 
 // Processed bytes for server-side readers (fee PDFs embed the logo and QR).
 // Files never change, so entries never go stale; the cap bounds memory.
+// Keyed by organisation AND object, so a cached file is never handed to
+// another organisation asking for the same id.
 const BYTES_CACHE_LIMIT = 64;
 const bytesCache = new Map<string, { contentType: string; data: Buffer }>();
 
@@ -556,7 +558,8 @@ export class StorageService {
     organizationId: string,
     objectId: string,
   ): Promise<{ contentType: string; data: Buffer } | null> {
-    const cached = bytesCache.get(objectId);
+    const cacheKey = `${organizationId}:${objectId}`;
+    const cached = bytesCache.get(cacheKey);
     if (cached) return cached;
 
     const [row] = await db
@@ -583,7 +586,7 @@ export class StorageService {
       const oldest = bytesCache.keys().next().value;
       if (oldest) bytesCache.delete(oldest);
     }
-    bytesCache.set(objectId, entry);
+    bytesCache.set(cacheKey, entry);
     return entry;
   }
 

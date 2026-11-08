@@ -296,9 +296,15 @@ function isUuid(value: string | undefined): value is string {
   );
 }
 
+/**
+ * A delete a foreign key refused: 23001 from an `onDelete: restrict` key
+ * (student photos, fee settings), 23503 from a default "no action" key (the
+ * homework tables).
+ */
 function isForeignKeyViolation(error: unknown): boolean {
   for (let e: unknown = error; e; e = (e as { cause?: unknown }).cause) {
-    if ((e as { code?: string }).code === "23503") return true;
+    const code = (e as { code?: string }).code;
+    if (code === "23001" || code === "23503") return true;
   }
   return false;
 }
