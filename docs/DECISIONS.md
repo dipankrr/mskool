@@ -1617,7 +1617,7 @@ school picker were deleted in the same cutover; no coexistence remains.
 
 ## ADR-038 — Object storage behind a driver seam; URLs are stable app routes
 
-**Status:** accepted (2026-09-29). First consumers: student photos and ID-card
+**Status:** superseded by ADR-063 (2026-11-08); accepted 2026-09-29. First consumers: student photos and ID-card
 backgrounds/logos (slice 2a).
 
 **Context.** ID cards need full-card background images, school logos, and a
@@ -1868,7 +1868,7 @@ user-interfaces beyond token fields, and a canvas/free-layout block.
 
 ## ADR-042 — Object visibility: a public read path inside the ADR-038 store
 
-Date: 2026-10-05. Status: accepted. Amends ADR-038 (adds a public read path);
+Date: 2026-10-05. Status: superseded by ADR-063 (2026-11-08). Amends ADR-038 (adds a public read path);
 supersedes ADR-041 §6 (public-site media no longer static files).
 
 **Context.** ADR-041 shipped landing-page media as static files under
@@ -2927,3 +2927,169 @@ families stay on published cards only and are rethought separately.
 **Rejected.** Returning staff schemas with fields stripped in the router: one forgotten field leaks.
 FORBIDDEN for another family's child: confirms the id exists. First name plus initial in the top
 list: the owner chose full names.
+
+## ADR-063 - Object storage: S3-compatible buckets, direct uploads, links issued with the data
+
+**Status:** accepted (2026-11-08, owner design review). Supersedes ADR-038 and ADR-042.
+
+**Context.** Object bytes live in Postgres (`storage_objects.data`, `bytea`) and every image is
+served through the API at `/api/storage/:id`. Uploads are base64 inside tRPC mutations, capped at
+512 KB. The serving route lets in any user with an active staff role anywhere in the object's
+organisation, so families (who have no role assignments) can read nothing and staff can read other
+branches' files. Homework tables accept any object id from the same organisation. Two kinds of
+reference are invisible to the database: ID-card templates keep asset ids inside canvas JSON, and
+public site content stores `/api/public/storage/{id}` URLs. Homework photos and the family app are
+about to make images the heaviest data in the system. We are in development: existing objects are
+discarded, not migrated.
+
+**Decision.**
+
+1. **Bytes live in S3-compatible object storage; Postgres holds metadata only.** R2 first. Moving to
+   S3 or Backblaze B2 must stay a config change plus a byte copy (rclone). No Postgres driver and no
+   local emulator: local development and integration tests use a dev bucket.
+
+2. **Portability rules.** One `ObjectStore` interface (`putObject`, `getObject`, `headObject`,
+   `deleteObjects`, `copyObject`, `presignPut`, `presignGet`) with one implementation on
+   `@aws-sdk/client-s3`; no per-provider classes. Provider differences live only in env: endpoint,
+   region, credentials, bucket names, `forcePathStyle`, `PUBLIC_FILES_BASE_URL`. Only what all three
+   support: presigned PUT and GET (no POST policies), no ACLs, tagging or versioning. Bucket
+   lifecycle rules are a backup, never the only cleanup. SDK checksums are `WHEN_REQUIRED`
+   (default CRC32 checksums break R2 and B2). Limits are enforced by our server, never trusted to
+   the provider. A check script runs every operation against the configured buckets; it runs before
+   any provider switch.
+
+3. **Buckets: one private and one public per environment** (`mskool-{env}-private`,
+   `mskool-{env}-public`). Every provider makes a whole bucket public, never a folder, so the bucket
+   is the visibility. Each file lives in exactly one bucket, chosen by its purpose. Each environment
+   has its own token, scoped to its two buckets and held only by the server. The public bucket is
+   served from a custom domain (R2's `r2.dev` is rate-limited and for testing).
+
+4. **Paths.** Raw uploads go to `tmp/{objectId}`. Processed files go to
+   `{orgId}/{purpose}/{objectId}/{variant}.{ext}`, for example
+   `…/student_photo/9c1e…/display.webp`. Paths never contain school, student, names or admission
+   numbers: those change or are personal, and paths are permanent. A path is never overwritten; a
+   replacement is a new object id. The row stores the path (a later layout change leaves old rows
+   valid). Objects are written with the detected content type and a one-year `immutable`
+   `Cache-Control` (`private` or `public` by bucket).
+
+5. **One table, three enums.** `storage_objects`: `id`, `organization_id`, `school_id` (empty for
+   organisation-level files), `purpose`, `visibility`, `status`, `parent_id` (the record the file
+   was uploaded for: student, assignment, template), `path`, `variants` (for example
+   `["display","thumb"]`), `content_type`, `size_bytes` (all variants together, so it matches the
+   bill), `width`, `height`, `uploaded_by`, `created_at`, `ready_at`, `attached_at`, `deleted_at`.
+   Enums: `storage_purpose`, `storage_object_status` (`pending`, `ready`, `deleted`), and the
+   existing `object_visibility`. Indexes on `(organization_id, purpose)` for usage and
+   `(status, created_at)` for the sweeper. No uploads table (the row is the upload) and no usage
+   table (usage is a `GROUP BY` on this table).
+
+6. **Purposes and the registry.** A purpose names a kind of file and its rules, not the table that
+   references it, so it survives domain redesigns:
+
+   | Purpose | Bucket | Versions | Encoding |
+   |---|---|---|---|
+   | `student_photo` | private | display 600×800 | WebP q80 |
+   | `staff_photo` (when its screen lands) | private | display 600×800 | WebP q80 |
+   | `id_card_asset` | private | display | lossless WebP/PNG |
+   | `fee_print_logo` | private | display | lossless WebP/PNG |
+   | `fee_upi_qr` | private | display | lossless PNG (lossy can break a QR) |
+   | `site_media` | public | display | WebP q80, lossless for graphics |
+   | `homework_teacher_file` | private | display, thumb 320 | WebP q82, lossless for diagrams |
+   | `homework_student_file` | private | display 2000 long edge, thumb 320 | WebP q82 |
+
+   The registry in `packages/services` is the only place these rules live: max bytes, accepted
+   types, bucket, versions and encoding, `canUpload(ctx, parent)`, optional retention, and
+   `detach(tx, objectIds)`. Contracts export the same names as a Zod enum. Adding a purpose is a
+   migration (`ALTER TYPE … ADD VALUE`); purposes are named so they rarely need removing.
+
+7. **References are foreign keys, never JSON.** Every column that points at a file is a foreign key
+   to `storage_objects` with `onDelete: restrict`, and indexed (Postgres does not index them, and
+   the delete check scans every referencing table). New link tables replace the hidden references:
+   `id_card_template_assets` and `public_site_media`. Site content stores object ids; the public
+   URL is built when the content is read.
+
+8. **Uploads go straight to the bucket.**
+   1. `storage.createUpload({ purpose, parent, contentType, size })` (and a batch form for bulk
+      photos) checks `canUpload`, the purpose's limits and a rate limit, caps uploads in progress
+      per organisation, inserts a `pending` row and returns a presigned PUT to `tmp/{id}` (about
+      10 minutes, content type and length signed).
+   2. The client resizes before upload at high quality (about 0.9) and uploads directly; the API
+      never sees the bytes. The web converts HEIC in the browser and refuses it if that fails.
+   3. `storage.complete(ids)` accepts only `pending` rows uploaded by the same user in the same
+      organisation. It HEADs the object and refuses an oversize file before downloading it,
+      detects the type from the bytes (JPEG, PNG, WebP only), and processes with `sharp`:
+      `.rotate()` before metadata is dropped, `limitInputPixels`, no animated images, the
+      purpose's versions and encoding. It writes the versions, deletes `tmp/{id}` and marks the
+      row `ready` with size and dimensions. Processing runs under a small concurrency limit; the
+      client uploads a few files at a time.
+   4. The domain mutation (`student.setPhoto`, a homework save) attaches with one atomic update:
+      `ready`, same purpose and organisation, same uploader, and either not attached or already
+      attached to this same `parent_id`. Re-saving a record that deletes and re-inserts its rows
+      keeps its files; linking someone else's file is refused. Replace and remove flows mark only
+      the ids that disappeared (old minus new) `deleted`, in the same transaction.
+
+9. **Reads: links come with the data.** Domain responses carry an image reference
+   `{ id, url, width, height }` (plus `thumbUrl` where a thumbnail exists). The domain read is the
+   authorisation: staff by `DataScope`, families by portal ownership (ADR-062). Clients never build
+   file URLs. Private links are presigned GETs signed at the start of the current six-hour window
+   and valid for 12 hours, so a link is identical within a window (browser cache) and has at least
+   six hours left when issued. Public links are `PUBLIC_FILES_BASE_URL` plus the path. Mobile
+   renders with `expo-image`, `cacheKey` `{id}:{variant}`, disk cache, and refetches the record when
+   an image fails. Server-side reads (fee PDFs) use `getObject` through a small in-memory cache. A
+   link already issued keeps working until it expires after access is revoked (at most 12 hours);
+   accepted.
+
+10. **One cleanup sweeper,** the third in-process sweeper on the ADR-040 pattern: tick loop, Redis
+    lease, `STORAGE_WORKER_DISABLED`, `STORAGE_WORKER_TICK_SECONDS`, `STORAGE_WORKER_BATCH`, and
+    `lastSweepAt` with a summary on `/health`. Each tick, in batches:
+    1. `pending` rows older than a day: delete the row, its `tmp/` file and any final paths for
+       that id (a crash during `complete`).
+    2. `ready` rows never attached after a day: delete files and row.
+    3. Retention, for purposes with a rule (§11).
+    4. `deleted` rows: delete the row first, each under its own savepoint, then the bytes after
+       commit. A foreign key refusal means a file in use was marked deleted: log it loudly and
+       clear the mark. R2 calls never run inside a transaction.
+    5. Weekly: list the buckets, compare with `storage_objects`, report paths no row knows about
+       (report only at first; files younger than a day are skipped).
+
+    Deletion is immediate: no grace period and no undo. Bulk mistakes are recovered by re-uploading
+    from the school's own files. Under ADR-060's idle suspension the sweeper runs whenever the
+    process is up; cleanup is not time-critical, so a delay costs only storage.
+
+11. **Retention is an optional per-purpose rule,** off everywhere for now. When set, `days` comes
+    from env (for example `HOMEWORK_STUDENT_FILE_RETENTION_DAYS`; unset means keep), counted from
+    upload or from a date the domain supplies (due date, graded date). The sweeper finds attached
+    files past their date, calls the purpose's `detach`, and deletes them normally. The record and
+    its marks stay; the file shows as expired.
+
+12. **`sharp` is a native module, so it stays out of the bundle.** Per ADR-060 it is externalised
+    in `tsup`, declared as an `apps/api` dependency and installed by the Hostinger build's
+    `pnpm install`. A real deploy must boot and process an image before the first consumer ships.
+    If Hostinger cannot run it, the fallback is client-side encoding with server validation only
+    (type from bytes, size, dimensions, no re-encode); files are served from the storage domain,
+    never the app's, so an unencoded file cannot reach the app's cookies.
+
+**Endpoint changes.** `student.uploadPhoto` becomes `student.setPhoto({ id, objectId })`;
+`removePhoto` stays. `fees.uploadImage` becomes `fees.setPrintImage({ kind, objectId })`.
+`idCard.uploadAsset` and `publicSite.uploadImage` go: uploads use `storage.createUpload`, and the
+template save or site content links the ids. Reads that returned bare object ids return image
+references. Removed: `/api/storage/:id`, `/api/public/storage/:id`, the base64 inputs, the `bytea`
+column, `sha256`, `STORAGE_DRIVER` and `apps/api/scripts/migrate-site-media.ts`.
+
+**Consequences.** The API never streams files to clients and handles each upload once, in
+`complete`. Development needs internet and dev bucket credentials; integration tests skip without
+them, and unit tests use an in-memory `ObjectStore`. Build order: the foundation, student photos
+(mobile and web), fee images, ID-card assets, public site media, then homework with its revamp.
+To verify against real buckets during the build: whether R2 enforces a signed upload length,
+past signing dates on R2 and B2, B2's `DeleteObjects`, the checksum settings and `r2.dev`'s limits.
+Out of scope: an edge Worker or CDN in front of private files (the link builder is one function, so
+adding one later is local), organisation offboarding (delete its prefix), per-organisation quotas.
+
+**Rejected.** Bytes in Postgres: backups and every image read go through the database. An API route
+that redirects to the bucket: one API call per image. A Worker now: more to deploy before it is
+needed. One bucket per organisation (provider bucket limits) or per purpose (purpose is metadata).
+Student ids in paths: replacement reuses the path and caches serve the old photo, and a mis-matched
+photo would name the wrong child. A stateless signed upload token instead of the `pending` row:
+the sweeper is needed anyway, and without the row a crash leaves files no table knows about. A
+seven-day deletion delay with an undo: schools would not ask, and they still have the originals.
+MinIO, BullMQ, multipart form uploads (`multer`), on-the-fly image transforms and AVIF (slow to
+encode, not shown by older Android phones).
