@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
@@ -58,14 +57,10 @@ export function HomeworkScreen() {
   const canGive = has("homework:create");
   const tabSpace = useTabBarSpace();
   const params = useLocalSearchParams<{ given?: string; labels?: string; draft?: string }>();
-  const [toast, setToast] = useState<{ id: string; labels: string; draft: boolean } | null>(null);
-
-  useEffect(() => {
-    if (params.given) {
-      setToast({ id: params.given, labels: params.labels ?? "", draft: params.draft === "1" });
-      router.setParams({ given: undefined, labels: undefined, draft: undefined });
-    }
-  }, [params.given, params.labels, params.draft]);
+  // Give hands back what it did through the route; the toast lives as long as the params.
+  const toast = params.given
+    ? { id: params.given, labels: params.labels ?? "", draft: params.draft === "1" }
+    : null;
 
   const home = trpc.homework.home.useQuery(
     { organizationId: organizationId ?? "", ...(schoolId ? { schoolId } : {}) },
@@ -203,7 +198,7 @@ export function HomeworkScreen() {
               homeworkId={toast.id}
               labels={toast.labels}
               draft={toast.draft}
-              onDone={() => setToast(null)}
+              onDone={() => router.setParams({ given: undefined, labels: undefined, draft: undefined })}
             />
           ) : null}
           <CapsuleButton
