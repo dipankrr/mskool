@@ -7,10 +7,8 @@ import type {
 } from "@repo/contracts";
 import { db } from "@repo/db";
 import {
-  assignmentEvaluations,
   assignmentQuestionSettings,
   assignmentQuestions,
-  assignmentRevisions,
   assignments,
   questionAttemptAnswerFiles,
   questionAttemptAnswers,
@@ -24,7 +22,9 @@ import {
   subjects,
   assignmentTargets,
 } from "@repo/db/schema";
-import { and, asc, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+
+import { refuse } from "./service-error";
 
 /**
  * HOMEWORK QUESTIONS (ADR-039 slice B) — the bank, the per-assignment
@@ -273,7 +273,16 @@ export class HomeworkQuestionsService {
     });
   }
 
-  async listBankItems(scopes: DataScope[], filters: {
+  /**
+   * A bank question is visible to its author, and to everyone in the school
+   * once shared (`visibility = school`). Private questions and their answer
+   * keys never reach another teacher (ADR-064 fix).
+   */
+  private visibleTo(viewerId: string) {
+    return or(eq(questionBankItems.visibility, "school"), eq(questionBankItems.createdBy, viewerId))!;
+  }
+
+  async listBankItems(scopes: DataScope[], viewerId: string, filters: {
     subjectId?: string;
     classId?: string;
     difficulty?: "easy" | "medium" | "hard";
@@ -285,6 +294,7 @@ export class HomeworkQuestionsService {
       .where(
         and(
           scopeWhere(scopes.map(SCHOOL_LEVEL), BANK_COLS),
+          this.visibleTo(viewerId),
           eq(questionBankItems.isActive, true),
           filters.subjectId ? eq(questionBankItems.subjectId, filters.subjectId) : undefined,
           filters.classId ? eq(questionBankItems.classId, filters.classId) : undefined,
@@ -304,12 +314,16 @@ export class HomeworkQuestionsService {
     return items.map((i) => ({ ...i, options: options.filter((o) => o.questionId === i.id) }));
   }
 
-  async getBankItem(scope: DataScope, itemId: string) {
+  async getBankItem(scope: DataScope, viewerId: string, itemId: string) {
     const [item] = await db
       .select()
       .from(questionBankItems)
       .where(
-        and(eq(questionBankItems.id, itemId), scopeWhere(SCHOOL_LEVEL(scope), BANK_COLS)),
+        and(
+          eq(questionBankItems.id, itemId),
+          scopeWhere(SCHOOL_LEVEL(scope), BANK_COLS),
+          this.visibleTo(viewerId),
+        ),
       );
     if (!item) return null;
     const options = await db
@@ -320,12 +334,26 @@ export class HomeworkQuestionsService {
     return { ...item, options };
   }
 
-  async setBankItemActive(scope: DataScope, itemId: string, isActive: boolean) {
+  /**
+   * Retire (or bring back) a bank question: its author may, and so may anyone
+   * who manages the school's bank (`canManageAll`).
+   */
+  async setBankItemActive(
+    scope: DataScope,
+    userId: string,
+    itemId: string,
+    isActive: boolean,
+    canManageAll: boolean,
+  ) {
     const [row] = await db
       .update(questionBankItems)
       .set({ isActive })
       .where(
-        and(eq(questionBankItems.id, itemId), scopeWhere(SCHOOL_LEVEL(scope), BANK_COLS)),
+        and(
+          eq(questionBankItems.id, itemId),
+          scopeWhere(SCHOOL_LEVEL(scope), BANK_COLS),
+          canManageAll ? undefined : eq(questionBankItems.createdBy, userId),
+        ),
       )
       .returning();
     return row ?? null;
@@ -352,6 +380,9 @@ export class HomeworkQuestionsService {
       if (!assignment) throw new Error("Assignment not found in this school.");
       if (assignment.subjectId !== input.subjectId) {
         throw new Error("The named subject does not match this assignment.");
+      }
+      if (assignment.kind !== "quiz") {
+        throw refuse("CONFLICT", "Only a quiz takes questions.");
       }
       if (["closed", "cancelled"].includes(assignment.status)) {
         throw new Error(`A ${assignment.status} assignment cannot take a question set.`);
@@ -399,27 +430,6 @@ export class HomeworkQuestionsService {
         }
       }
 
-      // The published pre-image rule — same as a material edit.
-      if (assignment.status === "published") {
-        const [revRow] = await tx
-          .select({ value: count() })
-          .from(assignmentRevisions)
-          .where(eq(assignmentRevisions.assignmentId, assignment.id));
-        const previousQuestions = await tx
-          .select()
-          .from(assignmentQuestions)
-          .where(eq(assignmentQuestions.assignmentId, assignment.id));
-        await tx.insert(assignmentRevisions).values({
-          organizationId: assignment.organizationId,
-          schoolId: assignment.schoolId,
-          assignmentId: assignment.id,
-          revisionNo: Number(revRow?.value ?? 0) + 1,
-          snapshot: { ...assignment, questions: previousQuestions },
-          changeSummary: "Question set changed after publish.",
-          changedBy: userId,
-        });
-      }
-
       // Replace the set.
       await tx
         .delete(assignmentQuestions)
@@ -441,15 +451,12 @@ export class HomeworkQuestionsService {
         });
       }
 
-      // The assignment accepts the questions channel now.
-      if (!assignment.submissionTypes.includes("questions")) {
-        await tx
-          .update(assignments)
-          .set({
-            submissionTypes: [...assignment.submissionTypes, "questions"],
-          })
-          .where(eq(assignments.id, assignment.id));
-      }
+      // A quiz is marked out of the total of its questions (ADR-064).
+      const total = input.questions.reduce((sum, q) => sum + Number(q.marks), 0);
+      await tx
+        .update(assignments)
+        .set({ maxMarks: (Math.round(total * 100) / 100).toFixed(2) })
+        .where(eq(assignments.id, assignment.id));
 
       if (input.settings) {
         const existing = await tx
@@ -570,7 +577,7 @@ export class HomeworkQuestionsService {
         throw new Error("This assignment is not open.");
       }
       if (new Date().getTime() > sa.effectiveCloseAt.getTime()) {
-        throw new Error("The submission window for this homework has closed.");
+        throw refuse("CONFLICT", "The time for this quiz is over.");
       }
 
       const [settings] = await tx
@@ -586,20 +593,13 @@ export class HomeworkQuestionsService {
         throw new Error("This assignment has no question set.");
       }
 
-      const attempts = await tx
+      // One attempt per student (ADR-064): resume it, or refuse a second.
+      const [existing] = await tx
         .select()
         .from(questionAttempts)
-        .where(eq(questionAttempts.studentAssignmentId, sa.id))
-        .orderBy(asc(questionAttempts.attemptNo));
-      const inProgress = attempts.find((a) => a.status === "in_progress");
-      if (inProgress) return inProgress;
-
-      const maxAttempts = settings?.maxAttempts ?? 1;
-      if (attempts.length >= maxAttempts) {
-        throw new Error(
-          `This assignment allows at most ${maxAttempts} attempt(s).`,
-        );
-      }
+        .where(eq(questionAttempts.studentAssignmentId, sa.id));
+      if (existing?.status === "in_progress") return existing;
+      if (existing) throw refuse("CONFLICT", "This quiz has already been handed in.");
 
       // Lock the set forever once a student starts.
       if (!assignment.isLocked) {
@@ -623,7 +623,6 @@ export class HomeworkQuestionsService {
           organizationId: sa.organizationId,
           schoolId: sa.schoolId,
           studentAssignmentId: sa.id,
-          attemptNo: attempts.length + 1,
           questionOrder: order,
           maxScore: round2(
             (
@@ -637,11 +636,10 @@ export class HomeworkQuestionsService {
         .returning();
       if (!attempt) throw new Error("Failed to start the attempt.");
 
-      if (!sa.startedAt || sa.status === "assigned") {
+      if (sa.status === "assigned") {
         await tx
           .update(studentAssignments)
           .set({
-            startedAt: sa.startedAt ?? new Date(),
             status: "in_progress",
             statusChangedAt: new Date(),
           })
@@ -713,7 +711,6 @@ export class HomeworkQuestionsService {
 
     return {
       attemptId: row.attempt.id,
-      attemptNo: row.attempt.attemptNo,
       status: row.attempt.status,
       questionOrder: (row.attempt.questionOrder as string[] | null) ?? null,
       maxScore: row.attempt.maxScore,
@@ -833,7 +830,12 @@ export class HomeworkQuestionsService {
    * SUBMIT — auto-grade everything decidable, flag the rest, and (when
    * nothing needs a human) write the is_auto evaluation immediately.
    */
-  async submitAttempt(userId: string, studentIds: string[], attemptId: string) {
+  /**
+   * Hands in an attempt. `studentIds` null is the worker handing in an
+   * attempt left open at the close time (ADR-064), which skips the window
+   * check the student's own hand-in obeys.
+   */
+  async submitAttempt(userId: string | null, studentIds: string[] | null, attemptId: string) {
     void userId;
     return db.transaction(async (tx) => {
       const [row] = await tx
@@ -850,7 +852,7 @@ export class HomeworkQuestionsService {
         .where(
           and(
             eq(questionAttempts.id, attemptId),
-            inArray(studentEnrollments.studentId, studentIds),
+            studentIds ? inArray(studentEnrollments.studentId, studentIds) : undefined,
           ),
         );
       if (!row) throw new Error("Attempt not found.");
@@ -860,8 +862,8 @@ export class HomeworkQuestionsService {
       }
 
       const now = new Date();
-      if (now.getTime() > sa.effectiveCloseAt.getTime()) {
-        throw new Error("The submission window for this homework has closed.");
+      if (studentIds && now.getTime() > sa.effectiveCloseAt.getTime()) {
+        throw refuse("CONFLICT", "The time for this quiz is over.");
       }
       const isLate = now.getTime() > sa.effectiveDueAt.getTime();
 
@@ -929,12 +931,7 @@ export class HomeworkQuestionsService {
 
       await tx
         .update(studentAssignments)
-        .set({
-          status: needsManual ? "submitted" : "reviewed",
-          submittedAt: now,
-          statusChangedAt: now,
-          ...(needsManual ? {} : { reviewedAt: now }),
-        })
+        .set({ status: "submitted", submittedAt: now, isLate, statusChangedAt: now })
         .where(eq(studentAssignments.id, sa.id));
 
       if (!needsManual) {
@@ -946,9 +943,9 @@ export class HomeworkQuestionsService {
   }
 
   /**
-   * The append-only evaluation for a graded attempt. The SCORE written is the
-   * attempt-scoring policy's selection across all graded attempts — the same
-   * rule the reference applies, so a best-of-2 resit is honest.
+   * A fully marked attempt becomes the child's result (ADR-064): checked,
+   * Done, with the attempt's total as marks. One attempt per child, so there
+   * is nothing to choose between and no history to keep.
    */
   private async writeAttemptEvaluation(
     tx: Tx,
@@ -956,73 +953,26 @@ export class HomeworkQuestionsService {
     attemptId: string | null,
     evaluatedBy: string | null,
   ) {
-    const [settings] = await tx
-      .select()
-      .from(assignmentQuestionSettings)
-      .where(eq(assignmentQuestionSettings.assignmentId, sa.assignmentId));
-
-    const gradedAttempts = await tx
+    const [attempt] = await tx
       .select()
       .from(questionAttempts)
-      .where(
-        and(
-          eq(questionAttempts.studentAssignmentId, sa.id),
-          inArray(questionAttempts.status, ["submitted", "graded"]),
-        ),
-      );
-    if (gradedAttempts.length === 0) return null;
-
-    const policy = settings?.attemptScoring ?? "best";
-    const withScores = gradedAttempts
-      .map((a) => ({ a, score: Number(a.totalScore) }))
-      .sort((x, y) => x.a.attemptNo - y.a.attemptNo);
-    const selected =
-      policy === "first"
-        ? withScores[0]!
-        : policy === "latest"
-          ? withScores[withScores.length - 1]!
-          : withScores.reduce((best, cur) => (cur.score > best.score ? cur : best));
-
-    await tx
-      .update(assignmentEvaluations)
-      .set({ isCurrent: false })
-      .where(
-        and(
-          eq(assignmentEvaluations.studentAssignmentId, sa.id),
-          eq(assignmentEvaluations.isCurrent, true),
-        ),
-      );
-
-    const [evaluation] = await tx
-      .insert(assignmentEvaluations)
-      .values({
-        organizationId: sa.organizationId,
-        schoolId: sa.schoolId,
-        studentAssignmentId: sa.id,
-        submissionId: null,
-        outcome: "reviewed",
-        marks: selected.a.totalScore,
-        feedback: null,
-        isCurrent: true,
-        evaluatedBy,
-        isAuto: evaluatedBy === null,
-      })
-      .returning();
-    if (!evaluation) throw new Error("Failed to write the evaluation.");
-
+      .where(eq(questionAttempts.studentAssignmentId, sa.id));
+    if (!attempt || attempt.status === "in_progress") return null;
+    void attemptId;
+    const now = new Date();
     const [updatedSa] = await tx
       .update(studentAssignments)
       .set({
-        currentEvaluationId: evaluation.id,
-        currentMarks: selected.a.totalScore,
-        reviewedAt: new Date(),
-        status: "reviewed",
-        statusChangedAt: new Date(),
+        status: "checked",
+        checkStatus: "done",
+        marks: attempt.totalScore,
+        checkedBy: evaluatedBy,
+        checkedAt: now,
+        statusChangedAt: now,
       })
       .where(eq(studentAssignments.id, sa.id))
       .returning();
-    void attemptId;
-    return { evaluation, studentAssignment: updatedSa ?? sa };
+    return { studentAssignment: updatedSa ?? sa };
   }
 
   // -------------------------------------------------------------------------
@@ -1090,7 +1040,6 @@ export class HomeworkQuestionsService {
 
     return {
       attemptId: attempt.id,
-      attemptNo: attempt.attemptNo,
       status: attempt.status,
       submittedAt: attempt.submittedAt,
       isLate: attempt.isLate,
@@ -1139,7 +1088,7 @@ export class HomeworkQuestionsService {
       .select()
       .from(questionAttempts)
       .where(eq(questionAttempts.studentAssignmentId, studentAssignmentId))
-      .orderBy(asc(questionAttempts.attemptNo));
+      .orderBy(asc(questionAttempts.startedAt));
     if (attemptRows.length === 0) return [];
 
     const answerRows = await db
@@ -1178,7 +1127,6 @@ export class HomeworkQuestionsService {
 
     return attemptRows.map((a) => ({
       id: a.id,
-      attemptNo: a.attemptNo,
       status: a.status,
       startedAt: a.startedAt,
       submittedAt: a.submittedAt,
@@ -1321,6 +1269,45 @@ export class HomeworkQuestionsService {
   // -------------------------------------------------------------------------
   // B6 owner resolver
   // -------------------------------------------------------------------------
+
+  /**
+   * The worker: attempts still open after their close time are handed in as
+   * they stand, and children who never started a closed quiz become missing.
+   */
+  async sweepQuizzes(limit: number): Promise<{ handedIn: number; missing: number }> {
+    const open = await db
+      .select({ id: questionAttempts.id })
+      .from(questionAttempts)
+      .innerJoin(studentAssignments, eq(questionAttempts.studentAssignmentId, studentAssignments.id))
+      .where(
+        and(
+          eq(questionAttempts.status, "in_progress"),
+          sql`${studentAssignments.effectiveCloseAt} <= now()`,
+        ),
+      )
+      .limit(limit);
+    let handedIn = 0;
+    for (const a of open) {
+      try {
+        await this.submitAttempt(null, null, a.id);
+        handedIn++;
+      } catch {
+        // Already handed in by the student in the same moment.
+      }
+    }
+    const missing = await db
+      .update(studentAssignments)
+      .set({ status: "missing", statusChangedAt: sql`now()` })
+      .where(
+        sql`${studentAssignments.status} = 'assigned'
+            AND ${studentAssignments.effectiveCloseAt} <= now()
+            AND ${studentAssignments.assignmentId} IN (
+              SELECT id FROM assignments WHERE kind = 'quiz' AND status IN ('published','closed')
+            )`,
+      )
+      .returning({ id: studentAssignments.id });
+    return { handedIn, missing: missing.length };
+  }
 
   async getAttemptOwnerId(organizationId: string, attemptId: string): Promise<string | null> {
     const [row] = await db

@@ -1,421 +1,528 @@
 import {
-  assignmentEvaluations,
-  assignmentSettings,
-  assignmentTargets,
-  assignments,
-  rubricCriteria,
-  rubricLevels,
-  rubrics,
-  studentAssignments,
-  submissions,
+  assignmentKindEnum,
+  assignmentGradingModeEnum,
+  homeworkCheckStatusEnum,
+  homeworkComesBackEnum,
+  homeworkRemarkEnum,
+  questionBankItems,
+  questionOptions,
+  studentAssignmentStatusEnum,
 } from "@repo/db/schema";
 import { createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
+import { imageRefSchema, uploadRequestSchema } from "./storage.contract";
+
 /**
- * HOMEWORK / ASSIGNMENTS vocabulary (ADR-039).
+ * HOMEWORK vocabulary (ADR-039, rebuilt by ADR-064).
  *
- * Operation inputs are handcrafted (the house pattern for anything with
- * timestamps the client sends): the wire format is ISO strings, never Date
- * objects, and createInsertSchema would demand Dates. Read models are
- * drizzle-zod select schemas. Marks are decimal STRINGS (hard rule 4's
- * cousin — never float), validated by the same money regex the fees
- * contract uses.
+ * Inputs are handcrafted: the wire format is ISO strings, never Date objects.
+ * Read models are hand-written shapes built for one screen each. Marks are
+ * decimal STRINGS, never floats.
  */
 
 const MARKS = /^\d{1,5}(\.\d{1,2})?$/;
 const marksSchema = z.string().regex(MARKS, "Use a number with up to 2 decimals");
+const isoDate = z.iso.datetime({ offset: true });
 
-// ---------------------------------------------------------------------------
-// Settings — school default + per-class overrides
-// ---------------------------------------------------------------------------
+export const HOMEWORK_KINDS = assignmentKindEnum.enumValues;
+export const homeworkKindSchema = z.enum(HOMEWORK_KINDS);
+export type HomeworkKind = z.infer<typeof homeworkKindSchema>;
 
-export const assignmentSettingsSelectSchema = createSelectSchema(assignmentSettings);
-export type AssignmentSettings = z.infer<typeof assignmentSettingsSelectSchema>;
+export const COMES_BACK = homeworkComesBackEnum.enumValues;
+export const comesBackSchema = z.enum(COMES_BACK);
+export type ComesBack = z.infer<typeof comesBackSchema>;
 
-export const upsertAssignmentSettingsInput = createSelectSchema(assignmentSettings, {
-  maxFilesPerSubmission: z.number().int().min(1).max(20),
-  maxFileSizeMb: z.number().int().min(1).max(100),
-  defaultLateWindowHours: z.number().int().min(0).max(24 * 30),
-  maxAssignmentsPerDay: z.number().int().min(1).max(20).nullable(),
-})
-  .omit({
-    id: true,
-    organizationId: true,
-    schoolId: true,
-    createdBy: true,
-    createdAt: true,
-    updatedAt: true,
-  })
-  .extend({
-    // The caller names the class for an override, or omits it for the
-    // school default row. (The select schema's classId would also accept it,
-    // but the explicit field keeps the router's two endpoints honest.)
-  });
+export const GRADING_MODES = assignmentGradingModeEnum.enumValues;
+export const gradingModeSchema = z.enum(GRADING_MODES);
+export type GradingMode = z.infer<typeof gradingModeSchema>;
+
+export const CHECK_STATUSES = homeworkCheckStatusEnum.enumValues;
+export const checkStatusSchema = z.enum(CHECK_STATUSES);
+export type CheckStatus = z.infer<typeof checkStatusSchema>;
+
+export const REMARKS = homeworkRemarkEnum.enumValues;
+export const remarkSchema = z.enum(REMARKS);
+export type Remark = z.infer<typeof remarkSchema>;
+
+export const studentHomeworkStatusSchema = z.enum(studentAssignmentStatusEnum.enumValues);
+export type StudentHomeworkStatus = z.infer<typeof studentHomeworkStatusSchema>;
 
 /**
- * The EFFECTIVE settings for a class: the class override with the school
- * default filling every absent field. This is what publish-time checks read.
+ * Which ways back each kind allows, the first being its default (ADR-064).
+ * The service enforces it; the Give screen draws its tiles from it.
  */
-export const effectiveAssignmentSettingsSchema = assignmentSettingsSelectSchema.omit({
-  id: true,
-  organizationId: true,
-  schoolId: true,
-  classId: true,
-  createdBy: true,
-  createdAt: true,
-  updatedAt: true,
-});
-export type EffectiveAssignmentSettings = z.infer<
-  typeof effectiveAssignmentSettingsSchema
->;
+export const KIND_COMES_BACK: Record<HomeworkKind, readonly ComesBack[]> = {
+  homework: ["brought", "sent", "tick", "none"],
+  practice: ["none", "tick", "brought"],
+  project: ["brought", "sent"],
+  reading: ["tick", "none"],
+  quiz: ["questions"],
+};
+
+/** Which grading each kind allows, the first being its default. */
+export const KIND_GRADING: Record<HomeworkKind, readonly GradingMode[]> = {
+  homework: ["none", "marks", "grade", "remark"],
+  practice: ["none", "remark"],
+  project: ["marks", "grade", "remark"],
+  reading: ["none"],
+  quiz: ["marks"],
+};
+
+/** Grading applies only when the work comes back to the teacher. */
+export function comesBackAllowsGrading(comesBack: ComesBack): boolean {
+  return comesBack === "brought" || comesBack === "sent" || comesBack === "questions";
+}
+
+/** What the student sees on each homework, in their own words. */
+export const STUDENT_WORDS = ["to_do", "sent", "late", "checked", "redo", "missed"] as const;
+export const studentWordSchema = z.enum(STUDENT_WORDS);
+export type StudentWord = z.infer<typeof studentWordSchema>;
+
+const titleSchema = z.string().trim().min(1, "Write a title").max(250);
+const detailsSchema = z.string().trim().max(10000);
+const fileIdsSchema = z.array(z.uuid()).max(10);
 
 // ---------------------------------------------------------------------------
-// Rubrics
+// Give (create, edit)
 // ---------------------------------------------------------------------------
 
-export const rubricSelectSchema = createSelectSchema(rubrics);
-export const rubricCriterionSelectSchema = createSelectSchema(rubricCriteria);
-export const rubricLevelSelectSchema = createSelectSchema(rubricLevels);
-
-export const rubricLevelInput = z.object({
-  label: z.string().min(1).max(100),
-  description: z.string().max(2000).optional(),
-  points: marksSchema,
-  sortOrder: z.number().int().min(0).default(0),
+/**
+ * The shared part of Give's steps 2 and 4. `sectionIds` are the classes (one
+ * subject); `studentEnrollmentIds` narrows to some students of them.
+ */
+const giveCommon = z.object({
+  subjectId: z.uuid(),
+  sectionIds: z.array(z.uuid()).min(1).max(20),
+  studentEnrollmentIds: z.array(z.uuid()).max(200).optional(),
+  dueAt: isoDate,
+  /** The late window's end; omitted = no late work. */
+  closeAt: isoDate.optional(),
+  /** A future moment: the homework waits as `scheduled`. */
+  publishAt: isoDate.optional(),
+  estimatedMinutes: z.number().int().min(1).max(600).optional(),
+  /** true = give now; false = keep as a draft. */
+  give: z.boolean().default(true),
 });
 
-export const rubricCriterionInput = z.object({
-  name: z.string().min(1).max(150),
-  description: z.string().max(2000).optional(),
-  sortOrder: z.number().int().min(0).default(0),
-  levels: z.array(rubricLevelInput).min(1),
+const gradingFields = {
+  gradingMode: gradingModeSchema.default("none"),
+  maxMarks: marksSchema.optional(),
+};
+
+/** Homework, Practice, Project: title, details, photos. */
+const workInput = giveCommon.extend({
+  kind: z.enum(["homework", "practice", "project"]),
+  title: titleSchema,
+  details: detailsSchema.optional(),
+  fileObjectIds: fileIdsSchema.optional(),
+  comesBack: comesBackSchema,
+  ...gradingFields,
 });
 
-export const createRubricInput = z.object({
-  name: z.string().min(1).max(150),
-  description: z.string().max(2000).optional(),
-  criteria: z.array(rubricCriterionInput).min(1),
+/** Reading: the book and what to read. */
+const readingInput = giveCommon.extend({
+  kind: z.literal("reading"),
+  book: z.string().trim().min(1, "Name the book").max(250),
+  pages: titleSchema,
+  comesBack: z.enum(["tick", "none"]).default("tick"),
 });
-export type CreateRubricInput = z.infer<typeof createRubricInput>;
 
-export const rubricDetailSchema = rubricSelectSchema.extend({
-  criteria: z.array(
-    rubricCriterionSelectSchema.extend({
-      levels: z.array(rubricLevelSelectSchema),
+/** Quiz: a title; questions are set separately (`homework.questions.set`). */
+const quizInput = giveCommon.extend({
+  kind: z.literal("quiz"),
+  title: titleSchema,
+  details: detailsSchema.optional(),
+});
+
+export const createHomeworkInput = z.discriminatedUnion("kind", [workInput, readingInput, quizInput]);
+export type CreateHomeworkInput = z.infer<typeof createHomeworkInput>;
+
+/**
+ * Edit reuses Give's steps 3 and 4. After the first hand-in or check
+ * (`isLocked`) the classes, how it comes back and grading are refused.
+ */
+export const updateHomeworkInput = z.object({
+  id: z.uuid(),
+  title: titleSchema.optional(),
+  details: detailsSchema.nullable().optional(),
+  book: z.string().trim().min(1).max(250).optional(),
+  fileObjectIds: fileIdsSchema.optional(),
+  sectionIds: z.array(z.uuid()).min(1).max(20).optional(),
+  studentEnrollmentIds: z.array(z.uuid()).max(200).nullable().optional(),
+  comesBack: comesBackSchema.optional(),
+  gradingMode: gradingModeSchema.optional(),
+  maxMarks: marksSchema.nullable().optional(),
+  estimatedMinutes: z.number().int().min(1).max(600).nullable().optional(),
+  dueAt: isoDate.optional(),
+  closeAt: isoDate.nullable().optional(),
+  publishAt: isoDate.nullable().optional(),
+});
+export type UpdateHomeworkInput = z.infer<typeof updateHomeworkInput>;
+
+/** Move the due date for everyone, one section, or one child. */
+export const moveDueInput = z.object({
+  id: z.uuid(),
+  dueAt: isoDate,
+  closeAt: isoDate.optional(),
+  onlySectionId: z.uuid().optional(),
+  onlyStudentAssignmentId: z.uuid().optional(),
+});
+export type MoveDueInput = z.infer<typeof moveDueInput>;
+
+/** Give the same homework to other classes, as a new homework. */
+export const giveAgainInput = z.object({
+  id: z.uuid(),
+  toSectionIds: z.array(z.uuid()).min(1).max(20),
+  dueAt: isoDate,
+  closeAt: isoDate.optional(),
+});
+export type GiveAgainInput = z.infer<typeof giveAgainInput>;
+
+export const listHomeworkInput = z.object({
+  academicYearId: z.uuid().optional(),
+  kind: homeworkKindSchema.optional(),
+  subjectId: z.uuid().optional(),
+  forSectionId: z.uuid().optional(),
+  search: z.string().trim().max(100).optional(),
+  /** Only what the caller gave (a teacher's own list). */
+  mine: z.boolean().default(false),
+  /** Given before this moment (paging back by date). */
+  before: isoDate.optional(),
+  limit: z.number().int().min(1).max(100).default(30),
+});
+export type ListHomeworkInput = z.infer<typeof listHomeworkInput>;
+
+// ---------------------------------------------------------------------------
+// Read models (staff)
+// ---------------------------------------------------------------------------
+
+/** One section's progress on one homework. */
+export const sectionProgressSchema = z.object({
+  sectionId: z.uuid(),
+  sectionName: z.string(),
+  className: z.string(),
+  total: z.number().int(),
+  /** Sent, ticked or handed in, not yet checked. */
+  toCheck: z.number().int(),
+  checked: z.number().int(),
+  /** Ticked (tick) or sent (sent) or handed in (quiz). */
+  submitted: z.number().int(),
+  missing: z.number().int(),
+  redo: z.number().int(),
+});
+export type SectionProgress = z.infer<typeof sectionProgressSchema>;
+
+export const homeworkSummarySchema = z.object({
+  id: z.uuid(),
+  kind: homeworkKindSchema,
+  comesBack: comesBackSchema,
+  gradingMode: gradingModeSchema,
+  maxMarks: z.string().nullable(),
+  title: z.string(),
+  book: z.string().nullable(),
+  subjectId: z.uuid(),
+  subjectName: z.string(),
+  status: z.enum(["draft", "scheduled", "published", "closed", "cancelled"]),
+  dueAt: z.date(),
+  closeAt: z.date(),
+  publishAt: z.date().nullable(),
+  publishedAt: z.date().nullable(),
+  estimatedMinutes: z.number().int().nullable(),
+  createdBy: z.string(),
+  createdAt: z.date(),
+  sections: z.array(sectionProgressSchema),
+  fileCount: z.number().int(),
+});
+export type HomeworkSummary = z.infer<typeof homeworkSummarySchema>;
+
+export const homeworkDetailSchema = homeworkSummarySchema.extend({
+  details: z.string().nullable(),
+  isLocked: z.boolean(),
+  sourceAssignmentId: z.uuid().nullable(),
+  files: z.array(imageRefSchema),
+  studentEnrollmentIds: z.array(z.uuid()),
+  questionCount: z.number().int(),
+  commentCount: z.number().int(),
+  createdByName: z.string(),
+});
+export type HomeworkDetail = z.infer<typeof homeworkDetailSchema>;
+
+/** Home: what the teacher should do next, in Home's order. */
+export const homeworkHomeSchema = z.object({
+  /** Brought or sent work past due with children still to check, per section. */
+  toCheck: z.array(
+    z.object({
+      homework: homeworkSummarySchema,
+      sectionId: z.uuid(),
+      sectionName: z.string(),
+      className: z.string(),
+      toCheck: z.number().int(),
     }),
   ),
+  /** Quizzes still open, or closed with written answers to mark. */
+  quizzes: z.array(homeworkSummarySchema.extend({ answersToMark: z.number().int() })),
+  /** Given and not yet due. */
+  outNow: z.array(homeworkSummarySchema),
+  givenToday: z.array(homeworkSummarySchema),
+  drafts: z.array(homeworkSummarySchema),
 });
-export type RubricDetail = z.infer<typeof rubricDetailSchema>;
+export type HomeworkHome = z.infer<typeof homeworkHomeSchema>;
 
-// ---------------------------------------------------------------------------
-// Assignments
-// ---------------------------------------------------------------------------
-
-export const assignmentSelectSchema = createSelectSchema(assignments);
-export type Assignment = z.infer<typeof assignmentSelectSchema>;
-export const assignmentTargetSelectSchema = createSelectSchema(assignmentTargets);
-
-export const assignmentResourceInput = z
-  .object({
-    resourceType: z.enum(["file", "link", "video"]),
-    objectId: z.uuid().optional(),
-    url: z.string().max(2000).optional(),
-    title: z.string().max(250).optional(),
-    sortOrder: z.number().int().min(0).default(0),
-  })
-  // The DB holds the same shape CHECK; stating it here gives a field error
-  // instead of a 500 for the most likely mistake.
-  .refine(
-    (r) => (r.resourceType === "file" ? !!r.objectId : !!r.url),
-    "A file resource needs an uploaded object; a link/video needs a URL",
-  );
-
-export const createAssignmentInput = z
-  .object({
-    academicYearId: z.uuid(),
-    termId: z.uuid().optional(),
+/** Give step 2: the caller's classes, grouped by subject. */
+export const givePairsSchema = z.array(
+  z.object({
     subjectId: z.uuid(),
-    // The single target section of v1 (the subject gate's pair). Multi-section
-    // targeting is a recorded deferral — the targets table already supports it.
-    sectionId: z.uuid(),
-    // Optional individual targets (extra students) beyond the section.
-    studentEnrollmentIds: z.array(z.uuid()).max(200).optional(),
-    kind: z.enum(["homework", "classwork", "project", "worksheet", "reading", "practice", "quiz"]).default("homework"),
-    title: z.string().min(1).max(250),
-    description: z.string().max(20000).optional(),
-    topic: z.string().max(250).optional(),
-    estimatedMinutes: z.number().int().min(1).max(600).optional(),
-
-    submissionTypes: z
-      .array(z.enum(["none", "tick", "offline", "text", "file", "link", "questions"]))
-      .min(1)
-      .default(["none"]),
-    gradingMode: z
-      .enum(["none", "marks", "grade", "rubric", "completion"])
-      .default("none"),
-    maxMarks: marksSchema.optional(),
-    gradingScaleId: z.uuid().optional(),
-    rubricId: z.uuid().optional(),
-
-    // Absent closeAt = dueAt + the effective settings' late window.
-    dueAt: z.string(),
-    closeAt: z.string().optional(),
-    latePolicy: z.enum(["not_allowed", "allowed"]).optional(),
-    allowResubmission: z.boolean().default(true),
-    maxSubmissions: z.number().int().min(1).max(10).optional(),
-
-    resources: z.array(assignmentResourceInput).max(20).optional(),
-  })
-  .refine((i) => i.gradingMode !== "marks" || !!i.maxMarks, {
-    message: "Marks grading needs a maximum",
-    path: ["maxMarks"],
-  })
-  .refine((i) => i.gradingMode !== "grade" || !!i.gradingScaleId, {
-    message: "Grade grading needs a grading scale",
-    path: ["gradingScaleId"],
-  })
-  .refine((i) => i.gradingMode !== "rubric" || !!i.rubricId, {
-    message: "Rubric grading needs a rubric",
-    path: ["rubricId"],
-  });
-export type CreateAssignmentInput = z.infer<typeof createAssignmentInput>;
-
-/** PATCH + the gate pair. Service verifies the pair matches the row. */
-export const updateAssignmentInput = z.object({
-  id: z.uuid(),
-  sectionId: z.uuid(),
-  subjectId: z.uuid(),
-  title: z.string().min(1).max(250).optional(),
-  description: z.string().max(20000).optional(),
-  topic: z.string().max(250).optional(),
-  estimatedMinutes: z.number().int().min(1).max(600).optional(),
-  dueAt: z.string().optional(),
-  closeAt: z.string().optional(),
-  latePolicy: z.enum(["not_allowed", "allowed"]).optional(),
-  allowResubmission: z.boolean().optional(),
-  maxSubmissions: z.number().int().min(1).max(10).nullable().optional(),
-  submissionTypes: z
-    .array(z.enum(["none", "tick", "offline", "text", "file", "link", "questions"]))
-    .min(1)
-    .optional(),
-  resources: z.array(assignmentResourceInput).max(20).optional(),
-  changeSummary: z.string().max(500).optional(),
-});
-export type UpdateAssignmentInput = z.infer<typeof updateAssignmentInput>;
-
-/** Publish / cancel — row-addressed, gate pair required by the builder. */
-export const assignmentTransitionInput = z.object({
-  id: z.uuid(),
-  sectionId: z.uuid(),
-  subjectId: z.uuid(),
-});
-export const cancelAssignmentInput = assignmentTransitionInput.extend({
-  reason: z.string().min(3).max(500),
-});
-
-export const listAssignmentsInput = z.object({
-  academicYearId: z.uuid(),
-  subjectId: z.uuid().optional(),
-  status: z.enum(["draft", "scheduled", "published", "closed", "cancelled"]).optional(),
-  dueFrom: z.string().optional(),
-  dueTo: z.string().optional(),
-});
-
-export const assignmentDetailSchema = assignmentSelectSchema.extend({
-  targets: z.array(assignmentTargetSelectSchema),
-  revisionCount: z.number().int(),
-});
-export type AssignmentDetail = z.infer<typeof assignmentDetailSchema>;
-
-// ---------------------------------------------------------------------------
-// Student assignments — the teacher's grading grid + lifecycle acts
-// ---------------------------------------------------------------------------
-
-export const studentAssignmentSelectSchema = createSelectSchema(studentAssignments);
-export type StudentAssignment = z.infer<typeof studentAssignmentSelectSchema>;
-
-export const listStudentAssignmentsInput = z.object({
-  id: z.uuid(), // the assignment
-  status: z
-    .enum(["assigned", "in_progress", "submitted", "resubmit_requested", "reviewed", "excused", "missing"])
-    .optional(),
-});
-
-/**
- * Grade / verify / request-resubmit — ONE append-only evaluation row. Which
- * fields are required follows the assignment's gradingMode (service-checked):
- * marks → marks within maxMarks; rubric → rubricScores; completion/none →
- * neither. outcome 'resubmit_requested' ignores marks entirely.
- */
-export const evaluateStudentAssignmentInput = z.object({
-  id: z.uuid(), // studentAssignmentId
-  sectionId: z.uuid(),
-  subjectId: z.uuid(),
-  outcome: z.enum(["reviewed", "resubmit_requested"]).default("reviewed"),
-  marks: marksSchema.optional(),
-  grade: z.string().max(20).optional(),
-  feedback: z.string().max(5000).optional(),
-  rubricScores: z
-    .array(
+    subjectName: z.string(),
+    sections: z.array(
       z.object({
-        criterionId: z.uuid(),
-        levelId: z.uuid().optional(),
-        points: marksSchema,
-        comment: z.string().max(2000).optional(),
+        sectionId: z.uuid(),
+        sectionName: z.string(),
+        classId: z.uuid(),
+        className: z.string(),
+        studentCount: z.number().int(),
+        /** Homework (any subject) already due on the next school day. */
+        dueTomorrow: z.number().int(),
       }),
-    )
-    .max(30)
-    .optional(),
+    ),
+  }),
+);
+export type GivePairs = z.infer<typeof givePairsSchema>;
+
+/** Give step 4's starting point: this teacher's last choices for a subject. */
+export const giveDefaultsSchema = z.object({
+  comesBack: comesBackSchema,
+  gradingMode: gradingModeSchema,
+  maxMarks: z.string().nullable(),
+  estimatedMinutes: z.number().int().nullable(),
+  /** The last homework given, for "Same as last time". */
+  lastId: z.uuid().nullable(),
 });
-export type EvaluateStudentAssignmentInput = z.infer<
-  typeof evaluateStudentAssignmentInput
->;
+export type GiveDefaults = z.infer<typeof giveDefaultsSchema>;
 
-export const evaluationSelectSchema = createSelectSchema(assignmentEvaluations);
-export const submissionSelectSchema = createSelectSchema(submissions);
-
-export const studentAssignmentDetailSchema = studentAssignmentSelectSchema.extend({
-  submissions: z.array(submissionSelectSchema),
-  evaluations: z.array(evaluationSelectSchema),
+/** One child on the checking list. */
+export const registerRowSchema = z.object({
+  studentAssignmentId: z.uuid(),
+  studentId: z.uuid(),
+  name: z.string(),
+  rollNumber: z.string().nullable(),
+  photo: imageRefSchema.nullable(),
+  status: studentHomeworkStatusSchema,
+  /** Absent today by attendance (only for work brought to class). */
+  absentToday: z.boolean(),
+  submittedAt: z.date().nullable(),
+  isLate: z.boolean(),
+  fileCount: z.number().int(),
+  checkStatus: checkStatusSchema.nullable(),
+  marks: z.string().nullable(),
+  grade: z.string().nullable(),
+  remark: remarkSchema.nullable(),
+  note: z.string().nullable(),
+  checkedAt: z.date().nullable(),
 });
-export type StudentAssignmentDetail = z.infer<typeof studentAssignmentDetailSchema>;
+export type RegisterRow = z.infer<typeof registerRowSchema>;
 
-export const grantExtensionInput = z.object({
-  id: z.uuid(), // studentAssignmentId
+export const registerSchema = z.object({
+  homework: homeworkSummarySchema,
   sectionId: z.uuid(),
-  subjectId: z.uuid(),
-  newDueAt: z.string(),
-  newCloseAt: z.string(),
-  reason: z.string().max(500).optional(),
+  sectionName: z.string(),
+  className: z.string(),
+  /** The school's grade letters, best first, when grading is `grade`. */
+  gradeLetters: z.array(z.string()),
+  rows: z.array(registerRowSchema),
 });
-export type GrantExtensionInput = z.infer<typeof grantExtensionInput>;
+export type Register = z.infer<typeof registerSchema>;
 
-export const excuseStudentAssignmentInput = z.object({
+/** One child's result. A null checkStatus clears it (back to unchecked). */
+export const checkResultInput = z.object({
+  studentAssignmentId: z.uuid(),
+  checkStatus: checkStatusSchema.nullable(),
+  marks: marksSchema.nullable().optional(),
+  grade: z.string().trim().max(20).nullable().optional(),
+  remark: remarkSchema.nullable().optional(),
+  note: z.string().trim().max(1000).nullable().optional(),
+});
+export type CheckResultInput = z.infer<typeof checkResultInput>;
+
+/** Save the checking list: idempotent, so a retry after a dropped connection is safe. */
+export const saveRegisterInput = z.object({
   id: z.uuid(),
   sectionId: z.uuid(),
   subjectId: z.uuid(),
-  reason: z.string().min(3).max(500),
+  results: z.array(checkResultInput).min(1).max(200),
+});
+export type SaveRegisterInput = z.infer<typeof saveRegisterInput>;
+
+export const saveRegisterResultSchema = z.object({
+  saved: z.number().int(),
+  counts: z.object({
+    done: z.number().int(),
+    incomplete: z.number().int(),
+    notDone: z.number().int(),
+    absent: z.number().int(),
+    unchecked: z.number().int(),
+  }),
+});
+
+/** One child's homework for the teacher: what they sent and the result. */
+export const studentHomeworkSchema = registerRowSchema.extend({
+  homeworkId: z.uuid(),
+  sectionId: z.uuid(),
+  dueAt: z.date(),
+  closeAt: z.date(),
+  tickedBy: z.enum(["student", "teacher"]).nullable(),
+  submission: z
+    .object({
+      bodyText: z.string().nullable(),
+      submittedAt: z.date(),
+      isLate: z.boolean(),
+      files: z.array(imageRefSchema),
+    })
+    .nullable(),
+});
+export type StudentHomework = z.infer<typeof studentHomeworkSchema>;
+
+export const sendBackInput = z.object({
+  id: z.uuid(), // student assignment
+  sectionId: z.uuid(),
+  subjectId: z.uuid(),
+  note: z.string().trim().min(1, "Say what to fix").max(1000),
+});
+
+export const markTickInput = z.object({
+  id: z.uuid(), // student assignment
+  sectionId: z.uuid(),
+  subjectId: z.uuid(),
+  ticked: z.boolean(),
+});
+
+export const homeworkUploadInput = z.object({
+  sectionId: z.uuid(),
+  subjectId: z.uuid(),
+  /** The homework being edited; omitted while giving a new one. */
+  homeworkId: z.uuid().optional(),
+  files: z.array(uploadRequestSchema).min(1).max(10),
 });
 
 // ---------------------------------------------------------------------------
 // Comments
 // ---------------------------------------------------------------------------
 
-export const postAssignmentCommentInput = z.object({
+export const postHomeworkCommentInput = z.object({
   assignmentId: z.uuid(),
-  // Absent = class-wide Q&A; present = the private student↔teacher thread.
+  /** Set = a private thread with one child; omitted = the class question board. */
   studentAssignmentId: z.uuid().optional(),
-  parentCommentId: z.uuid().optional(),
-  body: z.string().min(1).max(2000),
+  body: z.string().trim().min(1).max(2000),
 });
-export type PostAssignmentCommentInput = z.infer<typeof postAssignmentCommentInput>;
+export type PostHomeworkCommentInput = z.infer<typeof postHomeworkCommentInput>;
 
-export const assignmentCommentSelectSchema = z.object({
+export const homeworkCommentSchema = z.object({
   id: z.uuid(),
   assignmentId: z.uuid(),
   studentAssignmentId: z.uuid().nullable(),
-  parentCommentId: z.uuid().nullable(),
-  authorUserId: z.string(),
   authorName: z.string(),
-  authorIsStaff: z.boolean(),
+  /** True when a staff member wrote it. */
+  fromStaff: z.boolean(),
+  isMine: z.boolean(),
   body: z.string(),
-  isDeleted: z.boolean(),
   createdAt: z.date(),
-  editedAt: z.date().nullable(),
 });
-export type AssignmentComment = z.infer<typeof assignmentCommentSelectSchema>;
+export type HomeworkComment = z.infer<typeof homeworkCommentSchema>;
 
 // ---------------------------------------------------------------------------
-// PORTAL — the family door. Ownership only; nothing unpublished leaks, and
- // no answer key lives in any of these shapes.
+// The student side (family app). Same shapes for a student and a parent login.
 // ---------------------------------------------------------------------------
 
-export const portalStudentIdInput = z.object({ studentId: z.uuid() });
+export const portalHomeworkListInput = z.object({
+  studentId: z.uuid(),
+  /** `open`: to do, redo and sent-not-checked; `done`: checked or missed. */
+  filter: z.enum(["open", "done", "all"]).default("all"),
+});
 
-export const portalAssignmentListItemSchema = z.object({
+export const portalHomeworkItemSchema = z.object({
   studentAssignmentId: z.uuid(),
-  assignmentId: z.uuid(),
-  subjectName: z.string(),
-  teacherName: z.string().nullable(),
+  kind: homeworkKindSchema,
+  comesBack: comesBackSchema,
+  gradingMode: gradingModeSchema,
+  maxMarks: z.string().nullable(),
   title: z.string(),
-  description: z.string().nullable(),
-  kind: z.string(),
-  topic: z.string().nullable(),
+  book: z.string().nullable(),
+  subjectName: z.string(),
+  teacherName: z.string(),
   estimatedMinutes: z.number().int().nullable(),
-  submissionTypes: z.array(z.string()),
-  status: z.string(),
+  givenAt: z.date(),
   dueAt: z.date(),
   closeAt: z.date(),
-  isLate: z.boolean(),
-  submittedAt: z.date().nullable(),
-  submissionCount: z.number().int(),
-  currentMarks: z.string().nullable(),
-  currentGrade: z.string().nullable(),
-  feedback: z.string().nullable(),
-  reviewedAt: z.date().nullable(),
-  firstViewedAt: z.date().nullable(),
-});
-export type PortalAssignmentListItem = z.infer<typeof portalAssignmentListItemSchema>;
-
-export const portalSubmissionSchema = z.object({
-  id: z.uuid(),
-  versionNo: z.number().int(),
-  bodyText: z.string().nullable(),
-  linkUrl: z.string().nullable(),
-  submittedByRole: z.string(),
-  isLate: z.boolean(),
-  submittedAt: z.date(),
-  files: z.array(z.object({ objectId: z.uuid(), sortOrder: z.number().int() })),
-});
-
-export const portalEvaluationSchema = z.object({
-  outcome: z.string(),
+  word: studentWordSchema,
+  checkStatus: checkStatusSchema.nullable(),
   marks: z.string().nullable(),
   grade: z.string().nullable(),
-  feedback: z.string().nullable(),
-  evaluatedAt: z.date(),
-  isCurrent: z.boolean(),
+  remark: remarkSchema.nullable(),
+  hasNote: z.boolean(),
+  /** Untick allowed (a tick before the due time). */
+  canUntick: z.boolean(),
+});
+export type PortalHomeworkItem = z.infer<typeof portalHomeworkItemSchema>;
+
+export const portalHomeworkDetailSchema = portalHomeworkItemSchema.extend({
+  details: z.string().nullable(),
+  files: z.array(imageRefSchema),
+  note: z.string().nullable(),
+  /** The student can send (or replace) now. */
+  canSend: z.boolean(),
+  submission: z
+    .object({
+      bodyText: z.string().nullable(),
+      submittedAt: z.date(),
+      isLate: z.boolean(),
+      files: z.array(imageRefSchema),
+    })
+    .nullable(),
+  quiz: z
+    .object({
+      questionCount: z.number().int(),
+      attemptId: z.uuid().nullable(),
+      attemptStatus: z.enum(["in_progress", "submitted", "graded"]).nullable(),
+    })
+    .nullable(),
+});
+export type PortalHomeworkDetail = z.infer<typeof portalHomeworkDetailSchema>;
+
+export const portalHomeworkRefInput = z.object({
+  studentId: z.uuid(),
+  studentAssignmentId: z.uuid(),
 });
 
-export const portalAssignmentDetailSchema = portalAssignmentListItemSchema.extend({
-  resources: z.array(
-    z.object({
-      resourceType: z.string(),
-      objectId: z.uuid().nullable(),
-      url: z.string().nullable(),
-      title: z.string().nullable(),
-    }),
-  ),
-  submissions: z.array(portalSubmissionSchema),
-  evaluations: z.array(portalEvaluationSchema),
-  acknowledgedBy: z.array(z.string()),
-});
-export type PortalAssignmentDetail = z.infer<typeof portalAssignmentDetailSchema>;
+export const portalTickInput = portalHomeworkRefInput.extend({ ticked: z.boolean() });
 
-export const portalSubmitAssignmentInput = z
-  .object({
-    studentAssignmentId: z.uuid(),
-    bodyText: z.string().max(20000).optional(),
-    linkUrl: z.string().max(2000).optional(),
-    fileObjectIds: z.array(z.uuid()).max(10).optional(),
+export const portalHomeworkUploadInput = portalHomeworkRefInput.extend({
+  files: z.array(uploadRequestSchema).min(1).max(10),
+});
+
+/** Send (or replace) the child's work. Replaces any earlier one until checked. */
+export const portalSendInput = portalHomeworkRefInput
+  .extend({
+    bodyText: z.string().trim().max(10000).optional(),
+    fileObjectIds: fileIdsSchema.default([]),
   })
-  .refine(
-    (i) => !!i.bodyText || !!i.linkUrl || (!!i.fileObjectIds && i.fileObjectIds.length > 0),
-    "Write something, attach a file, or paste a link",
-  );
-export type PortalSubmitAssignmentInput = z.infer<typeof portalSubmitAssignmentInput>;
+  .refine((i) => Boolean(i.bodyText) || i.fileObjectIds.length > 0, {
+    message: "Add a photo or type your answer",
+    path: ["fileObjectIds"],
+  });
+export type PortalSendInput = z.infer<typeof portalSendInput>;
 
-export const portalAcknowledgeInput = z.object({ studentAssignmentId: z.uuid() });
+export const portalPostCommentInput = portalHomeworkRefInput.extend({
+  /** true = the class question board; false = a private note to the teacher. */
+  toClass: z.boolean().default(false),
+  body: z.string().trim().min(1).max(2000),
+});
 
 // ---------------------------------------------------------------------------
-// SLICE B — QUESTIONS. Bank, the per-assignment snapshot, attempts, and the
-// auto-grading result model. The STUDENT-facing schemas below carry NO answer
-// key — options are served stripped (id + text only), and correctness/marks
-// appear only through the reveal-policy flags.
+// QUESTIONS (quizzes). Bank, the per-quiz snapshot, one attempt each, and the
+// auto-marking result model. The STUDENT-facing schemas carry NO answer key —
+// options are served stripped (id + text only), and correctness/marks appear
+// only through the reveal-policy flags.
 // ---------------------------------------------------------------------------
-
-import { questionBankItems, questionOptions } from "@repo/db/schema";
 
 export const bankItemSelectSchema = createSelectSchema(questionBankItems);
 export const bankOptionSelectSchema = createSelectSchema(questionOptions);
@@ -495,8 +602,6 @@ export const setAssignmentQuestionsInput = z.object({
       shuffleQuestions: z.boolean().default(false),
       shuffleOptions: z.boolean().default(false),
       oneQuestionAtATime: z.boolean().default(false),
-      maxAttempts: z.number().int().min(1).max(10).default(1),
-      attemptScoring: z.enum(["best", "latest", "first"]).default("best"),
       showScore: z.enum(["never", "after_submit", "after_close"]).default("after_submit"),
       showAnswers: z.enum(["never", "after_submit", "after_close"]).default("after_close"),
       showExplanations: z.boolean().default(true),
@@ -574,7 +679,6 @@ export type AttemptAnswerResult = z.infer<typeof attemptAnswerResultSchema>;
 
 export const attemptResultSchema = z.object({
   attemptId: z.uuid(),
-  attemptNo: z.number().int(),
   status: z.string(),
   submittedAt: z.date().nullable(),
   isLate: z.boolean(),
@@ -595,7 +699,6 @@ export const listAttemptsInput = z.object({ id: z.uuid() }); // studentAssignmen
 
 export const attemptStaffSchema = z.object({
   id: z.uuid(),
-  attemptNo: z.number().int(),
   status: z.string(),
   startedAt: z.date(),
   submittedAt: z.date().nullable(),

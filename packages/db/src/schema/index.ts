@@ -39,7 +39,7 @@ export * from "./idcard";
 // Public sites: the org's website at {slug}.mskool.in. ADR-041.
 export * from "./publicsite";
 
-// Homework/assignments: settings + rubrics → assignments → targets →
-// student_assignments → submissions → evaluations; the question bank and
-// attempt layers. ADR-039.
+// Homework: assignments → targets → student_assignments (with the check
+// result) → one submission each; the question bank and one-attempt quizzes.
+// ADR-039, rebuilt by ADR-064.
 export * from "./homework";

@@ -24,10 +24,6 @@ export * from "./subject.service";
 // who teaches what where — the fact checkSubjectAccess reads (ADR-012).
 export * from "./assignment.service";
 
-// Homework/assignments: the daily homework-diary domain — settings, rubrics,
-// the assignment lifecycle, submissions, evaluations, the family door. ADR-039.
-export * from "./homework.service";
-
 
 
 // Terms: the subdivisions of an academic year — the school-level time slices
@@ -109,16 +105,16 @@ export {
 // resolver the print page renders against. Slice 2a.
 export * from "./idcard.service";
 
-// Homework/assignments: the daily homework-diary domain — settings, rubrics,
-// the assignment lifecycle, submissions, evaluations, the family door. ADR-039.
+// Homework: give, check, the student side. ADR-039, rebuilt by ADR-064.
 export * from "./homework.service";
+export * from "./homework-rules";
 
-// Homework questions (slice B): the bank, the per-assignment snapshot, the
-// attempt lifecycle and the auto-grading engine.
+// Homework questions: the bank, the per-quiz snapshot, one attempt per child
+// and the auto-marking engine.
 export * from "./homework-questions.service";
 
-// Homework sweeper (ADR-040): the time-driven half — Missing after close,
-// scheduled publishing. Idempotent, advisory-locked, DB-clocked.
+// Homework sweeper (ADR-040): scheduled giving, quiz hand-in at close, missing
+// work. Idempotent, Redis-leased.
 export * from "./homework-worker.service";
 
 // Public sites: the org website engine — draft/publish split, the anonymous

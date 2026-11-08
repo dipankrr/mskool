@@ -358,6 +358,20 @@
       "when": 1794144665102,
       "tag": "0050_storage_link_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1794154660340,
+      "tag": "0051_homework_drop",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1794154762717,
+      "tag": "0052_homework_rebuild",
+      "breakpoints": true
     }
   ]
 }

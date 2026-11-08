@@ -1,72 +1,119 @@
 import { scopeWhere, type DataScope } from "@repo/authz";
-import type {
-  CreateRubricInput,
-  EvaluateStudentAssignmentInput,
-  GrantExtensionInput,
-  PortalSubmitAssignmentInput,
-  PostAssignmentCommentInput,
-  UpdateAssignmentInput,
+import {
+  KIND_COMES_BACK,
+  KIND_GRADING,
+  type CheckResultInput,
+  type ComesBack,
+  type CreateHomeworkInput,
+  type GiveAgainInput,
+  type GradingMode,
+  type HomeworkKind,
+  type HomeworkSummary,
+  type ImageRef,
+  type ListHomeworkInput,
+  type MoveDueInput,
+  type PortalSendInput,
+  type SaveRegisterInput,
+  type UpdateHomeworkInput,
+  type UploadRequest,
 } from "@repo/contracts";
 import { db } from "@repo/db";
 import {
   academicYears,
-  assignmentAcknowledgements,
   assignmentComments,
-  assignmentEvaluations,
-  assignmentExtensions,
-  assignmentResources,
-  assignmentRevisions,
-  assignmentRubricScores,
-  assignmentSettings,
+  assignmentFiles,
+  assignmentQuestions,
   assignmentTargets,
   assignments,
+  classSubjectMappings,
   classes,
+  dailyAttendanceStatus,
+  gradingScaleBands,
   gradingScales,
-  rubricCriteria,
-  rubricLevels,
-  rubrics,
+  questionAttemptAnswers,
+  questionAttempts,
+  sectionTeacherAssignments,
   sections,
-  studentAssignments,  studentEnrollments,
-  students,
-  storageObjects,
+  studentAssignments,
+  studentEnrollments,
+  studentPhotos,
   studentPortalAccess,
+  students,
   subjects,
-  submissions,
   submissionFiles,
+  submissions,
   user,
 } from "@repo/db/schema";
-import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gt,
+  gte,
+  ilike,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
+
+import { todayInIst } from "./enrollment-status";
+import { compareRoll, studentWord, validateChoices } from "./homework-rules";
+import { fullName, resolvePortalChild } from "./portal-child";
+import { refuse } from "./service-error";
+import { storageService } from "./storage.service";
 
 /**
- * HOMEWORK / ASSIGNMENTS (ADR-039) — the daily homework-diary domain.
+ * HOMEWORK (ADR-039, rebuilt by ADR-064) — the daily homework diary.
  *
- * Spine: Assignment (authored) → StudentAssignment (resolved per student, THE
- * authoritative record) → Submission (versioned) → Evaluation (append-only).
- * Knows nothing about HTTP; every scoped read takes a DataScope or a scope
- * list as a REQUIRED argument (hard rule 1), and every write re-reads its
- * parents through the caller's scope INSIDE the transaction (the section
- * service's pattern — a foreign key proves existence, not tenancy).
+ * A teacher GIVES a homework (one subject, one or more sections) and later
+ * CHECKS it on a list: Done / Incomplete / Not done / Absent, plus marks, a
+ * grade letter or a remark when the homework is graded. Students see their
+ * homework, tick it, or send photos and text. Nothing keeps history: a check
+ * result, a submission and a per-child deadline are overwritten in place.
  *
- * No grading impact: nothing here touches exams or report cards.
- * Nothing is hard-deleted: cancel sets status, evaluations append and flip
- * is_current, corrections extend deadlines via append-only rows.
+ * Knows nothing about HTTP. Every staff read takes a DataScope (or a list)
+ * as a REQUIRED argument and filters by it (hard rule 1); a teacher who only
+ * holds the subject_teacher role is further limited to their own (section,
+ * subject) pairs, passed in as `pairs`. Every write re-reads its rows through
+ * the caller's scope INSIDE the transaction. The family side starts from
+ * `resolvePortalChild` (ADR-062).
  */
 
 // ---------------------------------------------------------------------------
-// Scope helpers
+// Types and helpers
 // ---------------------------------------------------------------------------
 
-/** School-level tables: widen a section/class scope to its school. */
-function atSchoolLevel(scope: DataScope): DataScope {
-  return { ...scope, classId: null, sectionId: null };
-}
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type Executor = typeof db | Tx;
+type Assignment = typeof assignments.$inferSelect;
+type StudentAssignmentRow = typeof studentAssignments.$inferSelect;
+
+/** A teacher's (section, subject) pair. */
+export type TeachingPair = { sectionId: string; subjectId: string };
+
+/**
+ * Who is reading: the caller's scopes for the permission, and — for a caller
+ * whose only grant is the subject_teacher role — their own pairs. `pairs`
+ * null means the scopes alone decide.
+ */
+export type HomeworkAccess = {
+  userId: string;
+  scopes: DataScope[];
+  pairs: TeachingPair[] | null;
+};
 
 const ASSIGNMENT_COLS = {
   organizationId: assignments.organizationId,
   schoolId: assignments.schoolId,
 } as const;
 
-const STUDENT_ASSIGNMENT_COLS = {
+const SA_COLS = {
   organizationId: studentAssignments.organizationId,
   schoolId: studentAssignments.schoolId,
 } as const;
@@ -74,1934 +121,2036 @@ const STUDENT_ASSIGNMENT_COLS = {
 const SECTION_COLS = {
   organizationId: sections.organizationId,
   schoolId: sections.schoolId,
+  classId: sections.classId,
+  sectionId: sections.id,
 } as const;
 
-const SUBJECT_COLS = {
-  organizationId: subjects.organizationId,
-  schoolId: subjects.schoolId,
-} as const;
-
-const RUBRIC_COLS = {
-  organizationId: rubrics.organizationId,
-  schoolId: rubrics.schoolId,
-} as const;
-
-const SETTINGS_COLS = {
-  organizationId: assignmentSettings.organizationId,
-  schoolId: assignmentSettings.schoolId,
-} as const;
-
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-/** Platform fallback when a school has never saved a settings row. */
-const PLATFORM_DEFAULT_SETTINGS = {
-  allowedSubmissionTypes: ["none", "tick", "offline", "text", "file", "link", "questions"],
-  studentsCanSubmit: true,
-  parentsCanSubmit: true,
-  maxFilesPerSubmission: 5,
-  maxFileSizeMb: 10,
-  allowedMimeTypes: null,
-  defaultLatePolicy: "allowed" as const,
-  defaultLateWindowHours: 48,
-  maxAssignmentsPerDay: null,
-  allowWeekendAssignments: true,
-  questionsEnabled: true,
-};
-
-const ACTIVE_ENROLLMENT_STATUSES = ["studying"] as const;
-
-function requireSchoolId(scope: DataScope): string {
-  const schoolId = atSchoolLevel(scope).schoolId;
-  if (!schoolId) {
-    throw new Error(
-      "Homework needs a school. The caller's scope must resolve to a school node.",
-    );
-  }
-  return schoolId;
+/** Homework tables carry org + school only, so a class/section scope widens to its school. */
+function atSchoolLevel(scope: DataScope): DataScope {
+  return { ...scope, classId: null, sectionId: null };
 }
 
-function toDate(iso: string, field: string): Date {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) {
-    throw new Error(`${field} is not a valid date.`);
+function requireSchool(scope: DataScope): string {
+  if (!scope.schoolId) {
+    throw new Error("Homework needs a school: the caller's scope must resolve to a school node.");
   }
+  return scope.schoolId;
+}
+
+function toDate(iso: string): Date {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) throw refuse("BAD_REQUEST", "That date isn't valid.");
   return d;
 }
+
+const ACTIVE_ENROLLMENT = ["studying"] as const;
+/** Undo after Give works for this long, while no student has done anything. */
+const UNDO_WINDOW_MS = 15 * 60 * 1000;
+const TEACHER_FILE = "homework_teacher_file" as const;
+const STUDENT_FILE = "homework_student_file" as const;
 
 // ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
 
 export class HomeworkService {
-  // -------------------------------------------------------------------------
-  // Settings
-  // -------------------------------------------------------------------------
+  // ── Shared row loading ───────────────────────────────────────────────────
 
-  /** The school default row, or null when the school never saved one. */
-  async getSchoolSettings(scope: DataScope) {
-    const schoolId = requireSchoolId(scope);
-    const [row] = await db
+  /** One homework in the caller's school, or NOT_FOUND. */
+  private async load(ex: Executor, scope: DataScope, id: string): Promise<Assignment> {
+    const [row] = await ex
       .select()
-      .from(assignmentSettings)
-      .where(
-        and(
-          eq(assignmentSettings.schoolId, schoolId),
-          isNull(assignmentSettings.classId),
-          scopeWhere(atSchoolLevel(scope), SETTINGS_COLS),
-        ),
-      );
-    return row ?? null;
+      .from(assignments)
+      .where(and(eq(assignments.id, id), scopeWhere(atSchoolLevel(scope), ASSIGNMENT_COLS)));
+    if (!row) throw refuse("NOT_FOUND", "That homework could not be found.");
+    return row;
   }
 
-  /** Creates or updates the school default (classId null) or a class override. */
-  async upsertSettings(scope: DataScope, userId: string, input: {
-    classId?: string | null;
-    allowedSubmissionTypes?: string[];
-    studentsCanSubmit?: boolean;
-    parentsCanSubmit?: boolean;
-    maxFilesPerSubmission?: number;
-    maxFileSizeMb?: number;
-    allowedMimeTypes?: string[] | null;
-    defaultLatePolicy?: "not_allowed" | "allowed";
-    defaultLateWindowHours?: number;
-    maxAssignmentsPerDay?: number | null;
-    allowWeekendAssignments?: boolean;
-    questionsEnabled?: boolean;
-  }) {
-    const schoolId = requireSchoolId(scope);
-    const organizationId = scope.organizationId;
-    const classId = input.classId ?? null;
+  private async sectionIdsOf(ex: Executor, assignmentId: string): Promise<string[]> {
+    const rows = await ex
+      .select({ sectionId: assignmentTargets.sectionId })
+      .from(assignmentTargets)
+      .where(
+        and(
+          eq(assignmentTargets.assignmentId, assignmentId),
+          eq(assignmentTargets.targetType, "section"),
+        ),
+      );
+    return rows.map((r) => r.sectionId as string);
+  }
 
-    if (classId) {
-      const [cls] = await db
-        .select({ id: classes.id })
-        .from(classes)
-        .where(
-          and(
-            eq(classes.id, classId),
-            eq(classes.schoolId, schoolId),
-            scopeWhere(atSchoolLevel(scope), {
-              organizationId: classes.organizationId,
-              schoolId: classes.schoolId,
-            }),
-          ),
-        );
-      if (!cls) {
-        throw new Error("Class not found in this school.");
+  /**
+   * A subject-gated route names one (section, subject) pair; the gate proved
+   * the caller may use it. This proves the pair describes THIS homework, so a
+   * teacher's pair on 6A cannot reach another teacher's homework on 7B.
+   */
+  private async assertPair(
+    ex: Executor,
+    assignment: Assignment,
+    pair: TeachingPair,
+  ): Promise<void> {
+    const sectionIds = await this.sectionIdsOf(ex, assignment.id);
+    if (assignment.subjectId !== pair.subjectId || !sectionIds.includes(pair.sectionId)) {
+      throw refuse("NOT_FOUND", "That homework could not be found.");
+    }
+  }
+
+  /** The sections named, all in this school and one academic year. */
+  private async loadSections(ex: Executor, schoolId: string, sectionIds: string[]) {
+    const ids = [...new Set(sectionIds)];
+    const rows = await ex
+      .select({
+        id: sections.id,
+        name: sections.name,
+        classId: sections.classId,
+        academicYearId: sections.academicYearId,
+        organizationId: sections.organizationId,
+      })
+      .from(sections)
+      .where(and(inArray(sections.id, ids), eq(sections.schoolId, schoolId)));
+    if (rows.length !== ids.length) {
+      throw refuse("BAD_REQUEST", "One of the classes could not be found.");
+    }
+    const years = new Set(rows.map((r) => r.academicYearId));
+    if (years.size !== 1) throw refuse("BAD_REQUEST", "All the classes must be from the same year.");
+    return rows;
+  }
+
+  private async defaultScaleId(ex: Executor, schoolId: string): Promise<string> {
+    const [scale] = await ex
+      .select({ id: gradingScales.id })
+      .from(gradingScales)
+      .where(and(eq(gradingScales.schoolId, schoolId), eq(gradingScales.isDefault, true)));
+    if (!scale) {
+      throw refuse(
+        "CONFLICT",
+        "The school has no grade letters set up yet. Use marks or a remark instead.",
+      );
+    }
+    return scale.id;
+  }
+
+  private async gradeLetters(ex: Executor, scaleId: string | null): Promise<string[]> {
+    if (!scaleId) return [];
+    const bands = await ex
+      .select({ label: gradingScaleBands.gradeLabel })
+      .from(gradingScaleBands)
+      .where(eq(gradingScaleBands.gradingScaleId, scaleId))
+      .orderBy(desc(gradingScaleBands.minMarks));
+    return bands.map((b) => b.label);
+  }
+
+  /** Active students in the sections, optionally only some of them. */
+  private async resolveStudents(
+    ex: Executor,
+    schoolId: string,
+    academicYearId: string,
+    sectionIds: string[],
+    onlyEnrollmentIds: string[] | null,
+  ) {
+    const rows = await ex
+      .select({ id: studentEnrollments.id, sectionId: studentEnrollments.sectionId })
+      .from(studentEnrollments)
+      .where(
+        and(
+          eq(studentEnrollments.schoolId, schoolId),
+          eq(studentEnrollments.academicYearId, academicYearId),
+          inArray(studentEnrollments.sectionId, sectionIds),
+          inArray(studentEnrollments.enrollmentStatus, [...ACTIVE_ENROLLMENT]),
+        ),
+      );
+    if (onlyEnrollmentIds) {
+      const wanted = new Set(onlyEnrollmentIds);
+      const picked = rows.filter((r) => wanted.has(r.id));
+      if (picked.length !== wanted.size) {
+        throw refuse("BAD_REQUEST", "One of the students is not in these classes.");
       }
+      return picked.map((r) => ({ id: r.id, sectionId: r.sectionId as string }));
+    }
+    return rows.map((r) => ({ id: r.id, sectionId: r.sectionId as string }));
+  }
+
+  /**
+   * Makes the teacher's photos exactly `objectIds`: links new ones (only
+   * files this teacher uploaded for this homework, or for none yet), and
+   * hands the dropped ones to the storage sweeper.
+   */
+  private async setFiles(
+    tx: Tx,
+    assignment: Pick<Assignment, "id" | "organizationId" | "schoolId">,
+    userId: string | null,
+    objectIds: string[],
+  ): Promise<void> {
+    const ids = [...new Set(objectIds)];
+    const existing = await tx
+      .select({ objectId: assignmentFiles.objectId })
+      .from(assignmentFiles)
+      .where(eq(assignmentFiles.assignmentId, assignment.id));
+    const before = existing.map((r) => r.objectId);
+    await storageService.attach(tx, {
+      organizationId: assignment.organizationId,
+      purpose: TEACHER_FILE,
+      parentId: assignment.id,
+      userId,
+      objectIds: ids,
+    });
+    await tx.delete(assignmentFiles).where(eq(assignmentFiles.assignmentId, assignment.id));
+    if (ids.length) {
+      await tx.insert(assignmentFiles).values(
+        ids.map((objectId, i) => ({
+          organizationId: assignment.organizationId,
+          schoolId: assignment.schoolId,
+          assignmentId: assignment.id,
+          objectId,
+          sortOrder: i,
+        })),
+      );
+    }
+    const dropped = before.filter((id) => !ids.includes(id));
+    await storageService.markDeleted(tx, assignment.organizationId, dropped);
+  }
+
+  /** Writes the audience: section targets plus optional student targets. */
+  private async setTargets(
+    tx: Tx,
+    assignment: Pick<Assignment, "id" | "organizationId" | "schoolId">,
+    sectionIds: string[],
+    studentEnrollmentIds: string[] | null,
+  ): Promise<void> {
+    await tx.delete(assignmentTargets).where(eq(assignmentTargets.assignmentId, assignment.id));
+    await tx.insert(assignmentTargets).values([
+      ...sectionIds.map((sectionId) => ({
+        organizationId: assignment.organizationId,
+        schoolId: assignment.schoolId,
+        assignmentId: assignment.id,
+        targetType: "section" as const,
+        sectionId,
+      })),
+      ...(studentEnrollmentIds ?? []).map((studentEnrollmentId) => ({
+        organizationId: assignment.organizationId,
+        schoolId: assignment.schoolId,
+        assignmentId: assignment.id,
+        targetType: "student" as const,
+        studentEnrollmentId,
+      })),
+    ]);
+  }
+
+  private async studentTargetsOf(ex: Executor, assignmentId: string): Promise<string[] | null> {
+    const rows = await ex
+      .select({ id: assignmentTargets.studentEnrollmentId })
+      .from(assignmentTargets)
+      .where(
+        and(
+          eq(assignmentTargets.assignmentId, assignmentId),
+          eq(assignmentTargets.targetType, "student"),
+        ),
+      );
+    return rows.length ? rows.map((r) => r.id as string) : null;
+  }
+
+  /**
+   * Gives a draft or scheduled homework: one row per student, then
+   * `published`. A class with no students is refused rather than giving
+   * homework nobody receives.
+   */
+  private async giveNow(tx: Tx, assignment: Assignment): Promise<Assignment> {
+    if (assignment.kind === "quiz") {
+      const [q] = await tx
+        .select({ n: count() })
+        .from(assignmentQuestions)
+        .where(eq(assignmentQuestions.assignmentId, assignment.id));
+      if (!q || q.n === 0) throw refuse("CONFLICT", "Add questions before giving the quiz.");
+    }
+    const now = new Date();
+    if (assignment.closeAt.getTime() <= now.getTime()) {
+      throw refuse("BAD_REQUEST", "The due time has already passed. Pick a later one.");
+    }
+    const sectionIds = await this.sectionIdsOf(tx, assignment.id);
+    const only = await this.studentTargetsOf(tx, assignment.id);
+    const rows = await this.resolveStudents(
+      tx,
+      assignment.schoolId,
+      assignment.academicYearId,
+      sectionIds,
+      only,
+    );
+    if (rows.length === 0) {
+      throw refuse("CONFLICT", "These classes have no students yet, so there is nobody to give it to.");
+    }
+    await tx
+      .insert(studentAssignments)
+      .values(
+        rows.map((e) => ({
+          organizationId: assignment.organizationId,
+          schoolId: assignment.schoolId,
+          assignmentId: assignment.id,
+          studentEnrollmentId: e.id,
+          sectionId: e.sectionId,
+          effectiveDueAt: assignment.dueAt,
+          effectiveCloseAt: assignment.closeAt,
+        })),
+      )
+      .onConflictDoNothing();
+    const [given] = await tx
+      .update(assignments)
+      .set({ status: "published", publishedAt: now, publishAt: null })
+      .where(eq(assignments.id, assignment.id))
+      .returning();
+    return given ?? assignment;
+  }
+
+  // ── Give ────────────────────────────────────────────────────────────────
+
+  /**
+   * Give (or keep as a draft). The router has already proved the caller may
+   * give this subject in EVERY named section. Files are processed before the
+   * transaction (bucket work never runs inside one).
+   */
+  async create(scope: DataScope, userId: string, input: CreateHomeworkInput): Promise<HomeworkSummary> {
+    const schoolId = requireSchool(scope);
+    const fileIds = input.kind === "reading" || input.kind === "quiz" ? [] : (input.fileObjectIds ?? []);
+    await storageService.ensureReady(userId, fileIds);
+
+    const comesBack: ComesBack = input.kind === "quiz" ? "questions" : input.comesBack;
+    const gradingMode: GradingMode =
+      input.kind === "quiz" ? "marks" : input.kind === "reading" ? "none" : input.gradingMode;
+    const maxMarks =
+      input.kind === "quiz" ? "0" : input.kind === "reading" ? null : (input.maxMarks ?? null);
+    validateChoices({ kind: input.kind, comesBack, gradingMode, maxMarks });
+
+    const dueAt = toDate(input.dueAt);
+    const closeAt = input.closeAt ? toDate(input.closeAt) : dueAt;
+    if (closeAt < dueAt) throw refuse("BAD_REQUEST", "Late work can't end before the due time.");
+    const publishAt = input.publishAt ? toDate(input.publishAt) : null;
+    if (publishAt && publishAt > dueAt) {
+      throw refuse("BAD_REQUEST", "It can't be given after it is due.");
     }
 
-    // Settings are admin-edited and rare — a plain find-then-write inside a
-    // transaction instead of ON CONFLICT, which cannot target our PARTIAL
-    // unique indexes (school-default vs per-class) without inference WHEREs.
-    const defined = Object.fromEntries(
-      Object.entries(input).filter(([, v]) => v !== undefined),
-    ) as Partial<typeof assignmentSettings.$inferInsert>;
-
-    return db.transaction(async (tx) => {
-      const [existing] = await tx
-        .select({ id: assignmentSettings.id })
-        .from(assignmentSettings)
-        .where(
-          and(
-            eq(assignmentSettings.schoolId, schoolId),
-            classId === null
-              ? isNull(assignmentSettings.classId)
-              : eq(assignmentSettings.classId, classId),
-          ),
-        );
-
-      if (existing) {
-        const [row] = await tx
-          .update(assignmentSettings)
-          .set(defined)
-          .where(eq(assignmentSettings.id, existing.id))
-          .returning();
-        if (!row) throw new Error("Failed to save assignment settings.");
-        return row;
-      }
-
-      const [row] = await tx
-        .insert(assignmentSettings)
-        .values({ organizationId, schoolId, classId, ...defined, createdBy: userId })
-        .returning();
-      if (!row) throw new Error("Failed to save assignment settings.");
-      return row;
-    });
-  }
-
-  /**
-   * The EFFECTIVE settings for a class: the class override wins field by
-   * field, the school default fills the rest, the platform fallback fills
-   * everything if the school never saved a row. Publish-time checks read THIS.
-   */
-  async resolveSettings(schoolId: string, classId: string | null) {
-    const rows = await db
-      .select()
-      .from(assignmentSettings)
-      .where(
-        and(
-          eq(assignmentSettings.schoolId, schoolId),
-          classId
-            ? or(
-                isNull(assignmentSettings.classId),
-                eq(assignmentSettings.classId, classId),
-              )
-            : isNull(assignmentSettings.classId),
-        ),
-      );
-
-    const schoolDefault = rows.find((r) => r.classId === null) ?? null;
-    // A class override row is a COMPLETE config row (the admin form saves it
-    // whole), so when one exists it wins entirely — no field-by-field merge,
-    // which would silently mix the override with stale default values.
-    const winner = (classId ? rows.find((r) => r.classId === classId) : null) ?? schoolDefault;
-
-    const merged = {
-      ...PLATFORM_DEFAULT_SETTINGS,
-      ...(winner ?? {}),
-    };
-    // These three are identity columns, not settings — drop whatever the
-    // spread dragged in so the shape matches the contract's effective schema.
-    delete (merged as Record<string, unknown>).id;
-    delete (merged as Record<string, unknown>).organizationId;
-    delete (merged as Record<string, unknown>).schoolId;
-    delete (merged as Record<string, unknown>).classId;
-    delete (merged as Record<string, unknown>).createdBy;
-    delete (merged as Record<string, unknown>).createdAt;
-    delete (merged as Record<string, unknown>).updatedAt;
-    // The platform defaults guarantee every settings field is present; the
-    // spread's optional types cannot see that, so the shape is asserted.
-    return merged as {
-      allowedSubmissionTypes: ("none" | "tick" | "offline" | "text" | "file" | "link" | "questions")[];
-      studentsCanSubmit: boolean;
-      parentsCanSubmit: boolean;
-      maxFilesPerSubmission: number;
-      maxFileSizeMb: number;
-      allowedMimeTypes: string[] | null;
-      defaultLatePolicy: "not_allowed" | "allowed";
-      defaultLateWindowHours: number;
-      maxAssignmentsPerDay: number | null;
-      allowWeekendAssignments: boolean;
-      questionsEnabled: boolean;
-    };
-  }
-
-  // -------------------------------------------------------------------------
-  // Rubrics
-  // -------------------------------------------------------------------------
-
-  async createRubric(scope: DataScope, userId: string, input: CreateRubricInput) {
-    const schoolId = requireSchoolId(scope);
-    const organizationId = scope.organizationId;
-
-    return db.transaction(async (tx) => {
-      const [rubric] = await tx
-        .insert(rubrics)
-        .values({
-          organizationId,
-          schoolId,
-          name: input.name,
-          description: input.description,
-          createdBy: userId,
-        })
-        .returning();
-      if (!rubric) throw new Error("Failed to create rubric.");
-
-      for (const criterion of input.criteria) {
-        const [c] = await tx
-          .insert(rubricCriteria)
-          .values({
-            organizationId,
-            schoolId,
-            rubricId: rubric.id,
-            name: criterion.name,
-            description: criterion.description,
-            sortOrder: criterion.sortOrder,
-          })
-          .returning();
-        if (!c) throw new Error("Failed to create rubric criterion.");
-        await tx.insert(rubricLevels).values(
-          criterion.levels.map((l) => ({
-            organizationId,
-            schoolId,
-            criterionId: c.id,
-            label: l.label,
-            description: l.description,
-            points: l.points,
-            sortOrder: l.sortOrder,
-          })),
-        );
-      }
-      return rubric;
-    });
-  }
-
-  async listRubrics(scopes: DataScope[]) {
-    return db
-      .select()
-      .from(rubrics)
-      .where(scopeWhere(scopes.map(atSchoolLevel), RUBRIC_COLS))
-      .orderBy(asc(rubrics.name));
-  }
-
-  async getRubricDetail(scope: DataScope, rubricId: string) {
-    const [rubric] = await db
-      .select()
-      .from(rubrics)
-      .where(
-        and(eq(rubrics.id, rubricId), scopeWhere(atSchoolLevel(scope), RUBRIC_COLS)),
-      );
-    if (!rubric) return null;
-
-    const criteria = await db
-      .select()
-      .from(rubricCriteria)
-      .where(eq(rubricCriteria.rubricId, rubricId))
-      .orderBy(asc(rubricCriteria.sortOrder));
-
-    const criterionIds = criteria.map((c) => c.id);
-    const levels = criterionIds.length
-      ? await db
-          .select()
-          .from(rubricLevels)
-          .where(inArray(rubricLevels.criterionId, criterionIds))
-          .orderBy(asc(rubricLevels.sortOrder))
-      : [];
-
-    return {
-      ...rubric,
-      criteria: criteria.map((c) => ({
-        ...c,
-        levels: levels.filter((l) => l.criterionId === c.id),
-      })),
-    };
-  }
-
-  /** Soft-retire (hard rule 2's spirit): assignments keep referencing it. */
-  async setRubricActive(scope: DataScope, rubricId: string, isActive: boolean) {
-    const [row] = await db
-      .update(rubrics)
-      .set({ isActive })
-      .where(
-        and(eq(rubrics.id, rubricId), scopeWhere(atSchoolLevel(scope), RUBRIC_COLS)),
-      )
-      .returning();
-    return row ?? null;
-  }
-
-  // -------------------------------------------------------------------------
-  // Assignments
-  // -------------------------------------------------------------------------
-
-  /**
-   * Creates a DRAFT. The section (the gate pair's section) is the primary
-   * target; explicit student enrollments may add individual targets.
-   * closeAt absent = dueAt + the effective settings' late window.
-   */
-  async createAssignment(scope: DataScope, userId: string, input: {
-    academicYearId: string;
-    termId?: string | null;
-    subjectId: string;
-    sectionId: string;
-    studentEnrollmentIds?: string[];
-    kind?: string;
-    title: string;
-    description?: string | null;
-    topic?: string | null;
-    estimatedMinutes?: number | null;
-    submissionTypes: string[];
-    gradingMode: string;
-    maxMarks?: string | null;
-    gradingScaleId?: string | null;
-    rubricId?: string | null;
-    dueAt: string;
-    closeAt?: string | null;
-    latePolicy?: "not_allowed" | "allowed" | null;
-    allowResubmission?: boolean;
-    maxSubmissions?: number | null;
-    resources?: {
-      resourceType: "file" | "link" | "video";
-      objectId?: string;
-      url?: string;
-      title?: string;
-      sortOrder?: number;
-    }[];
-  }) {
-    const schoolId = requireSchoolId(scope);
-    const organizationId = scope.organizationId;
-
-    return db.transaction(async (tx) => {
-      // The section is the anchor: year and class come from it.
-      const [section] = await tx
-        .select({
-          id: sections.id,
-          classId: sections.classId,
-          academicYearId: sections.academicYearId,
-        })
-        .from(sections)
-        .where(
-          and(
-            eq(sections.id, input.sectionId),
-            eq(sections.schoolId, schoolId),
-            scopeWhere(atSchoolLevel(scope), SECTION_COLS),
-          ),
-        );
-      if (!section) {
-        throw new Error("Section not found in this school.");
-      }
-      if (input.academicYearId !== section.academicYearId) {
-        throw new Error(
-          "Academic year does not match the section's year. Assign homework in the session the section belongs to.",
-        );
-      }
-
+    const id = await db.transaction(async (tx) => {
+      const secs = await this.loadSections(tx, schoolId, input.sectionIds);
+      const academicYearId = secs[0]!.academicYearId;
       const [subject] = await tx
         .select({ id: subjects.id })
         .from(subjects)
-        .where(
-          and(
-            eq(subjects.id, input.subjectId),
-            eq(subjects.schoolId, schoolId),
-            scopeWhere(atSchoolLevel(scope), SUBJECT_COLS),
-          ),
-        );
-      if (!subject) {
-        throw new Error("Subject not found in this school.");
-      }
+        .where(and(eq(subjects.id, input.subjectId), eq(subjects.schoolId, schoolId)));
+      if (!subject) throw refuse("BAD_REQUEST", "That subject could not be found.");
+      const gradingScaleId = gradingMode === "grade" ? await this.defaultScaleId(tx, schoolId) : null;
 
-      if (input.rubricId) {
-        const [r] = await tx
-          .select({ id: rubrics.id })
-          .from(rubrics)
-          .where(and(eq(rubrics.id, input.rubricId), eq(rubrics.schoolId, schoolId)));
-        if (!r) throw new Error("Rubric not found in this school.");
-      }
-      if (input.gradingScaleId) {
-        const [s] = await tx
-          .select({ id: gradingScales.id })
-          .from(gradingScales)
-          .where(
-            and(
-              eq(gradingScales.id, input.gradingScaleId),
-              eq(gradingScales.schoolId, schoolId),
-            ),
-          );
-        if (!s) throw new Error("Grading scale not found in this school.");
-      }
-
-      const settings = await this.resolveSettings(schoolId, section.classId);
-
-      const dueAt = toDate(input.dueAt, "dueAt");
-      const latePolicy = input.latePolicy ?? settings.defaultLatePolicy;
-      const closeAt = input.closeAt
-        ? toDate(input.closeAt, "closeAt")
-        : latePolicy === "allowed"
-          ? new Date(dueAt.getTime() + settings.defaultLateWindowHours * 3600_000)
-          : dueAt;
-      if (closeAt.getTime() < dueAt.getTime()) {
-        throw new Error("The closing time cannot be before the due time.");
-      }
-      if (latePolicy === "not_allowed" && closeAt.getTime() !== dueAt.getTime()) {
-        throw new Error(
-          "A no-late-submissions assignment closes exactly when it is due.",
-        );
-      }
-
-      const [assignment] = await tx
+      const [row] = await tx
         .insert(assignments)
         .values({
-          organizationId,
+          organizationId: secs[0]!.organizationId,
           schoolId,
-          academicYearId: section.academicYearId,
-          termId: input.termId ?? null,
+          academicYearId,
           subjectId: input.subjectId,
-          kind: (input.kind ?? "homework") as typeof assignments.$inferInsert.kind,
-          title: input.title,
-          description: input.description ?? null,
-          topic: input.topic ?? null,
+          kind: input.kind,
+          comesBack,
+          title: input.kind === "reading" ? input.pages : input.title,
+          description: input.kind === "reading" ? null : (input.details ?? null),
+          topic: input.kind === "reading" ? input.book : null,
           estimatedMinutes: input.estimatedMinutes ?? null,
-          submissionTypes: input.submissionTypes as typeof assignments.$inferInsert.submissionTypes,
-          gradingMode: input.gradingMode as typeof assignments.$inferInsert.gradingMode,
-          maxMarks: input.maxMarks ?? null,
-          gradingScaleId: input.gradingScaleId ?? null,
-          rubricId: input.rubricId ?? null,
-          publishAt: null,
+          gradingMode,
+          maxMarks,
+          gradingScaleId,
           dueAt,
           closeAt,
-          latePolicy,
-          allowResubmission: input.allowResubmission ?? true,
-          maxSubmissions: input.maxSubmissions ?? null,
+          publishAt,
+          status: publishAt && input.give && publishAt > new Date() ? "scheduled" : "draft",
+          createdBy: userId,
+        })
+        .returning();
+      if (!row) throw new Error("Failed to save the homework.");
+
+      const only = input.studentEnrollmentIds?.length ? input.studentEnrollmentIds : null;
+      if (only) {
+        await this.resolveStudents(tx, schoolId, academicYearId, input.sectionIds, only);
+      }
+      await this.setTargets(tx, row, [...new Set(input.sectionIds)], only);
+      await this.setFiles(tx, row, userId, fileIds);
+
+      if (input.give && row.status === "draft") await this.giveNow(tx, row);
+      return row.id;
+    });
+    return this.summary(scope, id);
+  }
+
+  /**
+   * Edit. Before anything comes back everything can change; after the first
+   * hand-in, attempt or check (`isLocked`) the classes, how it comes back and
+   * grading are refused. Changing a given homework's due time moves every
+   * child still on the old one.
+   */
+  async update(
+    scope: DataScope,
+    userId: string,
+    pair: TeachingPair,
+    input: UpdateHomeworkInput,
+  ): Promise<HomeworkSummary> {
+    const schoolId = requireSchool(scope);
+    if (input.fileObjectIds) await storageService.ensureReady(userId, input.fileObjectIds);
+
+    await db.transaction(async (tx) => {
+      const a = await this.load(tx, scope, input.id);
+      await this.assertPair(tx, a, pair);
+      if (a.status === "cancelled" || a.status === "closed") {
+        throw refuse("CONFLICT", "This homework is no longer open, so it can't be edited.");
+      }
+      const given = a.status === "published";
+      const changesShape =
+        input.sectionIds !== undefined ||
+        input.studentEnrollmentIds !== undefined ||
+        (input.comesBack !== undefined && input.comesBack !== a.comesBack) ||
+        (input.gradingMode !== undefined && input.gradingMode !== a.gradingMode) ||
+        (input.maxMarks !== undefined && input.maxMarks !== a.maxMarks);
+      if (changesShape && a.isLocked) {
+        throw refuse(
+          "CONFLICT",
+          "Work has already come back, so the classes, how it comes back and grading are fixed now.",
+        );
+      }
+      if (given && (input.sectionIds !== undefined || input.studentEnrollmentIds !== undefined)) {
+        throw refuse("CONFLICT", "It has been given already. Give it to another class instead.");
+      }
+
+      const comesBack = input.comesBack ?? a.comesBack;
+      const gradingMode = a.kind === "quiz" ? "marks" : (input.gradingMode ?? a.gradingMode);
+      const maxMarks = input.maxMarks !== undefined ? input.maxMarks : a.maxMarks;
+      validateChoices({ kind: a.kind, comesBack, gradingMode, maxMarks });
+      const gradingScaleId =
+        gradingMode === "grade" ? (a.gradingScaleId ?? (await this.defaultScaleId(tx, schoolId))) : null;
+
+      const dueAt = input.dueAt ? toDate(input.dueAt) : a.dueAt;
+      let closeAt =
+        input.closeAt === null ? dueAt : input.closeAt ? toDate(input.closeAt) : a.closeAt;
+      if (input.dueAt && input.closeAt === undefined) {
+        // Keep the same late window when only the due time moves.
+        closeAt = new Date(dueAt.getTime() + (a.closeAt.getTime() - a.dueAt.getTime()));
+      }
+      if (closeAt < dueAt) throw refuse("BAD_REQUEST", "Late work can't end before the due time.");
+      if (given && closeAt <= new Date()) {
+        throw refuse("BAD_REQUEST", "The new due time has already passed.");
+      }
+
+      let publishAt = a.publishAt;
+      let status = a.status;
+      if (!given && input.publishAt !== undefined) {
+        publishAt = input.publishAt ? toDate(input.publishAt) : null;
+        status = publishAt && publishAt > new Date() ? "scheduled" : "draft";
+      }
+
+      if (input.sectionIds) {
+        const secs = await this.loadSections(tx, schoolId, input.sectionIds);
+        if (secs[0]!.academicYearId !== a.academicYearId) {
+          throw refuse("BAD_REQUEST", "All the classes must be from the same year.");
+        }
+      }
+      if (input.sectionIds !== undefined || input.studentEnrollmentIds !== undefined) {
+        const sectionIds = input.sectionIds ?? (await this.sectionIdsOf(tx, a.id));
+        const only =
+          input.studentEnrollmentIds === undefined
+            ? await this.studentTargetsOf(tx, a.id)
+            : input.studentEnrollmentIds?.length
+              ? input.studentEnrollmentIds
+              : null;
+        if (only) await this.resolveStudents(tx, schoolId, a.academicYearId, sectionIds, only);
+        await this.setTargets(tx, a, [...new Set(sectionIds)], only);
+      }
+
+      await tx
+        .update(assignments)
+        .set({
+          ...(input.title !== undefined ? { title: input.title } : {}),
+          ...(input.details !== undefined && a.kind !== "reading" ? { description: input.details } : {}),
+          ...(input.book !== undefined && a.kind === "reading" ? { topic: input.book } : {}),
+          ...(input.estimatedMinutes !== undefined ? { estimatedMinutes: input.estimatedMinutes } : {}),
+          comesBack,
+          gradingMode,
+          maxMarks: a.kind === "quiz" ? a.maxMarks : maxMarks,
+          gradingScaleId,
+          dueAt,
+          closeAt,
+          publishAt,
+          status,
+        })
+        .where(eq(assignments.id, a.id));
+
+      if (input.fileObjectIds) await this.setFiles(tx, a, userId, input.fileObjectIds);
+
+      if (given && (dueAt.getTime() !== a.dueAt.getTime() || closeAt.getTime() !== a.closeAt.getTime())) {
+        await this.moveRows(tx, a, { dueAt, closeAt }, { onlyOnOldDates: true });
+      }
+    });
+    return this.summary(scope, input.id);
+  }
+
+  /** Gives a draft now. */
+  async give(scope: DataScope, pair: TeachingPair, id: string): Promise<HomeworkSummary> {
+    await db.transaction(async (tx) => {
+      const a = await this.load(tx, scope, id);
+      await this.assertPair(tx, a, pair);
+      if (a.status !== "draft" && a.status !== "scheduled") {
+        throw refuse("CONFLICT", "This homework has already been given.");
+      }
+      await this.giveNow(tx, a);
+    });
+    return this.summary(scope, id);
+  }
+
+  /**
+   * The toast's Undo: takes a just-given homework back to a draft. Only in
+   * the first minutes and only while no student has sent, ticked, started or
+   * been checked, so nobody loses work.
+   */
+  async undoGive(scope: DataScope, pair: TeachingPair, id: string): Promise<HomeworkSummary> {
+    await db.transaction(async (tx) => {
+      const a = await this.load(tx, scope, id);
+      await this.assertPair(tx, a, pair);
+      if (a.status !== "published" || !a.publishedAt) {
+        throw refuse("CONFLICT", "This homework is not just given, so it can't be undone.");
+      }
+      if (Date.now() - a.publishedAt.getTime() > UNDO_WINDOW_MS || a.isLocked) {
+        throw refuse("CONFLICT", "It's too late to undo. Cancel the homework instead.");
+      }
+      const [active] = await tx
+        .select({ n: count() })
+        .from(studentAssignments)
+        .where(
+          and(eq(studentAssignments.assignmentId, a.id), ne(studentAssignments.status, "assigned")),
+        );
+      if (active && active.n > 0) {
+        throw refuse("CONFLICT", "A student has already started on it. Cancel the homework instead.");
+      }
+      await tx.delete(studentAssignments).where(eq(studentAssignments.assignmentId, a.id));
+      await tx
+        .update(assignments)
+        .set({ status: "draft", publishedAt: null })
+        .where(eq(assignments.id, a.id));
+    });
+    return this.summary(scope, id);
+  }
+
+  /** Deletes a draft that never reached a student (D-7), with its photos. */
+  async deleteDraft(scope: DataScope, pair: TeachingPair, id: string): Promise<void> {
+    await db.transaction(async (tx) => {
+      const a = await this.load(tx, scope, id);
+      await this.assertPair(tx, a, pair);
+      if (a.status !== "draft" && a.status !== "scheduled") {
+        throw refuse("CONFLICT", "Only a homework that was never given can be deleted. Cancel it instead.");
+      }
+      await this.setFiles(tx, a, null, []);
+      // A quiz draft's question images go with it.
+      const qImages = await tx
+        .select({ id: assignmentQuestions.imageObjectId })
+        .from(assignmentQuestions)
+        .where(eq(assignmentQuestions.assignmentId, a.id));
+      await tx.delete(assignments).where(eq(assignments.id, a.id));
+      await storageService.markDeleted(
+        tx,
+        a.organizationId,
+        qImages.map((r) => r.id).filter((x): x is string => Boolean(x)),
+      );
+    });
+  }
+
+  /** Cancels a given homework: students no longer see it. Results already saved stay. */
+  async cancel(scope: DataScope, pair: TeachingPair, id: string): Promise<HomeworkSummary> {
+    await db.transaction(async (tx) => {
+      const a = await this.load(tx, scope, id);
+      await this.assertPair(tx, a, pair);
+      if (a.status === "draft" || a.status === "scheduled") {
+        throw refuse("CONFLICT", "It was never given. Delete the draft instead.");
+      }
+      if (a.status === "cancelled") return;
+      await tx
+        .update(assignments)
+        .set({ status: "cancelled", cancelledAt: new Date() })
+        .where(eq(assignments.id, a.id));
+    });
+    return this.summary(scope, id);
+  }
+
+  /**
+   * Stops accepting work now. Children who never sent work (or never handed
+   * in a quiz) become missing; open quiz attempts are handed in by the
+   * questions service.
+   */
+  async close(scope: DataScope, pair: TeachingPair, id: string): Promise<HomeworkSummary> {
+    await db.transaction(async (tx) => {
+      const a = await this.load(tx, scope, id);
+      await this.assertPair(tx, a, pair);
+      if (a.status !== "published") throw refuse("CONFLICT", "Only a given homework can be closed.");
+      const now = new Date();
+      await tx.update(assignments).set({ status: "closed" }).where(eq(assignments.id, a.id));
+      await tx
+        .update(studentAssignments)
+        .set({ effectiveCloseAt: now })
+        .where(
+          and(eq(studentAssignments.assignmentId, a.id), gt(studentAssignments.effectiveCloseAt, now)),
+        );
+      if (a.comesBack === "sent") await this.markMissing(tx, a.id);
+    });
+    return this.summary(scope, id);
+  }
+
+  /** Children with nothing sent by their close time become missing. */
+  async markMissing(ex: Executor, assignmentId: string): Promise<number> {
+    const rows = await ex
+      .update(studentAssignments)
+      .set({ status: "missing", statusChangedAt: new Date() })
+      .where(
+        and(
+          eq(studentAssignments.assignmentId, assignmentId),
+          inArray(studentAssignments.status, ["assigned", "redo"]),
+          lte(studentAssignments.effectiveCloseAt, new Date()),
+        ),
+      )
+      .returning({ id: studentAssignments.id });
+    return rows.length;
+  }
+
+  /**
+   * Rewrites children's deadlines. `onlyOnOldDates` keeps a child whose
+   * deadline was moved on its own and is later than the new one.
+   */
+  private async moveRows(
+    tx: Tx,
+    a: Assignment,
+    next: { dueAt: Date; closeAt: Date },
+    opts: { onlySectionId?: string; onlyStudentAssignmentId?: string; onlyOnOldDates?: boolean },
+  ): Promise<void> {
+    const conds = [eq(studentAssignments.assignmentId, a.id)];
+    if (opts.onlySectionId) conds.push(eq(studentAssignments.sectionId, opts.onlySectionId));
+    if (opts.onlyStudentAssignmentId) conds.push(eq(studentAssignments.id, opts.onlyStudentAssignmentId));
+    if (opts.onlyOnOldDates) {
+      conds.push(
+        or(
+          eq(studentAssignments.effectiveDueAt, a.dueAt),
+          lt(studentAssignments.effectiveCloseAt, next.closeAt),
+        )!,
+      );
+    }
+    await tx
+      .update(studentAssignments)
+      .set({ effectiveDueAt: next.dueAt, effectiveCloseAt: next.closeAt })
+      .where(and(...conds));
+    // A child marked missing gets another chance when the new close is ahead.
+    if (next.closeAt > new Date()) {
+      await tx
+        .update(studentAssignments)
+        .set({ status: "assigned", statusChangedAt: new Date() })
+        .where(and(...conds, eq(studentAssignments.status, "missing")));
+    }
+  }
+
+  /** Move the due date for everyone, one section, or one child. */
+  async moveDue(scope: DataScope, pair: TeachingPair, input: MoveDueInput): Promise<HomeworkSummary> {
+    await db.transaction(async (tx) => {
+      const a = await this.load(tx, scope, input.id);
+      await this.assertPair(tx, a, pair);
+      if (a.status !== "published" && a.status !== "closed") {
+        throw refuse("CONFLICT", "Edit the draft to change its due time.");
+      }
+      const dueAt = toDate(input.dueAt);
+      const closeAt = input.closeAt
+        ? toDate(input.closeAt)
+        : new Date(dueAt.getTime() + (a.closeAt.getTime() - a.dueAt.getTime()));
+      if (closeAt < dueAt) throw refuse("BAD_REQUEST", "Late work can't end before the due time.");
+      if (closeAt <= new Date()) throw refuse("BAD_REQUEST", "The new due time has already passed.");
+
+      if (input.onlyStudentAssignmentId) {
+        const [sa] = await tx
+          .select({ id: studentAssignments.id })
+          .from(studentAssignments)
+          .where(
+            and(
+              eq(studentAssignments.id, input.onlyStudentAssignmentId),
+              eq(studentAssignments.assignmentId, a.id),
+            ),
+          );
+        if (!sa) throw refuse("NOT_FOUND", "That student's homework could not be found.");
+        await this.moveRows(tx, a, { dueAt, closeAt }, { onlyStudentAssignmentId: sa.id });
+      } else if (input.onlySectionId) {
+        const sectionIds = await this.sectionIdsOf(tx, a.id);
+        if (!sectionIds.includes(input.onlySectionId)) {
+          throw refuse("BAD_REQUEST", "That class was not given this homework.");
+        }
+        await this.moveRows(tx, a, { dueAt, closeAt }, { onlySectionId: input.onlySectionId });
+      } else {
+        await this.moveRows(tx, a, { dueAt, closeAt }, { onlyOnOldDates: true });
+        await tx.update(assignments).set({ dueAt, closeAt }).where(eq(assignments.id, a.id));
+      }
+      if (a.status === "closed") {
+        await tx.update(assignments).set({ status: "published" }).where(eq(assignments.id, a.id));
+      }
+    });
+    return this.summary(scope, input.id);
+  }
+
+  /**
+   * Give the same homework to other classes, as a new homework with its own
+   * due time. Photos and quiz question images are COPIED: a file belongs to
+   * one record (ADR-063). The router proved the caller may give this subject
+   * in every target section.
+   */
+  async giveAgain(scope: DataScope, userId: string, pair: TeachingPair, input: GiveAgainInput) {
+    const schoolId = requireSchool(scope);
+    const source = await this.load(db, scope, input.id);
+    await this.assertPair(db, source, pair);
+    if (source.status === "draft" || source.status === "scheduled") {
+      throw refuse("CONFLICT", "Give the draft first, then give it to another class.");
+    }
+    const files = await db
+      .select({ objectId: assignmentFiles.objectId })
+      .from(assignmentFiles)
+      .where(eq(assignmentFiles.assignmentId, source.id))
+      .orderBy(asc(assignmentFiles.sortOrder));
+    const questions = await db
+      .select()
+      .from(assignmentQuestions)
+      .where(eq(assignmentQuestions.assignmentId, source.id))
+      .orderBy(asc(assignmentQuestions.position));
+
+    const copyFile = async (objectId: string) =>
+      (
+        await storageService.copyToOrg({
+          sourceObjectId: objectId,
+          targetOrganizationId: source.organizationId,
+          targetSchoolId: source.schoolId,
+          uploadedBy: userId,
+        })
+      ).id;
+    const fileCopies = await Promise.all(files.map((f) => copyFile(f.objectId)));
+    const imageCopies = new Map<string, string>();
+    for (const q of questions) {
+      if (q.imageObjectId && !imageCopies.has(q.imageObjectId)) {
+        imageCopies.set(q.imageObjectId, await copyFile(q.imageObjectId));
+      }
+    }
+
+    const dueAt = toDate(input.dueAt);
+    const closeAt = input.closeAt
+      ? toDate(input.closeAt)
+      : new Date(dueAt.getTime() + (source.closeAt.getTime() - source.dueAt.getTime()));
+    if (closeAt < dueAt) throw refuse("BAD_REQUEST", "Late work can't end before the due time.");
+
+    const id = await db.transaction(async (tx) => {
+      const secs = await this.loadSections(tx, schoolId, input.toSectionIds);
+      const [row] = await tx
+        .insert(assignments)
+        .values({
+          organizationId: source.organizationId,
+          schoolId,
+          academicYearId: secs[0]!.academicYearId,
+          subjectId: source.subjectId,
+          sourceAssignmentId: source.id,
+          kind: source.kind,
+          comesBack: source.comesBack,
+          title: source.title,
+          description: source.description,
+          topic: source.topic,
+          estimatedMinutes: source.estimatedMinutes,
+          gradingMode: source.gradingMode,
+          maxMarks: source.maxMarks,
+          gradingScaleId: source.gradingScaleId,
+          dueAt,
+          closeAt,
           status: "draft",
           createdBy: userId,
         })
         .returning();
-      if (!assignment) throw new Error("Failed to create the assignment.");
-
-      await tx.insert(assignmentTargets).values({
-        organizationId,
-        schoolId,
-        assignmentId: assignment.id,
-        targetType: "section",
-        sectionId: input.sectionId,
-      });
-
-      if (input.studentEnrollmentIds?.length) {
-        const enrollments = await tx
-          .select({
-            id: studentEnrollments.id,
-            sectionId: studentEnrollments.sectionId,
-          })
-          .from(studentEnrollments)
-          .where(
-            and(
-              inArray(studentEnrollments.id, input.studentEnrollmentIds),
-              eq(studentEnrollments.schoolId, schoolId),
-              eq(studentEnrollments.sectionId, input.sectionId),
-            ),
-          );
-        if (enrollments.length !== input.studentEnrollmentIds.length) {
-          throw new Error(
-            "One or more students are not enrolled in the targeted section.",
-          );
-        }
-        await tx.insert(assignmentTargets).values(
-          enrollments.map((e) => ({
-            organizationId,
-            schoolId,
-            assignmentId: assignment.id,
-            targetType: "student" as const,
-            studentEnrollmentId: e.id,
+      if (!row) throw new Error("Failed to save the homework.");
+      await this.setTargets(tx, row, [...new Set(input.toSectionIds)], null);
+      await this.setFiles(tx, row, userId, fileCopies);
+      if (questions.length) {
+        const images = [...imageCopies.values()];
+        await storageService.attach(tx, {
+          organizationId: row.organizationId,
+          purpose: TEACHER_FILE,
+          parentId: row.id,
+          userId,
+          objectIds: images,
+        });
+        await tx.insert(assignmentQuestions).values(
+          questions.map((q) => ({
+            organizationId: q.organizationId,
+            schoolId: q.schoolId,
+            assignmentId: row.id,
+            sourceQuestionId: q.sourceQuestionId,
+            position: q.position,
+            questionType: q.questionType,
+            body: q.body,
+            imageObjectId: q.imageObjectId ? (imageCopies.get(q.imageObjectId) ?? null) : null,
+            options: q.options,
+            correctAnswer: q.correctAnswer,
+            explanation: q.explanation,
+            marks: q.marks,
           })),
         );
       }
+      await this.giveNow(tx, row);
+      return row.id;
+    });
+    return this.summary(scope, id);
+  }
 
-      if (input.resources?.length) {
-        await tx.insert(assignmentResources).values(
-          input.resources.map((r) => ({
-            organizationId,
-            schoolId,
-            assignmentId: assignment.id,
-            resourceType: r.resourceType,
-            objectId: r.objectId ?? null,
-            url: r.url ?? null,
-            title: r.title ?? null,
-            sortOrder: r.sortOrder ?? 0,
-          })),
-        );
-      }
-
-      return assignment;
+  /** Upload links for the teacher's photos. Linked by the save that names them. */
+  async fileUploadTickets(
+    scope: DataScope,
+    userId: string,
+    input: { homeworkId?: string; files: UploadRequest[] },
+  ) {
+    const schoolId = requireSchool(scope);
+    let parentId: string | null = null;
+    let organizationId = scope.organizationId;
+    if (input.homeworkId) {
+      const a = await this.load(db, scope, input.homeworkId);
+      parentId = a.id;
+      organizationId = a.organizationId;
+    }
+    return storageService.createUploads({
+      organizationId,
+      schoolId,
+      purpose: TEACHER_FILE,
+      parentId,
+      uploadedBy: userId,
+      files: input.files,
     });
   }
 
+  // ── Reads (staff) ───────────────────────────────────────────────────────
+
+  /** Summaries for many homework ids, in the order given. */
+  async summaries(ids: string[]): Promise<HomeworkSummary[]> {
+    if (ids.length === 0) return [];
+    const rows = await db
+      .select({ a: assignments, subjectName: subjects.name })
+      .from(assignments)
+      .innerJoin(subjects, eq(assignments.subjectId, subjects.id))
+      .where(inArray(assignments.id, ids));
+    const targets = await db
+      .select({
+        assignmentId: assignmentTargets.assignmentId,
+        sectionId: sections.id,
+        sectionName: sections.name,
+        className: classes.name,
+        classOrder: classes.numericOrder,
+      })
+      .from(assignmentTargets)
+      .innerJoin(sections, eq(assignmentTargets.sectionId, sections.id))
+      .innerJoin(classes, eq(sections.classId, classes.id))
+      .where(inArray(assignmentTargets.assignmentId, ids))
+      .orderBy(asc(classes.numericOrder), asc(sections.name));
+    const counts = await db
+      .select({
+        assignmentId: studentAssignments.assignmentId,
+        sectionId: studentAssignments.sectionId,
+        status: studentAssignments.status,
+        n: count(),
+      })
+      .from(studentAssignments)
+      .where(inArray(studentAssignments.assignmentId, ids))
+      .groupBy(studentAssignments.assignmentId, studentAssignments.sectionId, studentAssignments.status);
+    const fileCounts = await db
+      .select({ assignmentId: assignmentFiles.assignmentId, n: count() })
+      .from(assignmentFiles)
+      .where(inArray(assignmentFiles.assignmentId, ids))
+      .groupBy(assignmentFiles.assignmentId);
+
+    const byId = new Map<string, HomeworkSummary>();
+    for (const { a, subjectName } of rows) {
+      const sections = targets
+        .filter((t) => t.assignmentId === a.id)
+        .map((t) => {
+          const mine = counts.filter((c) => c.assignmentId === a.id && c.sectionId === t.sectionId);
+          const n = (s: StudentAssignmentRow["status"]) =>
+            mine.filter((c) => c.status === s).reduce((sum, c) => sum + c.n, 0);
+          const total = mine.reduce((sum, c) => sum + c.n, 0);
+          const submitted = n("submitted");
+          const checked = n("checked");
+          const toCheck =
+            a.comesBack === "brought"
+              ? total - checked
+              : a.comesBack === "sent" || a.comesBack === "questions"
+                ? submitted
+                : 0;
+          return {
+            sectionId: t.sectionId,
+            sectionName: t.sectionName,
+            className: t.className,
+            total,
+            toCheck,
+            checked,
+            submitted,
+            missing: n("missing"),
+            redo: n("redo"),
+          };
+        });
+      byId.set(a.id, {
+        id: a.id,
+        kind: a.kind,
+        comesBack: a.comesBack,
+        gradingMode: a.gradingMode,
+        maxMarks: a.maxMarks,
+        title: a.title,
+        book: a.kind === "reading" ? a.topic : null,
+        subjectId: a.subjectId,
+        subjectName,
+        status: a.status,
+        dueAt: a.dueAt,
+        closeAt: a.closeAt,
+        publishAt: a.publishAt,
+        publishedAt: a.publishedAt,
+        estimatedMinutes: a.estimatedMinutes,
+        createdBy: a.createdBy,
+        createdAt: a.createdAt,
+        sections,
+        fileCount: fileCounts.find((f) => f.assignmentId === a.id)?.n ?? 0,
+      });
+    }
+    return ids.map((id) => byId.get(id)).filter((x): x is HomeworkSummary => Boolean(x));
+  }
+
+  async summary(scope: DataScope, id: string): Promise<HomeworkSummary> {
+    await this.load(db, scope, id);
+    const [s] = await this.summaries([id]);
+    if (!s) throw refuse("NOT_FOUND", "That homework could not be found.");
+    return s;
+  }
+
   /**
-   * PATCH, with the post-publish integrity rule: any material edit to a
-   * PUBLISHED assignment snapshots the previous row into `assignment_
-   * revisions` first. The due/close pair follows the same rules as create.
+   * The homework ids the caller may see, newest first: by scope, and for a
+   * subject teacher only their own pairs (or what they gave themselves).
    */
-  async updateAssignment(scope: DataScope, userId: string, input: UpdateAssignmentInput) {
-    const schoolId = requireSchoolId(scope);
+  private async visibleIds(
+    access: HomeworkAccess,
+    filters: {
+      statuses?: Assignment["status"][];
+      kind?: HomeworkKind;
+      subjectId?: string;
+      forSectionId?: string;
+      academicYearId?: string;
+      search?: string;
+      mine?: boolean;
+      before?: Date;
+      dueFrom?: Date;
+      limit: number;
+    },
+  ): Promise<string[]> {
+    const conds = [
+      or(...access.scopes.map((s) => scopeWhere(atSchoolLevel(s), ASSIGNMENT_COLS)))!,
+    ];
+    if (filters.statuses) conds.push(inArray(assignments.status, filters.statuses));
+    if (filters.kind) conds.push(eq(assignments.kind, filters.kind));
+    if (filters.subjectId) conds.push(eq(assignments.subjectId, filters.subjectId));
+    if (filters.academicYearId) conds.push(eq(assignments.academicYearId, filters.academicYearId));
+    if (filters.mine) conds.push(eq(assignments.createdBy, access.userId));
+    if (filters.before) conds.push(lt(assignments.createdAt, filters.before));
+    if (filters.dueFrom) conds.push(gte(assignments.dueAt, filters.dueFrom));
+    if (filters.search) {
+      const term = `%${filters.search.replace(/[%_\\]/g, "\\$&")}%`;
+      conds.push(or(ilike(assignments.title, term), ilike(assignments.topic, term))!);
+    }
+    if (filters.forSectionId) {
+      conds.push(
+        sql`exists (select 1 from ${assignmentTargets} where ${assignmentTargets.assignmentId} = ${assignments.id} and ${assignmentTargets.sectionId} = ${filters.forSectionId})`,
+      );
+    }
+    if (access.pairs) {
+      const pairConds = access.pairs.map(
+        (p) =>
+          sql`(${assignments.subjectId} = ${p.subjectId} and exists (select 1 from ${assignmentTargets} where ${assignmentTargets.assignmentId} = ${assignments.id} and ${assignmentTargets.sectionId} = ${p.sectionId}))`,
+      );
+      conds.push(or(eq(assignments.createdBy, access.userId), ...pairConds)!);
+    }
+    const rows = await db
+      .select({ id: assignments.id })
+      .from(assignments)
+      .where(and(...conds))
+      .orderBy(desc(assignments.createdAt))
+      .limit(filters.limit);
+    return rows.map((r) => r.id);
+  }
 
-    return db.transaction(async (tx) => {
-      const [existing] = await tx
-        .select()
-        .from(assignments)
+  /** All homework (by date given, newest first). */
+  async list(access: HomeworkAccess, input: ListHomeworkInput): Promise<HomeworkSummary[]> {
+    const ids = await this.visibleIds(access, {
+      kind: input.kind,
+      subjectId: input.subjectId,
+      forSectionId: input.forSectionId,
+      academicYearId: input.academicYearId,
+      search: input.search,
+      mine: input.mine,
+      before: input.before ? toDate(input.before) : undefined,
+      limit: input.limit,
+    });
+    const all = await this.summaries(ids);
+    return all.filter((s) => s.status !== "draft" || s.createdBy === access.userId);
+  }
+
+  /** Home: to check, quizzes, out now, given today, drafts. */
+  async home(access: HomeworkAccess) {
+    const now = new Date();
+    const today = todayInIst();
+    const ids = await this.visibleIds(access, {
+      statuses: ["draft", "scheduled", "published", "closed"],
+      dueFrom: new Date(now.getTime() - 30 * 24 * 3600 * 1000),
+      limit: 300,
+    });
+    const all = await this.summaries(ids);
+
+    const answersToMark = new Map<string, number>();
+    const quizIds = all.filter((s) => s.kind === "quiz").map((s) => s.id);
+    if (quizIds.length) {
+      const rows = await db
+        .select({ assignmentId: studentAssignments.assignmentId, n: count() })
+        .from(questionAttemptAnswers)
+        .innerJoin(questionAttempts, eq(questionAttemptAnswers.attemptId, questionAttempts.id))
+        .innerJoin(studentAssignments, eq(questionAttempts.studentAssignmentId, studentAssignments.id))
         .where(
           and(
-            eq(assignments.id, input.id),
-            eq(assignments.schoolId, schoolId),
-            scopeWhere(atSchoolLevel(scope), ASSIGNMENT_COLS),
-          ),
-        );
-      if (!existing) throw new Error("Assignment not found in this school.");
-      if (existing.subjectId !== input.subjectId) {
-        throw new Error("The named subject does not match this assignment.");
-      }
-      if (["closed", "cancelled"].includes(existing.status)) {
-        throw new Error(
-          `A ${existing.status} assignment can no longer be edited.`,
-        );
-      }
-
-      const [target] = await tx
-        .select({ sectionId: assignmentTargets.sectionId })
-        .from(assignmentTargets)
-        .where(
-          and(
-            eq(assignmentTargets.assignmentId, existing.id),
-            eq(assignmentTargets.targetType, "section"),
+            inArray(studentAssignments.assignmentId, quizIds),
+            eq(questionAttemptAnswers.needsManualReview, true),
+            isNull(questionAttemptAnswers.gradedAt),
+            ne(questionAttempts.status, "in_progress"),
           ),
         )
-        .limit(1);
-      if (!target?.sectionId || target.sectionId !== input.sectionId) {
-        throw new Error("The named section is not a target of this assignment.");
-      }
+        .groupBy(studentAssignments.assignmentId);
+      for (const r of rows) answersToMark.set(r.assignmentId, r.n);
+    }
 
-      const dueAt = input.dueAt ? toDate(input.dueAt, "dueAt") : existing.dueAt;
-      let closeAt = input.closeAt ? toDate(input.closeAt, "closeAt") : existing.closeAt;
-      const latePolicy = input.latePolicy ?? existing.latePolicy;
-      if (closeAt.getTime() < dueAt.getTime()) {
-        if (latePolicy === "allowed" && !input.closeAt) {
-          const settings = await this.resolveSettings(schoolId, null);
-          closeAt = new Date(dueAt.getTime() + settings.defaultLateWindowHours * 3600_000);
-        } else {
-          throw new Error("The closing time cannot be before the due time.");
-        }
-      }
-      if (latePolicy === "not_allowed" && closeAt.getTime() !== dueAt.getTime()) {
-        throw new Error(
-          "A no-late-submissions assignment closes exactly when it is due.",
-        );
-      }
-
-      // The revision is the PRE-image, written only for published rows whose
-      // material content actually changed.
-      const materialChanged =
-        existing.status === "published" &&
-        (input.title !== undefined ||
-          input.description !== undefined ||
-          input.topic !== undefined ||
-          input.dueAt !== undefined ||
-          input.closeAt !== undefined ||
-          input.resources !== undefined ||
-          (input.submissionTypes !== undefined &&
-            input.submissionTypes.join() !== existing.submissionTypes.join()));
-      if (materialChanged) {
-        const [revRow] = await tx
-          .select({ value: count() })
-          .from(assignmentRevisions)
-          .where(eq(assignmentRevisions.assignmentId, existing.id));
-        const prevResources = await tx
-          .select()
-          .from(assignmentResources)
-          .where(eq(assignmentResources.assignmentId, existing.id))
-          .orderBy(asc(assignmentResources.sortOrder));
-        await tx.insert(assignmentRevisions).values({
-          organizationId: existing.organizationId,
-          schoolId: existing.schoolId,
-          assignmentId: existing.id,
-          revisionNo: Number(revRow?.value ?? 0) + 1,
-          snapshot: { ...existing, resources: prevResources },
-          changeSummary: input.changeSummary ?? "Assignment edited after publish.",
-          changedBy: userId,
-        });
-      }
-
-      const [updated] = await tx
-        .update(assignments)
-        .set({
-          ...(input.title !== undefined ? { title: input.title } : {}),
-          ...(input.description !== undefined ? { description: input.description } : {}),
-          ...(input.topic !== undefined ? { topic: input.topic } : {}),
-          ...(input.estimatedMinutes !== undefined ? { estimatedMinutes: input.estimatedMinutes } : {}),
-          ...(input.submissionTypes !== undefined
-            ? { submissionTypes: input.submissionTypes as typeof assignments.$inferInsert.submissionTypes }
-            : {}),
-          dueAt,
-          closeAt,
-          latePolicy,
-          ...(input.allowResubmission !== undefined ? { allowResubmission: input.allowResubmission } : {}),
-          ...(input.maxSubmissions !== undefined ? { maxSubmissions: input.maxSubmissions } : {}),
-        })
-        .where(eq(assignments.id, existing.id))
-        .returning();
-      if (!updated) throw new Error("Failed to update the assignment.");
-
-      if (input.resources !== undefined) {
-        await tx
-          .delete(assignmentResources)
-          .where(eq(assignmentResources.assignmentId, existing.id));
-        if (input.resources.length) {
-          await tx.insert(assignmentResources).values(
-            input.resources.map((r) => ({
-              organizationId: existing.organizationId,
-              schoolId: existing.schoolId,
-              assignmentId: existing.id,
-              resourceType: r.resourceType,
-              objectId: r.objectId ?? null,
-              url: r.url ?? null,
-              title: r.title ?? null,
-              sortOrder: r.sortOrder ?? 0,
-            })),
-          );
-        }
-      }
-
-      return updated;
-    });
-  }
-
-  /**
-   * PUBLISH — the resolution moment. Active enrollments in the target section
-   * become `student_assignments` rows with deadlines snapshotted; publish-time
-   * caps (per-day, weekend) are checked against the effective settings.
-   */
-  async publishAssignment(scope: DataScope, userId: string, assignmentId: string) {
-    const schoolId = requireSchoolId(scope);
-
-    return db.transaction(async (tx) => {
-      const [assignment] = await tx
-        .select()
-        .from(assignments)
-        .where(
-          and(
-            eq(assignments.id, assignmentId),
-            eq(assignments.schoolId, schoolId),
-            scopeWhere(atSchoolLevel(scope), ASSIGNMENT_COLS),
-          ),
-        );
-      if (!assignment) throw new Error("Assignment not found in this school.");
-      if (assignment.status !== "draft" && assignment.status !== "scheduled") {
-        throw new Error(`A ${assignment.status} assignment cannot be published.`);
-      }
-
-      const targets = await tx
-        .select({ sectionId: assignmentTargets.sectionId })
-        .from(assignmentTargets)
-        .where(
-          and(
-            eq(assignmentTargets.assignmentId, assignment.id),
-            eq(assignmentTargets.targetType, "section"),
-          ),
-        );
-      if (targets.length === 0) {
-        throw new Error("The assignment has no section target to resolve.");
-      }
-      const sectionIds = targets.map((t) => t.sectionId as string);
-
-      const [section] = await tx
-        .select({ classId: sections.classId })
-        .from(sections)
-        .where(and(inArray(sections.id, sectionIds), eq(sections.schoolId, schoolId)))
-        .limit(1);
-
-      const settings = await this.resolveSettings(schoolId, section?.classId ?? null);
-
-      // Publish-time caps (application-level rules from the reference).
-      const dueDay = assignment.dueAt.toISOString().slice(0, 10);
-      const weekday = assignment.dueAt.getUTCDay();
-      if (!settings.allowWeekendAssignments && (weekday === 0 || weekday === 6)) {
-        throw new Error(
-          "This school does not allow homework due on a weekend. Move the due date to a weekday.",
-        );
-      }
-      if (settings.maxAssignmentsPerDay !== null) {
-        const sameDayIds = await tx
-          .select({ id: assignments.id })
-          .from(assignments)
-          .where(
-            and(
-              eq(assignments.schoolId, schoolId),
-              inArray(assignments.status, ["published", "scheduled"]),
-              ne(assignments.id, assignment.id),
-              sql`${assignments.dueAt}::date = ${dueDay}::date`,
-            ),
-          );
-        if (sameDayIds.length) {
-          const [sharedRow] = await tx
-            .select({ value: count() })
-            .from(assignmentTargets)
-            .where(
-              and(
-                inArray(assignmentTargets.assignmentId, sameDayIds.map((r) => r.id)),
-                inArray(assignmentTargets.sectionId, sectionIds),
-              ),
-            );
-          if (Number(sharedRow?.value ?? 0) >= settings.maxAssignmentsPerDay) {
-            throw new Error(
-              `The per-day limit (${settings.maxAssignmentsPerDay}) for this class is already reached on ${dueDay}.`,
-            );
-          }
-        }
-      }
-
-      // Resolve: every active enrollment in the target sections.
-      const enrollments = await tx
-        .select({
-          id: studentEnrollments.id,
-          sectionId: studentEnrollments.sectionId,
-        })
-        .from(studentEnrollments)
-        .where(
-          and(
-            eq(studentEnrollments.schoolId, schoolId),
-            eq(studentEnrollments.academicYearId, assignment.academicYearId),
-            inArray(studentEnrollments.sectionId, sectionIds),
-            inArray(studentEnrollments.enrollmentStatus, [...ACTIVE_ENROLLMENT_STATUSES]),
-          ),
-        );
-
-      // Plus the explicitly targeted individuals (their enrollment rows).
-      const individualTargets = await tx
-        .select({ studentEnrollmentId: assignmentTargets.studentEnrollmentId })
-        .from(assignmentTargets)
-        .where(
-          and(
-            eq(assignmentTargets.assignmentId, assignment.id),
-            eq(assignmentTargets.targetType, "student"),
-          ),
-        );
-      const individualIds = individualTargets
-        .map((t) => t.studentEnrollmentId as string)
-        .filter((id) => !enrollments.some((e) => e.id === id));
-      const individuals = individualIds.length
-        ? await tx
-            .select({
-              id: studentEnrollments.id,
-              sectionId: studentEnrollments.sectionId,
-            })
-            .from(studentEnrollments)
-            .where(
-              and(
-                inArray(studentEnrollments.id, individualIds),
-                eq(studentEnrollments.schoolId, schoolId),
-              ),
-            )
-        : [];
-
-      const rows = [...enrollments, ...individuals];
-      if (rows.length) {
-        await tx
-          .insert(studentAssignments)
-          .values(
-            rows.map((e) => ({
-              organizationId: assignment.organizationId,
-              schoolId: assignment.schoolId,
-              assignmentId: assignment.id,
-              studentEnrollmentId: e.id,
-              sectionId: e.sectionId as string,
-              effectiveDueAt: assignment.dueAt,
-              effectiveCloseAt: assignment.closeAt,
-            })),
+    const istDay = (d: Date) => new Date(d.getTime() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+    const live = all.filter((s) => s.status === "published" || s.status === "closed");
+    const toCheck = live
+      .filter((s) => (s.comesBack === "brought" || s.comesBack === "sent") && s.dueAt <= now)
+      .flatMap((s) =>
+        s.sections
+          .filter((sec) => sec.toCheck > 0)
+          .filter((sec) =>
+            !access.pairs ||
+            s.createdBy === access.userId ||
+            access.pairs.some((p) => p.sectionId === sec.sectionId && p.subjectId === s.subjectId),
           )
-          .onConflictDoNothing();
-      }
-
-      const [published] = await tx
-        .update(assignments)
-        .set({ status: "published", publishAt: new Date() })
-        .where(eq(assignments.id, assignment.id))
-        .returning();
-      void userId;
-      return published ?? assignment;
-    });
-  }
-
-  /**
-   * The SWEEPER's publish path (ADR-040): a scheduled assignment whose
-   * publish_at has arrived, published by the system rather than a caller.
-   * It resolves the row's own tenancy into a school-level scope and reuses
-   * publishAssignment unchanged — "publish at 8am by the clock" and
-   * "publish now by the teacher" are the same code. Returns null when the
-   * row is not in a publishable state (a race with a teacher who cancelled
-   * it first); refusals throw, and the worker catches them per assignment.
-   */
-  async publishScheduledAssignment(assignmentId: string) {
-    const [row] = await db
-      .select({
-        organizationId: assignments.organizationId,
-        schoolId: assignments.schoolId,
-        status: assignments.status,
-      })
-      .from(assignments)
-      .where(eq(assignments.id, assignmentId));
-    if (!row || row.status !== "scheduled") return null;
-    const scope: DataScope = {
-      organizationId: row.organizationId,
-      schoolId: row.schoolId,
-      classId: null,
-      sectionId: null,
-    };
-    return this.publishAssignment(scope, "system:homework-sweeper", assignmentId);
-  }
-
-  /** Cancel — nothing is deleted; open rows keep their history. */
-  async cancelAssignment(scope: DataScope, userId: string, assignmentId: string, reason: string) {
-    const schoolId = requireSchoolId(scope);
-    const [row] = await db
-      .update(assignments)
-      .set({
-        status: "cancelled",
-        cancelledAt: new Date(),
-        cancelReason: reason,
-      })
-      .where(
-        and(
-          eq(assignments.id, assignmentId),
-          eq(assignments.schoolId, schoolId),
-          scopeWhere(atSchoolLevel(scope), ASSIGNMENT_COLS),
-          inArray(assignments.status, ["draft", "scheduled", "published"]),
-        ),
+          .map((sec) => ({
+            homework: s,
+            sectionId: sec.sectionId,
+            sectionName: sec.sectionName,
+            className: sec.className,
+            toCheck: sec.toCheck,
+          })),
       )
-      .returning();
-    void userId;
-    if (!row) throw new Error("Assignment not found, or already closed/cancelled.");
-    return row;
-  }
-
-  /** Close — stop submissions without cancelling the record. */
-  async closeAssignment(scope: DataScope, assignmentId: string) {
-    const schoolId = requireSchoolId(scope);
-    const [row] = await db
-      .update(assignments)
-      .set({ status: "closed" })
-      .where(
-        and(
-          eq(assignments.id, assignmentId),
-          eq(assignments.schoolId, schoolId),
-          scopeWhere(atSchoolLevel(scope), ASSIGNMENT_COLS),
-          eq(assignments.status, "published"),
-        ),
-      )
-      .returning();
-    if (!row) throw new Error("Assignment not found, or not open for closing.");
-    return row;
-  }
-
-  /** The staff list — the year's homework with subject names, scope-clipped. */
-  async listAssignments(scopes: DataScope[], input: {
-    academicYearId: string;
-    subjectId?: string;
-    status?: "draft" | "scheduled" | "published" | "closed" | "cancelled";
-    dueFrom?: string;
-    dueTo?: string;
-  }) {
-    const rows = await db
-      .select({
-        assignment: assignments,
-        subjectName: subjects.name,
-      })
-      .from(assignments)
-      .innerJoin(subjects, eq(assignments.subjectId, subjects.id))
-      .where(
-        and(
-          scopeWhere(scopes.map(atSchoolLevel), ASSIGNMENT_COLS),
-          eq(assignments.academicYearId, input.academicYearId),
-          input.subjectId ? eq(assignments.subjectId, input.subjectId) : undefined,
-          input.status ? eq(assignments.status, input.status) : undefined,
-          input.dueFrom ? gte(assignments.dueAt, toDate(input.dueFrom, "dueFrom")) : undefined,
-          input.dueTo ? lte(assignments.dueAt, toDate(input.dueTo, "dueTo")) : undefined,
-        ),
-      )
-      .orderBy(desc(assignments.dueAt));
-    return rows.map((r) => ({ ...r.assignment, subjectName: r.subjectName }));
-  }
-
-  async getAssignmentDetail(scope: DataScope, assignmentId: string) {
-    const [assignment] = await db
-      .select({
-        assignment: assignments,
-        subjectName: subjects.name,
-      })
-      .from(assignments)
-      .innerJoin(subjects, eq(assignments.subjectId, subjects.id))
-      .where(
-        and(
-          eq(assignments.id, assignmentId),
-          scopeWhere(atSchoolLevel(scope), ASSIGNMENT_COLS),
-        ),
-      );
-    if (!assignment) return null;
-
-    const targets = await db
-      .select()
-      .from(assignmentTargets)
-      .where(eq(assignmentTargets.assignmentId, assignmentId));
-    const [revCountRow] = await db
-      .select({ value: count() })
-      .from(assignmentRevisions)
-      .where(eq(assignmentRevisions.assignmentId, assignmentId));
+      .sort((x, y) => x.homework.dueAt.getTime() - y.homework.dueAt.getTime());
 
     return {
-      ...assignment.assignment,
-      subjectName: assignment.subjectName,
-      targets,
-      revisionCount: Number(revCountRow?.value ?? 0),
+      toCheck,
+      quizzes: live
+        .filter((s) => s.kind === "quiz")
+        .map((s) => ({ ...s, answersToMark: answersToMark.get(s.id) ?? 0 }))
+        .filter((s) => s.status === "published" || s.answersToMark > 0),
+      outNow: live.filter((s) => s.kind !== "quiz" && s.status === "published" && s.dueAt > now),
+      givenToday: live.filter((s) => s.publishedAt && istDay(s.publishedAt) === today),
+      drafts: all.filter(
+        (s) => (s.status === "draft" || s.status === "scheduled") && s.createdBy === access.userId,
+      ),
     };
   }
 
-  // -------------------------------------------------------------------------
-  // Student assignments — the grading grid + lifecycle acts
-  // -------------------------------------------------------------------------
+  /**
+   * Give step 2: the caller's classes grouped by subject. A subject teacher
+   * sees their own pairs; anyone else, every subject mapped to the classes in
+   * their scope for the current year.
+   */
+  async givePairs(access: HomeworkAccess, academicYearId?: string) {
+    const yearCond = academicYearId
+      ? eq(sections.academicYearId, academicYearId)
+      : sql`${sections.academicYearId} in (select ${academicYears.id} from ${academicYears} where ${academicYears.isCurrent})`;
+    const scopeCond = or(...access.scopes.map((s) => scopeWhere(s, SECTION_COLS)))!;
 
-  async listStudentAssignments(scopes: DataScope[], assignmentId: string, status?: string) {
-    const rows = await db
+    let pairs: { sectionId: string; subjectId: string }[];
+    if (access.pairs) {
+      pairs = access.pairs;
+    } else {
+      const rows = await db
+        .select({ sectionId: sections.id, subjectId: classSubjectMappings.subjectId })
+        .from(sections)
+        .innerJoin(
+          classSubjectMappings,
+          and(
+            eq(classSubjectMappings.classId, sections.classId),
+            eq(classSubjectMappings.academicYearId, sections.academicYearId),
+          ),
+        )
+        .where(and(scopeCond, yearCond));
+      pairs = rows;
+    }
+    if (pairs.length === 0) return [];
+
+    const sectionIds = [...new Set(pairs.map((p) => p.sectionId))];
+    const secRows = await db
+      .select({
+        sectionId: sections.id,
+        sectionName: sections.name,
+        classId: classes.id,
+        className: classes.name,
+        classOrder: classes.numericOrder,
+      })
+      .from(sections)
+      .innerJoin(classes, eq(sections.classId, classes.id))
+      .where(and(inArray(sections.id, sectionIds), scopeCond, yearCond));
+    const sizes = await db
+      .select({ sectionId: studentEnrollments.sectionId, n: count() })
+      .from(studentEnrollments)
+      .where(
+        and(
+          inArray(studentEnrollments.sectionId, sectionIds),
+          inArray(studentEnrollments.enrollmentStatus, [...ACTIVE_ENROLLMENT]),
+        ),
+      )
+      .groupBy(studentEnrollments.sectionId);
+
+    // Homework due on the next day (any subject), by section.
+    const tomorrow = new Date(`${todayInIst()}T00:00:00+05:30`);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    const dayAfter = new Date(tomorrow.getTime() + 24 * 3600 * 1000);
+    const due = await db
+      .select({ sectionId: assignmentTargets.sectionId, n: count() })
+      .from(assignmentTargets)
+      .innerJoin(assignments, eq(assignmentTargets.assignmentId, assignments.id))
+      .where(
+        and(
+          inArray(assignmentTargets.sectionId, sectionIds),
+          inArray(assignments.status, ["published", "scheduled"]),
+          gte(assignments.dueAt, tomorrow),
+          lt(assignments.dueAt, dayAfter),
+        ),
+      )
+      .groupBy(assignmentTargets.sectionId);
+
+    const subjectIds = [...new Set(pairs.map((p) => p.subjectId))];
+    const subjectRows = await db
+      .select({ id: subjects.id, name: subjects.name })
+      .from(subjects)
+      .where(inArray(subjects.id, subjectIds))
+      .orderBy(asc(subjects.name));
+
+    return subjectRows
+      .map((subject) => ({
+        subjectId: subject.id,
+        subjectName: subject.name,
+        sections: secRows
+          .filter((s) => pairs.some((p) => p.subjectId === subject.id && p.sectionId === s.sectionId))
+          .sort((x, y) => x.classOrder - y.classOrder || x.sectionName.localeCompare(y.sectionName))
+          .map((s) => ({
+            sectionId: s.sectionId,
+            sectionName: s.sectionName,
+            classId: s.classId,
+            className: s.className,
+            studentCount: sizes.find((z) => z.sectionId === s.sectionId)?.n ?? 0,
+            dueTomorrow: due.find((d) => d.sectionId === s.sectionId)?.n ?? 0,
+          })),
+      }))
+      .filter((s) => s.sections.length > 0);
+  }
+
+  /** Give step 4's starting point: this teacher's last choices for the subject and kind. */
+  async giveDefaults(access: HomeworkAccess, subjectId: string, kind: HomeworkKind) {
+    const [last] = await db
+      .select()
+      .from(assignments)
+      .where(
+        and(
+          or(...access.scopes.map((s) => scopeWhere(atSchoolLevel(s), ASSIGNMENT_COLS)))!,
+          eq(assignments.createdBy, access.userId),
+          eq(assignments.subjectId, subjectId),
+          eq(assignments.kind, kind),
+          ne(assignments.status, "cancelled"),
+        ),
+      )
+      .orderBy(desc(assignments.createdAt))
+      .limit(1);
+    if (last) {
+      return {
+        comesBack: last.comesBack,
+        gradingMode: last.gradingMode,
+        maxMarks: kind === "quiz" ? null : last.maxMarks,
+        estimatedMinutes: last.estimatedMinutes,
+        lastId: last.id,
+      };
+    }
+    return {
+      comesBack: KIND_COMES_BACK[kind][0]!,
+      gradingMode: KIND_GRADING[kind][0]!,
+      maxMarks: kind === "project" ? "20" : null,
+      estimatedMinutes: null,
+      lastId: null,
+    };
+  }
+
+  /** One homework with its photos, sections and counts. */
+  async detail(scope: DataScope, id: string) {
+    const a = await this.load(db, scope, id);
+    const [s] = await this.summaries([id]);
+    const files = await db
+      .select({ objectId: assignmentFiles.objectId })
+      .from(assignmentFiles)
+      .where(eq(assignmentFiles.assignmentId, id))
+      .orderBy(asc(assignmentFiles.sortOrder));
+    const refs = await storageService.imageRefs(a.organizationId, files.map((f) => f.objectId));
+    const [q] = await db
+      .select({ n: count() })
+      .from(assignmentQuestions)
+      .where(eq(assignmentQuestions.assignmentId, id));
+    const [c] = await db
+      .select({ n: count() })
+      .from(assignmentComments)
+      .where(and(eq(assignmentComments.assignmentId, id), eq(assignmentComments.isDeleted, false)));
+    const [author] = await db.select({ name: user.name }).from(user).where(eq(user.id, a.createdBy));
+    return {
+      ...s!,
+      details: a.kind === "reading" ? null : a.description,
+      isLocked: a.isLocked,
+      sourceAssignmentId: a.sourceAssignmentId,
+      files: files.map((f) => refs.get(f.objectId)).filter((r): r is ImageRef => Boolean(r)),
+      studentEnrollmentIds: (await this.studentTargetsOf(db, id)) ?? [],
+      questionCount: q?.n ?? 0,
+      commentCount: c?.n ?? 0,
+      createdByName: author?.name ?? "",
+    };
+  }
+
+  // ── Checking ─────────────────────────────────────────────────────────────
+
+  private async rowsFor(ex: Executor, assignmentId: string, sectionId: string | null, saId?: string) {
+    const conds = [eq(studentAssignments.assignmentId, assignmentId)];
+    if (sectionId) conds.push(eq(studentAssignments.sectionId, sectionId));
+    if (saId) conds.push(eq(studentAssignments.id, saId));
+    return ex
       .select({
         sa: studentAssignments,
+        studentId: students.id,
         firstName: students.firstName,
+        middleName: students.middleName,
         lastName: students.lastName,
-        admissionNumber: students.admissionNumber,
         rollNumber: studentEnrollments.rollNumber,
+        photoObjectId: studentPhotos.objectId,
       })
       .from(studentAssignments)
       .innerJoin(studentEnrollments, eq(studentAssignments.studentEnrollmentId, studentEnrollments.id))
       .innerJoin(students, eq(studentEnrollments.studentId, students.id))
-      .where(
-        and(
-          eq(studentAssignments.assignmentId, assignmentId),
-          scopeWhere(scopes.map(atSchoolLevel), STUDENT_ASSIGNMENT_COLS),
-          status
-            ? eq(studentAssignments.status, status as typeof studentAssignments.$inferSelect.status)
-            : undefined,
-        ),
-      )
-      .orderBy(asc(sql`NULLIF(${studentEnrollments.rollNumber}, '')::int`), asc(students.firstName));
-
-    return rows.map((r) => ({
-      ...r.sa,
-      studentName: [r.firstName, r.lastName].filter(Boolean).join(" "),
-      admissionNumber: r.admissionNumber,
-      rollNumber: r.rollNumber,
-    }));
+      .leftJoin(studentPhotos, eq(studentPhotos.studentId, students.id))
+      .where(and(...conds));
   }
 
-  async getStudentAssignmentDetail(scope: DataScope, studentAssignmentId: string) {
-    const [sa] = await db
-      .select()
-      .from(studentAssignments)
-      .where(
-        and(
-          eq(studentAssignments.id, studentAssignmentId),
-          scopeWhere(atSchoolLevel(scope), STUDENT_ASSIGNMENT_COLS),
-        ),
-      );
-    if (!sa) return null;
-
-    const submissionRows = await db
-      .select()
-      .from(submissions)
-      .where(eq(submissions.studentAssignmentId, studentAssignmentId))
-      .orderBy(desc(submissions.versionNo));
-    const evaluationRows = await db
-      .select()
-      .from(assignmentEvaluations)
-      .where(eq(assignmentEvaluations.studentAssignmentId, studentAssignmentId))
-      .orderBy(desc(assignmentEvaluations.evaluatedAt));
-
-    return { ...sa, submissions: submissionRows, evaluations: evaluationRows };
-  }
-
-  /**
-   * Append an EXTENSION row and move the student's effective deadlines. A
-   * missing sweep may already have flagged the row — the extension revives it
-   * to `assigned` so the student can actually use the new window.
-   */
-  async grantExtension(scope: DataScope, userId: string, input: GrantExtensionInput) {
-    const schoolId = requireSchoolId(scope);
-
-    return db.transaction(async (tx) => {
-      const [sa] = await tx
-        .select()
-        .from(studentAssignments)
-        .where(
-          and(
-            eq(studentAssignments.id, input.id),
-            eq(studentAssignments.schoolId, schoolId),
-            scopeWhere(atSchoolLevel(scope), STUDENT_ASSIGNMENT_COLS),
-          ),
-        );
-      if (!sa) throw new Error("Student assignment not found in this school.");
-
-      const newDueAt = toDate(input.newDueAt, "newDueAt");
-      const newCloseAt = toDate(input.newCloseAt, "newCloseAt");
-      if (newCloseAt.getTime() < newDueAt.getTime()) {
-        throw new Error("The extended closing time cannot be before its due time.");
-      }
-
-      await tx.insert(assignmentExtensions).values({
-        organizationId: sa.organizationId,
-        schoolId: sa.schoolId,
-        studentAssignmentId: sa.id,
-        previousDueAt: sa.effectiveDueAt,
-        previousCloseAt: sa.effectiveCloseAt,
-        newDueAt,
-        newCloseAt,
-        reason: input.reason ?? null,
-        grantedBy: userId,
-      });
-
-      const [updated] = await tx
-        .update(studentAssignments)
-        .set({
-          effectiveDueAt: newDueAt,
-          effectiveCloseAt: newCloseAt,
-          ...(sa.status === "missing"
-            ? { status: "assigned" as const, missingMarkedAt: null }
-            : {}),
-          statusChangedAt: new Date(),
-        })
-        .where(eq(studentAssignments.id, sa.id))
-        .returning();
-      return updated ?? sa;
-    });
-  }
-
-  /** Excuse a student from the assignment — refused once work exists. */
-  async excuseStudentAssignment(scope: DataScope, userId: string, input: {
-    id: string;
-    reason: string;
-  }) {
-    const schoolId = requireSchoolId(scope);
-    const [updated] = await db
-      .update(studentAssignments)
-      .set({
-        status: "excused",
-        excusedBy: userId,
-        excusedReason: input.reason,
-        excusedAt: new Date(),
-        statusChangedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(studentAssignments.id, input.id),
-          eq(studentAssignments.schoolId, schoolId),
-          scopeWhere(atSchoolLevel(scope), STUDENT_ASSIGNMENT_COLS),
-          // A submitted or reviewed row has work on record — grade it instead.
-          inArray(studentAssignments.status, [
-            "assigned",
-            "in_progress",
-            "missing",
-            "resubmit_requested",
-          ]),
-        ),
-      )
-      .returning();
-    if (!updated) {
-      throw new Error(
-        "This student already has work on record — grade the submission instead of excusing it.",
-      );
-    }
-    return updated;
-  }
-
-  // -------------------------------------------------------------------------
-  // Evaluations — append-only; the current row is denormalised onto the
-  // student assignment
-  // -------------------------------------------------------------------------
-
-  async evaluateStudentAssignment(scope: DataScope, userId: string, input: EvaluateStudentAssignmentInput) {
-    const schoolId = requireSchoolId(scope);
-
-    return db.transaction(async (tx) => {
-      const [row] = await tx
-        .select({ sa: studentAssignments, assignment: assignments })
-        .from(studentAssignments)
-        .innerJoin(assignments, eq(studentAssignments.assignmentId, assignments.id))
-        .where(
-          and(
-            eq(studentAssignments.id, input.id),
-            eq(studentAssignments.schoolId, schoolId),
-            scopeWhere(atSchoolLevel(scope), STUDENT_ASSIGNMENT_COLS),
-          ),
-        );
-      if (!row) throw new Error("Student assignment not found in this school.");
-      const { sa, assignment } = row;
-
-      // The gate pair must describe THIS row — otherwise the subject-gate
-      // fact a teacher legitimately holds could grade a stranger's work.
-      if (sa.sectionId !== input.sectionId || assignment.subjectId !== input.subjectId) {
-        throw new Error("The named section/subject do not match this student's assignment.");
-      }
-
-      if (!["published", "closed"].includes(assignment.status)) {
-        throw new Error("Only a published assignment can be graded.");
-      }
-      if (sa.status === "excused") {
-        throw new Error("An excused student is not graded.");
-      }
-
-      let marks = input.marks ?? null;
-      if (input.outcome === "resubmit_requested") {
-        marks = null;
-      } else if (assignment.gradingMode === "marks") {
-        if (marks === null) {
-          throw new Error("This assignment is graded out of marks — enter a score.");
-        }
-        const max = Number(assignment.maxMarks);
-        if (Number(marks) > max) {
-          throw new Error(`The score cannot exceed the maximum (${max}).`);
-        }
-      } else if (assignment.gradingMode === "rubric") {
-        if (!input.rubricScores?.length) {
-          throw new Error("Score every rubric criterion before saving.");
-        }
-        const criteria = await tx
-          .select({ id: rubricCriteria.id })
-          .from(rubricCriteria)
-          .where(
-            and(
-              eq(rubricCriteria.rubricId, assignment.rubricId as string),
-              eq(rubricCriteria.schoolId, schoolId),
-            ),
-          );
-        const validIds = new Set(criteria.map((c) => c.id));
-        if (input.rubricScores.some((s) => !validIds.has(s.criterionId))) {
-          throw new Error("A rubric score names a criterion outside this rubric.");
-        }
-        marks = String(
-          input.rubricScores.reduce((sum, s) => sum + Number(s.points), 0),
-        );
-      } else {
-        // none / grade / completion: marks only via the grade field.
-        marks = null;
-      }
-
-      const [latestSubmission] = await tx
-        .select({ id: submissions.id })
-        .from(submissions)
-        .where(eq(submissions.studentAssignmentId, sa.id))
-        .orderBy(desc(submissions.versionNo))
-        .limit(1);
-
-      if (
-        input.outcome === "reviewed" &&
-        !latestSubmission &&
-        !["none", "completion"].includes(assignment.gradingMode)
-      ) {
-        throw new Error("There is nothing to review yet — no submission exists.");
-      }
-
-      // Flip the current row, then append (the partial unique index holds
-      // this honest even under a race).
-      await tx
-        .update(assignmentEvaluations)
-        .set({ isCurrent: false })
-        .where(
-          and(
-            eq(assignmentEvaluations.studentAssignmentId, sa.id),
-            eq(assignmentEvaluations.isCurrent, true),
-          ),
-        );
-
-      const [evaluation] = await tx
-        .insert(assignmentEvaluations)
-        .values({
-          organizationId: sa.organizationId,
-          schoolId: sa.schoolId,
-          studentAssignmentId: sa.id,
-          submissionId: latestSubmission?.id ?? null,
-          outcome: input.outcome,
-          marks,
-          grade: input.grade ?? null,
-          feedback: input.feedback ?? null,
-          isCurrent: true,
-          evaluatedBy: userId,
-        })
-        .returning();
-      if (!evaluation) throw new Error("Failed to save the evaluation.");
-
-      if (input.rubricScores?.length) {
-        await tx.insert(assignmentRubricScores).values(
-          input.rubricScores.map((s) => ({
-            organizationId: sa.organizationId,
-            schoolId: sa.schoolId,
-            evaluationId: evaluation.id,
-            criterionId: s.criterionId,
-            levelId: s.levelId ?? null,
-            points: s.points,
-            comment: s.comment ?? null,
-          })),
-        );
-      }
-
-      const now = new Date();
-      const [updatedSa] = await tx
-        .update(studentAssignments)
-        .set({
-          currentEvaluationId: evaluation.id,
-          currentMarks: marks,
-          currentGrade: input.grade ?? null,
-          reviewedAt: input.outcome === "reviewed" ? now : null,
-          status:
-            input.outcome === "reviewed" ? ("reviewed" as const) : ("resubmit_requested" as const),
-          completionSource:
-            !latestSubmission && input.outcome === "reviewed"
-              ? ("teacher_verified" as const)
-              : sa.completionSource,
-          statusChangedAt: now,
-        })
-        .where(eq(studentAssignments.id, sa.id))
-        .returning();
-
-      return { evaluation, studentAssignment: updatedSa ?? sa };
-    });
-  }
-
-  // -------------------------------------------------------------------------
-  // PORTAL — the family door. Every query filters by the login's OWNED
-  // studentIds; the answer keys of slice B never appear in these shapes.
-  // -------------------------------------------------------------------------
-
-  /** Family list: the children's homework across the login's owned students. */
-  async portalList(studentIds: string[], filters: {
-    studentId?: string;
-    status?: string;
-  } = {}) {
-    const owned = filters.studentId
-      ? studentIds.includes(filters.studentId)
-        ? [filters.studentId]
-        : []
-      : studentIds;
-    if (owned.length === 0) return [];
-
+  private async fileCounts(saIds: string[]): Promise<Map<string, number>> {
+    const out = new Map<string, number>();
+    if (saIds.length === 0) return out;
     const rows = await db
-      .select({
-        sa: studentAssignments,
-        assignment: assignments,
-        subjectName: subjects.name,
-        teacherName: user.name,
-      })
-      .from(studentAssignments)
-      .innerJoin(assignments, eq(studentAssignments.assignmentId, assignments.id))
-      .innerJoin(subjects, eq(assignments.subjectId, subjects.id))
-      .innerJoin(user, eq(assignments.createdBy, user.id))
-      .innerJoin(
-        studentEnrollments,
-        eq(studentAssignments.studentEnrollmentId, studentEnrollments.id),
-      )
-      .where(
-        and(
-          inArray(studentEnrollments.studentId, owned),
-          inArray(assignments.status, ["published", "closed"]),
-          filters.status
-            ? eq(studentAssignments.status, filters.status as typeof studentAssignments.$inferSelect.status)
-            : undefined,
-        ),
-      )
-      .orderBy(asc(assignments.dueAt))
-      .limit(500);
-
-    return rows.map((r) => ({
-      studentAssignmentId: r.sa.id,
-      assignmentId: r.assignment.id,
-      subjectName: r.subjectName,
-      teacherName: r.teacherName,
-      title: r.assignment.title,
-      description: r.assignment.description,
-      kind: r.assignment.kind,
-      topic: r.assignment.topic,
-      estimatedMinutes: r.assignment.estimatedMinutes,
-      submissionTypes: r.assignment.submissionTypes,
-      status: r.sa.status,
-      dueAt: r.sa.effectiveDueAt,
-      closeAt: r.sa.effectiveCloseAt,
-      isLate: r.sa.isLate,
-      submittedAt: r.sa.submittedAt,
-      submissionCount: r.sa.submissionCount,
-      currentMarks: r.sa.currentMarks,
-      currentGrade: r.sa.currentGrade,
-      feedback: null,
-      reviewedAt: r.sa.reviewedAt,
-      firstViewedAt: r.sa.firstViewedAt,
-    }));
+      .select({ saId: submissions.studentAssignmentId, n: count(submissionFiles.id) })
+      .from(submissions)
+      .leftJoin(submissionFiles, eq(submissionFiles.submissionId, submissions.id))
+      .where(inArray(submissions.studentAssignmentId, saIds))
+      .groupBy(submissions.studentAssignmentId);
+    for (const r of rows) out.set(r.saId, r.n);
+    return out;
   }
 
-  /** One family view: assignment + own submissions + evaluations + acks. */
-  async portalGet(studentIds: string[], studentAssignmentId: string) {
-    const [row] = await db
-      .select({
-        sa: studentAssignments,
-        assignment: assignments,
-        subjectName: subjects.name,
-        teacherName: user.name,
-      })
-      .from(studentAssignments)
-      .innerJoin(assignments, eq(studentAssignments.assignmentId, assignments.id))
-      .innerJoin(subjects, eq(assignments.subjectId, subjects.id))
-      .innerJoin(user, eq(assignments.createdBy, user.id))
-      .innerJoin(
-        studentEnrollments,
-        eq(studentAssignments.studentEnrollmentId, studentEnrollments.id),
-      )
-      .where(
-        and(
-          eq(studentAssignments.id, studentAssignmentId),
-          inArray(studentEnrollments.studentId, studentIds),
-          inArray(assignments.status, ["published", "closed"]),
-        ),
-      );
-    if (!row) return null;
-    const { sa, assignment } = row;
-
-    const [submissionRows, evaluationRows, resourceRows, ackRows] = await Promise.all([
-      db
-        .select()
-        .from(submissions)
-        .where(eq(submissions.studentAssignmentId, sa.id))
-        .orderBy(desc(submissions.versionNo)),
-      db
-        .select()
-        .from(assignmentEvaluations)
-        .where(eq(assignmentEvaluations.studentAssignmentId, sa.id))
-        .orderBy(desc(assignmentEvaluations.evaluatedAt)),
-      db
-        .select()
-        .from(assignmentResources)
-        .where(eq(assignmentResources.assignmentId, assignment.id))
-        .orderBy(asc(assignmentResources.sortOrder)),
-      db
-        .select({ guardianUserId: assignmentAcknowledgements.guardianUserId })
-        .from(assignmentAcknowledgements)
-        .where(eq(assignmentAcknowledgements.studentAssignmentId, sa.id)),
-    ]);
-
-    const fileRows = submissionRows.length
-      ? await db
-          .select({
-            submissionId: submissionFiles.submissionId,
-            objectId: submissionFiles.objectId,
-            sortOrder: submissionFiles.sortOrder,
-          })
-          .from(submissionFiles)
-          .where(inArray(submissionFiles.submissionId, submissionRows.map((s) => s.id)))
-      : [];
-
+  private toRow(
+    r: Awaited<ReturnType<HomeworkService["rowsFor"]>>[number],
+    absent: Set<string>,
+    files: Map<string, number>,
+    photos: Map<string, ImageRef>,
+  ) {
     return {
-      studentAssignmentId: sa.id,
-      assignmentId: assignment.id,
-      subjectName: row.subjectName,
-      teacherName: row.teacherName,
-      title: assignment.title,
-      description: assignment.description,
-      kind: assignment.kind,
-      topic: assignment.topic,
-      estimatedMinutes: assignment.estimatedMinutes,
-      submissionTypes: assignment.submissionTypes,
-      status: sa.status,
-      dueAt: sa.effectiveDueAt,
-      closeAt: sa.effectiveCloseAt,
-      isLate: sa.isLate,
-      submittedAt: sa.submittedAt,
-      submissionCount: sa.submissionCount,
-      currentMarks: sa.currentMarks,
-      currentGrade: sa.currentGrade,
-      feedback: evaluationRows.find((e) => e.isCurrent)?.feedback ?? null,
-      reviewedAt: sa.reviewedAt,
-      firstViewedAt: sa.firstViewedAt,
-      resources: resourceRows.map((r) => ({
-        resourceType: r.resourceType,
-        objectId: r.objectId,
-        url: r.url,
-        title: r.title,
-      })),
-      submissions: submissionRows.map((s) => ({
-        id: s.id,
-        versionNo: s.versionNo,
-        bodyText: s.bodyText,
-        linkUrl: s.linkUrl,
-        submittedByRole: s.submittedByRole,
-        isLate: s.isLate,
-        submittedAt: s.submittedAt,
-        files: fileRows
-          .filter((f) => f.submissionId === s.id)
-          .map((f) => ({ objectId: f.objectId, sortOrder: f.sortOrder })),
-      })),
-      evaluations: evaluationRows.map((e) => ({
-        outcome: e.outcome,
-        marks: e.marks,
-        grade: e.grade,
-        feedback: e.feedback,
-        evaluatedAt: e.evaluatedAt,
-        isCurrent: e.isCurrent,
-      })),
-      acknowledgedBy: ackRows.map((a) => a.guardianUserId),
+      studentAssignmentId: r.sa.id,
+      studentId: r.studentId,
+      name: fullName(r),
+      rollNumber: r.rollNumber,
+      photo: r.photoObjectId ? (photos.get(r.photoObjectId) ?? null) : null,
+      status: r.sa.status,
+      absentToday: absent.has(r.studentId),
+      submittedAt: r.sa.submittedAt,
+      isLate: r.sa.isLate,
+      fileCount: files.get(r.sa.id) ?? 0,
+      checkStatus: r.sa.checkStatus,
+      marks: r.sa.marks,
+      grade: r.sa.grade,
+      remark: r.sa.remark,
+      note: r.sa.note,
+      checkedAt: r.sa.checkedAt,
     };
   }
 
-  /** firstViewedAt is set once — the diary's "opened it" fact. */
-  async portalMarkViewed(studentIds: string[], studentAssignmentId: string) {
-    const [sa] = await db
-      .select({ id: studentAssignments.id, firstViewedAt: studentAssignments.firstViewedAt })
-      .from(studentAssignments)
-      .innerJoin(
-        studentEnrollments,
-        eq(studentAssignments.studentEnrollmentId, studentEnrollments.id),
-      )
-      .where(
-        and(
-          eq(studentAssignments.id, studentAssignmentId),
-          inArray(studentEnrollments.studentId, studentIds),
-        ),
-      );
-    if (!sa) return null;
-    if (sa.firstViewedAt) return sa;
-    const [updated] = await db
-      .update(studentAssignments)
-      .set({ firstViewedAt: new Date() })
-      .where(eq(studentAssignments.id, sa.id))
-      .returning({ id: studentAssignments.id, firstViewedAt: studentAssignments.firstViewedAt });
-    return updated ?? null;
+  /**
+   * The checking list for one section, in roll order. For work brought to
+   * class, children absent today (attendance) are flagged so the screen can
+   * leave them out of the count; other ways back ignore attendance.
+   */
+  async register(scope: DataScope, pair: TeachingPair, id: string) {
+    const a = await this.load(db, scope, id);
+    await this.assertPair(db, a, pair);
+    if (a.status === "draft" || a.status === "scheduled") {
+      throw refuse("CONFLICT", "Give the homework before checking it.");
+    }
+    const rows = await this.rowsFor(db, a.id, pair.sectionId);
+    let absent = new Set<string>();
+    if (a.comesBack === "brought" && rows.length) {
+      const att = await db
+        .select({ studentId: dailyAttendanceStatus.studentId })
+        .from(dailyAttendanceStatus)
+        .where(
+          and(
+            eq(dailyAttendanceStatus.sectionId, pair.sectionId),
+            eq(dailyAttendanceStatus.date, todayInIst()),
+            eq(dailyAttendanceStatus.status, "absent"),
+          ),
+        );
+      absent = new Set(att.map((r) => r.studentId));
+    }
+    const files = await this.fileCounts(rows.map((r) => r.sa.id));
+    const photos = await storageService.imageRefs(a.organizationId, rows.map((r) => r.photoObjectId));
+    const [sec] = await db
+      .select({ sectionName: sections.name, className: classes.name })
+      .from(sections)
+      .innerJoin(classes, eq(sections.classId, classes.id))
+      .where(eq(sections.id, pair.sectionId));
+    const [summary] = await this.summaries([a.id]);
+    return {
+      homework: summary!,
+      sectionId: pair.sectionId,
+      sectionName: sec?.sectionName ?? "",
+      className: sec?.className ?? "",
+      gradeLetters: a.gradingMode === "grade" ? await this.gradeLetters(db, a.gradingScaleId) : [],
+      rows: rows
+        .sort((x, y) => compareRoll(x.rollNumber, y.rollNumber) || fullName(x).localeCompare(fullName(y)))
+        .map((r) => this.toRow(r, absent, files, photos)),
+    };
+  }
+
+  /** Validates one result against the homework's grading and returns the columns to write. */
+  private resultColumns(a: Assignment, letters: string[], r: CheckResultInput) {
+    const graded = r.checkStatus === "done" || r.checkStatus === "incomplete";
+    let marks: string | null = null;
+    let grade: string | null = null;
+    let remark: CheckResultInput["remark"] = null;
+    if (graded && a.gradingMode === "marks" && r.marks != null) {
+      if (Number(r.marks) > Number(a.maxMarks ?? "0")) {
+        throw refuse("BAD_REQUEST", `Marks can't be more than ${Number(a.maxMarks)}.`);
+      }
+      marks = r.marks;
+    }
+    if (graded && a.gradingMode === "grade" && r.grade) {
+      if (!letters.includes(r.grade)) throw refuse("BAD_REQUEST", "That grade isn't one of the school's.");
+      grade = r.grade;
+    }
+    if (graded && a.gradingMode === "remark") remark = r.remark ?? null;
+    return { marks, grade, remark };
   }
 
   /**
-   * Whether this login acts as a PARENT for this child (a guardian-linked
-   * portal row), which decides the submission's author role.
+   * Saves the checking list. Idempotent: each row is set to exactly what was
+   * sent, so a retry after a dropped connection writes the same thing. A null
+   * check status clears the result. Saving makes results visible to students.
    */
-  async isParentLogin(userId: string, studentId: string): Promise<boolean> {
-    const [row] = await db
-      .select({ guardianId: studentPortalAccess.guardianId })
-      .from(studentPortalAccess)
-      .where(
-        and(
-          eq(studentPortalAccess.userId, userId),
-          eq(studentPortalAccess.studentId, studentId),
-          eq(studentPortalAccess.isActive, true),
-          isNotNull(studentPortalAccess.guardianId),
-        ),
-      )
-      .limit(1);
-    return !!row;
-  }
-
-  /**
-   * The family submit: versioned, late-checked, cap-checked. The student
-   * assignment row is the single thing that moves; submissions are immutable.
-   * The author role (parent vs the student's own login) comes from the portal
-   * access row's guardian link, and the per-role submit switches are honored.
-   */
-  async portalSubmit(userId: string, studentIds: string[], input: PortalSubmitAssignmentInput) {
+  async saveRegister(scope: DataScope, userId: string, input: SaveRegisterInput) {
     return db.transaction(async (tx) => {
-      const [row] = await tx
-        .select({
-          sa: studentAssignments,
-          assignment: assignments,
-          studentId: studentEnrollments.studentId,
-          classId: sections.classId,
-        })
+      const a = await this.load(tx, scope, input.id);
+      await this.assertPair(tx, a, { sectionId: input.sectionId, subjectId: input.subjectId });
+      if (a.status !== "published" && a.status !== "closed") {
+        throw refuse("CONFLICT", "Only a given homework can be checked.");
+      }
+      if (a.comesBack !== "brought" && a.comesBack !== "sent") {
+        throw refuse("CONFLICT", "Nothing comes back for this homework, so there is nothing to check.");
+      }
+      const letters = a.gradingMode === "grade" ? await this.gradeLetters(tx, a.gradingScaleId) : [];
+      const ids = input.results.map((r) => r.studentAssignmentId);
+      const existing = await tx
+        .select()
         .from(studentAssignments)
-        .innerJoin(assignments, eq(studentAssignments.assignmentId, assignments.id))
-        .innerJoin(
-          studentEnrollments,
-          eq(studentAssignments.studentEnrollmentId, studentEnrollments.id),
-        )
-        .innerJoin(sections, eq(studentAssignments.sectionId, sections.id))
         .where(
           and(
-            eq(studentAssignments.id, input.studentAssignmentId),
-            inArray(studentEnrollments.studentId, studentIds),
+            inArray(studentAssignments.id, ids),
+            eq(studentAssignments.assignmentId, a.id),
+            eq(studentAssignments.sectionId, input.sectionId),
           ),
         );
-      if (!row) throw new Error("Student assignment not found.");
-      const { sa, assignment, studentId, classId } = row;
-      if (!["published", "closed"].includes(assignment.status)) {
-        throw new Error("This assignment is not open for submissions.");
+      if (existing.length !== new Set(ids).size) {
+        throw refuse("NOT_FOUND", "One of the students is not on this list.");
       }
-      if (sa.status === "excused") {
-        throw new Error("This student was excused from the assignment.");
-      }
-      if (sa.status === "reviewed" && !assignment.allowResubmission) {
-        throw new Error("This assignment does not accept resubmissions.");
-      }
-
-      // Which channels the family used must be channels the assignment allows.
-      const types = assignment.submissionTypes;
-      const used = [
-        input.bodyText ? "text" : null,
-        input.linkUrl ? "link" : null,
-        input.fileObjectIds?.length ? "file" : null,
-      ].filter(Boolean);
-      if (used.some((u) => !types.includes(u as (typeof types)[number]))) {
-        throw new Error("This assignment does not accept that submission type.");
-      }
-
-      // The caller's role for THIS child, from their portal access rows: a
-      // guardian-linked row means the parent is submitting.
-      const accessRows = await tx
-        .select({ guardianId: studentPortalAccess.guardianId })
-        .from(studentPortalAccess)
-        .where(
-          and(
-            eq(studentPortalAccess.userId, userId),
-            eq(studentPortalAccess.studentId, studentId),
-            eq(studentPortalAccess.isActive, true),
-          ),
-        );
-      if (accessRows.length === 0) {
-        throw new Error("This login has no portal access for the student.");
-      }
-      const isParent = accessRows.some((r) => r.guardianId !== null);
-      const authorRole = isParent ? ("parent" as const) : ("student" as const);
-
-      const settings = await this.resolveSettings(row.sa.schoolId, classId);
-      if (isParent && !settings.parentsCanSubmit) {
-        throw new Error("This school does not allow parents to submit homework.");
-      }
-      if (!isParent && !settings.studentsCanSubmit) {
-        throw new Error("This school does not allow student submissions.");
-      }
-
-      // Late logic: past close is never allowed; past due only under the
-      // allowed policy.
       const now = new Date();
-      const isLate = now.getTime() > sa.effectiveDueAt.getTime();
-      if (now.getTime() > sa.effectiveCloseAt.getTime()) {
-        throw new Error(
-          "The submission window closed. Ask the teacher for an extension.",
-        );
-      }
-      if (isLate && assignment.latePolicy === "not_allowed") {
-        throw new Error("Late submissions are not allowed for this assignment.");
-      }
-
-      // Versioning + caps.
-      const versionNo = sa.submissionCount + 1;
-      if (!assignment.allowResubmission && sa.submissionCount > 0) {
-        throw new Error("This assignment does not accept resubmissions.");
-      }
-      if (assignment.maxSubmissions !== null && versionNo > assignment.maxSubmissions) {
-        throw new Error(
-          `This assignment allows at most ${assignment.maxSubmissions} submission(s).`,
-        );
-      }
-
-      // Files: count cap + the objects must exist in THIS org (a foreign-org
-      // object id must not become this school's homework).
-      const fileObjectIds = input.fileObjectIds ?? [];
-      if (fileObjectIds.length > settings.maxFilesPerSubmission) {
-        throw new Error(
-          `At most ${settings.maxFilesPerSubmission} file(s) per submission.`,
-        );
-      }
-      if (fileObjectIds.length) {
-        const objects = await tx
-          .select({ id: storageObjects.id })
-          .from(storageObjects)
-          .where(
-            and(
-              inArray(storageObjects.id, fileObjectIds),
-              eq(storageObjects.organizationId, sa.organizationId),
-            ),
-          );
-        if (objects.length !== fileObjectIds.length) {
-          throw new Error("One or more attached files could not be found.");
+      for (const r of input.results) {
+        const sa = existing.find((e) => e.id === r.studentAssignmentId)!;
+        if (r.checkStatus === null) {
+          const back = sa.submittedAt
+            ? "submitted"
+            : a.comesBack === "sent" && sa.effectiveCloseAt <= now
+              ? "missing"
+              : "assigned";
+          await tx
+            .update(studentAssignments)
+            .set({
+              status: back,
+              checkStatus: null,
+              marks: null,
+              grade: null,
+              remark: null,
+              note: r.note === undefined ? sa.note : r.note,
+              checkedBy: null,
+              checkedAt: null,
+              statusChangedAt: sa.status === back ? sa.statusChangedAt : now,
+            })
+            .where(eq(studentAssignments.id, sa.id));
+          continue;
         }
+        const cols = this.resultColumns(a, letters, r);
+        await tx
+          .update(studentAssignments)
+          .set({
+            status: "checked",
+            checkStatus: r.checkStatus,
+            ...cols,
+            note: r.note === undefined ? sa.note : r.note,
+            checkedBy: userId,
+            checkedAt: now,
+            statusChangedAt: sa.status === "checked" ? sa.statusChangedAt : now,
+          })
+          .where(eq(studentAssignments.id, sa.id));
       }
+      if (!a.isLocked) await tx.update(assignments).set({ isLocked: true }).where(eq(assignments.id, a.id));
 
-      const [submission] = await tx
-        .insert(submissions)
-        .values({
-          organizationId: sa.organizationId,
-          schoolId: sa.schoolId,
-          studentAssignmentId: sa.id,
-          versionNo,
-          bodyText: input.bodyText ?? null,
-          linkUrl: input.linkUrl ?? null,
-          submittedByUserId: userId,
-          submittedByRole: authorRole,
-          isLate,
-          submittedAt: now,
-        })
-        .returning();
-      if (!submission) throw new Error("Failed to save the submission.");
-
-      if (fileObjectIds.length) {
-        await tx.insert(submissionFiles).values(
-          fileObjectIds.map((objectId, i) => ({
-            organizationId: sa.organizationId,
-            schoolId: sa.schoolId,
-            submissionId: submission.id,
-            objectId,
-            sortOrder: i,
-          })),
-        );
-      }
-
-      const [updatedSa] = await tx
-        .update(studentAssignments)
-        .set({
-          status: "submitted",
-          submittedAt: now,
-          submissionCount: versionNo,
-          isLate,
-          completionSource: isParent ? "parent" : "student",
-          statusChangedAt: now,
-        })
-        .where(eq(studentAssignments.id, sa.id))
-        .returning();
-
-      return { submission, studentAssignment: updatedSa ?? sa };
-    });
-  }
-
-  /** The digital diary signature — one per guardian login, idempotent. */
-  async portalAcknowledge(userId: string, studentIds: string[], studentAssignmentId: string) {
-    const [sa] = await db
-      .select({
-        id: studentAssignments.id,
-        organizationId: studentAssignments.organizationId,
-        schoolId: studentAssignments.schoolId,
-      })
-      .from(studentAssignments)
-      .innerJoin(
-        studentEnrollments,
-        eq(studentAssignments.studentEnrollmentId, studentEnrollments.id),
-      )
-      .where(
-        and(
-          eq(studentAssignments.id, studentAssignmentId),
-          inArray(studentEnrollments.studentId, studentIds),
-        ),
-      );
-    if (!sa) throw new Error("Student assignment not found.");
-
-    const [row] = await db
-      .insert(assignmentAcknowledgements)
-      .values({
-        organizationId: sa.organizationId,
-        schoolId: sa.schoolId,
-        studentAssignmentId: sa.id,
-        guardianUserId: userId,
-      })
-      .onConflictDoNothing()
-      .returning();
-    return row ?? { studentAssignmentId: sa.id, alreadyAcknowledged: true as const };
-  }
-
-  // -------------------------------------------------------------------------
-  // Comments — class-wide Q&A (studentAssignmentId null) or the private
-  // student↔teacher thread
-  // -------------------------------------------------------------------------
-
-  /** Staff post: class-wide or into any thread of the assignment. */
-  async staffPostComment(scope: DataScope, userId: string, input: PostAssignmentCommentInput) {
-    const schoolId = requireSchoolId(scope);
-    const [assignment] = await db
-      .select({ id: assignments.id, organizationId: assignments.organizationId })
-      .from(assignments)
-      .where(
-        and(
-          eq(assignments.id, input.assignmentId),
-          eq(assignments.schoolId, schoolId),
-          scopeWhere(atSchoolLevel(scope), ASSIGNMENT_COLS),
-        ),
-      );
-    if (!assignment) throw new Error("Assignment not found in this school.");
-
-    if (input.studentAssignmentId) {
-      const [sa] = await db
-        .select({ id: studentAssignments.id })
+      const all = await tx
+        .select({ status: studentAssignments.status, checkStatus: studentAssignments.checkStatus })
         .from(studentAssignments)
         .where(
-          and(
-            eq(studentAssignments.id, input.studentAssignmentId),
-            eq(studentAssignments.assignmentId, assignment.id),
-          ),
+          and(eq(studentAssignments.assignmentId, a.id), eq(studentAssignments.sectionId, input.sectionId)),
         );
-      if (!sa) {
-        throw new Error("That student is not part of this assignment.");
-      }
-    }
-
-    return this.insertComment(assignment.organizationId, schoolId, userId, input);
-  }
-
-  /** Family post: only into their OWN private thread. */
-  async portalPostComment(userId: string, studentIds: string[], input: PostAssignmentCommentInput) {
-    if (!input.studentAssignmentId) {
-      throw new Error("Families post into their own thread with the teacher.");
-    }
-    const [sa] = await db
-      .select({
-        organizationId: studentAssignments.organizationId,
-        schoolId: studentAssignments.schoolId,
-        assignmentId: studentAssignments.assignmentId,
-      })
-      .from(studentAssignments)
-      .innerJoin(
-        studentEnrollments,
-        eq(studentAssignments.studentEnrollmentId, studentEnrollments.id),
-      )
-      .where(
-        and(
-          eq(studentAssignments.id, input.studentAssignmentId),
-          inArray(studentEnrollments.studentId, studentIds),
-        ),
-      );
-    if (!sa) throw new Error("Student assignment not found.");
-
-    return this.insertComment(sa.organizationId, sa.schoolId, userId, {
-      assignmentId: sa.assignmentId,
-      studentAssignmentId: input.studentAssignmentId,
-      parentCommentId: input.parentCommentId,
-      body: input.body,
+      const c = (s: CheckResultInput["checkStatus"]) => all.filter((x) => x.checkStatus === s).length;
+      return {
+        saved: input.results.length,
+        counts: {
+          done: c("done"),
+          incomplete: c("incomplete"),
+          notDone: c("not_done"),
+          absent: c("absent"),
+          unchecked: c(null),
+        },
+      };
     });
   }
 
-  private async insertComment(
-    organizationId: string,
-    schoolId: string,
-    userId: string,
-    input: PostAssignmentCommentInput,
-  ) {
-    const [row] = await db
-      .insert(assignmentComments)
-      .values({
-        organizationId,
-        schoolId,
-        assignmentId: input.assignmentId,
-        studentAssignmentId: input.studentAssignmentId ?? null,
-        parentCommentId: input.parentCommentId ?? null,
-        authorUserId: userId,
-        body: input.body,
-      })
-      .returning();
-    if (!row) throw new Error("Failed to post the comment.");
+  private async loadStudentAssignment(ex: Executor, scope: DataScope, saId: string) {
+    const [row] = await ex
+      .select({ sa: studentAssignments, a: assignments })
+      .from(studentAssignments)
+      .innerJoin(assignments, eq(studentAssignments.assignmentId, assignments.id))
+      .where(and(eq(studentAssignments.id, saId), scopeWhere(atSchoolLevel(scope), SA_COLS)));
+    if (!row) throw refuse("NOT_FOUND", "That student's homework could not be found.");
     return row;
   }
 
-  /**
-   * The thread list with author names. Staff get a class-wide thread plus any
-   * private one they ask for; families get the class-wide thread plus their
-   * own. The staff flag is resolved by joining the staff register — a family
-   * login has no staff row, a teacher does.
-   */
-  async listComments(args: {
-    scopes?: DataScope[];
-    studentIds?: string[];
-    assignmentId: string;
-    studentAssignmentId?: string | null;
-  }) {
-    const { scopes, studentIds, assignmentId } = args;
-
-    // Family path: verify the assignment belongs to one of their children.
-    if (studentIds) {
-      const [owned] = await db
-        .select({ id: assignments.id })
-        .from(assignments)
-        .innerJoin(assignmentTargets, eq(assignmentTargets.assignmentId, assignments.id))
-        .innerJoin(sections, eq(assignmentTargets.sectionId, sections.id))
-        .innerJoin(
-          studentEnrollments,
-          and(
-            eq(studentEnrollments.sectionId, sections.id),
-            inArray(studentEnrollments.studentId, studentIds),
-          ),
-        )
-        .where(eq(assignments.id, assignmentId))
-        .limit(1);
-      if (!owned) throw new Error("Assignment not found.");
-      // Families see the class-wide thread plus their own private threads.
-      const ownSas = await db
-        .select({ id: studentAssignments.id })
-        .from(studentAssignments)
-        .innerJoin(
-          studentEnrollments,
-          eq(studentAssignments.studentEnrollmentId, studentEnrollments.id),
-        )
-        .where(inArray(studentEnrollments.studentId, studentIds));
-      const ownIds = ownSas.map((r) => r.id);
-      return this.selectComments(assignmentId, {
-        studentAssignmentId: args.studentAssignmentId
-          ? ownIds.includes(args.studentAssignmentId)
-            ? args.studentAssignmentId
-            : undefined
-          : undefined,
-        ownThreadIds: ownIds,
-      });
+  /** The pair names the CHILD's section and the homework's subject. */
+  private assertChildPair(row: { sa: StudentAssignmentRow; a: Assignment }, pair: TeachingPair) {
+    if (row.a.subjectId !== pair.subjectId || row.sa.sectionId !== pair.sectionId) {
+      throw refuse("NOT_FOUND", "That student's homework could not be found.");
     }
-
-    // Staff path: scope-checked.
-    const [assignment] = await db
-      .select({ id: assignments.id })
-      .from(assignments)
-      .where(
-        and(
-          eq(assignments.id, assignmentId),
-          scopeWhere((scopes ?? []).map(atSchoolLevel), ASSIGNMENT_COLS),
-        ),
-      );
-    if (!assignment) throw new Error("Assignment not found in this school.");
-    return this.selectComments(assignmentId, {
-      studentAssignmentId: args.studentAssignmentId ?? undefined,
-      ownThreadIds: null,
-    });
   }
 
-  private async selectComments(
-    assignmentId: string,
-    opts: {
-      studentAssignmentId?: string;
-      ownThreadIds: string[] | null;
-    },
-  ) {
-    // The staff flag resolves per comment author with an EXISTS on the staff
-    // register — a family login has no staff row in the org, a teacher does.
+  /** One child's homework for the teacher: what they sent and the result. */
+  async studentHomework(scope: DataScope, pair: TeachingPair, saId: string) {
+    const row = await this.loadStudentAssignment(db, scope, saId);
+    this.assertChildPair(row, pair);
+    const [r] = await this.rowsFor(db, row.a.id, null, saId);
+    const [sub] = await db.select().from(submissions).where(eq(submissions.studentAssignmentId, saId));
+    const files = sub
+      ? await db
+          .select({ objectId: submissionFiles.objectId })
+          .from(submissionFiles)
+          .where(eq(submissionFiles.submissionId, sub.id))
+          .orderBy(asc(submissionFiles.sortOrder))
+      : [];
+    const refs = await storageService.imageRefs(row.a.organizationId, [
+      ...files.map((f) => f.objectId),
+      r!.photoObjectId,
+    ]);
+    return {
+      ...this.toRow(r!, new Set(), new Map([[saId, files.length]]), refs),
+      homeworkId: row.a.id,
+      sectionId: row.sa.sectionId,
+      dueAt: row.sa.effectiveDueAt,
+      closeAt: row.sa.effectiveCloseAt,
+      tickedBy: row.sa.tickedBy,
+      submission: sub
+        ? {
+            bodyText: sub.bodyText,
+            submittedAt: sub.submittedAt,
+            isLate: sub.isLate,
+            files: files.map((f) => refs.get(f.objectId)).filter((x): x is ImageRef => Boolean(x)),
+          }
+        : null,
+    };
+  }
+
+  /**
+   * Sends work sent in the app back to redo, with a note the student sees.
+   * It reopens even past the close time: the child gets a day from now.
+   */
+  async sendBack(scope: DataScope, pair: TeachingPair, saId: string, note: string) {
+    await db.transaction(async (tx) => {
+      const row = await this.loadStudentAssignment(tx, scope, saId);
+      this.assertChildPair(row, pair);
+      if (row.a.comesBack !== "sent") throw refuse("CONFLICT", "Only work sent in the app can be sent back.");
+      if (row.a.status === "cancelled") throw refuse("CONFLICT", "This homework was cancelled.");
+      if (row.sa.status !== "submitted" && row.sa.status !== "checked") {
+        throw refuse("CONFLICT", "Nothing has been sent yet, so there is nothing to send back.");
+      }
+      const now = new Date();
+      const minClose = new Date(now.getTime() + 24 * 3600 * 1000);
+      await tx
+        .update(studentAssignments)
+        .set({
+          status: "redo",
+          note,
+          checkStatus: null,
+          marks: null,
+          grade: null,
+          remark: null,
+          checkedBy: null,
+          checkedAt: null,
+          statusChangedAt: now,
+          effectiveCloseAt: row.sa.effectiveCloseAt < minClose ? minClose : row.sa.effectiveCloseAt,
+        })
+        .where(eq(studentAssignments.id, saId));
+      if (row.a.status === "closed") {
+        await tx.update(assignments).set({ status: "published" }).where(eq(assignments.id, row.a.id));
+      }
+    });
+    return this.studentHomework(scope, pair, saId);
+  }
+
+  /** The teacher's "Mark read" (or its undo) on work that comes back as a tick. */
+  async markTick(scope: DataScope, pair: TeachingPair, saId: string, ticked: boolean) {
+    await db.transaction(async (tx) => {
+      const row = await this.loadStudentAssignment(tx, scope, saId);
+      this.assertChildPair(row, pair);
+      if (row.a.comesBack !== "tick") throw refuse("CONFLICT", "This homework isn't ticked off.");
+      const now = new Date();
+      await tx
+        .update(studentAssignments)
+        .set(
+          ticked
+            ? {
+                status: "submitted",
+                submittedAt: row.sa.submittedAt ?? now,
+                tickedBy: row.sa.tickedBy ?? "teacher",
+                isLate: row.sa.submittedAt ? row.sa.isLate : now > row.sa.effectiveDueAt,
+                statusChangedAt: now,
+              }
+            : { status: "assigned", submittedAt: null, tickedBy: null, isLate: false, statusChangedAt: now },
+        )
+        .where(eq(studentAssignments.id, saId));
+    });
+    return this.studentHomework(scope, pair, saId);
+  }
+
+  // ── Comments ─────────────────────────────────────────────────────────────
+
+  private async commentRows(assignmentId: string, studentAssignmentId: string | null, viewerId: string) {
     const rows = await db
-      .select({
-        id: assignmentComments.id,
-        assignmentId: assignmentComments.assignmentId,
-        studentAssignmentId: assignmentComments.studentAssignmentId,
-        parentCommentId: assignmentComments.parentCommentId,
-        authorUserId: assignmentComments.authorUserId,
-        body: assignmentComments.body,
-        isDeleted: assignmentComments.isDeleted,
-        createdAt: assignmentComments.createdAt,
-        editedAt: assignmentComments.editedAt,
-        authorName: user.name,
-        authorIsStaff: sql<boolean>`EXISTS (
-          SELECT 1 FROM staff s
-          WHERE s.user_id = ${assignmentComments.authorUserId}
-            AND s.organization_id = ${assignmentComments.organizationId}
-        )`,
-      })
+      .select({ c: assignmentComments, authorName: user.name })
       .from(assignmentComments)
       .innerJoin(user, eq(assignmentComments.authorUserId, user.id))
       .where(
         and(
           eq(assignmentComments.assignmentId, assignmentId),
-          // Class-wide, own threads (family), or the one asked for (staff).
-          opts.ownThreadIds
-            ? or(
-                isNull(assignmentComments.studentAssignmentId),
-                inArray(assignmentComments.studentAssignmentId, opts.ownThreadIds),
-              )
-            : opts.studentAssignmentId
-              ? or(
-                  isNull(assignmentComments.studentAssignmentId),
-                  eq(assignmentComments.studentAssignmentId, opts.studentAssignmentId),
-                )
-              : undefined,
+          eq(assignmentComments.isDeleted, false),
+          studentAssignmentId
+            ? eq(assignmentComments.studentAssignmentId, studentAssignmentId)
+            : isNull(assignmentComments.studentAssignmentId),
         ),
       )
       .orderBy(asc(assignmentComments.createdAt));
-    return rows;
+    const staffIds = await this.staffAuthors(rows.map((r) => r.c.authorUserId));
+    return rows.map((r) => ({
+      id: r.c.id,
+      assignmentId: r.c.assignmentId,
+      studentAssignmentId: r.c.studentAssignmentId,
+      authorName: r.authorName,
+      fromStaff: staffIds.has(r.c.authorUserId),
+      isMine: r.c.authorUserId === viewerId,
+      body: r.c.body,
+      createdAt: r.c.createdAt,
+    }));
   }
 
-  // -------------------------------------------------------------------------
-  // B6 owner resolvers — the router's gate resolves the row's owning school
-  // -------------------------------------------------------------------------
+  /** Authors who are staff: anyone who is not a family login. */
+  private async staffAuthors(userIds: string[]): Promise<Set<string>> {
+    const ids = [...new Set(userIds)];
+    if (ids.length === 0) return new Set();
+    const family = await db
+      .selectDistinct({ userId: studentPortalAccess.userId })
+      .from(studentPortalAccess)
+      .where(inArray(studentPortalAccess.userId, ids));
+    const familyIds = new Set(family.map((r) => r.userId));
+    return new Set(ids.filter((id) => !familyIds.has(id)));
+  }
 
-  async getAssignmentOwnerId(
-    organizationId: string,
-    assignmentId: string,
-  ): Promise<string | null> {
+  /**
+   * Staff read: the class question board, or ONE child's private thread.
+   * Never every private thread at once (the old leak).
+   */
+  async listComments(scope: DataScope, viewerId: string, assignmentId: string, studentAssignmentId?: string) {
+    const a = await this.load(db, scope, assignmentId);
+    if (studentAssignmentId) {
+      const row = await this.loadStudentAssignment(db, scope, studentAssignmentId);
+      if (row.a.id !== a.id) throw refuse("NOT_FOUND", "That student's homework could not be found.");
+    }
+    return this.commentRows(a.id, studentAssignmentId ?? null, viewerId);
+  }
+
+  async postComment(
+    scope: DataScope,
+    userId: string,
+    input: { assignmentId: string; studentAssignmentId?: string; body: string },
+  ) {
+    const a = await this.load(db, scope, input.assignmentId);
+    if (input.studentAssignmentId) {
+      const row = await this.loadStudentAssignment(db, scope, input.studentAssignmentId);
+      if (row.a.id !== a.id) throw refuse("NOT_FOUND", "That student's homework could not be found.");
+    }
+    await db.insert(assignmentComments).values({
+      organizationId: a.organizationId,
+      schoolId: a.schoolId,
+      assignmentId: a.id,
+      studentAssignmentId: input.studentAssignmentId ?? null,
+      authorUserId: userId,
+      body: input.body,
+    });
+    return this.commentRows(a.id, input.studentAssignmentId ?? null, userId);
+  }
+
+  /** Staff remove any comment on a homework in their scope (moderation). */
+  async deleteComment(scope: DataScope, commentId: string): Promise<void> {
+    const [row] = await db
+      .select({ id: assignmentComments.id })
+      .from(assignmentComments)
+      .where(
+        and(
+          eq(assignmentComments.id, commentId),
+          scopeWhere(atSchoolLevel(scope), {
+            organizationId: assignmentComments.organizationId,
+            schoolId: assignmentComments.schoolId,
+          }),
+        ),
+      );
+    if (!row) throw refuse("NOT_FOUND", "That comment could not be found.");
+    await db.update(assignmentComments).set({ isDeleted: true }).where(eq(assignmentComments.id, commentId));
+  }
+
+  // ── The student side (ADR-062: one child per call) ───────────────────────
+
+  private async portalRow(ownedStudentIds: readonly string[], studentId: string, saId: string) {
+    const child = await resolvePortalChild(ownedStudentIds, studentId);
+    const [row] = await db
+      .select({ sa: studentAssignments, a: assignments, enrollmentStudentId: studentEnrollments.studentId })
+      .from(studentAssignments)
+      .innerJoin(assignments, eq(studentAssignments.assignmentId, assignments.id))
+      .innerJoin(studentEnrollments, eq(studentAssignments.studentEnrollmentId, studentEnrollments.id))
+      .where(
+        and(
+          eq(studentAssignments.id, saId),
+          eq(studentEnrollments.studentId, child.studentId),
+          eq(studentAssignments.organizationId, child.organizationId),
+          inArray(assignments.status, ["published", "closed"]),
+        ),
+      );
+    if (!row) throw refuse("NOT_FOUND", "That homework could not be found.");
+    return { child, ...row };
+  }
+
+  private portalItem(
+    r: { sa: StudentAssignmentRow; a: Assignment; subjectName: string; teacherName: string },
+    now: Date,
+  ) {
+    return {
+      studentAssignmentId: r.sa.id,
+      kind: r.a.kind,
+      comesBack: r.a.comesBack,
+      gradingMode: r.a.gradingMode,
+      maxMarks: r.a.maxMarks,
+      title: r.a.title,
+      book: r.a.kind === "reading" ? r.a.topic : null,
+      subjectName: r.subjectName,
+      teacherName: r.teacherName,
+      estimatedMinutes: r.a.estimatedMinutes,
+      givenAt: r.a.publishedAt ?? r.a.createdAt,
+      dueAt: r.sa.effectiveDueAt,
+      closeAt: r.sa.effectiveCloseAt,
+      word: studentWord(r.sa, r.a.comesBack, now),
+      checkStatus: r.sa.checkStatus,
+      marks: r.sa.marks,
+      grade: r.sa.grade,
+      remark: r.sa.remark,
+      hasNote: Boolean(r.sa.note),
+      canUntick:
+        r.a.comesBack === "tick" &&
+        r.sa.status === "submitted" &&
+        r.sa.tickedBy === "student" &&
+        now <= r.sa.effectiveDueAt,
+    };
+  }
+
+  /** The child's homework, newest due first within each group. */
+  async portalList(ownedStudentIds: readonly string[], studentId: string, filter: "open" | "done" | "all") {
+    const child = await resolvePortalChild(ownedStudentIds, studentId);
+    const rows = await db
+      .select({ sa: studentAssignments, a: assignments, subjectName: subjects.name, teacherName: user.name })
+      .from(studentAssignments)
+      .innerJoin(assignments, eq(studentAssignments.assignmentId, assignments.id))
+      .innerJoin(subjects, eq(assignments.subjectId, subjects.id))
+      .innerJoin(user, eq(assignments.createdBy, user.id))
+      .where(
+        and(
+          eq(studentAssignments.studentEnrollmentId, child.enrollmentId),
+          eq(studentAssignments.organizationId, child.organizationId),
+          inArray(assignments.status, ["published", "closed"]),
+        ),
+      )
+      .orderBy(desc(studentAssignments.effectiveDueAt))
+      .limit(300);
+    const now = new Date();
+    const items = rows.map((r) => this.portalItem(r, now));
+    if (filter === "open") return items.filter((i) => ["to_do", "redo", "sent", "late"].includes(i.word));
+    if (filter === "done") return items.filter((i) => i.word === "checked" || i.word === "missed");
+    return items;
+  }
+
+  async portalGet(ownedStudentIds: readonly string[], studentId: string, saId: string) {
+    const { sa, a } = await this.portalRow(ownedStudentIds, studentId, saId);
+    const [meta] = await db
+      .select({ subjectName: subjects.name, teacherName: user.name })
+      .from(assignments)
+      .innerJoin(subjects, eq(assignments.subjectId, subjects.id))
+      .innerJoin(user, eq(assignments.createdBy, user.id))
+      .where(eq(assignments.id, a.id));
+    const teacherFiles = await db
+      .select({ objectId: assignmentFiles.objectId })
+      .from(assignmentFiles)
+      .where(eq(assignmentFiles.assignmentId, a.id))
+      .orderBy(asc(assignmentFiles.sortOrder));
+    const [sub] = await db.select().from(submissions).where(eq(submissions.studentAssignmentId, sa.id));
+    const subFiles = sub
+      ? await db
+          .select({ objectId: submissionFiles.objectId })
+          .from(submissionFiles)
+          .where(eq(submissionFiles.submissionId, sub.id))
+          .orderBy(asc(submissionFiles.sortOrder))
+      : [];
+    const refs = await storageService.imageRefs(a.organizationId, [
+      ...teacherFiles.map((f) => f.objectId),
+      ...subFiles.map((f) => f.objectId),
+    ]);
+    const pick = (ids: { objectId: string }[]) =>
+      ids.map((f) => refs.get(f.objectId)).filter((x): x is ImageRef => Boolean(x));
+
+    let quiz = null;
+    if (a.kind === "quiz") {
+      const [q] = await db
+        .select({ n: count() })
+        .from(assignmentQuestions)
+        .where(eq(assignmentQuestions.assignmentId, a.id));
+      const [attempt] = await db
+        .select({ id: questionAttempts.id, status: questionAttempts.status })
+        .from(questionAttempts)
+        .where(eq(questionAttempts.studentAssignmentId, sa.id));
+      quiz = {
+        questionCount: q?.n ?? 0,
+        attemptId: attempt?.id ?? null,
+        attemptStatus: attempt?.status ?? null,
+      };
+    }
+    const now = new Date();
+    return {
+      ...this.portalItem({ sa, a, subjectName: meta!.subjectName, teacherName: meta!.teacherName }, now),
+      details: a.kind === "reading" ? null : a.description,
+      files: pick(teacherFiles),
+      note: sa.note,
+      canSend: this.canSend(a, sa, now),
+      submission: sub
+        ? { bodyText: sub.bodyText, submittedAt: sub.submittedAt, isLate: sub.isLate, files: pick(subFiles) }
+        : null,
+      quiz,
+    };
+  }
+
+  private canSend(a: Assignment, sa: StudentAssignmentRow, now: Date): boolean {
+    return (
+      a.comesBack === "sent" &&
+      a.status === "published" &&
+      now <= sa.effectiveCloseAt &&
+      (sa.status === "assigned" || sa.status === "submitted" || sa.status === "redo")
+    );
+  }
+
+  async portalMarkViewed(ownedStudentIds: readonly string[], studentId: string, saId: string) {
+    const { sa } = await this.portalRow(ownedStudentIds, studentId, saId);
+    if (!sa.firstViewedAt) {
+      await db
+        .update(studentAssignments)
+        .set({ firstViewedAt: new Date() })
+        .where(and(eq(studentAssignments.id, sa.id), isNull(studentAssignments.firstViewedAt)));
+    }
+  }
+
+  /** Tick (until the close time) or untick (a student's own tick, until the due time). */
+  async portalTick(ownedStudentIds: readonly string[], studentId: string, saId: string, ticked: boolean) {
+    const { sa, a } = await this.portalRow(ownedStudentIds, studentId, saId);
+    if (a.comesBack !== "tick") throw refuse("CONFLICT", "This homework isn't ticked off.");
+    const now = new Date();
+    if (ticked) {
+      if (sa.status === "submitted") return this.portalGet(ownedStudentIds, studentId, saId);
+      if (a.status !== "published" || now > sa.effectiveCloseAt) {
+        throw refuse("CONFLICT", "It's past the time to tick this one.");
+      }
+      await db
+        .update(studentAssignments)
+        .set({
+          status: "submitted",
+          submittedAt: now,
+          tickedBy: "student",
+          isLate: now > sa.effectiveDueAt,
+          statusChangedAt: now,
+        })
+        .where(eq(studentAssignments.id, sa.id));
+    } else {
+      if (sa.status !== "submitted") return this.portalGet(ownedStudentIds, studentId, saId);
+      if (sa.tickedBy !== "student" || now > sa.effectiveDueAt) {
+        throw refuse("CONFLICT", "This tick can't be undone any more.");
+      }
+      await db
+        .update(studentAssignments)
+        .set({ status: "assigned", submittedAt: null, tickedBy: null, isLate: false, statusChangedAt: now })
+        .where(eq(studentAssignments.id, sa.id));
+    }
+    return this.portalGet(ownedStudentIds, studentId, saId);
+  }
+
+  /** Upload links for the child's photos, tied to this homework. */
+  async portalUploadTickets(
+    userId: string,
+    ownedStudentIds: readonly string[],
+    studentId: string,
+    saId: string,
+    files: UploadRequest[],
+  ) {
+    const { sa, a } = await this.portalRow(ownedStudentIds, studentId, saId);
+    if (!this.canSend(a, sa, new Date())) throw refuse("CONFLICT", "This homework isn't taking work now.");
+    return storageService.createUploads({
+      organizationId: a.organizationId,
+      schoolId: a.schoolId,
+      purpose: STUDENT_FILE,
+      parentId: sa.id,
+      uploadedBy: userId,
+      files,
+    });
+  }
+
+  /**
+   * Sends (or replaces) the child's work. One submission per child: until
+   * it is checked, sending again replaces the text and photos; photos no
+   * longer used go to the storage sweeper.
+   */
+  async portalSend(userId: string, ownedStudentIds: readonly string[], input: PortalSendInput) {
+    const { sa, a } = await this.portalRow(ownedStudentIds, input.studentId, input.studentAssignmentId);
+    const now = new Date();
+    if (!this.canSend(a, sa, now)) {
+      if (sa.status === "checked") throw refuse("CONFLICT", "This has been checked already.");
+      throw refuse("CONFLICT", "This homework isn't taking work now.");
+    }
+    await storageService.ensureReady(userId, input.fileObjectIds);
+    const isLate = now > sa.effectiveDueAt;
+    await db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select()
+        .from(studentAssignments)
+        .where(eq(studentAssignments.id, sa.id))
+        .for("update");
+      if (!locked || locked.status === "checked" || locked.status === "missing") {
+        throw refuse("CONFLICT", "This homework isn't taking work now.");
+      }
+      const [prev] = await tx.select().from(submissions).where(eq(submissions.studentAssignmentId, sa.id));
+      const before = prev
+        ? (
+            await tx
+              .select({ objectId: submissionFiles.objectId })
+              .from(submissionFiles)
+              .where(eq(submissionFiles.submissionId, prev.id))
+          ).map((r) => r.objectId)
+        : [];
+      await storageService.attach(tx, {
+        organizationId: a.organizationId,
+        purpose: STUDENT_FILE,
+        parentId: sa.id,
+        userId,
+        objectIds: input.fileObjectIds,
+      });
+      let submissionId: string;
+      if (prev) {
+        await tx
+          .update(submissions)
+          .set({ bodyText: input.bodyText ?? null, submittedByUserId: userId, submittedAt: now, isLate })
+          .where(eq(submissions.id, prev.id));
+        await tx.delete(submissionFiles).where(eq(submissionFiles.submissionId, prev.id));
+        submissionId = prev.id;
+      } else {
+        const [created] = await tx
+          .insert(submissions)
+          .values({
+            organizationId: a.organizationId,
+            schoolId: a.schoolId,
+            studentAssignmentId: sa.id,
+            bodyText: input.bodyText ?? null,
+            submittedByUserId: userId,
+            submittedAt: now,
+            isLate,
+          })
+          .returning({ id: submissions.id });
+        submissionId = created!.id;
+      }
+      if (input.fileObjectIds.length) {
+        await tx.insert(submissionFiles).values(
+          input.fileObjectIds.map((objectId, i) => ({
+            organizationId: a.organizationId,
+            schoolId: a.schoolId,
+            submissionId,
+            objectId,
+            sortOrder: i,
+          })),
+        );
+      }
+      await storageService.markDeleted(
+        tx,
+        a.organizationId,
+        before.filter((id) => !input.fileObjectIds.includes(id)),
+      );
+      await tx
+        .update(studentAssignments)
+        .set({ status: "submitted", submittedAt: now, isLate, statusChangedAt: now })
+        .where(eq(studentAssignments.id, sa.id));
+      if (!a.isLocked) await tx.update(assignments).set({ isLocked: true }).where(eq(assignments.id, a.id));
+    });
+    return this.portalGet(ownedStudentIds, input.studentId, input.studentAssignmentId);
+  }
+
+  /** The class question board plus the child's own private thread. */
+  async portalComments(userId: string, ownedStudentIds: readonly string[], studentId: string, saId: string) {
+    const { a, sa } = await this.portalRow(ownedStudentIds, studentId, saId);
+    const [board, mine] = await Promise.all([
+      this.commentRows(a.id, null, userId),
+      this.commentRows(a.id, sa.id, userId),
+    ]);
+    return [...board, ...mine].sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime());
+  }
+
+  async portalPostComment(
+    userId: string,
+    ownedStudentIds: readonly string[],
+    input: { studentId: string; studentAssignmentId: string; toClass: boolean; body: string },
+  ) {
+    const { a, sa } = await this.portalRow(ownedStudentIds, input.studentId, input.studentAssignmentId);
+    await db.insert(assignmentComments).values({
+      organizationId: a.organizationId,
+      schoolId: a.schoolId,
+      assignmentId: a.id,
+      studentAssignmentId: input.toClass ? null : sa.id,
+      authorUserId: userId,
+      body: input.body,
+    });
+    return this.portalComments(userId, ownedStudentIds, input.studentId, input.studentAssignmentId);
+  }
+
+  // ── Worker hooks (ADR-040) ───────────────────────────────────────────────
+
+  /** Scheduled homework whose moment has come. */
+  async dueScheduled(limit: number): Promise<string[]> {
+    const rows = await db
+      .select({ id: assignments.id })
+      .from(assignments)
+      .where(and(eq(assignments.status, "scheduled"), lte(assignments.publishAt, new Date())))
+      .limit(limit);
+    return rows.map((r) => r.id);
+  }
+
+  /** Gives one scheduled homework. Null when it is no longer scheduled. */
+  async publishScheduled(id: string): Promise<boolean> {
+    return db.transaction(async (tx) => {
+      const [a] = await tx.select().from(assignments).where(eq(assignments.id, id)).for("update");
+      if (!a || a.status !== "scheduled") return false;
+      await this.giveNow(tx, a);
+      return true;
+    });
+  }
+
+  /** Work sent in the app, past its close time, with children who sent nothing. */
+  async sweepMissing(limit: number): Promise<number> {
+    const rows = await db
+      .selectDistinct({ assignmentId: studentAssignments.assignmentId })
+      .from(studentAssignments)
+      .innerJoin(assignments, eq(studentAssignments.assignmentId, assignments.id))
+      .where(
+        and(
+          eq(assignments.comesBack, "sent"),
+          inArray(assignments.status, ["published", "closed"]),
+          inArray(studentAssignments.status, ["assigned", "redo"]),
+          lte(studentAssignments.effectiveCloseAt, new Date()),
+        ),
+      )
+      .limit(limit);
+    let n = 0;
+    for (const r of rows) n += await this.markMissing(db, r.assignmentId);
+    return n;
+  }
+
+  // ── Owner resolution (the router's gate) ─────────────────────────────────
+
+  async getAssignmentOwnerId(organizationId: string, id: string): Promise<string | null> {
     const [row] = await db
       .select({ schoolId: assignments.schoolId })
       .from(assignments)
-      .where(
-        and(
-          eq(assignments.id, assignmentId),
-          eq(assignments.organizationId, organizationId),
-        ),
-      );
+      .where(and(eq(assignments.id, id), eq(assignments.organizationId, organizationId)));
     return row?.schoolId ?? null;
   }
 
-  async getStudentAssignmentOwnerId(
-    organizationId: string,
-    studentAssignmentId: string,
-  ): Promise<string | null> {
+  async getStudentAssignmentOwnerId(organizationId: string, id: string): Promise<string | null> {
     const [row] = await db
       .select({ schoolId: studentAssignments.schoolId })
       .from(studentAssignments)
+      .where(and(eq(studentAssignments.id, id), eq(studentAssignments.organizationId, organizationId)));
+    return row?.schoolId ?? null;
+  }
+
+  async getCommentOwnerId(organizationId: string, id: string): Promise<string | null> {
+    const [row] = await db
+      .select({ schoolId: assignmentComments.schoolId })
+      .from(assignmentComments)
+      .where(and(eq(assignmentComments.id, id), eq(assignmentComments.organizationId, organizationId)));
+    return row?.schoolId ?? null;
+  }
+
+  /** A caller's open subject_teacher pairs in an organisation. */
+  async teachingPairs(organizationId: string, userId: string): Promise<TeachingPair[]> {
+    const rows = await db
+      .select({ sectionId: sectionTeacherAssignments.sectionId, subjectId: sectionTeacherAssignments.subjectId })
+      .from(sectionTeacherAssignments)
       .where(
         and(
-          eq(studentAssignments.id, studentAssignmentId),
-          eq(studentAssignments.organizationId, organizationId),
+          eq(sectionTeacherAssignments.organizationId, organizationId),
+          eq(sectionTeacherAssignments.userId, userId),
+          eq(sectionTeacherAssignments.role, "subject_teacher"),
+          isNull(sectionTeacherAssignments.effectiveTo),
         ),
       );
-    return row?.schoolId ?? null;
+    return rows
+      .filter((r): r is TeachingPair => Boolean(r.subjectId))
+      .map((r) => ({ sectionId: r.sectionId, subjectId: r.subjectId }));
   }
 }
 

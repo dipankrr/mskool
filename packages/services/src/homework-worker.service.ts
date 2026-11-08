@@ -1,27 +1,20 @@
-import { db } from "@repo/db";
-import { assignments, studentAssignments } from "@repo/db/schema";
 import { getRedis } from "@repo/authz";
-import { and, eq, lte, sql } from "drizzle-orm";
+import { homeworkQuestionsService } from "./homework-questions.service";
 import { homeworkService } from "./homework.service";
 import { randomUUID } from "node:crypto";
 
 /**
  * THE HOMEWORK SWEEPER (ADR-040) — the time-driven half of ADR-039.
  *
- * Three time-driven state changes no HTTP request exists to perform:
- *   1. SCHEDULED → PUBLISHED when publish_at arrives (runs the SAME
- *      publishAssignment service the teacher's button runs — resolution,
- *      caps, student_assignments — so "publish at 8am" and "publish now"
- *      are provably one behavior).
- *   2. ASSIGNED / IN_PROGRESS → MISSING once effective_close_at has passed
- *      on a PUBLISHED or CLOSED assignment. Cancelled assignments are
- *      deliberately excluded (a cancelled homework is not missed work), as
- *      are backfilled/view-only rows (is_backfilled — they were never
- *      submittable). The states are the mutex: a row excused, graded, or
- *      resubmit-requested by a human no longer matches the WHERE, so the
- *      sweep can never overwrite a human decision; an extension granted in
- *      the same instant moves effective_close_at past the sweep's clock and
- *      grantExtension revives a just-missed row anyway.
+ * The time-driven state changes no HTTP request performs (ADR-064):
+ *   1. SCHEDULED → PUBLISHED when publish_at arrives, through the same code
+ *      the teacher's Give runs.
+ *   2. Quiz attempts left open at the close time are handed in and marked;
+ *      children who never started become MISSING.
+ *   3. Work sent in the app with nothing sent by the close time becomes
+ *      MISSING. Work brought to class never does: only the teacher records it.
+ *   Each is a WHERE on state and time, so a row a teacher already checked or
+ *   sent back no longer matches and the sweep never overwrites a person.
  *
  * The clock is the DATABASE's now(), never the app's — the deadline columns
  * were written by the database, and N app instances with skewed clocks must
@@ -50,12 +43,14 @@ const SWEEP_LEASE_KEY = "lock:homework-sweep";
 const SWEEP_LEASE_TTL_MS = 4 * 60_000;
 
 export interface SweepResult {
-  /** Scheduled assignments flipped to published this tick. */
-  published: { id: string; title: string }[];
+  /** Scheduled homework given this tick. */
+  published: { id: string }[];
   /** Scheduled publishes that REFUSED (cap hit, vanished section) — retried next tick. */
   publishRefusals: { id: string; reason: string }[];
-  /** Student assignment rows flipped to missing this tick. */
-  markedMissing: string[];
+  /** Quiz attempts handed in at their close time. */
+  handedIn: number;
+  /** Children marked missing this tick. */
+  markedMissing: number;
   /** One-line human summary for the tick log. */
   summary: string;
 }
@@ -87,98 +82,54 @@ export class HomeworkWorkerService {
       return {
         published: [],
         publishRefusals: [],
-        markedMissing: [],
+        handedIn: 0,
+        markedMissing: 0,
         summary: "skipped (another instance holds the sweep lease)",
       };
     }
 
-    // One transaction holds the sweep's reads and the Missing UPDATE; the
-    // scheduled publishes deliberately run OUTSIDE it (their own
-    // transactions) so one refusal cannot roll back the others.
-    return db.transaction(async (tx) => {
-      // --- 1. scheduled publishing -----------------------------------------
-      // The ids are picked here; each assignment publishes in its OWN
-      // transaction (publishAssignment opens one) so a single refusal — a
-      // per-day cap, a vanished section — cannot roll back the others.
-      // DB clock, and a batch cap: after downtime the backlog drains at
-      // publishBatch per tick, not in one unbounded loop.
-      const dueIds = await tx
-        .select({ id: assignments.id, title: assignments.title })
-        .from(assignments)
-        .where(
-          and(
-            eq(assignments.status, "scheduled"),
-            lte(assignments.publishAt, sql`now()`),
-          ),
-        )
-        .limit(publishBatch);
-
-      for (const due of dueIds) {
-        // The sweep has no DataScope — it is the system acting, not a caller.
-        // publishAssignment's school-scoped guard is satisfied by a
-        // school-level synthetic scope; the row's own tenancy was fixed at
-        // creation and the scopeWhere here would be a tautology, so the
-        // direct id-addressed path is the honest one.
+    try {
+      // 1. Scheduled homework whose moment has come. Each is given in its
+      // own transaction so one refusal (a class with no students) cannot
+      // undo the others; a refusal is retried next tick.
+      for (const id of await homeworkService.dueScheduled(publishBatch)) {
         try {
-          const publishedAssignment =
-            await homeworkService.publishScheduledAssignment(due.id);
-          if (publishedAssignment) {
-            published.push({ id: due.id, title: due.title });
-          } else {
-            publishRefusals.push({
-              id: due.id,
-              reason: "not in a publishable state",
-            });
-          }
+          if (await homeworkService.publishScheduled(id)) published.push({ id });
+          else publishRefusals.push({ id, reason: "not in a publishable state" });
         } catch (err) {
-          publishRefusals.push({
-            id: due.id,
-            reason: err instanceof Error ? err.message : "unknown refusal",
-          });
+          publishRefusals.push({ id, reason: err instanceof Error ? err.message : "unknown refusal" });
         }
       }
 
-      // --- 2. the missing sweep ---------------------------------------------
-      // One set-based UPDATE. The join is the integrity: only rows of
-      // PUBLISHED or CLOSED assignments; cancelled/draft/scheduled are
-      // excluded; is_backfilled rows are view-only, never submittable, so
-      // they are never "missing". DB clock on both sides of the comparison.
-      const swept = await tx
-        .update(studentAssignments)
-        .set({ status: "missing", missingMarkedAt: sql`now()`, statusChangedAt: sql`now()` })
-        .where(
-          sql`status IN ('assigned','in_progress')
-              AND effective_close_at < now()
-              AND is_backfilled = false
-              AND assignment_id IN (
-                SELECT id FROM assignments
-                WHERE status IN ('published','closed')
-              )`,
-        )
-        .returning({ id: studentAssignments.id });
-      const markedMissing = swept.map((r) => r.id);
+      // 2. Quizzes: open attempts are handed in at the close time; children
+      // who never started become missing.
+      const quiz = await homeworkQuestionsService.sweepQuizzes(publishBatch);
 
-      try {
-        return {
-          published,
-          publishRefusals,
-          markedMissing,
-          summary: `${published.length} published, ${markedMissing.length} missing, ${publishRefusals.length} publish refusal(s)`,
-        };
-      } finally {
-        if (leaseHeld) {
-          // Release our OWN lease only (compare the holder) so a slow sweep
-          // whose lease expired and was re-taken by another instance does
-          // not delete the successor's lease.
-          try {
-            const current = await getRedis().get(SWEEP_LEASE_KEY);
-            if (current === holder) await getRedis().del(SWEEP_LEASE_KEY);
-          } catch {
-            // Lease expiry is the fallback release path.
-          }
+      // 3. Work sent in the app: nothing sent by the close time is missing.
+      // Work brought to class is never marked missing; only the teacher
+      // records it.
+      const missing = await homeworkService.sweepMissing(publishBatch);
+
+      return {
+        published,
+        publishRefusals,
+        handedIn: quiz.handedIn,
+        markedMissing: missing + quiz.missing,
+        summary: `${published.length} published, ${quiz.handedIn} quiz attempts handed in, ${missing + quiz.missing} missing, ${publishRefusals.length} publish refusal(s)`,
+      };
+    } finally {
+      if (leaseHeld) {
+        // Release our OWN lease only (compare the holder) so a slow sweep
+        // whose lease expired and was re-taken by another instance does not
+        // delete the successor's lease.
+        try {
+          const current = await getRedis().get(SWEEP_LEASE_KEY);
+          if (current === holder) await getRedis().del(SWEEP_LEASE_KEY);
+        } catch {
+          // Lease expiry is the fallback release path.
         }
       }
-    });
+    }
   }
 }
 

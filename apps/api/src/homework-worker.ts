@@ -44,7 +44,7 @@ export function startHomeworkWorker(): HomeworkWorkerHandle | null {
       });
       homeworkWorkerHealth.lastSweepAt = new Date();
       homeworkWorkerHealth.lastSummary = result.summary;
-      if (result.published.length || result.markedMissing.length || result.publishRefusals.length) {
+      if (result.published.length || result.markedMissing || result.handedIn || result.publishRefusals.length) {
         console.log(
           `⏱️  homework sweep: ${result.summary} (${Date.now() - beganAt}ms)`,
         );

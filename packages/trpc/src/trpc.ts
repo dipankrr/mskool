@@ -271,6 +271,76 @@ export async function evaluateSubjectGate(args: {
 }
 
 /**
+ * ADR-064: a homework can go to several sections at once. The builder gates
+ * the FIRST (section, subject) pair; this checks every one the same way
+ * (strict cover plus the subject fact), so a teacher can't add a class they
+ * don't teach to a homework.
+ */
+export async function assertSubjectPairs(args: {
+  authCache: UserAuthCache;
+  organizationId: string;
+  userId: string;
+  permission: Permission;
+  sectionIds: readonly string[];
+  subjectId: string;
+}): Promise<void> {
+  for (const sectionId of new Set(args.sectionIds)) {
+    const node = await resolveNode(args.organizationId, sectionId);
+    if (node.type !== "section") {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Pick classes, not a whole school." });
+    }
+    const resourceCtx: ResourceContext = { organizationId: args.organizationId, nodeId: node.id, node };
+    if (!can(args.authCache, args.permission, resourceCtx)) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: forbiddenMessage(args.authCache, args.organizationId, args.permission, node.type),
+      });
+    }
+    const verdict = await evaluateSubjectGate({
+      authCache: args.authCache,
+      organizationId: args.organizationId,
+      userId: args.userId,
+      sectionNode: node,
+      sectionId,
+      subjectId: args.subjectId,
+      permission: args.permission,
+    });
+    if (verdict !== "pass") {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message:
+          verdict === "no-permission"
+            ? "You do not have access to this resource."
+            : "You are not the assigned teacher for this paper.",
+      });
+    }
+  }
+}
+
+/**
+ * True when every live grant of `permission` in the organisation is the
+ * subject_teacher role, so the caller's reads narrow to their own (section,
+ * subject) pairs (ADR-029 amended, ADR-064). A class teacher or principal
+ * grant answers false: their scope alone decides.
+ */
+export function onlySubjectTeacher(
+  authCache: UserAuthCache,
+  organizationId: string,
+  permission: Permission,
+): boolean {
+  const orgPerms = authCache.orgPermissions[organizationId];
+  if (!orgPerms) return false;
+  const now = new Date();
+  const granting = authCache.assignments.filter(
+    (a) =>
+      a.organizationId === organizationId &&
+      !isAssignmentExpired(a, now) &&
+      (orgPerms[a.roleType] ?? []).includes(permission),
+  );
+  return granting.length > 0 && granting.every((a) => a.roleType === "subject_teacher");
+}
+
+/**
  * The portal ownership gate, as a PURE function so the refusal's shape is
  * unit-testable without a database (S4.2): the requested student must appear
  * in this login's ACTIVE `student_portal_access` rows. One parent login may

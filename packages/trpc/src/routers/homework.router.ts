@@ -1,5 +1,4 @@
 import {
-  assignmentCommentSelectSchema,
   assignmentQuestionStaffSchema,
   attemptQuestionStudentSchema,
   attemptResultSchema,
@@ -7,342 +6,319 @@ import {
   bankItemDetailSchema,
   bankItemSelectSchema,
   createBankItemInput,
+  createHomeworkInput,
+  giveAgainInput,
+  giveDefaultsSchema,
+  givePairsSchema,
   gradeAttemptAnswerInput,
-  listAttemptsInput,
+  homeworkCommentSchema,
+  homeworkDetailSchema,
+  homeworkHomeSchema,
+  homeworkKindSchema,
+  homeworkSummarySchema,
+  homeworkUploadInput,
   listBankItemsInput,
+  listHomeworkInput,
+  markTickInput,
+  moveDueInput,
+  portalHomeworkDetailSchema,
+  portalHomeworkItemSchema,
+  portalHomeworkListInput,
+  portalHomeworkRefInput,
+  portalHomeworkUploadInput,
+  portalPostCommentInput,
+  portalSendInput,
+  portalTickInput,
+  postHomeworkCommentInput,
+  registerSchema,
   saveAnswerInput,
+  saveRegisterInput,
+  saveRegisterResultSchema,
+  sendBackInput,
   setAssignmentQuestionsInput,
   startAttemptInput,
+  studentHomeworkSchema,
   submitAttemptInput,
-  assignmentDetailSchema,
-  assignmentSelectSchema,
-  assignmentSettingsSelectSchema,
-  cancelAssignmentInput,
-  createAssignmentInput,
-  createRubricInput,
-  effectiveAssignmentSettingsSchema,
-  evaluateStudentAssignmentInput,
-  excuseStudentAssignmentInput,
-  grantExtensionInput,
-  listAssignmentsInput,
-  listStudentAssignmentsInput,
-  postAssignmentCommentInput,
-  portalAcknowledgeInput,
-  portalAssignmentDetailSchema,
-  portalAssignmentListItemSchema,
-  portalStudentIdInput,
-  portalSubmitAssignmentInput,
-  rubricDetailSchema,
-  rubricSelectSchema,
-  studentAssignmentDetailSchema,
-  studentAssignmentSelectSchema,
-  updateAssignmentInput,
-  upsertAssignmentSettingsInput,
+  updateHomeworkInput,
+  uploadTicketSchema,
 } from "@repo/contracts";
-import { homeworkQuestionsService, homeworkService } from "@repo/services";
+import { homeworkQuestionsService, homeworkService, type HomeworkAccess } from "@repo/services";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { router, staffListProcedure, staffProcedure, studentProcedure, type OwnerResolver } from "../trpc";
+import {
+  assertSubjectPairs,
+  onlySubjectTeacher,
+  router,
+  staffListProcedure,
+  staffProcedure,
+  studentProcedure,
+  type OwnerResolver,
+} from "../trpc";
 
 /**
- * HOMEWORK / ASSIGNMENTS (ADR-039) — staff namespace `homework.*`, family
- * door `portalHomework.*`.
+ * HOMEWORK (ADR-039, rebuilt by ADR-064) — staff `homework.*`, family
+ * `portalHomework.*`.
  *
  * Permission map:
- *  - `homework:create/update` author and edit assignments (subject-gated,
- *    ADR-029 — the teaching role must hold the (section, subject) fact;
- *    admin roles pass on scope alone). `homework:grade` evaluates a student
- *    (subject-gated for the same reason). `homework:comment` runs the Q&A
- *    threads — conversation, not subject content, so not gated.
- *  - Settings and rubrics are school CONFIGURATION and ride
- *    `school_settings:read/update` — the principal-level configuration
- *    permission that already exists.
- *  - Row-addressed routes carry `id` (the builder resolves the owner); the
- *    subject-gated row-addressed ones ALSO carry sectionId + subjectId, and
- *    the service verifies the pair actually describes the row — otherwise a
- *    teacher's legitimate gate fact on one pair could grade or edit a
- *    stranger's row on another.
+ *  - `homework:create/update/grade` give, edit and check homework. They are
+ *    subject-gated (ADR-029): the call names a (section, subject) pair, the
+ *    builder checks it, and the service proves the pair describes the row.
+ *    Giving to several sections checks EVERY section (`assertSubjectPairs`).
+ *  - `homework:read` reads. A caller whose only grant is subject_teacher sees
+ *    only their own pairs (and what they gave); a class teacher or principal
+ *    sees their scope.
+ *  - `homework:comment` runs the question board and private threads.
  *
- * The family door is studentProcedure (ownership only, no can()); its output
- * shapes carry no answer keys and no other child's data.
+ * The family door is studentProcedure: one child per call (ADR-062). A
+ * student and a parent login are treated the same. Outputs never carry a quiz
+ * answer key.
  */
 
 const resolveAssignmentOwner: OwnerResolver = async (organizationId, id) => {
   const schoolId = await homeworkService.getAssignmentOwnerId(organizationId, id);
-  if (!schoolId) throw new TRPCError({ code: "NOT_FOUND", message: "Assignment not found." });
+  if (!schoolId) throw new TRPCError({ code: "NOT_FOUND", message: "That homework could not be found." });
   return { type: "school", id: schoolId };
 };
 
-const resolveAttemptOwner: OwnerResolver = async (organizationId, id) => {
-  const schoolId = await homeworkQuestionsService.getAttemptOwnerId(organizationId, id);
-  if (!schoolId) throw new TRPCError({ code: "NOT_FOUND", message: "Attempt not found." });
+const resolveCommentOwner: OwnerResolver = async (organizationId, id) => {
+  const schoolId = await homeworkService.getCommentOwnerId(organizationId, id);
+  if (!schoolId) throw new TRPCError({ code: "NOT_FOUND", message: "That comment could not be found." });
   return { type: "school", id: schoolId };
 };
 
-const resolveStudentAssignmentOwner: OwnerResolver = async (organizationId, id) => {
-  const schoolId = await homeworkService.getStudentAssignmentOwnerId(organizationId, id);
-  if (!schoolId) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "Student assignment not found." });
-  }
-  return { type: "school", id: schoolId };
-};
+/** What every subject-gated call names (the builder checks the pair). */
+const pairInput = z.object({ sectionId: z.uuid(), subjectId: z.uuid() });
+const rowPairInput = pairInput.extend({ id: z.uuid() });
+const idInput = z.object({ id: z.uuid() });
+
+/** The pair a subject-gated call named. */
+const pairOf = (input: { sectionId: string; subjectId: string }) => ({
+  sectionId: input.sectionId,
+  subjectId: input.subjectId,
+});
+
+/** Read access for list procedures: scopes, narrowed to own pairs for a subject teacher. */
+async function accessFor(ctx: {
+  userId: string;
+  organizationId: string;
+  scopes: HomeworkAccess["scopes"];
+  authCache: Parameters<typeof onlySubjectTeacher>[0];
+}): Promise<HomeworkAccess> {
+  const pairs = onlySubjectTeacher(ctx.authCache, ctx.organizationId, "homework:read")
+    ? await homeworkService.teachingPairs(ctx.organizationId, ctx.userId)
+    : null;
+  return { userId: ctx.userId, scopes: ctx.scopes, pairs };
+}
 
 export const homeworkRouter = router({
-  settings: router({
-    get: staffProcedure("school_settings:read")
-      .meta({ openapi: { method: "GET", path: "/homework/settings", tags: ["homework"], summary: "Effective assignment settings for a class (or the school default)", protect: true } })
-      .input(z.object({ classId: z.uuid().optional() }))
-      .output(effectiveAssignmentSettingsSchema)
-      .query(({ ctx, input }) => {
-        if (!ctx.scope.schoolId) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Choose a branch first — assignment settings belong to one branch.",
-          });
-        }
-        return homeworkService.resolveSettings(ctx.scope.schoolId, input.classId ?? null);
-      }),
+  // ── Reads ───────────────────────────────────────────────────────────────
 
-    upsert: staffProcedure("school_settings:update")
-      .meta({ openapi: { method: "PUT", path: "/homework/settings", tags: ["homework"], summary: "Save the school default or a class override", protect: true } })
-      .input(upsertAssignmentSettingsInput)
-      .output(assignmentSettingsSelectSchema)
-      .mutation(({ ctx, input }) =>
-        homeworkService.upsertSettings(ctx.scope, ctx.userId, input),
-      ),
-  }),
+  /** Home: to check, quizzes, out now, given today, drafts. */
+  home: staffListProcedure("homework:read")
+    .meta({ openapi: { method: "GET", path: "/homework/home", tags: ["homework"], summary: "The teacher's homework home", protect: true } })
+    .output(homeworkHomeSchema)
+    .query(async ({ ctx }) => homeworkService.home(await accessFor(ctx))),
 
-  rubrics: router({
-    list: staffListProcedure("school_settings:read")
-      .meta({ openapi: { method: "GET", path: "/homework/rubrics", tags: ["homework"], summary: "The school's rubrics", protect: true } })
-      .output(z.array(rubricSelectSchema))
-      .query(({ ctx }) => homeworkService.listRubrics(ctx.scopes)),
-
-    create: staffProcedure("school_settings:update")
-      .meta({ openapi: { method: "POST", path: "/homework/rubrics", tags: ["homework"], summary: "Create a rubric with criteria and levels", protect: true } })
-      .input(createRubricInput)
-      .output(rubricSelectSchema)
-      .mutation(({ ctx, input }) => homeworkService.createRubric(ctx.scope, ctx.userId, input)),
-
-    byId: staffProcedure("school_settings:read")
-      .meta({ openapi: { method: "GET", path: "/homework/rubrics/{rubricId}", tags: ["homework"], summary: "One rubric with criteria + levels", protect: true } })
-      .input(z.object({ rubricId: z.uuid() }))
-      .output(rubricDetailSchema.nullable())
-      .query(({ ctx, input }) => homeworkService.getRubricDetail(ctx.scope, input.rubricId)),
-
-    setActive: staffProcedure("school_settings:update")
-      .meta({ openapi: { method: "POST", path: "/homework/rubrics/{rubricId}/active", tags: ["homework"], summary: "Retire or reactivate a rubric", protect: true } })
-      .input(z.object({ rubricId: z.uuid(), isActive: z.boolean() }))
-      .output(rubricSelectSchema.nullable())
-      .mutation(({ ctx, input }) =>
-        homeworkService.setRubricActive(ctx.scope, input.rubricId, input.isActive),
-      ),
-  }),
-
+  /** All homework, newest first. */
   list: staffListProcedure("homework:read")
-    .meta({ openapi: { method: "GET", path: "/homework", tags: ["homework"], summary: "The year's assignments, scope-clipped", protect: true } })
-    .input(listAssignmentsInput)
-    .output(z.array(assignmentSelectSchema.extend({ subjectName: z.string() })))
-    .query(({ ctx, input }) => homeworkService.listAssignments(ctx.scopes, input)),
+    .meta({ openapi: { method: "GET", path: "/homework", tags: ["homework"], summary: "All homework the caller may see", protect: true } })
+    .input(listHomeworkInput)
+    .output(z.array(homeworkSummarySchema))
+    .query(async ({ ctx, input }) => homeworkService.list(await accessFor(ctx), input)),
 
-  byId: staffProcedure("homework:read", {
-    resolveOwner: resolveAssignmentOwner,
-    gate: "overlap",
-  })
-    .meta({ openapi: { method: "GET", path: "/homework/{id}", tags: ["homework"], summary: "One assignment with targets", protect: true } })
-    .input(z.object({ id: z.uuid() }))
-    .output(assignmentDetailSchema.nullable())
-    .query(({ ctx, input }) => homeworkService.getAssignmentDetail(ctx.scope, input.id)),
+  /** Give step 2: the caller's classes, grouped by subject. */
+  pairs: staffListProcedure("homework:read")
+    .meta({ openapi: { method: "GET", path: "/homework/pairs", tags: ["homework"], summary: "Classes the caller can give homework to", protect: true } })
+    .input(z.object({ academicYearId: z.uuid().optional() }))
+    .output(givePairsSchema)
+    .query(async ({ ctx, input }) => {
+      const pairs = onlySubjectTeacher(ctx.authCache, ctx.organizationId, "homework:create")
+        ? await homeworkService.teachingPairs(ctx.organizationId, ctx.userId)
+        : null;
+      return homeworkService.givePairs(
+        { userId: ctx.userId, scopes: ctx.scopes, pairs },
+        input.academicYearId,
+      );
+    }),
 
-  create: staffProcedure("homework:create", { subjectGate: true })
-    .meta({ openapi: { method: "POST", path: "/homework", tags: ["homework"], summary: "Create a draft assignment (section-targeted)", protect: true } })
-    .input(createAssignmentInput)
-    .output(assignmentSelectSchema)
-    .mutation(({ ctx, input }) => homeworkService.createAssignment(ctx.scope, ctx.userId, input)),
-
-  update: staffProcedure("homework:update", {
-    subjectGate: true,
-  })
-    .meta({ openapi: { method: "PATCH", path: "/homework/{id}", tags: ["homework"], summary: "Edit an assignment (revision-snapshotted after publish)", protect: true } })
-    .input(updateAssignmentInput)
-    .output(assignmentSelectSchema)
-    .mutation(({ ctx, input }) => homeworkService.updateAssignment(ctx.scope, ctx.userId, input)),
-
-  publish: staffProcedure("homework:update", {
-    subjectGate: true,
-  })
-    .meta({ openapi: { method: "POST", path: "/homework/{id}/publish", tags: ["homework"], summary: "Publish — resolve the audience into student assignments", protect: true } })
-    .input(z.object({ id: z.uuid(), sectionId: z.uuid(), subjectId: z.uuid() }))
-    .output(assignmentSelectSchema)
-    .mutation(({ ctx, input }) => homeworkService.publishAssignment(ctx.scope, ctx.userId, input.id)),
-
-  cancel: staffProcedure("homework:update", {
-    subjectGate: true,
-  })
-    .meta({ openapi: { method: "POST", path: "/homework/{id}/cancel", tags: ["homework"], summary: "Cancel an assignment", protect: true } })
-    .input(cancelAssignmentInput)
-    .output(assignmentSelectSchema)
-    .mutation(({ ctx, input }) =>
-      homeworkService.cancelAssignment(ctx.scope, ctx.userId, input.id, input.reason),
+  /** Give step 4's starting point: the caller's last choices for this subject and type. */
+  defaults: staffListProcedure("homework:read")
+    .meta({ openapi: { method: "GET", path: "/homework/defaults", tags: ["homework"], summary: "The caller's last choices for a subject", protect: true } })
+    .input(z.object({ subjectId: z.uuid(), kind: homeworkKindSchema }))
+    .output(giveDefaultsSchema)
+    .query(async ({ ctx, input }) =>
+      homeworkService.giveDefaults(await accessFor(ctx), input.subjectId, input.kind),
     ),
 
-  close: staffProcedure("homework:update", {
-    subjectGate: true,
-  })
-    .meta({ openapi: { method: "POST", path: "/homework/{id}/close", tags: ["homework"], summary: "Close submissions", protect: true } })
-    .input(z.object({ id: z.uuid(), sectionId: z.uuid(), subjectId: z.uuid() }))
-    .output(assignmentSelectSchema)
-    .mutation(({ ctx, input }) => homeworkService.closeAssignment(ctx.scope, input.id)),
+  byId: staffProcedure("homework:read", { resolveOwner: resolveAssignmentOwner, gate: "overlap" })
+    .meta({ openapi: { method: "GET", path: "/homework/{id}", tags: ["homework"], summary: "One homework with photos and progress", protect: true } })
+    .input(idInput)
+    .output(homeworkDetailSchema)
+    .query(({ ctx, input }) => homeworkService.detail(ctx.scope, input.id)),
 
-  bank: router({
-    list: staffListProcedure("homework:read")
-      .meta({ openapi: { method: "GET", path: "/homework/bank", tags: ["homework"], summary: "The school's question bank", protect: true } })
-      .input(listBankItemsInput.partial())
-      .output(
-        z.array(
-          bankItemSelectSchema.extend({
-            options: z.array(
-              z.object({
-                id: z.uuid(),
-                questionId: z.uuid(),
-                optionText: z.string(),
-                imageObjectId: z.uuid().nullable(),
-                isCorrect: z.boolean(),
-                sortOrder: z.number().int(),
-              }),
-            ),
-          }),
-        ),
-      )
-      .query(({ ctx, input }) => homeworkQuestionsService.listBankItems(ctx.scopes, input)),
+  // ── Give ────────────────────────────────────────────────────────────────
 
-    create: staffProcedure("homework:create", { subjectGate: true })
-      .meta({ openapi: { method: "POST", path: "/homework/bank", tags: ["homework"], summary: "Create a bank question (authored from a section's teaching)", protect: true } })
-      .input(
-        createBankItemInput.and(
-          z.object({ organizationId: z.uuid(), sectionId: z.uuid() }),
-        ),
-      )
-      .output(bankItemSelectSchema)
-      .mutation(({ ctx, input }) =>
-        homeworkQuestionsService.createBankItem(ctx.scope, ctx.userId, input),
-      ),
+  /** Upload links for the teacher's photos (then PUT, then name them in create/update). */
+  fileUpload: staffProcedure("homework:create", { subjectGate: true })
+    .meta({ openapi: { method: "POST", path: "/homework/files", tags: ["homework"], summary: "Upload links for homework photos", protect: true } })
+    .input(homeworkUploadInput.extend(pairInput.shape))
+    .output(z.array(uploadTicketSchema))
+    .mutation(({ ctx, input }) =>
+      homeworkService.fileUploadTickets(ctx.scope, ctx.userId, {
+        homeworkId: input.homeworkId,
+        files: input.files,
+      }),
+    ),
 
-    byId: staffProcedure("homework:read")
-      .meta({ openapi: { method: "GET", path: "/homework/bank/{itemId}", tags: ["homework"], summary: "One bank question with options + answer key", protect: true } })
-      .input(z.object({ itemId: z.uuid() }))
-      .output(bankItemDetailSchema.nullable())
-      .query(({ ctx, input }) => homeworkQuestionsService.getBankItem(ctx.scope, input.itemId)),
+  /** Give (or keep as a draft). `sectionId` is the first of `sectionIds`; every one is gated. */
+  create: staffProcedure("homework:create", { subjectGate: true })
+    .meta({ openapi: { method: "POST", path: "/homework", tags: ["homework"], summary: "Give homework (or save a draft)", protect: true } })
+    .input(createHomeworkInput.and(pairInput))
+    .output(homeworkSummarySchema)
+    .mutation(async ({ ctx, input }) => {
+      if (!input.sectionIds.includes(input.sectionId)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Pick the classes again." });
+      }
+      await assertSubjectPairs({
+        authCache: ctx.authCache,
+        organizationId: ctx.organizationId,
+        userId: ctx.userId,
+        permission: "homework:create",
+        sectionIds: input.sectionIds,
+        subjectId: input.subjectId,
+      });
+      return homeworkService.create(ctx.scope, ctx.userId, input);
+    }),
 
-    setActive: staffProcedure("school_settings:update")
-      .meta({ openapi: { method: "POST", path: "/homework/bank/{itemId}/active", tags: ["homework"], summary: "Retire or reactivate a bank question", protect: true } })
-      .input(z.object({ itemId: z.uuid(), isActive: z.boolean() }))
-      .output(bankItemSelectSchema.nullable())
-      .mutation(({ ctx, input }) =>
-        homeworkQuestionsService.setBankItemActive(ctx.scope, input.itemId, input.isActive),
-      ),
-  }),
+  update: staffProcedure("homework:update", { subjectGate: true })
+    .meta({ openapi: { method: "PATCH", path: "/homework/{id}", tags: ["homework"], summary: "Edit a homework", protect: true } })
+    .input(updateHomeworkInput.extend(pairInput.shape))
+    .output(homeworkSummarySchema)
+    .mutation(async ({ ctx, input }) => {
+      if (input.sectionIds) {
+        await assertSubjectPairs({
+          authCache: ctx.authCache,
+          organizationId: ctx.organizationId,
+          userId: ctx.userId,
+          permission: "homework:update",
+          sectionIds: input.sectionIds,
+          subjectId: input.subjectId,
+        });
+      }
+      return homeworkService.update(ctx.scope, ctx.userId, pairOf(input), input);
+    }),
 
-  questions: router({
-    set: staffProcedure("homework:update", {
-      subjectGate: true,
-    })
-      .meta({ openapi: { method: "PUT", path: "/homework/{id}/questions", tags: ["homework"], summary: "Attach / replace the snapshotted question set", protect: true } })
-      .input(setAssignmentQuestionsInput)
-      .output(z.array(assignmentQuestionStaffSchema))
-      .mutation(({ ctx, input }) =>
-        homeworkQuestionsService.setAssignmentQuestions(ctx.scope, ctx.userId, input),
-      ),
+  give: staffProcedure("homework:update", { subjectGate: true })
+    .meta({ openapi: { method: "POST", path: "/homework/{id}/give", tags: ["homework"], summary: "Give a draft now", protect: true } })
+    .input(rowPairInput)
+    .output(homeworkSummarySchema)
+    .mutation(({ ctx, input }) => homeworkService.give(ctx.scope, pairOf(input), input.id)),
 
-    get: staffProcedure("homework:read", {
-      resolveOwner: resolveAssignmentOwner,
-      gate: "overlap",
-    })
-      .meta({ openapi: { method: "GET", path: "/homework/{id}/questions", tags: ["homework"], summary: "The snapshot with answer keys (teacher-facing)", protect: true } })
-      .input(z.object({ id: z.uuid() }))
-      .output(z.array(assignmentQuestionStaffSchema).nullable())
-      .query(({ ctx, input }) =>
-        homeworkQuestionsService.getAssignmentQuestions(ctx.scope, input.id),
-      ),
+  /** The Undo on the toast after Give. */
+  undoGive: staffProcedure("homework:update", { subjectGate: true })
+    .meta({ openapi: { method: "POST", path: "/homework/{id}/undo", tags: ["homework"], summary: "Undo a just-given homework (back to a draft)", protect: true } })
+    .input(rowPairInput)
+    .output(homeworkSummarySchema)
+    .mutation(({ ctx, input }) => homeworkService.undoGive(ctx.scope, pairOf(input), input.id)),
+
+  deleteDraft: staffProcedure("homework:delete", { subjectGate: true })
+    .meta({ openapi: { method: "DELETE", path: "/homework/{id}", tags: ["homework"], summary: "Delete a draft that was never given", protect: true } })
+    .input(rowPairInput)
+    .output(z.object({ ok: z.literal(true) }))
+    .mutation(async ({ ctx, input }) => {
+      await homeworkService.deleteDraft(ctx.scope, pairOf(input), input.id);
+      return { ok: true as const };
+    }),
+
+  cancel: staffProcedure("homework:update", { subjectGate: true })
+    .meta({ openapi: { method: "POST", path: "/homework/{id}/cancel", tags: ["homework"], summary: "Cancel a given homework", protect: true } })
+    .input(rowPairInput)
+    .output(homeworkSummarySchema)
+    .mutation(({ ctx, input }) => homeworkService.cancel(ctx.scope, pairOf(input), input.id)),
+
+  /** Stop accepting work now. */
+  close: staffProcedure("homework:update", { subjectGate: true })
+    .meta({ openapi: { method: "POST", path: "/homework/{id}/close", tags: ["homework"], summary: "Stop accepting work", protect: true } })
+    .input(rowPairInput)
+    .output(homeworkSummarySchema)
+    .mutation(({ ctx, input }) => homeworkService.close(ctx.scope, pairOf(input), input.id)),
+
+  moveDue: staffProcedure("homework:update", { subjectGate: true })
+    .meta({ openapi: { method: "POST", path: "/homework/{id}/due", tags: ["homework"], summary: "Move the due date (everyone, a class, or one child)", protect: true } })
+    .input(moveDueInput.extend(pairInput.shape))
+    .output(homeworkSummarySchema)
+    .mutation(({ ctx, input }) => homeworkService.moveDue(ctx.scope, pairOf(input), input)),
+
+  /** Give the same homework to other classes, as a new homework. */
+  giveAgain: staffProcedure("homework:create", { subjectGate: true })
+    .meta({ openapi: { method: "POST", path: "/homework/{id}/give-again", tags: ["homework"], summary: "Give to another class", protect: true } })
+    .input(giveAgainInput.extend(pairInput.shape))
+    .output(homeworkSummarySchema)
+    .mutation(async ({ ctx, input }) => {
+      await assertSubjectPairs({
+        authCache: ctx.authCache,
+        organizationId: ctx.organizationId,
+        userId: ctx.userId,
+        permission: "homework:create",
+        sectionIds: input.toSectionIds,
+        subjectId: input.subjectId,
+      });
+      return homeworkService.giveAgain(ctx.scope, ctx.userId, pairOf(input), input);
+    }),
+
+  // ── Check ───────────────────────────────────────────────────────────────
+
+  register: router({
+    /** The checking list for one section (`sectionId`), in roll order. */
+    get: staffProcedure("homework:grade", { subjectGate: true })
+      .meta({ openapi: { method: "GET", path: "/homework/{id}/register", tags: ["homework"], summary: "The checking list for one class", protect: true } })
+      .input(rowPairInput)
+      .output(registerSchema)
+      .query(({ ctx, input }) => homeworkService.register(ctx.scope, pairOf(input), input.id)),
+
+    /** Save the list. Idempotent; saving makes results visible to students. */
+    save: staffProcedure("homework:grade", { subjectGate: true })
+      .meta({ openapi: { method: "PUT", path: "/homework/{id}/register", tags: ["homework"], summary: "Save the checking list", protect: true } })
+      .input(saveRegisterInput)
+      .output(saveRegisterResultSchema)
+      .mutation(({ ctx, input }) => homeworkService.saveRegister(ctx.scope, ctx.userId, input)),
   }),
 
   students: router({
-    list: staffListProcedure("homework:read")
-      .meta({ openapi: { method: "GET", path: "/homework/{id}/students", tags: ["homework"], summary: "The grading grid — resolved rows per student", protect: true } })
-      .input(listStudentAssignmentsInput)
-      .output(
-        z.array(
-          studentAssignmentSelectSchema.extend({
-            studentName: z.string(),
-            admissionNumber: z.string(),
-            rollNumber: z.string().nullable(),
-          }),
-        ),
-      )
-      .query(({ ctx, input }) =>
-        homeworkService.listStudentAssignments(ctx.scopes, input.id, input.status),
+    /** One child's homework: what they sent and the result (`id` = the child's homework). */
+    get: staffProcedure("homework:grade", { subjectGate: true })
+      .meta({ openapi: { method: "GET", path: "/homework/students/{id}", tags: ["homework"], summary: "One child's homework", protect: true } })
+      .input(rowPairInput)
+      .output(studentHomeworkSchema)
+      .query(({ ctx, input }) => homeworkService.studentHomework(ctx.scope, pairOf(input), input.id)),
+
+    sendBack: staffProcedure("homework:grade", { subjectGate: true })
+      .meta({ openapi: { method: "POST", path: "/homework/students/{id}/send-back", tags: ["homework"], summary: "Send work back to redo, with a note", protect: true } })
+      .input(sendBackInput)
+      .output(studentHomeworkSchema)
+      .mutation(({ ctx, input }) =>
+        homeworkService.sendBack(ctx.scope, pairOf(input), input.id, input.note),
       ),
 
-    get: staffProcedure("homework:read", {
-      resolveOwner: resolveStudentAssignmentOwner,
-      gate: "overlap",
-    })
-      .meta({ openapi: { method: "GET", path: "/homework/students/{id}", tags: ["homework"], summary: "One student's assignment: submissions + evaluations", protect: true } })
-      .input(z.object({ id: z.uuid() }))
-      .output(studentAssignmentDetailSchema.nullable())
-      .query(({ ctx, input }) =>
-        homeworkService.getStudentAssignmentDetail(ctx.scope, input.id),
+    /** "Mark read" (or undo) for work that comes back as a tick. */
+    markTick: staffProcedure("homework:grade", { subjectGate: true })
+      .meta({ openapi: { method: "POST", path: "/homework/students/{id}/tick", tags: ["homework"], summary: "Tick a child's homework for them", protect: true } })
+      .input(markTickInput)
+      .output(studentHomeworkSchema)
+      .mutation(({ ctx, input }) =>
+        homeworkService.markTick(ctx.scope, pairOf(input), input.id, input.ticked),
       ),
-
-    evaluate: staffProcedure("homework:grade", {
-      subjectGate: true,
-    })
-      .meta({ openapi: { method: "POST", path: "/homework/students/{id}/evaluate", tags: ["homework"], summary: "Grade / verify / request resubmit (append-only)", protect: true } })
-      .input(evaluateStudentAssignmentInput)
-      .output(z.object({ evaluationId: z.uuid(), status: z.string() }))
-      .mutation(async ({ ctx, input }) => {
-        const result = await homeworkService.evaluateStudentAssignment(ctx.scope, ctx.userId, input);
-        return { evaluationId: result.evaluation.id, status: result.studentAssignment.status };
-      }),
-
-    extend: staffProcedure("homework:update", {
-      subjectGate: true,
-    })
-      .meta({ openapi: { method: "POST", path: "/homework/students/{id}/extend", tags: ["homework"], summary: "Grant a deadline extension (append-only)", protect: true } })
-      .input(grantExtensionInput)
-      .output(z.object({ effectiveDueAt: z.date(), effectiveCloseAt: z.date() }))
-      .mutation(async ({ ctx, input }) => {
-        const sa = await homeworkService.grantExtension(ctx.scope, ctx.userId, input);
-        return { effectiveDueAt: sa.effectiveDueAt, effectiveCloseAt: sa.effectiveCloseAt };
-      }),
-
-    excuse: staffProcedure("homework:update", {
-      subjectGate: true,
-    })
-      .meta({ openapi: { method: "POST", path: "/homework/students/{id}/excuse", tags: ["homework"], summary: "Excuse a student from the assignment", protect: true } })
-      .input(excuseStudentAssignmentInput)
-      .output(z.object({ status: z.string() }))
-      .mutation(async ({ ctx, input }) => {
-        const sa = await homeworkService.excuseStudentAssignment(ctx.scope, ctx.userId, input);
-        return { status: sa.status };
-      }),
 
     attempts: router({
-      list: staffProcedure("homework:read", {
-        resolveOwner: resolveStudentAssignmentOwner,
-        gate: "overlap",
-      })
-        .meta({ openapi: { method: "GET", path: "/homework/students/{id}/attempts", tags: ["homework"], summary: "A student's attempts with answers (grading view)", protect: true } })
-        .input(z.object({ id: z.uuid() }))
+      /** A child's quiz attempt with answers (`id` = the child's homework). */
+      list: staffProcedure("homework:grade", { subjectGate: true })
+        .meta({ openapi: { method: "GET", path: "/homework/students/{id}/attempts", tags: ["homework"], summary: "A child's quiz attempt with answers", protect: true } })
+        .input(rowPairInput)
         .output(z.array(attemptStaffSchema).nullable())
-        .query(({ ctx, input }) =>
-          homeworkQuestionsService.listAttempts([ctx.scope], input.id),
-        ),
+        .query(({ ctx, input }) => homeworkQuestionsService.listAttempts([ctx.scope], input.id)),
 
-      gradeAnswer: staffProcedure("homework:grade", {
-        subjectGate: true,
-      })
-        .meta({ openapi: { method: "POST", path: "/homework/students/attempts/{id}/grade-answer", tags: ["homework"], summary: "Grade one manual answer; finalizes when done", protect: true } })
+      gradeAnswer: staffProcedure("homework:grade", { subjectGate: true })
+        .meta({ openapi: { method: "POST", path: "/homework/students/attempts/{id}/grade-answer", tags: ["homework"], summary: "Mark one written answer; finalises when all are marked", protect: true } })
         .input(gradeAttemptAnswerInput)
         .output(
           z.object({
@@ -368,117 +344,208 @@ export const homeworkRouter = router({
     }),
   }),
 
+  // ── Quiz questions and the bank ─────────────────────────────────────────
+
+  questions: router({
+    set: staffProcedure("homework:update", { subjectGate: true })
+      .meta({ openapi: { method: "PUT", path: "/homework/{id}/questions", tags: ["homework"], summary: "Set a quiz's questions (a frozen copy)", protect: true } })
+      .input(setAssignmentQuestionsInput)
+      .output(z.array(assignmentQuestionStaffSchema))
+      .mutation(({ ctx, input }) =>
+        homeworkQuestionsService.setAssignmentQuestions(ctx.scope, ctx.userId, input),
+      ),
+
+    get: staffProcedure("homework:read", { resolveOwner: resolveAssignmentOwner, gate: "overlap" })
+      .meta({ openapi: { method: "GET", path: "/homework/{id}/questions", tags: ["homework"], summary: "A quiz's questions with answer keys", protect: true } })
+      .input(idInput)
+      .output(z.array(assignmentQuestionStaffSchema).nullable())
+      .query(({ ctx, input }) => homeworkQuestionsService.getAssignmentQuestions(ctx.scope, input.id)),
+  }),
+
+  bank: router({
+    /** Shared questions plus the caller's own private ones. */
+    list: staffListProcedure("homework:read")
+      .meta({ openapi: { method: "GET", path: "/homework/bank", tags: ["homework"], summary: "The question bank the caller may use", protect: true } })
+      .input(listBankItemsInput.partial())
+      .output(z.array(bankItemDetailSchema))
+      .query(({ ctx, input }) => homeworkQuestionsService.listBankItems(ctx.scopes, ctx.userId, input)),
+
+    create: staffProcedure("homework:create", { subjectGate: true })
+      .meta({ openapi: { method: "POST", path: "/homework/bank", tags: ["homework"], summary: "Add a bank question", protect: true } })
+      .input(createBankItemInput)
+      .output(bankItemSelectSchema)
+      .mutation(({ ctx, input }) => homeworkQuestionsService.createBankItem(ctx.scope, ctx.userId, input)),
+
+    byId: staffListProcedure("homework:read")
+      .meta({ openapi: { method: "GET", path: "/homework/bank/{itemId}", tags: ["homework"], summary: "One bank question with options and answer key", protect: true } })
+      .input(z.object({ itemId: z.uuid() }))
+      .output(bankItemDetailSchema.nullable())
+      .query(async ({ ctx, input }) => {
+        for (const scope of ctx.scopes) {
+          const item = await homeworkQuestionsService.getBankItem(scope, ctx.userId, input.itemId);
+          if (item) return item;
+        }
+        return null;
+      }),
+
+    /**
+     * Retire or bring back a bank question. Its author may; so may anyone
+     * holding `school_settings:update` (they manage the school's bank). Gated
+     * on read because the service limits the write to those two.
+     */
+    setActive: staffListProcedure("homework:read")
+      .meta({ openapi: { method: "POST", path: "/homework/bank/{itemId}/active", tags: ["homework"], summary: "Retire or bring back a bank question", protect: true } })
+      .input(z.object({ itemId: z.uuid(), isActive: z.boolean() }))
+      .output(bankItemSelectSchema)
+      .mutation(async ({ ctx, input }) => {
+        const canManageAll = ctx.canWithin("school_settings:update");
+        for (const scope of ctx.scopes) {
+          const row = await homeworkQuestionsService.setBankItemActive(
+            scope,
+            ctx.userId,
+            input.itemId,
+            input.isActive,
+            canManageAll,
+          );
+          if (row) return row;
+        }
+        throw new TRPCError({ code: "NOT_FOUND", message: "That question could not be found." });
+      }),
+  }),
+
+  // ── Comments ────────────────────────────────────────────────────────────
+
   comments: router({
-    list: staffProcedure("homework:read")
-      .meta({ openapi: { method: "GET", path: "/homework/{assignmentId}/comments", tags: ["homework"], summary: "The class-wide thread (+ a private one)", protect: true } })
-      .input(
-        z.object({
-          assignmentId: z.uuid(),
-          studentAssignmentId: z.uuid().optional(),
-        }),
-      )
-      .output(z.array(assignmentCommentSelectSchema))
+    /** The class question board, or one child's private thread. */
+    list: staffProcedure("homework:read", { resolveOwner: resolveAssignmentOwner, gate: "overlap" })
+      .meta({ openapi: { method: "GET", path: "/homework/{id}/comments", tags: ["homework"], summary: "The question board or one child's thread", protect: true } })
+      .input(idInput.extend({ studentAssignmentId: z.uuid().optional() }))
+      .output(z.array(homeworkCommentSchema))
       .query(({ ctx, input }) =>
-        homeworkService.listComments({
-          scopes: [ctx.scope],
-          assignmentId: input.assignmentId,
-          studentAssignmentId: input.studentAssignmentId ?? null,
+        homeworkService.listComments(ctx.scope, ctx.userId, input.id, input.studentAssignmentId),
+      ),
+
+    post: staffProcedure("homework:comment", { resolveOwner: resolveAssignmentOwner })
+      .meta({ openapi: { method: "POST", path: "/homework/{id}/comments", tags: ["homework"], summary: "Answer on the board or in a child's thread", protect: true } })
+      .input(postHomeworkCommentInput.omit({ assignmentId: true }).extend(idInput.shape))
+      .output(z.array(homeworkCommentSchema))
+      .mutation(({ ctx, input }) =>
+        homeworkService.postComment(ctx.scope, ctx.userId, {
+          assignmentId: input.id,
+          studentAssignmentId: input.studentAssignmentId,
+          body: input.body,
         }),
       ),
 
-    post: staffProcedure("homework:comment")
-      .meta({ openapi: { method: "POST", path: "/homework/comments", tags: ["homework"], summary: "Post to the class thread or a private one", protect: true } })
-      .input(postAssignmentCommentInput)
-      .output(assignmentCommentSelectSchema.omit({ authorName: true, authorIsStaff: true }))
-      .mutation(({ ctx, input }) =>
-        homeworkService.staffPostComment(ctx.scope, ctx.userId, input),
-      ),
+    delete: staffProcedure("homework:comment", { resolveOwner: resolveCommentOwner })
+      .meta({ openapi: { method: "DELETE", path: "/homework/comments/{id}", tags: ["homework"], summary: "Remove a comment", protect: true } })
+      .input(idInput)
+      .output(z.object({ ok: z.literal(true) }))
+      .mutation(async ({ ctx, input }) => {
+        await homeworkService.deleteComment(ctx.scope, input.id);
+        return { ok: true as const };
+      }),
   }),
 });
 
 /**
- * THE FAMILY DOOR — `portalHomework.*`. studentProcedure (ownership only, no
- * can()); every query filters by the login's owned studentIds. The outputs
- * never carry question answer keys (slice B serves students from a separate
- * read model), and nothing draft/cancelled leaks.
+ * THE FAMILY DOOR — `portalHomework.*`. One child per call (ADR-062); a
+ * student and a parent login are the same. Nothing draft, scheduled or
+ * cancelled is visible, and no answer key leaves the server.
  */
 export const portalHomeworkRouter = router({
   list: studentProcedure
-    .meta({ openapi: { method: "GET", path: "/portal/homework", tags: ["portal"], summary: "The family's homework list", protect: true } })
-    .input(
-      z.object({
-        studentId: z.uuid().optional(),
-        status: z
-          .enum(["assigned", "in_progress", "submitted", "resubmit_requested", "reviewed", "excused", "missing"])
-          .optional(),
-      }),
-    )
-    .output(z.array(portalAssignmentListItemSchema))
-    .query(({ ctx, input }) =>
-      homeworkService.portalList(ctx.studentIds, { studentId: input.studentId, status: input.status }),
-    ),
+    .meta({ openapi: { method: "GET", path: "/portal/homework", tags: ["portal"], summary: "A child's homework", protect: true } })
+    .input(portalHomeworkListInput)
+    .output(z.array(portalHomeworkItemSchema))
+    .query(({ ctx, input }) => homeworkService.portalList(ctx.studentIds, input.studentId, input.filter)),
 
   get: studentProcedure
-    .meta({ openapi: { method: "GET", path: "/portal/homework/{studentAssignmentId}", tags: ["portal"], summary: "One assignment: resources, submissions, evaluations", protect: true } })
-    .input(z.object({ studentAssignmentId: z.uuid() }))
-    .output(portalAssignmentDetailSchema.nullable())
+    .meta({ openapi: { method: "GET", path: "/portal/homework/{studentAssignmentId}", tags: ["portal"], summary: "One homework with photos, what was sent and the result", protect: true } })
+    .input(portalHomeworkRefInput)
+    .output(portalHomeworkDetailSchema)
     .query(({ ctx, input }) =>
-      homeworkService.portalGet(ctx.studentIds, input.studentAssignmentId),
+      homeworkService.portalGet(ctx.studentIds, input.studentId, input.studentAssignmentId),
     ),
 
   markViewed: studentProcedure
-    .meta({ openapi: { method: "POST", path: "/portal/homework/{studentAssignmentId}/viewed", tags: ["portal"], summary: "Stamp firstViewedAt once", protect: true } })
-    .input(z.object({ studentAssignmentId: z.uuid() }))
-    .output(z.object({ firstViewedAt: z.date().nullable() }))
+    .meta({ openapi: { method: "POST", path: "/portal/homework/{studentAssignmentId}/viewed", tags: ["portal"], summary: "Record the first look", protect: true } })
+    .input(portalHomeworkRefInput)
+    .output(z.object({ ok: z.literal(true) }))
     .mutation(async ({ ctx, input }) => {
-      const sa = await homeworkService.portalMarkViewed(ctx.studentIds, input.studentAssignmentId);
-      return { firstViewedAt: sa?.firstViewedAt ?? null };
+      await homeworkService.portalMarkViewed(ctx.studentIds, input.studentId, input.studentAssignmentId);
+      return { ok: true as const };
     }),
 
-  submit: studentProcedure
-    .meta({ openapi: { method: "POST", path: "/portal/homework/submit", tags: ["portal"], summary: "Submit (or resubmit) homework as student or parent", protect: true } })
-    .input(portalSubmitAssignmentInput)
-    .output(z.object({ submissionId: z.uuid(), versionNo: z.number().int(), isLate: z.boolean() }))
-    .mutation(async ({ ctx, input }) => {
-      const result = await homeworkService.portalSubmit(ctx.userId, ctx.studentIds, input);
-      return {
-        submissionId: result.submission.id,
-        versionNo: result.submission.versionNo,
-        isLate: result.submission.isLate,
-      };
-    }),
+  /** Tick it done, or untick a mistaken tick before the due time. */
+  tick: studentProcedure
+    .meta({ openapi: { method: "POST", path: "/portal/homework/{studentAssignmentId}/tick", tags: ["portal"], summary: "Tick or untick", protect: true } })
+    .input(portalTickInput)
+    .output(portalHomeworkDetailSchema)
+    .mutation(({ ctx, input }) =>
+      homeworkService.portalTick(ctx.studentIds, input.studentId, input.studentAssignmentId, input.ticked),
+    ),
 
-  acknowledge: studentProcedure
-    .meta({ openapi: { method: "POST", path: "/portal/homework/acknowledge", tags: ["portal"], summary: "The parent's diary signature", protect: true } })
-    .input(portalAcknowledgeInput)
-    .output(z.object({ studentAssignmentId: z.uuid() }))
-    .mutation(async ({ ctx, input }) => {
-      await homeworkService.portalAcknowledge(ctx.userId, ctx.studentIds, input.studentAssignmentId);
-      return { studentAssignmentId: input.studentAssignmentId };
-    }),
+  /** Upload links for the child's photos (then PUT, then `send`). */
+  fileUpload: studentProcedure
+    .meta({ openapi: { method: "POST", path: "/portal/homework/{studentAssignmentId}/files", tags: ["portal"], summary: "Upload links for photos of the work", protect: true } })
+    .input(portalHomeworkUploadInput)
+    .output(z.array(uploadTicketSchema))
+    .mutation(({ ctx, input }) =>
+      homeworkService.portalUploadTickets(
+        ctx.userId,
+        ctx.studentIds,
+        input.studentId,
+        input.studentAssignmentId,
+        input.files,
+      ),
+    ),
+
+  /** Send (or replace, until checked) the child's work. */
+  send: studentProcedure
+    .meta({ openapi: { method: "POST", path: "/portal/homework/{studentAssignmentId}/send", tags: ["portal"], summary: "Send or replace the work", protect: true } })
+    .input(portalSendInput)
+    .output(portalHomeworkDetailSchema)
+    .mutation(({ ctx, input }) => homeworkService.portalSend(ctx.userId, ctx.studentIds, input)),
+
+  comments: router({
+    /** The class question board plus this child's private thread. */
+    list: studentProcedure
+      .meta({ openapi: { method: "GET", path: "/portal/homework/{studentAssignmentId}/comments", tags: ["portal"], summary: "The question board and the private thread", protect: true } })
+      .input(portalHomeworkRefInput)
+      .output(z.array(homeworkCommentSchema))
+      .query(({ ctx, input }) =>
+        homeworkService.portalComments(ctx.userId, ctx.studentIds, input.studentId, input.studentAssignmentId),
+      ),
+
+    post: studentProcedure
+      .meta({ openapi: { method: "POST", path: "/portal/homework/{studentAssignmentId}/comments", tags: ["portal"], summary: "Ask the class or the teacher", protect: true } })
+      .input(portalPostCommentInput)
+      .output(z.array(homeworkCommentSchema))
+      .mutation(({ ctx, input }) => homeworkService.portalPostComment(ctx.userId, ctx.studentIds, input)),
+  }),
 
   attempts: router({
     start: studentProcedure
-      .meta({ openapi: { method: "POST", path: "/portal/homework/attempts/start", tags: ["portal"], summary: "Resume or open an attempt (locks the question set)", protect: true } })
+      .meta({ openapi: { method: "POST", path: "/portal/homework/attempts/start", tags: ["portal"], summary: "Start or resume the quiz (one attempt)", protect: true } })
       .input(startAttemptInput)
-      .output(z.object({ attemptId: z.uuid(), attemptNo: z.number().int() }))
+      .output(z.object({ attemptId: z.uuid() }))
       .mutation(async ({ ctx, input }) => {
         const attempt = await homeworkQuestionsService.startAttempt(
           ctx.userId,
           ctx.studentIds,
           input.studentAssignmentId,
         );
-        return { attemptId: attempt.id, attemptNo: attempt.attemptNo };
+        return { attemptId: attempt.id };
       }),
 
     get: studentProcedure
-      .meta({ openapi: { method: "GET", path: "/portal/homework/attempts/{attemptId}", tags: ["portal"], summary: "The in-flight attempt (stripped questions + saved answers)", protect: true } })
+      .meta({ openapi: { method: "GET", path: "/portal/homework/attempts/{attemptId}", tags: ["portal"], summary: "The open attempt (questions without answers, saved answers)", protect: true } })
       .input(z.object({ attemptId: z.uuid() }))
       .output(
         z
           .object({
             attemptId: z.uuid(),
-            attemptNo: z.number().int(),
             status: z.string(),
             questionOrder: z.array(z.uuid()).nullable(),
             maxScore: z.string(),
@@ -487,20 +554,16 @@ export const portalHomeworkRouter = router({
           .partial({ questionOrder: true })
           .nullable(),
       )
-      .query(({ ctx, input }) =>
-        homeworkQuestionsService.getAttemptForStudent(ctx.studentIds, input.attemptId),
-      ),
+      .query(({ ctx, input }) => homeworkQuestionsService.getAttemptForStudent(ctx.studentIds, input.attemptId)),
 
     saveAnswer: studentProcedure
-      .meta({ openapi: { method: "POST", path: "/portal/homework/attempts/save-answer", tags: ["portal"], summary: "Save one answer (autosave)", protect: true } })
+      .meta({ openapi: { method: "POST", path: "/portal/homework/attempts/save-answer", tags: ["portal"], summary: "Save one answer", protect: true } })
       .input(saveAnswerInput)
       .output(z.object({ answerId: z.uuid() }))
-      .mutation(({ ctx, input }) =>
-        homeworkQuestionsService.saveAnswer(ctx.userId, ctx.studentIds, input),
-      ),
+      .mutation(({ ctx, input }) => homeworkQuestionsService.saveAnswer(ctx.userId, ctx.studentIds, input)),
 
     submit: studentProcedure
-      .meta({ openapi: { method: "POST", path: "/portal/homework/attempts/submit", tags: ["portal"], summary: "Submit — auto-grades everything decidable", protect: true } })
+      .meta({ openapi: { method: "POST", path: "/portal/homework/attempts/submit", tags: ["portal"], summary: "Hand in; marks everything the app can", protect: true } })
       .input(submitAttemptInput)
       .output(
         z.object({
@@ -525,38 +588,9 @@ export const portalHomeworkRouter = router({
       }),
 
     result: studentProcedure
-      .meta({ openapi: { method: "GET", path: "/portal/homework/attempts/{attemptId}/result", tags: ["portal"], summary: "The scored result, gated by the reveal policies", protect: true } })
+      .meta({ openapi: { method: "GET", path: "/portal/homework/attempts/{attemptId}/result", tags: ["portal"], summary: "The marked result, as the quiz's rules allow", protect: true } })
       .input(z.object({ attemptId: z.uuid() }))
       .output(attemptResultSchema.nullable())
-      .query(({ ctx, input }) =>
-        homeworkQuestionsService.getAttemptResult(ctx.studentIds, input.attemptId),
-      ),
-  }),
-
-  comments: router({
-    list: studentProcedure
-      .meta({ openapi: { method: "GET", path: "/portal/homework/{assignmentId}/comments", tags: ["portal"], summary: "The class thread + this family's private threads", protect: true } })
-      .input(
-        z.object({
-          assignmentId: z.uuid(),
-          studentAssignmentId: z.uuid().optional(),
-        }),
-      )
-      .output(z.array(assignmentCommentSelectSchema))
-      .query(({ ctx, input }) =>
-        homeworkService.listComments({
-          studentIds: ctx.studentIds,
-          assignmentId: input.assignmentId,
-          studentAssignmentId: input.studentAssignmentId ?? null,
-        }),
-      ),
-
-    post: studentProcedure
-      .meta({ openapi: { method: "POST", path: "/portal/homework/comments", tags: ["portal"], summary: "Ask in the private thread", protect: true } })
-      .input(postAssignmentCommentInput)
-      .output(assignmentCommentSelectSchema.omit({ authorName: true, authorIsStaff: true }))
-      .mutation(({ ctx, input }) =>
-        homeworkService.portalPostComment(ctx.userId, ctx.studentIds, input),
-      ),
+      .query(({ ctx, input }) => homeworkQuestionsService.getAttemptResult(ctx.studentIds, input.attemptId)),
   }),
 });

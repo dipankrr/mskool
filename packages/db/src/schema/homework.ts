@@ -1,9 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
-  type AnyPgColumn,
   boolean,
   check,
-  date,
   index,
   integer,
   jsonb,
@@ -15,6 +13,7 @@ import {
   uniqueIndex,
   uuid,
   varchar,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
 import {
@@ -30,71 +29,64 @@ import { organizations, schools } from "./organization";
 import { storageObjects } from "./storage";
 
 /**
- * HOMEWORK / ASSIGNMENTS (ADR-039) — the daily homework-diary domain, ported
- * from docs/reference/assignment/06_assignments.sql + 07_questions.sql.
+ * HOMEWORK (ADR-039, rebuilt by ADR-064) — the daily homework diary.
  *
- * The domain's spine: Assignment (authored) → StudentAssignment (resolved
- * per-student, THE authoritative record other modules read) → Submission
- * (versioned, immutable) → Evaluation (append-only). Assignments belong to
- * year + subject + target sections; `createdBy` is audit, never ownership —
- * access is decided by the caller's scope plus, for the teaching role, the
- * ADR-029 subject gate. Scores here NEVER feed exams or report cards.
+ * Assignment (what the teacher gave: type, how it comes back, grading, one or
+ * more sections of one subject) → StudentAssignment (one row per child, THE
+ * record every read uses, carrying the teacher's check result) → Submission
+ * (at most one per child, replaced until checked). Quizzes add a snapshotted
+ * question set and one attempt per child.
  *
- * Adaptations from the reference SQL (ADR-039 has the full list):
- *  - uuid primary keys (hard rule 10), `timestamptz` (rule 11), and BOTH
- *    `organizationId` + `schoolId` on every table so `scopeWhere` applies
- *    (hard rule 1) — the reference carried only school_id.
- *  - File references point at `storage_objects` (ADR-063), not the
- *    reference's `files` table.
- *  - Target resolution reads `student_enrollments` (the year anchor). The
- *    reference's `student_subject_enrollments` elective path does not exist
- *    yet; backfill semantics (`is_backfilled`) are reserved in the schema.
- *  - Status vocabularies are pgEnums, lowercase house style.
- *  - Nothing here is hard-deleted: cancelling sets status, comments use
- *    isDeleted, evaluations append and flip isCurrent.
+ * ADR-064 removed what a school diary does not need: school settings, rubrics,
+ * series, revisions, extensions, evaluation history, acknowledgements and the
+ * summary table. Nothing keeps history: a check result, a submission and a
+ * per-child deadline are overwritten in place.
+ *
+ * Every table carries BOTH `organizationId` and `schoolId` so `scopeWhere`
+ * applies (hard rule 1). `createdBy` is audit, never ownership. Scores here
+ * NEVER feed exams or report cards. File columns are foreign keys to
+ * `storage_objects` (ADR-063), indexed for the sweeper's delete check.
  */
 
 // ---------------------------------------------------------------------------
 // Vocabularies
 // ---------------------------------------------------------------------------
 
+/** What the teacher is giving. Each kind allows some ways back (ADR-064). */
 export const assignmentKindEnum = pgEnum("assignment_kind", [
   "homework",
-  "classwork",
-  "project",
-  "worksheet",
-  "reading",
   "practice",
+  "project",
+  "reading",
   "quiz",
 ]);
 
 /**
- * How a student responds. `questions` means the assignment carries a
- * snapshotted question set (07) answered through attempts; it can be combined
- * with text/file/link for the free-form response, which goes through
- * `submissions`.
+ * How the work comes back to the teacher.
+ *  - `brought`: brought to class; only the teacher sets each child's result.
+ *  - `sent`: sent in the app (photos and/or typed text); not sent by the close
+ *    time becomes `missing`.
+ *  - `tick`: the student ticks it done; nothing to check.
+ *  - `none`: nothing comes back; it only goes in the diary.
+ *  - `questions`: a quiz, answered in the app.
  */
-export const submissionTypeEnum = pgEnum("assignment_submission_type", [
-  "none",
+export const homeworkComesBackEnum = pgEnum("homework_comes_back", [
+  "brought",
+  "sent",
   "tick",
-  "offline",
-  "text",
-  "file",
-  "link",
+  "none",
   "questions",
 ]);
 
+/**
+ * What the teacher adds on top of the check (Done / Incomplete / Not done).
+ * Only for work that comes back to the teacher; a quiz is always `marks`.
+ */
 export const assignmentGradingModeEnum = pgEnum("assignment_grading_mode", [
   "none",
   "marks",
   "grade",
-  "rubric",
-  "completion",
-]);
-
-export const assignmentLatePolicyEnum = pgEnum("assignment_late_policy", [
-  "not_allowed",
-  "allowed",
+  "remark",
 ]);
 
 export const assignmentStatusEnum = pgEnum("assignment_status", [
@@ -110,43 +102,37 @@ export const assignmentTargetTypeEnum = pgEnum("assignment_target_type", [
   "student",
 ]);
 
-export const assignmentResourceTypeEnum = pgEnum("assignment_resource_type", [
-  "file",
-  "link",
-  "video",
-]);
-
+/**
+ * One child's homework, in the order it moves:
+ *  - `assigned`: to do.
+ *  - `in_progress`: a quiz attempt is open.
+ *  - `submitted`: sent, ticked, or a quiz handed in.
+ *  - `redo`: the teacher sent it back; the student sends again.
+ *  - `checked`: the teacher recorded a check result (or a quiz was marked).
+ *  - `missing`: work sent in the app or a quiz, nothing by the close time.
+ */
 export const studentAssignmentStatusEnum = pgEnum("student_assignment_status", [
   "assigned",
   "in_progress",
   "submitted",
-  "resubmit_requested",
-  "reviewed",
-  "excused",
+  "redo",
+  "checked",
   "missing",
 ]);
 
-export const assignmentCompletionSourceEnum = pgEnum(
-  "assignment_completion_source",
-  ["student", "parent", "teacher_verified"],
-);
-
-export const submissionAuthorRoleEnum = pgEnum("submission_author_role", [
-  "student",
-  "parent",
-  "teacher",
+/** The teacher's check result for one child. */
+export const homeworkCheckStatusEnum = pgEnum("homework_check_status", [
+  "done",
+  "incomplete",
+  "not_done",
+  "absent",
 ]);
 
-export const assignmentEvaluationOutcomeEnum = pgEnum(
-  "assignment_evaluation_outcome",
-  ["reviewed", "resubmit_requested"],
-);
+/** Grading mode `remark`: one of three words. */
+export const homeworkRemarkEnum = pgEnum("homework_remark", ["excellent", "good", "bad"]);
 
-export const assignmentSummaryPeriodEnum = pgEnum("assignment_summary_period", [
-  "month",
-  "term",
-  "year",
-]);
+/** Who ticked work that comes back as `tick`. */
+export const homeworkTickSourceEnum = pgEnum("homework_tick_source", ["student", "teacher"]);
 
 export const questionTypeEnum = pgEnum("homework_question_type", [
   "mcq_single",
@@ -178,12 +164,6 @@ export const questionAttemptStatusEnum = pgEnum("homework_attempt_status", [
   "graded",
 ]);
 
-export const attemptScoringEnum = pgEnum("homework_attempt_scoring", [
-  "best",
-  "latest",
-  "first",
-]);
-
 /** When a student may see their score / the answer key. */
 export const questionRevealPolicyEnum = pgEnum("homework_reveal_policy", [
   "never",
@@ -192,168 +172,7 @@ export const questionRevealPolicyEnum = pgEnum("homework_reveal_policy", [
 ]);
 
 // ---------------------------------------------------------------------------
-// 1. CONFIGURATION — school default (classId null) + per-class overrides
-// ---------------------------------------------------------------------------
-
-export const assignmentSettings = pgTable(
-  "assignment_settings",
-  {
-    id: uuid().primaryKey().defaultRandom(),
-    organizationId: uuid()
-      .notNull()
-      .references(() => organizations.id),
-    schoolId: uuid()
-      .notNull()
-      .references(() => schools.id),
-    // NULL = the school default row; otherwise the override for one class.
-    classId: uuid().references(() => classes.id),
-
-    allowedSubmissionTypes: submissionTypeEnum()
-      .array()
-      .notNull()
-      .default(
-        sql`ARRAY['none','tick','offline','text','file','link','questions']::assignment_submission_type[]`,
-      ),
-    studentsCanSubmit: boolean().notNull().default(true),
-    parentsCanSubmit: boolean().notNull().default(true),
-
-    maxFilesPerSubmission: integer().notNull().default(5),
-    maxFileSizeMb: integer().notNull().default(10),
-    allowedMimeTypes: text().array(), // NULL = platform default
-
-    defaultLatePolicy: assignmentLatePolicyEnum().notNull().default("allowed"),
-    // close_at = due_at + this many hours, when the default policy is applied.
-    defaultLateWindowHours: integer().notNull().default(48),
-
-    // Per section per day, checked at publish time. NULL = no cap.
-    maxAssignmentsPerDay: integer(),
-    allowWeekendAssignments: boolean().notNull().default(true),
-    questionsEnabled: boolean().notNull().default(true),
-
-    createdBy: text().references(() => user.id),
-    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp({ withTimezone: true })
-      .notNull()
-      .defaultNow()
-      .$onUpdate(() => new Date()),
-  },
-  (t) => [
-    uniqueIndex("assignment_settings_school_default_uq")
-      .on(t.schoolId)
-      .where(sql`class_id IS NULL`),
-    uniqueIndex("assignment_settings_school_class_uq")
-      .on(t.schoolId, t.classId)
-      .where(sql`class_id IS NOT NULL`),
-    index("assignment_settings_school_idx").on(t.schoolId),
-  ],
-);
-
-// ---------------------------------------------------------------------------
-// 2. RUBRICS — reusable per school
-// ---------------------------------------------------------------------------
-
-export const rubrics = pgTable(
-  "rubrics",
-  {
-    id: uuid().primaryKey().defaultRandom(),
-    organizationId: uuid()
-      .notNull()
-      .references(() => organizations.id),
-    schoolId: uuid()
-      .notNull()
-      .references(() => schools.id),
-
-    name: varchar({ length: 150 }).notNull(),
-    description: text(),
-    isActive: boolean().notNull().default(true),
-
-    createdBy: text()
-      .notNull()
-      .references(() => user.id),
-    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp({ withTimezone: true })
-      .notNull()
-      .defaultNow()
-      .$onUpdate(() => new Date()),
-  },
-  (t) => [
-    uniqueIndex("rubrics_school_name_uq").on(t.schoolId, t.name),
-    index("rubrics_school_idx").on(t.schoolId),
-  ],
-);
-
-export const rubricCriteria = pgTable(
-  "rubric_criteria",
-  {
-    id: uuid().primaryKey().defaultRandom(),
-    organizationId: uuid()
-      .notNull()
-      .references(() => organizations.id),
-    schoolId: uuid()
-      .notNull()
-      .references(() => schools.id),
-    rubricId: uuid()
-      .notNull()
-      .references(() => rubrics.id, { onDelete: "cascade" }),
-
-    name: varchar({ length: 150 }).notNull(),
-    description: text(),
-    sortOrder: integer().notNull().default(0),
-  },
-  (t) => [index("rubric_criteria_rubric_idx").on(t.rubricId)],
-);
-
-export const rubricLevels = pgTable(
-  "rubric_levels",
-  {
-    id: uuid().primaryKey().defaultRandom(),
-    organizationId: uuid()
-      .notNull()
-      .references(() => organizations.id),
-    schoolId: uuid()
-      .notNull()
-      .references(() => schools.id),
-    criterionId: uuid()
-      .notNull()
-      .references(() => rubricCriteria.id, { onDelete: "cascade" }),
-
-    label: varchar({ length: 100 }).notNull(),
-    description: text(),
-    points: numeric({ precision: 6, scale: 2 }).notNull(),
-    sortOrder: integer().notNull().default(0),
-  },
-  (t) => [index("rubric_levels_criterion_idx").on(t.criterionId)],
-);
-
-// ---------------------------------------------------------------------------
-// 3. SERIES — recurring assignments (weekly reading log, daily practice)
-// ---------------------------------------------------------------------------
-
-export const assignmentSeries = pgTable(
-  "assignment_series",
-  {
-    id: uuid().primaryKey().defaultRandom(),
-    organizationId: uuid()
-      .notNull()
-      .references(() => organizations.id),
-    schoolId: uuid()
-      .notNull()
-      .references(() => schools.id),
-
-    title: varchar({ length: 200 }).notNull(),
-    // iCal RRULE string.
-    recurrence: text(),
-
-    createdBy: text()
-      .notNull()
-      .references(() => user.id),
-    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [index("assignment_series_school_idx").on(t.schoolId)],
-);
-
-// ---------------------------------------------------------------------------
-// 4. ASSIGNMENTS — the authored item
+// 1. ASSIGNMENTS — what the teacher gave
 // ---------------------------------------------------------------------------
 
 export const assignments = pgTable(
@@ -373,42 +192,37 @@ export const assignments = pgTable(
     subjectId: uuid()
       .notNull()
       .references(() => subjects.id),
-
-    seriesId: uuid().references(() => assignmentSeries.id),
-    // Provenance when this was cloned from another assignment.
+    // Provenance when given again to another class or copied.
     sourceAssignmentId: uuid().references((): AnyPgColumn => assignments.id),
 
-    kind: assignmentKindEnum().notNull().default("homework"),
+    kind: assignmentKindEnum().notNull(),
+    comesBack: homeworkComesBackEnum().notNull(),
+    // Homework/Practice/Project: the short title; Reading: chapter or pages.
     title: varchar({ length: 250 }).notNull(),
-    description: text(), // rich text / markdown
-    topic: varchar({ length: 250 }), // chapter / topic label
+    // Homework/Practice/Project: details (typed questions, instructions).
+    description: text(),
+    // Reading: the book.
+    topic: varchar({ length: 250 }),
     estimatedMinutes: integer(),
 
-    submissionTypes: submissionTypeEnum()
-      .array()
-      .notNull()
-      .default(sql`ARRAY['none']::assignment_submission_type[]`),
     gradingMode: assignmentGradingModeEnum().notNull().default("none"),
     maxMarks: numeric({ precision: 7, scale: 2 }),
+    // Grading mode `grade`: the school's default scale, fixed at creation.
     gradingScaleId: uuid().references(() => gradingScales.id),
-    rubricId: uuid().references(() => rubrics.id),
 
-    // Future publish moment → status 'scheduled' (a worker flips it; ADR-039
-    // defers the worker, so v1 publishes immediately or not at all).
+    // A future publish moment → status `scheduled`; the homework worker
+    // publishes it.
     publishAt: timestamp({ withTimezone: true }),
-    // due_at is the on-time mark; close_at the hard cutoff.
+    // due_at is the on-time mark; close_at the hard cutoff (equal = no late).
     dueAt: timestamp({ withTimezone: true }).notNull(),
     closeAt: timestamp({ withTimezone: true }).notNull(),
-    latePolicy: assignmentLatePolicyEnum().notNull().default("allowed"),
-    allowResubmission: boolean().notNull().default(true),
-    // NULL = unlimited versions.
-    maxSubmissions: integer(),
 
     status: assignmentStatusEnum().notNull().default("draft"),
-    // Set on first submission/attempt — freezes the question set.
+    publishedAt: timestamp({ withTimezone: true }),
+    // Set on the first hand-in, attempt or check: freezes how it comes back,
+    // grading, the classes and a quiz's questions.
     isLocked: boolean().notNull().default(false),
     cancelledAt: timestamp({ withTimezone: true }),
-    cancelReason: text(),
 
     createdBy: text()
       .notNull()
@@ -420,38 +234,28 @@ export const assignments = pgTable(
       .$onUpdate(() => new Date()),
   },
   (t) => [
-    index("assignments_school_year_status_idx").on(
-      t.schoolId,
-      t.academicYearId,
-      t.status,
-    ),
+    index("assignments_school_year_status_idx").on(t.schoolId, t.academicYearId, t.status),
     index("assignments_subject_due_idx").on(t.subjectId, t.dueAt),
     index("assignments_status_due_idx").on(t.status, t.dueAt),
-    index("assignments_series_idx").on(t.seriesId),
+    index("assignments_created_by_idx").on(t.createdBy, t.createdAt),
+    check("assignments_close_after_due", sql`close_at >= due_at`),
     check(
-      "assignments_close_after_due",
-      sql`close_at >= due_at`,
+      "assignments_quiz_questions",
+      sql`(kind = 'quiz') = (comes_back = 'questions')`,
     ),
     check(
-      "assignments_late_requires_window",
-      sql`late_policy = 'allowed' OR close_at = due_at`,
+      "assignments_grading_needs_return",
+      sql`grading_mode = 'none' OR comes_back IN ('brought','sent','questions')`,
     ),
-    check(
-      "assignment_marks_require_max",
-      sql`grading_mode <> 'marks' OR max_marks IS NOT NULL`,
-    ),
+    check("assignment_marks_require_max", sql`grading_mode <> 'marks' OR max_marks IS NOT NULL`),
     check(
       "assignment_grade_requires_scale",
       sql`grading_mode <> 'grade' OR grading_scale_id IS NOT NULL`,
     ),
-    check(
-      "assignment_rubric_requires_rubric",
-      sql`grading_mode <> 'rubric' OR rubric_id IS NOT NULL`,
-    ),
   ],
 );
 
-/** Audience: whole section(s) or individual students. */
+/** Audience: one or more sections, or some students of them. */
 export const assignmentTargets = pgTable(
   "assignment_targets",
   {
@@ -468,7 +272,6 @@ export const assignmentTargets = pgTable(
     targetType: assignmentTargetTypeEnum().notNull(),
     sectionId: uuid().references(() => sections.id),
     studentEnrollmentId: uuid().references(() => studentEnrollments.id),
-
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -487,9 +290,9 @@ export const assignmentTargets = pgTable(
   ],
 );
 
-/** Teacher-provided reference material. */
-export const assignmentResources = pgTable(
-  "assignment_resources",
+/** The teacher's photos (board, worksheet). Images only for now (ADR-064). */
+export const assignmentFiles = pgTable(
+  "assignment_files",
   {
     id: uuid().primaryKey().defaultRandom(),
     organizationId: uuid()
@@ -501,59 +304,20 @@ export const assignmentResources = pgTable(
     assignmentId: uuid()
       .notNull()
       .references(() => assignments.id, { onDelete: "cascade" }),
-    resourceType: assignmentResourceTypeEnum().notNull(),
-    // ADR-063: points at a stored file; reads hand out a signed link.
-    objectId: uuid().references(() => storageObjects.id),
-    url: text(),
-    title: varchar({ length: 250 }),
+    objectId: uuid()
+      .notNull()
+      .references(() => storageObjects.id),
     sortOrder: integer().notNull().default(0),
   },
   (t) => [
-    index("assignment_resources_assignment_idx").on(t.assignmentId),
-    // ADR-063: the storage sweeper deletes through these foreign keys.
-    index("assignment_resources_object_idx").on(t.objectId),
-    check(
-      "assignment_resources_shape",
-      sql`(resource_type = 'file' AND object_id IS NOT NULL) OR
-          (resource_type <> 'file' AND url IS NOT NULL)`,
-    ),
-  ],
-);
-
-/** Snapshot of the assignment BEFORE any material edit after publish. */
-export const assignmentRevisions = pgTable(
-  "assignment_revisions",
-  {
-    id: uuid().primaryKey().defaultRandom(),
-    organizationId: uuid()
-      .notNull()
-      .references(() => organizations.id),
-    schoolId: uuid()
-      .notNull()
-      .references(() => schools.id),
-    assignmentId: uuid()
-      .notNull()
-      .references(() => assignments.id, { onDelete: "cascade" }),
-    revisionNo: integer().notNull(),
-    snapshot: jsonb().notNull(),
-    changeSummary: text(),
-    changedBy: text()
-      .notNull()
-      .references(() => user.id),
-    changedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [
-    uniqueIndex("assignment_revisions_assignment_no_uq").on(
-      t.assignmentId,
-      t.revisionNo,
-    ),
+    index("assignment_files_assignment_idx").on(t.assignmentId),
+    index("assignment_files_object_idx").on(t.objectId),
   ],
 );
 
 // ---------------------------------------------------------------------------
-// 5. STUDENT_ASSIGNMENTS — the resolved, authoritative per-student record.
-// Resolved at publish from active enrollments in the target sections.
-// Other modules read ONLY this table, never the targets.
+// 2. STUDENT_ASSIGNMENTS — one row per child, resolved when given. The check
+// result lives here and is overwritten when changed (no history, ADR-064).
 // ---------------------------------------------------------------------------
 
 export const studentAssignments = pgTable(
@@ -572,38 +336,32 @@ export const studentAssignments = pgTable(
     studentEnrollmentId: uuid()
       .notNull()
       .references(() => studentEnrollments.id),
-    // Section snapshot at resolve time.
+    // Section at the moment it was given.
     sectionId: uuid()
       .notNull()
       .references(() => sections.id),
 
     status: studentAssignmentStatusEnum().notNull().default("assigned"),
-    completionSource: assignmentCompletionSourceEnum(),
-
-    // Snapshotted from the assignment at publish; extensions override.
+    // Copied from the assignment when given; moving a due date (for everyone,
+    // one section or one child) rewrites these.
     effectiveDueAt: timestamp({ withTimezone: true }).notNull(),
     effectiveCloseAt: timestamp({ withTimezone: true }).notNull(),
 
-    // Late joiner / elective backfill: view-only rows excluded from stats.
-    isBackfilled: boolean().notNull().default(false),
-    countsTowardStats: boolean().notNull().default(true),
-
     firstViewedAt: timestamp({ withTimezone: true }),
-    startedAt: timestamp({ withTimezone: true }),
+    // Sent, ticked or handed in; cleared when a tick is undone.
     submittedAt: timestamp({ withTimezone: true }),
     isLate: boolean().notNull().default(false),
-    submissionCount: integer().notNull().default(0),
+    tickedBy: homeworkTickSourceEnum(),
 
-    // Denormalised from the current evaluation.
-    currentEvaluationId: uuid().references((): AnyPgColumn => assignmentEvaluations.id),
-    currentMarks: numeric({ precision: 7, scale: 2 }),
-    currentGrade: varchar({ length: 20 }),
-    reviewedAt: timestamp({ withTimezone: true }),
-
-    excusedBy: text().references(() => user.id),
-    excusedReason: text(),
-    excusedAt: timestamp({ withTimezone: true }),
-    missingMarkedAt: timestamp({ withTimezone: true }),
+    // The teacher's check result. Visible to the student once saved.
+    checkStatus: homeworkCheckStatusEnum(),
+    marks: numeric({ precision: 7, scale: 2 }),
+    grade: varchar({ length: 20 }),
+    remark: homeworkRemarkEnum(),
+    // A note the student sees (also the reason for a redo).
+    note: text(),
+    checkedBy: text().references(() => user.id),
+    checkedAt: timestamp({ withTimezone: true }),
 
     statusChangedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
@@ -617,52 +375,18 @@ export const studentAssignments = pgTable(
       t.assignmentId,
       t.studentEnrollmentId,
     ),
-    index("student_assignments_enrollment_status_idx").on(
-      t.studentEnrollmentId,
-      t.status,
-    ),
-    index("student_assignments_assignment_status_idx").on(
-      t.assignmentId,
-      t.status,
-    ),
+    index("student_assignments_enrollment_status_idx").on(t.studentEnrollmentId, t.status),
+    index("student_assignments_assignment_section_idx").on(t.assignmentId, t.sectionId),
     index("student_assignments_section_idx").on(t.sectionId),
-    // The missing-sweeper's scan path.
-    index("student_assignments_missing_scan_idx")
+    // The worker's scan path (missing at close).
+    index("student_assignments_close_scan_idx")
       .on(t.effectiveCloseAt)
-      .where(sql`status IN ('assigned','in_progress')`),
+      .where(sql`status IN ('assigned','in_progress','redo')`),
   ],
 );
 
-/** Per-student deadline overrides. Append-only. */
-export const assignmentExtensions = pgTable(
-  "assignment_extensions",
-  {
-    id: uuid().primaryKey().defaultRandom(),
-    organizationId: uuid()
-      .notNull()
-      .references(() => organizations.id),
-    schoolId: uuid()
-      .notNull()
-      .references(() => schools.id),
-    studentAssignmentId: uuid()
-      .notNull()
-      .references(() => studentAssignments.id, { onDelete: "cascade" }),
-
-    previousDueAt: timestamp({ withTimezone: true }).notNull(),
-    previousCloseAt: timestamp({ withTimezone: true }).notNull(),
-    newDueAt: timestamp({ withTimezone: true }).notNull(),
-    newCloseAt: timestamp({ withTimezone: true }).notNull(),
-    reason: text(),
-    grantedBy: text()
-      .notNull()
-      .references(() => user.id),
-    grantedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [index("assignment_extensions_sa_idx").on(t.studentAssignmentId)],
-);
-
 // ---------------------------------------------------------------------------
-// 6. SUBMISSIONS — immutable, versioned
+// 3. SUBMISSIONS — at most one per child, replaced until checked (ADR-064)
 // ---------------------------------------------------------------------------
 
 export const submissions = pgTable(
@@ -678,23 +402,15 @@ export const submissions = pgTable(
     studentAssignmentId: uuid()
       .notNull()
       .references(() => studentAssignments.id, { onDelete: "cascade" }),
-    versionNo: integer().notNull(),
     bodyText: text(),
-    linkUrl: text(),
+    // Stored, never shown (a parent and a student login are treated the same).
     submittedByUserId: text()
       .notNull()
       .references(() => user.id),
-    submittedByRole: submissionAuthorRoleEnum().notNull(),
     isLate: boolean().notNull().default(false),
     submittedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [
-    uniqueIndex("submissions_sa_version_uq").on(
-      t.studentAssignmentId,
-      t.versionNo,
-    ),
-    index("submissions_sa_idx").on(t.studentAssignmentId),
-  ],
+  (t) => [uniqueIndex("submissions_sa_uq").on(t.studentAssignmentId)],
 );
 
 export const submissionFiles = pgTable(
@@ -722,103 +438,9 @@ export const submissionFiles = pgTable(
 );
 
 // ---------------------------------------------------------------------------
-// 7. EVALUATIONS — append-only; regrade = new row, is_current flips
-// ---------------------------------------------------------------------------
-
-export const assignmentEvaluations = pgTable(
-  "assignment_evaluations",
-  {
-    id: uuid().primaryKey().defaultRandom(),
-    organizationId: uuid()
-      .notNull()
-      .references(() => organizations.id),
-    schoolId: uuid()
-      .notNull()
-      .references(() => schools.id),
-    studentAssignmentId: uuid()
-      .notNull()
-      .references(() => studentAssignments.id, { onDelete: "cascade" }),
-    // NULL for offline / completion-only evaluations.
-    submissionId: uuid().references(() => submissions.id),
-    outcome: assignmentEvaluationOutcomeEnum().notNull().default("reviewed"),
-    marks: numeric({ precision: 7, scale: 2 }),
-    grade: varchar({ length: 20 }),
-    feedback: text(),
-    isCurrent: boolean().notNull().default(true),
-    // NULL when the system graded the attempt (auto-scored questions).
-    evaluatedBy: text().references(() => user.id),
-    isAuto: boolean().notNull().default(false),
-    evaluatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [
-    // One current evaluation per student assignment.
-    uniqueIndex("assignment_evaluations_current_uq")
-      .on(t.studentAssignmentId)
-      .where(sql`is_current`),
-    index("assignment_evaluations_sa_idx").on(t.studentAssignmentId),
-    check(
-      "assignment_evaluations_evaluator",
-      sql`is_auto OR evaluated_by IS NOT NULL`,
-    ),
-  ],
-);
-
-/** Annotated copies / feedback attachments. */
-export const evaluationFiles = pgTable(
-  "evaluation_files",
-  {
-    id: uuid().primaryKey().defaultRandom(),
-    organizationId: uuid()
-      .notNull()
-      .references(() => organizations.id),
-    schoolId: uuid()
-      .notNull()
-      .references(() => schools.id),
-    evaluationId: uuid()
-      .notNull()
-      .references(() => assignmentEvaluations.id, { onDelete: "cascade" }),
-    objectId: uuid()
-      .notNull()
-      .references(() => storageObjects.id),
-  },
-  (t) => [
-    index("evaluation_files_evaluation_idx").on(t.evaluationId),
-    index("evaluation_files_object_idx").on(t.objectId),
-  ],
-);
-
-export const assignmentRubricScores = pgTable(
-  "assignment_rubric_scores",
-  {
-    id: uuid().primaryKey().defaultRandom(),
-    organizationId: uuid()
-      .notNull()
-      .references(() => organizations.id),
-    schoolId: uuid()
-      .notNull()
-      .references(() => schools.id),
-    evaluationId: uuid()
-      .notNull()
-      .references(() => assignmentEvaluations.id, { onDelete: "cascade" }),
-    criterionId: uuid()
-      .notNull()
-      .references(() => rubricCriteria.id),
-    levelId: uuid().references(() => rubricLevels.id),
-    points: numeric({ precision: 6, scale: 2 }).notNull(),
-    comment: text(),
-  },
-  (t) => [
-    uniqueIndex("assignment_rubric_scores_eval_criterion_uq").on(
-      t.evaluationId,
-      t.criterionId,
-    ),
-  ],
-);
-
-// ---------------------------------------------------------------------------
-// 8. COMMENTS & ACKNOWLEDGEMENTS
-// studentAssignmentId NULL  => class-wide Q&A on the assignment
-// studentAssignmentId SET   => private thread (student/parent <-> teacher)
+// 4. COMMENTS
+// studentAssignmentId NULL  => class-wide questions on the homework
+// studentAssignmentId SET   => private thread (student <-> teacher)
 // ---------------------------------------------------------------------------
 
 export const assignmentComments = pgTable(
@@ -837,14 +459,12 @@ export const assignmentComments = pgTable(
     studentAssignmentId: uuid().references(() => studentAssignments.id, {
       onDelete: "cascade",
     }),
-    parentCommentId: uuid().references((): AnyPgColumn => assignmentComments.id),
     authorUserId: text()
       .notNull()
       .references(() => user.id),
     body: text().notNull(),
     isDeleted: boolean().notNull().default(false),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-    editedAt: timestamp({ withTimezone: true }),
   },
   (t) => [
     index("assignment_comments_assignment_idx").on(t.assignmentId, t.createdAt),
@@ -854,83 +474,8 @@ export const assignmentComments = pgTable(
   ],
 );
 
-/** The parent-signed homework diary, digital. */
-export const assignmentAcknowledgements = pgTable(
-  "assignment_acknowledgements",
-  {
-    id: uuid().primaryKey().defaultRandom(),
-    organizationId: uuid()
-      .notNull()
-      .references(() => organizations.id),
-    schoolId: uuid()
-      .notNull()
-      .references(() => schools.id),
-    studentAssignmentId: uuid()
-      .notNull()
-      .references(() => studentAssignments.id, { onDelete: "cascade" }),
-    guardianUserId: text()
-      .notNull()
-      .references(() => user.id),
-    acknowledgedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [
-    uniqueIndex("assignment_acknowledgements_sa_guardian_uq").on(
-      t.studentAssignmentId,
-      t.guardianUserId,
-    ),
-  ],
-);
-
 // ---------------------------------------------------------------------------
-// 9. SUMMARY — pre-aggregated counts (same idea as attendance_summary).
-// Schema ships with the backbone; the aggregation job is a recorded deferral.
-// subjectId NULL => across all subjects.
-// ---------------------------------------------------------------------------
-
-export const studentAssignmentSummary = pgTable(
-  "student_assignment_summary",
-  {
-    id: uuid().primaryKey().defaultRandom(),
-    organizationId: uuid()
-      .notNull()
-      .references(() => organizations.id),
-    schoolId: uuid()
-      .notNull()
-      .references(() => schools.id),
-    studentEnrollmentId: uuid()
-      .notNull()
-      .references(() => studentEnrollments.id),
-    academicYearId: uuid()
-      .notNull()
-      .references(() => academicYears.id),
-    termId: uuid().references(() => terms.id),
-    subjectId: uuid().references(() => subjects.id),
-    periodType: assignmentSummaryPeriodEnum().notNull(),
-    periodStart: date().notNull(),
-
-    totalAssigned: integer().notNull().default(0),
-    submittedOnTime: integer().notNull().default(0),
-    submittedLate: integer().notNull().default(0),
-    missing: integer().notNull().default(0),
-    excused: integer().notNull().default(0),
-    reviewed: integer().notNull().default(0),
-    avgScorePercent: numeric({ precision: 5, scale: 2 }),
-
-    computedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [
-    uniqueIndex("student_assignment_summary_uq")
-      .on(t.studentEnrollmentId, t.periodType, t.periodStart, t.subjectId)
-      .where(sql`subject_id IS NOT NULL`),
-    uniqueIndex("student_assignment_summary_all_subjects_uq")
-      .on(t.studentEnrollmentId, t.periodType, t.periodStart)
-      .where(sql`subject_id IS NULL`),
-    index("student_assignment_summary_school_idx").on(t.schoolId, t.academicYearId),
-  ],
-);
-
-// ---------------------------------------------------------------------------
-// 10. QUESTION BANK — reusable questions (Private / School visibility)
+// 5. QUESTION BANK — reusable questions (Private / School visibility)
 // ---------------------------------------------------------------------------
 
 export const questionBankItems = pgTable(
@@ -1012,7 +557,7 @@ export const questionOptions = pgTable(
 );
 
 // ---------------------------------------------------------------------------
-// 11. QUESTION-SET CONFIG (1:1 with assignment)
+// 6. QUESTION-SET CONFIG (1:1 with assignment)
 // ---------------------------------------------------------------------------
 
 export const assignmentQuestionSettings = pgTable(
@@ -1032,8 +577,6 @@ export const assignmentQuestionSettings = pgTable(
     shuffleQuestions: boolean().notNull().default(false),
     shuffleOptions: boolean().notNull().default(false),
     oneQuestionAtATime: boolean().notNull().default(false),
-    maxAttempts: integer().notNull().default(1),
-    attemptScoring: attemptScoringEnum().notNull().default("best"),
 
     showScore: questionRevealPolicyEnum().notNull().default("after_submit"),
     showAnswers: questionRevealPolicyEnum().notNull().default("after_close"),
@@ -1043,7 +586,7 @@ export const assignmentQuestionSettings = pgTable(
 );
 
 // ---------------------------------------------------------------------------
-// 12. ASSIGNMENT QUESTIONS — the SNAPSHOT taken when the set is attached.
+// 7. ASSIGNMENT QUESTIONS — the SNAPSHOT taken when the set is attached.
 // Editing the bank never changes an assignment already given. The answer key
 // must NEVER reach a student session (ADR-039; the portal read model omits
 // correctAnswer and option isCorrect).
@@ -1086,8 +629,9 @@ export const assignmentQuestions = pgTable(
 );
 
 // ---------------------------------------------------------------------------
-// 13. ATTEMPTS & ANSWERS
-// No timer: the only limit is student_assignments.effective_close_at.
+// 8. ATTEMPTS & ANSWERS
+// One attempt per student (ADR-064). No timer: the only limit is
+// student_assignments.effective_close_at; the worker hands in open attempts at close.
 // ---------------------------------------------------------------------------
 
 export const questionAttempts = pgTable(
@@ -1103,7 +647,6 @@ export const questionAttempts = pgTable(
     studentAssignmentId: uuid()
       .notNull()
       .references(() => studentAssignments.id, { onDelete: "cascade" }),
-    attemptNo: integer().notNull(),
 
     status: questionAttemptStatusEnum().notNull().default("in_progress"),
     // Per-attempt shuffle order (assignment_question ids).
@@ -1118,11 +661,8 @@ export const questionAttempts = pgTable(
     maxScore: numeric({ precision: 7, scale: 2 }).notNull().default("0"),
   },
   (t) => [
-    uniqueIndex("question_attempts_sa_attempt_uq").on(
-      t.studentAssignmentId,
-      t.attemptNo,
-    ),
-    index("question_attempts_sa_idx").on(t.studentAssignmentId),
+    // ADR-064: one attempt per student.
+    uniqueIndex("question_attempts_sa_uq").on(t.studentAssignmentId),
   ],
 );
 

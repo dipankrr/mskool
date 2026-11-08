@@ -96,22 +96,14 @@ import {
 } from "@repo/db/schema";
 // Homework/assignment domain — added after the reset was written. Child-first:
 // answers/submissions before student assignments before assignment definitions
-// before rubrics/questions. Keep this list in FK order when the domain grows.
+// before the question bank. Keep this list in FK order when the domain grows.
 import {
-  assignmentAcknowledgements,
   assignmentComments,
-  assignmentEvaluations,
-  assignmentExtensions,
+  assignmentFiles,
   assignmentQuestionSettings,
   assignmentQuestions,
-  assignmentResources,
-  assignmentRevisions,
-  assignmentRubricScores,
-  assignmentSeries,
-  assignmentSettings,
   assignmentTargets,
   assignments,
-  evaluationFiles,
   idCardTemplates,
   orgPublicSites,
   questionAttemptAnswerFiles,
@@ -120,11 +112,7 @@ import {
   questionBankItems,
   questionOptions,
   reportCardTemplates,
-  rubrics,
-  rubricCriteria,
-  rubricLevels,
   storageObjects,
-  studentAssignmentSummary,
   studentAssignments,
   studentPhotos,
   submissionFiles,
@@ -345,55 +333,24 @@ async function main() {
       db.delete(questionAttemptAnswers).where(inArray(questionAttemptAnswers.organizationId, orgIds)).returning());
     await wipe("question_attempts", () =>
       db.delete(questionAttempts).where(inArray(questionAttempts.organizationId, orgIds)).returning());
-    // student_assignments.current_evaluation_id -> assignment_evaluations is a
-    // cycle; unlink it before the evaluations leave.
-    await wipe("student_assignments_clear_current_evaluation", () =>
-      db.update(studentAssignments)
-        .set({ currentEvaluationId: null })
-        .where(inArray(studentAssignments.organizationId, orgIds))
-        .returning({ id: studentAssignments.id }));
-    await wipe("assignment_rubric_scores", () =>
-      db.delete(assignmentRubricScores).where(inArray(assignmentRubricScores.organizationId, orgIds)).returning());
-    await wipe("evaluation_files", () =>
-      db.delete(evaluationFiles).where(inArray(evaluationFiles.organizationId, orgIds)).returning());
-    await wipe("assignment_evaluations", () =>
-      db.delete(assignmentEvaluations).where(inArray(assignmentEvaluations.organizationId, orgIds)).returning());
     await wipe("submission_files", () =>
       db.delete(submissionFiles).where(inArray(submissionFiles.organizationId, orgIds)).returning());
     await wipe("submissions", () =>
       db.delete(submissions).where(inArray(submissions.organizationId, orgIds)).returning());
     await wipe("assignment_comments", () =>
       db.delete(assignmentComments).where(inArray(assignmentComments.organizationId, orgIds)).returning());
-    await wipe("assignment_acknowledgements", () =>
-      db.delete(assignmentAcknowledgements).where(inArray(assignmentAcknowledgements.organizationId, orgIds)).returning());
-    await wipe("assignment_extensions", () =>
-      db.delete(assignmentExtensions).where(inArray(assignmentExtensions.organizationId, orgIds)).returning());
     await wipe("assignment_question_settings", () =>
       db.delete(assignmentQuestionSettings).where(inArray(assignmentQuestionSettings.organizationId, orgIds)).returning());
     await wipe("assignment_questions", () =>
       db.delete(assignmentQuestions).where(inArray(assignmentQuestions.organizationId, orgIds)).returning());
-    await wipe("assignment_resources", () =>
-      db.delete(assignmentResources).where(inArray(assignmentResources.organizationId, orgIds)).returning());
-    await wipe("assignment_revisions", () =>
-      db.delete(assignmentRevisions).where(inArray(assignmentRevisions.organizationId, orgIds)).returning());
+    await wipe("assignment_files", () =>
+      db.delete(assignmentFiles).where(inArray(assignmentFiles.organizationId, orgIds)).returning());
     await wipe("assignment_targets", () =>
       db.delete(assignmentTargets).where(inArray(assignmentTargets.organizationId, orgIds)).returning());
     await wipe("student_assignments", () =>
       db.delete(studentAssignments).where(inArray(studentAssignments.organizationId, orgIds)).returning());
-    await wipe("student_assignment_summary", () =>
-      db.delete(studentAssignmentSummary).where(inArray(studentAssignmentSummary.organizationId, orgIds)).returning());
     await wipe("assignments", () =>
       db.delete(assignments).where(inArray(assignments.organizationId, orgIds)).returning());
-    await wipe("assignment_series", () =>
-      db.delete(assignmentSeries).where(inArray(assignmentSeries.organizationId, orgIds)).returning());
-    await wipe("assignment_settings", () =>
-      db.delete(assignmentSettings).where(inArray(assignmentSettings.organizationId, orgIds)).returning());
-    await wipe("rubric_levels", () =>
-      db.delete(rubricLevels).where(inArray(rubricLevels.organizationId, orgIds)).returning());
-    await wipe("rubric_criteria", () =>
-      db.delete(rubricCriteria).where(inArray(rubricCriteria.organizationId, orgIds)).returning());
-    await wipe("rubrics", () =>
-      db.delete(rubrics).where(inArray(rubrics.organizationId, orgIds)).returning());
     await wipe("question_options", () =>
       db.delete(questionOptions).where(inArray(questionOptions.organizationId, orgIds)).returning());
     await wipe("question_bank_items", () =>

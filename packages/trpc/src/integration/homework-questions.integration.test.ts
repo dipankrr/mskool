@@ -22,7 +22,6 @@ import { beforeAll, describe, expect, it } from "vitest";
 import type { DataScope } from "@repo/authz";
 import { db } from "@repo/db";
 import {
-  assignmentEvaluations,
   assignmentQuestions,
   assignments,
   questionAttemptAnswers,
@@ -87,15 +86,14 @@ describe("homework questions (slice B)", () => {
     name: string,
     questions: Parameters<typeof homeworkQuestionsService.setAssignmentQuestions>[2]["questions"],
   ) => {
-    const draft = await homeworkService.createAssignment(scopeA1, adminAId, {
-      academicYearId: currentYearAId,
+    const draft = await homeworkService.create(scopeA1, adminAId, {
+      kind: "quiz",
       subjectId: subjectMathId,
-      sectionId: section6aId,
+      sectionIds: [section6aId],
       title: title(name),
-      submissionTypes: ["questions"],
-      gradingMode: "none",
       dueAt: dueInDays(5),
       closeAt: dueInDays(6),
+      give: false,
     });
     await homeworkQuestionsService.setAssignmentQuestions(scopeA1, adminAId, {
       id: draft.id,
@@ -103,7 +101,7 @@ describe("homework questions (slice B)", () => {
       subjectId: subjectMathId,
       questions,
     });
-    await homeworkService.publishAssignment(scopeA1, adminAId, draft.id);
+    await homeworkService.give(scopeA1, { sectionId: section6aId, subjectId: subjectMathId }, draft.id);
     const [sa] = await db
       .select()
       .from(studentAssignments)
@@ -168,12 +166,24 @@ describe("homework questions (slice B)", () => {
     });
     expect(item.questionType).toBe("mcq_single");
 
-    const detail = await homeworkQuestionsService.getBankItem(scopeA1, item.id);
+    const detail = await homeworkQuestionsService.getBankItem(scopeA1, adminAId, item.id);
     expect(detail?.options).toHaveLength(3);
-    expect(await homeworkQuestionsService.getBankItem(scopeB1, item.id)).toBeNull();
+    expect(await homeworkQuestionsService.getBankItem(scopeB1, adminAId, item.id)).toBeNull();
+    // ADR-064: a private question (and its answer key) stays with its author.
+    const otherTeacher = await findOrCreateUser(`hwq-other-teacher-${RUN}`);
+    expect(await homeworkQuestionsService.getBankItem(scopeA1, otherTeacher.id, item.id)).toBeNull();
+    const listed = await homeworkQuestionsService.listBankItems([scopeA1], otherTeacher.id, {});
+    expect(listed.some((q) => q.id === item.id)).toBe(false);
+    // Only its author (or a bank manager) can retire it.
+    expect(
+      await homeworkQuestionsService.setBankItemActive(scopeA1, otherTeacher.id, item.id, false, false),
+    ).toBeNull();
+    const retired = await homeworkQuestionsService.setBankItemActive(scopeA1, adminAId, item.id, false, false);
+    expect(retired?.isActive).toBe(false);
+    await homeworkQuestionsService.setBankItemActive(scopeA1, adminAId, item.id, true, false);
   });
 
-  it("attaches a snapshot: frozen copies, the questions channel auto-added, staff sees keys", async () => {
+  it("attaches a snapshot: frozen copies, marked out of the total, staff sees keys", async () => {
     const { assignment } = await createPublishedWithQuestions("auto", [
       {
         position: 1,
@@ -215,7 +225,9 @@ describe("homework questions (slice B)", () => {
       .select()
       .from(assignments)
       .where(eq(assignments.id, assignment.id));
-    expect(updated!.submissionTypes).toContain("questions");
+    expect(updated!.comesBack).toBe("questions");
+    // ADR-064: a quiz is marked out of its questions' total.
+    expect(updated!.maxMarks).toBe("5.00");
 
     const snapshot = await db
       .select()
@@ -233,7 +245,6 @@ describe("homework questions (slice B)", () => {
       [portalStudentId],
       autoSaId,
     );
-    expect(attempt.attemptNo).toBe(1);
 
     const [locked] = await db
       .select({ isLocked: assignments.isLocked })
@@ -327,19 +338,15 @@ describe("homework questions (slice B)", () => {
     expect(submitted.totalScore).toBe("4.00");
     expect(submitted.maxScore).toBe("5.00");
 
-    // The is_auto evaluation landed and the row is reviewed.
+    // ADR-064: the result lands on the child's row: checked, Done, the total.
     const [sa] = await db
       .select()
       .from(studentAssignments)
       .where(eq(studentAssignments.id, autoSaId));
-    expect(sa!.status).toBe("reviewed");
-    expect(sa!.currentMarks).toBe("4.00");
-    const evals = await db
-      .select()
-      .from(assignmentEvaluations)
-      .where(eq(assignmentEvaluations.studentAssignmentId, autoSaId));
-    expect(evals).toHaveLength(1);
-    expect(evals[0]!.isAuto).toBe(true);
+    expect(sa!.status).toBe("checked");
+    expect(sa!.checkStatus).toBe("done");
+    expect(sa!.marks).toBe("4.00");
+    expect(sa!.checkedBy).toBeNull();
   });
 
   it("the result view follows the reveal policies: score after submit, answers only after close", async () => {
@@ -446,22 +453,16 @@ describe("homework questions (slice B)", () => {
       .select()
       .from(studentAssignments)
       .where(eq(studentAssignments.id, mixedSaId));
-    expect(sa!.status).toBe("reviewed");
-    expect(sa!.currentMarks).toBe("2.50");
-    const evals = await db
-      .select()
-      .from(assignmentEvaluations)
-      .where(eq(assignmentEvaluations.studentAssignmentId, mixedSaId));
-    expect(evals).toHaveLength(1);
-    expect(evals[0]!.isAuto).toBe(false);
-    expect(evals[0]!.evaluatedBy).toBe(adminAId);
+    expect(sa!.status).toBe("checked");
+    expect(sa!.marks).toBe("2.50");
+    expect(sa!.checkedBy).toBe(adminAId);
   });
 
-  it("enforces the attempt cap; a foreign family cannot start someone else's attempt", async () => {
-    // autoSaId's settings default to maxAttempts=1 and the attempt is used.
+  it("one attempt per child; a foreign family cannot start someone else's attempt", async () => {
+    // ADR-064: the attempt is used, so a second is refused.
     await expect(
       homeworkQuestionsService.startAttempt(portalStudentUserId, [portalStudentId], autoSaId),
-    ).rejects.toThrow(/attempt\(s\)/);
+    ).rejects.toThrow(/already been handed in/);
 
     const outsider = await findOrCreateUser(`hwq-outsider2-${RUN}`);
     await expect(

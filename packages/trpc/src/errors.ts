@@ -932,77 +932,10 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
   },
 
   // -------------------------------------------------------------------------
-  // The homework/assignments domain (homework.service.ts, ADR-039). These are
-  // workflow refusals the parent/teacher acts on directly, so the wordings
-  // pass through deliberately close to the service's own sentences.
+  // Homework quizzes (homework-questions.service.ts, ADR-039). The homework
+  // service itself refuses with ServiceRefusal (ADR-064), so only the
+  // questions service's plain errors are translated here.
   // -------------------------------------------------------------------------
-  {
-    match: /^The submission window closed/i,
-    code: "BAD_REQUEST",
-    message: "The submission window for this homework has closed.",
-  },
-  {
-    match: /^Late submissions are not allowed/i,
-    code: "BAD_REQUEST",
-    message: "This homework does not accept late submissions.",
-  },
-  {
-    match: /^This assignment does not accept resubmissions/i,
-    code: "BAD_REQUEST",
-    message: "This homework does not accept another submission.",
-  },
-  {
-    match: /^This assignment does not accept that submission type/i,
-    code: "BAD_REQUEST",
-    message:
-      "This homework does not accept that kind of response. Check what the teacher asked for.",
-  },
-  {
-    match: /^This assignment is not open for submissions/i,
-    code: "BAD_REQUEST",
-    message: "This homework is not open for submissions.",
-  },
-  {
-    match: /^This student was excused/i,
-    code: "BAD_REQUEST",
-    message: "This student was excused from the homework.",
-  },
-  {
-    match: /per-day limit/i,
-    code: "CONFLICT",
-    message:
-      "This class already has its limit of homework due that day. Move the due date.",
-  },
-  {
-    match: /^This school does not allow homework due on a weekend/i,
-    code: "BAD_REQUEST",
-    message: "This school does not set homework due on weekends. Pick a weekday.",
-  },
-  {
-    match: /^There is nothing to review yet/i,
-    code: "BAD_REQUEST",
-    message: "Nothing has been submitted to review yet.",
-  },
-  {
-    match: /^This student already has work on record/i,
-    code: "CONFLICT",
-    message: "This student already submitted work — grade it instead of excusing.",
-  },
-  {
-    match: /^An excused student is not graded/i,
-    code: "BAD_REQUEST",
-    message: "This student was excused — there is nothing to grade.",
-  },
-  {
-    match: /^The score cannot exceed the maximum/i,
-    code: "BAD_REQUEST",
-    message: "The score is above this homework's maximum.",
-  },
-  {
-    match: /^Only a published assignment can be graded/i,
-    code: "BAD_REQUEST",
-    message: "Publish the homework before grading it.",
-  },
   {
     match: /^The named section\/subject do not match/i,
     code: "BAD_REQUEST",
@@ -1017,18 +950,6 @@ const SERVICE_TRANSLATIONS: ServiceTranslation[] = [
     match: /^A (draft|scheduled|published|closed|cancelled) assignment/i,
     code: "BAD_REQUEST",
     message: "That homework is in a state where this action is not possible.",
-  },
-  {
-    // The section-gated mutations resolve the row in the service now, so the
-    // not-found / wrong-state refusals arrive as these messages.
-    match: /^Assignment not found, or already closed\/cancelled/i,
-    code: "NOT_FOUND",
-    message: "That homework could not be found.",
-  },
-  {
-    match: /^Assignment not found, or not open for closing/i,
-    code: "NOT_FOUND",
-    message: "That homework could not be found.",
   },
   {
     match: /^Attempt not found in this school/i,
