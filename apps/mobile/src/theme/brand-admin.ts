@@ -80,8 +80,8 @@ export const colors = {
   onAccent: palette.white,
   /** Segmented and quiet fills. */
   field: palette.field,
-  /** Text inputs: white on the grey page, outlined so they never melt into it. */
-  input: palette.white,
+  /** Text inputs: the grey fill, outlined so they never melt into the grey page. */
+  input: palette.field,
   inputLine: "rgba(16, 24, 40, 0.16)",
   /** Neutral avatar and chip fills. */
   chip: palette.chip,
