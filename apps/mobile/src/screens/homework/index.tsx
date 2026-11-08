@@ -1,4 +1,4 @@
-import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import type { Href } from "expo-router";
@@ -75,19 +75,41 @@ export function HomeworkScreen() {
           <RefreshControl refreshing={home.isRefetching} onRefresh={() => void home.refetch()} />
         }
       >
-        <ThemedText variant="title" style={styles.title}>
-          {text.title}
-        </ThemedText>
+        <View style={styles.titleRow}>
+          <ThemedText variant="title" style={styles.grow}>
+            {text.title}
+          </ThemedText>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push("/homework/all" as Href)}
+            hitSlop={8}
+            style={styles.allLink}
+            testID="homework-all"
+          >
+            <ThemedText variant="bodyStrong" color={colors.accentDeep}>
+              {text.all.open}
+            </ThemedText>
+            <AppIcon name="chevronRight" size={16} color={colors.accentDeep} />
+          </Pressable>
+        </View>
 
         {!academicYear && !yearPending ? (
-          <EmptyState icon="calendarOff" title={text.home.noYearTitle} message={text.home.noYearBody} />
+          <EmptyState
+            icon="calendarOff"
+            title={text.home.noYearTitle}
+            message={text.home.noYearBody}
+          />
         ) : home.isPending ? (
           <View style={styles.cards}>
             <Skeleton height={88} testID="homework-loading-1" />
             <Skeleton height={88} testID="homework-loading-2" />
           </View>
         ) : home.isError ? (
-          <ErrorCard cause={home.error} onRetry={() => void home.refetch()} testID="homework-error" />
+          <ErrorCard
+            cause={home.error}
+            onRetry={() => void home.refetch()}
+            testID="homework-error"
+          />
         ) : data ? (
           <>
             <SectionLabel style={styles.label}>{text.home.toCheck}</SectionLabel>
@@ -104,21 +126,35 @@ export function HomeworkScreen() {
             ) : (
               <View style={styles.cards}>
                 {data.toCheck.map((item) => (
-                  <Card key={`${item.homework.id}:${item.sectionId}`} testID={`homework-check-${item.homework.id}`}>
-                    <View style={styles.row}>
+                  <Card
+                    key={`${item.homework.id}:${item.sectionId}`}
+                    testID={`homework-check-${item.homework.id}`}
+                  >
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() =>
+                        router.push({
+                          pathname: "/homework/[id]",
+                          params: { id: item.homework.id },
+                        } as unknown as Href)
+                      }
+                      style={styles.row}
+                    >
                       <KindTile kind={item.homework.kind} />
                       <View style={styles.grow}>
                         <ThemedText variant="name" numberOfLines={1}>
-                          {sectionLabel(item.className, item.sectionName)} · {item.homework.subjectName}
+                          {sectionLabel(item.className, item.sectionName)} ·{" "}
+                          {item.homework.subjectName}
                         </ThemedText>
                         <ThemedText variant="body" numberOfLines={1}>
                           {item.homework.title}
                         </ThemedText>
                         <ThemedText variant="meta" numberOfLines={1}>
-                          {dueLine(item.homework.dueAt)} · {text.comesBackShort[item.homework.comesBack]}
+                          {dueLine(item.homework.dueAt)} ·{" "}
+                          {text.comesBackShort[item.homework.comesBack]}
                         </ThemedText>
                       </View>
-                    </View>
+                    </Pressable>
                     <CapsuleButton
                       title={`${text.home.checkNow} · ${text.home.toCheckCount(item.toCheck)}`}
                       size="compact"
@@ -156,7 +192,11 @@ export function HomeworkScreen() {
                 <SectionLabel style={styles.label}>{text.home.outNow}</SectionLabel>
                 <View style={styles.cards}>
                   {data.outNow.map((hw) => (
-                    <HomeworkRow key={hw.id} hw={hw} meta={`${dueLine(hw.dueAt)} · ${progressOf(hw)}`} />
+                    <HomeworkRow
+                      key={hw.id}
+                      hw={hw}
+                      meta={`${dueLine(hw.dueAt)} · ${progressOf(hw)}`}
+                    />
                   ))}
                 </View>
               </>
@@ -212,22 +252,32 @@ function KindTile({ kind }: { kind: HomeworkSummary["kind"] }) {
 
 function HomeworkRow({ hw, meta }: { hw: HomeworkSummary; meta: string }) {
   return (
-    <Card testID={`homework-row-${hw.id}`}>
-      <View style={styles.row}>
-        <KindTile kind={hw.kind} />
-        <View style={styles.grow}>
-          <ThemedText variant="name" numberOfLines={1}>
-            {sectionsOf(hw)} · {hw.subjectName}
-          </ThemedText>
-          <ThemedText variant="body" numberOfLines={1}>
-            {hw.book ? `${hw.book} · ${hw.title}` : hw.title}
-          </ThemedText>
-          <ThemedText variant="meta" numberOfLines={1}>
-            {meta}
-          </ThemedText>
+    <Pressable
+      accessibilityRole="button"
+      onPress={() =>
+        router.push({ pathname: "/homework/[id]", params: { id: hw.id } } as unknown as Href)
+      }
+      style={({ pressed }) => (pressed ? styles.pressed : null)}
+      testID={`homework-row-${hw.id}`}
+    >
+      <Card>
+        <View style={styles.row}>
+          <KindTile kind={hw.kind} />
+          <View style={styles.grow}>
+            <ThemedText variant="name" numberOfLines={1}>
+              {sectionsOf(hw)} · {hw.subjectName}
+            </ThemedText>
+            <ThemedText variant="body" numberOfLines={1}>
+              {hw.book ? `${hw.book} · ${hw.title}` : hw.title}
+            </ThemedText>
+            <ThemedText variant="meta" numberOfLines={1}>
+              {meta}
+            </ThemedText>
+          </View>
+          <AppIcon name="chevronRight" size={18} color={colors.chevron} />
         </View>
-      </View>
-    </Card>
+      </Card>
+    </Pressable>
   );
 }
 
@@ -240,8 +290,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: gutter,
     paddingTop: spacing.lg,
   },
-  title: {
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: spacing.sm,
+  },
+  allLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xxs,
+    minHeight: 44,
+  },
+  pressed: {
+    opacity: 0.85,
   },
   label: {
     marginTop: spacing.xl,
@@ -282,4 +343,3 @@ const styles = StyleSheet.create({
     alignSelf: "flex-end",
   },
 });
-
