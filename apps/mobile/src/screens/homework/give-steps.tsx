@@ -4,7 +4,6 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 
 import { AppIcon } from "../../components/app-icon";
 import type { AppIconName } from "../../components/app-icon";
-import { DateField } from "../../components/date-field";
 import { FormField } from "../../components/form-field";
 import { Notice } from "../../components/notice";
 import { SegmentBar } from "../../components/segment-bar";
@@ -21,6 +20,7 @@ import {
 } from "../../lib/homework";
 import { colors } from "../../theme/brand-admin";
 import { radius, spacing } from "../../theme/tokens";
+import { Chip, DueChips, MarksStepper, MinutesChips } from "./pickers";
 import type { PhotoUpload } from "./use-photo-uploads";
 import { MAX_PHOTOS } from "./use-photo-uploads";
 
@@ -188,25 +188,23 @@ export function ClassesStep({
                 style={[styles.subj, subjectId === subject.subjectId ? styles.subjOn : null, active ? null : styles.subjOff]}
                 testID={`give-subject-${subject.subjectId}`}
               >
-                <View style={styles.subjHead}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => onSelectAll(subject.subjectId)}
+                  style={styles.subjHead}
+                  testID={`give-select-all-${subject.subjectId}`}
+                >
                   <ThemedText variant="bodyStrong" style={styles.grow}>
                     {subject.subjectName}
                   </ThemedText>
-                  {active && subject.sections.length > 1 ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      onPress={() => onSelectAll(subject.subjectId)}
-                      hitSlop={10}
-                      testID={`give-select-all-${subject.subjectId}`}
-                    >
-                      <ThemedText variant="meta" color={colors.accentDeep}>
-                        {text.selectAll}
-                      </ThemedText>
-                    </Pressable>
-                  ) : !active ? (
-                    <ThemedText variant="caption">{text.switchSubject}</ThemedText>
-                  ) : null}
-                </View>
+                  <ThemedText variant="meta" color={active ? colors.accentDeep : colors.muted}>
+                    {subjectId === subject.subjectId && subject.sections.every((s) => sectionIds.includes(s.sectionId))
+                      ? text.clearAll
+                      : active
+                        ? text.selectAll
+                        : text.switchSubject}
+                  </ThemedText>
+                </Pressable>
                 <View style={styles.secs}>
                   {subject.sections.map((sec) => {
                     const on = subjectId === subject.subjectId && sectionIds.includes(sec.sectionId);
@@ -371,13 +369,14 @@ export function WorkStep({
 // ── Step 4: when and how ────────────────────────────────────────────────────
 
 const LATE_DAYS = [0, 1, 2, 3] as const;
-const MINUTES = [15, 30, 45, 60] as const;
 
 export function WhenStep({
   kind,
   presets,
   dueDay,
   onDueDay,
+  dueTime,
+  onDueTime,
   comesBack,
   onComesBack,
   gradingMode,
@@ -397,6 +396,8 @@ export function WhenStep({
   presets: { label: string; day: string }[];
   dueDay: string;
   onDueDay: (day: string) => void;
+  dueTime: string;
+  onDueTime: (t: string) => void;
   comesBack: ComesBack;
   onComesBack: (v: ComesBack) => void;
   gradingMode: GradingMode;
@@ -412,25 +413,13 @@ export function WhenStep({
   todayIso: string;
   hasGradeScale: boolean;
 }) {
-  const custom = !presets.some((p) => p.day === dueDay);
   const grading = gradingOptions(kind, comesBack).filter((g) => g !== "grade" || hasGradeScale);
   const showGrading = grading.length > 1 || grading[0] !== "none";
   return (
     <View style={styles.stack}>
       <View>
         <FieldLabel>{kind === "reading" ? text.readBy : text.due}</FieldLabel>
-        <View style={styles.chips}>
-          {presets.map((p) => (
-            <Chip key={p.day} label={p.label} on={p.day === dueDay} onPress={() => onDueDay(p.day)} testID={`give-due-${p.day}`} />
-          ))}
-        </View>
-        <DateField
-          label={text.pick}
-          value={custom ? dueDay : null}
-          onChange={onDueDay}
-          minimumDate={todayIso}
-          testID="give-due-pick"
-        />
+        <DueChips presets={presets} day={dueDay} onDay={onDueDay} time={dueTime} onTime={onDueTime} minimumDate={todayIso} />
       </View>
 
       <View>
@@ -470,13 +459,7 @@ export function WhenStep({
           {gradingMode === "marks" ? (
             <View style={styles.kvline}>
               <ThemedText variant="body">{text.outOf}</ThemedText>
-              <View style={styles.stepper}>
-                <StepperKey label="−" a11y={text.lessMarks} onPress={() => onMaxMarks(Math.max(1, maxMarks - (maxMarks > 10 ? 5 : 1)))} />
-                <ThemedText variant="numeric" style={styles.stepperValue} testID="give-max-marks">
-                  {String(maxMarks)}
-                </ThemedText>
-                <StepperKey label="+" a11y={text.moreMarks} onPress={() => onMaxMarks(Math.min(500, maxMarks + (maxMarks >= 10 ? 5 : 1)))} />
-              </View>
+              <MarksStepper value={maxMarks} onChange={onMaxMarks} />
             </View>
           ) : null}
         </View>
@@ -486,11 +469,7 @@ export function WhenStep({
 
       <View>
         <FieldLabel>{text.howLong}</FieldLabel>
-        <View style={styles.chips}>
-          {MINUTES.map((m) => (
-            <Chip key={m} label={text.minutes(m)} on={minutes === m} onPress={() => onMinutes(minutes === m ? null : m)} testID={`give-minutes-${m}`} />
-          ))}
-        </View>
+        <MinutesChips value={minutes} onChange={onMinutes} />
       </View>
 
       <Pressable
@@ -520,29 +499,6 @@ export function WhenStep({
   );
 }
 
-function Chip({ label, on, onPress, testID }: { label: string; on: boolean; onPress: () => void; testID?: string }) {
-  return (
-    <Pressable
-      accessibilityRole="radio"
-      accessibilityState={{ selected: on }}
-      onPress={onPress}
-      style={({ pressed }) => [styles.chip, on ? styles.chipOn : null, pressed ? styles.pressed : null]}
-      testID={testID}
-    >
-      <ThemedText variant="bodyStrong" color={on ? colors.onAccent : colors.ink}>
-        {label}
-      </ThemedText>
-    </Pressable>
-  );
-}
-
-function StepperKey({ label, a11y, onPress }: { label: string; a11y: string; onPress: () => void }) {
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel={a11y} onPress={onPress} style={({ pressed }) => [styles.stepKey, pressed ? styles.pressed : null]}>
-      <ThemedText variant="bodyStrong">{label}</ThemedText>
-    </Pressable>
-  );
-}
 
 /** Today in the phone's calendar, for the date picker's floor. */
 export function todayLocal(): string {
@@ -609,7 +565,7 @@ const styles = StyleSheet.create({
   },
   subjOn: { borderColor: colors.accentStrong },
   subjOff: { opacity: 0.5 },
-  subjHead: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  subjHead: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 44 },
   secs: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.md },
   sec: {
     flexDirection: "row",
@@ -619,7 +575,9 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.sm,
     paddingRight: spacing.md,
     borderRadius: radius.sm,
-    backgroundColor: colors.field,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: "rgba(16, 24, 40, 0.14)",
   },
   secOn: { backgroundColor: colors.accentTint, borderWidth: 1.5, borderColor: colors.accent },
   box: {
@@ -693,8 +651,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1.5,
-    borderColor: "transparent",
-    backgroundColor: colors.field,
+    borderColor: "rgba(16, 24, 40, 0.10)",
+    backgroundColor: colors.surface,
   },
   optOn: { backgroundColor: colors.accentTint, borderColor: colors.accent },
   kvline: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing.md },

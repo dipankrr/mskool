@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/trpc";
 
 import { CapsuleButton } from "../../components/capsule-button";
-import { DateField } from "../../components/date-field";
 import { FormField } from "../../components/form-field";
 import { FormSheet } from "../../components/form-sheet";
 import { Notice } from "../../components/notice";
@@ -15,6 +14,7 @@ import { toFriendlyError } from "../../lib/errors";
 import { localDateToIso } from "../../lib/format";
 import { dueInstant, duePresets, formatDue, sectionLabel, type GiveKind } from "../../lib/homework";
 import { trpc } from "../../lib/trpc";
+import { Chip, DueChips } from "./pickers";
 import { colors } from "../../theme/brand-admin";
 import { radius, spacing } from "../../theme/tokens";
 
@@ -32,41 +32,33 @@ function useBase(hw: Detail) {
   };
 }
 
-function Chip({ label, on, onPress, testID }: { label: string; on: boolean; onPress: () => void; testID?: string }) {
-  return (
-    <Pressable
-      accessibilityRole="radio"
-      accessibilityState={{ selected: on }}
-      onPress={onPress}
-      style={[styles.chip, on ? styles.chipOn : null]}
-      testID={testID}
-    >
-      <ThemedText variant="bodyStrong" color={on ? colors.onAccent : colors.ink}>
-        {label}
-      </ThemedText>
-    </Pressable>
-  );
-}
 
-/** A due-date picker: the type's presets plus any day. */
-export function DuePicker({ kind, day, onDay }: { kind: GiveKind; day: string; onDay: (d: string) => void }) {
+/** A due date and time: the type's presets, any other day, and the time, on one row. */
+export function DuePicker({
+  kind,
+  day,
+  onDay,
+  time,
+  onTime,
+}: {
+  kind: GiveKind;
+  day: string;
+  onDay: (d: string) => void;
+  time: string;
+  onTime: (t: string) => void;
+}) {
   const today = localDateToIso(new Date());
-  const presets = duePresets(kind, today);
-  const custom = !presets.some((p) => p.day === day);
   return (
     <View>
-      <View style={styles.chips}>
-        {presets.map((p) => (
-          <Chip key={p.day} label={p.label} on={p.day === day} onPress={() => onDay(p.day)} />
-        ))}
-      </View>
-      <DateField label={give.pick} value={custom ? day : null} onChange={onDay} minimumDate={today} />
+      <DueChips presets={duePresets(kind, today)} day={day} onDay={onDay} time={time} onTime={onTime} minimumDate={today} />
       <ThemedText variant="meta" style={styles.when}>
-        {formatDue(dueInstant(day))}
+        {formatDue(dueInstant(day, time))}
       </ThemedText>
     </View>
   );
 }
+
+const timeOf = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 
 const kindOf = (hw: Detail): GiveKind => (hw.kind === "quiz" ? "homework" : hw.kind);
 
@@ -140,6 +132,7 @@ export function EditSheet({ hw, onClose, onSaved }: { hw: Detail; onClose: () =>
 export function MoveDueSheet({ hw, onClose, onSaved }: { hw: Detail; onClose: () => void; onSaved: () => void }) {
   const base = useBase(hw);
   const [day, setDay] = useState(localDateToIso(new Date(hw.dueAt)));
+  const [time, setTime] = useState(timeOf(new Date(hw.dueAt)));
   const [only, setOnly] = useState<string | null>(null);
   const move = trpc.homework.moveDue.useMutation({ onSuccess: onSaved });
   return (
@@ -154,7 +147,7 @@ export function MoveDueSheet({ hw, onClose, onSaved }: { hw: Detail; onClose: ()
           <CapsuleButton
             title={text.moveSave}
             onPress={() =>
-              move.mutate({ ...base, dueAt: dueInstant(day), ...(only ? { onlySectionId: only } : {}) })
+              move.mutate({ ...base, dueAt: dueInstant(day, time), ...(only ? { onlySectionId: only } : {}) })
             }
             loading={move.isPending}
             disabled={move.isPending}
@@ -165,7 +158,7 @@ export function MoveDueSheet({ hw, onClose, onSaved }: { hw: Detail; onClose: ()
       }
     >
       <View style={styles.body}>
-        <DuePicker kind={kindOf(hw)} day={day} onDay={setDay} />
+        <DuePicker kind={kindOf(hw)} day={day} onDay={setDay} time={time} onTime={setTime} />
         {hw.sections.length > 1 ? (
           <View>
             <ThemedText variant="sectionLabel" style={styles.fieldLabel}>
@@ -198,6 +191,7 @@ export function GiveAgainSheet({ hw, onClose, onSaved }: { hw: Detail; onClose: 
   const options = (pairs.data?.find((p) => p.subjectId === hw.subjectId)?.sections ?? []).filter((s) => !given.has(s.sectionId));
   const [picked, setPicked] = useState<string[]>([]);
   const [day, setDay] = useState(() => duePresets(kindOf(hw), localDateToIso(new Date()))[0]!.day);
+  const [time, setTime] = useState(timeOf(new Date(hw.dueAt)));
   const again = trpc.homework.giveAgain.useMutation({ onSuccess: onSaved });
   const labels = options
     .filter((s) => picked.includes(s.sectionId))
@@ -214,7 +208,7 @@ export function GiveAgainSheet({ hw, onClose, onSaved }: { hw: Detail; onClose: 
           {again.isError ? <Notice tone="critical" message={toFriendlyError(again.error).message} /> : null}
           <CapsuleButton
             title={text.againSave(labels)}
-            onPress={() => again.mutate({ ...base, toSectionIds: picked, dueAt: dueInstant(day) })}
+            onPress={() => again.mutate({ ...base, toSectionIds: picked, dueAt: dueInstant(day, time) })}
             loading={again.isPending}
             disabled={picked.length === 0 || again.isPending}
             style={styles.stretch}
@@ -240,7 +234,7 @@ export function GiveAgainSheet({ hw, onClose, onSaved }: { hw: Detail; onClose: 
             );
           })}
         </View>
-        {options.length ? <DuePicker kind={kindOf(hw)} day={day} onDay={setDay} /> : null}
+        {options.length ? <DuePicker kind={kindOf(hw)} day={day} onDay={setDay} time={time} onTime={setTime} /> : null}
       </View>
     </FormSheet>
   );

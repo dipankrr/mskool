@@ -85,13 +85,15 @@ export function QuizWorkStep({
               accessibilityRole="button"
               onPress={() => setEditing(i)}
               onLongPress={() =>
-                Alert.alert(q.removeConfirmTitle, q.removeConfirmBody(i + 1), [
-                  { text: copy.common.cancel, style: "cancel" },
-                  { text: q.removeConfirm, style: "destructive", onPress: () => onQuestions(questions.filter((_, k) => k !== i)) },
+                Alert.alert(q.editQuestion, d.body.slice(0, 80), [
+                  ...(i > 0 ? [{ text: q.moveUp, onPress: () => move(i, -1) }] : []),
+                  ...(i < questions.length - 1 ? [{ text: q.moveDown, onPress: () => move(i, 1) }] : []),
+                  { text: q.remove, style: "destructive" as const, onPress: () => onQuestions(questions.filter((_, k) => k !== i)) },
+                  { text: copy.common.cancel, style: "cancel" as const },
                 ])
               }
               accessibilityHint={text.quizQuestionHint}
-              style={({ pressed }) => [styles.question, i > 0 ? styles.divider : null, pressed ? styles.pressed : null]}
+              style={[styles.question, i > 0 ? styles.divider : null]}
               testID={`give-question-${i}`}
             >
               <View style={styles.number}>
@@ -105,35 +107,30 @@ export function QuizWorkStep({
                 </ThemedText>
                 <ThemedText variant="meta">{`${questionTypeLabel(d.questionType)} · ${q.marksOf(d.marks)}`}</ThemedText>
               </View>
-              <View style={styles.moves}>
-                <Pressable accessibilityLabel={q.moveUp} onPress={() => move(i, -1)} hitSlop={6} disabled={i === 0}>
-                  <AppIcon name="chevronUp" size={20} color={i === 0 ? colors.hairline : colors.muted} />
-                </Pressable>
-                <Pressable accessibilityLabel={q.moveDown} onPress={() => move(i, 1)} hitSlop={6} disabled={i === questions.length - 1}>
-                  <AppIcon name="chevronDown" size={20} color={i === questions.length - 1 ? colors.hairline : colors.muted} />
-                </Pressable>
-              </View>
+              <AppIcon name="chevronRight" size={18} color={colors.chevron} />
             </Pressable>
           ))}
         </View>
       )}
       {questionsError ? <Notice tone="critical" message={questionsError} /> : null}
-      <CapsuleButton
-        title={questions.length ? q.add : q.addFirst}
-        icon="add"
-        variant="secondary"
-        onPress={() => setEditing("new")}
-        style={styles.stretch}
-        testID="give-question-add"
-      />
-      <CapsuleButton
-        title={q.fromBank}
-        icon="bank"
-        variant="secondary"
-        onPress={() => setPicking(true)}
-        style={styles.stretch}
-        testID="give-question-bank"
-      />
+      <View style={styles.buttons}>
+        <CapsuleButton
+          title={q.add}
+          icon="add"
+          variant="secondary"
+          onPress={() => setEditing("new")}
+          style={styles.half}
+          testID="give-question-add"
+        />
+        <CapsuleButton
+          title={q.fromBank}
+          icon="bank"
+          variant="secondary"
+          onPress={() => setPicking(true)}
+          style={styles.half}
+          testID="give-question-bank"
+        />
+      </View>
       {picking ? (
         <HomeworkBankPickerSheet
           subjectId={subjectId}
@@ -229,6 +226,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: colors.accentTint,
   },
-  moves: { gap: spacing.xs },
+  buttons: { flexDirection: "row", gap: spacing.sm },
+  half: { flex: 1 },
   rules: { gap: spacing.sm },
 });

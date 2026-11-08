@@ -17,6 +17,7 @@ import { toFriendlyError } from "../../lib/errors";
 import {
   KIND_COMES_BACK,
   KIND_GRADING,
+  DUE_TIME,
   dueInstant,
   duePresets,
   formatDue,
@@ -28,7 +29,7 @@ import {
 import { trpc } from "../../lib/trpc";
 import { spacing } from "../../theme/tokens";
 import { toSnapshotQuestion, type QuestionDraft } from "../../lib/homework-questions";
-import { DuePicker } from "./detail-sheets";
+import { DueChips } from "./pickers";
 import { QuizRulesStep, QuizWorkStep, type QuizRules } from "./give-quiz";
 import { ClassesStep, Crumbs, KIND_ICON, KindStep, StepQuestion, WhenStep, WorkStep, todayLocal } from "./give-steps";
 import { showGivenToast } from "./toast-store";
@@ -61,6 +62,7 @@ export function GiveScreen() {
   const [photoMessage, setPhotoMessage] = useState<string | null>(null);
   const today = todayLocal();
   const [dueDay, setDueDay] = useState<string | null>(null);
+  const [dueTime, setDueTime] = useState(DUE_TIME);
   // Step 4's choices: null until the teacher touches one, so the subject's
   // defaults (or "Same as last time") show through.
   const [comesBackChoice, setComesBack] = useState<ComesBack | null>(null);
@@ -147,7 +149,7 @@ export function GiveScreen() {
         kind: "quiz",
         sectionIds,
         title: work.title.trim(),
-        dueAt: dueInstant(due),
+        dueAt: dueInstant(due, dueTime),
         give: false,
       });
       await setQuestionsMut.mutateAsync({
@@ -247,7 +249,7 @@ export function GiveScreen() {
       return;
     }
     if (!kind || !subjectId || sectionIds.length === 0 || !organizationId) return;
-    const dueAt = dueInstant(due);
+    const dueAt = dueInstant(due, dueTime);
     const closeAt = lateDays > 0 ? new Date(new Date(dueAt).getTime() + lateDays * 86_400_000).toISOString() : undefined;
     const base = {
       organizationId,
@@ -322,6 +324,7 @@ export function GiveScreen() {
       key={step}
       title={text.title}
       meta={text.step(step + 1, STEPS)}
+      titleInTopRow
       backAccessibilityLabel={copy.common.back}
       backTestID="give-back"
       stickyHeader={<StepProgress current={step} total={STEPS} label={text.progress(step + 1, STEPS)} testID="give-progress" />}
@@ -382,9 +385,11 @@ export function GiveScreen() {
           onSelectAll={(sid) => {
             const subject = pairs.find((p) => p.subjectId === sid);
             if (!subject) return;
+            const all = subject.sections.map((s) => s.sectionId);
+            const allOn = sid === subjectId && all.every((x) => sectionIds.includes(x));
             if (sid !== subjectId) resetChoices();
             setSubjectId(sid);
-            setSectionIds(subject.sections.map((s) => s.sectionId));
+            setSectionIds(allOn ? [] : all);
           }}
         />
       ) : null}
@@ -407,9 +412,9 @@ export function GiveScreen() {
 
       {step === 3 && isQuiz ? (
         <View style={styles.quizWhen}>
-          <StepQuestion meta={formatDue(dueInstant(due))}>{text.whenTitle}</StepQuestion>
+          <StepQuestion meta={formatDue(dueInstant(due, dueTime))}>{text.whenTitle}</StepQuestion>
           <StepLabel>{text.closes}</StepLabel>
-          <DuePicker kind="homework" day={due} onDay={setDueDay} />
+          <DueChips presets={presets} day={due} onDay={setDueDay} time={dueTime} onTime={setDueTime} minimumDate={today} />
           <QuizRulesStep rules={rules} onRules={setRules} />
         </View>
       ) : null}
@@ -433,12 +438,14 @@ export function GiveScreen() {
 
       {step === 3 && kind && !isQuiz ? (
         <View>
-          <StepQuestion meta={formatDue(dueInstant(due))}>{text.whenTitle}</StepQuestion>
+          <StepQuestion meta={formatDue(dueInstant(due, dueTime))}>{text.whenTitle}</StepQuestion>
           <WhenStep
             kind={kind}
             presets={presets}
             dueDay={due}
             onDueDay={setDueDay}
+            dueTime={dueTime}
+            onDueTime={setDueTime}
             comesBack={back}
             onComesBack={(v) => {
               setComesBack(v);
