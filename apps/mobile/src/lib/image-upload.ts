@@ -46,12 +46,30 @@ export async function prepareImage(
   };
 }
 
+/** A direct upload the bucket refused or never received; its message is for the person. */
+export class UploadFailedError extends Error {
+  constructor() {
+    super(copy.uploads.failed);
+    this.name = "UploadFailedError";
+  }
+}
+
 /** Sends the prepared file to its upload link, with exactly the signed headers. */
 export async function putToUploadLink(ticket: UploadTicket, image: PreparedImage): Promise<void> {
-  const response = await fetch(ticket.url, {
-    method: "PUT",
-    headers: ticket.headers,
-    body: new File(image.uri),
-  });
-  if (!response.ok) throw new Error(copy.uploads.failed);
+  let response: Response;
+  try {
+    response = await fetch(ticket.url, {
+      method: "PUT",
+      headers: ticket.headers,
+      body: new File(image.uri),
+    });
+  } catch (cause) {
+    console.warn("[upload] PUT failed before a response", cause);
+    throw new UploadFailedError();
+  }
+  if (!response.ok) {
+    const reply = await response.text().catch(() => "");
+    console.warn(`[upload] PUT refused: HTTP ${response.status} ${reply.slice(0, 300)}`);
+    throw new UploadFailedError();
+  }
 }

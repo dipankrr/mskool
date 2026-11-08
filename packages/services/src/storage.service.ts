@@ -106,6 +106,8 @@ export class StorageService {
     uploadedBy: string;
     files: UploadRequest[];
   }): Promise<UploadTicket[]> {
+    // Fails here, before any row is written, when the buckets are not configured.
+    const store = getObjectStore();
     const rules = PURPOSES[input.purpose];
     for (const file of input.files) {
       if (file.sizeBytes > rules.maxUploadBytes) {
@@ -149,7 +151,6 @@ export class StorageService {
       })),
     );
 
-    const store = getObjectStore();
     const expiresAt = new Date(Date.now() + UPLOAD_LINK_SECONDS * 1000).toISOString();
     return Promise.all(
       ids.map(async (id, i) => {

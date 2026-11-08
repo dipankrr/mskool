@@ -78,6 +78,11 @@ function humanOrFallback(message: string | undefined, fallback: string): string 
 
 /** The one function callers need. Accepts anything. */
 export function toFriendlyError(cause: unknown): FriendlyError {
+  // A direct upload to the bucket (ADR-063) fails outside tRPC; its message
+  // is already written for the person.
+  if (cause instanceof Error && cause.name === "UploadFailedError") {
+    return { kind: "network", message: cause.message, retryable: true, requiresSignIn: false };
+  }
   if (!isTRPCClientError<AppRouter>(cause)) {
     return {
       kind: "unknown",

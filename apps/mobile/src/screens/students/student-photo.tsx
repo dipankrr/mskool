@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
@@ -51,26 +51,38 @@ export function useStudentPhotoUploader() {
   const utils = trpc.useUtils();
   const link = trpc.student.photoUpload.useMutation();
   const save = trpc.student.setPhoto.useMutation();
+  // Busy for the whole upload, not only the two server calls: shrinking the
+  // photo and sending it to the bucket happen between them.
+  const [uploading, setUploading] = useState(false);
 
   const upload = useCallback(
     async (organizationId: string, studentId: string, photo: PickedImage) => {
-      const image = await prepareImage(photo.uri, photo.width, photo.height, 1200);
-      const ticket = await link.mutateAsync({
-        organizationId,
-        id: studentId,
-        file: { contentType: image.contentType, sizeBytes: image.sizeBytes },
-      });
-      await putToUploadLink(ticket, image);
-      const saved = await save.mutateAsync({ organizationId, id: studentId, objectId: ticket.objectId });
-      utils.student.photo.setData({ organizationId, id: studentId }, { photo: saved.photo });
-      return saved.photo;
+      setUploading(true);
+      try {
+        const image = await prepareImage(photo.uri, photo.width, photo.height, 1200);
+        const ticket = await link.mutateAsync({
+          organizationId,
+          id: studentId,
+          file: { contentType: image.contentType, sizeBytes: image.sizeBytes },
+        });
+        await putToUploadLink(ticket, image);
+        const saved = await save.mutateAsync({
+          organizationId,
+          id: studentId,
+          objectId: ticket.objectId,
+        });
+        utils.student.photo.setData({ organizationId, id: studentId }, { photo: saved.photo });
+        return saved.photo;
+      } finally {
+        setUploading(false);
+      }
     },
     // The mutation objects are stable across renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [utils],
   );
 
-  return { upload, busy: link.isPending || save.isPending };
+  return { upload, busy: uploading };
 }
 
 /** Reads, replaces and removes one student's stored photo. */
