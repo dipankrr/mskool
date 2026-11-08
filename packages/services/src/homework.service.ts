@@ -923,12 +923,12 @@ export class HomeworkService {
   /** Summaries for many homework ids, in the order given. */
   async summaries(ids: string[]): Promise<HomeworkSummary[]> {
     if (ids.length === 0) return [];
-    const rows = await db
+    const rowsP = db
       .select({ a: assignments, subjectName: subjects.name })
       .from(assignments)
       .innerJoin(subjects, eq(assignments.subjectId, subjects.id))
       .where(inArray(assignments.id, ids));
-    const targets = await db
+    const targetsP = db
       .select({
         assignmentId: assignmentTargets.assignmentId,
         sectionId: sections.id,
@@ -941,7 +941,7 @@ export class HomeworkService {
       .innerJoin(classes, eq(sections.classId, classes.id))
       .where(inArray(assignmentTargets.assignmentId, ids))
       .orderBy(asc(classes.numericOrder), asc(sections.name));
-    const counts = await db
+    const countsP = db
       .select({
         assignmentId: studentAssignments.assignmentId,
         sectionId: studentAssignments.sectionId,
@@ -951,11 +951,12 @@ export class HomeworkService {
       .from(studentAssignments)
       .where(inArray(studentAssignments.assignmentId, ids))
       .groupBy(studentAssignments.assignmentId, studentAssignments.sectionId, studentAssignments.status);
-    const fileCounts = await db
+    const fileCountsP = db
       .select({ assignmentId: assignmentFiles.assignmentId, n: count() })
       .from(assignmentFiles)
       .where(inArray(assignmentFiles.assignmentId, ids))
       .groupBy(assignmentFiles.assignmentId);
+    const [rows, targets, counts, fileCounts] = await Promise.all([rowsP, targetsP, countsP, fileCountsP]);
 
     const byId = new Map<string, HomeworkSummary>();
     for (const { a, subjectName } of rows) {
@@ -1391,35 +1392,42 @@ export class HomeworkService {
     if (a.status === "draft" || a.status === "scheduled") {
       throw refuse("CONFLICT", "Give the homework before checking it.");
     }
-    const rows = await this.rowsFor(db, a.id, pair.sectionId);
-    let absent = new Set<string>();
-    if (a.comesBack === "brought" && rows.length) {
-      const att = await db
-        .select({ studentId: dailyAttendanceStatus.studentId })
-        .from(dailyAttendanceStatus)
-        .where(
-          and(
-            eq(dailyAttendanceStatus.sectionId, pair.sectionId),
-            eq(dailyAttendanceStatus.date, todayInIst()),
-            eq(dailyAttendanceStatus.status, "absent"),
-          ),
-        );
-      absent = new Set(att.map((r) => r.studentId));
-    }
-    const files = await this.fileCounts(rows.map((r) => r.sa.id));
-    const photos = await storageService.imageRefs(a.organizationId, rows.map((r) => r.photoObjectId));
-    const [sec] = await db
-      .select({ sectionName: sections.name, className: classes.name })
-      .from(sections)
-      .innerJoin(classes, eq(sections.classId, classes.id))
-      .where(eq(sections.id, pair.sectionId));
-    const [summary] = await this.summaries([a.id]);
+    // Independent reads run together: each is a round trip to the database.
+    const [rows, att, secRows, summaries, gradeLetters] = await Promise.all([
+      this.rowsFor(db, a.id, pair.sectionId),
+      a.comesBack === "brought"
+        ? db
+            .select({ studentId: dailyAttendanceStatus.studentId })
+            .from(dailyAttendanceStatus)
+            .where(
+              and(
+                eq(dailyAttendanceStatus.sectionId, pair.sectionId),
+                eq(dailyAttendanceStatus.date, todayInIst()),
+                eq(dailyAttendanceStatus.status, "absent"),
+              ),
+            )
+        : Promise.resolve([] as { studentId: string }[]),
+      db
+        .select({ sectionName: sections.name, className: classes.name })
+        .from(sections)
+        .innerJoin(classes, eq(sections.classId, classes.id))
+        .where(eq(sections.id, pair.sectionId)),
+      this.summaries([a.id]),
+      a.gradingMode === "grade" ? this.gradeLetters(db, a.gradingScaleId) : Promise.resolve([] as string[]),
+    ]);
+    const absent = new Set(att.map((r) => r.studentId));
+    const [files, photos] = await Promise.all([
+      this.fileCounts(rows.map((r) => r.sa.id)),
+      storageService.imageRefs(a.organizationId, rows.map((r) => r.photoObjectId)),
+    ]);
+    const sec = secRows[0];
+    const summary = summaries[0];
     return {
       homework: summary!,
       sectionId: pair.sectionId,
       sectionName: sec?.sectionName ?? "",
       className: sec?.className ?? "",
-      gradeLetters: a.gradingMode === "grade" ? await this.gradeLetters(db, a.gradingScaleId) : [],
+      gradeLetters,
       rows: rows
         .sort((x, y) => compareRoll(x.rollNumber, y.rollNumber) || fullName(x).localeCompare(fullName(y)))
         .map((r) => this.toRow(r, absent, files, photos)),
@@ -1477,44 +1485,65 @@ export class HomeworkService {
         throw refuse("NOT_FOUND", "One of the students is not on this list.");
       }
       const now = new Date();
-      for (const r of input.results) {
+      // One UPDATE for the whole list: a round trip per child made a class of
+      // 40 take many seconds against a remote database (2026-11-08 walk).
+      const rows = input.results.map((r) => {
         const sa = existing.find((e) => e.id === r.studentAssignmentId)!;
+        const note = r.note === undefined ? sa.note : r.note;
         if (r.checkStatus === null) {
           const back = sa.submittedAt
             ? "submitted"
             : a.comesBack === "sent" && sa.effectiveCloseAt <= now
               ? "missing"
               : "assigned";
-          await tx
-            .update(studentAssignments)
-            .set({
-              status: back,
-              checkStatus: null,
-              marks: null,
-              grade: null,
-              remark: null,
-              note: r.note === undefined ? sa.note : r.note,
-              checkedBy: null,
-              checkedAt: null,
-              statusChangedAt: sa.status === back ? sa.statusChangedAt : now,
-            })
-            .where(eq(studentAssignments.id, sa.id));
-          continue;
+          return {
+            id: sa.id,
+            status: back,
+            checkStatus: null,
+            marks: null,
+            grade: null,
+            remark: null,
+            note,
+            checkedBy: null,
+            checkedAt: null,
+            changedAt: (sa.status === back ? sa.statusChangedAt : now).toISOString(),
+          };
         }
         const cols = this.resultColumns(a, letters, r);
-        await tx
-          .update(studentAssignments)
-          .set({
-            status: "checked",
-            checkStatus: r.checkStatus,
-            ...cols,
-            note: r.note === undefined ? sa.note : r.note,
-            checkedBy: userId,
-            checkedAt: now,
-            statusChangedAt: sa.status === "checked" ? sa.statusChangedAt : now,
-          })
-          .where(eq(studentAssignments.id, sa.id));
-      }
+        return {
+          id: sa.id,
+          status: "checked",
+          checkStatus: r.checkStatus,
+          marks: cols.marks,
+          grade: cols.grade,
+          remark: cols.remark,
+          note,
+          checkedBy: userId,
+          checkedAt: now.toISOString(),
+          changedAt: (sa.status === "checked" ? sa.statusChangedAt : now).toISOString(),
+        };
+      });
+      await tx.execute(sql`
+        UPDATE student_assignments AS sa SET
+          status = v.status::student_assignment_status,
+          check_status = v.check_status::homework_check_status,
+          marks = v.marks::numeric,
+          grade = v.grade,
+          remark = v.remark::homework_remark,
+          note = v.note,
+          checked_by = v.checked_by,
+          checked_at = v.checked_at::timestamptz,
+          status_changed_at = v.changed_at::timestamptz,
+          updated_at = now()
+        FROM (VALUES ${sql.join(
+          rows.map(
+            (r) =>
+              sql`(${r.id}::uuid, ${r.status}::text, ${r.checkStatus}::text, ${r.marks}::text, ${r.grade}::text, ${r.remark}::text, ${r.note}::text, ${r.checkedBy}::text, ${r.checkedAt}::text, ${r.changedAt}::text)`,
+          ),
+          sql`, `,
+        )}) AS v(id, status, check_status, marks, grade, remark, note, checked_by, checked_at, changed_at)
+        WHERE sa.id = v.id AND sa.assignment_id = ${a.id}
+      `);
       if (!a.isLocked) await tx.update(assignments).set({ isLocked: true }).where(eq(assignments.id, a.id));
 
       const all = await tx

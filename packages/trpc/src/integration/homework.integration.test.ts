@@ -373,7 +373,7 @@ describe("homework (ADR-064)", () => {
     );
   });
 
-  it("sends photos, replaces them until checked, and lets the old ones go", async () => {
+  it("sends photos, replaces them until checked, and lets the old ones go", { timeout: 90_000 }, async () => {
     const hw = await giveHomework({ title: title("sent"), comesBack: "sent", gradingMode: "marks", maxMarks: "10" });
     const sa = await ownedSaOf(hw.id);
     expect((await homeworkService.portalGet([w.ownedStudentId], w.ownedStudentId, sa.id)).canSend).toBe(true);
