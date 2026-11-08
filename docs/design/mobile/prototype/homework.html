@@ -1,0 +1,801 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Teacher Homework Mockups</title>
+<style>
+/* ============================================================
+   Teacher homework revamp (2026-11-02). Mockup only, for review.
+   Same tokens as student-fees.html: Clash, 4-pt spacing, radii
+   12/14/16/24/full, one emerald accent, tones as status only.
+   Phones are 360 wide. Names and figures are made up.
+   ============================================================ */
+@font-face { font-family: Clash; font-weight: 400; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Regular.ttf); }
+@font-face { font-family: Clash; font-weight: 500; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Medium.ttf); }
+@font-face { font-family: Clash; font-weight: 600; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Semibold.ttf); }
+@font-face { font-family: Clash; font-weight: 700; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Bold.ttf); }
+:root {
+  --canvas: #F2F3F7; --surface: #FFFFFF; --ink: #101828; --muted: #5D6674;
+  --hair: rgba(16, 24, 40, 0.08); --accent: #0F7A44; --deep: #0B6B3A; --tint: #E8F5EE;
+  --field: #ECEEF3; --chip: #E9EDF3; --chev: #98A2B3;
+  --scrim: rgba(16, 24, 40, 0.45); --grab: #D5DAE2;
+  --amb: #B54708; --amb-t: #FFFAEB; --red: #B42318; --red-t: #FEF3F2; --slate: #475467; --slate-t: #F2F4F7;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { color-scheme: light; }
+body { background: #DADBD6; color: var(--ink); font-family: Clash, system-ui, sans-serif; font-size: 15px; padding: 32px 16px 64px; }
+svg { display: block; flex: none; }
+.intro { max-width: 1160px; margin: 0 auto 24px; }
+.intro h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.6px; }
+.intro p { margin-top: 6px; color: var(--muted); max-width: 760px; line-height: 1.45; }
+.group { max-width: 1160px; margin: 40px auto 16px; font-size: 12px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: #3C4450; }
+.frames { max-width: 1160px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 32px 24px; }
+figure { width: 360px; max-width: 100%; }
+figcaption { margin-top: 12px; font-size: 13px; color: #3C4450; line-height: 1.45; }
+figcaption b { font-weight: 600; color: var(--ink); }
+body { counter-reset: frame; }
+figure { counter-increment: frame; }
+figcaption::before { content: counter(frame) " · "; font-weight: 700; color: var(--ink); }
+.lock { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 999px; background: var(--field); color: var(--slate); font-size: 14px; font-weight: 600; }
+.notice { margin: 12px 20px 0; padding: 12px 14px; border-radius: 14px; background: var(--amb-t); color: var(--amb); font-size: 13px; line-height: 1.4; font-weight: 500; }
+.notice.n { background: var(--slate-t); color: var(--slate); }
+.qrow { padding: 12px 16px; display: flex; gap: 12px; align-items: flex-start; }
+.qrow + .qrow { border-top: 1px solid var(--hair); }
+.qn { width: 28px; height: 28px; border-radius: 8px; background: var(--chip); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: none; }
+.mini { width: 44px; height: 44px; border-radius: 10px; background: repeating-linear-gradient(135deg, #e3e7ee 0 5px, #edf0f5 5px 10px); flex: none; }
+.allbar { margin-top: 12px; padding: 12px 12px 12px 16px; border-radius: 16px; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.allbar .btn { background: #fff; color: var(--ink); white-space: nowrap; flex: none; }
+
+.phone { position: relative; width: 360px; height: 760px; max-width: 100%; background: var(--canvas); border-radius: 32px; overflow: hidden; box-shadow: 0 0 0 1px rgba(16,24,40,.1), 0 14px 34px rgba(16,24,40,.12); }
+.status { height: 32px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 600; }
+.status i { width: 40px; height: 8px; border-radius: 999px; background: var(--ink); opacity: .75; }
+.body { padding: 0 20px; }
+.meta { font-size: 13px; color: var(--muted); }
+.label { font-size: 12px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); }
+.name { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
+.tnum { font-variant-numeric: tabular-nums; }
+.grow { flex: 1; min-width: 0; }
+.clip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card { background: var(--surface); border-radius: 16px; }
+.pill { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; flex: none; }
+.pill.p { color: var(--deep); background: var(--tint); }
+.pill.c { color: var(--amb); background: var(--amb-t); }
+.pill.r { color: var(--red); background: var(--red-t); }
+.pill.n { color: var(--slate); background: var(--slate-t); }
+.row { position: relative; min-height: 60px; padding: 10px 16px; display: flex; align-items: center; gap: 12px; }
+.row + .row::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--hair); }
+.section { margin: 20px 4px 8px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.link { color: var(--deep); font-size: 14px; font-weight: 600; }
+
+.title { padding: 8px 20px 0; display: flex; align-items: center; justify-content: space-between; }
+.title h2 { font-size: 30px; font-weight: 700; letter-spacing: -0.6px; }
+.head { height: 56px; padding: 0 20px 0 4px; display: flex; align-items: center; gap: 4px; }
+.back { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; flex: none; }
+.htitle { font-size: 20px; font-weight: 700; letter-spacing: -0.2px; line-height: 1.2; }
+.round { width: 40px; height: 40px; border-radius: 999px; background: var(--tint); color: var(--deep); display: flex; align-items: center; justify-content: center; flex: none; }
+
+.chips { display: flex; gap: 8px; overflow: hidden; }
+.chip { height: 36px; padding: 0 14px; border-radius: 999px; background: var(--surface); color: var(--muted); display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; white-space: nowrap; flex: none; border: 1px solid transparent; }
+.chip.on { background: var(--ink); color: #fff; }
+.chip.sel { background: var(--tint); color: var(--deep); border-color: var(--accent); }
+.chip.add { color: var(--deep); border: 1px dashed rgba(15,122,68,.5); background: transparent; }
+
+/* to-check cards */
+.tc { padding: 14px 16px; }
+.tc + .tc { margin-top: 8px; }
+.tctop { display: flex; align-items: center; gap: 12px; }
+.badge { width: 44px; height: 44px; border-radius: 12px; background: var(--chip); display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; line-height: 1; flex: none; }
+.badge small { font-size: 10px; font-weight: 600; color: var(--muted); margin-top: 2px; }
+.bar { margin-top: 12px; height: 6px; border-radius: 999px; background: var(--field); overflow: hidden; display: flex; }
+.bar i { display: block; height: 100%; }
+.tcfoot { margin-top: 10px; display: flex; align-items: center; justify-content: space-between; }
+.btn { height: 40px; padding: 0 16px; border-radius: 999px; background: var(--ink); color: #fff; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; }
+.btn.soft { background: var(--tint); color: var(--deep); }
+.btn.ghost { background: var(--chip); color: var(--ink); }
+
+.cta { height: 52px; border-radius: 999px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 16px; font-weight: 600; box-shadow: 0 10px 24px rgba(16,24,40,.16); }
+.cta.dark { background: var(--ink); }
+.float { position: absolute; right: 20px; bottom: 92px; z-index: 2; } .float .cta { padding: 0 22px; }
+.tabbar { position: absolute; left: 12px; right: 12px; bottom: 12px; height: 64px; border-radius: 32px; background: var(--surface); box-shadow: 0 10px 30px rgba(16,24,40,.12); display: flex; align-items: center; justify-content: space-around; font-size: 11px; font-weight: 600; color: var(--muted); z-index: 2; }
+.tabbar span { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 10px; border-radius: 20px; }
+.tabbar span.on { background: var(--tint); color: var(--deep); }
+.dock { position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 20px 20px; background: var(--surface); border-top: 1px solid var(--hair); z-index: 2; }
+
+/* sheet */
+.scrim { position: absolute; inset: 0; background: var(--scrim); z-index: 3; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; background: var(--surface); border-radius: 24px 24px 0 0; box-shadow: 0 -12px 40px rgba(16,24,40,.18); z-index: 4; }
+.grab { width: 36px; height: 4px; border-radius: 999px; background: var(--grab); margin: 8px auto 4px; }
+.sheethead { padding: 8px 20px 0; display: flex; justify-content: space-between; align-items: center; }
+.sheethead .t { font-size: 20px; font-weight: 700; letter-spacing: -0.2px; }
+.fl { margin: 16px 20px 0; }
+.fl .label { margin-bottom: 8px; }
+.input { min-height: 52px; border-radius: 14px; background: var(--field); padding: 14px 16px; font-size: 16px; line-height: 1.4; }
+.input.tall { min-height: 84px; }
+.ph { color: var(--chev); }
+.seg { display: flex; padding: 4px; border-radius: 14px; background: var(--field); gap: 4px; }
+.seg span { flex: 1; height: 40px; border-radius: 11px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.seg span.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(16,24,40,.12); }
+.thumbs { display: flex; gap: 8px; }
+.thumb { width: 64px; height: 64px; border-radius: 12px; background: repeating-linear-gradient(135deg, #e3e7ee 0 6px, #edf0f5 6px 12px); display: flex; align-items: flex-end; padding: 4px; font-size: 10px; color: var(--slate); font-weight: 600; }
+.thumb.addp { background: var(--tint); color: var(--deep); align-items: center; justify-content: center; flex-direction: column; gap: 2px; font-size: 11px; }
+.morerow { margin: 16px 20px 0; padding: 12px 0; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--hair); }
+.kv { display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: 0 16px; font-size: 15px; }
+.kv + .kv { border-top: 1px solid var(--hair); }
+.kv b { font-weight: 600; }
+.toggle { width: 44px; height: 26px; border-radius: 999px; background: var(--accent); position: relative; }
+.toggle::after { content: ""; position: absolute; right: 3px; top: 3px; width: 20px; height: 20px; border-radius: 999px; background: #fff; }
+.toggle.off { background: #CBD2DC; } .toggle.off::after { right: auto; left: 3px; }
+
+/* register */
+.counts { display: flex; gap: 6px; }
+.counts span { flex: 1; height: 52px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; }
+.counts b { font-size: 17px; font-weight: 700; }
+.reg { margin-top: 8px; }
+.st { min-height: 56px; padding: 6px 8px 6px 16px; display: flex; align-items: center; gap: 12px; position: relative; }
+.st + .st::before { content: ""; position: absolute; top: 0; left: 52px; right: 0; height: 1px; background: var(--hair); }
+.roll { width: 24px; font-size: 13px; color: var(--muted); font-weight: 600; text-align: right; flex: none; }
+.mark { width: 104px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; font-weight: 600; flex: none; }
+.mark.done { background: var(--tint); color: var(--deep); }
+.mark.part { background: var(--amb-t); color: var(--amb); }
+.mark.not { background: var(--red-t); color: var(--red); }
+.mark.abs { background: var(--slate-t); color: var(--slate); }
+.mark.unset { background: var(--field); color: var(--muted); }
+.note { font-size: 12px; color: var(--amb); margin-top: 1px; }
+.score { width: 64px; height: 40px; border-radius: 12px; background: var(--field); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; flex: none; }
+.score.focus { background: var(--surface); box-shadow: inset 0 0 0 2px var(--accent); }
+.score.empty { color: var(--chev); }
+.keypad { position: absolute; left: 0; right: 0; bottom: 0; background: #D7DBE2; padding: 6px 6px 18px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; z-index: 3; }
+.keypad span { height: 44px; border-radius: 8px; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 500; }
+.keypad span.fn { background: #BFC5CF; font-size: 14px; font-weight: 600; }
+.keypad span.go { background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; }
+
+.toast { position: absolute; left: 16px; right: 16px; bottom: 92px; height: 56px; padding: 0 8px 0 16px; border-radius: 16px; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 500; z-index: 3; }
+.toast b { color: #7EE2A8; font-weight: 600; padding: 0 12px; }
+
+.paper { height: 300px; margin: 0 20px; border-radius: 16px; background: #FBFAF6; position: relative; overflow: hidden; box-shadow: inset 0 0 0 1px var(--hair); }
+.paper i { position: absolute; left: 24px; right: 24px; height: 1px; background: #DDE6F2; }
+.paper u { position: absolute; left: 32px; height: 8px; border-radius: 4px; background: #2D3A55; opacity: .55; text-decoration: none; }
+.qbar { height: 8px; border-radius: 999px; background: var(--field); overflow: hidden; margin-top: 6px; }
+.qbar i { display: block; height: 100%; border-radius: 999px; }
+.load { display: flex; gap: 4px; margin-top: 10px; }
+.load i { flex: 1; height: 8px; border-radius: 999px; background: var(--field); }
+.big { font-size: 34px; font-weight: 700; letter-spacing: -0.6px; line-height: 1.1; }
+.ring { width: 72px; height: 72px; border-radius: 999px; background: conic-gradient(var(--accent) 0 82%, var(--field) 82% 100%); display: flex; align-items: center; justify-content: center; flex: none; }
+.ring div { width: 56px; height: 56px; border-radius: 999px; background: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; }
+.dots { display: flex; gap: 4px; }
+.dots i { width: 14px; height: 14px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/></symbol>
+  <symbol id="i-half" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="2.2" fill="none"/><path d="M12 4a8 8 0 010 16z" fill="currentColor"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
+  <symbol id="i-cam" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/><circle cx="12" cy="13" r="3.5" stroke="currentColor" stroke-width="2" fill="none"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5h6a2 2 0 012 2v12a2 2 0 00-2-2H4zM20 5h-6a2 2 0 00-2 2v12a2 2 0 012-2h6z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2.5" stroke="currentColor" stroke-width="2" fill="none"/><path d="M11 18h2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-quiz" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4" stroke="currentColor" stroke-width="2" fill="none"/><path d="M10 9.5a2 2 0 113 1.7c-.7.4-1 .9-1 1.6M12 16h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0112 0v5l1.5 2h-15zM10 20h4" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z" fill="currentColor"/></symbol>
+  <symbol id="i-att" viewBox="0 0 24 24"><path d="M4 7l2 2 3-3M4 15l2 2 3-3M12 8h8M12 16h8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
+  <symbol id="i-people" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5" fill="currentColor"/><path d="M2.5 19a6.5 6.5 0 0113 0z" fill="currentColor"/><circle cx="17" cy="9" r="2.5" fill="currentColor"/><path d="M15 13.5a5 5 0 016.5 5.5H17" fill="currentColor"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 8v4l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></symbol>
+  <symbol id="i-msg" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/></symbol>
+</svg>
+
+<div class="intro">
+  <h1>Teacher homework, redrawn</h1>
+  <p>The teacher's day has two homework moments: <b>giving</b> it at the end of a period and <b>checking</b> notebooks at the start of the next one. Everything here is built around making those two moments take seconds, then everything else (online work, quizzes, the class diary, a child's record) sits one step behind. Read with <code>docs/design/mobile/05-teacher-homework.md</code>, which has the reasoning, the backend changes and the questions for you.</p>
+</div>
+
+<!-- ================================================================ -->
+<div class="group">1 · The Homework tab</div>
+<div class="frames">
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="title"><h2>Homework</h2><span class="round"><svg width="20" height="20"><use href="#i-more"/></svg></span></div>
+  <div class="body" style="margin-top:12px">
+    <div class="chips"><span class="chip on">All my classes</span><span class="chip">6A Maths</span><span class="chip">6B Maths</span><span class="chip">7A Maths</span></div>
+
+    <div class="section"><span class="label">To check · 3</span><span class="meta">oldest first</span></div>
+    <div class="card tc">
+      <div class="tctop">
+        <div class="badge">6A<small>MATHS</small></div>
+        <div class="grow"><div class="name clip">Ex 4.2, Q1–10</div><div class="meta">Due today 8:00 am · notebook</div></div>
+      </div>
+      <div class="bar"><i style="width:0%"></i></div>
+      <div class="tcfoot"><span class="meta tnum">0 of 32 checked</span><span class="btn"><svg width="16" height="16"><use href="#i-check"/></svg>Check now</span></div>
+    </div>
+    <div class="card tc">
+      <div class="tctop">
+        <div class="badge">6B<small>MATHS</small></div>
+        <div class="grow"><div class="name clip">Ex 4.2, Q1–10</div><div class="meta">Due today 8:00 am · notebook</div></div>
+      </div>
+      <div class="bar"><i style="width:56%;background:var(--accent)"></i><i style="width:6%;background:var(--amb)"></i></div>
+      <div class="tcfoot"><span class="meta tnum">18 of 30 checked · 2 incomplete</span><span class="btn ghost">Continue</span></div>
+    </div>
+    <div class="card tc">
+      <div class="tctop">
+        <div class="badge" style="background:var(--amb-t);color:var(--amb)">7A<small style="color:var(--amb)">MATHS</small></div>
+        <div class="grow"><div class="name clip">Integers worksheet (photo)</div><div class="meta">Due Sat · online · waiting 2 days</div></div>
+      </div>
+      <div class="tcfoot"><span class="meta tnum">6 to review · 22 not sent</span><span class="btn ghost">Review 6</span></div>
+    </div>
+
+      </div>
+  <div class="float"><div class="cta"><svg width="20" height="20"><use href="#i-plus"/></svg>Give homework</div></div>
+  <div class="tabbar"><span><svg width="22" height="22"><use href="#i-home"/></svg>Home</span><span><svg width="22" height="22"><use href="#i-att"/></svg>Attendance</span><span><svg width="22" height="22"><use href="#i-people"/></svg>Students</span><span class="on"><svg width="22" height="22"><use href="#i-book"/></svg>Homework</span><span><svg width="22" height="22"><use href="#i-more"/></svg>More</span></div>
+</div>
+<figcaption><b>Home is a to-do list, not a calendar.</b> "To check" leads because that is the work waiting on the teacher, oldest first, with real progress per class. Only the teacher's own classes appear (a principal gets a school view, the last frame). "Given today" sits below it (scrolled out of view here; see frame 9). The calendar moves behind "Diary". One button gives homework from anywhere on the tab.</figcaption>
+</figure>
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="title"><h2>Homework</h2><span class="round"><svg width="20" height="20"><use href="#i-more"/></svg></span></div>
+  <div class="body" style="margin-top:12px">
+    <div class="chips"><span class="chip on">All my classes</span><span class="chip">6A Maths</span><span class="chip">6B Maths</span></div>
+    <div class="card" style="margin-top:20px;padding:24px 20px;text-align:center">
+      <div style="width:56px;height:56px;border-radius:999px;background:var(--tint);color:var(--deep);display:flex;align-items:center;justify-content:center;margin:0 auto"><svg width="28" height="28"><use href="#i-check"/></svg></div>
+      <div class="name" style="margin-top:12px;font-size:20px">All checked</div>
+      <div class="meta" style="margin-top:4px">Nothing is waiting on you. 4 children owe you work from earlier this week.</div>
+      <div class="btn soft" style="margin-top:14px">See who owes work</div>
+    </div>
+    <div class="section"><span class="label">Given today</span><span class="link">Diary</span></div>
+    <div class="card">
+      <div class="row"><div class="grow"><div class="name clip">Ex 4.3, Q1–6</div><div class="meta">6A, 6B · due tomorrow 8:00 am</div></div><span class="pill p">Sent</span></div>
+    </div>
+    <div class="section"><span class="label">Drafts · 1</span></div>
+    <div class="card">
+      <div class="row"><div class="grow"><div class="name clip">Fractions project</div><div class="meta">6A · not sent</div></div><svg width="18" height="18" style="color:var(--chev)"><use href="#i-chev"/></svg></div>
+    </div>
+  </div>
+  <div class="float"><div class="cta"><svg width="20" height="20"><use href="#i-plus"/></svg>Give homework</div></div>
+  <div class="tabbar"><span><svg width="22" height="22"><use href="#i-home"/></svg>Home</span><span><svg width="22" height="22"><use href="#i-att"/></svg>Attendance</span><span><svg width="22" height="22"><use href="#i-people"/></svg>Students</span><span class="on"><svg width="22" height="22"><use href="#i-book"/></svg>Homework</span><span><svg width="22" height="22"><use href="#i-more"/></svg>More</span></div>
+</div>
+<figcaption><b>Caught up.</b> An empty "To check" says so in a positive way, and points at the one thing still worth chasing: children who owe work. Drafts show only when there are some.</figcaption>
+</figure>
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="head"><span class="back"><svg width="22" height="22"><use href="#i-back"/></svg></span><div class="grow"><div class="htitle">Owe work</div><div class="meta">4 children · 6 homeworks · last 2 weeks</div></div></div>
+  <div class="body">
+    <div class="chips"><span class="chip on">All my classes</span><span class="chip">6A Maths</span><span class="chip">6B Maths</span></div>
+    <div class="section"><span class="label">Most owed first</span></div>
+    <div class="card">
+      <div class="row" style="align-items:flex-start"><div class="badge" style="width:40px;height:40px">6A</div><div class="grow">
+        <div style="display:flex;justify-content:space-between;align-items:center"><span class="name">Ishaan Rao</span><span class="pill r">3 owed</span></div>
+        <div class="meta" style="margin-top:6px">Ex 4.2 · not done · bring by Tue</div>
+        <div class="meta">Ex 3.6 · incomplete · since 27 Oct</div>
+        <div class="meta">Ch 3 worksheet · not done · since 23 Oct</div>
+        <div style="display:flex;gap:8px;margin-top:10px"><span class="btn soft" style="height:36px">Brought it</span><span class="btn ghost" style="height:36px"><svg width="14" height="14"><use href="#i-msg"/></svg>Tell parent</span></div>
+      </div></div>
+      <div class="row" style="align-items:flex-start"><div class="badge" style="width:40px;height:40px">6B</div><div class="grow">
+        <div style="display:flex;justify-content:space-between;align-items:center"><span class="name">Neha Saini</span><span class="pill c">1 owed</span></div>
+        <div class="meta" style="margin-top:6px">Ex 4.2 · incomplete · since today</div>
+      </div></div>
+      <div class="row" style="align-items:flex-start"><div class="badge" style="width:40px;height:40px">6A</div><div class="grow">
+        <div style="display:flex;justify-content:space-between;align-items:center"><span class="name">Arjun Mehta</span><span class="pill c">1 owed</span></div>
+        <div class="meta" style="margin-top:6px">Ex 4.2 · incomplete · Q7–10 left</div>
+      </div></div>
+    </div>
+    <div class="meta" style="margin:12px 4px 0">Older than 2 weeks drops off this list but stays on the child's record.</div>
+  </div>
+</div>
+<figcaption><b>Owe work, by child rather than by homework.</b> Opened from Home, the saved summary and the class diary. When a child brings the notebook late, "Brought it" marks it done (as late) without reopening the whole register. The two-week window keeps the list a list of things to act on, not an archive.</figcaption>
+</figure>
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="head"><span class="back"><svg width="22" height="22"><use href="#i-back"/></svg></span><span class="htitle grow">Diary</span><span class="chip" style="height:32px">This week<svg width="14" height="14"><use href="#i-down"/></svg></span></div>
+  <div class="body">
+    <div class="chips"><span class="chip on">Mon 2</span><span class="chip">Tue 3</span><span class="chip">Wed 4</span><span class="chip">Thu 5</span><span class="chip">Fri 6</span></div>
+    <div class="section"><span class="label">Given Monday</span><span class="meta">by date given</span></div>
+    <div class="card">
+      <div class="row"><div class="badge" style="width:40px;height:40px">6A</div><div class="grow"><div class="name clip">Ex 4.3, Q1–6</div><div class="meta">Due Tue · notebook · 0/32 checked</div></div></div>
+      <div class="row"><div class="badge" style="width:40px;height:40px">6B</div><div class="grow"><div class="name clip">Ex 4.3, Q1–6</div><div class="meta">Due Tue · notebook · 0/30 checked</div></div></div>
+      <div class="row"><div class="badge" style="width:40px;height:40px">7A</div><div class="grow"><div class="name clip">Chapter 5 quiz</div><div class="meta">Due Wed · 10 questions · auto-marked</div></div></div>
+    </div>
+    <div class="section"><span class="label">Given Friday 30 Oct</span></div>
+    <div class="card">
+      <div class="row"><div class="badge" style="width:40px;height:40px">6A</div><div class="grow"><div class="name clip">Ex 4.2, Q1–10</div><div class="meta">Due Mon · 32/32 checked</div></div><span class="pill p">Done</span></div>
+      <div class="row"><div class="badge" style="width:40px;height:40px">7A</div><div class="grow"><div class="name clip">Integers worksheet</div><div class="meta">Due Mon · 6 to review</div></div><span class="pill c">Open</span></div>
+    </div>
+  </div>
+</div>
+<figcaption><b>The diary groups by the day homework was given</b>, which is how Indian school diaries read ("what did I give on Friday"), with the class on every row. Search and older weeks live behind the week picker. This replaces the old week rail plus the "All" segments.</figcaption>
+</figure>
+</div>
+
+<!-- ================================================================ -->
+<div class="group">2 · Give homework (target: under 20 seconds)</div>
+<div class="frames">
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="scrim"></div>
+  <div class="sheet" style="top:56px">
+    <div class="grab"></div>
+    <div class="sheethead"><span class="t">Give homework</span><span class="meta">62 students</span></div>
+    <div class="fl"><div class="label">Classes</div>
+      <div class="chips" style="flex-wrap:wrap"><span class="chip sel"><svg width="14" height="14"><use href="#i-check"/></svg>6A Maths</span><span class="chip sel"><svg width="14" height="14"><use href="#i-check"/></svg>6B Maths</span><span class="chip" style="background:var(--field)">7A Maths</span><span class="chip" style="background:var(--field)">7A Science</span></div>
+    </div>
+    <div class="fl"><div class="label">What to do</div>
+      <div class="input tall">Ex 4.3, Q1–6<br><span class="ph">Add a note for parents (optional)</span></div>
+    </div>
+    <div class="fl"><div class="thumbs"><div class="thumb">board.jpg</div><div class="thumb addp"><svg width="22" height="22"><use href="#i-cam"/></svg>Photo</div><div class="thumb addp" style="font-size:11px">PDF</div></div></div>
+    <div class="fl"><div class="label">Due</div>
+      <div class="chips"><span class="chip on">Tomorrow</span><span class="chip" style="background:var(--field)">Wed</span><span class="chip" style="background:var(--field)">Pick…</span></div>
+      <div class="meta" style="margin-top:6px">Tue 3 Nov, 8:00 am · next Maths period</div>
+    </div>
+    <div class="fl"><div class="label">How it comes back</div>
+      <div class="seg"><span class="on"><svg width="16" height="16"><use href="#i-book"/></svg>Notebook</span><span><svg width="16" height="16"><use href="#i-phone"/></svg>Online</span><span><svg width="16" height="16"><use href="#i-quiz"/></svg>Quiz</span></div>
+    </div>
+    <div class="morerow"><span class="name" style="font-size:15px">More options</span><span class="meta" style="display:flex;align-items:center;gap:4px">No marks · late 2 days<svg width="16" height="16"><use href="#i-chev"/></svg></span></div>
+    <div style="position:absolute;left:20px;right:20px;bottom:20px;display:flex;gap:8px"><div class="cta dark" style="flex:none;width:112px;background:var(--chip);color:var(--ink);box-shadow:none">Save draft</div><div class="cta" style="flex:1">Give to 6A, 6B</div></div>
+  </div>
+</div>
+<figcaption><b>One sheet, five decisions, sensible defaults.</b> Each chip is a class and subject the teacher teaches (from the teaching assignments), and the ones she used last are pre-picked; picking two subjects gives two homeworks. The due line spells out the actual date, so "Tomorrow" on a Saturday never surprises anyone ("next Maths period" needs a timetable, which doesn't exist yet; until then it shows the date only). Several classes in one go. A photo of the board or worksheet is first-class. Due chips skip Sundays and holidays. "How it comes back" replaces seven kinds × seven submission types with three plain choices. "Give" publishes straight away; there's no separate publish step.</figcaption>
+</figure>
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="scrim"></div>
+  <div class="sheet" style="top:56px">
+    <div class="grab"></div>
+    <div class="sheethead"><span class="t">Give homework</span><span class="meta">28 students</span></div>
+    <div class="fl"><div class="label">Classes</div>
+      <div class="chips"><span class="chip sel"><svg width="14" height="14"><use href="#i-check"/></svg>7A Maths</span><span class="chip" style="background:var(--field)">6A Maths</span><span class="chip" style="background:var(--field)">6B Maths</span></div>
+    </div>
+    <div class="fl"><div class="input" style="min-height:52px">Integers worksheet, all questions</div></div>
+    <div class="fl"><div class="thumbs"><div class="thumb">sheet.pdf</div><div class="thumb addp"><svg width="22" height="22"><use href="#i-cam"/></svg>Photo</div></div></div>
+    <div class="fl"><div class="label">How it comes back</div>
+      <div class="seg"><span><svg width="16" height="16"><use href="#i-book"/></svg>Notebook</span><span class="on"><svg width="16" height="16"><use href="#i-phone"/></svg>Online</span><span><svg width="16" height="16"><use href="#i-quiz"/></svg>Quiz</span></div>
+    </div>
+    <div class="fl"><div class="label">They can send</div>
+      <div class="chips" style="flex-wrap:wrap"><span class="chip sel"><svg width="14" height="14"><use href="#i-check"/></svg>Photos</span><span class="chip sel"><svg width="14" height="14"><use href="#i-check"/></svg>Typed answer</span><span class="chip" style="background:var(--field)">PDF</span><span class="chip" style="background:var(--field)">Link</span></div>
+      <div class="meta" style="margin-top:6px">Up to 5 photos. A parent can send it from the child's account.</div>
+    </div>
+    <div class="morerow"><span class="name" style="font-size:15px">More options</span><span class="meta" style="display:flex;align-items:center;gap:4px">Out of 10 · late 2 days<svg width="16" height="16"><use href="#i-chev"/></svg></span></div>
+    <div style="position:absolute;left:20px;right:20px;bottom:20px;display:flex;gap:8px"><div class="cta" style="flex:none;width:112px;background:var(--chip);color:var(--ink);box-shadow:none">Save draft</div><div class="cta" style="flex:1">Give to 7A</div></div>
+  </div>
+</div>
+<figcaption><b>Online adds one question: what can they send?</b> Photos and a typed answer are on by default because that's what a phone at home produces. Online work defaults to marks out of 10 (it will be reviewed one by one anyway); the summary row says so. Due chips are hidden here only to fit the frame; they sit above, as in frame 5.</figcaption>
+</figure>
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="scrim"></div>
+  <div class="sheet" style="top:56px">
+    <div class="grab"></div>
+    <div class="sheethead"><span class="t">Give homework</span><span class="meta">28 students</span></div>
+    <div class="fl"><div class="input" style="min-height:52px">Chapter 5 quiz · Integers</div></div>
+    <div class="fl"><div class="seg"><span><svg width="16" height="16"><use href="#i-book"/></svg>Notebook</span><span><svg width="16" height="16"><use href="#i-phone"/></svg>Online</span><span class="on"><svg width="16" height="16"><use href="#i-quiz"/></svg>Quiz</span></div></div>
+    <div class="fl" style="display:flex;justify-content:space-between;align-items:baseline"><span class="label" style="margin:0">Questions · 4</span><span class="meta">7 marks · ~10 min</span></div>
+    <div class="card" style="margin:8px 20px 0;background:var(--canvas)">
+      <div class="qrow"><span class="qn">1</span><div class="grow"><div class="name clip" style="font-size:15px">Is −5 greater than −2?</div><div class="meta">True / false · 1 mark</div></div></div>
+      <div class="qrow"><span class="qn">2</span><div class="grow"><div class="name clip" style="font-size:15px">−3 − (−8) = ?</div><div class="meta">Choose one · 4 options · 1 mark</div></div></div>
+      <div class="qrow"><span class="qn">3</span><div class="grow"><div class="name clip" style="font-size:15px">Order: −7, 3, −1, 0</div><div class="meta">Fill in · 2 marks · from bank</div></div></div>
+      <div class="qrow"><span class="qn">4</span><div class="grow"><div class="name clip" style="font-size:15px">Explain why −4 × −2 is positive</div><div class="meta" style="color:var(--amb)">Written · 3 marks · you mark this one</div></div></div>
+    </div>
+    <div class="fl" style="display:flex;gap:8px"><span class="btn ghost" style="flex:1;justify-content:center"><svg width="16" height="16"><use href="#i-plus"/></svg>Write</span><span class="btn ghost" style="flex:1;justify-content:center">Bank · 24</span><span class="btn ghost" style="flex:1;justify-content:center"><svg width="16" height="16"><use href="#i-cam"/></svg>Scan</span></div>
+    <div class="morerow"><span class="name" style="font-size:15px">Quiz rules</span><span class="meta" style="display:flex;align-items:center;gap:4px">1 try · answers after due<svg width="16" height="16"><use href="#i-chev"/></svg></span></div>
+    <div style="position:absolute;left:20px;right:20px;bottom:20px;display:flex;gap:8px"><div class="cta" style="flex:none;width:112px;background:var(--chip);color:var(--ink);box-shadow:none">Save draft</div><div class="cta" style="flex:1">Give to 7A</div></div>
+  </div>
+</div>
+<figcaption><b>A quiz is built inside the same sheet.</b> Questions are added three ways: write one, pick from the bank (filtered to this class and subject), or scan a printed question (later; listed so the slot is reserved). Written answers are flagged "you mark this one" before giving, so the teacher knows the work it creates. Quiz rules (tries, shuffle, when answers show) are one summary row. Holding a question reorders or removes it.</figcaption>
+</figure>
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="scrim"></div>
+  <div class="sheet" style="top:56px">
+    <div class="grab"></div>
+    <div class="sheethead"><span class="t">More options</span><span class="link">Done</span></div>
+    <div class="fl"><div class="label">Marks</div>
+      <div class="seg"><span>None</span><span class="on">Out of 10</span><span>Grade</span></div>
+    </div>
+    <div class="card" style="margin:16px 20px 0;background:var(--canvas)">
+      <div class="kv"><span>Late work</span><b>Until Thu 8:00 am</b></div>
+      <div class="kv"><span>Publish</span><b>Now</b></div>
+      <div class="kv"><span>Only some students</span><b>All 62</b></div>
+      <div class="kv"><span>Type</span><b>Homework</b></div>
+      <div class="kv"><span>Time it should take</span><b>20 min</b></div>
+      <div class="kv"><span>Tell parents</span><span class="toggle"></span></div>
+    </div>
+    <div class="fl"><div class="label">Reuse</div>
+      <div class="card" style="background:var(--canvas)">
+        <div class="kv"><span>Copy last week's</span><svg width="16" height="16" style="color:var(--chev)"><use href="#i-chev"/></svg></div>
+        <div class="kv"><span>Repeat every school day</span><span class="toggle off"></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+<figcaption><b>Everything rare lives one tap away</b> and is summarised on the main sheet ("No marks · late 2 days"), so nothing is hidden by surprise. Scheduling, picking individual students, recurring practice and copying old homework become real features. Marks, type and class stay editable until a child has handed something in.</figcaption>
+</figure>
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="title"><h2>Homework</h2><span class="round"><svg width="20" height="20"><use href="#i-more"/></svg></span></div>
+  <div class="body" style="margin-top:12px">
+    <div class="chips"><span class="chip on">All my classes</span><span class="chip">6A Maths</span><span class="chip">6B Maths</span></div>
+    <div class="section"><span class="label">Given today</span><span class="link">Diary</span></div>
+    <div class="card">
+      <div class="row" style="background:var(--tint);border-radius:16px"><div class="grow"><div class="name clip">Ex 4.3, Q1–6</div><div class="meta">6A, 6B · due tomorrow 8:00 am · 62 students</div></div><span class="pill p">Sent</span></div>
+    </div>
+    <div class="section"><span class="label">To check · 0</span></div>
+    <div class="meta" style="padding:0 4px">Nothing waiting.</div>
+  </div>
+  <div class="toast"><span>Given to 6A and 6B. Parents told at 6 pm.</span><b>Undo</b></div>
+  <div class="tabbar"><span><svg width="22" height="22"><use href="#i-home"/></svg>Home</span><span><svg width="22" height="22"><use href="#i-att"/></svg>Attendance</span><span><svg width="22" height="22"><use href="#i-people"/></svg>Students</span><span class="on"><svg width="22" height="22"><use href="#i-book"/></svg>Homework</span><span><svg width="22" height="22"><use href="#i-more"/></svg>More</span></div>
+</div>
+<figcaption><b>Sent, with a safety net.</b> Undo is available for a short time, and parents are told in one evening digest rather than a ping per subject, so a mistake can be pulled back before any family sees it. The new homework appears under "Given today" right away.</figcaption>
+</figure>
+</div>
+
+<!-- ================================================================ -->
+<div class="group">3 · Check notebooks (target: a class of 32 in under a minute)</div>
+<div class="frames">
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="head"><span class="back"><svg width="22" height="22"><use href="#i-back"/></svg></span><div class="grow"><div class="htitle">6A · Ex 4.2</div><div class="meta">Due today · notebook</div></div></div>
+  <div class="body">
+    <div class="counts"><span style="background:var(--field);color:var(--muted)"><b>30</b>To check</span><span style="background:var(--slate-t);color:var(--slate)"><b>2</b>Absent</span></div>
+    <div class="allbar"><div><div class="name" style="font-size:15px">Most did it?</div><div style="font-size:13px;opacity:.75">Mark all 30 done, then tap who didn't</div></div><span class="btn"><svg width="16" height="16"><use href="#i-check"/></svg>All done</span></div>
+    <div class="card reg">
+      <div class="st"><span class="roll">1</span><div class="grow"><div class="name clip" style="font-size:15px">Aarav Gupta</div></div><span class="mark unset">Tap</span></div>
+      <div class="st"><span class="roll">2</span><div class="grow"><div class="name clip" style="font-size:15px">Aditi Sharma</div></div><span class="mark unset">Tap</span></div>
+      <div class="st"><span class="roll">3</span><div class="grow"><div class="name clip" style="font-size:15px">Arjun Mehta</div></div><span class="mark unset">Tap</span></div>
+      <div class="st"><span class="roll">4</span><div class="grow"><div class="name clip" style="font-size:15px">Diya Nair</div><div class="meta" style="font-size:12px">Absent today</div></div><span class="mark abs">Absent</span></div>
+      <div class="st"><span class="roll">5</span><div class="grow"><div class="name clip" style="font-size:15px">Ishaan Rao</div><div class="note" style="color:var(--red)">Owes 2 earlier</div></div><span class="mark unset">Tap</span></div>
+      <div class="st"><span class="roll">6</span><div class="grow"><div class="name clip" style="font-size:15px">Kavya Iyer</div></div><span class="mark unset">Tap</span></div>
+    </div>
+  </div>
+  <div class="dock"><div class="cta" style="background:#CBD2DC;box-shadow:none">Save · 0 of 30</div></div>
+</div>
+<figcaption><b>Nothing is assumed.</b> The register opens unset, with one dark bar offering "All done" for the usual case; then only the exceptions need a tap. Tapping rows one by one also works for a teacher who prefers it. Children who already owe earlier work are flagged here, which is the moment the teacher has their notebook in hand. Save stays off until every child has a mark.</figcaption>
+</figure>
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="head"><span class="back"><svg width="22" height="22"><use href="#i-back"/></svg></span><div class="grow"><div class="htitle">6A · Ex 4.2</div><div class="meta">Due today · notebook</div></div></div>
+  <div class="body">
+    <div class="counts"><span style="background:var(--tint);color:var(--deep)"><b>27</b>Done</span><span style="background:var(--amb-t);color:var(--amb)"><b>2</b>Incomplete</span><span style="background:var(--red-t);color:var(--red)"><b>1</b>Not done</span><span style="background:var(--slate-t);color:var(--slate)"><b>2</b>Absent</span></div>
+    <div class="meta" style="margin:10px 4px 0">Absent from today's attendance. Tap to change, hold for a note.</div>
+    <div class="card reg">
+      <div class="st"><span class="roll">1</span><div class="grow"><div class="name clip" style="font-size:15px">Aarav Gupta</div></div><span class="mark done"><svg width="16" height="16"><use href="#i-check"/></svg>Done</span></div>
+      <div class="st"><span class="roll">2</span><div class="grow"><div class="name clip" style="font-size:15px">Aditi Sharma</div></div><span class="mark done"><svg width="16" height="16"><use href="#i-check"/></svg>Done</span></div>
+      <div class="st"><span class="roll">3</span><div class="grow"><div class="name clip" style="font-size:15px">Arjun Mehta</div><div class="note">Q7–10 left</div></div><span class="mark part"><svg width="16" height="16"><use href="#i-half"/></svg>Incomplete</span></div>
+      <div class="st"><span class="roll">4</span><div class="grow"><div class="name clip" style="font-size:15px">Diya Nair</div></div><span class="mark abs">Absent</span></div>
+      <div class="st"><span class="roll">5</span><div class="grow"><div class="name clip" style="font-size:15px">Ishaan Rao</div><div class="note" style="color:var(--red)">Notebook not brought</div></div><span class="mark not"><svg width="16" height="16"><use href="#i-x"/></svg>Not done</span></div>
+      <div class="st"><span class="roll">6</span><div class="grow"><div class="name clip" style="font-size:15px">Kavya Iyer</div></div><span class="mark done"><svg width="16" height="16"><use href="#i-check"/></svg>Done</span></div>
+      <div class="st"><span class="roll">7</span><div class="grow"><div class="name clip" style="font-size:15px">Meera Pillai</div></div><span class="mark done"><svg width="16" height="16"><use href="#i-check"/></svg>Done</span></div>
+    </div>
+  </div>
+  <div class="dock"><div class="cta">Save · 32 of 32</div></div>
+</div>
+<figcaption><b>It works like attendance, which teachers already know.</b> After "All done" (previous frame), the teacher taps the few exceptions: Done → Incomplete → Not done. Absent children come from today's attendance and are left out of the count. Saves offline and syncs later. One save for the whole class.</figcaption>
+</figure>
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="head"><span class="back"><svg width="22" height="22"><use href="#i-back"/></svg></span><div class="grow"><div class="htitle">6A · Ex 4.2</div><div class="meta">Out of 10</div></div></div>
+  <div class="body">
+    <div class="counts"><span style="background:var(--tint);color:var(--deep)"><b>14</b>Marked</span><span style="background:var(--field);color:var(--muted)"><b>16</b>Left</span><span style="background:var(--slate-t);color:var(--slate)"><b>2</b>Absent</span><span style="background:var(--surface);color:var(--ink)"><b>7.6</b>Average</span></div>
+    <div class="card reg">
+      <div class="st"><span class="roll">13</span><div class="grow"><div class="name clip" style="font-size:15px">Rohan Verma</div></div><span class="score">8</span></div>
+      <div class="st"><span class="roll">14</span><div class="grow"><div class="name clip" style="font-size:15px">Saanvi Joshi</div></div><span class="score">10</span></div>
+      <div class="st"><span class="roll">15</span><div class="grow"><div class="name clip" style="font-size:15px">Tanish Kapoor</div></div><span class="score focus">7</span></div>
+      <div class="st"><span class="roll">16</span><div class="grow"><div class="name clip" style="font-size:15px">Vihaan Desai</div></div><span class="score" style="color:var(--red);background:var(--red-t);font-size:13px">Not done</span></div>
+      <div class="st"><span class="roll">17</span><div class="grow"><div class="name clip" style="font-size:15px">Zara Khan</div></div><span class="score empty">–</span></div>
+    </div>
+  </div>
+  <div class="keypad"><span>1</span><span>2</span><span>3</span><span class="fn">Not done</span><span>4</span><span>5</span><span>6</span><span class="fn">Half</span><span>7</span><span>8</span><span>9</span><span class="fn">⌫</span><span class="fn">.</span><span>0</span><span class="fn">10</span><span class="go">Next ↓</span></div>
+</div>
+<figcaption><b>With marks, the register becomes a marks sheet.</b> A number pad stays open and "Next" jumps to the next roll number, so 30 marks take about 30 taps. "Not done" and "Half" sit on the pad so the teacher never leaves it. This is the case the current backend refuses (marks without an online submission).</figcaption>
+</figure>
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="head"><span class="back"><svg width="22" height="22"><use href="#i-back"/></svg></span><div class="grow"><div class="htitle">6A · Ex 4.2</div></div></div>
+  <div class="scrim"></div>
+  <div class="sheet">
+    <div class="grab"></div>
+    <div class="sheethead"><span class="t">Ishaan Rao · roll 5</span></div>
+    <div class="fl"><div class="seg"><span>Done</span><span>Incomplete</span><span class="on" style="color:var(--red)">Not done</span></div></div>
+    <div class="fl"><div class="label">Note (parents see it)</div>
+      <div class="chips" style="flex-wrap:wrap;gap:8px"><span class="chip sel">Notebook not brought</span><span class="chip" style="background:var(--field)">Untidy</span><span class="chip" style="background:var(--field)">Copied</span><span class="chip" style="background:var(--field)">Good work</span><span class="chip add">Write…</span></div>
+    </div>
+    <div class="fl"><div class="label">Second chance</div>
+      <div class="chips"><span class="chip sel">Bring it tomorrow</span><span class="chip" style="background:var(--field)">No extension</span></div>
+    </div>
+    <div class="fl" style="margin-bottom:8px"><div class="meta">Ishaan has missed 3 of the last 5 Maths homeworks.</div></div>
+    <div style="padding:12px 20px 20px"><div class="cta">Save for Ishaan</div></div>
+  </div>
+</div>
+<figcaption><b>A long-press gives the detail</b> without slowing the common case: a quick note chip the parent will see, and "Bring it tomorrow", which is an extension in one tap. The pattern line ("missed 3 of the last 5") is the nudge a teacher needs before a PTM.</figcaption>
+</figure>
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="head"><span class="back"><svg width="22" height="22"><use href="#i-back"/></svg></span><div class="grow"><div class="htitle">6A · Ex 4.2</div></div></div>
+  <div class="body" style="margin-top:8px">
+    <div class="card" style="padding:20px;text-align:center">
+      <div style="width:56px;height:56px;border-radius:999px;background:var(--tint);color:var(--deep);display:flex;align-items:center;justify-content:center;margin:0 auto"><svg width="28" height="28"><use href="#i-check"/></svg></div>
+      <div class="name" style="margin-top:12px;font-size:20px">6A checked</div>
+      <div class="meta tnum" style="margin-top:4px">27 done · 2 incomplete · 1 not done · 2 absent</div>
+    </div>
+    <div class="section"><span class="label">Follow up · 3</span></div>
+    <div class="card">
+      <div class="row"><div class="grow"><div class="name">Ishaan Rao</div><div class="meta">Not done · bring tomorrow</div></div><span class="pill r">3rd this week</span></div>
+      <div class="row"><div class="grow"><div class="name">Arjun Mehta</div><div class="meta">Incomplete · Q7–10 left</div></div></div>
+      <div class="row"><div class="grow"><div class="name">Neha Saini</div><div class="meta">Incomplete</div></div></div>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px"><div class="btn soft" style="flex:1;justify-content:center;height:48px"><svg width="16" height="16"><use href="#i-msg"/></svg>Tell 3 parents</div><div class="btn ghost" style="flex:1;justify-content:center;height:48px">Next: 6B</div></div>
+  </div>
+</div>
+<figcaption><b>Saving ends on what needs following up</b>, not on a list of 32 green rows. One tap tells those parents (their note goes in the evening digest), and "Next: 6B" goes straight to the next class waiting to be checked, because the teacher usually checks two sections back to back.</figcaption>
+</figure>
+</div>
+
+<!-- ================================================================ -->
+<div class="group">4 · Online work, quizzes and one homework</div>
+<div class="frames">
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="head"><span class="back"><svg width="22" height="22"><use href="#i-back"/></svg></span><div class="grow"><div class="htitle">7A · Integers worksheet</div><div class="meta">Due Sat · out of 10 · 28 students</div></div></div>
+  <div class="body">
+    <div class="seg" style="background:var(--surface)"><span class="on" style="background:var(--ink);color:#fff">To review 6</span><span>Reviewed 0</span><span>Not sent 22</span></div>
+    <div class="card" style="margin-top:12px">
+      <div class="row"><div class="mini"></div><div class="grow"><div class="name">Aanya Bose</div><div class="meta">Fri 6:40 pm · 2 photos</div></div><span class="pill n">On time</span></div>
+      <div class="row"><div class="mini"></div><div class="grow"><div class="name">Kavya Iyer</div><div class="meta">Fri 7:12 pm · 2 photos · by parent</div></div><span class="pill n">On time</span></div>
+      <div class="row"><div class="mini"></div><div class="grow"><div class="name">Mohit Jain</div><div class="meta">Sat 9:05 am · typed</div></div><span class="pill c">Late</span></div>
+      <div class="row"><div class="mini"></div><div class="grow"><div class="name">Riya Das</div><div class="meta">Sat 10:20 am · 1 photo · 2nd try</div></div><span class="pill c">Redo</span></div>
+      <div class="row"><div class="mini"></div><div class="grow"><div class="name">Sahil Khan</div><div class="meta">Sun 8:00 pm · 3 photos</div></div><span class="pill c">Late</span></div>
+      <div class="row"><div class="mini"></div><div class="grow"><div class="name">Tara Menon</div><div class="meta">Sun 9:30 pm · 1 photo</div></div><span class="pill c">Late</span></div>
+    </div>
+    <div class="meta" style="margin:12px 4px 0">Late work still comes in until Mon 8:00 am.</div>
+  </div>
+  <div class="dock" style="display:flex;gap:8px"><div class="cta" style="flex:1;background:var(--chip);color:var(--ink);box-shadow:none">Remind 22</div><div class="cta" style="flex:2">Start reviewing</div></div>
+</div>
+<figcaption><b>Online work opens as a list first</b>, so the teacher sees how much there is before starting: oldest submission first, with late and redo marked. "Start reviewing" goes through them in this order (next frame); tapping a row starts from that child. "Not sent" holds the children to remind. When the queue ends, it comes back here with "All 6 reviewed" and the "Not sent" tab ready.</figcaption>
+</figure>
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="head"><span class="back"><svg width="22" height="22"><use href="#i-back"/></svg></span><div class="grow"><div class="htitle">Kavya Iyer</div><div class="meta">7A · Integers worksheet · 2 of 6</div></div></div>
+  <div class="paper"><i style="top:40px"></i><i style="top:72px"></i><i style="top:104px"></i><i style="top:136px"></i><i style="top:168px"></i><i style="top:200px"></i><i style="top:232px"></i><u style="top:30px;width:160px"></u><u style="top:62px;width:210px"></u><u style="top:94px;width:120px"></u><u style="top:126px;width:190px"></u><u style="top:158px;width:140px"></u><u style="top:190px;width:200px"></u><span class="pill n" style="position:absolute;right:12px;bottom:12px">1 / 2 · pinch to zoom</span></div>
+  <div class="body" style="margin-top:12px">
+    <div class="meta">Sent yesterday 7:12 pm by parent · on time</div>
+    <div style="margin-top:12px;display:flex;gap:8px;align-items:center"><span class="score focus" style="width:88px;height:52px;font-size:20px">8</span><span class="meta">/ 10</span><div class="grow"></div><span class="chip" style="background:var(--surface)">Redo</span></div>
+    <div class="chips" style="margin-top:12px;flex-wrap:wrap"><span class="chip sel">Well done</span><span class="chip">Show working</span><span class="chip">Neat</span><span class="chip add">Write…</span></div>
+  </div>
+  <div class="dock" style="display:flex;gap:8px"><div class="cta" style="flex:1;background:var(--chip);color:var(--ink);box-shadow:none">← Prev</div><div class="cta" style="flex:2">Save · next</div></div>
+</div>
+<figcaption><b>Online work is reviewed as a queue</b>, one child after another with a big photo, marks, feedback chips and "Redo". No bouncing back to a list between children. Drawing on the photo (annotated copy) can come later; the table for it already exists.</figcaption>
+</figure>
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="head"><span class="back"><svg width="22" height="22"><use href="#i-back"/></svg></span><div class="grow"><div class="htitle">Chapter 5 quiz</div><div class="meta">7A · 24 of 28 attempted · auto-marked</div></div></div>
+  <div class="body">
+    <div class="card" style="padding:16px;display:flex;gap:16px;align-items:center">
+      <div class="ring"><div>7.8</div></div>
+      <div><div class="name">Class average 7.8 / 10</div><div class="meta">3 short answers need your marks</div><div class="btn" style="margin-top:8px;height:36px">Mark 3 answers</div></div>
+    </div>
+    <div class="section"><span class="label">By question</span><span class="meta">most missed first</span></div>
+    <div class="card" style="padding:4px 16px">
+      <div style="padding:10px 0"><div style="display:flex;justify-content:space-between"><span class="name" style="font-size:15px">Q7 · −3 − (−8) = ?</span><span class="meta tnum">42%</span></div><div class="qbar"><i style="width:42%;background:var(--red)"></i></div><div class="meta" style="margin-top:4px">Most picked "−11"</div></div>
+      <div style="padding:10px 0;border-top:1px solid var(--hair)"><div style="display:flex;justify-content:space-between"><span class="name" style="font-size:15px">Q3 · Order from least</span><span class="meta tnum">67%</span></div><div class="qbar"><i style="width:67%;background:var(--amb)"></i></div></div>
+      <div style="padding:10px 0;border-top:1px solid var(--hair)"><div style="display:flex;justify-content:space-between"><span class="name" style="font-size:15px">Q1 · Is −5 &gt; −2?</span><span class="meta tnum">96%</span></div><div class="qbar"><i style="width:96%;background:var(--accent)"></i></div></div>
+    </div>
+    <div class="section"><span class="label">Not attempted · 4</span><span class="link">Remind</span></div>
+  </div>
+</div>
+<figcaption><b>A quiz answers "what didn't they get?"</b> Per-question results, most missed first, with the most common wrong answer, tell the teacher what to re-teach tomorrow. Short answers needing marks are a single queue. Writing questions moves into the Quiz path of "Give homework"; the bank becomes a picker inside it, not a separate destination.</figcaption>
+</figure>
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="head"><span class="back"><svg width="22" height="22"><use href="#i-back"/></svg></span><span class="htitle grow">Ex 4.3, Q1–6</span><span class="round"><svg width="20" height="20"><use href="#i-more"/></svg></span></div>
+  <div class="body">
+    <div class="card" style="padding:16px">
+      <div class="meta">Maths · given Mon 2 Nov · due Tue 8:00 am</div>
+      <div style="margin-top:8px;font-size:15px;line-height:1.45">Ex 4.3, Q1–6. Show every step.</div>
+      <div class="thumbs" style="margin-top:12px"><div class="thumb">board.jpg</div></div>
+    </div>
+    <div class="section"><span class="label">Classes</span></div>
+    <div class="card">
+      <div class="row"><div class="badge" style="width:40px;height:40px">6A</div><div class="grow"><div class="name">0 of 32 checked</div><div class="bar" style="margin-top:6px"><i style="width:0"></i></div></div><span class="btn" style="height:36px">Check</span></div>
+      <div class="row"><div class="badge" style="width:40px;height:40px">6B</div><div class="grow"><div class="name">0 of 30 checked</div><div class="bar" style="margin-top:6px"><i style="width:0"></i></div></div><span class="btn" style="height:36px">Check</span></div>
+    </div>
+    <div class="section"><span class="label">Questions from families · 1</span></div>
+    <div class="card"><div class="row"><div class="grow"><div class="name">Saanvi's parent</div><div class="meta clip">Is Q6 from the new edition?</div></div><span class="link">Reply</span></div></div>
+    <div class="card" style="margin-top:12px">
+      <div class="row"><span class="grow">Edit what was asked</span><svg width="16" height="16" style="color:var(--chev)"><use href="#i-chev"/></svg></div>
+      <div class="row"><span class="grow">Move due date for everyone</span><svg width="16" height="16" style="color:var(--chev)"><use href="#i-chev"/></svg></div>
+      <div class="row"><span class="grow">Give to another class</span><svg width="16" height="16" style="color:var(--chev)"><use href="#i-chev"/></svg></div>
+      <div class="row"><span class="grow">Stop accepting work</span><svg width="16" height="16" style="color:var(--chev)"><use href="#i-chev"/></svg></div>
+    </div>
+  </div>
+</div>
+<figcaption><b>One homework, all its classes.</b> Detail is small: what was asked, each class's progress with a Check button, family questions, and the few real actions as plain rows. Moving the due date really moves every child's deadline. Cancel and delete-draft sit in the ⋯ menu.</figcaption>
+</figure>
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="head"><span class="back"><svg width="22" height="22"><use href="#i-back"/></svg></span><span class="htitle grow">Ex 4.3, Q1–6</span></div>
+  <div class="scrim"></div>
+  <div class="sheet">
+    <div class="grab"></div>
+    <div class="sheethead"><span class="t">Move due date</span></div>
+    <div class="fl"><div class="meta">Now due Tue 3 Nov, 8:00 am · 6A and 6B</div></div>
+    <div class="fl"><div class="label">New due date</div>
+      <div class="chips"><span class="chip" style="background:var(--field)">Tomorrow</span><span class="chip on">Wed 4</span><span class="chip" style="background:var(--field)">Thu 5</span><span class="chip" style="background:var(--field)">Pick…</span></div>
+      <div class="meta" style="margin-top:6px">8:00 am · late work until Fri 6 Nov, 8:00 am</div>
+    </div>
+    <div class="card" style="margin:16px 20px 0;background:var(--canvas)">
+      <div class="kv"><span>Only 6B</span><span class="toggle off"></span></div>
+      <div class="kv"><span>Tell parents</span><span class="toggle"></span></div>
+    </div>
+    <div class="notice n">2 children have their own extension to Thu. They keep the later date.</div>
+    <div style="padding:16px 20px 20px"><div class="cta">Move to Wed 4 Nov</div></div>
+  </div>
+</div>
+<figcaption><b>Moving the date really moves every child's deadline</b> (today it doesn't, which is bug 5 from the review). The late window moves with it. Children with their own later extension keep it, and the sheet says so instead of silently overriding. "Only 6B" covers the common case of one section losing a period.</figcaption>
+</figure>
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="head"><span class="back"><svg width="22" height="22"><use href="#i-back"/></svg></span><span class="htitle grow">Ex 4.3, Q1–6</span></div>
+  <div class="scrim"></div>
+  <div class="sheet">
+    <div class="grab"></div>
+    <div class="sheethead"><span class="t">Give to another class</span></div>
+    <div class="fl"><div class="meta">Same work, photo and settings. It starts fresh: its own due date and its own checking.</div></div>
+    <div class="fl"><div class="label">Your other classes</div>
+      <div class="chips" style="flex-wrap:wrap"><span class="chip sel"><svg width="14" height="14"><use href="#i-check"/></svg>6C Maths</span><span class="lock">6A Maths · has it</span><span class="lock">6B Maths · has it</span></div>
+      <div class="meta" style="margin-top:6px">Only classes where you teach Maths are shown.</div>
+    </div>
+    <div class="fl"><div class="label">Due</div>
+      <div class="chips"><span class="chip on">Tomorrow</span><span class="chip" style="background:var(--field)">Thu 5</span><span class="chip" style="background:var(--field)">Pick…</span></div>
+      <div class="meta" style="margin-top:6px">Tue 3 Nov, 8:00 am</div>
+    </div>
+    <div style="padding:20px"><div class="cta">Give to 6C</div></div>
+  </div>
+</div>
+<figcaption><b>Give to another class</b> covers the teacher who teaches 6C a day later than 6A and 6B. It copies the homework into a new one with its own due date, rather than adding 6C to this one, so 6C's checking doesn't mix into 6A's progress. Classes that already have it are shown, greyed, so nobody gives it twice.</figcaption>
+</figure>
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="scrim"></div>
+  <div class="sheet" style="top:56px">
+    <div class="grab"></div>
+    <div class="sheethead"><span class="t">Edit homework</span><span class="link">Cancel</span></div>
+    <div class="notice">14 children are already checked. You can change the words, photo and late window. Classes, marks and how it comes back are fixed now.</div>
+    <div class="fl"><div class="label">Classes</div>
+      <div class="chips"><span class="lock">6A Maths</span><span class="lock">6B Maths</span></div>
+    </div>
+    <div class="fl"><div class="label">What to do</div>
+      <div class="input tall">Ex 4.3, Q1–6. Show every step.<br><span class="ph">Note for parents (optional)</span></div>
+    </div>
+    <div class="fl"><div class="thumbs"><div class="thumb">board.jpg</div><div class="thumb addp"><svg width="22" height="22"><use href="#i-cam"/></svg>Photo</div></div></div>
+    <div class="card" style="margin:16px 20px 0;background:var(--canvas)">
+      <div class="kv"><span>Due</span><b>Tue 3 Nov, 8:00 am</b></div>
+      <div class="kv"><span>Marks</span><span class="meta">None · fixed</span></div>
+      <div class="kv"><span>Tell parents about the change</span><span class="toggle"></span></div>
+    </div>
+    <div style="position:absolute;left:20px;right:20px;bottom:20px"><div class="cta">Save changes</div></div>
+  </div>
+</div>
+<figcaption><b>Edit reuses the Give sheet</b>, with the parts that can no longer change shown as locked and a plain sentence saying why. Before anyone has handed anything in or been checked, everything stays editable, classes and marks included. Changing the due date from here opens the same sheet as frame 19. Edits keep a copy of the earlier version, as now.</figcaption>
+</figure>
+</div>
+
+<!-- ================================================================ -->
+<div class="group">5 · Beyond one teacher</div>
+<div class="frames">
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="head"><span class="back"><svg width="22" height="22"><use href="#i-back"/></svg></span><div class="grow"><div class="htitle">6A diary</div><div class="meta">You're the class teacher · Mon 2 Nov</div></div></div>
+  <div class="body">
+    <div class="card" style="padding:16px">
+      <div style="display:flex;justify-content:space-between"><span class="name">Tonight's load</span><span class="name tnum">~70 min</span></div>
+      <div class="load"><i style="background:var(--accent)"></i><i style="background:var(--accent)"></i><i style="background:var(--accent)"></i><i style="background:var(--amb)"></i><i></i></div>
+      <div class="meta" style="margin-top:8px">4 subjects gave homework. School guide: up to 90 min for Class 6.</div>
+    </div>
+    <div class="section"><span class="label">Given today</span></div>
+    <div class="card">
+      <div class="row"><div class="grow"><div class="name">Maths</div><div class="meta clip">Ex 4.3, Q1–6 · Mr Sen · 20 min</div></div></div>
+      <div class="row"><div class="grow"><div class="name">English</div><div class="meta clip">Read ch. 7, write 5 new words · 15 min</div></div></div>
+      <div class="row"><div class="grow"><div class="name">Science</div><div class="meta clip">Label the leaf diagram · 15 min</div></div></div>
+      <div class="row"><div class="grow"><div class="name">Hindi</div><div class="meta clip">पाठ 6, प्रश्न 1–4 · 20 min</div></div></div>
+      <div class="row"><div class="grow"><div class="name" style="color:var(--muted)">Social Studies</div><div class="meta">Nothing today</div></div></div>
+    </div>
+    <div class="section"><span class="label">Owe work this week · 5</span><span class="link">See all</span></div>
+  </div>
+</div>
+<figcaption><b>The class teacher's view of her section</b>: every subject's homework for tonight, a load estimate against the school's guide, and the children who keep owing work across subjects. This is what she reads out or checks against the paper diary.</figcaption>
+</figure>
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="head"><span class="back"><svg width="22" height="22"><use href="#i-back"/></svg></span><div class="grow"><div class="htitle">Ishaan Rao</div><div class="meta">6A · roll 5 · Homework</div></div></div>
+  <div class="body">
+    <div class="card" style="padding:16px;display:flex;gap:16px;align-items:center">
+      <div class="ring" style="background:conic-gradient(var(--amb) 0 64%, var(--field) 64% 100%)"><div>64%</div></div>
+      <div><div class="name">Done on time this month</div><div class="meta">Class average 88%</div></div>
+    </div>
+    <div class="section"><span class="label">Last 3 weeks</span></div>
+    <div class="card" style="padding:16px">
+      <div class="dots"><i style="background:var(--accent)"></i><i style="background:var(--accent)"></i><i style="background:var(--red)"></i><i style="background:var(--accent)"></i><i style="background:var(--amb)"></i><i style="background:var(--accent)"></i><i style="background:var(--red)"></i><i style="background:var(--accent)"></i><i style="background:var(--slate-t)"></i><i style="background:var(--red)"></i><i style="background:var(--accent)"></i><i style="background:var(--red)"></i></div>
+      <div class="meta" style="margin-top:8px">Mostly Maths and Hindi. Usually "notebook not brought".</div>
+    </div>
+    <div class="section"><span class="label">Owes</span></div>
+    <div class="card">
+      <div class="row"><div class="grow"><div class="name">Ex 4.2, Q1–10</div><div class="meta">Maths · bring by Tue</div></div><span class="pill r">Not done</span></div>
+      <div class="row"><div class="grow"><div class="name">पाठ 5 प्रश्न</div><div class="meta">Hindi · since Thu</div></div><span class="pill c">Incomplete</span></div>
+    </div>
+  </div>
+</div>
+<figcaption><b>A child's homework record</b>, as a tab on the existing student page: on-time rate against the class, a strip of recent work, the pattern in words, and what's still owed. This is what a teacher opens before a PTM or a parent call.</figcaption>
+</figure>
+
+<figure>
+<div class="phone">
+  <div class="status"><span>9:41</span><i></i></div>
+  <div class="head"><span class="back"><svg width="22" height="22"><use href="#i-back"/></svg></span><div class="grow"><div class="htitle">Homework this week</div><div class="meta">Main Campus · principal view</div></div></div>
+  <div class="body">
+    <div class="card" style="padding:16px"><div class="big tnum">86%</div><div class="meta">of homework given was checked within 2 days</div></div>
+    <div class="section"><span class="label">Needs a look</span></div>
+    <div class="card">
+      <div class="row"><div class="grow"><div class="name">7B</div><div class="meta">No homework for 3 days</div></div><span class="pill c">Gap</span></div>
+      <div class="row"><div class="grow"><div class="name">8A</div><div class="meta">~140 min on Tue (5 subjects)</div></div><span class="pill r">Heavy</span></div>
+      <div class="row"><div class="grow"><div class="name">9A Science</div><div class="meta">4 homeworks not checked</div></div><span class="pill c">Behind</span></div>
+    </div>
+    <div class="section"><span class="label">By class</span></div>
+    <div class="card">
+      <div class="row"><div class="badge" style="width:40px;height:40px">6A</div><div class="grow"><div class="meta">18 given · 97% checked · 91% done</div></div></div>
+      <div class="row"><div class="badge" style="width:40px;height:40px">6B</div><div class="grow"><div class="meta">17 given · 88% checked · 86% done</div></div></div>
+    </div>
+  </div>
+</div>
+<figcaption><b>The principal sees the school, not every assignment.</b> Gaps, overloaded days and unchecked work, by class. This replaces the current behaviour, where every teacher sees the whole school's homework list mixed together.</figcaption>
+</figure>
+</div>
+
+</body>
+</html>

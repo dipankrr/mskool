@@ -615,7 +615,7 @@ short, repeated teacher task before the more complex assignment workflow.
 | 1 | Home + context + profile | `me` 1 · `school` 5 · `academic` years 6 | complete — branch switcher, profile/access, voluntary password, branch management and session management (chunk B) device-walked 2026-10-23 |
 | 2 | Students + academic setup (§7) | `student` 7 · `enrollment` 6 · `guardian` 4 · `portalAccess` 4 · `academic` classes 5 + sections 5 · `subject` 5 · `term` 4 · `assignment` 10 | open |
 | 3 | Attendance (§8) | `attendance.*` 13 | complete (mark/status walked 2026-10-18; summary + section switcher 2026-10-19; calendar generate/days, policy, periods 2026-10-20; report exports remain open) |
-| 4 | Homework manage (§9) | `homework.*` staff 28 | complete — staff slice device-walked 2026-10-25 (`88864ab`, `678c5dd`, `5ed3583`, `6198649`, `4ad81f3`); quiz-attempt grading not walked (no seeded attempts); family door at Step 9 |
+| 4 | Homework manage (§9) | `homework.*` staff | **reopened 2026-11-08** — backend rebuilt (ADR-064, chunk H1); the old screens are removed and the tab hidden until H2 (Home, Give, Check) |
 | 5 | Fees (§10) | `fees.*` | rebuilt on ADR-058, merged 2026-11-02; printed documents on ADR-059 (`feat/fees-pdf`); see `.kilo/plans/2026-11-01-fees-overhaul.md` section 10 and `.kilo/plans/2026-11-02-fees-pdf.md` |
 | 6 | Staff + roles + ID cards + feed (§11) | `staff` 8 · `role` 8 · `idCard` 10 | open |
 | 7 | Exams + marks (§12) | `exam.*` staff 46 | **7A + 7B built and device-walked 2026-10-26/27; 7C (core arc) and 7D built; 7E + 7F built and Android-walked 2026-10-28** on `feat/mobile-exams-7a` (plan: `.kilo/plans/2026-10-26-mobile-exams.md`); 7C/7D walk remainders and iOS open |
@@ -642,7 +642,7 @@ shell until those workflows are complete or explicitly deferred by the owner.
 | `/students`, `/students/[studentId]` | 2 | Roster search/filter, student detail, admit/edit/enroll, guardian and portal-access flows. **Admit is the guided `/admit-student` flow with a Full form view, the detail is the rebuilt profile with leaving and rejoining, and the roster reads `student.roster` with views, filters and photos (walked 2026-11-01, ADR-057, `.kilo/plans/2026-11-01-admit-flow.md`).** **Live (walked 2026-10-24)**: roster + detail + edit/deactivate; enrollment, guardians and portal access hang off the detail |
 | `/students/photos` | 2 | Native photo picker, review-before-upload bulk matching, retry-failed-only. **Live (walked 2026-10-24)**: section-order and register matching, clear-to-unmatched strip, sequential uploads with per-student pills and retry-failed-only. Register mode is best-effort on Android (the photo picker anonymizes file names — platform finding) |
 | `/attendance/calendar`, `/attendance/policy`, `/attendance/mark`, `/attendance/reports` | 3 | Fast section/day selection, roster marking, correction reason, readable summaries. **`/attendance/mark` is live** as the native marking screen (`(staff)/attendance`, device-walked 2026-10-18; the day-sheet reads `calendar.list`); **yearly summaries and the section switcher are live** as the Mark ⇄ Summary segments with the section sheet (device-walked 2026-10-19); **management surfaces are live** — calendar generate/day overrides, marking policy and periods in `(staff)/attendance/manage` (device-walked 2026-10-20); report exports remain open |
-| `(no existing web route; backend exists)` homework staff routes | 4 | Assignment authoring, question management, publish lifecycle, grading and comments. **Complete (device-walked 2026-10-25)**: tab 5 agenda + All list, create/edit, detail with publish/close/cancel, grade grid and student desk, question-set editor, bank, comment threads, settings and rubrics |
+| `(no existing web route; backend exists)` homework staff routes | 4 | Give, check, quizzes and the question bank. **Reopened 2026-11-08:** the backend is rebuilt (ADR-064); the design is `docs/design/mobile/05-teacher-homework.md`, built in chunks H2 to H5. No mobile screen today |
 | `/fees`, `/fees/setup`, `/fees/setup/[structureId]` | 5 | Fee setup, installments, concessions, subscription and late-fee workflows |
 | `/fees/dues`, `/fees/outstanding`, `/fees/matrix` | 5 | Mobile search/list/detail summaries; do not reproduce a wide matrix as a squeezed table |
 | `/fees/counter`, `/fees/collect`, `/fees/payments`, `/fees/payments/[paymentId]`, `/fees/ledger` | 5 | Counter collection, allocation review, receipt, reversal/bounce recovery and ledger inspection |
@@ -767,49 +767,26 @@ questions): `.kilo/plans/2026-10-18-mobile-attendance-summary.md`.
 
 ---
 
-## 9. Step 4 — Homework (28 staff + 12 portal)
+## 9. Step 4 — Homework (rebuilt, ADR-064)
 
-Source: `packages/trpc/src/routers/homework.router.ts`. Subject-gated
-writes (`create/update/publish/cancel/close/evaluate/extend/excuse`,
-`bank.create`, `questions.set`, `gradeAnswer`); conversation (`comments`)
-ungated; settings/rubrics ride `school_settings`.
+The first build (device-walked 2026-10-25, settings, rubrics, a single
+create form, a grade grid) was replaced on 2026-11-08. The owner-reviewed
+design is `docs/design/mobile/05-teacher-homework.md` with the mockups in
+`docs/design/mobile/prototype/homework-v2.html`; its build order (H1 to H6)
+is the plan for this step. H1, the backend, is built: ADR-064 has the model
+and `packages/trpc/src/routers/homework.router.ts` the procedures.
 
-**HW-A config:** `settings.get/upsert`, `rubrics.list/create/byId/setActive`
-(6). **HW-B authoring:** `list/byId/create/update/publish/cancel/close`
-(7). **HW-C questions:** `bank.list/create/byId/setActive`,
-`questions.set/get` (6). **HW-D grading:** `students.list/get`,
-`evaluate/extend/excuse`, `attempts.list/gradeAnswer` (7). **HW-E Q&A:**
-`comments.list/post` (2).
+| Chunk | Procedures | Screens | Done |
+|---|---|---|---|
+| H1 backend | all of `homework.*` and `portalHomework.*` | none | ☑ (integration-tested, not walked) |
+| H2 Home, Give, Check | `home`, `pairs`, `defaults`, `fileUpload`, `create`, `update`, `give`, `undoGive`, `deleteDraft`, `register.get/save`, `students.get` | Home, Give (4 steps), check list, child sheet | ☐ |
+| H3 online review | `students.sendBack`, `students.markTick`, review reads | review queue, reading ticks | ☐ |
+| H4 quiz | `questions.set/get`, `bank.*`, `students.attempts.*` | quiz in Give, results | ☐ |
+| H5 beyond one teacher | `list`, `byId`, `moveDue`, `giveAgain`, `cancel`, `close`, `comments.*` | detail, all homework, class diary, child record, principal | ☐ |
+| Family | `portalHomework.*` | not designed yet | ☐ |
 
-| Procedure | Screen | Done |
-|---|---|---|
-| `homework.settings.get` / `.upsert` | `/homework/settings` | ☑ |
-| `homework.rubrics.list` / `.create` / `.byId` / `.setActive` | `/homework/rubrics`, `/new`, `/[rubricId]` | ☑ |
-| `homework.list` / `.byId` | `/homework`, `/homework/[id]` | ☑ |
-| `homework.create` / `.update` | `/homework/new`, `/homework/[id]/edit` | ☑ |
-| `homework.publish` / `.cancel` / `.close` | `/homework/[id]` | ☑ |
-| `homework.bank.list` / `.create` / `.byId` / `.setActive` | `/homework/bank`, `/new`, `/[itemId]` | ☑ |
-| `homework.questions.set` / `.get` | `/homework/[id]/questions` | ☑ |
-| `homework.students.list` / `.get` | `/homework/[id]/grade`, `/homework/grade/[saId]` | ☑ |
-| `homework.students.evaluate` / `.extend` / `.excuse` | `/homework/grade/[saId]` | ☑ |
-| `homework.students.attempts.list` / `.gradeAnswer` | `/homework/grade/[saId]` | ☑ (list read; `gradeAnswer` not walked — no seeded attempts) |
-| `homework.comments.list` / `.post` | `/homework/[id]/comments` | ☑ |
-
-Family door at step 9: `portalHomework.list/get/markViewed/submit/
-acknowledge`, `attempts.start/get/saveAnswer/submit/result` (5),
-`comments.list/post` (2).
-
-Acceptance: a subject teacher posts a section-targeted draft with questions
-between periods, publishes, and grades one student's submission on a
-mid-range Android — refused honestly outside her assignment facts.
-
-**Built and walked 2026-10-25** on `feat/mobile-homework-slice` (5 commits,
-not pushed). Plan, journeys, screen states and the gap list live in
-`.kilo/plans/2026-10-25-mobile-homework.md`; that file is the source of truth
-for this step, including the 19 backend gaps found while building it. Two
-paths are deliberately not walked: quiz `attempts.gradeAnswer` (no seeded
-attempts or `student_portal_access` rows in the demo DB) and the
-`created=1` rubric saved notice.
+Acceptance (from the brief, §1): a teacher gives homework to two sections in
+under 20 seconds and checks 32 notebooks in under 60, on a mid-range Android.
 
 ---
 

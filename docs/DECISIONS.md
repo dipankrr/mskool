@@ -3108,3 +3108,63 @@ the sweeper is needed anyway, and without the row a crash leaves files no table 
 seven-day deletion delay with an undo: schools would not ask, and they still have the originals.
 MinIO, BullMQ, multipart form uploads (`multer`), on-the-fly image transforms and AVIF (slow to
 encode, not shown by older Android phones).
+
+## ADR-064 - Homework rebuilt: types, ways back, a check list, no history
+
+**Status:** accepted (2026-11-08, owner design review of `docs/design/mobile/05-teacher-homework.md`).
+Amends ADR-039 (the homework domain) and ADR-040 (its sweeper). Development mode: the homework
+tables were dropped and recreated, with no data carried over.
+
+**Context.** ADR-039 ported a full learning-platform model: settings per school and class,
+rubrics, series, revision snapshots, versioned submissions, append-only evaluations, extensions,
+acknowledgements and a summary table. Teachers use homework daily on a phone, and the owner's
+review found the model in the way: the common case (notebooks brought to class, checked on a
+list) needed a submission it did not have, files could not be uploaded at all, a teacher had to
+create one homework per section, and much of the schema (versions, settings, rubrics) served no
+screen. Twelve bugs from the review and seven found later are listed in the brief, §7.
+
+**Decision.**
+
+1. **Five types, each with allowed ways back and grading.** `kind` is homework, practice,
+   project, reading or quiz. `comes_back` is ONE value: `brought` (to class), `sent` (photos or
+   text in the app), `tick` (the student ticks it), `none`, or `questions` (quiz only).
+   `grading_mode` is none, marks, grade or remark (Excellent / Good / Bad, an enum on the child's
+   row, not a scale). Grading needs work that comes back. The allowed pairs live in the contract
+   (`KIND_COMES_BACK`, `KIND_GRADING`) and the service enforces them; CHECKs guard the rest.
+   Reading stores the book in `topic` and the pages in `title`; no new columns per type.
+2. **One homework, several sections of one subject.** Targets hold the sections; every child's
+   row carries their own section. A subject-gated route gates the first pair and
+   `assertSubjectPairs` checks every other section the same way.
+3. **The check result lives on the child's row and is overwritten.** `student_assignments` holds
+   `check_status` (done, incomplete, not_done, absent), marks, grade, remark, a note the student
+   sees, and who checked when. Saving the list is idempotent and makes results visible to the
+   student. A quiz writes its total there when fully marked. Statuses: assigned, in_progress,
+   submitted, redo, checked, missing. Work brought to class is never marked missing.
+4. **No history anywhere.** Dropped: `assignment_settings`, rubrics (three tables and
+   `assignment_rubric_scores`), `assignment_series`, `assignment_revisions`,
+   `assignment_extensions`, `assignment_evaluations`, `evaluation_files`,
+   `assignment_acknowledgements`, `student_assignment_summary`. One submission per child
+   (unique), replaced until checked; the teacher's Redo reopens it with a note. One quiz attempt
+   per child. A per-child deadline is just the row's effective dates.
+5. **Photos only, under ADR-063.** `assignment_files` (the teacher's) and `submission_files`
+   (the child's) are foreign keys to `storage_objects`. Each side gets its own upload link
+   (`homework.fileUpload`, gated by the pair; `portalHomework.fileUpload`, by the child). A file
+   belongs to one record: giving again copies files in the bucket, and every replace, delete or
+   undo marks the files that disappeared deleted in the same transaction. Documents (PDF) wait
+   until storage accepts them.
+6. **Give sends straight away, with Undo.** Undo returns a just-given homework to a draft within
+   15 minutes while no child has done anything. A draft that was never given is really deleted.
+   Giving to a class with no students is refused. `publish_at` schedules it; the worker gives it.
+7. **Reads are built per screen** (`home`, `pairs`, `defaults`, `register.get`, `students.get`,
+   `portalHomework.list/get`), and a caller whose only grant is subject_teacher reads only their
+   own pairs (`onlySubjectTeacher`). The student sees one of six words (to do, sent, late,
+   checked, redo, missed) computed by `studentWord`.
+8. **Fixes folded in:** the staff comment list no longer returns every private thread; staff can
+   remove comments; private bank questions and their answer keys stay with their author, who can
+   retire them; the worker hands in quiz attempts left open at the close time.
+
+**Consequences.** The old mobile homework screens and their `lib/homework*` helpers were removed
+and the Homework tab hidden; H2 builds Home, Give and Check on the new API. `ConfirmSheet` moved
+to `components/`. Migrations 0051 (drop, and hand the old homework files to the storage sweeper)
+and 0052 (create). Not built yet: the student screens, the remaining read models (review queue,
+quiz results, reading ticks, class diary, child record, principal view) and notifications.
