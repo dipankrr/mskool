@@ -19,6 +19,16 @@ export type GivePairs = Outputs["homework"]["pairs"];
 export type GiveDefaults = Outputs["homework"]["defaults"];
 export type Register = Outputs["homework"]["register"]["get"];
 export type RegisterRow = Register["rows"][number];
+export type BankItemRow = Outputs["homework"]["bank"]["list"][number];
+
+/** `2.50` → `2.5`, `3.00` → `3`; marks as people write them. */
+export function formatMarks(value: string | number | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  if (text === "" || !/^-?d+(.d+)?$/.test(text)) return text;
+  if (!text.includes(".")) return text;
+  return text.replace(/.?0+$/, "");
+}
 
 /** The four types Give offers today; Quiz arrives with H4. */
 export const GIVE_KINDS = ["homework", "practice", "project", "reading"] as const satisfies readonly HomeworkKind[];

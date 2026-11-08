@@ -390,6 +390,8 @@ export function GiveScreen() {
         <View>
           <StepQuestion>{text.workTitle}</StepQuestion>
           <QuizWorkStep
+            subjectId={subjectId ?? ""}
+            subjectName={subjectName}
             title={work.title}
             onTitle={(v) => setWork((w) => ({ ...w, title: v }))}
             titleError={showErrors && !work.title.trim() ? text.titleRequired : undefined}

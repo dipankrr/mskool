@@ -8,7 +8,8 @@ import { Notice } from "../../components/notice";
 import { SwitchRow } from "../../components/switch-row";
 import { ThemedText } from "../../components/themed-text";
 import { copy } from "../../lib/copy";
-import { totalQuestionMarks, type QuestionDraft } from "../../lib/homework-questions";
+import { draftFromSnapshot, totalQuestionMarks, type QuestionDraft } from "../../lib/homework-questions";
+import { HomeworkBankPickerSheet } from "./bank-picker-sheet";
 import { colors } from "../../theme/brand-admin";
 import { radius, spacing } from "../../theme/tokens";
 import { questionTypeLabel } from "./meta";
@@ -19,6 +20,8 @@ const text = copy.homework.give;
 
 /** Quiz step 3 (frame 12): a title, then the questions, each written in a sheet. */
 export function QuizWorkStep({
+  subjectId,
+  subjectName,
   title,
   onTitle,
   titleError,
@@ -26,6 +29,8 @@ export function QuizWorkStep({
   onQuestions,
   questionsError,
 }: {
+  subjectId: string;
+  subjectName: string;
   title: string;
   onTitle: (v: string) => void;
   titleError?: string;
@@ -34,6 +39,7 @@ export function QuizWorkStep({
   questionsError?: string;
 }) {
   const [editing, setEditing] = useState<number | "new" | null>(null);
+  const [picking, setPicking] = useState(false);
   const total = totalQuestionMarks(questions.map((d) => d.marks));
 
   const move = (i: number, by: -1 | 1) => {
@@ -120,6 +126,38 @@ export function QuizWorkStep({
         style={styles.stretch}
         testID="give-question-add"
       />
+      <CapsuleButton
+        title={q.fromBank}
+        icon="bank"
+        variant="secondary"
+        onPress={() => setPicking(true)}
+        style={styles.stretch}
+        testID="give-question-bank"
+      />
+      {picking ? (
+        <HomeworkBankPickerSheet
+          subjectId={subjectId}
+          subjectName={subjectName}
+          attachedIds={[]}
+          onAttach={(items) => {
+            const drafts = items
+              .map((item) =>
+                draftFromSnapshot({
+                  questionType: item.questionType,
+                  body: item.body,
+                  marks: item.defaultMarks,
+                  explanation: item.explanation,
+                  options: item.options.map((o, i) => ({ id: i + 1, text: o.optionText, isCorrect: o.isCorrect })),
+                  correctAnswer: item.correctAnswer,
+                }),
+              )
+              .filter((d): d is QuestionDraft => d !== null);
+            onQuestions([...questions, ...drafts]);
+            setPicking(false);
+          }}
+          onClose={() => setPicking(false)}
+        />
+      ) : null}
 
       {editing !== null ? (
         <QuestionComposerSheet
