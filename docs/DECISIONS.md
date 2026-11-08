@@ -3070,21 +3070,25 @@ discarded, not migrated.
     (type from bytes, size, dimensions, no re-encode); files are served from the storage domain,
     never the app's, so an unencoded file cannot reach the app's cookies.
 
-**Transition.** The foundation (migrations 0048 and 0049) moves every byte into the buckets at
-once, but each screen moves to direct uploads in its own slice. Until then the base64 endpoints
-stay and call `storageService.ingest` (the same processing, run on bytes the server already has),
-and `/api/storage/:id` and `/api/public/storage/:id` stay with their old access rules, streaming
-the file from the bucket. They stream rather than redirect because the mobile client sends its
-session cookie as a plain header, which a redirect would carry to the bucket. ID-card assets and
-site media, whose only reference is JSON until their link tables land, are stored already
-attached so the sweeper leaves them alone. Each of these goes with the slice that replaces it.
-
-**Endpoint changes.** `student.uploadPhoto` becomes `student.setPhoto({ id, objectId })`;
-`removePhoto` stays. `fees.uploadImage` becomes `fees.setPrintImage({ kind, objectId })`.
-`idCard.uploadAsset` and `publicSite.uploadImage` go: uploads use `storage.createUpload`, and the
-template save or site content links the ids. Reads that returned bare object ids return image
-references. Removed: `/api/storage/:id`, `/api/public/storage/:id`, the base64 inputs, the `bytea`
-column, `sha256`, `STORAGE_DRIVER` and `apps/api/scripts/migrate-site-media.ts`.
+**Endpoint changes (built).** Each domain hands out its own upload link behind its own gate, and
+its save processes a just-uploaded file (`storageService.ensureReady`) before linking it, so a
+screen makes three calls: link, PUT, save. `storage.complete` stays for screens that need to show
+a file before saving (the ID-card designer).
+- Student photos: `student.photoUpload` then `student.setPhoto({ id, objectId })`; `removePhoto`
+  stays. `student.photo`, roster rows and ID-card card data return `photo` image references.
+- Fee printing: `fees.printing.imageUpload({ kind, file })`; `fees.printing.update` links the ids.
+- ID-card assets: `idCard.template.assetUpload`; template saves keep `id_card_template_assets` in
+  step with the design (new ids linked, dropped ids let go). `template.list` and `byId` return
+  `images` keyed by asset id. A gallery clone copies files inside the bucket and links the copies.
+- Site media: `publicSite.imageUpload` then `publicSite.imageReady` (checks, links, answers the
+  public link). Content stores `storage:{id}` tokens; reads turn them into links and saves turn our
+  own links back into tokens, so the editor and site renderer still see plain URLs.
+  `public_site_media` holds what the draft or the published site uses.
+Removed: `/api/storage/:id`, `/api/public/storage/:id`, every base64 upload input, the `bytea`
+column, `sha256` and `STORAGE_DRIVER`. `migrate-site-media.ts` stays as the demo site's media
+seed, writing tokens. Web uploads need the bucket's CORS rule: `pnpm storage:cors` sets it from
+`CORS_ORIGIN` (`ObjectStore.setCors`, PutBucketCors on every provider). Migration 0050 adds the two
+link tables.
 
 **Consequences.** The API never streams files to clients and handles each upload once, in
 `complete`. Development needs internet and dev bucket credentials; integration tests skip without
