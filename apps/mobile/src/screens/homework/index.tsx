@@ -63,13 +63,9 @@ export function HomeworkScreen() {
     { organizationId: organizationId ?? "", ...(schoolId ? { schoolId } : {}) },
     { enabled: Boolean(organizationId), staleTime: 30_000 },
   );
+  // With nothing waiting, Home says "All checked" (frame 2): a homework given
+  // and checked leaves no trace here, so "no homework yet" would be untrue.
   const data = home.data;
-  const nothing =
-    data &&
-    data.toCheck.length === 0 &&
-    data.quizzes.length === 0 &&
-    data.outNow.length === 0 &&
-    data.drafts.length === 0;
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -92,13 +88,6 @@ export function HomeworkScreen() {
           </View>
         ) : home.isError ? (
           <ErrorCard cause={home.error} onRetry={() => void home.refetch()} testID="homework-error" />
-        ) : nothing ? (
-          <EmptyState
-            icon="homework"
-            title={text.home.emptyTitle}
-            message={text.home.emptyBody}
-            testID="homework-empty"
-          />
         ) : data ? (
           <>
             <SectionLabel style={styles.label}>{text.home.toCheck}</SectionLabel>
