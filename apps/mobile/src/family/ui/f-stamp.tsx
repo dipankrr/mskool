@@ -53,13 +53,6 @@ export function FStamp({
       onLayout={(e) => setHeight(Math.round(e.nativeEvent.layout.height))}
       style={[{ width, padding: s.padding, backgroundColor: colors.edge, transform: [{ rotate: s.tilt }] }, style]}
     >
-      {height > 0 ? (
-        <Svg width={width} height={height} style={StyleSheet.absoluteFill} pointerEvents="none">
-          {dots.map(([x, y], i) => (
-            <Circle key={i} cx={x} cy={y} r={s.dot} fill={s.face} />
-          ))}
-        </Svg>
-      ) : null}
       <View style={{ backgroundColor: colors.face, padding: theme.space.lg, gap: theme.space.xs }}>
         <FText variant="caption" tint={ink}>
           {kicker.toUpperCase()}
@@ -90,6 +83,13 @@ export function FStamp({
           </View>
         ) : null}
       </View>
+      {height > 0 ? (
+        <Svg width={width} height={height} style={styles.dots} pointerEvents="none">
+          {dots.map(([x, y], i) => (
+            <Circle key={i} cx={x} cy={y} r={s.dot} fill={s.face} />
+          ))}
+        </Svg>
+      ) : null}
     </View>
   );
 }
@@ -111,6 +111,7 @@ export function edgeDots(w: number, h: number, gap: number, inset: number): [num
 }
 
 const styles = StyleSheet.create({
+  dots: { position: "absolute", top: 0, left: 0 },
   valueRow: { flexDirection: "row", alignItems: "baseline" },
   shrink: { flexShrink: 1 },
   foot: { flexDirection: "row", justifyContent: "space-between" },

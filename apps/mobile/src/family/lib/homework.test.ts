@@ -3,7 +3,10 @@ import type { PortalItem } from "./homework";
 
 const NOW = new Date(2026, 10, 9, 19, 20); // Mon 9 Nov 2026, 7:20 pm
 
-function item(over: Partial<PortalItem> & { id: string }): PortalItem {
+// Dates travel as strings on the wire; the rules accept either, so Dates keep the tests readable.
+type Over = { [K in keyof PortalItem]?: PortalItem[K] | Date } & { id: string };
+
+function item(over: Over): PortalItem {
   const { id, ...rest } = over;
   return {
     studentAssignmentId: id,
@@ -27,7 +30,7 @@ function item(over: Partial<PortalItem> & { id: string }): PortalItem {
     hasNote: false,
     canUntick: false,
     ...rest,
-  };
+  } as unknown as PortalItem;
 }
 
 describe("shownWord", () => {
@@ -40,14 +43,14 @@ describe("shownWord", () => {
 
 describe("countdown", () => {
   it("counts down in minutes, hours and days with a tone", () => {
-    expect(countdown(new Date(2026, 10, 9, 20, 0), new Date(2026, 10, 9, 20, 0), NOW)).toEqual({ kind: "left", amount: 40, unit: "m", tone: "critical" });
-    expect(countdown(new Date(2026, 10, 10, 8, 0), new Date(2026, 10, 10, 8, 0), NOW)).toMatchObject({ amount: 13, unit: "h", tone: "caution" });
-    expect(countdown(new Date(2026, 10, 14, 19, 20), new Date(2026, 10, 14, 19, 20), NOW)).toMatchObject({ amount: 5, unit: "d", tone: "neutral" });
+    expect(countdown(new Date(2026, 10, 9, 20, 0).toISOString(), new Date(2026, 10, 9, 20, 0).toISOString(), NOW)).toEqual({ kind: "left", amount: 40, unit: "m", tone: "critical" });
+    expect(countdown(new Date(2026, 10, 10, 8, 0).toISOString(), new Date(2026, 10, 10, 8, 0).toISOString(), NOW)).toMatchObject({ amount: 13, unit: "h", tone: "caution" });
+    expect(countdown(new Date(2026, 10, 14, 19, 20).toISOString(), new Date(2026, 10, 14, 19, 20).toISOString(), NOW)).toMatchObject({ amount: 5, unit: "d", tone: "neutral" });
   });
 
   it("shows the late window after the due time, then closed", () => {
-    expect(countdown(new Date(2026, 10, 9, 8, 0), new Date(2026, 10, 10, 19, 20), NOW)).toEqual({ kind: "lateOpen", amount: 1, unit: "d" });
-    expect(countdown(new Date(2026, 10, 9, 8, 0), new Date(2026, 10, 9, 8, 0), NOW)).toEqual({ kind: "closed" });
+    expect(countdown(new Date(2026, 10, 9, 8, 0).toISOString(), new Date(2026, 10, 10, 19, 20).toISOString(), NOW)).toEqual({ kind: "lateOpen", amount: 1, unit: "d" });
+    expect(countdown(new Date(2026, 10, 9, 8, 0).toISOString(), new Date(2026, 10, 9, 8, 0).toISOString(), NOW)).toEqual({ kind: "closed" });
   });
 });
 

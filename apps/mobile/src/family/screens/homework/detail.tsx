@@ -370,7 +370,11 @@ function Checked({ data }: { data: PortalDetail }) {
   const look = data.checkStatus ? t(`detail.checkLook.${data.checkStatus}`) : t("detail.noResult");
   const value = !r ? look : "remark" in r ? t(`remark.${r.remark}`) : r.value;
   const unit = r && !("remark" in r) ? r.unit : undefined;
-  const great = data.checkStatus === "done" && (r === null || ("remark" in r ? r.remark === "excellent" : true));
+  // Praise only what is plainly great: full marks or Excellent.
+  const great =
+    data.checkStatus === "done" &&
+    r !== null &&
+    ("remark" in r ? r.remark === "excellent" : data.gradingMode === "marks" && data.marks !== null && Number(data.marks) === Number(data.maxMarks));
 
   return (
     <View style={{ gap: theme.space.xl }}>
@@ -392,6 +396,16 @@ function Checked({ data }: { data: PortalDetail }) {
         ) : null}
       </View>
       {data.note ? <FNote testID="hw-note" body={data.note} by={data.teacherName} /> : null}
+      {data.comesBack === "questions" && data.quiz?.attemptId ? (
+        <FButton
+          testID="hw-quiz-answers"
+          label={t("quiz.seeResult")}
+          icon="grade"
+          variant="secondary"
+          block
+          onPress={() => router.push({ pathname: "/family/homework/quiz", params: { id: data.studentAssignmentId } })}
+        />
+      ) : null}
       {data.submission && data.submission.files.length > 0 ? (
         <Section title={t("detail.yourWork")}>
           <PhotoRow photos={data.submission.files} />

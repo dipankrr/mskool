@@ -39,6 +39,8 @@ export function FHand({
           color: fg,
           textAlign: align,
           transform: [{ rotate: h.tilt }],
+          // Caveat's last letter leans past its box; without room Android clips it.
+          paddingHorizontal: Math.round(fontSize * 0.25),
         },
         style,
       ]}

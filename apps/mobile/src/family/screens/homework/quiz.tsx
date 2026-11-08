@@ -35,6 +35,8 @@ export function FamilyHomeworkQuiz() {
   const submit = trpc.portalHomework.attempts.submit.useMutation({
     onSuccess: () => {
       void utils.portalHomework.get.invalidate(ref);
+      // The results read the saved answers back; the cached copy is from before answering.
+      void utils.portalHomework.attempts.get.invalidate();
       void utils.portalHomework.list.invalidate();
     },
   });
@@ -162,7 +164,15 @@ function Taking({
       testID="family-homework-quiz"
       header={
         <View style={{ gap: theme.space.md }}>
-          <FHeader title="" onBack={onClose} backLabel={t("quiz.close")} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t("quiz.close")}
+            hitSlop={12}
+            onPress={onClose}
+            style={{ minHeight: theme.touch.min, justifyContent: "center", alignSelf: "flex-start" }}
+          >
+            <AppIcon name="chevronLeft" size={24} color={theme.color.ink} />
+          </Pressable>
           <View style={[styles.row, { gap: theme.space.xs }]}>
             {questions.map((question, i) => (
               <Pressable
@@ -187,7 +197,7 @@ function Taking({
     >
       <Enter key={q.id} style={{ gap: theme.space.md }}>
         <FText variant="meta" color="muted">
-          {t("quiz.ofMarks", { n: index + 1, total: questions.length, marks: format.marks(q.marks) })}
+          {t("quiz.ofMarks", { n: index + 1, total: questions.length, count: Number(q.marks), marks: format.marks(q.marks) })}
         </FText>
         <FText variant="title">{q.body}</FText>
         {q.questionType === "mcq_multi" ? (
