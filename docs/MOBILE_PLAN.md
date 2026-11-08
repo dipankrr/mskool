@@ -779,10 +779,10 @@ and `packages/trpc/src/routers/homework.router.ts` the procedures.
 | Chunk | Procedures | Screens | Done |
 |---|---|---|---|
 | H1 backend | all of `homework.*` and `portalHomework.*` | none | ☑ (integration-tested, not walked) |
-| H2 Home, Give, Check | `home`, `pairs`, `defaults`, `fileUpload`, `create`, `update`, `give`, `undoGive`, `deleteDraft`, `register.get/save`, `students.get` | Home, Give (4 steps), check list, child sheet | ☐ |
-| H3 online review | `students.sendBack`, `students.markTick`, review reads | review queue, reading ticks | ☐ |
-| H4 quiz | `questions.set/get`, `bank.*`, `students.attempts.*` | quiz in Give, results | ☐ |
-| H5 beyond one teacher | `list`, `byId`, `moveDue`, `giveAgain`, `cancel`, `close`, `comments.*` | detail, all homework, class diary, child record, principal | ☐ |
+| H2 Home, Give, Check | `home`, `pairs`, `defaults`, `fileUpload`, `create`, `update`, `give`, `undoGive`, `deleteDraft`, `register.get/save` | Home, Give (4 steps), check list, child sheet | ☑ (walked 2026-11-08) |
+| H3 online review | `students.get`, `students.sendBack`, `students.markTick` | review queue, reading ticks | ☑ (not walked) |
+| H4 quiz | `questions.set/get`, `bank.list`, `students.attempts.*` | quiz in Give, bank picker, results | ☑ (not walked; bank management screen open) |
+| H5 beyond one teacher | `list`, `byId`, `moveDue`, `giveAgain`, `cancel`, `close`, `comments.*` | detail and all homework ☑ (not walked); class diary, child record, principal ☐ | ☐ |
 | Family | `portalHomework.*` | not designed yet | ☐ |
 
 Acceptance (from the brief, §1): a teacher gives homework to two sections in
