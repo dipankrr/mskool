@@ -22,6 +22,7 @@ const FONTS = {
   "ClashGrotesk-Medium": require("../../assets/fonts/ClashGrotesk-Medium.ttf"),
   "ClashGrotesk-Semibold": require("../../assets/fonts/ClashGrotesk-Semibold.ttf"),
   "ClashGrotesk-Bold": require("../../assets/fonts/ClashGrotesk-Bold.ttf"),
+  "Caveat-Bold": require("../../assets/fonts/Caveat-Bold.ttf"),
 } as const;
 
 /**

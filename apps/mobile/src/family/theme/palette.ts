@@ -37,6 +37,16 @@ export const palette = {
 
   /** The reference's stamp colour, kept for highlights. */
   coral: "#F2705A",
+  coralTint: "#FDE9E4",
+  coralEdge: "#FBDCD3",
+  grape: "#7A4DE8",
+  grapeTint: "#EFE8FF",
+  greenEdge: "#CFEBDC",
+  blueEdge: "#D5E1FF",
+  /** The teacher's sticky note. */
+  note: "#FFF4B8",
+  noteInk: "#3B3320",
+  noteMuted: "#7A6A33",
 
   /** The faint cool-to-warm wash behind screens. */
   washTop: "#EEF3FF",
@@ -71,6 +81,9 @@ export const fontFiles = {
  * Line height per script, as a multiple of the font size. Indian scripts
  * need more room for marks above and below the line (about 1.5).
  */
+/** The handwriting face for Bookie's short notes (Caveat, OFL). Latin only. */
+export const handFont = "Caveat-Bold";
+
 export const lineHeightScale = {
   latin: { tight: 1.08, normal: 1.32 },
 } as const;

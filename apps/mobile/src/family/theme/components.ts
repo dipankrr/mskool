@@ -1,4 +1,4 @@
-import { palette } from "./palette";
+import { handFont, palette } from "./palette";
 import { color, radius, space, tone } from "./roles";
 
 /**
@@ -169,6 +169,76 @@ export const components = {
     gap: space.md,
     paddingY: space.huge,
     mascotSize: 96,
+  },
+
+  /** Bookie's handwritten notes: short (2–5 words), never long text. */
+  hand: {
+    font: handFont,
+    size: 24,
+    lineHeight: 25,
+    tilt: "-4deg",
+  },
+
+  /** A result stamp, as on Results: an edge with punched dots around a solid face. */
+  stamp: {
+    padding: 12,
+    dot: 4,
+    dotGap: 13,
+    tilt: "-4deg",
+    face: palette.white,
+    tone: {
+      coral: { face: palette.coral, edge: palette.coralEdge },
+      green: { face: palette.green, edge: palette.greenEdge },
+      blue: { face: palette.blue, edge: palette.blueEdge },
+    },
+  },
+
+  /** A teacher's note: a sticky note in the normal face (readable when long). */
+  note: {
+    radius: radius.lg,
+    corner: 4,
+    padding: space.lg,
+    tilt: "-1deg",
+    look: {
+      plain: { bg: palette.note, fg: palette.noteInk, muted: palette.noteMuted },
+      redo: { bg: palette.coralTint, fg: palette.red, muted: palette.red },
+    },
+  },
+
+  /** Homework: one colour pair per subject (picked by name), the six words, the Tonight card. */
+  homework: {
+    subjects: [
+      { fg: palette.blue, bg: palette.blueTint },
+      { fg: palette.coral, bg: palette.coralTint },
+      { fg: palette.green, bg: palette.greenTint },
+      { fg: palette.amber, bg: palette.amberTint },
+      { fg: palette.grape, bg: palette.grapeTint },
+    ],
+    tile: { size: 46, radius: radius.md, icon: 24 },
+    word: {
+      to_do: { fg: palette.ink, bg: palette.white, border: palette.ink },
+      sent: { fg: palette.blue, bg: palette.blueTint, border: null },
+      done: { fg: palette.green, bg: palette.greenTint, border: null },
+      late: { fg: palette.amber, bg: palette.amberTint, border: null },
+      checked: { fg: palette.green, bg: palette.greenTint, border: null },
+      redo: { fg: palette.white, bg: palette.coral, border: null },
+      missed: { fg: palette.slate, bg: palette.slateTint, border: null },
+    },
+    tonight: {
+      bg: palette.ink,
+      fg: palette.white,
+      muted: "rgba(255, 255, 255, 0.72)",
+      dot: "rgba(255, 255, 255, 0.18)",
+      dotOn: palette.white,
+      radius: radius.xl,
+    },
+    /** Rows that are finished are outlined, not filled. */
+    doneRow: { bg: "transparent", border: palette.stoneDeep },
+    howTo: { border: "rgba(27, 27, 26, 0.22)" },
+    tick: { size: 168, on: palette.green, off: palette.stone, fg: palette.white, border: "rgba(27, 27, 26, 0.2)" },
+    option: { radius: radius.lg, height: 60, bg: palette.stone, on: palette.blue, onFg: palette.white, right: palette.greenTint, rightEdge: palette.green, wrong: palette.coralTint, wrongEdge: palette.coral },
+    bubble: { mine: palette.ink, mineFg: palette.white, teacher: palette.blueTint, other: palette.stone, radius: radius.lg, corner: 4 },
+    photo: { radius: radius.sm },
   },
 
   mascot: {
