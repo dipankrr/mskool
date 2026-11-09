@@ -52,8 +52,9 @@ export function FamilyHome() {
     setSigningOut(true);
     setSignOutError(null);
     try {
+      // The family layout's guard sends a signed-out session to sign-in. A
+      // second navigation here raced it and crashed Android's view tree.
       await logout();
-      router.replace("/login");
     } catch {
       setSignOutError(t("home.signOutFailed"));
       setSigningOut(false);
