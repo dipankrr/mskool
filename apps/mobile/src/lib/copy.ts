@@ -1337,15 +1337,45 @@ export const copy = {
       register: "Register numbers",
     },
     modeSectionHelp:
-      "Photos map to the roster in the order you picked them, against the section's roll order — no renaming needed.",
+      "Photos map to the section's roll order — first photo to the first roll. No renaming needed.",
     modeRegisterHelp:
-      "Each file's name is matched against an admission number, like IMG_0142.jpg for 2026-0142.",
+      "Each file is named with an admission number, like 2026-0142.jpg, and finds that student anywhere in the school.",
+    orderLabel: "Photo order",
+    orders: { taken: "Time taken", name: "File name", custom: "Your order" },
+    orderTakenHelp:
+      "Sorted by when each photo was taken. Photos the phone has no time for keep the order you picked them in.",
+    orderNameHelp: "Sorted by file name, numbers counted as numbers.",
+    orderCustomHelp: "You moved photos by hand. Pick a sort to reset the order.",
+    skipHasPhoto: (count: number) =>
+      count === 1
+        ? "Skip the 1 student who has a photo"
+        : `Skip the ${count} students who have a photo`,
+    skipHasPhotoHelp: "Their turn passes to the next student, so only missing photos are filled.",
+    hasPhoto: "Has photo",
+    replacesPhoto: "Replaces photo",
+    skipped: "Skipped",
+    rowActions: "This student",
+    moveUp: "Move photo to the student above",
+    moveDown: "Move photo to the student below",
+    removePhoto: "Remove this photo from the batch",
+    skipStudent: "No photo for this student — pass it on",
+    unskipStudent: "Give this student a photo again",
+    photoActions: "This photo",
+    clearAll: "Clear all photos",
+    summary: (matched: number, photos: number) =>
+      `${matched} of ${photos} photos matched`,
+    added: (count: number) =>
+      count === 0 ? "Those photos are already in the batch." : null,
+    lookingUp: "Looking up admission numbers…",
+    lookupFailed: "Couldn't look up the admission numbers.",
+    registerEmpty: "Choose photos named with admission numbers, like 2026-0142.jpg.",
+    tooMany: (max: number) => `A batch holds up to ${max} photos. Upload these, then add more.`,
     matchedCount: (count: number) =>
       count === 1 ? "1 photo matched" : `${count} photos matched`,
     unmatchedLabel: (count: number) =>
       count === 1 ? "1 photo unmatched" : `${count} photos unmatched`,
     unmatchedHelp:
-      "These photos found no student. Clear a row below to move its photo back here.",
+      "These photos found no student. Tap one to take it out of the batch.",
     clearRow: "Clear this match",
     noFileName: "No file name",
     uploadCount: (count: number) =>

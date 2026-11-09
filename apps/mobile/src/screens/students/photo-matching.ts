@@ -1,8 +1,13 @@
 /**
  * The photo workbench's matching logic, pure and testable. Two modes mirror
  * the web's bulk uploader: photos map to the roster in order (SECTION) or by
- * file name → admission number (REGISTER). Resizing and uploading live in
- * lib/image-upload (ADR-063).
+ * file name → admission number (REGISTER, matched against the whole school by
+ * `student.byAdmissions`). Resizing and uploading live in lib/image-upload
+ * (ADR-063).
+ *
+ * In SECTION mode the batch's ARRAY ORDER is the one source of truth, as on
+ * the web: sorting rewrites the array, moving a photo swaps it with its
+ * neighbour, and students marked skipped hand their turn to the next student.
  */
 
 export type RosterEntry = {
@@ -13,9 +18,11 @@ export type RosterEntry = {
 };
 
 export type PickedPhoto = {
+  /** Stable within a batch: the library's asset id, else the file's uri. */
+  id: string;
   localUri: string;
   fileName: string | null;
-  /** Epoch millis when the photo was taken, when the platform supplies it. */
+  /** Epoch millis when the photo was taken (EXIF), when the photo says. */
   creationTime: number | null;
   width: number;
   height: number;
@@ -30,6 +37,32 @@ export type MatchResult = {
   unmatched: PickedPhoto[];
 };
 
+export type PhotoOrder = "taken" | "name";
+
+/**
+ * EXIF dates read "2026:11:09 10:42:07" with no zone. They are compared only
+ * with each other, so reading them as UTC is fine. iOS nests the tags under
+ * "{Exif}"; Android puts them at the top.
+ */
+export function captureTimeFromExif(
+  exif: Record<string, unknown> | null | undefined,
+): number | null {
+  if (!exif) return null;
+  const nested = exif["{Exif}"] as Record<string, unknown> | undefined;
+  const raw =
+    exif.DateTimeOriginal ??
+    nested?.DateTimeOriginal ??
+    exif.DateTimeDigitized ??
+    nested?.DateTimeDigitized ??
+    exif.DateTime;
+  if (typeof raw !== "string") return null;
+  const match = /^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec(raw.trim());
+  if (!match) return null;
+  const [, y, mo, d, h, mi, s] = match.map(Number) as number[];
+  const millis = Date.UTC(y!, mo! - 1, d!, h!, mi!, s!);
+  return Number.isFinite(millis) ? millis : null;
+}
+
 /** Photos in capture order: taken-time first, list position as the tiebreak. */
 export function photosInCaptureOrder(photos: PickedPhoto[]): PickedPhoto[] {
   return photos
@@ -40,6 +73,56 @@ export function photosInCaptureOrder(photos: PickedPhoto[]): PickedPhoto[] {
       return at !== bt ? at - bt : a.index - b.index;
     })
     .map((entry) => entry.photo);
+}
+
+/** File-name order, numbers compared as numbers; unnamed photos keep their place last. */
+export function photosInNameOrder(photos: PickedPhoto[]): PickedPhoto[] {
+  return photos
+    .map((photo, index) => ({ photo, index }))
+    .sort((a, b) => {
+      if (a.photo.fileName && b.photo.fileName) {
+        const byName = a.photo.fileName.localeCompare(b.photo.fileName, undefined, {
+          numeric: true,
+        });
+        if (byName !== 0) return byName;
+      } else if (a.photo.fileName) return -1;
+      else if (b.photo.fileName) return 1;
+      return a.index - b.index;
+    })
+    .map((entry) => entry.photo);
+}
+
+export function sortPhotos(photos: PickedPhoto[], by: PhotoOrder): PickedPhoto[] {
+  return by === "taken" ? photosInCaptureOrder(photos) : photosInNameOrder(photos);
+}
+
+/** Adds a new pick to the batch; a photo already in it is not added twice. */
+export function mergePhotos(
+  current: PickedPhoto[],
+  incoming: PickedPhoto[],
+): { photos: PickedPhoto[]; added: number } {
+  const seen = new Set(current.map((photo) => photo.id));
+  const next = [...current];
+  for (const photo of incoming) {
+    if (seen.has(photo.id)) continue;
+    seen.add(photo.id);
+    next.push(photo);
+  }
+  return { photos: next, added: next.length - current.length };
+}
+
+/** Swaps a photo with its neighbour; out-of-range moves change nothing. */
+export function movePhoto(
+  photos: PickedPhoto[],
+  photoId: string,
+  delta: -1 | 1,
+): PickedPhoto[] {
+  const from = photos.findIndex((photo) => photo.id === photoId);
+  const to = from + delta;
+  if (from < 0 || to < 0 || to >= photos.length) return photos;
+  const next = [...photos];
+  [next[from], next[to]] = [next[to]!, next[from]!];
+  return next;
 }
 
 /** Roster in roll order: numbered rolls first, unnumbered after by name. */
@@ -57,24 +140,26 @@ export function rosterInMarkingOrder(entries: RosterEntry[]): RosterEntry[] {
   });
 }
 
-/** SECTION mode: capture order of the photos maps onto roll order of the roster. */
+/**
+ * SECTION mode: the batch, in its current order, maps onto roll order. A
+ * skipped student (absent on photo day, or already has a photo) takes no
+ * photo, and the next student gets it instead.
+ */
 export function matchByOrder(
   photos: PickedPhoto[],
   roster: RosterEntry[],
+  skipped: ReadonlySet<string> = new Set(),
 ): MatchResult {
-  const ordered = photosInCaptureOrder(photos);
-  const orderedRoster = rosterInMarkingOrder(roster);
+  const slots = rosterInMarkingOrder(roster).filter(
+    (entry) => !skipped.has(entry.studentId),
+  );
   const matches: PhotoMatches = [];
   const unmatched: PickedPhoto[] = [];
-  for (let index = 0; index < ordered.length; index += 1) {
-    const photo = ordered[index];
-    const entry = orderedRoster[index];
-    if (entry) {
-      matches.push({ studentId: entry.studentId, photo });
-    } else {
-      unmatched.push(photo);
-    }
-  }
+  photos.forEach((photo, index) => {
+    const entry = slots[index];
+    if (entry) matches.push({ studentId: entry.studentId, photo });
+    else unmatched.push(photo);
+  });
   return { matches, unmatched };
 }
 
@@ -90,6 +175,17 @@ export function admissionFromFileName(fileName: string | null): string | null {
   return stem.length > 0 ? stem : null;
 }
 
+/** The admission numbers to ask the server about, one per distinct stem. */
+export function admissionsToLookUp(photos: PickedPhoto[]): string[] {
+  const out = new Map<string, string>();
+  for (const photo of photos) {
+    const stem = admissionFromFileName(photo.fileName);
+    if (stem && stem.length <= 40) out.set(stem.toLowerCase(), stem);
+  }
+  return [...out.values()].slice(0, 500);
+}
+
+/** Matches photos to students found by admission number; first photo per student wins. */
 export function matchByAdmission(
   photos: PickedPhoto[],
   roster: RosterEntry[],
@@ -101,17 +197,40 @@ export function matchByAdmission(
   const unmatched: PickedPhoto[] = [];
   const used = new Set<string>();
   for (const photo of photos) {
-    const admission = admissionFromFileName(photo.fileName);
-    const entry =
-      admission !== null && !used.has(admission.toLowerCase())
-        ? byAdmission.get(admission.toLowerCase())
-        : undefined;
-    if (entry && admission) {
-      used.add(admission.toLowerCase());
+    const admission = admissionFromFileName(photo.fileName)?.toLowerCase();
+    const entry = admission ? byAdmission.get(admission) : undefined;
+    if (entry && !used.has(entry.studentId)) {
+      used.add(entry.studentId);
       matches.push({ studentId: entry.studentId, photo });
     } else {
       unmatched.push(photo);
     }
   }
   return { matches, unmatched };
+}
+
+/**
+ * Runs `work` over `items` with at most `limit` running at once. Each item's
+ * failure is its own: the pool keeps going and never rejects.
+ */
+export async function runPool<T>(
+  items: T[],
+  limit: number,
+  work: (item: T) => Promise<void>,
+): Promise<void> {
+  let next = 0;
+  const lane = async () => {
+    while (next < items.length) {
+      const item = items[next];
+      next += 1;
+      try {
+        await work(item!);
+      } catch {
+        // The caller records failures inside `work`.
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, lane),
+  );
 }
