@@ -170,3 +170,10 @@ Built as section 0 says, with these specifics:
 - **Web:** `students/id-cards/page.tsx` and `print-preview.tsx` pad each sheet so the grid is centred.
 
 **Checked:** see TASKS. **Not walked:** phone, printer, duplex, iOS, large batches.
+
+**Margins (owner, 2026-11-09).** The 10mm margin was a leftover from the web page, so 5 rows of
+landscape cards at a 2mm gap didn't fit (278mm needed, 277mm free). The margin is now the user's:
+left and right and top and bottom set apart, default 8mm, 0 to 100mm, on the phone (steppers,
+remembered per phone) and on the web print page (inputs, remembered per browser), with a live
+"N cards per sheet" line on both. The grid stays centred, so backs still line up. The 50mm check
+line moves into the space below the cards and is left out when there is less than 6mm.

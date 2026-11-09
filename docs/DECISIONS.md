@@ -3197,7 +3197,10 @@ and drawn there in React; the phone had no way to print one.
    enlarge them.
 5. The QR keeps the web's value, `<WEB_APP_URL>/students/<id>`. `WEB_APP_URL` is a new optional
    services env var; without it the QR slot prints empty.
-6. Gaps between columns and rows (0 to 20mm, default 4) are remembered per phone.
+6. Gaps between columns and rows (0 to 20mm, default 4) and the sheet's margins, left and right
+   and top and bottom set apart (default 8mm, any value the school chooses), are the user's to set,
+   on the phone and the web alike, with a live "N cards per sheet" line. The phone remembers them
+   per phone, the web per browser. The check line prints only where there is room below the cards.
 
 **Consequences.** Two card renderers exist (web React, server HTML) until the web print page
 reads the server HTML too. Template editing stays on the web by owner decision.

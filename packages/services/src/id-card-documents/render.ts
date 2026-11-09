@@ -111,7 +111,7 @@ export function renderIdCards(input: RenderInput): {
         .map(({ item, side: which, slot }) => cardHtml(item, which, slot, page.sheet))
         .join("");
       return `<div class="page" style="width:${n(page.widthMm)}mm;height:${n(page.heightMm)}mm">${cards}${
-        page.sheet ? RULER : ""
+        page.rulerSpaceMm > 0 ? ruler(page.rulerSpaceMm) : ""
       }</div>`;
     })
     .join("");
@@ -172,7 +172,8 @@ function elementHtml(
  * A 50mm line in the bottom margin of each A4 sheet. If it doesn't measure 50mm on
  * paper, the printer scaled the page and the cards are the wrong size too.
  */
-const RULER = `<div class="ruler"><div class="ruler-line"></div><div class="ruler-label">This line is 50 mm. If it measures less or more, set the printer to actual size (100%).</div></div>`;
+const ruler = (spaceMm: number) =>
+  `<div class="ruler" style="bottom:${n((spaceMm - 3) / 2)}mm"><div class="ruler-line"></div><div class="ruler-label">This line is 50 mm. If it measures less or more, set the printer to actual size (100%).</div></div>`;
 
 const CSS = `
 *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -188,6 +189,6 @@ html,body{margin:0;padding:0;background:#fff}
 .empty{width:100%;height:100%;background:#f3f4f6}
 .qr,.qr svg{display:block;width:100%;height:100%}
 .logo{width:100%;height:100%;background-size:contain;background-repeat:no-repeat;background-position:center}
-.ruler{position:absolute;left:10mm;bottom:4mm;display:flex;align-items:center;gap:3mm;font-family:"Noto Sans",Roboto,sans-serif;font-size:6.5pt;color:#6b7280}
+.ruler{position:absolute;left:0;right:0;justify-content:center;height:3mm;display:flex;align-items:center;gap:3mm;font-family:"Noto Sans",Roboto,sans-serif;font-size:6.5pt;color:#6b7280}
 .ruler-line{width:50mm;height:2mm;border-left:0.25mm solid #6b7280;border-right:0.25mm solid #6b7280;background:linear-gradient(#6b7280,#6b7280) center/100% 0.25mm no-repeat}
 `;

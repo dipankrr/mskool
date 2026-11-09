@@ -427,6 +427,8 @@ export const copy = {
       paperCard: "Card size",
       columnGap: "Gap between columns",
       rowGap: "Gap between rows",
+      marginX: "Margin left and right",
+      marginY: "Margin top and bottom",
       mm: (value: number) => `${value} mm`,
       less: (label: string) => `Less ${label.toLowerCase()}`,
       more: (label: string) => `More ${label.toLowerCase()}`,

@@ -449,7 +449,7 @@ describe("id cards & storage (slice 2a)", () => {
   it("print document draws the list's cards on exact A4 with the default design", async () => {
     const document = await idCardPrintService.document(scopeA1, {
       list: sectionList(currentYearAId, section6aId),
-      paper: { kind: "a4", columnGapMm: 4, rowGapMm: 4, flip: "long" },
+      paper: { kind: "a4", columnGapMm: 4, rowGapMm: 4, marginXMm: 8, marginYMm: 8, flip: "long" },
     });
     expect(document.cardCount).toBeGreaterThan(0);
     expect(document.html).toContain("Itg ITG-0001");

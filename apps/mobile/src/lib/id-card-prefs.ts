@@ -1,18 +1,31 @@
 import { useSyncExternalStore } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { clampGap, GAP_DEFAULT_MM } from "../screens/students/id-card-print-logic";
+import {
+  clampGap,
+  clampMargin,
+  GAP_DEFAULT_MM,
+  MARGIN_DEFAULT_MM,
+  type SheetSpacing,
+} from "../screens/students/id-card-print-logic";
 
 /**
- * The last ID-card gaps used on this phone, so the office doesn't set them every time.
+ * The last ID-card gaps and margins used on this phone, so the office doesn't set them every time.
  * A per-phone convenience like the fees display choice (fee-prefs.ts), not a school
  * setting: the gaps change nothing the server stores.
  */
 const KEY = "mskool.idCards.gaps";
 
-export type CardGaps = { columnGapMm: number; rowGapMm: number };
+export type CardGaps = SheetSpacing;
 
-let value: CardGaps = { columnGapMm: GAP_DEFAULT_MM, rowGapMm: GAP_DEFAULT_MM };
+const clampAll = (next: Partial<CardGaps>): CardGaps => ({
+  columnGapMm: next.columnGapMm === undefined ? GAP_DEFAULT_MM : clampGap(Number(next.columnGapMm)),
+  rowGapMm: next.rowGapMm === undefined ? GAP_DEFAULT_MM : clampGap(Number(next.rowGapMm)),
+  marginXMm: next.marginXMm === undefined ? MARGIN_DEFAULT_MM : clampMargin(Number(next.marginXMm)),
+  marginYMm: next.marginYMm === undefined ? MARGIN_DEFAULT_MM : clampMargin(Number(next.marginYMm)),
+});
+
+let value: CardGaps = clampAll({});
 let loaded = false;
 const listeners = new Set<() => void>();
 
@@ -26,11 +39,7 @@ function load() {
   AsyncStorage.getItem(KEY)
     .then((stored) => {
       if (!stored) return;
-      const parsed = JSON.parse(stored) as Partial<CardGaps>;
-      value = {
-        columnGapMm: clampGap(Number(parsed.columnGapMm)),
-        rowGapMm: clampGap(Number(parsed.rowGapMm)),
-      };
+      value = clampAll(JSON.parse(stored) as Partial<CardGaps>);
       emit();
     })
     .catch(() => {
@@ -45,7 +54,7 @@ function subscribe(listener: () => void) {
 }
 
 export function setCardGaps(next: CardGaps) {
-  value = { columnGapMm: clampGap(next.columnGapMm), rowGapMm: clampGap(next.rowGapMm) };
+  value = clampAll(next);
   emit();
   void AsyncStorage.setItem(KEY, JSON.stringify(value)).catch(() => undefined);
 }

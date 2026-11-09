@@ -24,6 +24,7 @@ import {
   cardSizeOf,
   GAP_MAX_MM,
   GAP_MIN_MM,
+  MARGIN_MAX_MM,
   sheetCount,
 } from "./id-card-print-logic";
 
@@ -83,7 +84,7 @@ export function IdCardPrintSheet({
   const overLimit = facts ? facts.printable > facts.limit : false;
   const twoSided = Boolean(design?.backCanvas && design?.backElements);
   const card = design ? cardSizeOf(design) : null;
-  const fit = card ? a4Fit(card, gaps.columnGapMm, gaps.rowGapMm) : null;
+  const fit = card ? a4Fit(card, gaps) : null;
 
   const loading = summary.isLoading || templates.isLoading;
   const loadError = summary.error ?? templates.error;
@@ -101,7 +102,7 @@ export function IdCardPrintSheet({
           templateId: design.id,
           paper:
             paper === "a4"
-              ? { kind: "a4", columnGapMm: gaps.columnGapMm, rowGapMm: gaps.rowGapMm, flip }
+              ? { kind: "a4", ...gaps, flip }
               : { kind: "card" },
         },
         { staleTime: 0, gcTime: 0 },
@@ -243,6 +244,20 @@ export function IdCardPrintSheet({
               onChange={(next) => setCardGaps({ ...gaps, rowGapMm: next })}
               testID="id-print-row-gap"
             />
+            <GapStepper
+              label={words.marginX}
+              value={gaps.marginXMm}
+              max={MARGIN_MAX_MM}
+              onChange={(next) => setCardGaps({ ...gaps, marginXMm: next })}
+              testID="id-print-margin-x"
+            />
+            <GapStepper
+              label={words.marginY}
+              value={gaps.marginYMm}
+              max={MARGIN_MAX_MM}
+              onChange={(next) => setCardGaps({ ...gaps, marginYMm: next })}
+              testID="id-print-margin-y"
+            />
             {fit ? (
               <ThemedText variant="meta" color={colors.muted} testID="id-print-per-sheet">
                 {words.perSheet(fit.perSheet, sheetCount(Math.min(printable, facts?.limit ?? printable), fit.perSheet))}
@@ -324,26 +339,28 @@ export function IdCardPrintSheet({
   );
 }
 
-/** A gap in whole millimetres, 0 to 20, with buttons big enough for a thumb. */
+/** A gap or margin in whole millimetres, with buttons big enough for a thumb. */
 function GapStepper({
   label,
   value,
+  max = GAP_MAX_MM,
   onChange,
   testID,
 }: {
   label: string;
   value: number;
+  max?: number;
   onChange: (next: number) => void;
   testID: string;
 }) {
-  const step = (delta: number) => onChange(Math.min(GAP_MAX_MM, Math.max(GAP_MIN_MM, value + delta)));
+  const step = (delta: number) => onChange(Math.min(max, Math.max(GAP_MIN_MM, value + delta)));
   return (
     <View
       style={styles.stepper}
       accessible
       accessibilityRole="adjustable"
       accessibilityLabel={label}
-      accessibilityValue={{ min: GAP_MIN_MM, max: GAP_MAX_MM, now: value, text: words.mm(value) }}
+      accessibilityValue={{ min: GAP_MIN_MM, max, now: value, text: words.mm(value) }}
       accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
       onAccessibilityAction={(event) => step(event.nativeEvent.actionName === "increment" ? 1 : -1)}
       testID={testID}
@@ -355,7 +372,7 @@ function GapStepper({
       <ThemedText variant="bodyStrong" style={styles.stepValue} testID={`${testID}-value`}>
         {words.mm(value)}
       </ThemedText>
-      <StepButton icon="add" label={words.more(label)} disabled={value >= GAP_MAX_MM} onPress={() => step(1)} testID={`${testID}-more`} />
+      <StepButton icon="add" label={words.more(label)} disabled={value >= max} onPress={() => step(1)} testID={`${testID}-more`} />
     </View>
   );
 }

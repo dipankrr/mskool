@@ -19,7 +19,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import type { IdCardStudentCard } from "@repo/contracts";
+import {
+  ID_CARD_MARGIN_DEFAULT_MM,
+  type IdCardStudentCard,
+} from "@repo/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -165,6 +168,45 @@ export default function IdCardsPage() {
       // No storage: the choice lives for this visit only.
     }
   };
+  /** The sheet's margins in mm, left and right and top and bottom: the school's own
+   * call (a printer that prints close to the edge fits more). Default 8mm, the same
+   * as the phone (ADR-065). Persisted per browser. */
+  const [marginXMm, setMarginXMm] = useState(ID_CARD_MARGIN_DEFAULT_MM);
+  const [marginYMm, setMarginYMm] = useState(ID_CARD_MARGIN_DEFAULT_MM);
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(
+        window.localStorage.getItem(PRINT_MARGINS_KEY) ?? "null",
+      ) as { x?: number; y?: number } | null;
+      if (saved && Number.isFinite(saved.x) && saved.x! >= 0 && saved.x! <= 100) {
+        setMarginXMm(saved.x!);
+      }
+      if (saved && Number.isFinite(saved.y) && saved.y! >= 0 && saved.y! <= 100) {
+        setMarginYMm(saved.y!);
+      }
+    } catch {
+      // No storage: the default margin stands.
+    }
+  }, []);
+  const changeMargin = (axis: "x" | "y", value: number) => {
+    const clamped = Math.max(
+      0,
+      Math.min(100, Number.isFinite(value) ? value : ID_CARD_MARGIN_DEFAULT_MM),
+    );
+    if (axis === "x") setMarginXMm(clamped);
+    else setMarginYMm(clamped);
+    try {
+      window.localStorage.setItem(
+        PRINT_MARGINS_KEY,
+        JSON.stringify({
+          x: axis === "x" ? clamped : marginXMm,
+          y: axis === "y" ? clamped : marginYMm,
+        }),
+      );
+    } catch {
+      // No storage: the choice lives for this visit only.
+    }
+  };
   const [newOpen, setNewOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [newOrientation, setNewOrientation] = useState<"landscape" | "portrait">(
@@ -275,24 +317,28 @@ export default function IdCardsPage() {
   // The print grid follows the CHOSEN TEMPLATE's physical size (custom
   // canvas dims or CR80). The sheet's CSS gap is 4mm (globals.css), so N
   // columns need N*width + (N-1)*4 ≤ the printable area — i.e.
-  // N ≤ (printable + gap) / (size + gap). A4 210×297 minus 10mm margins
-  // each side = 190×277mm. For CR80 this lands exactly on the old 2×4
-  // landscape / 3×3 portrait sheets.
+  // N ≤ (printable + gap) / (size + gap). The printable area is A4 210×297
+  // less the chosen margins on each side; the same sum as the phone's sheet
+  // and the API's layout (ADR-065).
   const COLUMN_GAP_MM = Math.max(0, Math.min(20, columnGapMm || 0));
   const ROW_GAP_MM = Math.max(0, Math.min(20, rowGapMm || 0));
+  const MARGIN_X_MM = Math.max(0, Math.min(100, marginXMm || 0));
+  const MARGIN_Y_MM = Math.max(0, Math.min(100, marginYMm || 0));
+  const printableWidthMm = Math.max(0, 210 - 2 * MARGIN_X_MM);
+  const printableHeightMm = Math.max(0, 297 - 2 * MARGIN_Y_MM);
   const printSize = choice ? cardSizeMm(choice.data) : { widthMm: 86, heightMm: 54 };
   const printColumns = Math.max(
     1,
-    Math.floor((190 + COLUMN_GAP_MM) / (printSize.widthMm + COLUMN_GAP_MM)),
+    Math.floor((printableWidthMm + COLUMN_GAP_MM) / (printSize.widthMm + COLUMN_GAP_MM)),
   );
   const printRows = Math.max(
     1,
-    Math.floor((277 + ROW_GAP_MM) / (printSize.heightMm + ROW_GAP_MM)),
+    Math.floor((printableHeightMm + ROW_GAP_MM) / (printSize.heightMm + ROW_GAP_MM)),
   );
   const perPage = printColumns * printRows;
   // The grid is CENTRED on the sheet, both ways. Turning a sheet over mirrors it
   // about its middle, so a back lands behind its front only when the grid sits in
-  // the middle: pinned to the 10mm margin, two landscape cards (176mm of the 190mm
+  // the middle: pinned to a 10mm margin, two landscape cards (176mm of the 190mm
   // printable width) put every back 14mm off. The padding is the same on every
   // page, partial ones included, so the slots stay put.
   const gridWidthMm =
@@ -605,6 +651,35 @@ export default function IdCardsPage() {
                 onChange={(event) => changeGap("row", Number(event.target.value))}
               />
             </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="print-margin-x">{copy.idCards.printMarginX}</Label>
+              <Input
+                id="print-margin-x"
+                type="number"
+                min={0}
+                max={100}
+                step={0.5}
+                className="w-28"
+                value={marginXMm}
+                onChange={(event) => changeMargin("x", Number(event.target.value))}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="print-margin-y">{copy.idCards.printMarginY}</Label>
+              <Input
+                id="print-margin-y"
+                type="number"
+                min={0}
+                max={100}
+                step={0.5}
+                className="w-28"
+                value={marginYMm}
+                onChange={(event) => changeMargin("y", Number(event.target.value))}
+              />
+            </div>
+            <p className="text-muted-foreground basis-full text-sm">
+              {copy.idCards.perSheet(perPage, printPages.length)}
+            </p>
             <div className="flex min-w-56 flex-1 flex-col gap-1.5 sm:max-w-xs">
               <Label>{copy.idCards.chooseTemplate}</Label>
               <Select
@@ -1201,4 +1276,5 @@ export default function IdCardsPage() {
 const ALL = "__all__";
 const PRINT_RUN_KEY = "mskool.print-run.v1";
 const PRINT_GAPS_KEY = "mskool.print-gaps.v2";
+const PRINT_MARGINS_KEY = "mskool.print-margins.v1";
 const PRINT_GAP_KEY = "mskool.print-gap.v1";

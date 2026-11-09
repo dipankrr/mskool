@@ -1,12 +1,23 @@
 /**
  * The print sheet's arithmetic, kept beside the screen so the "8 cards per sheet" line
  * matches what the API lays out (packages/services id-card-documents/layout.ts): A4
- * less a 10mm margin each side, the chosen gaps, cards at their real size.
+ * less the chosen margins, the chosen gaps, cards at their real size.
  */
 
 export const GAP_MIN_MM = 0;
 export const GAP_MAX_MM = 20;
 export const GAP_DEFAULT_MM = 4;
+/** Margins are the school's call, up to half a sheet's width. */
+export const MARGIN_MIN_MM = 0;
+export const MARGIN_MAX_MM = 100;
+export const MARGIN_DEFAULT_MM = 8;
+
+export type SheetSpacing = {
+  columnGapMm: number;
+  rowGapMm: number;
+  marginXMm: number;
+  marginYMm: number;
+};
 
 export type CardSize = { widthMm: number; heightMm: number };
 
@@ -26,9 +37,12 @@ export function cardSizeOf(template: { orientation: string; canvas: unknown }): 
     : { widthMm: 86, heightMm: 54 };
 }
 
-export function a4Fit(card: CardSize, columnGapMm: number, rowGapMm: number) {
-  const columns = Math.max(1, Math.floor((190 + columnGapMm) / (card.widthMm + columnGapMm)));
-  const rows = Math.max(1, Math.floor((277 + rowGapMm) / (card.heightMm + rowGapMm)));
+export function a4Fit(card: CardSize, spacing: SheetSpacing) {
+  const { columnGapMm, rowGapMm } = spacing;
+  const width = Math.max(0, 210 - 2 * spacing.marginXMm);
+  const height = Math.max(0, 297 - 2 * spacing.marginYMm);
+  const columns = Math.max(1, Math.floor((width + columnGapMm) / (card.widthMm + columnGapMm)));
+  const rows = Math.max(1, Math.floor((height + rowGapMm) / (card.heightMm + rowGapMm)));
   return { columns, rows, perSheet: columns * rows };
 }
 
@@ -39,4 +53,9 @@ export function sheetCount(cards: number, perSheet: number): number {
 export function clampGap(value: number): number {
   if (!Number.isFinite(value)) return GAP_DEFAULT_MM;
   return Math.min(GAP_MAX_MM, Math.max(GAP_MIN_MM, Math.round(value)));
+}
+
+export function clampMargin(value: number): number {
+  if (!Number.isFinite(value)) return MARGIN_DEFAULT_MM;
+  return Math.min(MARGIN_MAX_MM, Math.max(MARGIN_MIN_MM, Math.round(value)));
 }

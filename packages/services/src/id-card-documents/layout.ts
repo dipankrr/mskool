@@ -3,7 +3,7 @@ import type { IdCardPrintPaper } from "@repo/contracts";
 /**
  * Where every card sits on the paper, in millimetres. Pure: no database, no HTML.
  *
- * A4 keeps a 10mm margin and centres the grid on the sheet both ways. Centring is what
+ * A4 keeps the school's margins (left and right, top and bottom) and centres the grid on the sheet both ways. Centring is what
  * makes two-sided printing line up: turning the sheet over mirrors it about its middle,
  * so a card's back must sit at the mirror of its front, and on a centred grid that
  * mirror is exactly another grid slot. (A grid pinned to the left margin puts the backs
@@ -11,10 +11,12 @@ import type { IdCardPrintPaper } from "@repo/contracts";
  */
 
 export const A4_MM = { width: 210, height: 297 } as const;
-export const A4_MARGIN_MM = 10;
 
 /** expo-print takes page sizes in points, 72 to the inch. */
 export const mmToPt = (mm: number) => (mm * 72) / 25.4;
+
+/** The check line and its words need this much free paper below the cards. */
+export const RULER_NEEDS_MM = 6;
 
 export type CardSize = { widthMm: number; heightMm: number };
 
@@ -26,12 +28,18 @@ export type SheetGrid = {
   perSheet: number;
   /** Front slots in reading order: row by row, left to right. */
   slots: Slot[];
+  /** Free paper below the last row (equal to the space above it). */
+  bottomSpaceMm: number;
 };
 
 /** How many cards fit across and down an A4 sheet, and where each one goes. */
-export function a4Grid(card: CardSize, columnGapMm: number, rowGapMm: number): SheetGrid {
-  const printableWidth = A4_MM.width - 2 * A4_MARGIN_MM;
-  const printableHeight = A4_MM.height - 2 * A4_MARGIN_MM;
+export function a4Grid(
+  card: CardSize,
+  gaps: { columnGapMm: number; rowGapMm: number; marginXMm: number; marginYMm: number },
+): SheetGrid {
+  const { columnGapMm, rowGapMm } = gaps;
+  const printableWidth = Math.max(0, A4_MM.width - 2 * gaps.marginXMm);
+  const printableHeight = Math.max(0, A4_MM.height - 2 * gaps.marginYMm);
   const columns = Math.max(
     1,
     Math.floor((printableWidth + columnGapMm) / (card.widthMm + columnGapMm)),
@@ -54,7 +62,7 @@ export function a4Grid(card: CardSize, columnGapMm: number, rowGapMm: number): S
       });
     }
   }
-  return { columns, rows, perSheet: columns * rows, slots };
+  return { columns, rows, perSheet: columns * rows, slots, bottomSpaceMm: top };
 }
 
 /**
@@ -72,8 +80,10 @@ export function backSlot(front: Slot, card: CardSize, flip: "long" | "short"): S
 export type PlacedPage<T> = {
   widthMm: number;
   heightMm: number;
-  /** A4 sheets carry cut lines and the check ruler; card-size pages carry neither. */
+  /** A4 sheets carry cut lines; card-size pages don't. */
   sheet: boolean;
+  /** Room for the 50mm check line below the cards: the free space, or 0 when there is none. */
+  rulerSpaceMm: number;
   cards: { item: T; side: "front" | "back"; slot: Slot }[];
 };
 
@@ -95,6 +105,7 @@ export function placeCards<T>(
         widthMm: card.widthMm,
         heightMm: card.heightMm,
         sheet: false,
+        rulerSpaceMm: 0,
         cards: [{ item, side, slot: { xMm: 0, yMm: 0 } }],
       });
       pages.push(page("front"));
@@ -103,7 +114,8 @@ export function placeCards<T>(
     return pages;
   }
 
-  const grid = a4Grid(card, paper.columnGapMm, paper.rowGapMm);
+  const grid = a4Grid(card, paper);
+  const rulerSpaceMm = grid.bottomSpaceMm >= RULER_NEEDS_MM ? grid.bottomSpaceMm : 0;
   const pages: PlacedPage<T>[] = [];
   for (let start = 0; start < items.length; start += grid.perSheet) {
     const batch = items.slice(start, start + grid.perSheet);
@@ -111,6 +123,7 @@ export function placeCards<T>(
       widthMm: A4_MM.width,
       heightMm: A4_MM.height,
       sheet: true,
+      rulerSpaceMm,
       cards: batch.map((item, index) => ({ item, side: "front", slot: grid.slots[index]! })),
     });
     if (twoSided) {
@@ -118,6 +131,7 @@ export function placeCards<T>(
         widthMm: A4_MM.width,
         heightMm: A4_MM.height,
         sheet: true,
+        rulerSpaceMm,
         cards: batch.map((item, index) => ({
           item,
           side: "back",

@@ -2218,6 +2218,10 @@ export const copy = {
     chooseClass: "Class",
     printColumnGap: "Gap between columns (mm)",
     printRowGap: "Gap between rows (mm)",
+    printMarginX: "Margin left and right (mm)",
+    printMarginY: "Margin top and bottom (mm)",
+    perSheet: (perSheet: number, sheets: number) =>
+      `${perSheet} cards per sheet · ${sheets === 1 ? "1 sheet" : `${sheets} sheets`}`,
     backsHeading: "Backs",
     flipHeading: "Flip:",
     flipLong: "Long edge",

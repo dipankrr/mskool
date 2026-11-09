@@ -318,6 +318,9 @@ export type IdCardStudentCard = z.infer<typeof idCardStudentCardSchema>;
 /** The most cards one PDF holds. More is refused with wording, never cut short. */
 export const ID_CARD_PRINT_LIMIT = 200;
 
+/** A4 margin unless the school sets its own: safe on nearly every printer. */
+export const ID_CARD_MARGIN_DEFAULT_MM = 8;
+
 /**
  * What the Students list is showing: its view, search, filters and sort, without its
  * paging. The server finds every match, not only the pages the phone has loaded.
@@ -335,6 +338,9 @@ export const idCardPrintPaperSchema = z.discriminatedUnion("kind", [
     kind: z.literal("a4"),
     columnGapMm: z.number().min(0).max(20).default(4),
     rowGapMm: z.number().min(0).max(20).default(4),
+    /** The sheet's margin left and right, and top and bottom. The school's own call. */
+    marginXMm: z.number().min(0).max(100).default(ID_CARD_MARGIN_DEFAULT_MM),
+    marginYMm: z.number().min(0).max(100).default(ID_CARD_MARGIN_DEFAULT_MM),
     flip: z.enum(["long", "short"]).default("long"),
   }),
   z.object({ kind: z.literal("card") }),
