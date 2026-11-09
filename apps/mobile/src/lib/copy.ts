@@ -83,6 +83,10 @@ export const copy = {
   },
   home: {
     title: "Today",
+    /** Viewing a past session (ADR-066): today's cards hide behind this note. */
+    pastTitle: (name: string) => `Viewing ${name}`,
+    pastBody:
+      "Today's classes and setup belong to the running session. Attendance, Fees, Homework and Exams show this session. Switch back in More.",
     classesLabel: "Your classes",
     classTeacher: "Class teacher",
     notMarked: "Attendance not marked",

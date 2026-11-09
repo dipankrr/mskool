@@ -37,8 +37,13 @@ import { SetupCard } from "./setup-card";
  */
 export function StaffHomeScreen() {
   const { me } = useMe();
-  const { organizationId, schoolId, academicYear, yearPending } =
+  const { organizationId, schoolId, academicYear, currentYear, yearPending } =
     useActiveContext();
+  // Home is about today. In a past session (ADR-066) the setup card and
+  // today's class attendance would describe the running session, or last
+  // year's classes on today's date, so they give way to a note; the open
+  // exams follow the session and stay.
+  const viewingPast = Boolean(academicYear && academicYear.id !== currentYear?.id);
   const branchName = useActiveBranchName();
   const tabSpace = useTabBarSpace();
   const { has } = usePermissions();
@@ -105,13 +110,24 @@ export function StaffHomeScreen() {
           </ThemedText>
         </View>
 
-        <SetupCard />
+        {viewingPast ? (
+          <Card style={styles.past} testID="home-past-session">
+            <ThemedText variant="bodyStrong">
+              {copy.home.pastTitle(academicYear?.name ?? "")}
+            </ThemedText>
+            <ThemedText variant="meta" style={styles.cardBody}>
+              {copy.home.pastBody}
+            </ThemedText>
+          </Card>
+        ) : (
+          <SetupCard />
+        )}
 
         <OpenExamsCard />
 
-        {nothingToShow ? null : <SectionLabel>{copy.home.classesLabel}</SectionLabel>}
+        {viewingPast ? null : nothingToShow ? null : <SectionLabel>{copy.home.classesLabel}</SectionLabel>}
 
-        {nothingToShow ? null : yearState === "loading" || (yearState === "ready" && sectionsQuery.isPending) ? (
+        {viewingPast || nothingToShow ? null : yearState === "loading" || (yearState === "ready" && sectionsQuery.isPending) ? (
           <View style={styles.cards}>
             <Skeleton height={76} testID="home-loading-1" />
             <Skeleton height={76} testID="home-loading-2" />
@@ -187,5 +203,8 @@ const styles = StyleSheet.create({
   },
   cardBody: {
     marginTop: spacing.xs,
+  },
+  past: {
+    marginTop: spacing.lg,
   },
 });
