@@ -3168,3 +3168,40 @@ and the Homework tab hidden; H2 builds Home, Give and Check on the new API. `Con
 to `components/`. Migrations 0051 (drop, and hand the old homework files to the storage sweeper)
 and 0052 (create). Not built yet: the student screens, the remaining read models (review queue,
 quiz results, reading ticks, class diary, child record, principal view) and notifications.
+
+## ADR-065 - ID cards print from the phone: the Students list in, exact HTML out
+
+**Status:** accepted 2026-11-09.
+
+**Context.** Staff need ID cards from the phone. Designs are made on the web (ADR-038's designer)
+and drawn there in React; the phone had no way to print one.
+
+**Decision.**
+1. A print icon beside Admit on Students, for whoever holds `id_card:print`. It prints the
+   students the list shows: `idCard.print.summary / document` take the list's own view, search,
+   filters and sort (`studentRosterInput` without paging), and the API finds every match through
+   the roster's own conditions (`rosterQueryParts`, shared with `student.roster`), never the
+   phone's loaded pages. Of those, students still studying with a class in the list's session
+   print (what `cardData` can describe); the rest are named as left out. Order follows the list.
+   Up to 200 cards per PDF, refused with wording above that.
+2. ADR-059's pattern: the API renders finished HTML (`packages/services/src/id-card-documents/`,
+   a port of the web's card renderer) and the phone makes the PDF with `expo-print`. Photos and
+   template images are embedded as data URIs, shrunk on the server to print size, so the PDF never
+   waits on a link. Space Grotesk, the web's card font, is embedded (OFL), so text measures the
+   same as on the web.
+3. Sizes are exact: pages are A4 or the card's size in mm, cards are never scaled to fit, and each
+   A4 sheet carries a 50mm check line. What a printer does after that is outside the app.
+4. A4 grids are centred on the sheet both ways, so a back printed on the other side lands behind
+   its front (a grid pinned to the margin put backs 14mm off). The web print page now centres
+   its grid the same way. Card-size pages can only be shared from the phone; an A4 printer would
+   enlarge them.
+5. The QR keeps the web's value, `<WEB_APP_URL>/students/<id>`. `WEB_APP_URL` is a new optional
+   services env var; without it the QR slot prints empty.
+6. Gaps between columns and rows (0 to 20mm, default 4) are remembered per phone.
+
+**Consequences.** Two card renderers exist (web React, server HTML) until the web print page
+reads the server HTML too. Template editing stays on the web by owner decision.
+
+**Rejected.** A React Native renderer with a screenshot: a third renderer and fixes that need a
+store release. Signed photo links in the HTML: the PDF could be made before they load. A phone
+designer: the drag-and-place canvas stays on the web.

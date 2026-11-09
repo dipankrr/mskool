@@ -117,6 +117,7 @@ checking the hosted one so there is one writer and one set of rate-limit observa
 | `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY` | the prod token | Scoped to the two prod buckets only. |
 | `STORAGE_PRIVATE_BUCKET`, `STORAGE_PUBLIC_BUCKET` | `mskool-prod-private`, `mskool-prod-public` | |
 | `PUBLIC_FILES_BASE_URL` | the public bucket's custom domain | No trailing slash. R2's `r2.dev` address is rate-limited and for testing only. |
+| `WEB_APP_URL` | the staff web app's address | Optional. The QR on ID cards printed from the phone links to `<this>/students/<id>`; unset leaves the QR empty (ADR-065). |
 | `STORAGE_WORKER_DISABLED` | omit (runs) | Cleanup is not time-critical, so idle suspension only delays it. |
 
 Generate the auth secret:
