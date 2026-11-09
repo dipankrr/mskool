@@ -527,6 +527,46 @@ export const classResultsOutputSchema = z.object({
 }).nullable();
 export type ClassResultsOutput = z.infer<typeof classResultsOutputSchema>;
 
+/**
+ * One student's latest published term result, for the staff profile's Results tile.
+ * Scoped through the student's enrollment that year, so a section teacher only sees
+ * their own sections' children. Null when nothing is published or it's out of scope.
+ */
+export const studentLatestResultInput = z.object({
+  academicYearId: z.uuid(),
+  studentId: z.uuid(),
+});
+export type StudentLatestResultInput = z.infer<typeof studentLatestResultInput>;
+
+const subjectGlanceSchema = z.object({
+  subjectId: z.uuid(),
+  name: z.string(),
+  /** Final marks as a share of max marks, to two places. */
+  percent: marksString,
+  isPassed: z.boolean(),
+});
+
+export const studentLatestResultSchema = z
+  .object({
+    termId: z.uuid(),
+    termName: z.string(),
+    percentage: marksString.nullable(),
+    grade: z.string().nullable(),
+    isPassed: z.boolean(),
+    subjectsFailedCount: z.number().int(),
+    /** The previous published term this year, for "up 4" / "down 6". */
+    previousPercentage: marksString.nullable(),
+    best: subjectGlanceSchema.nullable(),
+    weakest: subjectGlanceSchema.nullable(),
+    /** Names of subjects failed, for the Heads up line. */
+    failedSubjects: z.array(z.string()),
+    /** Where the tile opens: the term's latest published exam for the student's class. */
+    examId: z.uuid().nullable(),
+    classId: z.uuid().nullable(),
+  })
+  .nullable();
+export type StudentLatestResult = z.infer<typeof studentLatestResultSchema>;
+
 /** One per-class publication record — the visible proof of the act (S4). */
 export const publicationRowSchema = z.object({
   classId: z.uuid(),

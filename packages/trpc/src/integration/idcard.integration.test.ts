@@ -444,6 +444,14 @@ describe("id cards & storage (slice 2a)", () => {
       sort: "name",
     });
     expect(left.printable).toBe(0);
+
+    // The profile prints one card: the list narrowed to one student.
+    const { ownedStudentId } = await buildWorld();
+    const one = await idCardPrintService.summary(scopeA1, {
+      ...sectionList(currentYearAId, section6aId),
+      studentId: ownedStudentId,
+    });
+    expect(one.matched).toBe(1);
   });
 
   it("print document draws the list's cards on exact A4 with the default design", async () => {

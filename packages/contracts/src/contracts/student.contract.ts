@@ -72,6 +72,8 @@ const rosterFilters = {
   noSection: z.boolean().optional(),
   noGuardian: z.boolean().optional(),
   noPhoto: z.boolean().optional(),
+  /** One student only: the profile prints just their card through the list's path. */
+  studentId: z.uuid().optional(),
 };
 
 export const studentRosterInput = z.object({

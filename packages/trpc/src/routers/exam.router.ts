@@ -44,6 +44,8 @@ import {
   verifyComponentResultsInput,
   entryGridOutputSchema,
   classResultsOutputSchema,
+  studentLatestResultInput,
+  studentLatestResultSchema,
   publicationRowSchema,
   studentEntriesOutputSchema,
   classSetOutputSchema,
@@ -472,6 +474,15 @@ export const examRouter = router({
       .mutation(({ ctx, input }) =>
         examResultsService.computeClassResults(ctx.scope, input.id, input.classId),
       ),
+
+    // Permissive list procedure: the student's enrollment that year carries the
+    // scope (school, class, section) inside the service, so a section teacher reads
+    // only their own children and anything else is null, never a 403.
+    studentLatest: staffListProcedure("exam:read")
+      .meta({ openapi: { method: "GET", path: "/exam/results/students/{studentId}/latest", tags: ["results"], summary: "One student's latest published term result", protect: true } })
+      .input(studentLatestResultInput)
+      .output(studentLatestResultSchema)
+      .query(({ ctx, input }) => examResultsService.studentLatest(ctx.scopes, input)),
 
     // No resolveOwner: a term/year is not a scope node and the builder only
     // reads input.id. Tenancy lives in the services (both filter term/year

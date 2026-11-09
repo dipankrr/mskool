@@ -177,6 +177,7 @@ function rosterQueryParts(
     input.noSection ? eq(year.enrollmentStatus, "admitted") : undefined,
     input.noGuardian ? sql`not ${hasGuardian}` : undefined,
     input.noPhoto ? isNull(studentPhotos.id) : undefined,
+    input.studentId ? eq(students.id, input.studentId) : undefined,
   );
 
   return { classId, sectionId, rollNumber, where, orderBy: orderBy[input.sort] };

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { beforeAll, describe, expect, it } from "vitest";
 
 /**
@@ -576,5 +577,42 @@ describe("homework (ADR-064)", () => {
     expect((await ownedSaOf(sent.id)).status).toBe("missing");
     expect((await ownedSaOf(brought.id)).status).toBe("assigned");
     expect(studentWord(await ownedSaOf(sent.id), "sent", new Date())).toBe("missed");
+  });
+
+  // ── The staff profile's Homework tile ───────────────────────────────────
+
+  it("one student's recent homework: own words, counts, and the caller's visibility", async () => {
+    // Due later than everything else in this file, so these two lead the newest-due list.
+    const done = await giveHomework({ title: title("profile done"), gradingMode: "marks", maxMarks: "10", dueAt: hoursAhead(150) });
+    const notDone = await giveHomework({ title: title("profile not done"), dueAt: hoursAhead(149) });
+    const results = (id: string, saId: string, checkStatus: "done" | "not_done") =>
+      homeworkService.saveRegister(scopeA1, w.users.adminA, { id, ...pair6a, results: [{ studentAssignmentId: saId, checkStatus }] });
+    await results(done.id, (await ownedSaOf(done.id)).id, "done");
+    await results(notDone.id, (await ownedSaOf(notDone.id)).id, "not_done");
+    const [{ academicYearId }] = (await db
+      .select({ academicYearId: assignments.academicYearId })
+      .from(assignments)
+      .where(eq(assignments.id, done.id))) as [{ academicYearId: string }];
+    const input = { academicYearId, studentId: w.ownedStudentId };
+
+    const recent = await homeworkService.studentRecent({ userId: w.users.adminA, scopes: [scopeA1], pairs: null }, input);
+    expect(recent.items.length).toBeLessThanOrEqual(10);
+    expect(recent.items[0]!.title).toBe(title("profile done"));
+    expect(recent.items[0]!.word).toBe("checked");
+    expect(recent.items[1]!.title).toBe(title("profile not done"));
+    expect(recent.items[1]!.word).toBe("missed");
+    expect(recent.counted).toBe(recent.handedIn + recent.missed);
+    expect(recent.missed).toBeGreaterThanOrEqual(1);
+
+    // A subject teacher whose only pair is another subject sees none of these.
+    const other = await homeworkService.studentRecent(
+      { userId: `nobody-${RUN}`, scopes: [scopeA1], pairs: [{ sectionId: w.section6aId, subjectId: randomUUID() }] },
+      input,
+    );
+    expect(other.items.some((i) => i.assignmentId === done.id)).toBe(false);
+
+    // Another organisation's scope sees nothing at all.
+    const foreign = await homeworkService.studentRecent({ userId: w.users.adminA, scopes: [scopeB1], pairs: null }, input);
+    expect(foreign.items).toEqual([]);
   });
 });

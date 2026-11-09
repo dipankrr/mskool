@@ -28,6 +28,8 @@ import {
   portalHomeworkListInput,
   portalHomeworkRefInput,
   portalHomeworkUploadInput,
+  studentRecentHomeworkInput,
+  studentRecentHomeworkSchema,
   portalPostCommentInput,
   portalSendInput,
   portalTickInput,
@@ -120,6 +122,13 @@ export const homeworkRouter = router({
     .meta({ openapi: { method: "GET", path: "/homework/home", tags: ["homework"], summary: "The teacher's homework home", protect: true } })
     .output(homeworkHomeSchema)
     .query(async ({ ctx }) => homeworkService.home(await accessFor(ctx))),
+
+  /** One student's last 10, for the staff profile (same visibility as the list). */
+  studentRecent: staffListProcedure("homework:read")
+    .meta({ openapi: { method: "GET", path: "/homework/students/{studentId}/recent", tags: ["homework"], summary: "One student's recent homework", protect: true } })
+    .input(studentRecentHomeworkInput)
+    .output(studentRecentHomeworkSchema)
+    .query(async ({ ctx, input }) => homeworkService.studentRecent(await accessFor(ctx), input)),
 
   /** All homework, newest first. */
   list: staffListProcedure("homework:read")

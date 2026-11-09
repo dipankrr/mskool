@@ -657,6 +657,38 @@ describe("exams integration: compute, publish, and the frozen photographs", () =
       .from(examClassPublication)
       .where(eq(examClassPublication.examId, world.examId));
     expect(publication?.state).toBe("published");
+
+    // The staff profile's Results tile reads the latest published term for one child,
+    // through that child's enrollment scope.
+    const latest = await examResultsService.studentLatest([scope], {
+      academicYearId: world.academicYearId,
+      studentId: world.studentA,
+    });
+    expect(latest?.termId).toBe(world.termId);
+    expect(latest?.isPassed).toBe(true);
+    expect(latest?.best?.percent).toBe("75.00");
+    expect(latest?.weakest).toBeNull();
+    expect(latest?.examId).toBe(world.examId);
+    expect(latest?.classId).toBe(world.classId);
+    expect(latest?.previousPercentage).toBeNull();
+
+    const absent = await examResultsService.studentLatest([scope], {
+      academicYearId: world.academicYearId,
+      studentId: world.studentB,
+    });
+    expect(absent?.isPassed).toBe(false);
+
+    // A section teacher of another section, and another school, see nothing.
+    const otherSection = await examResultsService.studentLatest(
+      [{ ...scope, classId: world.classId, sectionId: crypto.randomUUID() }],
+      { academicYearId: world.academicYearId, studentId: world.studentA },
+    );
+    expect(otherSection).toBeNull();
+    const otherSchool = await examResultsService.studentLatest(
+      [{ ...scope, schoolId: crypto.randomUUID() }],
+      { academicYearId: world.academicYearId, studentId: world.studentA },
+    );
+    expect(otherSchool).toBeNull();
   });
 
   it("the portal door returns the family's cards and nothing else", async () => {

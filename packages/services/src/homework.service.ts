@@ -14,6 +14,8 @@ import {
   type MoveDueInput,
   type PortalSendInput,
   type SaveRegisterInput,
+  type StudentRecentHomework,
+  type StudentRecentHomeworkInput,
   type UpdateHomeworkInput,
   type UploadRequest,
 } from "@repo/contracts";
@@ -1120,6 +1122,64 @@ export class HomeworkService {
     });
     const all = await this.summaries(ids);
     return all.filter((s) => s.status !== "draft" || s.createdBy === access.userId);
+  }
+
+  /**
+   * One student's last 10 homework the caller may see (scope, and a subject teacher's
+   * own pairs), newest due first, each in the student's own word. Work due more than a
+   * week ahead is left out: the tile is about how they've been doing, not the queue.
+   */
+  async studentRecent(access: HomeworkAccess, input: StudentRecentHomeworkInput): Promise<StudentRecentHomework> {
+    const now = new Date();
+    const horizon = new Date(now.getTime() + 7 * 86_400_000);
+    const rows = await db
+      .select({
+        studentAssignmentId: studentAssignments.id,
+        assignmentId: assignments.id,
+        sectionId: studentAssignments.sectionId,
+        subjectId: assignments.subjectId,
+        subjectName: subjects.name,
+        kind: assignments.kind,
+        comesBack: assignments.comesBack,
+        title: assignments.title,
+        status: studentAssignments.status,
+        checkStatus: studentAssignments.checkStatus,
+        isLate: studentAssignments.isLate,
+        effectiveDueAt: studentAssignments.effectiveDueAt,
+        effectiveCloseAt: studentAssignments.effectiveCloseAt,
+      })
+      .from(studentAssignments)
+      .innerJoin(assignments, eq(assignments.id, studentAssignments.assignmentId))
+      .innerJoin(studentEnrollments, eq(studentEnrollments.id, studentAssignments.studentEnrollmentId))
+      .innerJoin(subjects, eq(subjects.id, assignments.subjectId))
+      .where(
+        and(
+          eq(studentEnrollments.studentId, input.studentId),
+          lte(studentAssignments.effectiveDueAt, horizon),
+          ...this.visibleWhere(access, {
+            statuses: ["published", "closed"],
+            academicYearId: input.academicYearId,
+          }),
+        ),
+      )
+      .orderBy(desc(studentAssignments.effectiveDueAt))
+      .limit(10);
+
+    const items = rows.map((row) => ({
+      studentAssignmentId: row.studentAssignmentId,
+      assignmentId: row.assignmentId,
+      sectionId: row.sectionId,
+      subjectId: row.subjectId,
+      subjectName: row.subjectName,
+      kind: row.kind,
+      comesBack: row.comesBack,
+      title: row.title,
+      dueAt: row.effectiveDueAt,
+      word: studentWord(row, row.comesBack, now),
+    }));
+    const handedIn = items.filter((i) => ["sent", "late", "checked", "redo"].includes(i.word)).length;
+    const missed = items.filter((i) => i.word === "missed").length;
+    return { items, handedIn, missed, counted: handedIn + missed };
   }
 
   /** Home: to check, quizzes, out now, given today, drafts. */

@@ -2,7 +2,7 @@ import { ENROLLED_STATUSES } from "./enrollment-status";
 import { attendanceToDate, type AttendanceToDate } from "./attendance-to-date";
 import { requireSchoolId } from "./academic.service";
 import { scopeWhere, type DataScope } from "@repo/authz";
-import type { SubmitRevisionInput } from "@repo/contracts";
+import type { StudentLatestResultInput, SubmitRevisionInput } from "@repo/contracts";
 import { db } from "@repo/db";
 import {
   academicYears,
@@ -1997,7 +1997,148 @@ export class ExamResultsService {
       return { componentResultId: result.id, applied: true };
     });
   }
+
+  /**
+   * One student's latest PUBLISHED term result, for the staff profile's Results tile.
+   * The student's enrollment that year carries the scope (school, class, section), so
+   * a section teacher reads only their own sections' children; out of scope and
+   * nothing published are both null. Drafts never show (hard rule 8's spirit).
+   */
+  async studentLatest(scopes: DataScope[], input: StudentLatestResultInput) {
+    const [enrollment] = await db
+      .select({ classId: studentEnrollments.classId })
+      .from(studentEnrollments)
+      .where(
+        and(
+          eq(studentEnrollments.studentId, input.studentId),
+          eq(studentEnrollments.academicYearId, input.academicYearId),
+          scopeWhere(scopes, ENROLLMENT_SCOPE_COLUMNS),
+        ),
+      )
+      .orderBy(desc(studentEnrollments.createdAt))
+      .limit(1);
+    if (!enrollment) return null;
+
+    const termRows = await db
+      .select({
+        termId: studentTermResults.termId,
+        termName: terms.name,
+        percentage: studentTermResults.percentage,
+        grade: studentTermResults.grade,
+        isPassed: studentTermResults.isPassed,
+        subjectsFailedCount: studentTermResults.subjectsFailedCount,
+        subjectsFailed: studentTermResults.subjectsFailed,
+      })
+      .from(studentTermResults)
+      .innerJoin(terms, eq(terms.id, studentTermResults.termId))
+      .where(
+        and(
+          eq(studentTermResults.studentId, input.studentId),
+          eq(terms.academicYearId, input.academicYearId),
+          inArray(studentTermResults.resultStatus, ["published", "locked"]),
+        ),
+      )
+      .orderBy(desc(terms.sequenceNumber))
+      .limit(2);
+    const [latest, previous] = termRows;
+    if (!latest) return null;
+
+    const subjectRows = await db
+      .select({
+        examId: studentSubjectResults.examId,
+        subjectId: studentSubjectResults.subjectId,
+        name: subjects.name,
+        finalMarks: studentSubjectResults.finalMarks,
+        maxMarks: studentSubjectResults.maxMarks,
+        isPassed: studentSubjectResults.isPassed,
+        isAbsent: studentSubjectResults.isAbsent,
+        isExempted: studentSubjectResults.isExempted,
+        countsTowardResult: studentSubjectResults.countsTowardResult,
+        isGradedOnly: studentSubjectResults.isGradedOnly,
+        publishedAt: studentSubjectResults.publishedAt,
+      })
+      .from(studentSubjectResults)
+      .innerJoin(exams, eq(exams.id, studentSubjectResults.examId))
+      .innerJoin(subjects, eq(subjects.id, studentSubjectResults.subjectId))
+      .where(
+        and(
+          eq(studentSubjectResults.studentId, input.studentId),
+          eq(exams.termId, latest.termId),
+          inArray(studentSubjectResults.resultStatus, ["published", "locked"]),
+        ),
+      );
+
+    // Per subject across the term's published exams: marks over max, hundredths.
+    const bySubject = new Map<
+      string,
+      { name: string; total: bigint; max: bigint; isPassed: boolean }
+    >();
+    for (const row of subjectRows) {
+      if (!row.countsTowardResult || row.isGradedOnly || row.isExempted) continue;
+      const entry = bySubject.get(row.subjectId) ?? {
+        name: row.name,
+        total: 0n,
+        max: 0n,
+        isPassed: true,
+      };
+      entry.total += row.finalMarks != null ? toHundredths(row.finalMarks) : 0n;
+      entry.max += toHundredths(row.maxMarks);
+      entry.isPassed &&= row.isPassed;
+      bySubject.set(row.subjectId, entry);
+    }
+    const glance = [...bySubject]
+      .filter(([, s]) => s.max > 0n)
+      .map(([subjectId, s]) => ({
+        subjectId,
+        name: s.name,
+        hundredths: percentageOf(s.total, s.max),
+        isPassed: s.isPassed,
+      }))
+      .sort((a, b) => (a.hundredths === b.hundredths ? 0 : a.hundredths > b.hundredths ? -1 : 1));
+    const toGlance = (s: (typeof glance)[number] | undefined) =>
+      s
+        ? { subjectId: s.subjectId, name: s.name, percent: fromHundredths(s.hundredths), isPassed: s.isPassed }
+        : null;
+
+    const failedIds = latest.subjectsFailed ?? [];
+    const failedSubjects = failedIds.length
+      ? (
+          await db
+            .select({ id: subjects.id, name: subjects.name })
+            .from(subjects)
+            .where(inArray(subjects.id, failedIds))
+        ).map((s) => s.name)
+      : [];
+
+    // The tile opens the student's result for the term's most recently published exam.
+    const opened = subjectRows
+      .filter((r) => r.publishedAt)
+      .sort((a, b) => b.publishedAt!.getTime() - a.publishedAt!.getTime())[0];
+
+    return {
+      termId: latest.termId,
+      termName: latest.termName,
+      percentage: latest.percentage,
+      grade: latest.grade,
+      isPassed: latest.isPassed,
+      subjectsFailedCount: latest.subjectsFailedCount,
+      previousPercentage: previous?.percentage ?? null,
+      best: toGlance(glance[0]),
+      weakest: glance.length > 1 ? toGlance(glance[glance.length - 1]) : null,
+      failedSubjects,
+      examId: opened?.examId ?? subjectRows[0]?.examId ?? null,
+      classId: enrollment.classId,
+    };
+  }
 }
+
+// The student's enrollment carries the class and section the scope is judged on.
+const ENROLLMENT_SCOPE_COLUMNS = {
+  organizationId: studentEnrollments.organizationId,
+  schoolId: studentEnrollments.schoolId,
+  classId: studentEnrollments.classId,
+  sectionId: studentEnrollments.sectionId,
+} as const;
 
 
 /** Card rows in chunks, so one statement never carries a whole school's snapshots. */

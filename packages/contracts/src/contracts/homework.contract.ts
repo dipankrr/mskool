@@ -218,6 +218,40 @@ export const sectionProgressSchema = z.object({
 });
 export type SectionProgress = z.infer<typeof sectionProgressSchema>;
 
+/**
+ * One student's recent homework, for the staff profile's Homework tile: the last 10
+ * the caller may see (scope, and a subject teacher's own pairs), newest due first.
+ */
+export const studentRecentHomeworkInput = z.object({
+  academicYearId: z.uuid(),
+  studentId: z.uuid(),
+});
+export type StudentRecentHomeworkInput = z.infer<typeof studentRecentHomeworkInput>;
+
+export const studentRecentHomeworkItemSchema = z.object({
+  studentAssignmentId: z.uuid(),
+  assignmentId: z.uuid(),
+  sectionId: z.uuid(),
+  subjectId: z.uuid(),
+  subjectName: z.string(),
+  kind: homeworkKindSchema,
+  comesBack: comesBackSchema,
+  title: z.string(),
+  dueAt: z.date(),
+  word: studentWordSchema,
+});
+export type StudentRecentHomeworkItem = z.infer<typeof studentRecentHomeworkItemSchema>;
+
+export const studentRecentHomeworkSchema = z.object({
+  items: z.array(studentRecentHomeworkItemSchema),
+  /** Sent, late, checked or redo. */
+  handedIn: z.number().int(),
+  missed: z.number().int(),
+  /** Items that could be judged: handed in plus missed. */
+  counted: z.number().int(),
+});
+export type StudentRecentHomework = z.infer<typeof studentRecentHomeworkSchema>;
+
 export const homeworkSummarySchema = z.object({
   id: z.uuid(),
   kind: homeworkKindSchema,
