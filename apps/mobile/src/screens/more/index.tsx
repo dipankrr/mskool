@@ -10,6 +10,7 @@ import { ChoiceSheet } from "../../components/choice-sheet";
 import { FactRow } from "../../components/fact-row";
 import { LinkRow } from "../../components/link-row";
 import { SectionLabel } from "../../components/section-label";
+import { SessionSheet } from "../../components/session-sheet";
 import { StatusPill } from "../../components/status-pill";
 import { useTabBarSpace } from "../../components/tab-bar";
 import { ThemedText } from "../../components/themed-text";
@@ -23,7 +24,6 @@ import { usePermissions } from "../../hooks/use-permissions";
 import { logout } from "../../lib/auth";
 import { copy } from "../../lib/copy";
 import { thrownMessage } from "../../lib/errors";
-import { formatReadableDateRange } from "../../lib/format";
 import { roleLabel } from "../../lib/labels";
 import { colors } from "../../theme/brand-admin";
 import { gutter, spacing } from "../../theme/tokens";
@@ -336,20 +336,11 @@ export function MoreScreen() {
         testIDPrefix="branch-option"
       />
 
-      <ChoiceSheet
+      <SessionSheet
         visible={sessionSheetOpen}
-        title={copy.more.sessionSheetTitle}
-        options={years.map((year) => ({
-          id: year.id,
-          label: year.name,
-          detail: [
-            year.isCurrent ? copy.more.sessionRunning : null,
-            formatReadableDateRange(year.startDate, year.endDate),
-          ]
-            .filter(Boolean)
-            .join(" · "),
-        }))}
-        currentId={academicYear?.id ?? ""}
+        years={years}
+        currentYear={currentYear}
+        chosenId={academicYear?.id ?? ""}
         onSelect={(id) => {
           // Back to the running one stores nothing, so a later change of the
           // running session is followed without a stale pin.
@@ -357,7 +348,6 @@ export function MoreScreen() {
           setSessionSheetOpen(false);
         }}
         onDismiss={() => setSessionSheetOpen(false)}
-        testIDPrefix="session-option"
       />
     </SafeAreaView>
   );

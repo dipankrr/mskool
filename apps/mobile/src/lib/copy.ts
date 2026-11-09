@@ -74,10 +74,19 @@ export const copy = {
     emptyTitle: "No classes assigned",
     emptyBody: "No sections are assigned to you in this session yet.",
   },
+  /** More's session picker (ADR-066). */
+  sessionSheet: {
+    title: "View a session",
+    lead: "Every screen shows the session you pick. The running session stays the same for everyone.",
+    othersLabel: "Other sessions",
+    closed: "Closed",
+    open: "Open",
+    backToRunning: "Back to the running session",
+  },
   /** The banner above the tab bar while a past session is chosen (ADR-066). */
   pastSession: {
     title: (name: string) => `Viewing ${name} · not the running session`,
-    switchBack: "Switch back to the running session",
+    switchBack: "Tap to switch back to the running session",
     dismiss: "Hide this warning on this tab",
   },
   nav: {
