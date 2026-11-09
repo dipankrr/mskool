@@ -1651,6 +1651,19 @@ save/publish — verified end-to-end). Next in this phase:
 
 ## Later
 
+- **Mobile photos named with admission numbers, on Android** — parked by the owner on
+  2026-11-09. The start screen's "Photos named with admission numbers" row matches files
+  like `2026-0142.jpg` to students across the school (`student.byAdmissions`). On Android
+  it cannot work: the system photo picker (`expo-image-picker`) hides real file names and
+  hands back media ids (`1000000573.jpg`), so nothing matches. The screen says so
+  (`photoFlow.hiddenNames*` copy); iOS passes real names and works. Fix: add
+  `expo-document-picker` (the Files-style picker keeps names, and could take a `.zip` with
+  `fflate` like the web) and use it for this row on Android. It is a native module, so it
+  needs a new dev-client and store build. Worth it only if schools get named files from
+  photographers; the web page already handles named files and zips. Related, same
+  rebuild: `expo-camera` would let photo day show the student's name over the viewfinder
+  and drop the system camera's own ✓ step. Code: `apps/mobile/src/screens/students/
+  photo-workbench.tsx`, `photo-day.tsx`, `photo-matching.ts`.
 - **Homework** — `homework`, `homework_submissions` (ADR-014)
 - **Phone-number-change flow** — permission + audit + session revocation. Must land
   before the student portal ships (ADR-007)
