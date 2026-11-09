@@ -83,6 +83,10 @@ export function FTabBarView({
               tint={focused ? theme.color.ink : k.fg}
               numberOfLines={1}
               maxFontSizeMultiplier={1.15}
+              // Five tabs on a 360-wide phone: a long word shrinks instead of touching its neighbour.
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
+              style={styles.label}
             >
               {item.label}
             </FText>
@@ -140,9 +144,12 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 2,
     alignItems: "center",
     justifyContent: "center",
   },
+  label: { letterSpacing: 0 },
   iconPill: {
     alignItems: "center",
     justifyContent: "center",
