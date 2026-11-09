@@ -17,7 +17,7 @@ import { usePermissions } from "../../hooks/use-permissions";
 import { copy } from "../../lib/copy";
 import { localDateToIso } from "../../lib/format";
 import { dueLine, sectionLabel, shortDay, timeLeft, type HomeworkSummary } from "../../lib/homework";
-import { KIND_COLOR, KindTile } from "./ui";
+import { KindTile } from "./ui";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { gutter, radius, spacing } from "../../theme/tokens";
@@ -57,14 +57,11 @@ export function HomeworkScreen() {
   const data = home.data;
 
   const today = localDateToIso(new Date());
-  // The strip pages by week: 0 is this week (from Home's own read), others load on demand.
+  // The strip pages by week: 0 is this week. The server sends a count per day
+  // and one day's homework (Home's own read holds today's); another day or
+  // week loads that day only, so a big school's week never has to come at once.
   const [weekOffset, setWeekOffset] = useState(0);
   const shownWeek = data ? addDays(data.weekStart, weekOffset * 7) : null;
-  const otherWeek = trpc.homework.week.useQuery(
-    { ...scope, from: shownWeek ?? "2000-01-03" },
-    { enabled: Boolean(organizationId && shownWeek && weekOffset !== 0), staleTime: 60_000 },
-  );
-  const weekItems = weekOffset === 0 ? data?.week : otherWeek.data;
   const weekDays = useMemo(
     () => (shownWeek ? Array.from({ length: 6 }, (_, i) => addDays(shownWeek, i)) : []),
     [shownWeek],
@@ -78,16 +75,23 @@ export function HomeworkScreen() {
   const [showDrafts, setShowDrafts] = useState(false);
   // "Out" means due after the moment the screen opened (the tab remounts often enough).
   const [openedAt] = useState(() => Date.now());
-  const day = picked && weekDays.includes(picked) ? picked : weekDays.includes(today) ? today : (weekDays[0] ?? today);
-
-  const byDay = useMemo(() => {
-    const m = new Map<string, HomeworkSummary[]>();
-    for (const hw of weekItems ?? []) {
-      const k = localDateToIso(new Date(hw.dueAt));
-      m.set(k, [...(m.get(k) ?? []), hw]);
-    }
-    return m;
-  }, [weekItems]);
+  const day =
+    picked && weekDays.includes(picked)
+      ? picked
+      : weekOffset === 0 && data
+        ? data.day
+        : weekDays.includes(today)
+          ? today
+          : (weekDays[0] ?? today);
+  const fromHome = Boolean(data && weekOffset === 0 && day === data.day);
+  const strip = trpc.homework.week.useQuery(
+    { ...scope, from: shownWeek ?? "2000-01-03", day },
+    { enabled: Boolean(organizationId && shownWeek && !fromHome), staleTime: 60_000 },
+  );
+  const dayCounts = useMemo(() => {
+    const source = fromHome || (weekOffset === 0 && !strip.data) ? data?.weekDays : strip.data?.weekDays;
+    return new Map((source ?? []).map((d) => [d.day, d.count]));
+  }, [fromHome, weekOffset, strip.data, data]);
 
   const jobs: Job[] = useMemo(() => {
     if (!data) return [];
@@ -134,7 +138,7 @@ export function HomeworkScreen() {
 
   const classes = useMemo(() => {
     const seen = new Set<string>();
-    const live = [...(data?.week ?? []), ...(data?.outNow ?? [])].filter((h) =>
+    const live = [...(data?.dayItems ?? []), ...(data?.outNow ?? [])].filter((h) =>
       seen.has(h.id) ? false : (seen.add(h.id), true),
     );
     return (pairs.data ?? []).flatMap((subject) =>
@@ -173,7 +177,7 @@ export function HomeworkScreen() {
     );
   }, [pairs.data, data, openedAt]);
 
-  const dayList = byDay.get(day) ?? [];
+  const dayList: HomeworkSummary[] = (fromHome ? data?.dayItems : strip.data?.dayItems) ?? [];
   const weekLabel =
     weekDays.length === 6
       ? text.weekRange(
@@ -329,13 +333,13 @@ export function HomeworkScreen() {
             >
               {weekDays.map((d) => {
                 const on = d === day;
-                const items = byDay.get(d) ?? [];
+                const n = dayCounts.get(d) ?? 0;
                 return (
                   <Pressable
                     key={d}
                     accessibilityRole="tab"
                     accessibilityState={{ selected: on }}
-                    accessibilityLabel={text.dayA11y(shortDay(d), items.length)}
+                    accessibilityLabel={text.dayA11y(shortDay(d), n)}
                     onPress={() => setPicked(d)}
                     style={[styles.day, on ? styles.dayOn : null, d === today && !on ? styles.dayToday : null]}
                     testID={`homework-day-${d}`}
@@ -347,8 +351,8 @@ export function HomeworkScreen() {
                       {String(Number(d.slice(8, 10)))}
                     </ThemedText>
                     <View style={styles.dots}>
-                      {items.slice(0, 4).map((h) => (
-                        <View key={h.id} style={[styles.dot, { backgroundColor: on ? colors.onAccent : KIND_COLOR[h.kind] }]} />
+                      {Array.from({ length: Math.min(n, 4) }, (_, i) => (
+                        <View key={i} style={[styles.dot, { backgroundColor: on ? colors.onAccent : colors.accent }]} />
                       ))}
                     </View>
                   </Pressable>
@@ -356,7 +360,7 @@ export function HomeworkScreen() {
               })}
             </View>
             <View style={styles.list}>
-              {weekOffset !== 0 && otherWeek.isPending ? (
+              {!fromHome && strip.isPending ? (
                 <Skeleton height={56} />
               ) : dayList.length === 0 ? (
                 <ThemedText variant="meta" style={styles.empty}>

@@ -254,6 +254,20 @@ export const homeworkDetailSchema = homeworkSummarySchema.extend({
 export type HomeworkDetail = z.infer<typeof homeworkDetailSchema>;
 
 /** Home: what the teacher should do next, in Home's order. */
+/**
+ * Home's day strip for one school week: a count per day (Mon-Sat) for the
+ * dots, and the full homework for one day only (a big school's week is large).
+ */
+const weekStripShape = {
+  /** Monday of the school week shown (IST, YYYY-MM-DD). */
+  weekStart: z.string(),
+  weekDays: z.array(z.object({ day: z.string(), count: z.number().int() })),
+  /** The day whose homework is in `dayItems` (IST, YYYY-MM-DD). */
+  day: z.string(),
+  dayItems: z.array(homeworkSummarySchema),
+};
+export const weekStripSchema = z.object(weekStripShape);
+
 export const homeworkHomeSchema = z.object({
   /** Brought or sent work past due with children still to check, per section. */
   toCheck: z.array(
@@ -271,10 +285,7 @@ export const homeworkHomeSchema = z.object({
   outNow: z.array(homeworkSummarySchema),
   givenToday: z.array(homeworkSummarySchema),
   drafts: z.array(homeworkSummarySchema),
-  /** Monday of the school week shown (IST, YYYY-MM-DD). */
-  weekStart: z.string(),
-  /** Everything given that falls due this week, earliest first. */
-  week: z.array(homeworkSummarySchema),
+  ...weekStripShape,
 });
 export type HomeworkHome = z.infer<typeof homeworkHomeSchema>;
 

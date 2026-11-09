@@ -153,6 +153,23 @@ const STUDENT_FILE = "homework_student_file" as const;
 // Service
 // ---------------------------------------------------------------------------
 
+type VisibleFilters = {
+  statuses?: Assignment["status"][];
+  kind?: HomeworkKind;
+  notKind?: HomeworkKind;
+  comesBack?: Assignment["comesBack"][];
+  subjectId?: string;
+  forSectionId?: string;
+  academicYearId?: string;
+  search?: string;
+  mine?: boolean;
+  before?: Date;
+  dueFrom?: Date;
+  dueTo?: Date;
+  publishedFrom?: Date;
+  needsCheck?: boolean;
+};
+
 export class HomeworkService {
   // ── Shared row loading ───────────────────────────────────────────────────
 
@@ -1020,36 +1037,55 @@ export class HomeworkService {
   }
 
   /**
-   * The homework ids the caller may see, newest first: by scope, and for a
-   * subject teacher only their own pairs (or what they gave themselves).
+   * The homework ids the caller may see, newest given first (or earliest due
+   * first): by scope, and for a subject teacher only their own pairs (or what
+   * they gave themselves).
    */
   private async visibleIds(
     access: HomeworkAccess,
-    filters: {
-      statuses?: Assignment["status"][];
-      kind?: HomeworkKind;
-      subjectId?: string;
-      forSectionId?: string;
-      academicYearId?: string;
-      search?: string;
-      mine?: boolean;
-      before?: Date;
-      dueFrom?: Date;
-      dueTo?: Date;
-      limit: number;
-    },
+    filters: VisibleFilters & { limit: number; earliestDueFirst?: boolean },
   ): Promise<string[]> {
+    const rows = await db
+      .select({ id: assignments.id })
+      .from(assignments)
+      .where(and(...this.visibleWhere(access, filters)))
+      .orderBy(filters.earliestDueFirst ? asc(assignments.dueAt) : desc(assignments.createdAt))
+      .limit(filters.limit);
+    return rows.map((r) => r.id);
+  }
+
+  /** How many visible homework fall due on each IST day (YYYY-MM-DD). */
+  private async dueDayCounts(access: HomeworkAccess, filters: VisibleFilters): Promise<Map<string, number>> {
+    const day = sql<string>`to_char(${assignments.dueAt} at time zone 'Asia/Kolkata', 'YYYY-MM-DD')`;
+    const rows = await db
+      .select({ day, n: count() })
+      .from(assignments)
+      .where(and(...this.visibleWhere(access, filters)))
+      .groupBy(day);
+    return new Map(rows.map((r) => [r.day, r.n]));
+  }
+
+  private visibleWhere(access: HomeworkAccess, filters: VisibleFilters) {
     const conds = [
       or(...access.scopes.map((s) => scopeWhere(atSchoolLevel(s), ASSIGNMENT_COLS)))!,
     ];
     if (filters.statuses) conds.push(inArray(assignments.status, filters.statuses));
     if (filters.kind) conds.push(eq(assignments.kind, filters.kind));
+    if (filters.notKind) conds.push(ne(assignments.kind, filters.notKind));
+    if (filters.comesBack) conds.push(inArray(assignments.comesBack, filters.comesBack));
     if (filters.subjectId) conds.push(eq(assignments.subjectId, filters.subjectId));
     if (filters.academicYearId) conds.push(eq(assignments.academicYearId, filters.academicYearId));
     if (filters.mine) conds.push(eq(assignments.createdBy, access.userId));
     if (filters.before) conds.push(lt(assignments.createdAt, filters.before));
     if (filters.dueFrom) conds.push(gte(assignments.dueAt, filters.dueFrom));
     if (filters.dueTo) conds.push(lt(assignments.dueAt, filters.dueTo));
+    if (filters.publishedFrom) conds.push(gte(assignments.publishedAt, filters.publishedFrom));
+    if (filters.needsCheck) {
+      // Something still waits on the teacher: brought work not checked, or sent work not reviewed.
+      conds.push(
+        sql`exists (select 1 from ${studentAssignments} where ${studentAssignments.assignmentId} = ${assignments.id} and ((${assignments.comesBack} = 'brought' and ${studentAssignments.status} <> 'checked') or (${assignments.comesBack} = 'sent' and ${studentAssignments.status} = 'submitted')))`,
+      );
+    }
     if (filters.search) {
       const term = `%${filters.search.replace(/[%_\\]/g, "\\$&")}%`;
       conds.push(or(ilike(assignments.title, term), ilike(assignments.topic, term))!);
@@ -1066,13 +1102,7 @@ export class HomeworkService {
       );
       conds.push(or(eq(assignments.createdBy, access.userId), ...pairConds)!);
     }
-    const rows = await db
-      .select({ id: assignments.id })
-      .from(assignments)
-      .where(and(...conds))
-      .orderBy(desc(assignments.createdAt))
-      .limit(filters.limit);
-    return rows.map((r) => r.id);
+    return conds;
   }
 
   /** All homework (by date given, newest first). */
@@ -1095,12 +1125,36 @@ export class HomeworkService {
   async home(access: HomeworkAccess) {
     const now = new Date();
     const today = todayInIst();
-    const ids = await this.visibleIds(access, {
-      statuses: ["draft", "scheduled", "published", "closed"],
-      dueFrom: new Date(now.getTime() - 30 * 24 * 3600 * 1000),
-      limit: 300,
-    });
-    const all = await this.summaries(ids);
+    const DAY = 24 * 3600 * 1000;
+    const monthAgo = new Date(now.getTime() - 30 * DAY);
+    const todayStart = new Date(`${today}T00:00:00+05:30`);
+    const dow = new Date(`${today}T12:00:00Z`).getUTCDay(); // 0 = Sunday
+    const weekFrom = new Date(todayStart.getTime() + (dow === 0 ? 1 : 1 - dow) * DAY);
+    const istDay = (d: Date) => new Date(d.getTime() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+    const weekStart = istDay(weekFrom);
+    // Today, or Monday when today is the Sunday before the week shown.
+    const shownDay = dow === 0 ? weekStart : today;
+
+    // Each part of Home is its own bounded read, so a busy school cannot push
+    // one part's homework out of another's (one shared cap of 300 used to).
+    const live: Assignment["status"][] = ["published", "closed"];
+    const [checkIds, quizGivenIds, outIds, todayIds, draftIds, week] = await Promise.all([
+      this.visibleIds(access, {
+        statuses: live,
+        comesBack: ["brought", "sent"],
+        dueFrom: monthAgo,
+        dueTo: now,
+        needsCheck: true,
+        earliestDueFirst: true,
+        limit: 200,
+      }),
+      this.visibleIds(access, { statuses: live, kind: "quiz", dueFrom: monthAgo, limit: 100 }),
+      this.visibleIds(access, { statuses: ["published"], notKind: "quiz", dueFrom: now, earliestDueFirst: true, limit: 200 }),
+      this.visibleIds(access, { statuses: live, publishedFrom: todayStart, limit: 100 }),
+      this.visibleIds(access, { statuses: ["draft", "scheduled"], mine: true, limit: 100 }),
+      this.weekStrip(access, weekStart, shownDay),
+    ]);
+    const all = await this.summaries([...new Set([...checkIds, ...quizGivenIds, ...outIds, ...todayIds, ...draftIds])]);
 
     const answersToMark = new Map<string, number>();
     const quizIds = all.filter((s) => s.kind === "quiz").map((s) => s.id);
@@ -1122,15 +1176,10 @@ export class HomeworkService {
       for (const r of rows) answersToMark.set(r.assignmentId, r.n);
     }
 
-    const istDay = (d: Date) => new Date(d.getTime() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
-    const todayStart = new Date(`${today}T00:00:00+05:30`);
-    const dow = new Date(`${today}T12:00:00Z`).getUTCDay(); // 0 = Sunday
-    const weekFrom = new Date(todayStart.getTime() + (dow === 0 ? 1 : 1 - dow) * 24 * 3600 * 1000);
-    const weekTo = new Date(weekFrom.getTime() + 7 * 24 * 3600 * 1000);
-    const weekStart = istDay(weekFrom);
-    const live = all.filter((s) => s.status === "published" || s.status === "closed");
-    const toCheck = live
-      .filter((s) => (s.comesBack === "brought" || s.comesBack === "sent") && s.dueAt <= now)
+    const given = all.filter((s) => s.status === "published" || s.status === "closed");
+    const checkSet = new Set(checkIds);
+    const toCheck = given
+      .filter((s) => checkSet.has(s.id))
       .flatMap((s) =>
         s.sections
           .filter((sec) => sec.toCheck > 0)
@@ -1151,21 +1200,18 @@ export class HomeworkService {
 
     return {
       toCheck,
-      quizzes: live
+      quizzes: given
         .filter((s) => s.kind === "quiz")
         .map((s) => ({ ...s, answersToMark: answersToMark.get(s.id) ?? 0 }))
         .filter((s) => s.status === "published" || s.answersToMark > 0),
-      outNow: live.filter((s) => s.kind !== "quiz" && s.status === "published" && s.dueAt > now),
-      givenToday: live.filter((s) => s.publishedAt && istDay(s.publishedAt) === today),
+      outNow: given.filter((s) => s.kind !== "quiz" && s.status === "published" && s.dueAt > now),
+      givenToday: given.filter((s) => s.publishedAt && istDay(s.publishedAt) === today),
       drafts: all.filter(
         (s) => (s.status === "draft" || s.status === "scheduled") && s.createdBy === access.userId,
       ),
       // Home v3's day strip: this school week (Monday to Saturday, IST; on a
-      // Sunday, the week ahead) and everything given that falls due in it.
-      weekStart,
-      week: live
-        .filter((s) => s.dueAt >= weekFrom && s.dueAt < weekTo)
-        .sort((x, y) => x.dueAt.getTime() - y.dueAt.getTime()),
+      // Sunday, the week ahead), with a count per day and the shown day's homework.
+      ...week,
     };
   }
 
@@ -1173,18 +1219,39 @@ export class HomeworkService {
    * Home's day strip for any school week: everything given (or closed) that
    * falls due in the seven days from `fromIso` (a Monday, IST).
    */
-  async week(access: HomeworkAccess, fromIso: string) {
+  async week(access: HomeworkAccess, fromIso: string, dayIso?: string) {
+    return this.weekStrip(access, fromIso, dayIso ?? fromIso);
+  }
+
+  /**
+   * One school week for the day strip: how many fall due on each day (Mon-Sat),
+   * and the full homework for one day only. A principal's week at a big school
+   * runs to hundreds; a day is what one screen shows.
+   */
+  private async weekStrip(access: HomeworkAccess, fromIso: string, dayIso: string) {
+    const DAY = 24 * 3600 * 1000;
     const from = new Date(`${fromIso}T00:00:00+05:30`);
-    if (Number.isNaN(from.getTime())) throw refuse("BAD_REQUEST", "That week isn't valid.");
-    const to = new Date(from.getTime() + 7 * 24 * 3600 * 1000);
-    const ids = await this.visibleIds(access, {
-      statuses: ["published", "closed"],
-      dueFrom: from,
-      dueTo: to,
-      limit: 300,
+    const dayStart = new Date(`${dayIso}T00:00:00+05:30`);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(dayStart.getTime())) {
+      throw refuse("BAD_REQUEST", "That week isn't valid.");
+    }
+    const live: Assignment["status"][] = ["published", "closed"];
+    const [counts, ids] = await Promise.all([
+      this.dueDayCounts(access, { statuses: live, dueFrom: from, dueTo: new Date(from.getTime() + 7 * DAY) }),
+      this.visibleIds(access, {
+        statuses: live,
+        dueFrom: dayStart,
+        dueTo: new Date(dayStart.getTime() + DAY),
+        earliestDueFirst: true,
+        limit: 300,
+      }),
+    ]);
+    const weekDays = Array.from({ length: 6 }, (_, i) => {
+      const day = new Date(from.getTime() + i * DAY + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+      return { day, count: counts.get(day) ?? 0 };
     });
-    const all = await this.summaries(ids);
-    return all.sort((x, y) => x.dueAt.getTime() - y.dueAt.getTime());
+    const dayItems = (await this.summaries(ids)).sort((x, y) => x.dueAt.getTime() - y.dueAt.getTime());
+    return { weekStart: fromIso, weekDays, day: dayIso, dayItems };
   }
 
   /**
@@ -1208,6 +1275,11 @@ export class HomeworkService {
       .where(and(eq(sections.id, pair.sectionId), or(...access.scopes.map((s) => scopeWhere(s, SECTION_COLS)))!));
     if (!sec) throw refuse("NOT_FOUND", "That class could not be found.");
 
+    const now = new Date();
+    const monthAgo = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
+    // The class page is about now: a month back and a month ahead, so far-off
+    // homework can't crowd out this week's.
+    const monthAhead = new Date(now.getTime() + 30 * 24 * 3600 * 1000);
     const idRows = await db
       .select({ id: assignments.id })
       .from(assignments)
@@ -1217,14 +1289,14 @@ export class HomeworkService {
           eq(assignments.subjectId, pair.subjectId),
           eq(assignmentTargets.sectionId, pair.sectionId),
           inArray(assignments.status, ["published", "closed"]),
+          gte(assignments.dueAt, monthAgo),
+          lt(assignments.dueAt, monthAhead),
         ),
       )
       .orderBy(desc(assignments.dueAt))
-      .limit(60);
+      .limit(100);
     const ids = idRows.map((r) => r.id);
 
-    const now = new Date();
-    const monthAgo = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
     const weekAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
     const [homework, subject, size, rows] = await Promise.all([
       this.summaries(ids),

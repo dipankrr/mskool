@@ -23,6 +23,7 @@ import {
   markTickInput,
   moveDueInput,
   portalHomeworkDetailSchema,
+  weekStripSchema,
   portalHomeworkItemSchema,
   portalHomeworkListInput,
   portalHomeworkRefInput,
@@ -154,9 +155,9 @@ export const homeworkRouter = router({
   /** Home's day strip for another week (Monday, YYYY-MM-DD). */
   week: staffListProcedure("homework:read")
     .meta({ openapi: { method: "GET", path: "/homework/week", tags: ["homework"], summary: "Homework due in one school week", protect: true } })
-    .input(z.object({ from: z.iso.date() }))
-    .output(z.array(homeworkSummarySchema))
-    .query(async ({ ctx, input }) => homeworkService.week(await accessFor(ctx), input.from)),
+    .input(z.object({ from: z.iso.date(), day: z.iso.date().optional() }))
+    .output(weekStripSchema)
+    .query(async ({ ctx, input }) => homeworkService.week(await accessFor(ctx), input.from, input.day)),
 
   /** One class and subject (Home v3's class page). */
   classView: staffListProcedure("homework:read")

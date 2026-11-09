@@ -508,14 +508,20 @@ describe("homework (ADR-064)", () => {
     const access = { userId: w.users.adminA, scopes: [scopeA1], pairs: null };
     const home = await homeworkService.home(access);
     expect(home.weekStart).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    // Any week reads the same way; this week matches Home's own.
-    const sameWeek = await homeworkService.week(access, home.weekStart);
-    expect(sameWeek.map((h) => h.id).sort()).toEqual(home.week.map((h) => h.id).sort());
-    const due = new Date(hw.dueAt);
+    expect(home.weekDays).toHaveLength(6);
+    // Home's shown day reads the same through the week endpoint.
+    const sameDay = await homeworkService.week(access, home.weekStart, home.day);
+    expect(sameDay.dayItems.map((h) => h.id).sort()).toEqual(home.dayItems.map((h) => h.id).sort());
+    // Any day of the week holds every homework due that day, however many the
+    // school has (a shared cap once dropped the newest), and its count agrees.
+    const dueDay = new Date(new Date(hw.dueAt).getTime() + 5.5 * 3600_000).toISOString().slice(0, 10);
     const from = new Date(`${home.weekStart}T00:00:00+05:30`);
-    if (due >= from && due.getTime() < from.getTime() + 7 * 86_400_000) {
-      expect(home.week.some((h) => h.id === hw.id)).toBe(true);
-    }
+    const dueWeek = new Date(from.getTime() + Math.floor((new Date(hw.dueAt).getTime() - from.getTime()) / (7 * 86_400_000)) * 7 * 86_400_000 + 5.5 * 3600_000)
+      .toISOString()
+      .slice(0, 10);
+    const strip = await homeworkService.week(access, dueWeek, dueDay);
+    expect(strip.dayItems.some((h) => h.id === hw.id)).toBe(true);
+    expect(strip.weekDays.find((d) => d.day === dueDay)?.count ?? 0).toBeGreaterThanOrEqual(strip.dayItems.length);
 
     // Mark the owned child Not done on work due an hour ago.
     const past = new Date(Date.now() - 3600_000);
