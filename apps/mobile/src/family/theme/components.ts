@@ -244,6 +244,41 @@ export const components = {
     photo: { radius: radius.sm },
   },
 
+  /**
+   * The first screen before sign-in: a soft colour wash up top, a Bookie-blue
+   * stage below, and two role cards built like Bookie (a light face on a
+   * darker page edge that the card presses into).
+   */
+  welcome: {
+    wash: [
+      "radial-gradient(70% 30% at 0% 4%, rgba(47, 107, 255, 0.28), rgba(47, 107, 255, 0) 100%)",
+      "radial-gradient(66% 28% at 108% 18%, rgba(242, 112, 90, 0.30), rgba(242, 112, 90, 0) 100%)",
+      "radial-gradient(84% 26% at 70% 52%, rgba(255, 214, 107, 0.35), rgba(255, 214, 107, 0) 100%)",
+      `linear-gradient(180deg, ${palette.washTop} 0%, ${palette.cream} 60%, ${palette.washBottom} 100%)`,
+    ].join(", "),
+    accent: palette.bookie.body,
+    headline: { size: 52, tracking: -2 },
+    stage: { bg: palette.bookie.body, radius: 36, ask: palette.stageLabel },
+    bubble: { bg: palette.note, fg: palette.noteInk, radius: radius.md, tilt: "5deg" },
+    /** Bookie's width by screen height: tall, medium, short phones. */
+    mascot: { tall: 310, medium: 270, short: 220 },
+    /** How much of Bookie stands above the stage's top edge. */
+    mascotAbove: 0.78,
+    card: {
+      radius: 22,
+      face: `linear-gradient(180deg, ${palette.white} 0%, ${palette.blueTint} 100%)`,
+      rim: "rgba(255, 255, 255, 0.9)",
+      edge: palette.bookie.depth,
+      edgeHeight: 4,
+      shadow: "0 10px 18px rgba(14, 26, 79, 0.22)",
+      minHeight: 76,
+      icon: { size: 48, radius: radius.md },
+      go: { size: 32, bg: palette.ink, fg: palette.white },
+      family: { fg: palette.coral, bg: palette.coralTint },
+      staff: { fg: palette.blue, bg: palette.blueTint },
+    },
+  },
+
   mascot: {
     body: palette.bookie.body,
     depth: palette.bookie.depth,

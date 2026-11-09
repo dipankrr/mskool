@@ -1,8 +1,9 @@
-import { useRef, useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { BackHandler, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from "react-native";
 import type { TextInput } from "react-native";
 import { useTranslation } from "react-i18next";
 
+import { AppIcon } from "../../components/app-icon";
 import { loginByPhone } from "../../lib/auth";
 import { Enter } from "../motion";
 import { FamilyThemeProvider, useFamilyTheme } from "../theme";
@@ -27,21 +28,22 @@ type Step = "phone" | "password" | "setup" | "reset";
  */
 export function FamilyLogin({
   onSignedIn,
-  onStaff,
+  onBack,
 }: {
   /** Settle the session and route on (the login route owns this). */
   onSignedIn: () => Promise<void>;
-  onStaff: () => void;
+  /** Back to the welcome screen. */
+  onBack: () => void;
 }) {
   return (
     <FamilyThemeProvider>
-      <Flow onSignedIn={onSignedIn} onStaff={onStaff} />
+      <Flow onSignedIn={onSignedIn} onBack={onBack} />
     </FamilyThemeProvider>
   );
 }
 
-function Flow({ onSignedIn, onStaff }: { onSignedIn: () => Promise<void>; onStaff: () => void }) {
-  const { t } = useTranslation("auth");
+function Flow({ onSignedIn, onBack }: { onSignedIn: () => Promise<void>; onBack: () => void }) {
+  const { t } = useTranslation(["auth", "common"]);
   const theme = useFamilyTheme();
   const [step, setStep] = useState<Step>("phone");
   const [phone, setPhone] = useState("");
@@ -144,12 +146,36 @@ function Flow({ onSignedIn, onStaff }: { onSignedIn: () => Promise<void>; onStaf
     setBusy(false);
   }
 
+  // Back steps out one level: a later step returns to the phone, the phone step to the welcome screen.
+  const goBack = () => {
+    if (busy) return;
+    if (step === "phone") onBack();
+    else reset("phone");
+  };
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      goBack();
+      return true;
+    });
+    return () => sub.remove();
+  });
+
   const forNumber = t("forNumber", { phone: formatPhone(digits) });
 
   return (
     <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <FScreen testID="family-login">
-        <Enter style={[styles.hero, { gap: theme.space.md, paddingTop: theme.space.xxl }]}>
+        <Pressable
+          testID="family-login-back"
+          accessibilityRole="button"
+          accessibilityLabel={t("common:back")}
+          hitSlop={12}
+          onPress={goBack}
+          style={[styles.back, { minHeight: theme.touch.min }]}
+        >
+          <AppIcon name="chevronLeft" size={24} color={theme.color.ink} />
+        </Pressable>
+        <Enter style={[styles.hero, { gap: theme.space.md, paddingTop: theme.space.lg }]}>
           <FMascot size={88} mood={step === "phone" ? "happy" : "calm"} />
           <FText variant={step === "phone" ? "display" : "title"}>
             {step === "phone"
@@ -304,21 +330,6 @@ function Flow({ onSignedIn, onStaff }: { onSignedIn: () => Promise<void>; onStaf
           />
         </View>
 
-        {step === "phone" ? (
-          <View style={[styles.staff, { gap: theme.space.sm, paddingTop: theme.space.xl }]}>
-            <FText variant="meta" color="muted" align="center">
-              {t("staffTitle")}
-            </FText>
-            <FButton
-              testID="family-login-staff"
-              variant="secondary"
-              block
-              icon="school"
-              label={t("staffAction")}
-              onPress={onStaff}
-            />
-          </View>
-        ) : null}
       </FScreen>
     </KeyboardAvoidingView>
   );
@@ -342,7 +353,8 @@ const styles = StyleSheet.create({
   start: {
     alignSelf: "flex-start",
   },
-  staff: {
-    alignItems: "stretch",
+  back: {
+    alignSelf: "flex-start",
+    justifyContent: "center",
   },
 });

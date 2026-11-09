@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Welcome Screen Mockups</title>
+<style>
+/* ============================================================
+   Welcome screen (2026-11-09). Mockup only, no app code.
+   Inspired by docs/reference/first_screen_inspo.jpg (the feel,
+   not the picture): Bookie is the hero, a short bold headline,
+   and two role cards in place of a Get started button.
+   Colours: Bookie from brand-bookie.ts, family palette.ts.
+   Fonts: Clash Grotesk + Caveat, the ones the app ships.
+   Phones are 360 wide.
+   ============================================================ */
+@font-face { font-family: Clash; font-weight: 400; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Regular.ttf); }
+@font-face { font-family: Clash; font-weight: 500; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Medium.ttf); }
+@font-face { font-family: Clash; font-weight: 600; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Semibold.ttf); }
+@font-face { font-family: Clash; font-weight: 700; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Bold.ttf); }
+@font-face { font-family: Hand; font-weight: 700; src: url(../../../../apps/mobile/assets/fonts/Caveat-Bold.ttf); }
+:root {
+  --body: #2F6BFF; --depth: #1C3FB0; --bink: #0E1A4F;
+  --ink: #1B1B1A; --soft: #3A3A38; --muted: #6E6E6A; --stone: #F3F3F0;
+  --hair: rgba(27,27,26,.08);
+  --coral: #F2705A; --coral-t: #FDE9E4; --blue-t: #EAF0FF; --note: #FFF4B8; --note-ink: #3B3320;
+  --wash-top: #EEF3FF; --wash-bottom: #FFF6EF;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { color-scheme: light; }
+body { background: #DADBD6; color: var(--ink); font-family: Clash, system-ui, sans-serif; font-size: 15px; padding: 32px 16px 64px; }
+svg { display: block; flex: none; }
+
+/* ---------- page around the phones ---------- */
+.intro { max-width: 1160px; margin: 0 auto 24px; }
+.intro h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.6px; }
+.intro p { margin-top: 4px; color: #3C4450; max-width: 760px; line-height: 1.45; }
+.frames { max-width: 1160px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 32px 24px; }
+figure { width: 360px; max-width: 100%; }
+figcaption { margin-top: 12px; font-size: 13px; color: #3C4450; line-height: 1.45; }
+figcaption b { font-weight: 600; color: var(--ink); }
+.notes { max-width: 1160px; margin: 40px auto 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px; }
+.notes div { background: rgba(255,255,255,.55); border-radius: 14px; padding: 12px 16px; font-size: 14px; line-height: 1.45; color: #3C4450; }
+.notes b { display: block; color: var(--ink); font-weight: 600; font-size: 15px; margin-bottom: 2px; }
+
+/* ---------- phone ---------- */
+.phone { position: relative; width: 360px; height: 760px; max-width: 100%; border-radius: 32px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 0 0 1px rgba(16,24,40,.1), 0 14px 34px rgba(16,24,40,.12); }
+.status { height: 32px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 600; flex: none; }
+.status i { width: 40px; height: 8px; border-radius: 999px; background: currentColor; opacity: .75; }
+.top { height: 44px; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; flex: none; }
+.lang { height: 32px; padding: 0 12px; border-radius: 999px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.brand { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+
+.hand { font-family: Hand, cursive; font-weight: 700; }
+
+/* Role cards, shared */
+.roles { display: flex; flex-direction: column; gap: 12px; }
+.role { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 22px; min-height: 76px; cursor: pointer; transition: transform .12s; }
+.role:active { transform: scale(.98); }
+.role .ic { width: 48px; height: 48px; border-radius: 16px; display: grid; place-items: center; flex: none; }
+.role .t { font-size: 18px; font-weight: 600; letter-spacing: -0.3px; }
+.role .s { font-size: 13px; margin-top: 2px; }
+.role .go { margin-left: auto; width: 32px; height: 32px; border-radius: 999px; display: grid; place-items: center; flex: none; }
+.grow { flex: 1; min-width: 0; }
+
+/* Bookie motion, same numbers as bookie.tsx */
+.sway { transform-origin: 50% 90%; animation: sway 4s ease-in-out infinite alternate; }
+@keyframes sway { from { transform: rotate(4deg); } to { transform: rotate(-4deg); } }
+.eyes { transform-box: view-box; transform-origin: 50% 48.9%; animation: blink 4.48s infinite; }
+@keyframes blink { 0%, 96% { transform: scaleY(1); } 98% { transform: scaleY(.1); } 100% { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) { .sway, .eyes { animation: none; } }
+
+/* ---------- A: Blue stage ---------- */
+/* Soft colour blobs instead of flat white: blue top-left, coral top-right, warm cream low. No doodles. */
+.a { background:
+  radial-gradient(260px 220px at 0% 4%, rgba(47,107,255,.28), rgba(47,107,255,0) 70%),
+  radial-gradient(240px 220px at 108% 18%, rgba(242,112,90,.30), rgba(242,112,90,0) 70%),
+  radial-gradient(300px 200px at 70% 52%, rgba(255,214,107,.35), rgba(255,214,107,0) 70%),
+  linear-gradient(180deg, #E9EFFF 0%, #FFF3EA 60%, #FFF6EF 100%); }
+.a .head { padding: 24px 24px 0; }
+.a h2 { font-size: 40px; line-height: 1.02; font-weight: 700; letter-spacing: -1.4px; }
+.a h2 span { color: var(--body); }
+/* Caveat runs small next to Clash, so the hand words are sized up to match. */
+.a h2 em { font-style: normal; font-size: 1.3em; letter-spacing: 0; line-height: .8; }
+.a .sub { margin-top: 12px; font-size: 15px; color: var(--muted); line-height: 1.4; max-width: 260px; }
+.a .stage { margin-top: auto; position: relative; background: var(--body); border-radius: 36px 36px 32px 32px; padding: 0 16px 24px; }
+.a .peek { position: absolute; left: 50%; top: -168px; transform: translateX(-50%); }
+.a .bubble { position: absolute; right: 8px; top: -190px; background: var(--note); color: var(--note-ink); font-size: 22px; padding: 4px 12px 6px; border-radius: 14px; transform: rotate(5deg); box-shadow: 0 6px 14px rgba(16,24,40,.10); }
+.a .bubble::after { content: ""; position: absolute; left: -6px; bottom: 10px; width: 14px; height: 14px; background: var(--note); transform: rotate(45deg); border-radius: 3px; }
+.a .ask { color: #DCE6FF; font-size: 13px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; padding: 72px 4px 12px; }
+/* Cards echo Bookie's own build: a soft-white face on a darker "page edge" below, plus a thin light rim. */
+.a .role { background: linear-gradient(180deg, #FFFFFF 0%, #EEF3FF 100%); color: var(--ink);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.9), 0 4px 0 var(--depth), 0 10px 18px rgba(14,26,79,.22); margin-bottom: 4px; }
+.a .role:active { transform: translateY(3px); box-shadow: inset 0 0 0 1px rgba(255,255,255,.9), 0 1px 0 var(--depth), 0 4px 10px rgba(14,26,79,.2); }
+.a .role .s { color: var(--muted); }
+.a .role.fam .ic { background: var(--coral-t); color: var(--coral); }
+.a .role.staff .ic { background: var(--blue-t); color: var(--body); }
+.a .role .go { background: var(--ink); color: #fff; }
+
+/* ---------- B: Calm & light ---------- */
+.b { background: linear-gradient(180deg, var(--wash-top) 0%, #fff 48%, var(--wash-bottom) 100%); }
+.b .hero { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 28px; }
+.b .halo { position: relative; width: 220px; height: 220px; border-radius: 999px; background: radial-gradient(circle, #DCE6FF 0%, rgba(220,230,255,0) 70%); display: grid; place-items: center; }
+.b .halo .hand { position: absolute; left: -22px; top: 18px; color: var(--coral); font-size: 24px; transform: rotate(-10deg); }
+.b h2 { margin-top: 16px; font-size: 34px; line-height: 1.05; font-weight: 700; letter-spacing: -1.1px; }
+.b .sub { margin-top: 8px; color: var(--muted); font-size: 15px; line-height: 1.4; }
+.b .roles { padding: 0 20px 28px; }
+.b .role { background: #fff; box-shadow: 0 0 0 1px var(--hair), 0 8px 20px rgba(16,24,40,.06); }
+.b .role .s { color: var(--muted); }
+.b .role.fam .ic { background: var(--coral); color: #fff; }
+.b .role.staff .ic { background: var(--body); color: #fff; }
+.b .role .go { background: var(--stone); color: var(--ink); }
+
+/* ---------- C: Night ---------- */
+.c { background: #10131C; color: #fff; }
+.c .head { padding: 28px 24px 0; }
+.c h2 { font-size: 36px; line-height: 1.0; font-weight: 700; letter-spacing: -1.5px; }
+.c h2 .chip { display: inline-block; background: var(--body); padding: 0 10px 4px; border-radius: 12px; transform: rotate(-2deg); margin-top: 6px; }
+.c .sub { margin-top: 14px; color: #A9B0C2; font-size: 15px; line-height: 1.4; }
+.c .hand { color: #FFD66B; font-size: 22px; }
+.c .mid { flex: 1; display: grid; place-items: center; position: relative; }
+.c .glow { position: absolute; width: 260px; height: 260px; border-radius: 999px; background: radial-gradient(circle, rgba(47,107,255,.45), rgba(47,107,255,0) 70%); }
+.c .roles { padding: 0 20px 28px; flex-direction: row; gap: 12px; }
+.c .role { flex: 1; flex-direction: column; align-items: flex-start; gap: 18px; padding: 16px; min-height: 150px; border-radius: 24px; }
+.c .role.fam { background: var(--coral); color: #fff; }
+.c .role.staff { background: #fff; color: var(--ink); }
+.c .role .ic { width: 44px; height: 44px; border-radius: 14px; background: rgba(255,255,255,.22); }
+.c .role.staff .ic { background: var(--blue-t); color: var(--body); }
+.c .role .t { font-size: 17px; line-height: 1.15; }
+.c .role .s { opacity: .8; }
+.c .role .row { margin-top: auto; display: flex; width: 100%; align-items: flex-end; }
+</style>
+</head>
+<body>
+
+<!-- Bookie, from apps/mobile/src/components/bookie.tsx (sticker outline on, gaze "up") -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="bookie" viewBox="160 300 704 560">
+      <g class="sway">
+        <path d="M512 744 C560 800 690 818 806 818 C822 818 828 808 828 792 V500 C828 400 754 330 664 330 C584 330 529 390 516 450 Q512 468 508 450 C495 390 440 330 360 330 C270 330 196 400 196 500 V792 C196 808 202 818 218 818 C334 818 464 800 512 744 Z" fill="#fff" stroke="#fff" stroke-width="44" stroke-linejoin="round"/>
+        <path d="M512 774 C560 830 690 848 806 848 C822 848 828 838 828 822 V530 C828 430 754 360 664 360 C584 360 529 420 516 480 Q512 498 508 480 C495 420 440 360 360 360 C270 360 196 430 196 530 V822 C196 838 202 848 218 848 C334 848 464 830 512 774 Z" fill="#1C3FB0"/>
+        <path d="M512 744 C560 800 690 818 806 818 C822 818 828 808 828 792 V500 C828 400 754 330 664 330 C584 330 529 390 516 450 Q512 468 508 450 C495 390 440 330 360 330 C270 330 196 400 196 500 V792 C196 808 202 818 218 818 C334 818 464 800 512 744 Z" fill="#2F6BFF"/>
+        <path d="M512 476 V728" stroke="#1C3FB0" stroke-width="12" stroke-linecap="round"/>
+        <path d="M460 690 Q512 740 564 690" fill="none" stroke="#0E1A4F" stroke-width="16" stroke-linecap="round"/>
+        <g class="eyes">
+          <circle cx="341" cy="574" r="80" fill="#fff"/><circle cx="353" cy="552" r="46" fill="#0E1A4F"/><circle cx="371" cy="532" r="16" fill="#fff"/>
+          <circle cx="683" cy="574" r="80" fill="#fff"/><circle cx="695" cy="552" r="46" fill="#0E1A4F"/><circle cx="713" cy="532" r="16" fill="#fff"/>
+        </g>
+      </g>
+    </symbol>
+    <!-- icons -->
+    <symbol id="i-fam" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5V6a2 2 0 0 1 2-2h12v14H6a2 2 0 0 0-2 2Z"/><path d="M4 19.5A2 2 0 0 0 6 22h12v-4"/><path d="M9 8h5"/></symbol>
+    <symbol id="i-staff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M7 20h10"/><path d="M12 16v4"/><path d="m8 10 2.5 2.5L16 8"/></symbol>
+    <symbol id="i-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
+  </defs>
+</svg>
+
+<header class="intro">
+  <h1>Welcome screen</h1>
+  <p>The first screen before sign-in. It takes the feel of the reference (Bookie as the hero, a bold headline, a little play) and swaps the Get started button for two role cards: <b>Student / Parent</b> opens the family sign-in, <b>Staff / Teacher</b> opens the staff sign-in. Three directions to react to. Words are placeholders.</p>
+</header>
+
+<div class="frames">
+
+  <!-- A -->
+  <figure>
+    <div class="phone a">
+      <div class="status"><span>9:41</span><i></i></div>
+      <div class="top">
+        <span class="brand">mskool</span>
+      </div>
+      <div class="head">
+        <h2>Your <em class="hand">school</em>,<br><span>in your <em class="hand">pocket</em>.</span></h2>
+        <p class="sub">Homework, results, fees and attendance, all in one place.</p>
+      </div>
+      <div class="stage">
+        <svg class="peek" width="270" height="215"><use href="#bookie"/></svg>
+        <div class="bubble hand">Hi, I'm Bookie!</div>
+        <div class="ask">Who's signing in?</div>
+        <div class="roles">
+          <div class="role fam">
+            <div class="ic"><svg width="24" height="24"><use href="#i-fam"/></svg></div>
+            <div class="grow"><div class="t">Student / Parent</div><div class="s">Homework, results, fees</div></div>
+            <div class="go"><svg width="16" height="16"><use href="#i-go"/></svg></div>
+          </div>
+          <div class="role staff">
+            <div class="ic"><svg width="24" height="24"><use href="#i-staff"/></svg></div>
+            <div class="grow"><div class="t">Staff / Teacher</div><div class="s">Attendance, classes, admin</div></div>
+            <div class="go"><svg width="16" height="16"><use href="#i-go"/></svg></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>A. Blue stage.</b> Closest to the reference's energy: a big Bookie-blue panel at the bottom, Bookie standing on its edge with a sticky-note hello, the cards sitting on the blue. Headline up top on the light wash.</figcaption>
+  </figure>
+
+  <!-- B -->
+  <figure>
+    <div class="phone b">
+      <div class="status"><span>9:41</span><i></i></div>
+      <div class="top">
+        <span class="lang" style="background:rgba(255,255,255,.8);box-shadow:0 0 0 1px var(--hair)"><svg width="16" height="16"><use href="#i-globe"/></svg>En</span>
+        <span></span>
+      </div>
+      <div class="hero">
+        <div class="halo">
+          <span class="hand">Hello!</span>
+          <svg width="170" height="135"><use href="#bookie"/></svg>
+        </div>
+        <h2>Welcome to mskool</h2>
+        <p class="sub">Tell us who you are and<br>we'll take you to the right place.</p>
+      </div>
+      <div class="roles">
+        <div class="role fam">
+          <div class="ic"><svg width="24" height="24"><use href="#i-fam"/></svg></div>
+          <div class="grow"><div class="t">Student / Parent</div><div class="s">Sign in with your phone</div></div>
+          <div class="go"><svg width="16" height="16"><use href="#i-go"/></svg></div>
+        </div>
+        <div class="role staff">
+          <div class="ic"><svg width="24" height="24"><use href="#i-staff"/></svg></div>
+          <div class="grow"><div class="t">Staff / Teacher</div><div class="s">Sign in with your email</div></div>
+          <div class="go"><svg width="16" height="16"><use href="#i-go"/></svg></div>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>B. Calm and light.</b> Matches the family app's wash and white cards, so the jump into the family sign-in feels seamless. Bookie centred on a soft halo. The quietest of the three, and the closest to "premium, not kiddish".</figcaption>
+  </figure>
+
+  <!-- C -->
+  <figure>
+    <div class="phone c">
+      <div class="status"><span>9:41</span><i></i></div>
+      <div class="top">
+        <span class="lang" style="background:rgba(255,255,255,.1)"><svg width="16" height="16"><use href="#i-globe"/></svg>En</span>
+        <span class="hand">psst, pick one ↓</span>
+      </div>
+      <div class="head">
+        <h2>Every school day,<br><span class="chip">sorted.</span></h2>
+        <p class="sub">Homework, results, fees and attendance.</p>
+      </div>
+      <div class="mid">
+        <div class="glow"></div>
+        <svg width="180" height="143" style="position:relative"><use href="#bookie"/></svg>
+      </div>
+      <div class="roles">
+        <div class="role fam">
+          <div class="ic"><svg width="24" height="24"><use href="#i-fam"/></svg></div>
+          <div class="row"><div class="grow"><div class="t">Student /<br>Parent</div></div><svg width="20" height="20"><use href="#i-go"/></svg></div>
+        </div>
+        <div class="role staff">
+          <div class="ic"><svg width="24" height="24"><use href="#i-staff"/></svg></div>
+          <div class="row"><div class="grow"><div class="t">Staff /<br>Teacher</div></div><svg width="20" height="20"><use href="#i-go"/></svg></div>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>C. Night.</b> Takes the reference's dark ground and tilted highlight. Bookie glows in the middle; the two roles sit side by side as big square tiles, coral and white. The boldest, but it's the only dark screen in an otherwise light app.</figcaption>
+  </figure>
+
+</div>
+
+<section class="notes">
+  <div><b>When it shows</b>Proposal: only when the phone has no remembered sign-in choice (first launch, or after signing out). Otherwise staff would tap a card every time they open the app. Each sign-in form gets a back arrow to return here.</div>
+  <div><b>Bookie</b>Same drawing and motion as the app's Bookie component: slow sway, blink every few seconds, both off under Reduce Motion.</div>
+  <div><b>Mix and match</b>The parts move between directions freely: A's blue stage with B's card subtitles, C's side-by-side tiles on a light screen, and so on.</div>
+</section>
+
+</body>
+</html>

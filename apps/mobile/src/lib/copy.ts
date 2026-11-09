@@ -59,7 +59,6 @@ export const copy = {
     passwordChangedTitle: "Password changed",
     passwordChangedBody: "Use your new password the next time you sign in.",
     signOutAction: "Sign out",
-    familySignInAction: "Parent or student sign in",
     signOutFailed: "Couldn't sign out. Check your connection and try again.",
   },
   session: {

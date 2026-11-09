@@ -48,6 +48,10 @@ export const palette = {
   noteInk: "#3B3320",
   noteMuted: "#7A6A33",
 
+  /** The welcome wash's middle stop and the label on the blue stage. */
+  cream: "#FFF3EA",
+  stageLabel: "#DCE6FF",
+
   /** The faint cool-to-warm wash behind screens. */
   washTop: "#EEF3FF",
   washMid: "#FFFFFF",

@@ -6,6 +6,7 @@ import * as SecureStore from "expo-secure-store";
 
 import { env } from "../env";
 import { copy } from "./copy";
+import { clearLoginChoice } from "./login-choice";
 import { queryClient } from "./query";
 import { withTimeout } from "./with-timeout";
 
@@ -132,6 +133,8 @@ export async function logout() {
   }
   await queryClient.cancelQueries();
   queryClient.clear();
+  // A signed-out phone may be handed to someone else: start at the welcome screen.
+  await clearLoginChoice();
   return result;
 }
 

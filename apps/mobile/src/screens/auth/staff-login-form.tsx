@@ -1,14 +1,18 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  BackHandler,
   Button,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AppIcon } from "../../components/app-icon";
 import { login } from "../../lib/auth";
 import { copy } from "../../lib/copy";
 import { thrownMessage } from "../../lib/errors";
@@ -24,14 +28,15 @@ const SIGN_IN_SETTLE_MS = 4_000;
 
 /**
  * Staff sign-in (Step 0): email + password. Shown from the login route when
- * staff tap "Staff sign in"; the route owns the settled-session redirect. No self-signup (ADR-021) —
+ * staff pick "Staff / Teacher" on the welcome screen; the route owns the settled-session redirect. No self-signup (ADR-021) —
  * accounts are provisioned by the org with an initial password +
  * `must_change_password`. A settled session never sees the form (decided
  * here, not as a push during render): armed sessions route to the
  * forced-change screen, clear-flag sessions to the index dispatch.
  */
-export function StaffLoginForm({ onFamily }: { onFamily: () => void }) {
+export function StaffLoginForm({ onBack }: { onBack: () => void }) {
   const { refetchSession } = useMe();
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -62,11 +67,31 @@ export function StaffLoginForm({ onFamily }: { onFamily: () => void }) {
     }
   }
 
+  // Back (the arrow or Android's back) returns to the welcome screen.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      onBack();
+      return true;
+    });
+    return () => sub.remove();
+  }, [onBack]);
+
   const canSubmit =
     email.trim().length > 0 && password.length > 0 && !submitting;
 
   return (
     <View style={styles.container}>
+      <Pressable
+        testID="login-back"
+        accessibilityRole="button"
+        accessibilityLabel={copy.common.back}
+        hitSlop={12}
+        onPress={onBack}
+        disabled={submitting}
+        style={[styles.back, { top: insets.top + 8 }]}
+      >
+        <AppIcon name="chevronLeft" size={24} />
+      </Pressable>
       <Text style={styles.title} testID="login-title">
         {copy.auth.signInTitle}
       </Text>
@@ -115,14 +140,6 @@ export function StaffLoginForm({ onFamily }: { onFamily: () => void }) {
         />
       )}
 
-      <View style={styles.switch}>
-        <Button
-          title={copy.auth.familySignInAction}
-          onPress={onFamily}
-          disabled={submitting}
-          testID="login-family"
-        />
-      </View>
     </View>
   );
 }
@@ -158,8 +175,12 @@ const styles = StyleSheet.create({
     fontFamily: "ClashGrotesk-Regular",
     minHeight: 48,
   },
-  switch: {
-    marginTop: 24,
+  back: {
+    position: "absolute",
+    left: 16,
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: "center",
   },
   error: {
     color: "#b3261e",
