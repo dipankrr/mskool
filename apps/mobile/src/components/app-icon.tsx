@@ -39,6 +39,7 @@ const iconMap = {
   key: { ios: "key.fill", android: "vpn-key" },
   logout: { ios: "rectangle.portrait.and.arrow.right", android: "logout" },
   add: { ios: "plus", android: "add" },
+  remove: { ios: "minus", android: "remove" },
   warning: { ios: "exclamationmark.triangle.fill", android: "warning" },
   stack: { ios: "square.stack.3d.up.fill", android: "layers" },
   lock: { ios: "lock.fill", android: "lock" },

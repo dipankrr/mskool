@@ -395,6 +395,54 @@ export const copy = {
     openHint: "Opens this student's record",
     add: "Add student",
     addHint: "Opens the admission form",
+    printCards: {
+      open: "Print ID cards",
+      openHint: "Prints ID cards for the students this list shows",
+      title: "Print ID cards",
+      loading: "Finding who's on this list…",
+      count: (cards: number) => (cards === 1 ? "1 card" : `${cards} cards`),
+      fromList: "For the students this list shows",
+      leftOut: (count: number) =>
+        count === 1
+          ? "1 student on this list has no class this session and won't get a card."
+          : `${count} students on this list have no class this session and won't get a card.`,
+      noPhoto: (count: number) =>
+        count === 1
+          ? "1 student has no photo. Their card prints an empty photo box."
+          : `${count} students have no photo. Their cards print an empty photo box.`,
+      addPhotos: "Add photos",
+      overLimit: (count: number, limit: number) =>
+        `This list has ${count} cards. Print up to ${limit} at a time: narrow the list, for example to one class.`,
+      nobody: "No one on this list can get a card. Cards print for students who have a class this session.",
+      noDesignTitle: "No ID card design yet",
+      noDesignBody: "Set one up on the web first, then print from here.",
+      design: "Design",
+      designPlaceholder: "Choose a design",
+      defaultTag: "Default",
+      landscape: "Landscape",
+      portrait: "Portrait",
+      twoSided: "2-sided",
+      paper: "Paper",
+      paperA4: "A4 sheets",
+      paperCard: "Card size",
+      columnGap: "Gap between columns",
+      rowGap: "Gap between rows",
+      mm: (value: number) => `${value} mm`,
+      less: (label: string) => `Less ${label.toLowerCase()}`,
+      more: (label: string) => `More ${label.toLowerCase()}`,
+      perSheet: (perSheet: number, sheets: number) =>
+        `${perSheet} cards per sheet · ${sheets === 1 ? "1 sheet" : `${sheets} sheets`}`,
+      flip: "When printing both sides, the stack turns on",
+      flipLong: "Long edge",
+      flipShort: "Short edge",
+      cardSizeNote:
+        "One card per page, at the card's real size, for a card printer or a vendor. Share the PDF; an A4 printer would enlarge it.",
+      actualSize: "Cards print at their real size. Each sheet has a 50 mm line to check.",
+      making: (cards: number) => `Making ${cards === 1 ? "1 card" : `${cards} cards`}…`,
+      print: "Print",
+      share: "Share",
+      shareTitle: "Share ID cards",
+    },
     edit: "Edit",
     editHint: "Opens this student's edit form",
     meta: (admissionNumber: string) => `Adm ${admissionNumber}`,

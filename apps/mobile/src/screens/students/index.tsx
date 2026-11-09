@@ -36,6 +36,7 @@ import { formatReadableDate } from "../../lib/format";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { fontFamily, gutter, radius, spacing } from "../../theme/tokens";
+import { IdCardPrintSheet } from "./id-card-print-sheet";
 import { hasLeft, type EnrollmentStatus } from "./people-logic";
 import {
   activeFilterCount,
@@ -80,6 +81,8 @@ export function StudentsScreen({
 
   const canRead = has("student:read");
   const canCreate = has("student:create");
+  const canPrint = has("id_card:print");
+  const [printOpen, setPrintOpen] = useState(false);
   const canFilterClasses = has("class:read");
 
   const [query, setQuery] = useState("");
@@ -108,20 +111,23 @@ export function StudentsScreen({
   };
   const enabled = ready && Boolean(organizationId) && canRead && Boolean(academicYear?.id);
 
+  // What the list shows. ID-card printing sends the same, so it prints this list.
+  const list = {
+    academicYearId: academicYear?.id ?? "",
+    view,
+    sort,
+    ...(search ? { q: search } : {}),
+    ...(filters.classId ? { classId: filters.classId } : {}),
+    ...(filters.sectionId ? { sectionId: filters.sectionId } : {}),
+    ...(filters.gender ? { gender: filters.gender as "male" | "female" | "other" } : {}),
+    ...(filters.admissionYear ? { admissionYear: Number(filters.admissionYear) } : {}),
+    ...(filters.noSection ? { noSection: true } : {}),
+    ...(filters.noGuardian ? { noGuardian: true } : {}),
+    ...(filters.noPhoto ? { noPhoto: true } : {}),
+  };
+
   const roster = trpc.student.roster.useInfiniteQuery(
-    {
-      ...base,
-      view,
-      sort,
-      ...(search ? { q: search } : {}),
-      ...(filters.classId ? { classId: filters.classId } : {}),
-      ...(filters.sectionId ? { sectionId: filters.sectionId } : {}),
-      ...(filters.gender ? { gender: filters.gender } : {}),
-      ...(filters.admissionYear ? { admissionYear: Number(filters.admissionYear) } : {}),
-      ...(filters.noSection ? { noSection: true } : {}),
-      ...(filters.noGuardian ? { noGuardian: true } : {}),
-      ...(filters.noPhoto ? { noPhoto: true } : {}),
-    },
+    { ...base, ...list },
     {
       enabled,
       getNextPageParam: (page) => page.nextCursor,
@@ -193,9 +199,20 @@ export function StudentsScreen({
       }
     : undefined;
 
+  const printAction = canPrint
+    ? {
+        label: copy.students.printCards.open,
+        icon: "print" as const,
+        iconOnly: true,
+        onPress: () => setPrintOpen(true),
+        accessibilityHint: copy.students.printCards.openHint,
+        testID: "students-print-cards",
+      }
+    : undefined;
+
   const head = (
     <View style={styles.head}>
-      {variant === "pushed" || addAction ? (
+      {variant === "pushed" || addAction || printAction ? (
         <View style={styles.topRow}>
           {variant === "pushed" ? (
             <Pressable
@@ -211,7 +228,10 @@ export function StudentsScreen({
           ) : (
             <View />
           )}
-          {addAction ? <HeaderActionButton action={addAction} /> : null}
+          <View style={styles.actions}>
+            {printAction ? <HeaderActionButton action={printAction} /> : null}
+            {addAction ? <HeaderActionButton action={addAction} /> : null}
+          </View>
         </View>
       ) : null}
       <ThemedText variant="title" testID="students-title">
@@ -437,6 +457,15 @@ export function StudentsScreen({
         }
         ListEmptyComponent={listEmpty}
       />
+
+      {printOpen && organizationId && schoolId ? (
+        <IdCardPrintSheet
+          organizationId={organizationId}
+          schoolId={schoolId}
+          list={list}
+          onClose={() => setPrintOpen(false)}
+        />
+      ) : null}
 
       <ChoiceSheet
         visible={sortOpen}
@@ -759,6 +788,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+  },
+  actions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
   },
   back: {
     width: 48,
