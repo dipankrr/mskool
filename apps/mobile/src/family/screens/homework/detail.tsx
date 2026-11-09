@@ -254,7 +254,7 @@ function Action({ data, input, onSend }: { data: PortalDetail; input: { studentI
             {t("detail.waiting", { name: data.teacherName })}
           </FText>
         </Section>
-        {data.canSend ? <FButton testID="hw-replace" label={t("detail.replace")} variant="secondary" icon="camera" block onPress={onSend} /> : null}
+        {data.canSend ? <FButton testID="hw-replace" label={data.submission.files.length > 0 ? t("detail.replace") : t("detail.change")} variant="secondary" icon="camera" block onPress={onSend} /> : null}
       </View>
     );
   }

@@ -22,9 +22,14 @@ export function isOpen(item: Pick<PortalItem, "word">): boolean {
   return item.word === "to_do" || item.word === "redo";
 }
 
-/** Finished and waiting on nobody: checked, missed, or over (nothing came back). */
-export function isSettled(item: Pick<PortalItem, "word">): boolean {
-  return item.word === "checked" || item.word === "missed" || item.word === "over";
+/** Finished and waiting on nobody: checked, missed, over, or a tick that is ticked. */
+export function isSettled(item: Pick<PortalItem, "word"> & Partial<Pick<PortalItem, "comesBack">>): boolean {
+  return (
+    item.word === "checked" ||
+    item.word === "missed" ||
+    item.word === "over" ||
+    (item.word === "sent" && item.comesBack === "tick")
+  );
 }
 
 export type Countdown =

@@ -110,6 +110,7 @@
     "send": "Send my work",
     "sendAgain": "Send again",
     "replace": "Swap my pages",
+    "change": "Change my answer",
     "sentAt": "Sent {{when}}",
     "sentLate": "Sent {{when}}, late",
     "yourWork": "What you sent",
@@ -169,6 +170,7 @@
     "early": "Early",
     "late": "Late",
     "body": "{{name}} will check it. You can still swap pages until then.",
+    "bodyTyped": "{{name}} will check it. You can still change it until then.",
     "next": "Next: {{title}}",
     "toList": "Back to homework"
   },

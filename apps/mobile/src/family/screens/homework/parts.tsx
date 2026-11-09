@@ -4,7 +4,7 @@ import type { StyleProp, ViewStyle } from "react-native";
 import { useTranslation } from "react-i18next";
 
 import { AppIcon } from "../../../components/app-icon";
-import { countdown, resultLabel, shownWord, subjectSlot } from "../../lib/homework";
+import { countdown, isSettled, resultLabel, shownWord, subjectSlot } from "../../lib/homework";
 import type { Countdown, PortalItem, ShownWord } from "../../lib/homework";
 import { useFamilyTheme } from "../../theme";
 import { FRow, FText } from "../../ui";
@@ -149,7 +149,7 @@ export function HomeworkRow({ item, now, onPress }: { item: PortalItem; now: Dat
   const word = shownWord(item);
   const open = item.word === "to_do" || item.word === "redo";
   const c = countdown(item.dueAt, item.closeAt, now);
-  const settled = item.word === "checked" || item.word === "missed" || item.word === "over";
+  const settled = isSettled(item);
   const sub = open
     ? `${item.subjectName} · ${label(c)}`
     : item.word === "checked"

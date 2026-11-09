@@ -171,7 +171,7 @@ export function FamilyHomeworkSend() {
         <FButton
           testID="hw-send-pages"
           label={photos.busy ? t("send.uploading") : ready > 0 ? t("send.button", { count: ready }) : t("send.answerOnly")}
-          icon="share"
+          icon="check"
           block
           loading={send.isPending}
           disabled={(ready === 0 && !text) || photos.busy || photos.failed >= 0 || send.isPending}
@@ -214,7 +214,7 @@ function Sent({ detail, studentId }: { detail: PortalDetail; studentId: string }
           <FHand size={28}>{t("bookie.sent")}</FHand>
         </View>
         <FText variant="body" color="muted" align="center">
-          {t("sent.body", { name: detail.teacherName })}
+          {t(sub && sub.files.length > 0 ? "sent.body" : "sent.bodyTyped", { name: detail.teacherName })}
         </FText>
       </View>
       <View style={{ gap: theme.space.sm }}>
