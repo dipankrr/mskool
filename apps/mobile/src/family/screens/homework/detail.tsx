@@ -26,7 +26,7 @@ import {
   FStamp,
   FText,
 } from "../../ui";
-import { countdownTone, KindTile, useCountdownLabel, useNow, WordPill } from "./parts";
+import { AnswerBox, countdownTone, KindTile, useCountdownLabel, useNow, WordPill } from "./parts";
 import { PhotoRow } from "./photos";
 
 /** "2026-11-09" and "19:20:00" from a Date, for the family formatters. */
@@ -242,6 +242,7 @@ function Action({ data, input, onSend }: { data: PortalDetail; input: { studentI
           <FText variant="meta" color="muted">
             {t(data.submission.isLate ? "detail.sentLate" : "detail.sentAt", { when: when(data.submission.submittedAt) })}
           </FText>
+          {data.submission.bodyText ? <AnswerBox text={data.submission.bodyText} /> : null}
           <PhotoRow photos={data.submission.files} />
           <FText variant="meta" color="muted">
             {t("detail.waiting", { name: data.teacherName })}
@@ -406,8 +407,9 @@ function Checked({ data }: { data: PortalDetail }) {
           onPress={() => router.push({ pathname: "/family/homework/quiz", params: { id: data.studentAssignmentId } })}
         />
       ) : null}
-      {data.submission && data.submission.files.length > 0 ? (
+      {data.submission && (data.submission.files.length > 0 || data.submission.bodyText) ? (
         <Section title={t("detail.yourWork")}>
+          {data.submission.bodyText ? <AnswerBox text={data.submission.bodyText} /> : null}
           <PhotoRow photos={data.submission.files} />
         </Section>
       ) : null}
@@ -421,8 +423,9 @@ function Redo({ data, onSend }: { data: PortalDetail; onSend: () => void }) {
   return (
     <View style={{ gap: theme.space.xl }}>
       {data.note ? <FNote testID="hw-redo-note" look="redo" body={data.note} by={t("detail.sentBack", { name: data.teacherName })} /> : null}
-      {data.submission && data.submission.files.length > 0 ? (
+      {data.submission && (data.submission.files.length > 0 || data.submission.bodyText) ? (
         <Section title={t("detail.lastTime")}>
+          {data.submission.bodyText ? <AnswerBox text={data.submission.bodyText} /> : null}
           <PhotoRow photos={data.submission.files} faded />
           <FText variant="meta" color="muted">
             {t("detail.replaceNote")}

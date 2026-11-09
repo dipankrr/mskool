@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
 import { useTranslation } from "react-i18next";
@@ -33,6 +33,8 @@ export function FamilyHomeworkSend() {
   const photos = useSendPhotos(input);
   const [problem, setProblem] = useState<string | null>(null);
   const [sent, setSent] = useState<PortalDetail | null>(null);
+  // Swapping keeps what was typed last time.
+  const [typed, setTyped] = useState(() => utils.portalHomework.get.getData(input)?.submission?.bodyText ?? "");
   const send = trpc.portalHomework.send.useMutation({
     onSuccess: (next) => {
       utils.portalHomework.get.setData(input, next);
@@ -50,6 +52,8 @@ export function FamilyHomeworkSend() {
   };
   const close = () => (router.canGoBack() ? router.back() : router.replace("/family/homework"));
   const ready = photos.objectIds.length;
+  const text = typed.trim();
+  const field = theme.components.field;
 
   return (
     <FScreen
@@ -124,6 +128,32 @@ export function FamilyHomeworkSend() {
         <FButton testID="hw-gallery" label={t("send.gallery")} icon="viewCards" variant="secondary" onPress={() => void add("library")} style={styles.flex} />
       </View>
 
+      <View style={{ gap: theme.space.sm }}>
+        <FText variant="label">{t("send.typeLabel")}</FText>
+        <TextInput
+          testID="hw-typed"
+          value={typed}
+          onChangeText={setTyped}
+          placeholder={t("send.typeHint")}
+          placeholderTextColor={field.placeholder}
+          accessibilityLabel={t("send.typeLabel")}
+          multiline
+          maxLength={10000}
+          style={[
+            theme.text("body"),
+            {
+              minHeight: 110,
+              textAlignVertical: "top",
+              backgroundColor: field.bg,
+              color: field.text,
+              borderRadius: field.radius,
+              paddingHorizontal: field.paddingX,
+              paddingVertical: theme.space.md,
+            },
+          ]}
+        />
+      </View>
+
       <View style={[styles.row, { gap: theme.space.md, backgroundColor: theme.tone.info.bg, borderRadius: theme.radius.lg, padding: theme.space.lg }]}>
         <AppIcon name="info" size={20} color={theme.tone.info.fg} />
         <FText variant="meta" style={styles.flex}>
@@ -140,12 +170,12 @@ export function FamilyHomeworkSend() {
       <View style={{ gap: theme.space.sm }}>
         <FButton
           testID="hw-send-pages"
-          label={photos.busy ? t("send.uploading") : t("send.button", { count: ready })}
+          label={photos.busy ? t("send.uploading") : ready > 0 ? t("send.button", { count: ready }) : t("send.answerOnly")}
           icon="share"
           block
           loading={send.isPending}
-          disabled={ready === 0 || photos.busy || photos.failed >= 0 || send.isPending}
-          onPress={() => send.mutate({ ...input, fileObjectIds: photos.objectIds })}
+          disabled={(ready === 0 && !text) || photos.busy || photos.failed >= 0 || send.isPending}
+          onPress={() => send.mutate({ ...input, fileObjectIds: photos.objectIds, ...(text ? { bodyText: text } : {}) })}
         />
         <FText variant="meta" color="muted" align="center">
           {t("send.limit", { max: MAX_PAGES })}
@@ -174,7 +204,7 @@ function Sent({ detail, studentId }: { detail: PortalDetail; studentId: string }
             tone="blue"
             kicker={t("sent.kicker", { subject: detail.subjectName })}
             value={t("sent.stamp")}
-            sub={t("sent.pages", { count: sub?.files.length ?? 0, time })}
+            sub={sub && sub.files.length > 0 ? t("sent.pages", { count: sub.files.length, time }) : t("sent.answer", { time })}
             footLeft={sub?.isLate ? t("sent.late") : t("sent.early")}
             width={230}
           />
