@@ -9,6 +9,7 @@ import type { BottomTabBarProps } from "expo-router/js-tabs";
 
 import { colors } from "../theme/brand-admin";
 import { motion, radius, shadow, spacing } from "../theme/tokens";
+import { PAST_BANNER_HEIGHT, PastSessionBanner, usePastBannerShown } from "./past-session-banner";
 import { ThemedText } from "./themed-text";
 
 /**
@@ -27,7 +28,9 @@ export const TAB_BAR_HEIGHT = 64;
 /** Bottom scroll inset that clears the floating bar on any device. */
 export function useTabBarSpace(): number {
   const insets = useSafeAreaInsets();
-  return TAB_BAR_HEIGHT + spacing.md + insets.bottom + spacing.md;
+  // The past-session warning (ADR-066) sits on the bar; make room while it shows.
+  const banner = usePastBannerShown() ? PAST_BANNER_HEIGHT + spacing.sm : 0;
+  return TAB_BAR_HEIGHT + spacing.md + insets.bottom + spacing.md + banner;
 }
 
 /** How far the bar has slid down. The app has one bar, so this is one value. */
@@ -141,6 +144,9 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 
   return (
     <Animated.View style={[styles.bar, { bottom: spacing.md + insets.bottom }, slide]}>
+      <View style={styles.banner} pointerEvents="box-none">
+        <PastSessionBanner tabKey={state.routes[state.index]?.key ?? ""} />
+      </View>
       {liquidGlass ? (
         <GlassView glassEffectStyle="regular" style={styles.capsule}>
           {tabs}
@@ -158,6 +164,12 @@ const styles = StyleSheet.create({
     left: spacing.lg,
     right: spacing.lg,
     height: TAB_BAR_HEIGHT,
+  },
+  banner: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: TAB_BAR_HEIGHT + spacing.sm,
   },
   capsule: {
     flex: 1,

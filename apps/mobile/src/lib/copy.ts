@@ -74,6 +74,12 @@ export const copy = {
     emptyTitle: "No classes assigned",
     emptyBody: "No sections are assigned to you in this session yet.",
   },
+  /** The banner above the tab bar while a past session is chosen (ADR-066). */
+  pastSession: {
+    title: (name: string) => `Viewing ${name} · not the running session`,
+    switchBack: "Switch back to the running session",
+    dismiss: "Hide this warning on this tab",
+  },
   nav: {
     home: "Home",
     attendance: "Attendance",
