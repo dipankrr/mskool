@@ -136,7 +136,7 @@ export function ReviewScreen() {
                           {[
                             r.rollNumber ? copy.homework.check.roll(r.rollNumber) : null,
                             r.submittedAt ? text.sentAt(formatDue(r.submittedAt)) : null,
-                            r.fileCount ? text.photosCount(r.fileCount) : null,
+                            r.fileCount ? text.photosCount(r.fileCount) : r.submittedAt && r.status !== "assigned" ? text.typed : null,
                           ]
                             .filter(Boolean)
                             .join(" · ")}
@@ -298,7 +298,7 @@ function ReviewOne({
           </View>
           {c.submission?.files.length ? (
             <PhotoStrip photos={c.submission.files} size={160} />
-          ) : (
+          ) : c.submission?.bodyText ? null : (
             <Notice tone="neutral" message={text.noPhotos} />
           )}
           {c.submission?.bodyText ? (
