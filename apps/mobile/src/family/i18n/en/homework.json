@@ -11,7 +11,9 @@
     "late": "Late",
     "checked": "Checked",
     "redo": "Redo",
-    "missed": "Missed"
+    "missed": "Missed",
+    "with_teacher": "With teacher",
+    "over": "Over"
   },
   "remark": {
     "excellent": "Excellent",
@@ -43,7 +45,7 @@
     "tomorrow": "Tomorrow",
     "week": "This week",
     "later": "Later",
-    "waiting": "Sent, waiting for the teacher",
+    "waiting": "With the teacher",
     "thisWeek": "This week",
     "lastWeek": "Last week",
     "earlier": "Earlier"
@@ -89,7 +91,7 @@
     },
     "howTo": "How to finish",
     "how": {
-      "sent": "Send photos of your work",
+      "sent": "Send photos or type your answer",
       "sentHint": "You can swap them until it's checked",
       "tick": "Tick it when you've done it",
       "tickHint": "You can untick until the due time",
@@ -134,8 +136,11 @@
     "failed": "Couldn't save the tick. Try again."
   },
   "send": {
-    "title": "Your pages",
-    "hint": "In order, page 1 first.",
+    "title": "Your work",
+    "hint": "Photos of your pages, in order, page 1 first. Or type your answer, or both.",
+    "typeLabel": "Type your answer",
+    "typeHint": "Write here, or paste a link",
+    "answerOnly": "Send my answer",
     "camera": "Camera",
     "gallery": "Gallery",
     "addPage": "Add page",
@@ -155,6 +160,7 @@
   "sent": {
     "stamp": "Sent!",
     "kicker": "{{subject}} / sent",
+    "answer": "Your answer · {{time}}",
     "pages_one": "{{count}} page · {{time}}",
     "pages_other": "{{count}} pages · {{time}}",
     "early": "Early",

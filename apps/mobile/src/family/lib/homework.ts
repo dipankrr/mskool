@@ -22,9 +22,9 @@ export function isOpen(item: Pick<PortalItem, "word">): boolean {
   return item.word === "to_do" || item.word === "redo";
 }
 
-/** Finished from the child's side and waiting on nobody: checked or missed. */
+/** Finished and waiting on nobody: checked, missed, or over (nothing came back). */
 export function isSettled(item: Pick<PortalItem, "word">): boolean {
-  return item.word === "checked" || item.word === "missed";
+  return item.word === "checked" || item.word === "missed" || item.word === "over";
 }
 
 export type Countdown =
@@ -131,7 +131,7 @@ export function groupDone(items: readonly PortalItem[], now = new Date()): { key
  */
 export function tonight(items: readonly PortalItem[], now = new Date()) {
   const key = dayKey(now);
-  const due = items.filter((item) => dayKey(new Date(item.dueAt)) === key && item.word !== "missed");
+  const due = items.filter((item) => dayKey(new Date(item.dueAt)) === key && item.word !== "missed" && item.word !== "over");
   const left = due.filter(isOpen);
   const minutes = left.reduce((sum, item) => sum + (item.estimatedMinutes ?? 0), 0);
   return { total: due.length, left: left.length, done: due.length - left.length, minutes };

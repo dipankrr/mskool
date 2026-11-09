@@ -223,6 +223,8 @@ export const components = {
       checked: { fg: palette.green, bg: palette.greenTint, border: null },
       redo: { fg: palette.white, bg: palette.coral, border: null },
       missed: { fg: palette.slate, bg: palette.slateTint, border: null },
+      with_teacher: { fg: palette.amber, bg: palette.amberTint, border: null },
+      over: { fg: palette.slate, bg: palette.slateTint, border: null },
     },
     tonight: {
       bg: palette.ink,

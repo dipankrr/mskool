@@ -2004,8 +2004,8 @@ export class HomeworkService {
       .limit(300);
     const now = new Date();
     const items = rows.map((r) => this.portalItem(r, now));
-    if (filter === "open") return items.filter((i) => ["to_do", "redo", "sent", "late"].includes(i.word));
-    if (filter === "done") return items.filter((i) => i.word === "checked" || i.word === "missed");
+    if (filter === "open") return items.filter((i) => ["to_do", "redo", "sent", "late", "with_teacher"].includes(i.word));
+    if (filter === "done") return items.filter((i) => ["checked", "missed", "over"].includes(i.word));
     return items;
   }
 

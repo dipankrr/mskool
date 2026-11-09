@@ -55,14 +55,16 @@ export function validateChoices(input: {
 
 /**
  * The student's word for one homework (ADR-064): To do, Sent, Late, Checked,
- * Redo, Missed. Work that is never checked (a tick, nothing) stays "to do"
- * until done; nobody is marked missed for reading.
+ * Redo, Missed, plus two endings so nothing sits in "to do" for ever: work
+ * brought to class is "with teacher" once due, and work with nothing coming
+ * back is "over" once due. An unticked tick is missed once it closes.
  */
 export function studentWord(
   sa: {
     status: StudentRowStatus;
     checkStatus: "done" | "incomplete" | "not_done" | "absent" | null;
     isLate: boolean;
+    effectiveDueAt: Date;
     effectiveCloseAt: Date;
   },
   comesBack: ComesBack,
@@ -78,9 +80,11 @@ export function studentWord(
     case "submitted":
       return sa.isLate ? "late" : "sent";
     default:
-      if ((comesBack === "sent" || comesBack === "questions") && now > sa.effectiveCloseAt) {
+      if ((comesBack === "sent" || comesBack === "questions" || comesBack === "tick") && now > sa.effectiveCloseAt) {
         return "missed";
       }
+      if (comesBack === "brought" && now > sa.effectiveDueAt) return "with_teacher";
+      if (comesBack === "none" && now > sa.effectiveDueAt) return "over";
       return "to_do";
   }
 }

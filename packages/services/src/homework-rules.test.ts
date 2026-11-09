@@ -39,6 +39,7 @@ describe("studentWord", () => {
     status: "assigned" as const,
     checkStatus: null,
     isLate: false,
+    effectiveDueAt: after,
     effectiveCloseAt: after,
     ...over,
   });
@@ -53,10 +54,16 @@ describe("studentWord", () => {
     expect(studentWord(row({ status: "missing" }), "sent", now)).toBe("missed");
   });
 
-  it("work sent in the app or a quiz is missed after close; reading never is", () => {
+  it("photos, a quiz or an unticked tick are missed after close", () => {
     expect(studentWord(row({ effectiveCloseAt: before }), "sent", now)).toBe("missed");
     expect(studentWord(row({ effectiveCloseAt: before }), "questions", now)).toBe("missed");
-    expect(studentWord(row({ effectiveCloseAt: before }), "tick", now)).toBe("to_do");
-    expect(studentWord(row({ effectiveCloseAt: before }), "brought", now)).toBe("to_do");
+    expect(studentWord(row({ effectiveCloseAt: before }), "tick", now)).toBe("missed");
+    expect(studentWord(row({ status: "submitted", effectiveCloseAt: before }), "tick", now)).toBe("sent");
+  });
+
+  it("work brought to class is with the teacher once due; nothing-back work is over", () => {
+    expect(studentWord(row({ effectiveDueAt: before }), "brought", now)).toBe("with_teacher");
+    expect(studentWord(row({ effectiveDueAt: before }), "none", now)).toBe("over");
+    expect(studentWord(row({}), "none", now)).toBe("to_do");
   });
 });

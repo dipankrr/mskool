@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Linking, StyleSheet, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import { useTranslation } from "react-i18next";
 
@@ -8,6 +8,37 @@ import { countdown, resultLabel, shownWord, subjectSlot } from "../../lib/homewo
 import type { Countdown, PortalItem, ShownWord } from "../../lib/homework";
 import { useFamilyTheme } from "../../theme";
 import { FRow, FText } from "../../ui";
+
+const URL = /(https?:\/\/[^\s]+)/g;
+
+/** A typed answer, with any web link tappable. */
+export function LinkedText({ text }: { text: string }) {
+  const theme = useFamilyTheme();
+  const parts = text.split(URL);
+  return (
+    <FText variant="body" selectable>
+      {parts.map((part, i) =>
+        i % 2 === 1 ? (
+          <FText key={i} variant="bodyStrong" tint={theme.tone.info.fg} onPress={() => void Linking.openURL(part)}>
+            {part}
+          </FText>
+        ) : (
+          part
+        ),
+      )}
+    </FText>
+  );
+}
+
+/** A grey box for the child's own typed answer. */
+export function AnswerBox({ text }: { text: string }) {
+  const theme = useFamilyTheme();
+  return (
+    <View style={{ backgroundColor: theme.color.surfaceMuted, borderRadius: theme.radius.lg, padding: theme.space.lg }}>
+      <LinkedText text={text} />
+    </View>
+  );
+}
 
 /** The time, refreshed every minute, so countdowns tick while a screen is open. */
 export function useNow(): Date {
@@ -118,7 +149,7 @@ export function HomeworkRow({ item, now, onPress }: { item: PortalItem; now: Dat
   const word = shownWord(item);
   const open = item.word === "to_do" || item.word === "redo";
   const c = countdown(item.dueAt, item.closeAt, now);
-  const settled = item.word === "checked" || item.word === "missed";
+  const settled = item.word === "checked" || item.word === "missed" || item.word === "over";
   const sub = open
     ? `${item.subjectName} · ${label(c)}`
     : item.word === "checked"

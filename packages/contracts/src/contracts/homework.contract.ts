@@ -75,7 +75,12 @@ export function comesBackAllowsGrading(comesBack: ComesBack): boolean {
 }
 
 /** What the student sees on each homework, in their own words. */
-export const STUDENT_WORDS = ["to_do", "sent", "late", "checked", "redo", "missed"] as const;
+/**
+ * The student's word for one homework. The six agreed words, plus two endings
+ * for work the child can't act on after the due time: `with_teacher` (brought
+ * to class, not checked yet) and `over` (nothing comes back).
+ */
+export const STUDENT_WORDS = ["to_do", "sent", "late", "checked", "redo", "missed", "with_teacher", "over"] as const;
 export const studentWordSchema = z.enum(STUDENT_WORDS);
 export type StudentWord = z.infer<typeof studentWordSchema>;
 
