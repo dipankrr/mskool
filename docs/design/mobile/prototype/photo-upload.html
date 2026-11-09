@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Photo Upload Revamp</title>
+<style>
+/* ============================================================
+   Photo upload revamp (2026-11-09). Mockup only, no app code.
+   Same tokens as students-tab.html. Names follow the demo seed's
+   Class 6 · A on the emulator (WALK-001…, rolls 2–…); 4 of them
+   already have a photo. "Photos" are drawn placeholders.
+   ============================================================ */
+@font-face { font-family: Clash; font-weight: 400; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Regular.ttf); }
+@font-face { font-family: Clash; font-weight: 500; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Medium.ttf); }
+@font-face { font-family: Clash; font-weight: 600; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Semibold.ttf); }
+@font-face { font-family: Clash; font-weight: 700; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Bold.ttf); }
+:root {
+  --canvas: #F2F3F7; --surface: #FFFFFF; --ink: #101828; --muted: #5D6674;
+  --hair: rgba(16,24,40,.08); --line: rgba(16,24,40,.16);
+  --accent: #0F7A44; --deep: #0B6B3A; --tint: #E8F5EE;
+  --field: #ECEEF3; --chev: #98A2B3; --scrim: rgba(16,24,40,.45); --grab: #D5DAE2;
+  --amb: #B54708; --amb-t: #FFFAEB; --red: #B42318; --red-t: #FEF3F2; --slate: #475467; --slate-t: #F2F4F7;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #DADBD6; color: var(--ink); font-family: Clash, system-ui, sans-serif; font-size: 15px; padding: 32px 16px 64px; }
+svg { display: block; flex: none; }
+.wrap { max-width: 1180px; margin: 0 auto; }
+.intro h1 { font-size: 30px; font-weight: 700; letter-spacing: -.6px; }
+.intro p { margin-top: 6px; color: #3C4450; max-width: 780px; line-height: 1.5; }
+.h2 { margin: 44px 0 6px; font-size: 12px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: #3C4450; }
+.lead { color: #3C4450; max-width: 780px; line-height: 1.5; margin-bottom: 16px; font-size: 14px; }
+.frames { display: flex; flex-wrap: wrap; gap: 36px 24px; }
+figure { width: 360px; max-width: 100%; }
+figcaption { margin-top: 12px; font-size: 13px; color: #3C4450; line-height: 1.5; }
+figcaption b { font-weight: 600; color: var(--ink); }
+figcaption em { font-style: normal; color: var(--amb); font-weight: 600; }
+.before { width: 360px; height: 760px; border-radius: 32px; overflow: hidden; box-shadow: 0 0 0 1px rgba(16,24,40,.1), 0 14px 34px rgba(16,24,40,.12); }
+.before img { width: 100%; display: block; }
+.notes { display: flex; flex-direction: column; gap: 10px; max-width: 520px; }
+.notes div { background: rgba(255,255,255,.6); border-radius: 14px; padding: 12px 16px; font-size: 14px; line-height: 1.5; color: #3C4450; }
+.notes b { color: var(--ink); font-weight: 600; }
+.cmp { width: 100%; max-width: 900px; border-collapse: collapse; font-size: 14px; background: rgba(255,255,255,.6); border-radius: 14px; overflow: hidden; }
+.cmp th, .cmp td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--hair); vertical-align: top; line-height: 1.45; }
+.cmp th { font-weight: 600; background: rgba(255,255,255,.6); }
+
+/* phone */
+.phone { position: relative; width: 360px; height: 760px; max-width: 100%; background: var(--canvas); border-radius: 32px; overflow: hidden; box-shadow: 0 0 0 1px rgba(16,24,40,.1), 0 14px 34px rgba(16,24,40,.12); }
+.phone.dark { background: #0B0F17; color: #fff; }
+.status { height: 32px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 600; }
+.status i { width: 40px; height: 8px; border-radius: 999px; background: currentColor; opacity: .75; }
+.nav { display: flex; align-items: center; justify-content: space-between; padding: 4px 12px 0; height: 44px; }
+.nav .t { font-size: 17px; font-weight: 600; }
+.nav .sm { font-size: 13px; color: var(--muted); }
+.ib { width: 36px; height: 36px; border-radius: 999px; display: flex; align-items: center; justify-content: center; }
+.ib.w { background: var(--surface); box-shadow: 0 0 0 1px var(--hair); }
+.title { font-size: 30px; font-weight: 700; letter-spacing: -.6px; line-height: 1.1; padding: 6px 16px 0; }
+.meta { font-size: 13px; color: var(--muted); }
+.px { padding: 0 16px; }
+.card { background: var(--surface); border-radius: 16px; }
+.pill { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.pill.c { color: var(--amb); background: var(--amb-t); }
+.pill.r { color: var(--red); background: var(--red-t); }
+.pill.n { color: var(--slate); background: var(--slate-t); }
+.pill.p { color: var(--deep); background: var(--tint); }
+.btn { height: 52px; border-radius: 999px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 16px; font-weight: 600; }
+.btn.sec { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
+.chip { height: 32px; padding: 0 12px; border-radius: 999px; background: var(--surface); box-shadow: 0 0 0 1px var(--hair); display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.chip.on { background: var(--ink); color: #fff; box-shadow: none; }
+.chips { display: flex; gap: 8px; overflow: hidden; padding: 10px 16px 4px; }
+
+/* the face grid */
+.gridf { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 12px 16px 120px; }
+.f { position: relative; }
+.f .ph { aspect-ratio: 3/4; border-radius: 14px; overflow: hidden; position: relative; background: var(--field); }
+.f .ph svg { width: 100%; height: 100%; }
+.f .roll { position: absolute; left: 6px; top: 6px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: rgba(16,24,40,.6); color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.f .tag { position: absolute; right: 6px; top: 6px; width: 22px; height: 22px; border-radius: 999px; display: flex; align-items: center; justify-content: center; }
+.f .nm { margin-top: 5px; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.f .sb { font-size: 11px; color: var(--muted); margin-top: 1px; white-space: nowrap; }
+.f.empty .ph { background: repeating-linear-gradient(135deg, #ECEEF3 0 8px, #E4E7ED 8px 16px); display: flex; align-items: center; justify-content: center; }
+.f.skip .ph { opacity: .45; }
+.f.sel .ph { box-shadow: 0 0 0 3px var(--accent); }
+.f.sel2 .ph { box-shadow: 0 0 0 3px var(--accent); transform: scale(.96); }
+.f.bad .ph { box-shadow: 0 0 0 3px var(--red); }
+.f.fade { opacity: .5; }
+
+/* sticky bottom */
+.dock { position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 16px 22px; background: linear-gradient(to top, var(--canvas) 70%, rgba(242,243,247,0)); }
+.dock .row { display: flex; gap: 10px; align-items: center; }
+.dock .hint { font-size: 12px; color: var(--muted); text-align: center; margin-bottom: 8px; }
+.prog { height: 6px; border-radius: 3px; background: var(--field); overflow: hidden; margin-bottom: 10px; }
+.prog i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.toast { position: absolute; left: 16px; right: 16px; top: 92px; background: var(--ink); color: #fff; border-radius: 14px; padding: 10px 14px; font-size: 13px; display: flex; gap: 10px; align-items: center; z-index: 5; }
+.toast b { color: #8FE3B5; font-weight: 600; margin-left: auto; }
+.banner { margin: 8px 16px 0; border-radius: 14px; padding: 10px 12px; display: flex; gap: 10px; align-items: center; font-size: 13px; }
+.banner.r { background: var(--red-t); color: var(--red); }
+.banner.p { background: var(--tint); color: var(--deep); }
+.banner b { font-weight: 600; }
+.banner .go { margin-left: auto; font-weight: 600; text-decoration: underline; }
+
+/* sheet */
+.scrim { position: absolute; inset: 0; background: var(--scrim); z-index: 7; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; background: var(--surface); border-radius: 24px 24px 0 0; z-index: 8; padding: 8px 16px 24px; }
+.grab { width: 36px; height: 5px; border-radius: 3px; background: var(--grab); margin: 0 auto 12px; }
+.sheet h3 { font-size: 20px; font-weight: 600; }
+.opt { display: flex; align-items: center; gap: 12px; min-height: 56px; border-bottom: 1px solid var(--hair); }
+.opt:last-child { border: 0; }
+.opt .ic { width: 36px; height: 36px; border-radius: 12px; background: var(--field); display: flex; align-items: center; justify-content: center; }
+.opt b { font-weight: 600; display: block; font-size: 15px; }
+.opt span { font-size: 13px; color: var(--muted); }
+.seg { display: flex; background: var(--field); border-radius: 12px; padding: 3px; margin-top: 6px; }
+.seg div { flex: 1; text-align: center; height: 34px; line-height: 34px; border-radius: 9px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.seg div.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(16,24,40,.1); }
+.sw { width: 44px; height: 26px; border-radius: 999px; background: var(--accent); position: relative; flex: none; margin-left: auto; }
+.sw::after { content: ""; position: absolute; right: 3px; top: 3px; width: 20px; height: 20px; border-radius: 999px; background: #fff; }
+.sw.off { background: var(--grab); }
+.sw.off::after { right: auto; left: 3px; }
+
+/* start screen */
+.hero { margin: 18px 16px 0; padding: 22px 18px; border-radius: 24px; background: var(--surface); }
+.hero h2 { font-size: 22px; font-weight: 700; letter-spacing: -.3px; line-height: 1.2; }
+.hero p { font-size: 14px; color: var(--muted); margin-top: 6px; line-height: 1.45; }
+.stat { display: flex; gap: 10px; margin-top: 16px; }
+.stat div { flex: 1; background: var(--canvas); border-radius: 14px; padding: 10px 12px; }
+.stat b { font-size: 22px; font-weight: 700; display: block; }
+.stat span { font-size: 12px; color: var(--muted); }
+.ring { width: 64px; height: 64px; }
+.list { margin: 12px 16px 0; }
+.li { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--hair); }
+.li:last-child { border: 0; }
+.li b { font-weight: 600; font-size: 15px; }
+
+/* camera */
+.cam { position: absolute; inset: 0; background: radial-gradient(120% 80% at 50% 40%, #3a4a5c 0%, #1b2430 60%, #0B0F17 100%); }
+.subject { position: absolute; left: 65px; top: 140px; width: 230px; }
+.frameguide { position: absolute; left: 105px; top: 150px; width: 150px; height: 190px; z-index: 1; border-radius: 110px / 140px; border: 2px dashed rgba(255,255,255,.7); }
+.camtop { position: absolute; left: 0; right: 0; top: 32px; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; z-index: 2; }
+.glass { background: rgba(16,24,40,.55); backdrop-filter: blur(10px); border-radius: 999px; color: #fff; }
+.who { position: absolute; left: 16px; right: 16px; top: 470px; padding: 12px 16px; border-radius: 20px; display: flex; align-items: center; gap: 12px; }
+.who .r { width: 44px; height: 44px; border-radius: 14px; background: #fff; color: var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 700; font-size: 18px; line-height: 1; }
+.who .r small { font-size: 9px; font-weight: 600; color: var(--muted); letter-spacing: .4px; }
+.who b { font-size: 18px; font-weight: 600; display: block; }
+.who span { font-size: 13px; opacity: .75; }
+.shutterbar { position: absolute; left: 0; right: 0; bottom: 0; height: 170px; padding: 0 28px 20px; display: flex; align-items: center; justify-content: space-between; }
+.shutter { width: 76px; height: 76px; border-radius: 999px; border: 4px solid #fff; display: flex; align-items: center; justify-content: center; }
+.shutter i { width: 60px; height: 60px; border-radius: 999px; background: #fff; }
+.thumbmini { width: 52px; height: 52px; border-radius: 14px; overflow: hidden; border: 2px solid #fff; }
+.side { width: 64px; text-align: center; font-size: 12px; font-weight: 600; }
+.nextq { position: absolute; left: 16px; right: 16px; top: 545px; display: flex; gap: 8px; font-size: 12px; color: rgba(255,255,255,.7); align-items: center; }
+.nextq span { background: rgba(255,255,255,.12); border-radius: 999px; padding: 4px 10px; }
+.flash { position: absolute; inset: 0; background: rgba(255,255,255,.0); }
+.review { position: absolute; left: 0; right: 0; bottom: 0; background: #0B0F17; padding: 16px 16px 24px; border-radius: 24px 24px 0 0; }
+.review .big { display: flex; gap: 14px; align-items: center; }
+.review .big .ph { width: 92px; height: 122px; border-radius: 16px; overflow: hidden; }
+.review .acts { display: flex; gap: 10px; margin-top: 16px; }
+.review .acts div { flex: 1; height: 48px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 15px; gap: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="intro">
+  <h1>Photo upload — two directions</h1>
+  <p>The screen today is the web's three-step flow squeezed onto a phone: settings first, then a long list of 72-point rows with small photos, and the Upload button at the bottom of that list. Below are two ways to do it as a phone screen. <b>A</b> keeps the gallery workflow but makes faces the main thing on screen. <b>B</b> adds a camera mode for photo day, so nothing needs matching afterwards. They can ship together: B's photos land in A's grid.</p>
+</div>
+
+<div class="h2">Today</div>
+<div class="frames">
+  <figure><div class="before"><img src="shots/photos/before.png" alt="Current photo upload screen"></div>
+    <figcaption><b>Today, Class 6 · A.</b> Five students fill the screen, and the photo is 48pt next to a lot of text.</figcaption></figure>
+  <div class="notes">
+    <div><b>Settings come before photos.</b> You choose "Match by", a section and a sort before seeing a single face.</div>
+    <div><b>The photo is the smallest thing in the row.</b> Checking "is this the right kid?" is the whole job, so the face should be big.</div>
+    <div><b>Fixing a match is a menu.</b> "Move up / move down" one step at a time when photo 7 is off by five.</div>
+    <div><b>The main button is out of reach.</b> Upload, progress and failures are at the end of a 40-row list.</div>
+    <div><b>Jargon.</b> "Section order" and "Register numbers" are words for how the code works.</div>
+  </div>
+</div>
+
+<!-- ================= A ================= -->
+<div class="h2">A · Grid first</div>
+<p class="lead">Start from the section and its gaps, pick photos, then check a grid of faces in roll order. Fix a match by tapping two cards to swap them. One sticky bar holds the next action all the time. Settings move into a small sheet.</p>
+<div class="frames">
+
+<figure><div class="phone">
+  <div class="status"><span>9:45</span><i></i></div>
+  <div class="nav"><div class="ib"><svg class="i" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#101828" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg></div><div></div></div>
+  <div class="title">Student photos</div>
+  <div class="px meta" style="margin-top:4px">2025–26 · Main Campus</div>
+  <div class="hero">
+    <div style="display:flex;gap:14px;align-items:center">
+      <svg class="ring" viewBox="0 0 64 64"><circle cx="32" cy="32" r="27" fill="none" stroke="#ECEEF3" stroke-width="8"/><circle cx="32" cy="32" r="27" fill="none" stroke="#0F7A44" stroke-width="8" stroke-dasharray="34 170" transform="rotate(-90 32 32)" stroke-linecap="round"/><text x="32" y="37" text-anchor="middle" font-size="14" font-weight="700" fill="#101828" font-family="Clash">19%</text></svg>
+      <div><h2>17 students have no photo</h2><p style="margin-top:2px">4 of 21 done in this session.</p></div>
+    </div>
+  </div>
+  <div class="px meta" style="margin-top:18px;font-weight:600;letter-spacing:.6px;font-size:12px;text-transform:uppercase">Pick a section</div>
+  <div class="card list">
+    <div class="li"><div style="flex:1"><b>Class 6 · A</b><div class="meta">8 of 12 missing</div></div><span class="pill c">8 missing</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#98A2B3" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></div>
+    <div class="li"><div style="flex:1"><b>Class 6 · B</b><div class="meta">All 9 missing</div></div><span class="pill c">9 missing</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#98A2B3" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></div>
+  </div>
+</div>
+<figcaption><b>A1 · Start.</b> Opens on what's missing, per section, instead of a settings form. The section with the most gaps is first. <em>Needs a small API:</em> photo counts per section (the roster summary already counts "no photo" for the school).</figcaption></figure>
+
+<figure><div class="phone">
+  <div class="status"><span>9:46</span><i></i></div>
+  <div class="nav"><div class="ib"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#101828" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg></div><div style="text-align:center"><div class="t">Class 6 · A</div><div class="sm">10 photos · 8 matched</div></div><div class="ib w"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#101828" stroke-width="2"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></div></div>
+  <div class="chips"><span class="chip on">All 12</span><span class="chip">Missing 8</span><span class="chip">Has photo 4</span><span class="chip">Extra 2</span></div>
+  <div class="gridf" id="gridA2"></div>
+  <div class="dock"><div class="hint">Tap two photos to swap them · tap a face to see it big</div><div class="row"><div class="btn sec" style="width:52px;padding:0"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#101828" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></div><div class="btn" style="flex:1">Upload 8 photos</div></div></div>
+</div>
+<figcaption><b>A2 · Check the grid.</b> Three faces across, roll on the corner, about 12 kids a screen. "Has photo" kids are skipped by default (faded, their turn passes on). The filter row jumps to what needs a look. Settings (order, mode) sit behind the top-right button. Upload is always in reach.</figcaption></figure>
+
+<figure><div class="phone">
+  <div class="status"><span>9:46</span><i></i></div>
+  <div class="nav"><div class="ib"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#101828" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg></div><div style="text-align:center"><div class="t">Class 6 · A</div><div class="sm">Swapping</div></div><div class="ib"></div></div>
+  <div class="toast"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8FE3B5" stroke-width="2"><path d="M7 4v16M17 20V4M3 8l4-4 4 4M13 16l4 4 4-4"/></svg>Now tap the photo to swap with Esha's<b>Cancel</b></div>
+  <div class="chips"><span class="chip on">All 12</span><span class="chip">Missing 8</span><span class="chip">Has photo 4</span><span class="chip">Extra 2</span></div>
+  <div class="gridf" id="gridA3"></div>
+  <div class="scrim" style="background:rgba(16,24,40,0);"></div>
+</div>
+<figcaption><b>A3 · Swap.</b> Tap Esha's card (it lifts and gets a ring), then tap Farhan's: the photos trade places, nobody else moves. That's the one fix that's needed most, done in two taps instead of five "move down"s. Long-press opens the card's sheet (A4).</figcaption></figure>
+
+<figure><div class="phone">
+  <div class="status"><span>9:47</span><i></i></div>
+  <div class="nav"><div class="ib"></div><div style="text-align:center"><div class="t">Class 6 · A</div></div><div class="ib"></div></div>
+  <div class="gridf" id="gridA4"></div>
+  <div class="scrim"></div>
+  <div class="sheet">
+    <div class="grab"></div>
+    <div style="display:flex;gap:14px;align-items:center;margin-bottom:8px">
+      <div style="width:84px;height:112px;border-radius:14px;overflow:hidden" id="bigA4"></div>
+      <div><h3>Divya Nair</h3><div class="meta">Roll 5 · WALK-004</div><div class="meta" style="margin-top:6px">IMG_20261109_0912.jpg · 9:12 am</div></div>
+    </div>
+    <div class="opt"><div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#101828" stroke-width="2"><path d="M5 12h14"/><circle cx="12" cy="12" r="9"/></svg></div><div><b>Was absent — no photo</b><span>The next students move up one photo</span></div></div>
+    <div class="opt"><div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#101828" stroke-width="2"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13"/></svg></div><div><b>Not a student's photo</b><span>Take it out; the next photos move back one</span></div></div>
+    <div class="opt"><div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#101828" stroke-width="2"><path d="M4 7h3l2-3h6l2 3h3v12H4z"/><circle cx="12" cy="13" r="3.5"/></svg></div><div><b>Retake now</b><span>Opens the camera just for Divya</span></div></div>
+  </div>
+</div>
+<figcaption><b>A4 · One card's sheet.</b> The actions are named for what happened on photo day ("was absent", "not a student's photo"), not for what the list does. Each says what will shift. <em>Retake</em> is the bridge to B.</figcaption></figure>
+
+<figure><div class="phone">
+  <div class="status"><span>9:48</span><i></i></div>
+  <div class="nav"><div class="ib"></div><div style="text-align:center"><div class="t">Class 6 · A</div><div class="sm">Uploading 6 of 8</div></div><div class="ib"></div></div>
+  <div class="banner r"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B42318" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16v.5"/></svg><span><b>1 didn't upload</b> — no internet</span><span class="go">Retry</span></div>
+  <div class="gridf" id="gridA5" style="padding-top:10px"></div>
+  <div class="dock"><div class="prog"><i style="width:75%"></i></div><div class="row"><div class="btn sec" style="flex:1">Keep this screen open</div></div></div>
+</div>
+<figcaption><b>A5 · Uploading.</b> Each card shows its own state: a tick, a spinner, a red ring. Failures go to the top with one Retry, not hidden among 40 rows. Progress sits in the sticky bar. <em>Open:</em> keep uploading if the screen is left? (Needs a background task — later.)</figcaption></figure>
+
+<figure><div class="phone">
+  <div class="status"><span>9:46</span><i></i></div>
+  <div class="nav"><div class="ib"></div><div class="t">Class 6 · A</div><div class="ib"></div></div>
+  <div class="gridf" id="gridA6"></div>
+  <div class="scrim"></div>
+  <div class="sheet">
+    <div class="grab"></div>
+    <h3>Matching</h3>
+    <div class="meta" style="margin:10px 0 2px;font-weight:600">Photos go to students by</div>
+    <div class="seg"><div class="on">Roll order</div><div>File name = adm. no.</div></div>
+    <div class="meta" style="margin:14px 0 2px;font-weight:600">Photo order</div>
+    <div class="seg"><div class="on">Time taken</div><div>File name</div></div>
+    <div class="opt" style="margin-top:8px"><div><b>Skip students who have a photo</b><span>4 in this section</span></div><div class="sw"></div></div>
+    <div class="opt"><div><b>Clear all photos</b><span>Start this section again</span></div></div>
+  </div>
+</div>
+<figcaption><b>A6 · Settings sheet.</b> Everything that used to sit above the list. Most people never open it. When file names look like admission numbers, the app picks "File name" itself and says so in a toast.</figcaption></figure>
+</div>
+
+<!-- ================= B ================= -->
+<div class="h2">B · Camera first (photo day)</div>
+<p class="lead">On photo day the teacher walks the class with the phone. The app shows who's next in roll order; you take the picture and it moves on. Each photo is tied to a student when it's taken, so matching never happens. It uploads in the background while you keep shooting.</p>
+<div class="frames">
+
+<figure><div class="phone dark">
+  <div class="cam"></div>
+  <div class="status" style="position:relative;z-index:2"><span>9:12</span><i></i></div>
+  <div class="camtop"><div class="glass ib"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></div><div class="glass" style="padding:8px 14px;font-size:13px;font-weight:600">Class 6 · A · 3 of 8</div><div class="glass ib"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M13 3L5 13h6l-1 8 8-10h-6z"/></svg></div></div>
+  <div class="frameguide"></div>
+  <div class="subject" id="camSubject"></div>
+  <div class="who glass" style="border-radius:20px"><div class="r"><small>ROLL</small>5</div><div style="flex:1"><b>Divya Nair</b><span>WALK-004 · no photo yet</span></div><div style="font-size:13px;font-weight:600;text-decoration:underline">Absent</div></div>
+  <div class="nextq">Next<span>6 · Esha Iyer</span><span>7 · Farhan Ali</span></div>
+  <div class="shutterbar"><div class="thumbmini" id="lastShot"></div><div class="shutter"><i></i></div><div class="side">Skip<br><span style="opacity:.6;font-weight:500">for now</span></div></div>
+</div>
+<figcaption><b>B1 · Shooting.</b> Who's next is big, on the screen, with the roll number. A face guide keeps the framing the same for every ID card. "Absent" skips them and keeps them on the list for later. Kids who already have a photo are left out of the queue.</figcaption></figure>
+
+<figure><div class="phone dark">
+  <div class="cam"></div>
+  <div class="status" style="position:relative;z-index:2"><span>9:12</span><i></i></div>
+  <div class="subject" id="camSubject2" style="top:120px"></div>
+  <div class="review">
+    <div class="big"><div class="ph" id="reviewPh"></div><div><div style="font-size:12px;opacity:.6;font-weight:600;letter-spacing:.5px">ROLL 5</div><div style="font-size:20px;font-weight:600;margin-top:2px">Divya Nair</div><div style="font-size:13px;opacity:.7;margin-top:4px">Moving on in 2 s…</div></div></div>
+    <div class="acts"><div style="background:rgba(255,255,255,.12)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M4 12a8 8 0 1 0 3-6.2M4 4v4h4"/></svg>Retake</div><div style="background:#0F7A44">Next: Esha</div></div>
+  </div>
+</div>
+<figcaption><b>B2 · Just taken.</b> A short look at the shot with Retake. It moves on by itself after 2 seconds, so a class of 40 is 40 taps. Upload starts straight away in the background.</figcaption></figure>
+
+<figure><div class="phone">
+  <div class="status"><span>9:31</span><i></i></div>
+  <div class="nav"><div class="ib"></div><div style="text-align:center"><div class="t">Class 6 · A</div><div class="sm">Photo day</div></div><div class="ib"></div></div>
+  <div class="banner p"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0B6B3A" stroke-width="2"><path d="M5 12l5 5 9-10"/></svg><span><b>7 photos saved.</b> 1 absent.</span><span class="go">Take Divya now</span></div>
+  <div class="gridf" id="gridB3" style="padding-top:10px"></div>
+  <div class="dock"><div class="row"><div class="btn sec" style="flex:1">Done</div></div></div>
+</div>
+<figcaption><b>B3 · Finished.</b> The same grid as A, so there's one place to look at a section's photos. Absent kids stay as gaps with a one-tap "take now" for the next day.</figcaption></figure>
+</div>
+
+<div class="h2">Compared</div>
+<table class="cmp">
+  <tr><th></th><th>A · Grid first</th><th>B · Camera first</th></tr>
+  <tr><td><b>Fits when</b></td><td>A photographer or staff took photos already, in the gallery or as named files.</td><td>A teacher takes photos in class, on the phone.</td></tr>
+  <tr><td><b>Matching mistakes</b></td><td>Possible; fixed in the grid by swapping.</td><td>None — each photo is tied to a kid when taken.</td></tr>
+  <tr><td><b>Build size</b></td><td>Medium: reshape today's screen. One small API (missing counts per section).</td><td>Bigger: a camera screen (expo-camera), background upload queue, offline retry.</td></tr>
+  <tr><td><b>Risk</b></td><td>Low; same logic as now.</td><td>Camera handling on cheap Android phones; uploads on poor school Wi-Fi.</td></tr>
+  <tr><td><b>Together</b></td><td colspan="2">B's results show in A's grid, and A's "Retake now" opens B for one kid. A first, B after, is a natural order.</td></tr>
+</table>
+
+</div>
+
+<script>
+// Placeholder "photos": a head-and-shoulders on a soft colour.
+const tones = ["#C9D7E8","#E8D5C9","#D6E8C9","#E3C9E8","#C9E8E2","#E8E1C9","#D0C9E8","#E8C9D2","#C9E0E8","#DDE8C9"];
+const skins = ["#8D5524","#C68642","#E0AC69","#A0662F","#7A4A1E","#D19A66"];
+function face(i) {
+  const bg = tones[i % tones.length], sk = skins[i % skins.length], hair = i % 3 === 0 ? "#2B1B12" : i % 3 === 1 ? "#1A1A1A" : "#3D2516";
+  return `<svg viewBox="0 0 90 120" preserveAspectRatio="xMidYMid slice"><rect width="90" height="120" fill="${bg}"/><path d="M10 120c2-26 16-36 35-36s33 10 35 36z" fill="${i%2?"#3B5B8C":"#F2F2F2"}"/><rect x="38" y="70" width="14" height="16" rx="5" fill="${sk}"/><ellipse cx="45" cy="52" rx="17" ry="21" fill="${sk}"/><path d="M27 50c0-17 9-25 18-25s19 6 19 25c-4-9-12-12-19-12s-14 3-18 12z" fill="${hair}"/></svg>`;
+}
+const kids = [
+  ["Aarav Mehta",2,"has"],["Bhavya Rao",3,"has"],["Chirag Das",4,"has"],["Divya Nair",5],["Esha Iyer",6],["Farhan Ali",7],
+  ["Gauri Sen",8],["Harsh Jain",9],["Isha Kapoor",10,"has"],["Jay Patel",11],["Kavya Shah",12],["Laksh Roy",13]
+];
+const ic = {
+  tick: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M5 12l5 5 9-10"/></svg>',
+  spin: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M12 3a9 9 0 1 0 9 9"/></svg>',
+  bang: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M12 6v8M12 18v.5"/></svg>',
+  person: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#98A2B3" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-5 4-7 8-7s7 2 8 7"/></svg>',
+  cam: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#98A2B3" stroke-width="1.8"><path d="M4 7h3l2-3h6l2 3h3v12H4z"/><circle cx="12" cy="13" r="3.5"/></svg>'
+};
+function card(k, opts = {}) {
+  const [name, roll, has] = k;
+  const cls = ["f"]; let ph, sub = opts.sub ?? "";
+  if (opts.empty) { cls.push("empty"); ph = opts.camIcon ? ic.cam : ic.person; }
+  else ph = face(opts.photo ?? roll);
+  if (opts.skip) cls.push("skip");
+  if (opts.sel) cls.push("sel2");
+  if (opts.bad) cls.push("bad");
+  if (opts.fade) cls.push("fade");
+  let tag = "";
+  if (opts.tag === "ok") tag = `<span class="tag" style="background:#0F7A44">${ic.tick}</span>`;
+  if (opts.tag === "spin") tag = `<span class="tag" style="background:rgba(16,24,40,.6)">${ic.spin}</span>`;
+  if (opts.tag === "bad") tag = `<span class="tag" style="background:#B42318">${ic.bang}</span>`;
+  return `<div class="${cls.join(" ")}"><div class="ph">${ph}<span class="roll">${roll}</span>${tag}</div><div class="nm">${name}</div><div class="sb">${sub}</div></div>`;
+}
+const fill = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+
+// A2: has-photo kids skipped (faded, their current photo); 8 new photos on the rest; last two missing.
+fill("gridA2", kids.map((k, i) => {
+  if (k[2]) return card(k, { skip: true, sub: "Has photo · skipped" });
+  if (k[1] >= 12) return card(k, { empty: true, sub: "No photo" });
+  return card(k, { photo: 20 + i, sub: "New" });
+}).join(""));
+// A3: Esha selected for a swap; the rest dimmed except other new photos.
+fill("gridA3", kids.map((k, i) => {
+  if (k[2]) return card(k, { skip: true, fade: true, sub: "Skipped" });
+  if (k[1] >= 12) return card(k, { empty: true, fade: true, sub: "No photo" });
+  if (k[1] === 6) return card(k, { photo: 20 + i, sel: true, sub: "Swap with…" });
+  return card(k, { photo: 20 + i, sub: "Tap to swap" });
+}).join(""));
+fill("gridA4", kids.map((k, i) => k[2] ? card(k, { skip: true }) : card(k, { photo: 20 + i })).join(""));
+fill("bigA4", face(23));
+// A5: uploading states.
+fill("gridA5", kids.filter(k => !k[2]).map((k, i) => {
+  const states = ["ok","ok","bad","ok","ok","spin","spin",null];
+  const s = states[i];
+  if (k[1] >= 12) return card(k, { empty: true, sub: "No photo" });
+  return card(k, { photo: 20 + kids.indexOf(k), tag: s, bad: s === "bad", sub: s === "ok" ? "Saved" : s === "bad" ? "No internet" : s === "spin" ? "Uploading" : "Waiting" });
+}).join(""));
+fill("gridA6", kids.map((k, i) => card(k, { photo: 20 + i })).join(""));
+// B
+fill("camSubject", face(3).replace('preserveAspectRatio="xMidYMid slice"', 'style="width:230px;height:320px;opacity:.9"').replace(/<rect width="90" height="120" fill="[^"]+"\/>/, ""));
+fill("camSubject2", face(3).replace('preserveAspectRatio="xMidYMid slice"', 'style="width:230px;height:320px;opacity:.6"').replace(/<rect width="90" height="120" fill="[^"]+"\/>/, ""));
+fill("lastShot", face(21));
+fill("reviewPh", face(3));
+fill("gridB3", kids.filter(k => !k[2]).map((k, i) => {
+  if (k[1] === 5) return card(k, { empty: true, camIcon: true, sub: "Absent · take now" });
+  return card(k, { photo: 30 + i, tag: "ok", sub: "Saved" });
+}).join(""));
+</script>
+</body>
+</html>

@@ -234,3 +234,42 @@ export async function runPool<T>(
     Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, lane),
   );
 }
+
+/** Trades two photos' places; nobody else moves. */
+export function swapPhotos(
+  photos: PickedPhoto[],
+  firstId: string,
+  secondId: string,
+): PickedPhoto[] {
+  const a = photos.findIndex((photo) => photo.id === firstId);
+  const b = photos.findIndex((photo) => photo.id === secondId);
+  if (a < 0 || b < 0 || a === b) return photos;
+  const next = [...photos];
+  [next[a], next[b]] = [next[b]!, next[a]!];
+  return next;
+}
+
+export type SectionCoverage = {
+  sectionId: string;
+  label: string;
+  total: number;
+  withPhoto: number;
+};
+
+/** Sections with the most missing photos first; complete ones last, by name. */
+export function sectionsByNeed(rows: SectionCoverage[]): SectionCoverage[] {
+  return [...rows].sort((a, b) => {
+    const am = a.total - a.withPhoto;
+    const bm = b.total - b.withPhoto;
+    if (am !== bm) return bm - am;
+    return a.label.localeCompare(b.label, undefined, { numeric: true });
+  });
+}
+
+/** The photo-day queue: roll order, without skipped students. */
+export function photoDayQueue(
+  roster: RosterEntry[],
+  skipped: ReadonlySet<string>,
+): RosterEntry[] {
+  return rosterInMarkingOrder(roster).filter((entry) => !skipped.has(entry.studentId));
+}

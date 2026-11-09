@@ -170,6 +170,16 @@ export type UpdateStudentInput = z.infer<typeof updateStudentSchema>;
  * ordinary photo upload (`photoUpload`, then `setPhoto`). Capped at 500 names per call; a bigger
  * zip is matched in pages.
  */
+/** Per section: current students and how many have a photo (the photo workbench). */
+export const studentPhotoCoverageOutput = z.array(
+  z.object({
+    sectionId: z.uuid(),
+    total: z.number().int(),
+    withPhoto: z.number().int(),
+  }),
+);
+export type StudentPhotoCoverage = z.infer<typeof studentPhotoCoverageOutput>;
+
 export const studentsByAdmissionsInput = z.object({
   academicYearId: z.uuid(),
   admissions: z.array(z.string().min(1).max(40)).min(1).max(500),

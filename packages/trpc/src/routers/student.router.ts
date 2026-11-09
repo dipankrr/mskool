@@ -4,6 +4,7 @@ import {
   studentRosterOutput,
   studentRosterSummaryInput,
   studentRosterSummaryOutput,
+  studentPhotoCoverageOutput,
   studentSelectSchema,
   studentsByAdmissionsInput,
   studentsByAdmissionsOutput,
@@ -81,6 +82,15 @@ export const studentRouter = router({
     .output(studentRosterSummaryOutput)
     .query(({ ctx, input }) =>
       studentService.rosterSummary(ctx.scopes, input.academicYearId),
+    ),
+
+  // The photo workbench's start screen: per section, how many have a photo.
+  // Permissive like the roster; the service limits a teacher to her sections.
+  photoCoverage: staffListProcedure("student:read")
+    .input(studentRosterSummaryInput)
+    .output(studentPhotoCoverageOutput)
+    .query(({ ctx, input }) =>
+      studentService.photoCoverage(ctx.scopes, input.academicYearId),
     ),
 
   // The bulk-photo matcher's read: strict cover (the caller addresses the

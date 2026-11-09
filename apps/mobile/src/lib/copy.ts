@@ -1393,6 +1393,129 @@ export const copy = {
       pickFailed: "Couldn't read the photos. Try the picker again.",
     },
   },
+  /** The photo workbench's grid and photo day (revamp 2026-11-09). */
+  photoFlow: {
+    startTitle: "Student photos",
+    missingHeadline: (missing: number) =>
+      missing === 0
+        ? "Every student has a photo"
+        : missing === 1
+          ? "1 student has no photo"
+          : `${missing} students have no photo`,
+    doneOf: (done: number, total: number) => `${done} of ${total} have a photo.`,
+    pickSection: "Pick a section",
+    sectionMissing: (missing: number, total: number) =>
+      missing === 0
+        ? `All ${total} have a photo`
+        : missing === total
+          ? `All ${total} missing`
+          : `${missing} of ${total} missing`,
+    missingPill: (missing: number) => `${missing} missing`,
+    completePill: "Done",
+    byNameTitle: "Photos named with admission numbers",
+    byNameBody: "Like 2026-0142.jpg — they find their students anywhere in the school.",
+    sectionSheet: "How are the photos?",
+    fromGallery: "Photos already taken",
+    fromGalleryDetail: "Pick them from the gallery and check the match",
+    photoDay: "Take photos now",
+    photoDayDetail: "The camera goes down the roll, one student at a time",
+    coverageFailed: "Couldn't load the photo counts.",
+    noSections: "No sections in this session yet.",
+
+    // grid
+    gridMeta: (photos: number, matched: number) =>
+      photos === 0 ? "No photos yet" : `${photos} photos · ${matched} matched`,
+    registerTitle: "By admission number",
+    filters: { all: "All", missing: "Missing", has: "Has photo", extra: "Extra" },
+    emptyTitle: "Add this section's photos",
+    emptyBody:
+      "Pick them in the order they were taken. They go to the students in roll order, and you check every face before anything uploads.",
+    choosePhotos: "Choose photos",
+    takePhotos: "Take photos instead",
+    registerEmptyTitle: "Choose the named photos",
+    registerEmptyBody:
+      "Each file is named with an admission number, like 2026-0142.jpg. Students are found across the whole school.",
+    hint: "Tap two photos to swap them · hold one for more",
+    swapping: (name: string) => `Now tap the photo to swap with ${name}'s`,
+    cancel: "Cancel",
+    upload: (count: number) => (count === 1 ? "Upload 1 photo" : `Upload ${count} photos`),
+    uploading: (done: number, total: number) => `Uploading ${done} of ${total}`,
+    keepOpen: "Keep this screen open",
+    addMore: "Add more photos",
+    failedBanner: (count: number) =>
+      count === 1 ? "1 didn't upload" : `${count} didn't upload`,
+    retry: "Retry",
+    savedBanner: (count: number) =>
+      count === 1 ? "1 photo saved." : `${count} photos saved.`,
+    subNew: "New",
+    subReplaces: "Replaces photo",
+    subHas: "Has photo",
+    subSkipped: "Skipped",
+    subAbsent: "Absent",
+    subNone: "No photo",
+    subSaved: "Saved",
+    subUploading: "Uploading",
+    subWaiting: "Waiting",
+    subExtra: "No student",
+    swapWith: "Swap with…",
+    // card sheet
+    cardFile: (name: string | null) => name ?? "From the camera",
+    actAbsent: "Was absent — no photo",
+    actAbsentDetail: "The next students move up one photo",
+    actUnabsent: "Give a photo again",
+    actUnabsentDetail: "This student takes a photo in roll order again",
+    actRemove: "Not a student's photo",
+    actRemoveDetail: "Take it out; the next photos move back one",
+    actRemoveRegister: "Take this photo out",
+    actRetake: "Retake now",
+    actRetakeDetail: (name: string) => `Opens the camera just for ${name}`,
+    // settings
+    settings: "Matching",
+    settingsHint: "Opens the matching settings",
+    goesBy: "Photos go to students by",
+    byRoll: "Roll order",
+    byFile: "File name = adm. no.",
+    order: "Photo order",
+    orderTaken: "Time taken",
+    orderName: "File name",
+    orderCustom: "You swapped photos by hand. Pick an order to reset.",
+    skipHas: "Skip students who have a photo",
+    skipHasDetail: (count: number) => `${count} in this section`,
+    clearAll: "Clear all photos",
+    clearAllDetail: "Start this section again",
+    leaveTitle: "Leave without uploading?",
+    leaveBody: "The photos you picked here will be dropped.",
+    leaveConfirm: "Leave",
+    stay: "Stay",
+    tooMany: (max: number) => `A batch holds up to ${max} photos.`,
+    alreadyIn: "Those photos are already in the batch.",
+
+    // photo day
+    dayTitle: "Photo day",
+    dayProgress: (at: number, of: number) => `${at} of ${of}`,
+    dayRoll: "ROLL",
+    dayNoPhotoYet: "No photo yet",
+    dayHasPhoto: "Has a photo — this replaces it",
+    dayTake: "Take photo",
+    dayAbsent: "Absent",
+    dayNext: (name: string) => `Next: ${name}`,
+    dayUpNext: "Up next",
+    dayRetake: "Retake",
+    dayMovingOn: (seconds: number) => `Moving on in ${seconds} s…`,
+    dayFinish: "Finish",
+    dayAllDone: "That's everyone",
+    daySummary: (saved: number, absent: number) =>
+      `${saved} ${saved === 1 ? "photo" : "photos"} taken${absent > 0 ? ` · ${absent} absent` : ""}.`,
+    dayTakeNow: (name: string) => `Take ${name} now`,
+    dayDone: "Done",
+    dayEmptyTitle: "Everyone has a photo",
+    dayEmptyBody: "Turn off skipping to retake photos for this section.",
+    dayIncludeHas: "Include students who have a photo",
+    dayCameraDenied: "The camera isn't allowed. Turn it on for School in your phone's settings.",
+    dayStart: (name: string) => `Start with ${name}`,
+    dayIntro:
+      "The camera opens for each student in roll order. Hold the phone upright and fill the frame with head and shoulders.",
+  },
   /** Step 2 rework — sheet forms, success feedback, bulk mapping, students tab. */
   rework: {
     saved: (thing: string) => `${thing} saved.`,

@@ -615,6 +615,36 @@ export class StudentService {
   }
 
   /**
+   * Per section, how many current students there are and how many have a
+   * photo: the photo workbench's start screen. Same scope as the roster, so a
+   * section teacher sees only their own sections.
+   */
+  async photoCoverage(
+    scopes: DataScope[],
+    academicYearId: string,
+  ): Promise<{ sectionId: string; total: number; withPhoto: number }[]> {
+    const { year, latest, scopeFilter, views } = rosterSource(scopes, academicYearId);
+    const rows = await db
+      .select({
+        sectionId: year.sectionId,
+        total: sql<number>`count(*)::int`,
+        withPhoto: sql<number>`count(${studentPhotos.id})::int`,
+      })
+      .from(students)
+      .leftJoin(
+        year,
+        and(eq(year.studentId, students.id), eq(year.academicYearId, academicYearId)),
+      )
+      .leftJoinLateral(latest, sql`true`)
+      .leftJoin(studentPhotos, eq(studentPhotos.studentId, students.id))
+      .where(and(scopeFilter, views.current, isNotNull(year.sectionId)))
+      .groupBy(year.sectionId);
+    return rows.flatMap((row) =>
+      row.sectionId ? [{ sectionId: row.sectionId, total: row.total, withPhoto: row.withPhoto }] : [],
+    );
+  }
+
+  /**
    * The owning branch of a student — the B6 resolution layer's adapter, same
    * shape as `getSubjectOwnerId`. Authorization-neutral by design: this
    * answers "who owns it", never "may you see it".

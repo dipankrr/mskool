@@ -9,6 +9,9 @@ import {
   photosInCaptureOrder,
   photosInNameOrder,
   runPool,
+  photoDayQueue,
+  sectionsByNeed,
+  swapPhotos,
   rosterInMarkingOrder,
   type PickedPhoto,
   type RosterEntry,
@@ -217,5 +220,27 @@ describe("runPool", () => {
     });
     expect(peak).toBe(2);
     expect(seen.sort()).toEqual([1, 2, 3, 4, 5]);
+  });
+});
+
+describe("swapPhotos, sectionsByNeed, photoDayQueue", () => {
+  it("swaps two photos only", () => {
+    const photos = ["a", "b", "c"].map((id) => photo({ localUri: id }));
+    expect(swapPhotos(photos, "a", "c").map((p) => p.id)).toEqual(["c", "b", "a"]);
+    expect(swapPhotos(photos, "a", "a")).toBe(photos);
+  });
+  it("puts the sections missing most first", () => {
+    const rows = sectionsByNeed([
+      { sectionId: "1", label: "Class 6 · A", total: 12, withPhoto: 4 },
+      { sectionId: "2", label: "Class 6 · B", total: 9, withPhoto: 0 },
+      { sectionId: "3", label: "Class 7 · A", total: 5, withPhoto: 5 },
+    ]);
+    expect(rows.map((row) => row.sectionId)).toEqual(["2", "1", "3"]);
+  });
+  it("queues the roster in roll order without skipped students", () => {
+    expect(photoDayQueue(ROSTER, new Set(["s2"])).map((e) => e.studentId)).toEqual([
+      "s1",
+      "s3",
+    ]);
   });
 });
