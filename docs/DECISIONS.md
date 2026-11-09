@@ -3238,11 +3238,25 @@ asked for the same on mobile, including the same write behaviour.
    no longer in the branch's list, and cleared on a branch or org switch and on sign-out.
 4. **Writes are not locked in a past session**, the same as web. The server's only
    refusal is a fee write in a closed session (`assertSessionOpen`).
-5. A screen names the session under its heading when it is not the running one, and
-   More says "not the running session". Web shows this only on its home page.
-6. Homework's classes (`homework.pairs`) and lists (`homework.list`) now pass the chosen
+5. **A past session is never silent.** Web shows it only on its home page; the phone
+   does more:
+   - the line under each screen's heading starts with the session's name, and More's
+     row reads "2025-26 · ⚠️ non running";
+   - an amber banner sits above the tab bar on every tab. Its × hides it on that tab
+     only; it comes back on the next tab. "Tap to switch back" returns to the running
+     session. Screens make room for it through `useTabBarSpace`.
+6. **Screens that are about today change shape in a past session.** Home and Homework
+   Home hide today's cards (setup, today's class attendance, the to-dos and week strip)
+   behind a "Viewing 2025-26" note and keep what follows the session (open exams, the
+   session's classes). Attendance opens on the date nearest today inside the session, so
+   a past session opens on its last day.
+7. Homework's classes (`homework.pairs`) and lists (`homework.list`) pass the chosen
    session. Without it the server falls back to the running session and every session
-   respectively. Homework Home's day strip and to-dos stay date-based.
+   respectively.
+8. The picker is its own sheet: the running session as a lead card, the others with
+   dates and a Closed or Open chip ("Open" is the one a write can still land in), a
+   radio for the one viewed, and "Back to the running session" while a past one is
+   chosen.
 
 **Consequences.** Shell state is three ids again. A past session can be written to from
 the phone by anyone whose permissions allow it, as on web. If that bites, the fix is one

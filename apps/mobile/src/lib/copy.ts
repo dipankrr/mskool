@@ -125,7 +125,7 @@ export const copy = {
     sessionSheetTitle: "View session",
     /** Second line of a picker row, and the More row's suffix when viewing a past session. */
     sessionRunning: "Running",
-    sessionViewing: (name: string) => `${name} · not the running session`,
+    sessionViewing: (name: string) => `${name} · ⚠️ non running`,
     workspace: "Workspace",
     manage: "Manage",
     account: "Account",
