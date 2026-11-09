@@ -115,7 +115,7 @@
     "sentLate": "Sent {{when}}, late",
     "yourWork": "What you sent",
     "lastTime": "Last time you sent",
-    "replaceNote": "New photos replace these.",
+    "replaceNote": "What you send now replaces this.",
     "waiting": "{{name}} will check it.",
     "redoBy": "Send again by {{when}}",
     "sentBack": "{{name}} · sent back",
