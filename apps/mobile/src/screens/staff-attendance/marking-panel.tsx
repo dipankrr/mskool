@@ -30,7 +30,7 @@ import { formatShortWeekday, todayIso } from "../../lib/format";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { fontFamily, fontSize, gutter, motion, radius, shadow, spacing } from "../../theme/tokens";
-import { clampMonth } from "./calendar-month";
+import { clampIsoDate, clampMonth } from "./calendar-month";
 import { DayPulse } from "./day-pulse";
 import { DaySheet } from "./day-sheet";
 import {
@@ -96,8 +96,13 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
   const tabSpace = useTabBarSpace();
   const utils = trpc.useUtils();
 
-  const [date, setDate] = useState(todayIso);
-  const [sheetMonth, setSheetMonth] = useState(todayIso);
+  // Today, kept inside the viewed session: a past session (ADR-066) opens on
+  // its last day, not on a date it has no calendar for. The panel is keyed by
+  // session, so a switch re-runs this.
+  const [date, setDate] = useState(() =>
+    clampIsoDate(todayIso(), academicYear?.startDate, academicYear?.endDate),
+  );
+  const [sheetMonth, setSheetMonth] = useState(() => date);
   const [periodId, setPeriodId] = useState("");
   const [draft, setDraft] = useState<Map<string, Status>>(() => new Map());
   const [reason, setReason] = useState("");

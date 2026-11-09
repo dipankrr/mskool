@@ -54,6 +54,17 @@ export function daysInMonth(year: number, month: number): number {
  * allowed months — the academic year's start and end), returning that month's
  * first day, which every calendar surface uses as its anchor.
  */
+/** An ISO date kept inside [min, max]; a missing bound leaves that side open. */
+export function clampIsoDate(
+  iso: string,
+  minIso: string | null | undefined,
+  maxIso: string | null | undefined,
+): string {
+  if (minIso && iso < minIso) return minIso;
+  if (maxIso && iso > maxIso) return maxIso;
+  return iso;
+}
+
 export function clampMonth(
   iso: string,
   minIso: string,

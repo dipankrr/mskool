@@ -1929,6 +1929,9 @@ export const copy = {
       weekRange: (from: string, to: string) => `${from} – ${to}`,
       nothingThisDay: "Nothing due this day.",
       myClasses: "My classes",
+      /** Viewing a past session (ADR-066): the day strip and to-dos are about today, so they hide. */
+      pastTitle: (name: string) => `Viewing ${name}`,
+      pastBody: "Your classes from that session are below. All homework lists everything given in it.",
       classOut: (n: number) => (n === 0 ? "Nothing out" : `${n} out`),
       classToCheck: (n: number) => `${n} to check`,
       classToMark: (n: number) => `${n} to mark`,

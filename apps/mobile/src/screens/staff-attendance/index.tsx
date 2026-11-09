@@ -11,7 +11,7 @@ import { ErrorCard } from "../../components/error-card";
 import { Skeleton } from "../../components/skeleton";
 import { useTabBarSpace } from "../../components/tab-bar";
 import { ThemedText } from "../../components/themed-text";
-import { useActiveContext } from "../../hooks/use-active-context";
+import { useActiveContext, useBranchMeta } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
 import { copy } from "../../lib/copy";
 import { colors } from "../../theme/brand-admin";
@@ -41,6 +41,8 @@ export function AttendanceScreen() {
   const { academicYear, yearPending } = useActiveContext();
   const [view, setView] = useState<AttendanceView>("mark");
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  // Names a past session (ADR-066) and, with several branches, the branch.
+  const meta = useBranchMeta();
 
   // Which section this tab shows — the shared hook, so the manage surfaces
   // (chunk 3) resolve the same one from the same params.
@@ -161,15 +163,20 @@ export function AttendanceScreen() {
             </Pressable>
           ) : null}
         </View>
+        {meta ? (
+          <ThemedText variant="meta" numberOfLines={1} testID="attendance-meta">
+            {meta}
+          </ThemedText>
+        ) : null}
         <ViewToggle value={view} onChange={setView} />
       </View>
       <View style={styles.flex}>
         <PanelFrame visible={view === "mark"}>
-          <MarkingPanel key={`mark-${section.id}`} sectionId={section.id} />
+          <MarkingPanel key={`mark-${section.id}-${academicYear?.id}`} sectionId={section.id} />
         </PanelFrame>
         <PanelFrame visible={view === "summary"}>
           <SummaryPanel
-            key={`summary-${section.id}`}
+            key={`summary-${section.id}-${academicYear?.id}`}
             sectionId={section.id}
             visible={view === "summary"}
             onStartMarking={() => setView("mark")}

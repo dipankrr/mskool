@@ -109,9 +109,11 @@ export function useActiveBranchName(): string | null {
 export function useBranchMeta(): string | null {
   const name = useActiveBranchName();
   const { branches, academicYear, currentYear } = useActiveContext();
+  // Session first: a long branch name truncates, and the session is the part
+  // that must not be cut off.
   const parts = [
-    branches.length > 1 ? name : null,
     academicYear && academicYear.id !== currentYear?.id ? academicYear.name : null,
+    branches.length > 1 ? name : null,
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(" · ") : null;
 }

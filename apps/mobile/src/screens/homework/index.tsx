@@ -7,6 +7,7 @@ import type { Href } from "expo-router";
 import { AppIcon } from "../../components/app-icon";
 import { CapsuleButton } from "../../components/capsule-button";
 import { EmptyState } from "../../components/empty-state";
+import { Card } from "../../components/card";
 import { ErrorCard } from "../../components/error-card";
 import { SectionLabel } from "../../components/section-label";
 import { Skeleton } from "../../components/skeleton";
@@ -45,7 +46,8 @@ function addDays(iso: string, n: number): string {
  * (`homework.pairs`); no long feed of cards.
  */
 export function HomeworkScreen() {
-  const { organizationId, schoolId, academicYear, yearPending } = useActiveContext();
+  const { organizationId, schoolId, academicYear, currentYear, yearPending } = useActiveContext();
+  const viewingPast = Boolean(academicYear && academicYear.id !== currentYear?.id);
   const { has } = usePermissions();
   const canGive = has("homework:create");
   const tabSpace = useTabBarSpace();
@@ -234,6 +236,16 @@ export function HomeworkScreen() {
           <ErrorCard cause={home.error} onRetry={() => void home.refetch()} testID="homework-error" />
         ) : data ? (
           <>
+            {viewingPast ? (
+              <Card testID="homework-past-session">
+                <ThemedText variant="bodyStrong">{text.pastTitle(academicYear?.name ?? "")}</ThemedText>
+                <ThemedText variant="meta" style={styles.pastBody}>
+                  {text.pastBody}
+                </ThemedText>
+              </Card>
+            ) : null}
+            {viewingPast ? null : (
+            <>
             {jobs.length ? (
               <View style={styles.now} testID="homework-now">
                 <View style={styles.nowTop}>
@@ -374,6 +386,8 @@ export function HomeworkScreen() {
                 dayList.map((h, i) => <DayRow key={h.id} hw={h} first={i === 0} />)
               )}
             </View>
+            </>
+            )}
 
             <SectionLabel style={styles.label}>{text.myClasses}</SectionLabel>
             {pairs.isPending ? (
@@ -624,6 +638,7 @@ const styles = StyleSheet.create({
   dot: { width: 6, height: 6, borderRadius: 3 },
   list: { marginTop: spacing.sm, borderRadius: radius.lg, backgroundColor: colors.surface, overflow: "hidden" },
   empty: { padding: spacing.lg },
+  pastBody: { marginTop: spacing.xxs },
   dayRow: {
     flexDirection: "row",
     alignItems: "center",
