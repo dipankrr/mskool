@@ -285,10 +285,15 @@ date for everyone, give to another class, stop accepting work. Cancel and delete
 - Sending back to redo reopens work sent in the app: the student sees "Redo" with the note, sends
   new photos (replacing the old ones) and it returns to the review queue.
 
-**Student screens not yet designed:** seeing homework, ticking, sending photos, quiz attempts,
-seeing grades. The family app has no homework screens yet and its
-reads were left out of the family chunk. It needs its own short design once the teacher side is
-agreed.
+**Student screens: built 2026-11-09** (mockup `prototype/student-homework.html`). The family
+Homework tab (Tonight card, Back from teachers, due-day groups, Done by week), one homework (send
+photos and/or a typed answer, tick, bring to class), Redo, the result stamp and teacher note, the
+quiz (one try, score on hand-in, pictures), class and teacher-only questions, a Home card. Owner
+answers: a ticked homework says Done; parents act like students; late sending only inside the
+teacher's late window. Two endings were added so nothing stays To do for ever: brought work is
+"With teacher" once due, nothing-back work is "Over", an unticked tick is Missed once it closes.
+New results and unread teacher messages show as "new" (seen-times, migration 0053). Left: push
+notifications (no system yet), match and file-upload quiz questions (teachers can't author them).
 
 ## 8. Build order (each chunk reviewed, then built)
 
