@@ -60,6 +60,7 @@ import {
   ne,
   or,
   sql,
+  type SQL,
 } from "drizzle-orm";
 
 import { todayInIst } from "./enrollment-status";
@@ -1277,24 +1278,27 @@ export class HomeworkService {
 
     const now = new Date();
     const monthAgo = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
-    // The class page is about now: a month back and a month ahead, so far-off
-    // homework can't crowd out this week's.
-    const monthAhead = new Date(now.getTime() + 30 * 24 * 3600 * 1000);
-    const idRows = await db
-      .select({ id: assignments.id })
-      .from(assignments)
-      .innerJoin(assignmentTargets, eq(assignmentTargets.assignmentId, assignments.id))
-      .where(
-        and(
-          eq(assignments.subjectId, pair.subjectId),
-          eq(assignmentTargets.sectionId, pair.sectionId),
-          inArray(assignments.status, ["published", "closed"]),
-          gte(assignments.dueAt, monthAgo),
-          lt(assignments.dueAt, monthAhead),
-        ),
-      )
-      .orderBy(desc(assignments.dueAt))
-      .limit(100);
+    // The class page is about now: what comes up next (earliest first) and
+    // what was due lately (newest first), each with its own limit, so neither
+    // far-off homework nor a long history can crowd out this week's.
+    const base = and(
+      eq(assignments.subjectId, pair.subjectId),
+      eq(assignmentTargets.sectionId, pair.sectionId),
+      inArray(assignments.status, ["published", "closed"]),
+    );
+    const pick = (where: SQL | undefined, order: SQL) =>
+      db
+        .select({ id: assignments.id })
+        .from(assignments)
+        .innerJoin(assignmentTargets, eq(assignmentTargets.assignmentId, assignments.id))
+        .where(where)
+        .orderBy(order)
+        .limit(50);
+    const [upcoming, recent] = await Promise.all([
+      pick(and(base, gte(assignments.dueAt, now)), asc(assignments.dueAt)),
+      pick(and(base, lt(assignments.dueAt, now), gte(assignments.dueAt, monthAgo)), desc(assignments.dueAt)),
+    ]);
+    const idRows = [...upcoming, ...recent];
     const ids = idRows.map((r) => r.id);
 
     const weekAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
