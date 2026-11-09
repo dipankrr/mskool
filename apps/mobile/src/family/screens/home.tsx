@@ -6,11 +6,13 @@ import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/trpc";
 
 import { logout } from "../../lib/auth";
+import { todayIso } from "../../lib/format";
 import { parseMoney } from "../../lib/money";
 import { trpc } from "../../lib/trpc";
 import { useFamilyChild } from "../child-context";
 import { useFormat } from "../i18n/format";
-import { isOpen, tonight } from "../lib/homework";
+import { daysUntil } from "../lib/exams";
+import { groupOpen, isOpen, tonight } from "../lib/homework";
 import { Reveal } from "../motion";
 import { useFamilyTheme } from "../theme";
 import {
@@ -18,19 +20,24 @@ import {
   FCard,
   FEmptyState,
   FErrorState,
-  FNumber,
+  FHand,
+  FMascot,
   FOfflineNote,
+  FRowStack,
   FScreen,
   FSkeleton,
   FText,
   useFamilyTabBarSpace,
 } from "../ui";
+import type { TextColor } from "../ui";
+import { HomeworkRow, useNow } from "./homework/parts";
 import { FamilyTabHeader } from "./tab-header";
 
 /**
- * Family Home, kept simple for now (owner, 2026-11-07): one card each for
- * tonight's homework, this month's attendance, fees due, and the next exam.
- * Each opens its tab.
+ * Family Home (owner, 2026-11-09: "best and a little easier to build"):
+ * Bookie says one line about today, the next few homework sit under it as
+ * Homework-tab rows, and three small tiles show attendance, fees and the
+ * next exam. Each tile opens its tab.
  */
 export function FamilyHome() {
   const { t } = useTranslation("family");
@@ -114,11 +121,12 @@ export function FamilyHome() {
       header={<FamilyTabHeader title={child ? t("home.title", { name: child.firstName }) : ""} />}
     >
       {offline ? <FOfflineNote /> : null}
-      <View style={{ gap: theme.components.row.stackGap }}>
-        <HomeworkCard query={homework} />
-        <AttendanceCard query={attendance} replayKey={studentId} />
-        <FeesCard query={fees} replayKey={studentId} />
-        <ExamCard query={exams} />
+      <BookieLine homework={homework} exams={exams} />
+      <UpNext query={homework} />
+      <View style={[styles.row, styles.top, { gap: theme.space.sm }]}>
+        <AttendanceTile query={attendance} />
+        <FeesTile query={fees} />
+        <ExamTile query={exams} />
       </View>
       {signOutButton}
     </FScreen>
@@ -126,173 +134,226 @@ export function FamilyHome() {
 }
 
 type Outputs = inferRouterOutputs<AppRouter>;
-/** The slice of a query a card needs. */
-type CardQuery<T> = { data: T | undefined; isPending: boolean; isError: boolean; refetch: () => unknown };
-type OverviewQuery = CardQuery<Outputs["portalAttendance"]["overview"]>;
-type FeesQuery = CardQuery<Outputs["portalFees"]["summary"]>;
-type ExamsQuery = CardQuery<Outputs["portalExam"]["schedule"]["list"]>;
-type HomeworkQuery = CardQuery<Outputs["portalHomework"]["list"]>;
+/** The slice of a query a part needs. */
+type PartQuery<T> = { data: T | undefined; isPending: boolean; isError: boolean; refetch: () => unknown };
+type OverviewQuery = PartQuery<Outputs["portalAttendance"]["overview"]>;
+type FeesQuery = PartQuery<Outputs["portalFees"]["summary"]>;
+type ExamsQuery = PartQuery<Outputs["portalExam"]["schedule"]["list"]>;
+type HomeworkQuery = PartQuery<Outputs["portalHomework"]["list"]>;
+type Exam = Outputs["portalExam"]["schedule"]["list"][number];
 
-function CardPlaceholder() {
-  const theme = useFamilyTheme();
-  return (
-    <View style={{ gap: theme.space.sm }}>
-      <FSkeleton width="45%" height={16} />
-      <FSkeleton width="35%" height={32} />
-    </View>
-  );
+/** The exam that is on now, or the soonest one coming. */
+function nextExam(exams: readonly Exam[] | undefined): Exam | undefined {
+  return (exams ?? [])
+    .filter((exam) => exam.state === "upcoming" || exam.state === "ongoing")
+    .sort((a, b) => (a.firstDate ?? "9999").localeCompare(b.firstDate ?? "9999"))[0];
 }
 
-function CardError({ onRetry }: { onRetry: () => void }) {
-  const { t } = useTranslation();
-  const theme = useFamilyTheme();
-  return (
-    <View style={[styles.row, { gap: theme.space.md }]}>
-      <FText variant="meta" color="muted" style={styles.flex}>
-        {t("error.title")}
-      </FText>
-      <FButton label={t("retry")} variant="secondary" size="sm" onPress={onRetry} />
-    </View>
-  );
+/** Days to the next exam: 0 while one is on, null when none is coming. */
+function examDays(exam: Exam | undefined): number | null {
+  if (!exam) return null;
+  if (exam.state === "ongoing") return 0;
+  return exam.firstDate ? Math.max(0, daysUntil(exam.firstDate, todayIso())) : null;
 }
 
-/** Tonight's homework: how many are left and about how long, or all done. */
-function HomeworkCard({ query }: { query: HomeworkQuery }) {
+/**
+ * Bookie and one handwritten line about today: what's left tonight, else an
+ * exam within a week, else all clear. Waits for homework so it doesn't flip.
+ */
+function BookieLine({ homework, exams }: { homework: HomeworkQuery; exams: ExamsQuery }) {
   const { t } = useTranslation("family");
   const { t: th } = useTranslation("homework");
   const format = useFormat();
-  const items = query.data ?? [];
-  const n = tonight(items);
-  const back = items.filter((i) => i.isNew).length;
-  const pending = items.filter(isOpen).length;
+  const theme = useFamilyTheme();
+  const now = useNow();
+  const items = homework.data ?? [];
+  const n = tonight(items, now);
+  const days = examDays(nextExam(exams.data));
+
+  let line: string;
+  if (n.left > 0) line = t("home.bookieTonight", { count: n.left });
+  else if (days === 0) line = t("home.bookieExamsOn");
+  else if (days !== null && days <= 7) line = t("home.bookieExamsSoon", { count: days });
+  else if (items.some(isOpen)) line = t("home.bookieNoneTonight");
+  else line = t("home.bookieAllClear");
+  const meta = n.left > 0 && n.minutes > 0 ? th("tonight.about", { time: format.duration(n.minutes) }) : null;
+
   return (
-    <FCard testID="home-homework" onPress={() => router.navigate("/family/homework")} label={t("home.homeworkTitle")}>
-      <FText variant="meta" color="muted">
-        {t("home.homeworkTitle")}
-      </FText>
-      {query.isError && !query.data ? (
-        <CardError onRetry={() => void query.refetch()} />
-      ) : (
-        <Reveal loading={query.isPending} placeholder={<CardPlaceholder />}>
-          <View>
-            <FText variant="number" color={n.left > 0 ? "ink" : "positive"}>
-              {n.left > 0 ? th("tonight.left", { count: n.left }) : pending > 0 ? t("home.homeworkNoneTonight") : th("tonight.allDone")}
+    <View testID="home-bookie" style={[styles.row, { gap: theme.space.md }]}>
+      <FMascot size={84} mood={n.left > 0 ? "calm" : "happy"} look="right" />
+      <Reveal loading={homework.isPending} placeholder={<FSkeleton width="70%" height={28} />} style={styles.flex}>
+        <View style={{ gap: theme.space.xxs }}>
+          <FHand tone="info" size={30}>
+            {line}
+          </FHand>
+          {meta ? (
+            <FText variant="meta" color="muted" style={{ paddingLeft: theme.space.sm }}>
+              {meta}
             </FText>
-            {n.left > 0 && n.minutes > 0 ? (
-              <FText variant="meta" color="muted">
-                {th("tonight.about", { time: format.duration(n.minutes) })}
-              </FText>
-            ) : null}
-            {back > 0 ? (
-              <FText variant="meta" color="highlight">
-                {t("home.homeworkBack", { count: back })}
-              </FText>
-            ) : null}
+          ) : null}
+        </View>
+      </Reveal>
+    </View>
+  );
+}
+
+/** The next few homework still to do, as the Homework tab's rows. */
+function UpNext({ query }: { query: HomeworkQuery }) {
+  const { t } = useTranslation("family");
+  const { t: tc } = useTranslation();
+  const theme = useFamilyTheme();
+  const now = useNow();
+  if (query.isError && !query.data) {
+    return (
+      <View style={[styles.row, { gap: theme.space.md }]}>
+        <FText variant="meta" color="muted" style={styles.flex}>
+          {tc("error.title")}
+        </FText>
+        <FButton label={tc("retry")} variant="secondary" size="sm" onPress={() => void query.refetch()} />
+      </View>
+    );
+  }
+  if (query.isPending) {
+    return (
+      <View style={{ gap: theme.components.row.stackGap }}>
+        <FSkeleton width="100%" height={72} />
+        <FSkeleton width="100%" height={72} />
+      </View>
+    );
+  }
+  // Only work still to do; new results stay on the Homework tab.
+  const items = groupOpen(query.data ?? [], now)
+    .flatMap((group) => group.items)
+    .filter(isOpen)
+    .slice(0, 3);
+  if (items.length === 0) return null;
+  return (
+    <View testID="home-up-next" style={{ gap: theme.space.sm }}>
+      <View style={styles.row}>
+        <FText variant="heading" style={styles.flex}>
+          {t("home.upNext")}
+        </FText>
+        <FButton
+          testID="home-all-homework"
+          label={t("home.allHomework")}
+          variant="quiet"
+          size="sm"
+          onPress={() => router.navigate("/family/homework")}
+        />
+      </View>
+      <FRowStack>
+        {items.map((item) => (
+          <HomeworkRow
+            key={item.studentAssignmentId}
+            item={item}
+            now={now}
+            onPress={() => router.push({ pathname: "/family/homework/[id]", params: { id: item.studentAssignmentId } })}
+          />
+        ))}
+      </FRowStack>
+    </View>
+  );
+}
+
+/** A small block for one figure; the whole tile opens its tab. */
+function Tile({
+  testID,
+  label,
+  value,
+  note,
+  color = "ink",
+  loading,
+  onPress,
+}: {
+  testID: string;
+  label: string;
+  value: string;
+  note: string;
+  color?: TextColor;
+  loading: boolean;
+  onPress: () => void;
+}) {
+  const theme = useFamilyTheme();
+  return (
+    <FCard
+      testID={testID}
+      onPress={onPress}
+      label={`${label}: ${value}, ${note}`}
+      style={[styles.flex, { padding: theme.space.md, gap: theme.space.xs }]}
+    >
+      <FText variant="caption" color="muted" numberOfLines={1}>
+        {label.toUpperCase()}
+      </FText>
+      <Reveal
+        loading={loading}
+        placeholder={
+          <View style={{ gap: theme.space.sm }}>
+            <FSkeleton width="80%" height={24} />
+            <FSkeleton width="60%" height={14} />
           </View>
-        </Reveal>
-      )}
+        }
+      >
+        <FText variant="heading" color={color} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+          {value}
+        </FText>
+        <FText variant="meta" color="muted" numberOfLines={1}>
+          {note}
+        </FText>
+      </Reveal>
     </FCard>
   );
 }
 
-function AttendanceCard({ query, replayKey }: { query: OverviewQuery; replayKey: string }) {
+function AttendanceTile({ query }: { query: OverviewQuery }) {
   const { t } = useTranslation("family");
   const format = useFormat();
   const counts = query.data?.month?.counts ?? null;
   return (
-    <FCard testID="home-attendance" onPress={() => router.navigate("/family/attendance")} label={t("home.attendanceTitle")}>
-      <FText variant="meta" color="muted">
-        {t("home.attendanceTitle")}
-      </FText>
-      {query.isError && !query.data ? (
-        <CardError onRetry={() => void query.refetch()} />
-      ) : (
-        <Reveal loading={query.isPending} placeholder={<CardPlaceholder />}>
-          {counts ? (
-            <View>
-              <FNumber value={Number(counts.percentage)} format={(n) => format.percent(n)} replayKey={replayKey} />
-              <FText variant="meta" color="muted">
-                {t("home.attendanceDays", { attended: counts.daysAttended, working: counts.workingDays })}
-              </FText>
-            </View>
-          ) : (
-            <FText variant="heading">{t("home.attendanceNone")}</FText>
-          )}
-        </Reveal>
-      )}
-    </FCard>
+    <Tile
+      testID="home-attendance"
+      label={t("home.tileDays")}
+      value={counts ? format.percent(Number(counts.percentage), 0) : "–"}
+      note={t("home.thisMonth")}
+      color={counts ? "ink" : "faint"}
+      loading={query.isPending}
+      onPress={() => router.navigate("/family/attendance")}
+    />
   );
 }
 
-function FeesCard({ query, replayKey }: { query: FeesQuery; replayKey: string }) {
+function FeesTile({ query }: { query: FeesQuery }) {
   const { t } = useTranslation("family");
   const format = useFormat();
   const data = query.data;
-  const due = data ? parseMoney(data.totals.dueNow) ?? 0n : 0n;
+  const set = data?.feeAssigned ?? false;
+  const due = data && set ? (parseMoney(data.totals.dueNow) ?? 0n) > 0n : false;
   return (
-    <FCard testID="home-fees" onPress={() => router.navigate("/family/fees")} label={t("home.feesTitle")}>
-      <FText variant="meta" color="muted">
-        {t("home.feesTitle")}
-      </FText>
-      {query.isError && !data ? (
-        <CardError onRetry={() => void query.refetch()} />
-      ) : (
-        <Reveal loading={query.isPending} placeholder={<CardPlaceholder />}>
-          {!data?.feeAssigned ? (
-            <FText variant="heading">{t("home.feesNotSet")}</FText>
-          ) : due > 0n ? (
-            <View>
-              <FNumber
-                value={Number(due) / 100}
-                format={(n) => format.money((Math.round(n * 100) / 100).toFixed(2))}
-                color="critical"
-                replayKey={replayKey}
-              />
-              <FText variant="meta" color="muted">
-                {t("home.feesDue")}
-              </FText>
-            </View>
-          ) : (
-            <FText variant="heading" color="positive">
-              {t("home.feesClear")}
-            </FText>
-          )}
-        </Reveal>
-      )}
-    </FCard>
+    <Tile
+      testID="home-fees"
+      label={t("home.tileFees")}
+      value={!set ? "–" : due ? format.money(data?.totals.dueNow) : t("home.feesPaid")}
+      note={!set ? t("home.feesNotSet") : due ? t("home.dueNow") : t("home.allClear")}
+      color={!set ? "faint" : due ? "critical" : "positive"}
+      loading={query.isPending}
+      onPress={() => router.navigate("/family/fees")}
+    />
   );
 }
 
-function ExamCard({ query }: { query: ExamsQuery }) {
+function ExamTile({ query }: { query: ExamsQuery }) {
   const { t } = useTranslation("family");
-  const format = useFormat();
-  const next = (query.data ?? [])
-    .filter((exam) => exam.state === "upcoming" || exam.state === "ongoing")
-    .sort((a, b) => (a.firstDate ?? "9999").localeCompare(b.firstDate ?? "9999"))[0];
+  const exam = nextExam(query.data);
+  const days = examDays(exam);
   return (
-    <FCard testID="home-exam" onPress={() => router.navigate("/family/exams")} label={t("home.examTitle")}>
-      <FText variant="meta" color="muted">
-        {t("home.examTitle")}
-      </FText>
-      {query.isError && !query.data ? (
-        <CardError onRetry={() => void query.refetch()} />
-      ) : (
-        <Reveal loading={query.isPending} placeholder={<CardPlaceholder />}>
-          {next ? (
-            <View>
-              <FText variant="heading">{next.name}</FText>
-              {next.firstDate ? (
-                <FText variant="meta" color="muted">
-                  {t("home.examFrom", { date: format.date(next.firstDate, "weekdayDayMonth") })}
-                </FText>
-              ) : null}
-            </View>
-          ) : (
-            <FText variant="heading">{t("home.examNone")}</FText>
-          )}
-        </Reveal>
-      )}
-    </FCard>
+    <Tile
+      testID="home-exam"
+      label={t("home.tileExams")}
+      value={days === null ? "–" : days === 0 ? t("home.examOn") : t("home.examIn", { count: days })}
+      note={exam ? exam.name : t("home.examNone")}
+      color={days === null ? "faint" : "ink"}
+      loading={query.isPending}
+      onPress={() => router.navigate("/family/exams")}
+    />
   );
 }
 
@@ -304,7 +365,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
+  top: {
+    alignItems: "stretch",
+  },
   flex: {
     flex: 1,
+    minWidth: 0,
   },
 });

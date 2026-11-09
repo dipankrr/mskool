@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Student Home Mockups</title>
+<style>
+/* ============================================================
+   Family Home (2026-11-09). Mockup only, no app code.
+   Three answers to "what is Home's job?":
+     A Tonight      what needs me today
+     B Report       how am I doing
+     C Bookie's desk  one thing first, the rest as tiles
+   Style: the flat reference (white ground, stone rows, heavy
+   grotesk, ink pills, sticky notes, a stamp), a little alive.
+   No glows, glass, glossy gradients or heavy shadows.
+   Colours from family palette.ts and brand-bookie.ts.
+   Fonts: Clash Grotesk + Caveat, the ones the app ships.
+   Phones are 360 wide. Data is made up.
+   ============================================================ */
+@font-face { font-family: Clash; font-weight: 400; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Regular.ttf); }
+@font-face { font-family: Clash; font-weight: 500; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Medium.ttf); }
+@font-face { font-family: Clash; font-weight: 600; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Semibold.ttf); }
+@font-face { font-family: Clash; font-weight: 700; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Bold.ttf); }
+@font-face { font-family: Hand; font-weight: 700; src: url(../../../../apps/mobile/assets/fonts/Caveat-Bold.ttf); }
+:root {
+  --body: #2F6BFF; --depth: #1C3FB0; --bink: #0E1A4F;
+  --ink: #1B1B1A; --soft: #3A3A38; --muted: #6E6E6A; --faint: #A3A39E;
+  --stone: #F3F3F0; --stone-d: #E9E9E4; --hair: rgba(27,27,26,.08);
+  --green: #1F7A4A; --green-t: #E6F4EC; --green-e: #CFEBDC;
+  --amber: #A15C07; --amber-t: #FDF3E2;
+  --red: #C2410C; --red-t: #FDEDE6;
+  --blue-t: #EAF0FF; --blue-e: #D5E1FF;
+  --coral: #F2705A; --coral-t: #FDE9E4; --coral-e: #FBDCD3;
+  --grape: #7A4DE8; --grape-t: #EFE8FF;
+  --note: #FFF4B8; --note-ink: #3B3320; --note-muted: #7A6A33;
+  --wash: linear-gradient(180deg, #EEF3FF 0%, #FFFFFF 42%, #FFF6EF 100%);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { color-scheme: light; }
+body { background: #DADBD6; color: var(--ink); font-family: Clash, system-ui, sans-serif; font-size: 15px; padding: 32px 16px 64px; }
+svg { display: block; flex: none; }
+.hand { font-family: Hand, cursive; font-weight: 700; letter-spacing: 0; }
+
+/* ---------- page around the phones ---------- */
+.intro { max-width: 1160px; margin: 0 auto 20px; }
+.intro h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.6px; }
+.intro p { margin-top: 4px; color: #3C4450; max-width: 780px; line-height: 1.45; }
+.switch { max-width: 1160px; margin: 0 auto 24px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.switch span { font-size: 13px; color: #3C4450; margin-right: 4px; }
+.switch button { font: inherit; font-size: 14px; font-weight: 600; border: 0; height: 36px; padding: 0 16px; border-radius: 999px; background: rgba(255,255,255,.6); color: var(--ink); cursor: pointer; }
+.switch button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+.frames { max-width: 1160px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 32px 24px; }
+figure { width: 360px; max-width: 100%; }
+figcaption { margin-top: 12px; font-size: 13px; color: #3C4450; line-height: 1.45; }
+figcaption b { font-weight: 600; color: var(--ink); }
+.notes { max-width: 1160px; margin: 40px auto 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px; }
+.notes div { background: rgba(255,255,255,.55); border-radius: 14px; padding: 12px 16px; font-size: 14px; line-height: 1.45; color: #3C4450; }
+.notes b { display: block; color: var(--ink); font-weight: 600; font-size: 15px; margin-bottom: 2px; }
+
+/* States: the switch flips body[data-state]. */
+body[data-state="busy"] .s-done, body[data-state="busy"] .s-exam { display: none !important; }
+body[data-state="done"] .s-busy, body[data-state="done"] .s-exam { display: none !important; }
+body[data-state="exam"] .s-busy, body[data-state="exam"] .s-done { display: none !important; }
+body[data-state="exam"] .s-notexam { display: none !important; }
+body:not([data-state="exam"]) .s-examonly { display: none !important; }
+
+/* ---------- phone ---------- */
+.phone { position: relative; width: 360px; height: 760px; max-width: 100%; border-radius: 32px; overflow: hidden; display: flex; flex-direction: column; background: var(--wash); box-shadow: 0 0 0 1px rgba(16,24,40,.1), 0 14px 34px rgba(16,24,40,.12); }
+.status { height: 32px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 600; flex: none; }
+.status i { width: 40px; height: 8px; border-radius: 999px; background: currentColor; opacity: .75; }
+.scroll { flex: 1; overflow-y: auto; padding: 4px 20px 100px; scrollbar-width: none; }
+.scroll::-webkit-scrollbar { display: none; }
+
+/* header with the child chip */
+.hdr { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 48px; }
+.child { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px 0 4px; border-radius: 999px; background: #fff; box-shadow: 0 0 0 1px var(--hair); font-size: 14px; font-weight: 600; cursor: pointer; }
+.av { width: 32px; height: 32px; border-radius: 999px; display: grid; place-items: center; font-size: 13px; font-weight: 700; color: #fff; background: var(--coral); flex: none; }
+.child small { color: var(--muted); font-weight: 500; }
+.iconbtn { width: 40px; height: 40px; border-radius: 999px; display: grid; place-items: center; background: #fff; box-shadow: 0 0 0 1px var(--hair); position: relative; }
+.iconbtn .dot { position: absolute; top: 9px; right: 10px; width: 8px; height: 8px; border-radius: 99px; background: var(--coral); box-shadow: 0 0 0 2px #fff; }
+
+h2.big { font-size: 34px; font-weight: 700; letter-spacing: -1.2px; line-height: 1.02; margin-top: 12px; }
+h2.big em { font-style: normal; color: var(--body); }
+.sub { margin-top: 6px; font-size: 14px; color: var(--muted); }
+.sec { margin: 24px 0 10px; display: flex; align-items: baseline; justify-content: space-between; }
+.sec h3 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+.sec a { font-size: 13px; font-weight: 600; color: var(--muted); text-decoration: none; }
+
+/* stone row */
+.row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 22px; background: var(--stone); box-shadow: inset 0 0 0 1px var(--hair); min-height: 68px; cursor: pointer; transition: transform .12s, background .2s; }
+.row:active { transform: scale(.98); }
+.row + .row { margin-top: 8px; }
+.row .t { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
+.row .m { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.grow { flex: 1; min-width: 0; }
+.chev { color: var(--faint); }
+
+/* tick circle */
+.tick { width: 30px; height: 30px; border-radius: 99px; box-shadow: inset 0 0 0 2px var(--ink); display: grid; place-items: center; flex: none; color: transparent; transition: background .2s, color .2s; }
+.row.done .tick { background: var(--green); box-shadow: none; color: #fff; }
+.row.done .t { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 2px; }
+
+/* subject chip (flat character with eyes) */
+.subj { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; flex: none; position: relative; }
+.subj .e { display: flex; gap: 5px; }
+.subj .e i { width: 8px; height: 10px; border-radius: 99px; background: var(--ink); animation: blink 5s infinite; transform-origin: 50% 50%; }
+.subj.mth { background: var(--blue-t); } .subj.eng { background: var(--coral-t); } .subj.sci { background: var(--green-t); } .subj.soc { background: var(--grape-t); }
+.subj.mth i { animation-delay: .4s; } .subj.sci i { animation-delay: 1.6s; } .subj.eng i { animation-delay: 2.9s; }
+
+.pill { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.p-red { background: var(--red-t); color: var(--red); } .p-amber { background: var(--amber-t); color: var(--amber); }
+.p-green { background: var(--green-t); color: var(--green); } .p-blue { background: var(--blue-t); color: var(--body); }
+.p-ink { background: var(--ink); color: #fff; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 50px; padding: 0 22px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 16px; font-weight: 600; border: 0; font-family: inherit; cursor: pointer; transition: transform .12s; }
+.btn:active { transform: scale(.97); }
+.btn.w { width: 100%; }
+.btn.light { background: #fff; color: var(--ink); }
+
+/* sticky note */
+.sticky { background: var(--note); color: var(--note-ink); border-radius: 6px 6px 18px 6px; padding: 10px 14px 12px; transform: rotate(-2deg); position: relative; }
+.sticky .hand { font-size: 22px; line-height: 1.05; }
+.sticky small { display: block; font-size: 12px; color: var(--note-muted); margin-top: 4px; font-weight: 500; }
+.sticky::before { content: ""; position: absolute; top: -7px; left: 50%; width: 48px; height: 14px; margin-left: -24px; background: rgba(255,255,255,.6); box-shadow: inset 0 0 0 1px rgba(0,0,0,.04); transform: rotate(3deg); }
+
+/* stamp */
+.stamp { width: 96px; height: 96px; border-radius: 999px; display: grid; place-items: center; text-align: center; color: var(--coral); box-shadow: inset 0 0 0 3px var(--coral), inset 0 0 0 7px #fff, inset 0 0 0 8.5px var(--coral); transform: rotate(-10deg); animation: stampIn .5s cubic-bezier(.2,1.6,.4,1) both .3s; flex: none; }
+.stamp b { display: block; font-size: 30px; font-weight: 700; letter-spacing: -1px; line-height: .95; }
+.stamp span { display: block; font-size: 10px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; }
+@keyframes stampIn { from { transform: rotate(-10deg) scale(1.6); opacity: 0; } to { transform: rotate(-10deg) scale(1); opacity: 1; } }
+
+/* tab bar */
+.tabs { position: absolute; left: 16px; right: 16px; bottom: 16px; height: 64px; border-radius: 999px; background: #fff; box-shadow: 0 0 0 1px var(--hair), 0 8px 22px rgba(27,27,26,.08); display: flex; align-items: center; justify-content: space-between; padding: 6px; }
+.tabs div { width: 52px; height: 52px; border-radius: 26px; display: grid; place-items: center; color: var(--muted); position: relative; }
+.tabs div.on { background: var(--ink); color: #fff; width: 84px; }
+.tabs .badge { position: absolute; top: 8px; right: 10px; width: 8px; height: 8px; border-radius: 9px; background: var(--coral); box-shadow: 0 0 0 2px #fff; }
+
+/* motion */
+.pop { animation: pop .42s cubic-bezier(.2,1.3,.4,1) both; }
+.pop:nth-child(2) { animation-delay: .06s; } .pop:nth-child(3) { animation-delay: .12s; } .pop:nth-child(4) { animation-delay: .18s; }
+@keyframes pop { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+.sway { transform-origin: 50% 90%; animation: sway 4s ease-in-out infinite alternate; }
+@keyframes sway { from { transform: rotate(4deg); } to { transform: rotate(-4deg); } }
+.eyes { transform-box: view-box; transform-origin: 50% 48.9%; animation: bblink 4.48s infinite; }
+@keyframes bblink { 0%, 96% { transform: scaleY(1); } 98% { transform: scaleY(.1); } 100% { transform: scaleY(1); } }
+@keyframes blink { 0%, 94% { transform: scaleY(1); } 97% { transform: scaleY(.15); } 100% { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; } }
+
+/* ---------- A: Tonight ---------- */
+.a .greet { display: flex; align-items: flex-end; gap: 6px; margin-top: 8px; }
+.a .greet .sticky { margin-bottom: 18px; }
+.a .prog { margin-top: 14px; height: 10px; border-radius: 99px; background: var(--stone-d); overflow: hidden; }
+.a .prog i { display: block; height: 100%; border-radius: 99px; background: var(--ink); transition: width .4s; }
+.a .soon { display: flex; gap: 8px; overflow-x: auto; margin: 0 -20px; padding: 0 20px; scrollbar-width: none; }
+.a .soon::-webkit-scrollbar { display: none; }
+.a .chip { flex: none; width: 148px; border-radius: 22px; padding: 14px; background: var(--stone); box-shadow: inset 0 0 0 1px var(--hair); }
+.a .chip .k { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+.a .chip .v { font-size: 22px; font-weight: 700; letter-spacing: -0.6px; margin-top: 6px; }
+.a .chip .m { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.a .chip.hot { background: var(--coral-t); box-shadow: inset 0 0 0 1px var(--coral-e); }
+.a .chip.hot .v { color: var(--red); }
+.a .alldone { text-align: center; padding: 20px 16px 22px; border-radius: 28px; background: var(--green-t); box-shadow: inset 0 0 0 1px var(--green-e); margin-top: 16px; }
+.a .alldone .hand { font-size: 30px; color: var(--green); }
+.a .alldone p { font-size: 14px; color: var(--soft); margin-top: 4px; }
+
+/* ---------- B: Report ---------- */
+.b .hero { margin-top: 12px; border-radius: 28px; background: #fff; box-shadow: 0 0 0 1px var(--hair); padding: 18px; display: flex; gap: 14px; align-items: center; }
+.b .hero .n { font-size: 56px; font-weight: 700; letter-spacing: -2.4px; line-height: .95; }
+.b .hero .n small { font-size: 24px; letter-spacing: -0.6px; }
+.b .hero .k { font-size: 13px; font-weight: 600; color: var(--muted); }
+.b .week { display: flex; gap: 5px; margin-top: 10px; }
+.b .week i { width: 22px; height: 28px; border-radius: 8px; background: var(--green-t); display: grid; place-items: center; font-style: normal; font-size: 10px; font-weight: 700; color: var(--green); }
+.b .week i.x { background: var(--red-t); color: var(--red); }
+.b .week i.t { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.b .week i.f { background: transparent; color: var(--faint); box-shadow: inset 0 0 0 1px var(--hair); }
+.b .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.b .tile { border-radius: 22px; padding: 14px; background: var(--stone); box-shadow: inset 0 0 0 1px var(--hair); min-height: 116px; display: flex; flex-direction: column; cursor: pointer; }
+.b .tile .k { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+.b .tile .v { font-size: 28px; font-weight: 700; letter-spacing: -1px; margin-top: auto; }
+.b .tile .m { font-size: 12px; color: var(--muted); }
+.b .tile.rank { background: var(--blue-t); box-shadow: inset 0 0 0 1px var(--blue-e); }
+.b .tile.rank .v { color: var(--body); }
+.b .bars { display: flex; align-items: flex-end; gap: 4px; height: 34px; margin-top: 8px; }
+.b .bars i { flex: 1; border-radius: 4px; background: var(--ink); opacity: .85; animation: grow .6s cubic-bezier(.2,1.2,.4,1) both; transform-origin: bottom; }
+.b .bars i:nth-child(2) { animation-delay: .05s; } .b .bars i:nth-child(3) { animation-delay: .1s; } .b .bars i:nth-child(4) { animation-delay: .15s; } .b .bars i:nth-child(5) { animation-delay: .2s; }
+@keyframes grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.b .later { border: 1.5px dashed var(--faint); background: transparent; box-shadow: none; }
+.b .strip { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 16px; border-radius: 999px; background: var(--ink); color: #fff; margin-top: 16px; }
+.b .strip .t { font-size: 15px; font-weight: 600; }
+.b .strip .go { margin-left: auto; height: 36px; padding: 0 14px; border-radius: 99px; background: #fff; color: var(--ink); display: inline-flex; align-items: center; font-size: 13px; font-weight: 600; }
+
+/* ---------- C: Bookie's desk ---------- */
+.c { background: #fff; }
+.c .stage { background: var(--body); color: #fff; border-radius: 0 0 36px 36px; padding: 0 20px 20px; position: relative; flex: none; }
+.c .stage .hdr .child { background: rgba(255,255,255,.14); color: #fff; box-shadow: none; }
+.c .stage .hdr .child small { color: #DCE6FF; }
+.c .stage .hdr .iconbtn { background: rgba(255,255,255,.14); color: #fff; box-shadow: none; }
+.c .stage .hdr .iconbtn .dot { box-shadow: 0 0 0 2px var(--body); }
+.c .desk { display: flex; align-items: flex-end; gap: 4px; margin-top: 6px; min-height: 150px; }
+.c .desk .sticky { flex: 1; margin-bottom: 26px; transform: rotate(-3deg); }
+.c .desk .sticky .hand { font-size: 24px; }
+.c .stage .k { font-size: 12px; color: #DCE6FF; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; }
+.c .focus { background: #fff; color: var(--ink); border-radius: 24px; padding: 14px; display: flex; gap: 12px; align-items: center; margin-top: 8px; box-shadow: 0 4px 0 var(--depth); }
+.c .focus .t { font-size: 17px; font-weight: 600; letter-spacing: -0.3px; }
+.c .focus .m { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.c .go { width: 44px; height: 44px; border-radius: 99px; background: var(--ink); color: #fff; display: grid; place-items: center; flex: none; }
+.c .more { font-size: 13px; color: #DCE6FF; margin-top: 12px; text-align: center; font-weight: 500; }
+.c .scroll { padding-top: 0; }
+.c .tiles { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 20px; }
+.c .tl { border-radius: 22px; background: var(--stone); box-shadow: inset 0 0 0 1px var(--hair); padding: 12px 10px 12px; text-align: center; cursor: pointer; }
+.c .tl .face { width: 48px; height: 48px; border-radius: 16px; margin: 0 auto; display: grid; place-items: center; }
+.c .tl .face .e { display: flex; gap: 6px; }
+.c .tl .face .e i { width: 8px; height: 11px; border-radius: 99px; background: var(--ink); animation: blink 6s infinite; }
+.c .tl .v { font-size: 20px; font-weight: 700; letter-spacing: -0.6px; margin-top: 8px; }
+.c .tl .m { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+.c .tl .mouth { width: 14px; height: 6px; border-radius: 0 0 10px 10px; background: var(--ink); margin: 3px auto 0; }
+.c .tl .mouth.flat { height: 3px; border-radius: 3px; }
+.c .note2 { margin-top: 16px; display: flex; gap: 12px; align-items: center; padding: 14px; border-radius: 22px; background: var(--note); color: var(--note-ink); }
+.c .note2 .hand { font-size: 20px; line-height: 1.05; }
+.c .note2 small { display: block; font-size: 12px; color: var(--note-muted); font-weight: 500; }
+</style>
+</head>
+<body data-state="busy">
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="bookie" viewBox="160 300 704 560">
+      <g class="sway">
+        <path d="M512 744 C560 800 690 818 806 818 C822 818 828 808 828 792 V500 C828 400 754 330 664 330 C584 330 529 390 516 450 Q512 468 508 450 C495 390 440 330 360 330 C270 330 196 400 196 500 V792 C196 808 202 818 218 818 C334 818 464 800 512 744 Z" fill="#fff" stroke="#fff" stroke-width="44" stroke-linejoin="round"/>
+        <path d="M512 774 C560 830 690 848 806 848 C822 848 828 838 828 822 V530 C828 430 754 360 664 360 C584 360 529 420 516 480 Q512 498 508 480 C495 420 440 360 360 360 C270 360 196 430 196 530 V822 C196 838 202 848 218 848 C334 848 464 830 512 774 Z" fill="#1C3FB0"/>
+        <path d="M512 744 C560 800 690 818 806 818 C822 818 828 808 828 792 V500 C828 400 754 330 664 330 C584 330 529 390 516 450 Q512 468 508 450 C495 390 440 330 360 330 C270 330 196 400 196 500 V792 C196 808 202 818 218 818 C334 818 464 800 512 744 Z" fill="#2F6BFF"/>
+        <path d="M512 476 V728" stroke="#1C3FB0" stroke-width="12" stroke-linecap="round"/>
+        <path d="M460 690 Q512 740 564 690" fill="none" stroke="#0E1A4F" stroke-width="16" stroke-linecap="round"/>
+        <g class="eyes">
+          <circle cx="341" cy="574" r="80" fill="#fff"/><circle cx="353" cy="552" r="46" fill="#0E1A4F"/><circle cx="371" cy="532" r="16" fill="#fff"/>
+          <circle cx="683" cy="574" r="80" fill="#fff"/><circle cx="695" cy="552" r="46" fill="#0E1A4F"/><circle cx="713" cy="532" r="16" fill="#fff"/>
+        </g>
+      </g>
+    </symbol>
+    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5V20H4z"/><path d="M10 20v-5h4v5"/></symbol>
+    <symbol id="i-hw" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5V6a2 2 0 0 1 2-2h12v14H6a2 2 0 0 0-2 2Z"/><path d="M4 19.5A2 2 0 0 0 6 22h12v-4"/><path d="M9 8h5"/></symbol>
+    <symbol id="i-cal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></symbol>
+    <symbol id="i-exam" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l4 4v14H7z"/><path d="M10 12h5M10 16h5"/></symbol>
+    <symbol id="i-fee" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M16 15h2"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 21h4"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 12.5 4 4 8-9"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></symbol>
+  </defs>
+</svg>
+
+<header class="intro">
+  <h1>Family Home</h1>
+  <p>The first screen after sign-in, for a student or a parent (same data, the chip at the top switches child). Three answers to "what is Home for?". <b>A</b> is a to-do list for tonight, <b>B</b> is a report on how the child is doing, <b>C</b> puts one thing first with Bookie and shows the rest as small tiles. Flip the state below to see each Home on a different day. Tap homework rows in A to tick them.</p>
+</header>
+
+<div class="switch" role="group" aria-label="Day">
+  <span>The day:</span>
+  <button data-s="busy" aria-pressed="true">Busy evening</button>
+  <button data-s="done" aria-pressed="false">All done</button>
+  <button data-s="exam" aria-pressed="false">Exam week</button>
+</div>
+
+<div class="frames">
+
+  <!-- ===================== A: Tonight ===================== -->
+  <figure>
+    <div class="phone a">
+      <div class="status"><span>6:40</span><i></i></div>
+      <div class="scroll">
+        <div class="hdr">
+          <div class="child"><span class="av">A</span>Aarav <small>7-B</small><svg width="14" height="14"><use href="#i-down"/></svg></div>
+          <div class="iconbtn"><svg width="20" height="20"><use href="#i-bell"/></svg><span class="dot"></span></div>
+        </div>
+
+        <div class="greet">
+          <div class="grow">
+            <h2 class="big s-busy">3 things<br>for <em>tonight</em></h2>
+            <h2 class="big s-done">Tonight is<br><em>all clear</em></h2>
+            <h2 class="big s-exam">Exams start<br><em>Monday</em></h2>
+            <p class="sub s-busy">About 45 min. Maths is due first.</p>
+            <p class="sub s-done">Nothing due tomorrow. Nice work.</p>
+            <p class="sub s-exam">4 days to go. 1 homework tonight.</p>
+          </div>
+          <svg width="96" height="76"><use href="#bookie"/></svg>
+        </div>
+        <div class="prog s-busy"><i id="a-prog" style="width:0%"></i></div>
+
+        <div class="s-busy">
+          <div class="sec"><h3>Tonight</h3><a href="#" id="a-count">0 of 3 done</a></div>
+          <div class="row pop" data-tick>
+            <div class="tick"><svg width="16" height="16"><use href="#i-check"/></svg></div>
+            <div class="grow"><div class="t">Fractions worksheet</div><div class="m">Maths · 20 min · due tomorrow</div></div>
+            <span class="pill p-red">Tomorrow</span>
+          </div>
+          <div class="row pop" data-tick>
+            <div class="tick"><svg width="16" height="16"><use href="#i-check"/></svg></div>
+            <div class="grow"><div class="t">Read chapter 4</div><div class="m">English · 15 min</div></div>
+          </div>
+          <div class="row pop" data-tick>
+            <div class="tick"><svg width="16" height="16"><use href="#i-check"/></svg></div>
+            <div class="grow"><div class="t">Plants quiz</div><div class="m">Science · 10 questions</div></div>
+            <span class="pill p-blue">Quiz</span>
+          </div>
+        </div>
+
+        <div class="s-done">
+          <div class="alldone pop">
+            <div class="hand">Done for today!</div>
+            <p>3 homework finished this week. Bookie gets a sticker.</p>
+          </div>
+        </div>
+
+        <div class="s-exam">
+          <div class="sec"><h3>Tonight</h3><a href="#">1 left</a></div>
+          <div class="row pop" data-tick>
+            <div class="tick"><svg width="16" height="16"><use href="#i-check"/></svg></div>
+            <div class="grow"><div class="t">Revision sheet 2</div><div class="m">Maths · 30 min</div></div>
+          </div>
+          <div class="sec"><h3>Exam days</h3><a href="#">Timetable</a></div>
+          <div class="row pop"><div class="subj mth"><div class="e"><i></i><i></i></div></div><div class="grow"><div class="t">Maths</div><div class="m">Mon 17 Nov · 10:00</div></div><span class="pill p-ink">First</span></div>
+          <div class="row pop"><div class="subj eng"><div class="e"><i></i><i></i></div></div><div class="grow"><div class="t">English</div><div class="m">Wed 19 Nov · 10:00</div></div></div>
+        </div>
+
+        <div class="sec"><h3>Coming up</h3></div>
+        <div class="soon">
+          <div class="chip s-notexam"><div class="k">Exam</div><div class="v">In 8 days</div><div class="m">Half-yearly, Mon 17</div></div>
+          <div class="chip hot"><div class="k">Fees</div><div class="v">₹2,400</div><div class="m">November, due 15th</div></div>
+          <div class="chip"><div class="k">This month</div><div class="v">94%</div><div class="m">17 of 18 days</div></div>
+        </div>
+      </div>
+      <div class="tabs">
+        <div class="on"><svg width="22" height="22"><use href="#i-home"/></svg></div>
+        <div><svg width="22" height="22"><use href="#i-hw"/></svg></div>
+        <div><svg width="22" height="22"><use href="#i-cal"/></svg></div>
+        <div><svg width="22" height="22"><use href="#i-exam"/></svg></div>
+        <div><svg width="22" height="22"><use href="#i-fee"/></svg><span class="badge"></span></div>
+      </div>
+    </div>
+    <figcaption><b>A. Tonight.</b> Home is tonight's list: a big headline that counts what is left, the homework you can tick right here, and a slide-along "Coming up" row for the exam, fees and attendance. Fastest to use every evening. The risk: on a quiet day it has little to say, and it overlaps the Homework tab.</figcaption>
+  </figure>
+
+  <!-- ===================== B: Report ===================== -->
+  <figure>
+    <div class="phone b">
+      <div class="status"><span>6:40</span><i></i></div>
+      <div class="scroll">
+        <div class="hdr">
+          <div class="child"><span class="av">A</span>Aarav <small>7-B</small><svg width="14" height="14"><use href="#i-down"/></svg></div>
+          <div class="iconbtn"><svg width="20" height="20"><use href="#i-bell"/></svg><span class="dot"></span></div>
+        </div>
+        <h2 class="big">Good going,<br><em>Aarav</em></h2>
+        <p class="sub">November so far</p>
+
+        <div class="hero pop">
+          <div class="grow">
+            <div class="k">Days in school</div>
+            <div class="n">94<small>%</small></div>
+            <div class="week"><i>M</i><i>T</i><i class="x">W</i><i>T</i><i>F</i><i class="t">S</i><i class="f">M</i></div>
+          </div>
+          <div class="stamp"><div><b>9</b><span>day<br>streak</span></div></div>
+        </div>
+
+        <div class="sec"><h3>The rest</h3></div>
+        <div class="grid">
+          <div class="tile rank pop"><div class="k">Class rank</div><div class="v">#4</div><div class="m">attendance, of 38</div></div>
+          <div class="tile pop">
+            <div class="k">Homework</div>
+            <div class="bars"><i style="height:60%"></i><i style="height:100%"></i><i style="height:80%"></i><i style="height:40%"></i><i style="height:90%"></i></div>
+            <div class="m" style="margin-top:6px">12 of 14 on time</div>
+          </div>
+          <div class="tile pop"><div class="k">Fees</div><div class="v" style="color:var(--red)">₹2,400</div><div class="m">due 15 Nov</div></div>
+          <div class="tile later pop"><div class="k">Last result</div><div class="v" style="color:var(--faint)">A</div><div class="m">Unit test 2 · later, needs results</div></div>
+        </div>
+
+        <div class="strip s-busy"><span class="t">3 homework tonight</span><span class="go">Open</span></div>
+        <div class="strip s-done" style="background:var(--green)"><span class="t">All homework done</span><span class="go">See week</span></div>
+        <div class="strip s-exam"><span class="t">Maths exam in 4 days</span><span class="go">Timetable</span></div>
+      </div>
+      <div class="tabs">
+        <div class="on"><svg width="22" height="22"><use href="#i-home"/></svg></div>
+        <div><svg width="22" height="22"><use href="#i-hw"/></svg><span class="badge s-busy"></span></div>
+        <div><svg width="22" height="22"><use href="#i-cal"/></svg></div>
+        <div><svg width="22" height="22"><use href="#i-exam"/></svg></div>
+        <div><svg width="22" height="22"><use href="#i-fee"/></svg><span class="badge"></span></div>
+      </div>
+    </div>
+    <figcaption><b>B. Report.</b> Home shows how the child is doing: a big attendance number with this week's days, a streak stamp, class rank, homework on time, and the last result (dashed, it needs the results screens first). Tonight's work shrinks to one black strip. Parents will probably like it most. It changes slowly, so a student may open it less.</figcaption>
+  </figure>
+
+  <!-- ===================== C: Bookie's desk ===================== -->
+  <figure>
+    <div class="phone c">
+      <div class="stage">
+        <div class="status" style="padding:0"><span>6:40</span><i></i></div>
+        <div class="hdr">
+          <div class="child"><span class="av">A</span>Aarav <small>7-B</small><svg width="14" height="14"><use href="#i-down"/></svg></div>
+          <div class="iconbtn"><svg width="20" height="20"><use href="#i-bell"/></svg><span class="dot"></span></div>
+        </div>
+        <div class="desk">
+          <svg width="132" height="105"><use href="#bookie"/></svg>
+          <div class="sticky">
+            <div class="hand s-busy">Maths first, it's due tomorrow!</div>
+            <div class="hand s-done">All done. Go play!</div>
+            <div class="hand s-exam">4 days to Maths. Let's revise.</div>
+            <small class="s-busy">then 2 more after</small>
+            <small class="s-done">see you tomorrow</small>
+            <small class="s-exam">sheet 2 is tonight</small>
+          </div>
+        </div>
+        <div class="k s-busy">Up next</div>
+        <div class="k s-done">This week</div>
+        <div class="k s-exam">Up next</div>
+        <div class="focus s-busy">
+          <div class="subj mth"><div class="e"><i></i><i></i></div></div>
+          <div class="grow"><div class="t">Fractions worksheet</div><div class="m">20 min · due tomorrow</div></div>
+          <div class="go"><svg width="16" height="16"><use href="#i-play"/></svg></div>
+        </div>
+        <div class="focus s-done">
+          <div class="subj sci"><div class="e"><i></i><i></i></div></div>
+          <div class="grow"><div class="t">3 of 3 done</div><div class="m">Plants quiz: 9 of 10</div></div>
+          <div class="go" style="background:var(--green)"><svg width="16" height="16"><use href="#i-check"/></svg></div>
+        </div>
+        <div class="focus s-exam">
+          <div class="subj mth"><div class="e"><i></i><i></i></div></div>
+          <div class="grow"><div class="t">Revision sheet 2</div><div class="m">30 min · Maths exam Mon</div></div>
+          <div class="go"><svg width="16" height="16"><use href="#i-play"/></svg></div>
+        </div>
+        <div class="more s-busy">+ English reading, Science quiz</div>
+        <div class="more s-done">Next homework arrives tomorrow</div>
+        <div class="more s-exam">+ timetable for all 6 papers</div>
+      </div>
+      <div class="scroll">
+        <div class="tiles">
+          <div class="tl pop">
+            <div class="face" style="background:var(--green-t)"><div><div class="e"><i></i><i></i></div><div class="mouth"></div></div></div>
+            <div class="v">94%</div><div class="m">Days</div>
+          </div>
+          <div class="tl pop">
+            <div class="face" style="background:var(--coral-t)"><div><div class="e"><i style="animation-delay:1s"></i><i style="animation-delay:1s"></i></div><div class="mouth flat"></div></div></div>
+            <div class="v" style="color:var(--red)">₹2.4k</div><div class="m">Fees due</div>
+          </div>
+          <div class="tl pop">
+            <div class="face" style="background:var(--grape-t)"><div><div class="e"><i style="animation-delay:2.2s"></i><i style="animation-delay:2.2s"></i></div><div class="mouth"></div></div></div>
+            <div class="v s-notexam">8 days</div><div class="v s-examonly">4 days</div><div class="m">Exams</div>
+          </div>
+        </div>
+        <div class="note2 pop">
+          <svg width="40" height="32"><use href="#bookie"/></svg>
+          <div class="grow"><div class="hand">9 days in a row at school</div><small>2 more for a new best</small></div>
+        </div>
+        <div class="sec"><h3>From school</h3></div>
+        <div class="row pop"><div class="subj soc"><div class="e"><i></i><i></i></div></div><div class="grow"><div class="t">Sports day, Fri 21</div><div class="m">Wear house colours · later, needs notices</div></div><svg class="chev" width="18" height="18"><use href="#i-chev"/></svg></div>
+      </div>
+      <div class="tabs">
+        <div class="on"><svg width="22" height="22"><use href="#i-home"/></svg></div>
+        <div><svg width="22" height="22"><use href="#i-hw"/></svg></div>
+        <div><svg width="22" height="22"><use href="#i-cal"/></svg></div>
+        <div><svg width="22" height="22"><use href="#i-exam"/></svg></div>
+        <div><svg width="22" height="22"><use href="#i-fee"/></svg><span class="badge"></span></div>
+      </div>
+    </div>
+    <figcaption><b>C. Bookie's desk.</b> A blue stage like the welcome screen. Bookie's sticky note says the one thing that matters now, and one card starts it. Underneath are three small tiles with faces (the fees face stops smiling while money is due), a streak note, and room for school notices later. It feels the most like our own app. It needs good rules for what Bookie says.</figcaption>
+  </figure>
+
+</div>
+
+<section class="notes">
+  <div><b>Same for student and parent</b>Data is identical. The child chip only matters for a parent with more than one child; for a student it is just their name and class.</div>
+  <div><b>What exists today</b>Homework, attendance (with rank), fees and the exam timetable all have routes. Results, notices and the bell need new work, so they are dashed or labelled "later".</div>
+  <div><b>Mix and match</b>These parts can move between directions: A's tick rows inside C's card, B's streak stamp in A, C's tile faces in B.</div>
+  <div><b>Not decided</b>Nothing in the app or the docs changes until you pick. The words are placeholders.</div>
+</section>
+
+<script>
+  const btns = document.querySelectorAll('.switch button');
+  btns.forEach(b => b.addEventListener('click', () => {
+    document.body.dataset.state = b.dataset.s;
+    btns.forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    // replay pop-ins on the visible parts
+    document.querySelectorAll('.pop, .stamp').forEach(el => { el.style.animation = 'none'; el.offsetHeight; el.style.animation = ''; });
+  }));
+  // A: tick tonight's homework
+  const rows = document.querySelectorAll('.a .s-busy [data-tick]');
+  const prog = document.getElementById('a-prog'), count = document.getElementById('a-count');
+  function sync() {
+    const d = [...rows].filter(r => r.classList.contains('done')).length;
+    prog.style.width = (d / rows.length * 100) + '%';
+    count.textContent = d + ' of ' + rows.length + ' done';
+  }
+  document.querySelectorAll('.a [data-tick]').forEach(r => r.addEventListener('click', () => { r.classList.toggle('done'); sync(); }));
+</script>
+</body>
+</html>
