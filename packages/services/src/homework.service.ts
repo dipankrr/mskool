@@ -2020,18 +2020,34 @@ export class HomeworkService {
 
   async portalGet(ownedStudentIds: readonly string[], studentId: string, saId: string) {
     const { sa, a } = await this.portalRow(ownedStudentIds, studentId, saId);
-    const [meta] = await db
-      .select({ subjectName: subjects.name, teacherName: user.name })
-      .from(assignments)
-      .innerJoin(subjects, eq(assignments.subjectId, subjects.id))
-      .innerJoin(user, eq(assignments.createdBy, user.id))
-      .where(eq(assignments.id, a.id));
-    const teacherFiles = await db
-      .select({ objectId: assignmentFiles.objectId })
-      .from(assignmentFiles)
-      .where(eq(assignmentFiles.assignmentId, a.id))
-      .orderBy(asc(assignmentFiles.sortOrder));
-    const [sub] = await db.select().from(submissions).where(eq(submissions.studentAssignmentId, sa.id));
+    // Every read below depends only on the row above, so they run together:
+    // one round trip of waiting instead of seven on a slow phone network.
+    const [metaRows, teacherFiles, subRows, quizCount, attemptRows, replies] = await Promise.all([
+      db
+        .select({ subjectName: subjects.name, teacherName: user.name })
+        .from(assignments)
+        .innerJoin(subjects, eq(assignments.subjectId, subjects.id))
+        .innerJoin(user, eq(assignments.createdBy, user.id))
+        .where(eq(assignments.id, a.id)),
+      db
+        .select({ objectId: assignmentFiles.objectId })
+        .from(assignmentFiles)
+        .where(eq(assignmentFiles.assignmentId, a.id))
+        .orderBy(asc(assignmentFiles.sortOrder)),
+      db.select().from(submissions).where(eq(submissions.studentAssignmentId, sa.id)),
+      a.kind === "quiz"
+        ? db.select({ n: count() }).from(assignmentQuestions).where(eq(assignmentQuestions.assignmentId, a.id))
+        : Promise.resolve([]),
+      a.kind === "quiz"
+        ? db
+            .select({ id: questionAttempts.id, status: questionAttempts.status })
+            .from(questionAttempts)
+            .where(eq(questionAttempts.studentAssignmentId, sa.id))
+        : Promise.resolve([]),
+      this.newStaffReplies([{ sa, assignmentId: a.id }]),
+    ]);
+    const meta = metaRows[0];
+    const sub = subRows[0];
     const subFiles = sub
       ? await db
           .select({ objectId: submissionFiles.objectId })
@@ -2045,25 +2061,15 @@ export class HomeworkService {
     ]);
     const pick = (ids: { objectId: string }[]) =>
       ids.map((f) => refs.get(f.objectId)).filter((x): x is ImageRef => Boolean(x));
-
-    let quiz = null;
-    if (a.kind === "quiz") {
-      const [q] = await db
-        .select({ n: count() })
-        .from(assignmentQuestions)
-        .where(eq(assignmentQuestions.assignmentId, a.id));
-      const [attempt] = await db
-        .select({ id: questionAttempts.id, status: questionAttempts.status })
-        .from(questionAttempts)
-        .where(eq(questionAttempts.studentAssignmentId, sa.id));
-      quiz = {
-        questionCount: q?.n ?? 0,
-        attemptId: attempt?.id ?? null,
-        attemptStatus: attempt?.status ?? null,
-      };
-    }
+    const quiz =
+      a.kind === "quiz"
+        ? {
+            questionCount: quizCount[0]?.n ?? 0,
+            attemptId: attemptRows[0]?.id ?? null,
+            attemptStatus: attemptRows[0]?.status ?? null,
+          }
+        : null;
     const now = new Date();
-    const replies = await this.newStaffReplies([{ sa, assignmentId: a.id }]);
     return {
       ...this.portalItem({ sa, a, subjectName: meta!.subjectName, teacherName: meta!.teacherName }, now, replies.get(sa.id) ?? 0),
       details: a.kind === "reading" ? null : a.description,

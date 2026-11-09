@@ -42,6 +42,7 @@ export function FamilyHomeworkQuiz() {
     },
   });
   const quiz = detail.data?.quiz ?? null;
+  const title = detail.data?.title ?? utils.portalHomework.list.getData({ studentId, filter: "all" })?.find((i) => i.studentAssignmentId === id)?.title ?? "";
   const finished = submit.isSuccess || quiz?.attemptStatus === "submitted" || quiz?.attemptStatus === "graded";
   const attemptId = quiz?.attemptId ?? start.data?.attemptId ?? null;
   const asked = useRef(false);
@@ -62,7 +63,7 @@ export function FamilyHomeworkQuiz() {
   const failed = (detail.isError && !detail.data) || start.isError || (attempt.isError && !attempt.data);
   if (failed) {
     return (
-      <FScreen header={<FHeader title={detail.data?.title ?? ""} onBack={close} backLabel={t("quiz.close")} />}>
+      <FScreen header={<FHeader title={title} onBack={close} backLabel={t("quiz.close")} />}>
         <FErrorState
           body={start.error?.message}
           onRetry={() => {
@@ -80,7 +81,7 @@ export function FamilyHomeworkQuiz() {
 
   if (loading) {
     return (
-      <FScreen header={<FHeader title={detail.data?.title ?? ""} onBack={close} backLabel={t("quiz.close")} />}>
+      <FScreen header={<FHeader title={title} onBack={close} backLabel={t("quiz.close")} />}>
         <View style={{ gap: theme.space.md }}>
           <FSkeleton height={8} />
           <FSkeleton width="70%" height={28} />
@@ -92,11 +93,11 @@ export function FamilyHomeworkQuiz() {
   }
 
   if (finished && result.data) {
-    return <Results title={detail.data?.title ?? ""} subject={detail.data?.subjectName ?? ""} questions={questions} result={result.data} onClose={close} />;
+    return <Results title={title} subject={detail.data?.subjectName ?? ""} questions={questions} result={result.data} onClose={close} />;
   }
   if (finished) {
     return (
-      <FScreen header={<FHeader title={detail.data?.title ?? ""} onBack={close} backLabel={t("quiz.close")} />}>
+      <FScreen header={<FHeader title={title} onBack={close} backLabel={t("quiz.close")} />}>
         <FText variant="body" color="muted">
           {t("quiz.hidden")}
         </FText>

@@ -159,7 +159,8 @@ export const components = {
   },
 
   skeleton: {
-    bg: color.surfaceMuted,
+    // A step darker than rows: on the light wash the lighter grey read as an empty screen.
+    bg: color.surfaceSunk,
     highlight: color.surfaceSunk,
     radius: radius.sm,
     pulseMs: 900,

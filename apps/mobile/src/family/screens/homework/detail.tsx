@@ -68,6 +68,9 @@ export function FamilyHomeworkDetail() {
   const viewed = trpc.portalHomework.markViewed.useMutation({ onSuccess: () => void utils.portalHomework.list.invalidate() });
   const seen = useRef(false);
   const data = detail.data;
+  // The list already knows the title and subject: show them while the rest loads.
+  const cached = utils.portalHomework.list.getData({ studentId, filter: "all" })?.find((i) => i.studentAssignmentId === id);
+  const top = data ?? cached;
 
   useEffect(() => {
     if (data && !seen.current) {
@@ -81,10 +84,10 @@ export function FamilyHomeworkDetail() {
   const back = () => (router.canGoBack() ? router.back() : router.replace("/family/homework"));
   const header = (
     <FHeader
-      title={data?.title ?? ""}
+      title={top?.title ?? ""}
       onBack={back}
       backLabel={t("detail.back")}
-      context={data ? <FText variant="meta" color="muted">{t("detail.context", { subject: data.subjectName, kind: t(`kind.${data.kind}`) })}</FText> : null}
+      context={top ? <FText variant="meta" color="muted">{t("detail.context", { subject: top.subjectName, kind: t(`kind.${top.kind}`) })}</FText> : null}
       trailing={
         data ? (
           <Pressable
@@ -385,7 +388,7 @@ function Checked({ data }: { data: PortalDetail }) {
       <View style={[styles.row, { gap: theme.space.md }]}>
         <FStamp
           testID="hw-stamp"
-          tone={data.checkStatus === "done" ? "green" : "coral"}
+          tone={data.checkStatus === "done" ? "green" : data.checkStatus === "absent" ? "blue" : "coral"}
           kicker={t("detail.stampKicker", { subject: data.subjectName })}
           value={value}
           unit={unit}

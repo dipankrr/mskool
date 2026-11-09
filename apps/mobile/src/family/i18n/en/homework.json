@@ -123,7 +123,7 @@
       "done": "Done",
       "incomplete": "Incomplete",
       "not_done": "Not done",
-      "absent": "Absent"
+      "absent": "Absent that day"
     },
     "stampKicker": "{{subject}} / checked",
     "noResult": "Checked",
