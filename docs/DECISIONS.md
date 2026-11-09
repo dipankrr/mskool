@@ -3232,10 +3232,10 @@ asked for the same on mobile, including the same write behaviour.
 2. The session row in More is a picker only for a holder of `academic_year:read_history`
    whose branch has more than one session, as on web. Everyone else sees a label. The
    server already returns the running session only to callers without the permission.
-3. Every screen works in the chosen session, else the running one. The chosen id is
-   remembered on the phone, dropped when it is no longer in the branch's list, and
-   cleared on a branch or org switch and on sign-out. Choosing the running session
-   stores nothing, so a later change of the running session is followed.
+3. Every screen works in the chosen session, else the running one. The choice is held
+   in memory only, so **every launch opens on the running session** (unlike web, which
+   remembers it): nobody comes back days later still in last year. It is dropped when
+   no longer in the branch's list, and cleared on a branch or org switch and on sign-out.
 4. **Writes are not locked in a past session**, the same as web. The server's only
    refusal is a fee write in a closed session (`assertSessionOpen`).
 5. A screen names the session under its heading when it is not the running one, and

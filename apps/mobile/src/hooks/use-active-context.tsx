@@ -27,13 +27,12 @@ import type { Me } from "./use-me";
  * running one (ADR-066, superseding ADR-047's "no year in the shell" — same
  * as web's picker). Only a holder of `academic_year:read_history` is offered
  * other sessions; for everyone else the list already holds the running one
- * only. A chosen id is persisted like the branch and dropped when it is no
- * longer in the branch's list (another branch's, or history revoked), so a
- * stale id never reaches the server. Switching org or branch clears it.
+ * only. A chosen id lives in memory only: every launch opens on the running
+ * session, so nobody comes back days later still in last year. It is dropped
+ * when no longer in the branch's list, and cleared on an org or branch switch.
  */
 const ORG_KEY = "mskool.active-org";
 const SCHOOL_KEY = "mskool.active-school";
-const YEAR_KEY = "mskool.active-year";
 
 export type AcademicYear = inferRouterOutputs<AppRouter>["academic"]["year"]["list"][number];
 export type Branch = Me["memberships"][number]["schools"][number];
@@ -142,10 +141,9 @@ export function ActiveContextProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       const memberships = me?.memberships ?? [];
-      const [storedOrg, storedSchool, storedYear] = await Promise.all([
+      const [storedOrg, storedSchool] = await Promise.all([
         AsyncStorage.getItem(ORG_KEY),
         AsyncStorage.getItem(SCHOOL_KEY),
-        AsyncStorage.getItem(YEAR_KEY),
       ]);
       if (cancelled) return;
 
@@ -158,9 +156,8 @@ export function ActiveContextProvider({ children }: { children: ReactNode }) {
 
       setOrganizationId(org?.organization.id ?? null);
       setSchoolId(school?.id ?? null);
-      // Kept only if the branch it belonged to is still the one resolved;
-      // the list check below drops it otherwise.
-      setChosenYearId(school && school.id === storedSchool ? storedYear : null);
+      // A new identity starts on the running session.
+      setChosenYearId(null);
       setHydrated(true);
     })();
     return () => {
@@ -231,15 +228,11 @@ export function ActiveContextProvider({ children }: { children: ReactNode }) {
     void Promise.all([
       AsyncStorage.setItem(ORG_KEY, orgId),
       AsyncStorage.setItem(SCHOOL_KEY, schoolId),
-      AsyncStorage.removeItem(YEAR_KEY),
     ]);
   }, []);
 
   const selectYear = useCallback((academicYearId: string | null) => {
     setChosenYearId(academicYearId);
-    void (academicYearId
-      ? AsyncStorage.setItem(YEAR_KEY, academicYearId)
-      : AsyncStorage.removeItem(YEAR_KEY));
   }, []);
 
   const clear = useCallback(() => {
@@ -250,7 +243,6 @@ export function ActiveContextProvider({ children }: { children: ReactNode }) {
     void Promise.all([
       AsyncStorage.removeItem(ORG_KEY),
       AsyncStorage.removeItem(SCHOOL_KEY),
-      AsyncStorage.removeItem(YEAR_KEY),
     ]);
   }, []);
 
