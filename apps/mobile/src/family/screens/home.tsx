@@ -10,6 +10,7 @@ import { parseMoney } from "../../lib/money";
 import { trpc } from "../../lib/trpc";
 import { useFamilyChild } from "../child-context";
 import { useFormat } from "../i18n/format";
+import { isOpen, tonight } from "../lib/homework";
 import { Reveal } from "../motion";
 import { useFamilyTheme } from "../theme";
 import {
@@ -28,7 +29,8 @@ import { FamilyTabHeader } from "./tab-header";
 
 /**
  * Family Home, kept simple for now (owner, 2026-11-07): one card each for
- * this month's attendance, fees due, and the next exam. Each opens its tab.
+ * tonight's homework, this month's attendance, fees due, and the next exam.
+ * Each opens its tab.
  */
 export function FamilyHome() {
   const { t } = useTranslation("family");
@@ -43,6 +45,8 @@ export function FamilyHome() {
   const attendance = trpc.portalAttendance.overview.useQuery({ studentId }, { enabled });
   const fees = trpc.portalFees.summary.useQuery({ studentId }, { enabled });
   const exams = trpc.portalExam.schedule.list.useQuery({ studentId }, { enabled });
+  // The same read the Homework tab uses, so opening the tab is instant.
+  const homework = trpc.portalHomework.list.useQuery({ studentId, filter: "all" }, { enabled });
 
   const signOut = async () => {
     setSigningOut(true);
@@ -92,8 +96,8 @@ export function FamilyHome() {
     );
   }
 
-  const refreshing = attendance.isRefetching || fees.isRefetching || exams.isRefetching;
-  const offline = [attendance, fees, exams].some((q) => q.isError && q.data !== undefined);
+  const refreshing = attendance.isRefetching || fees.isRefetching || exams.isRefetching || homework.isRefetching;
+  const offline = [attendance, fees, exams, homework].some((q) => q.isError && q.data !== undefined);
 
   return (
     <FScreen
@@ -104,11 +108,13 @@ export function FamilyHome() {
         void attendance.refetch();
         void fees.refetch();
         void exams.refetch();
+        void homework.refetch();
       }}
       header={<FamilyTabHeader title={child ? t("home.title", { name: child.firstName }) : ""} />}
     >
       {offline ? <FOfflineNote /> : null}
       <View style={{ gap: theme.components.row.stackGap }}>
+        <HomeworkCard query={homework} />
         <AttendanceCard query={attendance} replayKey={studentId} />
         <FeesCard query={fees} replayKey={studentId} />
         <ExamCard query={exams} />
@@ -124,6 +130,7 @@ type CardQuery<T> = { data: T | undefined; isPending: boolean; isError: boolean;
 type OverviewQuery = CardQuery<Outputs["portalAttendance"]["overview"]>;
 type FeesQuery = CardQuery<Outputs["portalFees"]["summary"]>;
 type ExamsQuery = CardQuery<Outputs["portalExam"]["schedule"]["list"]>;
+type HomeworkQuery = CardQuery<Outputs["portalHomework"]["list"]>;
 
 function CardPlaceholder() {
   const theme = useFamilyTheme();
@@ -145,6 +152,45 @@ function CardError({ onRetry }: { onRetry: () => void }) {
       </FText>
       <FButton label={t("retry")} variant="secondary" size="sm" onPress={onRetry} />
     </View>
+  );
+}
+
+/** Tonight's homework: how many are left and about how long, or all done. */
+function HomeworkCard({ query }: { query: HomeworkQuery }) {
+  const { t } = useTranslation("family");
+  const { t: th } = useTranslation("homework");
+  const format = useFormat();
+  const items = query.data ?? [];
+  const n = tonight(items);
+  const back = items.filter((i) => i.isNew).length;
+  const pending = items.filter(isOpen).length;
+  return (
+    <FCard testID="home-homework" onPress={() => router.navigate("/family/homework")} label={t("home.homeworkTitle")}>
+      <FText variant="meta" color="muted">
+        {t("home.homeworkTitle")}
+      </FText>
+      {query.isError && !query.data ? (
+        <CardError onRetry={() => void query.refetch()} />
+      ) : (
+        <Reveal loading={query.isPending} placeholder={<CardPlaceholder />}>
+          <View>
+            <FText variant="number" color={n.left > 0 ? "ink" : "positive"}>
+              {n.left > 0 ? th("tonight.left", { count: n.left }) : pending > 0 ? t("home.homeworkNoneTonight") : th("tonight.allDone")}
+            </FText>
+            {n.left > 0 && n.minutes > 0 ? (
+              <FText variant="meta" color="muted">
+                {th("tonight.about", { time: format.duration(n.minutes) })}
+              </FText>
+            ) : null}
+            {back > 0 ? (
+              <FText variant="meta" color="highlight">
+                {t("home.homeworkBack", { count: back })}
+              </FText>
+            ) : null}
+          </View>
+        </Reveal>
+      )}
+    </FCard>
   );
 }
 
