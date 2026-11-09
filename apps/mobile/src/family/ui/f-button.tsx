@@ -73,8 +73,11 @@ export function FButton({
         style,
       ]}
     >
-      {/* The label stays (invisible) while loading, so the button keeps its width. */}
-      <View style={[styles.content, { gap: b.gap }, loading ? styles.hidden : null]}>
+      {/* The label stays (invisible) while loading, so the button keeps its width.
+          collapsable={false}: a layout-only view is left out of Android's tree;
+          gaining opacity on loading made Fabric re-parent the label mid-frame and
+          crash ("specified child already has a parent"). Keep it a real view. */}
+      <View collapsable={false} style={[styles.content, { gap: b.gap }, loading ? styles.hidden : null]}>
         {icon ? <AppIcon name={icon} size={b.iconSize} color={look.fg} /> : null}
         <FText variant="label" numberOfLines={1} tint={look.fg}>
           {label}
