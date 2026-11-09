@@ -63,7 +63,9 @@ export function FamilyHomeworkDetail() {
   const studentId = child?.studentId ?? "";
   const input = { studentId, studentAssignmentId: id ?? "" };
   const detail = trpc.portalHomework.get.useQuery(input, { enabled: studentId.length > 0 && !!id });
-  const viewed = trpc.portalHomework.markViewed.useMutation();
+  const utils = trpc.useUtils();
+  // Opening it clears its "new" mark on the list.
+  const viewed = trpc.portalHomework.markViewed.useMutation({ onSuccess: () => void utils.portalHomework.list.invalidate() });
   const seen = useRef(false);
   const data = detail.data;
 
@@ -191,7 +193,8 @@ function Body({ data, now, input }: { data: PortalDetail; now: Date; input: { st
       <FRow
         testID="hw-questions"
         title={t("detail.questionsRow")}
-        subtitle={t("detail.questionsSub")}
+        subtitle={data.newReplies > 0 ? t("newReplies", { count: data.newReplies }) : t("detail.questionsSub")}
+        subtitleTone={data.newReplies > 0 ? "critical" : undefined}
         leading={<AppIcon name="comments" size={22} color={theme.color.ink} />}
         onPress={() => router.push({ pathname: "/family/homework/questions", params: { id: data.studentAssignmentId } })}
       />

@@ -1,5 +1,8 @@
 {
   "tab": "Homework",
+  "new": "New",
+  "newReplies_one": "{{count}} new message from the teacher",
+  "newReplies_other": "{{count}} new messages from the teacher",
   "segment": {
     "todo": "To do",
     "done": "Done"
@@ -39,7 +42,7 @@
   },
   "closed": "Closed for sending",
   "group": {
-    "back": "Back to you",
+    "back": "Back from teachers",
     "late": "Past due",
     "today": "Due today",
     "tomorrow": "Tomorrow",

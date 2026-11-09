@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useTranslation } from "react-i18next";
@@ -28,6 +28,16 @@ export function FamilyHomeworkQuestions() {
   const [board, setBoard] = useState<Board>("class");
   const [body, setBody] = useState("");
   const list = trpc.portalHomework.comments.list.useQuery(input, { enabled: studentId.length > 0 && !!id });
+  // Reading the board marks the teacher's messages read on the list and the homework page.
+  const read = list.dataUpdatedAt;
+  useEffect(() => {
+    if (read > 0) {
+      void utils.portalHomework.list.invalidate();
+      void utils.portalHomework.get.invalidate(input);
+    }
+    // Once per fresh read; `input` is rebuilt every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [read]);
   const post = trpc.portalHomework.comments.post.useMutation({
     onSuccess: (rows) => {
       setBody("");

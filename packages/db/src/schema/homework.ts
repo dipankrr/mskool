@@ -348,6 +348,10 @@ export const studentAssignments = pgTable(
     effectiveCloseAt: timestamp({ withTimezone: true }).notNull(),
 
     firstViewedAt: timestamp({ withTimezone: true }),
+    // When the student last opened it after a result or a send-back, and last
+    // read its questions: what makes it show as "new" in the family app.
+    resultSeenAt: timestamp({ withTimezone: true }),
+    commentsSeenAt: timestamp({ withTimezone: true }),
     // Sent, ticked or handed in; cleared when a tick is undone.
     submittedAt: timestamp({ withTimezone: true }),
     isLate: boolean().notNull().default(false),

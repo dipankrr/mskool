@@ -29,6 +29,8 @@ function item(over: Over): PortalItem {
     remark: null,
     hasNote: false,
     canUntick: false,
+    isNew: false,
+    newReplies: 0,
     ...rest,
   } as unknown as PortalItem;
 }
@@ -76,6 +78,18 @@ describe("groupOpen", () => {
       ["later", ["later"]],
       ["waiting", ["sent"]],
     ]);
+  });
+});
+
+describe("new results and endings", () => {
+  it("puts a new result on top of To do until it's opened", () => {
+    const groups = groupOpen([item({ id: "fresh", word: "checked", isNew: true }), item({ id: "old", word: "checked" })], NOW);
+    expect(groups.map((g) => [g.key, g.items.map((i) => i.studentAssignmentId)])).toEqual([["back", ["fresh"]]]);
+  });
+
+  it("files with-teacher work under waiting, and over work under Done", () => {
+    expect(groupOpen([item({ id: "w", word: "with_teacher" })], NOW)[0]?.key).toBe("waiting");
+    expect(groupDone([item({ id: "o", word: "over", dueAt: new Date(2026, 10, 9, 8) })], NOW)[0]?.items[0]?.studentAssignmentId).toBe("o");
   });
 });
 

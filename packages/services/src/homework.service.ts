@@ -1955,6 +1955,7 @@ export class HomeworkService {
   private portalItem(
     r: { sa: StudentAssignmentRow; a: Assignment; subjectName: string; teacherName: string },
     now: Date,
+    newReplies = 0,
   ) {
     return {
       studentAssignmentId: r.sa.id,
@@ -1976,6 +1977,13 @@ export class HomeworkService {
       grade: r.sa.grade,
       remark: r.sa.remark,
       hasNote: Boolean(r.sa.note),
+      // A result or a send-back the student hasn't opened since it happened.
+      isNew:
+        (r.sa.status === "checked" || r.sa.status === "redo") &&
+        (r.sa.resultSeenAt === null ||
+          r.sa.resultSeenAt < r.sa.statusChangedAt ||
+          (r.sa.checkedAt !== null && r.sa.resultSeenAt < r.sa.checkedAt)),
+      newReplies,
       canUntick:
         r.a.comesBack === "tick" &&
         r.sa.status === "submitted" &&
@@ -2003,7 +2011,8 @@ export class HomeworkService {
       .orderBy(desc(studentAssignments.effectiveDueAt))
       .limit(300);
     const now = new Date();
-    const items = rows.map((r) => this.portalItem(r, now));
+    const replies = await this.newStaffReplies(rows.map((r) => ({ sa: r.sa, assignmentId: r.a.id })));
+    const items = rows.map((r) => this.portalItem(r, now, replies.get(r.sa.id) ?? 0));
     if (filter === "open") return items.filter((i) => ["to_do", "redo", "sent", "late", "with_teacher"].includes(i.word));
     if (filter === "done") return items.filter((i) => ["checked", "missed", "over"].includes(i.word));
     return items;
@@ -2054,8 +2063,9 @@ export class HomeworkService {
       };
     }
     const now = new Date();
+    const replies = await this.newStaffReplies([{ sa, assignmentId: a.id }]);
     return {
-      ...this.portalItem({ sa, a, subjectName: meta!.subjectName, teacherName: meta!.teacherName }, now),
+      ...this.portalItem({ sa, a, subjectName: meta!.subjectName, teacherName: meta!.teacherName }, now, replies.get(sa.id) ?? 0),
       details: a.kind === "reading" ? null : a.description,
       files: pick(teacherFiles),
       note: sa.note,
@@ -2065,6 +2075,47 @@ export class HomeworkService {
         : null,
       quiz,
     };
+  }
+
+  /**
+   * Teacher messages each child hasn't read yet: on the class board and in the
+   * child's own thread, written after they last opened Questions.
+   */
+  private async newStaffReplies(rows: { sa: StudentAssignmentRow; assignmentId: string }[]): Promise<Map<string, number>> {
+    const out = new Map<string, number>();
+    if (rows.length === 0) return out;
+    const comments = await db
+      .select({
+        assignmentId: assignmentComments.assignmentId,
+        studentAssignmentId: assignmentComments.studentAssignmentId,
+        authorUserId: assignmentComments.authorUserId,
+        createdAt: assignmentComments.createdAt,
+      })
+      .from(assignmentComments)
+      .where(
+        and(
+          inArray(assignmentComments.assignmentId, [...new Set(rows.map((r) => r.assignmentId))]),
+          eq(assignmentComments.isDeleted, false),
+          or(
+            isNull(assignmentComments.studentAssignmentId),
+            inArray(assignmentComments.studentAssignmentId, rows.map((r) => r.sa.id)),
+          ),
+        ),
+      );
+    if (comments.length === 0) return out;
+    const staff = await this.staffAuthors(comments.map((c) => c.authorUserId));
+    for (const { sa, assignmentId } of rows) {
+      const seen = sa.commentsSeenAt;
+      const n = comments.filter(
+        (c) =>
+          c.assignmentId === assignmentId &&
+          (c.studentAssignmentId === null || c.studentAssignmentId === sa.id) &&
+          staff.has(c.authorUserId) &&
+          (seen === null || c.createdAt > seen),
+      ).length;
+      if (n > 0) out.set(sa.id, n);
+    }
+    return out;
   }
 
   private canSend(a: Assignment, sa: StudentAssignmentRow, now: Date): boolean {
@@ -2078,11 +2129,14 @@ export class HomeworkService {
 
   async portalMarkViewed(ownedStudentIds: readonly string[], studentId: string, saId: string) {
     const { sa } = await this.portalRow(ownedStudentIds, studentId, saId);
-    if (!sa.firstViewedAt) {
+    const now = new Date();
+    // The first look, and having seen the latest result or send-back.
+    const seesResult = sa.status === "checked" || sa.status === "redo";
+    if (!sa.firstViewedAt || seesResult) {
       await db
         .update(studentAssignments)
-        .set({ firstViewedAt: new Date() })
-        .where(and(eq(studentAssignments.id, sa.id), isNull(studentAssignments.firstViewedAt)));
+        .set({ firstViewedAt: sa.firstViewedAt ?? now, ...(seesResult ? { resultSeenAt: now } : {}) })
+        .where(eq(studentAssignments.id, sa.id));
     }
   }
 
@@ -2232,6 +2286,7 @@ export class HomeworkService {
     const [board, mine] = await Promise.all([
       this.commentRows(a.id, null, userId),
       this.commentRows(a.id, sa.id, userId),
+      db.update(studentAssignments).set({ commentsSeenAt: new Date() }).where(eq(studentAssignments.id, sa.id)),
     ]);
     return [...board, ...mine].sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime());
   }

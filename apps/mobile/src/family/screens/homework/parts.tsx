@@ -163,7 +163,12 @@ export function HomeworkRow({ item, now, onPress }: { item: PortalItem; now: Dat
       subtitle={sub}
       subtitleTone={open && c.kind !== "left" ? "caution" : open && c.kind === "left" && c.tone !== "neutral" ? c.tone : undefined}
       leading={<KindTile kind={item.kind} subject={item.subjectName} />}
-      trailing={<WordPill word={word} result={item.word === "checked" ? result(item) : null} />}
+      trailing={
+        <View style={[styles.trail, { gap: theme.space.xs }]}>
+          {item.isNew || item.newReplies > 0 ? <NewMark replies={item.newReplies} isNew={item.isNew} /> : null}
+          <WordPill word={word} result={item.word === "checked" ? result(item) : null} />
+        </View>
+      }
       chevron={false}
       onPress={onPress}
       style={settled ? { backgroundColor: done.bg, borderColor: done.border, borderWidth: 1.5 } : { paddingHorizontal: theme.space.md }}
@@ -171,7 +176,32 @@ export function HomeworkRow({ item, now, onPress }: { item: PortalItem; now: Dat
   );
 }
 
+/** A coral dot for a new result, or a speech bubble with the count of unread teacher messages. */
+export function NewMark({ isNew, replies }: { isNew: boolean; replies: number }) {
+  const { t } = useTranslation("homework");
+  const theme = useFamilyTheme();
+  const coral = theme.color.highlight;
+  if (replies > 0) {
+    return (
+      <View
+        accessible
+        accessibilityLabel={t("newReplies", { count: replies })}
+        style={[styles.pill, { gap: 2, paddingHorizontal: theme.space.sm, borderRadius: theme.radius.full, backgroundColor: coral }]}
+      >
+        <AppIcon name="comments" size={12} color={theme.color.onAccent} />
+        <FText variant="caption" color="onAccent">
+          {String(replies)}
+        </FText>
+      </View>
+    );
+  }
+  return isNew ? (
+    <View accessible accessibilityLabel={t("new")} style={{ width: 10, height: 10, borderRadius: theme.radius.full, backgroundColor: coral }} />
+  ) : null;
+}
+
 const styles = StyleSheet.create({
+  trail: { flexDirection: "row", alignItems: "center" },
   center: { alignItems: "center", justifyContent: "center" },
   pill: { flexDirection: "row", alignItems: "center", minHeight: 28, alignSelf: "center" },
 });

@@ -83,6 +83,11 @@ export function groupOpen(items: readonly PortalItem[], now = new Date()): { key
   };
   const sorted = [...items].sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime());
   for (const item of sorted) {
+    // A new result sits on top until it's opened, then lives in Done.
+    if (item.isNew && item.word !== "redo") {
+      buckets.back.push(item);
+      continue;
+    }
     if (isSettled(item)) continue;
     if (item.word === "redo") buckets.back.push(item);
     else if (item.word !== "to_do") buckets.waiting.push(item);

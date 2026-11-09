@@ -1,0 +1,2 @@
+ALTER TABLE "student_assignments" ADD COLUMN "result_seen_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "student_assignments" ADD COLUMN "comments_seen_at" timestamp with time zone;

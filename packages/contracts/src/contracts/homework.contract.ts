@@ -493,6 +493,10 @@ export const portalHomeworkItemSchema = z.object({
   grade: z.string().nullable(),
   remark: remarkSchema.nullable(),
   hasNote: z.boolean(),
+  /** A result or send-back not opened since it came. */
+  isNew: z.boolean(),
+  /** Teacher messages not read yet (class board and the child's own thread). */
+  newReplies: z.number().int(),
   /** Untick allowed (a tick before the due time). */
   canUntick: z.boolean(),
 });
