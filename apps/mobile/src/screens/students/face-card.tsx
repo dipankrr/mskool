@@ -55,15 +55,16 @@ export function FaceCard({
       testID={testID}
     >
       <View
-        style={[
-          styles.photo,
-          faded ? styles.faded : null,
-          selected ? styles.selected : null,
-          failed ? styles.failed : null,
-        ]}
+        style={[styles.photo, faded ? styles.faded : null]}
       >
         {uri && !empty ? (
-          <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="cover" />
+          <Image
+            source={{ uri }}
+            recyclingKey={uri}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            transition={120}
+          />
         ) : (
           <View style={styles.empty}>
             <AppIcon name={emptyIcon} size={26} color={colors.chevron} />
@@ -75,6 +76,12 @@ export function FaceCard({
               {roll}
             </ThemedText>
           </View>
+        ) : null}
+        {selected || failed ? (
+          <View
+            pointerEvents="none"
+            style={[styles.ring, failed ? styles.ringFailed : styles.ringSelected]}
+          />
         ) : null}
         {status && status.state !== "waiting" ? (
           <View
@@ -123,8 +130,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.field,
   },
   faded: { opacity: 0.45 },
-  selected: { borderWidth: 3, borderColor: colors.accent, transform: [{ scale: 0.96 }] },
-  failed: { borderWidth: 3, borderColor: colors.tone.critical.fg },
+  ring: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, borderRadius: radius.md, borderWidth: 3 },
+  ringSelected: { borderColor: colors.accent },
+  ringFailed: { borderColor: colors.tone.critical.fg },
   empty: { flex: 1, alignItems: "center", justifyContent: "center" },
   roll: {
     position: "absolute",

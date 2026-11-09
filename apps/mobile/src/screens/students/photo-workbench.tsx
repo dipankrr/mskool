@@ -29,6 +29,7 @@ import {
   captureTimeFromExif,
   matchByAdmission,
   matchByOrder,
+  looksLikeHiddenName,
   mergePhotos,
   sortPhotos,
   swapPhotos,
@@ -195,9 +196,13 @@ export function PhotoWorkbenchScreen({
     has: cards.filter((card) => card.studentId && hasPhoto.has(card.studentId)).length,
     extra: unmatched.length,
   };
+  // Students skipped because they already have a photo stay out of "All":
+  // they would fill the top of the grid with faces nobody needs to check.
+  const folded = (card: Card) => card.skipped && !card.absent && !card.photo;
+  const foldedCount = cards.filter(folded).length;
   const shown = cards.filter((card) =>
     filter === "all"
-      ? true
+      ? !folded(card)
       : filter === "missing"
         ? card.studentId && !card.photo && !card.currentUri
         : filter === "has"
@@ -323,6 +328,7 @@ export function PhotoWorkbenchScreen({
 
   // ── Frame ────────────────────────────────────────────────────────────
   const title = register ? copy.photoFlow.registerTitle : section.label ?? copy.photos.title;
+  const allSaved = matches.length > 0 && toUpload.length === 0 && !uploading;
   const footer =
     photos.length === 0 ? null : (
       <View style={styles.footer}>
@@ -339,7 +345,19 @@ export function PhotoWorkbenchScreen({
               ]}
             />
           </View>
-        ) : swapFrom ? null : (
+        ) : swapFrom ? (
+          <View style={styles.swapBar} testID="photos-swapping">
+            <AppIcon name="sort" size={18} color={colors.accentDeep} />
+            <ThemedText variant="bodyStrong" style={styles.grow} numberOfLines={2}>
+              {copy.photoFlow.swapping(swapName)}
+            </ThemedText>
+            <Pressable accessibilityRole="button" onPress={() => setSwapFrom(null)} hitSlop={12}>
+              <ThemedText variant="bodyStrong" style={styles.swapCancel}>
+                {copy.photoFlow.cancel}
+              </ThemedText>
+            </Pressable>
+          </View>
+        ) : allSaved ? null : (
           <ThemedText variant="meta" style={styles.hint}>
             {register ? copy.photoFlow.gridMeta(photos.length, matches.length) : copy.photoFlow.hint}
           </ThemedText>
@@ -361,11 +379,21 @@ export function PhotoWorkbenchScreen({
                 title={copy.photoFlow.uploading(queue.counts.done, queue.counts.total)}
                 variant="secondary"
                 disabled
+                style={styles.wide}
                 onPress={() => undefined}
                 testID="photos-uploading"
               />
+            ) : allSaved ? (
+              <CapsuleButton
+                title={copy.photoFlow.dayDone}
+                icon="check"
+                onPress={() => router.back()}
+                style={styles.wide}
+                testID="photos-finished"
+              />
             ) : (
               <CapsuleButton
+                style={styles.wide}
                 title={copy.photoFlow.upload(toUpload.length)}
                 icon="check"
                 disabled={toUpload.length === 0}
@@ -456,20 +484,6 @@ export function PhotoWorkbenchScreen({
 
   return frame(
     <View style={styles.body}>
-      {swapFrom ? (
-        <View style={styles.toast} testID="photos-swapping">
-          <AppIcon name="sort" size={18} color="#8FE3B5" />
-          <ThemedText variant="meta" style={styles.toastText}>
-            {copy.photoFlow.swapping(swapName)}
-          </ThemedText>
-          <Pressable accessibilityRole="button" onPress={() => setSwapFrom(null)} hitSlop={12}>
-            <ThemedText variant="bodyStrong" style={styles.toastAction}>
-              {copy.photoFlow.cancel}
-            </ThemedText>
-          </Pressable>
-        </View>
-      ) : null}
-
       {queue.counts.failed > 0 && !uploading ? (
         <View style={styles.failedWrap}>
           <Notice
@@ -497,20 +511,25 @@ export function PhotoWorkbenchScreen({
         <Notice tone="critical" message={toFriendlyError(pickError).message} testID="photos-pick-error" />
       ) : null}
 
+      {register && photos.length > 0 && photos.every((photo) => looksLikeHiddenName(photo.fileName)) ? (
+        <Notice tone="caution" title={copy.photoFlow.hiddenNamesTitle} message={copy.photoFlow.hiddenNamesBody} testID="photos-hidden-names" />
+      ) : null}
+
       {photos.length === 0 ? (
         <View style={styles.emptyCard}>
           <EmptyState
             icon="camera"
-            title={register ? copy.photoFlow.registerEmptyTitle : copy.photoFlow.emptyTitle}
+            title={register ? copy.photoFlow.registerEmptyTitle : copy.photoFlow.missingOfSection(section.entries.length - hasPhoto.size, section.entries.length)}
             message={register ? copy.photoFlow.registerEmptyBody : copy.photoFlow.emptyBody}
             testID="photos-start-empty"
           />
-          <CapsuleButton title={copy.photoFlow.choosePhotos} icon="add" onPress={() => void pick()} testID="photos-pick" />
+          <CapsuleButton title={copy.photoFlow.choosePhotos} icon="add" onPress={() => void pick()} style={styles.wide} testID="photos-pick" />
           {!register && sectionId ? (
             <CapsuleButton
               title={copy.photoFlow.takePhotos}
               icon="camera"
               variant="secondary"
+              style={styles.wide}
               onPress={() => router.push({ pathname: "/students/photo-day", params: { sectionId } })}
               testID="photos-take"
             />
@@ -518,9 +537,9 @@ export function PhotoWorkbenchScreen({
         </View>
       ) : null}
 
-      {photos.length > 0 || !register ? (
+      {photos.length > 0 ? (
         <View style={styles.grid}>
-          {chunk(photos.length > 0 ? shown : cards, 3).map((row, index) => (
+          {chunk(shown, 3).map((row, index) => (
             <View key={index} style={styles.gridRow}>
               {row.map((card) => {
                 const status = card.studentId ? queue.statuses[card.studentId] : undefined;
@@ -532,7 +551,9 @@ export function PhotoWorkbenchScreen({
                     sub={sub(card)}
                     uri={card.photo?.localUri ?? card.currentUri}
                     empty={!card.photo && !card.currentUri}
-                    faded={(card.skipped && !card.photo) || Boolean(swapFrom && !card.photo)}
+                    // Only new photos show at full strength; a current photo
+                    // is context, not something this batch will upload.
+                    faded={!card.photo}
                     selected={Boolean(swapFrom && card.photo?.id === swapFrom)}
                     status={status}
                     onPress={() => onCardPress(card)}
@@ -547,6 +568,22 @@ export function PhotoWorkbenchScreen({
                 : null}
             </View>
           ))}
+          {filter === "all" && foldedCount > 0 ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setFilter("has")}
+              style={({ pressed }) => [styles.foldedRow, pressed ? styles.pressed : null]}
+              testID="photos-folded"
+            >
+              <AppIcon name="checkCircle" size={18} color={colors.accentDeep} />
+              <ThemedText variant="meta" style={styles.grow}>
+                {copy.photoFlow.foldedRow(foldedCount)}
+              </ThemedText>
+              <ThemedText variant="bodyStrong" style={styles.swapCancel}>
+                {copy.photoFlow.show}
+              </ThemedText>
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
 
@@ -570,7 +607,7 @@ export function PhotoWorkbenchScreen({
                 {sheetCard.roll ? (
                   <ThemedText variant="meta">{`Roll ${sheetCard.roll}`}</ThemedText>
                 ) : null}
-                {sheetCard.photo ? (
+                {sheetCard.photo && !looksLikeHiddenName(sheetCard.photo.fileName) ? (
                   <ThemedText variant="meta" numberOfLines={2}>
                     {copy.photoFlow.cardFile(sheetCard.photo.fileName)}
                   </ThemedText>
@@ -746,6 +783,23 @@ const styles = StyleSheet.create({
   gridRow: { flexDirection: "row", gap: spacing.sm + 2 },
   emptyCard: { gap: spacing.sm },
   failedWrap: { gap: spacing.xs },
+  wide: { alignSelf: "stretch" },
+  swapBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.accentTint,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  swapCancel: { color: colors.accentDeep },
+  foldedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
   footer: { gap: spacing.sm },
   footerRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   addButton: {
@@ -762,17 +816,6 @@ const styles = StyleSheet.create({
   hint: { textAlign: "center" },
   track: { height: 6, borderRadius: 3, backgroundColor: colors.field, overflow: "hidden" },
   fill: { height: "100%", backgroundColor: colors.accent, borderRadius: 3 },
-  toast: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    backgroundColor: colors.ink,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  toastText: { color: "#fff", flex: 1 },
-  toastAction: { color: "#8FE3B5" },
   sheetBody: { gap: spacing.md },
   sheetHead: { flexDirection: "row", gap: spacing.md, alignItems: "center" },
   bigPhoto: {

@@ -9,6 +9,7 @@ import {
   photosInCaptureOrder,
   photosInNameOrder,
   runPool,
+  looksLikeHiddenName,
   photoDayQueue,
   sectionsByNeed,
   swapPhotos,
@@ -242,5 +243,27 @@ describe("swapPhotos, sectionsByNeed, photoDayQueue", () => {
       "s1",
       "s3",
     ]);
+  });
+});
+
+describe("capture order without camera times", () => {
+  it("falls back to the number in the file name", () => {
+    const photos = [
+      photo({ localUri: "c", fileName: "1000000575.jpg" }),
+      photo({ localUri: "a", fileName: "1000000573.jpg" }),
+      photo({ localUri: "b", fileName: "1000000574.jpg" }),
+    ];
+    expect(photosInCaptureOrder(photos).map((p) => p.localUri)).toEqual(["a", "b", "c"]);
+  });
+  it("puts photos with a camera time first", () => {
+    const photos = [photo({ localUri: "n", fileName: "1.jpg" }), photo({ localUri: "t", creationTime: 5 })];
+    expect(photosInCaptureOrder(photos).map((p) => p.localUri)).toEqual(["t", "n"]);
+  });
+});
+
+describe("looksLikeHiddenName", () => {
+  it("spots Android media ids", () => {
+    expect(looksLikeHiddenName("1000000573.jpg")).toBe(true);
+    expect(looksLikeHiddenName("2026-0142.jpg")).toBe(false);
   });
 });

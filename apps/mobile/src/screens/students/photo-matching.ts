@@ -63,16 +63,37 @@ export function captureTimeFromExif(
   return Number.isFinite(millis) ? millis : null;
 }
 
-/** Photos in capture order: taken-time first, list position as the tiebreak. */
+/**
+ * Photos in capture order. The camera's EXIF time comes first. Without it,
+ * the file name decides, numbers compared as numbers: camera names carry the
+ * time (IMG_20261109_091200) and Android's photo picker, which hides real
+ * names, hands out media ids (1000000573.jpg) that grow in the order photos
+ * reached the phone. The picker's own order is the last resort — Android
+ * does not keep the order photos were tapped in.
+ */
 export function photosInCaptureOrder(photos: PickedPhoto[]): PickedPhoto[] {
   return photos
     .map((photo, index) => ({ photo, index }))
     .sort((a, b) => {
-      const at = a.photo.creationTime ?? Number.MAX_SAFE_INTEGER;
-      const bt = b.photo.creationTime ?? Number.MAX_SAFE_INTEGER;
-      return at !== bt ? at - bt : a.index - b.index;
+      const at = a.photo.creationTime;
+      const bt = b.photo.creationTime;
+      if (at !== null && bt !== null && at !== bt) return at - bt;
+      if (at !== null && bt === null) return -1;
+      if (at === null && bt !== null) return 1;
+      if (a.photo.fileName && b.photo.fileName) {
+        const byName = a.photo.fileName.localeCompare(b.photo.fileName, undefined, {
+          numeric: true,
+        });
+        if (byName !== 0) return byName;
+      }
+      return a.index - b.index;
     })
     .map((entry) => entry.photo);
+}
+
+/** Android's photo picker hides real names behind media ids like 1000000573.jpg. */
+export function looksLikeHiddenName(fileName: string | null): boolean {
+  return fileName === null || /^\d{6,}\.[a-z]+$/i.test(fileName);
 }
 
 /** File-name order, numbers compared as numbers; unnamed photos keep their place last. */

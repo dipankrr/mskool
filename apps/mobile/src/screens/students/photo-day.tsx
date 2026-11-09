@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { useCallback, useMemo, useState } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
@@ -21,20 +21,17 @@ import { colors } from "../../theme/brand-admin";
 import { radius, spacing } from "../../theme/tokens";
 import { FaceCard } from "./face-card";
 import { photoDayQueue, type RosterEntry } from "./photo-matching";
-import { useSectionRoster, useUploadQueue } from "./use-photo-workbench";
+import { useSectionRoster, useUploadQueue, type UploadStatus } from "./use-photo-workbench";
 
 type Shot = { uri: string; width: number; height: number };
-type Stage = "intro" | "who" | "review" | "summary";
-
-/** Seconds the review waits before the camera opens for the next student. */
-const AUTO_NEXT = 2;
 
 /**
- * Photo day (revamp 2026-11-09, prototype B). The camera walks the section
- * in roll order: the screen names who is next, the phone's camera takes the
- * picture, a short review offers Retake, then it moves on by itself. Every
- * photo belongs to a student the moment it is taken, so nothing is matched
- * afterwards; each uploads in the background while the next is taken.
+ * Photo day (revamp 2026-11-09, prototype B). The screen walks the section
+ * in roll order: it names who is next, the phone's camera takes the picture
+ * (its own ✓ / retake is the review), and the screen moves to the next
+ * student with the last shot kept small beside a Retake. Every photo belongs
+ * to a student the moment it is taken, so nothing is matched afterwards;
+ * each uploads in the background while the next is taken.
  *
  * Uses the system camera through expo-image-picker (no new native module).
  * `?studentId=` retakes one student and comes back.
@@ -49,12 +46,10 @@ export function PhotoDayScreen() {
   const [includeHas, setIncludeHas] = useState(false);
   const [queueIds, setQueueIds] = useState<string[] | null>(null);
   const [at, setAt] = useState(0);
-  const [stage, setStage] = useState<Stage>("intro");
+  const [finished, setFinished] = useState(false);
   const [shots, setShots] = useState<Record<string, Shot>>({});
+  const [lastId, setLastId] = useState<string | null>(null);
   const [absent, setAbsent] = useState<Set<string>>(new Set());
-  const [countdown, setCountdown] = useState(AUTO_NEXT);
-  /** Bumps on every new shot, so a retake restarts the countdown. */
-  const [shotCount, setShotCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const uploads = useUploadQueue(() => {
@@ -79,94 +74,63 @@ export function PhotoDayScreen() {
     [queueIds, byId],
   );
   const current = queue[at] ?? null;
-  const next = queue.slice(at + 1).find((entry) => !absent.has(entry.studentId)) ?? null;
+  const after = useCallback(
+    (list: RosterEntry[], index: number, skip: ReadonlySet<string>) => {
+      let next = index + 1;
+      while (list[next] && skip.has(list[next]!.studentId)) next += 1;
+      return next;
+    },
+    [],
+  );
+  const upNext = current ? queue[after(queue, at, absent)] ?? null : null;
 
-  const shoot = useCallback(async (entry: RosterEntry) => {
-    setError(null);
-    try {
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
-      if (!permission.granted) {
-        setError(copy.photoFlow.dayCameraDenied);
-        setStage("who");
-        return;
+  /** Opens the camera for one student; on ✓ the photo uploads and, if asked, the walk moves on. */
+  const shoot = useCallback(
+    async (entry: RosterEntry, list: RosterEntry[], advance: boolean) => {
+      setError(null);
+      try {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          setError(copy.photoFlow.dayCameraDenied);
+          return;
+        }
+        const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.9 });
+        const asset = result.canceled ? null : result.assets[0];
+        if (!asset) return;
+        const shot = { uri: asset.uri, width: asset.width, height: asset.height };
+        setShots((all) => ({ ...all, [entry.studentId]: shot }));
+        setLastId(entry.studentId);
+        uploads.add([{ studentId: entry.studentId, ...shot }]);
+        if (advance) {
+          const next = after(list, list.indexOf(entry), absent);
+          if (list[next]) setAt(next);
+          else setFinished(true);
+        }
+      } catch (cause) {
+        setError(toFriendlyError(cause).message);
       }
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ["images"],
-        quality: 0.9,
-        cameraType: ImagePicker.CameraType.back,
-      });
-      const asset = result.canceled ? null : result.assets[0];
-      if (!asset) {
-        setStage("who");
-        return;
-      }
-      const shot = { uri: asset.uri, width: asset.width, height: asset.height };
-      setShots((currentShots) => ({ ...currentShots, [entry.studentId]: shot }));
-      uploads.add([{ studentId: entry.studentId, ...shot }]);
-      setCountdown(AUTO_NEXT);
-      setShotCount((count) => count + 1);
-      setStage("review");
-    } catch (cause) {
-      setError(toFriendlyError(cause).message);
-      setStage("who");
-    }
-  }, [uploads]);
-
-  /** Opens the camera for the next student not absent; `alsoAbsent` is one just marked. */
-  const moveOn = useCallback((alsoAbsent?: string) => {
-    let index = at + 1;
-    while (
-      queue[index] &&
-      (absent.has(queue[index]!.studentId) || queue[index]!.studentId === alsoAbsent)
-    ) {
-      index += 1;
-    }
-    if (!queue[index]) {
-      setStage("summary");
-      return;
-    }
-    setAt(index);
-    void shoot(queue[index]!);
-  }, [at, queue, absent, shoot]);
-
-  // The review moves on by itself; Retake or leaving the stage stops it.
-  const moveOnRef = useRef(moveOn);
-  useEffect(() => {
-    moveOnRef.current = moveOn;
-  }, [moveOn]);
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
-  useEffect(() => {
-    if (stage !== "review") return;
-    let left = AUTO_NEXT;
-    timer.current = setInterval(() => {
-      left -= 1;
-      setCountdown(left);
-      if (left <= 0) {
-        if (timer.current) clearInterval(timer.current);
-        moveOnRef.current();
-      }
-    }, 1000);
-    return () => {
-      if (timer.current) clearInterval(timer.current);
-    };
-  }, [stage, shotCount]);
+    },
+    [uploads, absent, after],
+  );
 
   const markAbsent = (entry: RosterEntry) => {
-    setAbsent((currentAbsent) => new Set(currentAbsent).add(entry.studentId));
+    const nextAbsent = new Set(absent).add(entry.studentId);
+    setAbsent(nextAbsent);
+    const next = after(queue, queue.indexOf(entry), nextAbsent);
+    if (queue[next]) setAt(next);
+    else setFinished(true);
   };
 
-  const start = () => {
-    const ids = planned.map((entry) => entry.studentId);
-    setQueueIds(ids);
-    setAt(0);
-    if (planned[0]) void shoot(planned[0]);
-  };
-
-  // ── Frames ───────────────────────────────────────────────────────────
+  // ── Frame ────────────────────────────────────────────────────────────
   const frame = (body: React.ReactNode, footer?: React.ReactNode) => (
     <ScreenFrame
       title={copy.photoFlow.dayTitle}
-      meta={[section.label, queue.length > 0 && stage !== "summary" ? copy.photoFlow.dayProgress(Math.min(at + 1, queue.length), queue.length) : null]
+      meta={[
+        section.label,
+        queue.length > 0 && !finished
+          ? copy.photoFlow.dayProgress(Math.min(at + 1, queue.length), queue.length)
+          : null,
+      ]
         .filter(Boolean)
         .join(" · ")}
       backAccessibilityLabel={copy.common.back}
@@ -191,9 +155,19 @@ export function PhotoDayScreen() {
   }
 
   const errorNotice = error ? <Notice tone="critical" message={error} testID="photo-day-camera-error" /> : null;
+  const firstName = (entry: RosterEntry) => entry.name.split(" ")[0] ?? entry.name;
+  const includeSwitch =
+    hasPhoto.size > 0 && !studentId ? (
+      <SwitchRow
+        label={copy.photoFlow.dayIncludeHas}
+        value={includeHas}
+        onChange={setIncludeHas}
+        testID="photo-day-include-has"
+      />
+    ) : null;
 
-  // ── Intro: who's first, and whether to include students with photos ──
-  if (stage === "intro") {
+  // ── Before the walk: who's first ─────────────────────────────────────
+  if (queueIds === null) {
     const first = planned[0];
     if (!first) {
       return frame(
@@ -204,14 +178,7 @@ export function PhotoDayScreen() {
             message={copy.photoFlow.dayEmptyBody}
             testID="photo-day-empty"
           />
-          {hasPhoto.size > 0 && !studentId ? (
-            <SwitchRow
-              label={copy.photoFlow.dayIncludeHas}
-              value={includeHas}
-              onChange={setIncludeHas}
-              testID="photo-day-include-has"
-            />
-          ) : null}
+          {includeSwitch}
         </View>,
       );
     }
@@ -219,103 +186,68 @@ export function PhotoDayScreen() {
       <View style={styles.body}>
         <WhoCard entry={first} hasPhoto={hasPhoto.has(first.studentId)} />
         <ThemedText variant="meta">{copy.photoFlow.dayIntro}</ThemedText>
-        {hasPhoto.size > 0 && !studentId ? (
-          <SwitchRow
-            label={copy.photoFlow.dayIncludeHas}
-            value={includeHas}
-            onChange={setIncludeHas}
-            testID="photo-day-include-has"
-          />
-        ) : null}
+        {includeSwitch}
         {errorNotice}
       </View>,
       <CapsuleButton
-        title={copy.photoFlow.dayStart(first.name.split(" ")[0] ?? first.name)}
+        title={copy.photoFlow.dayStart(firstName(first))}
         icon="camera"
-        onPress={start}
+        onPress={() => {
+          setQueueIds(planned.map((entry) => entry.studentId));
+          setAt(0);
+          void shoot(first, planned, true);
+        }}
+        style={styles.wide}
         testID="photo-day-start"
       />,
     );
   }
 
-  // ── Who: the camera was closed or refused; pick up from here ─────────
-  if (stage === "who" && current) {
+  // ── The walk: last shot small, who's next big ────────────────────────
+  if (!finished && current) {
+    const last = lastId ? byId.get(lastId) : undefined;
+    const lastShot = lastId ? shots[lastId] : undefined;
     return frame(
       <View style={styles.body}>
-        <WhoCard entry={current} hasPhoto={hasPhoto.has(current.studentId)} />
-        {next ? <UpNext entry={next} /> : null}
-        {errorNotice}
-        <CapsuleButton
-          title={copy.photoFlow.dayAbsent}
-          icon="calendarOff"
-          variant="secondary"
-          onPress={() => {
-            markAbsent(current);
-            moveOn(current.studentId);
-          }}
-          testID="photo-day-absent"
-        />
-        <CapsuleButton
-          title={copy.photoFlow.dayFinish}
-          variant="secondary"
-          onPress={() => setStage("summary")}
-          testID="photo-day-finish"
-        />
-      </View>,
-      <CapsuleButton title={copy.photoFlow.dayTake} icon="camera" onPress={() => void shoot(current)} testID="photo-day-take" />,
-    );
-  }
-
-  // ── Review: a short look, then on to the next student ────────────────
-  if (stage === "review" && current) {
-    const shot = shots[current.studentId];
-    return frame(
-      <View style={styles.body}>
-        <View style={styles.review}>
-          {shot ? <Image source={{ uri: shot.uri }} style={styles.reviewPhoto} contentFit="cover" /> : null}
-          <View style={styles.grow}>
-            <ThemedText variant="meta">{`${copy.photoFlow.dayRoll} ${current.rollNumber ?? "—"}`}</ThemedText>
-            <ThemedText variant="subtitle">{current.name}</ThemedText>
-            {next ? (
-              <ThemedText variant="meta" testID="photo-day-countdown">
-                {copy.photoFlow.dayMovingOn(Math.max(countdown, 0))}
-              </ThemedText>
-            ) : null}
-          </View>
-        </View>
-        {next ? <UpNext entry={next} /> : null}
-        <CapsuleButton
-          title={copy.photoFlow.dayRetake}
-          icon="refresh"
-          variant="secondary"
-          onPress={() => {
-            if (timer.current) clearInterval(timer.current);
-            void shoot(current);
-          }}
-          testID="photo-day-retake"
-        />
-        {next ? (
-          <CapsuleButton
-            title={`${next.name.split(" ")[0]} — ${copy.photoFlow.dayAbsent.toLowerCase()}`}
-            icon="calendarOff"
-            variant="secondary"
-            onPress={() => {
-              if (timer.current) clearInterval(timer.current);
-              markAbsent(next);
-              moveOn(next.studentId);
-            }}
-            testID="photo-day-next-absent"
+        {last && lastShot ? (
+          <LastShot
+            entry={last}
+            uri={lastShot.uri}
+            status={uploads.statuses[last.studentId]}
+            onRetake={() => void shoot(last, queue, false)}
           />
         ) : null}
+        <WhoCard entry={current} hasPhoto={hasPhoto.has(current.studentId)} />
+        {upNext ? (
+          <ThemedText variant="meta" style={styles.upNext}>
+            {`${copy.photoFlow.dayUpNext}: ${upNext.rollNumber ? `${upNext.rollNumber} · ` : ""}${upNext.name}`}
+          </ThemedText>
+        ) : null}
+        {errorNotice}
+        <View style={styles.row}>
+          <CapsuleButton
+            title={copy.photoFlow.dayAbsent}
+            icon="calendarOff"
+            variant="secondary"
+            size="compact"
+            onPress={() => markAbsent(current)}
+            testID="photo-day-absent"
+          />
+          <CapsuleButton
+            title={copy.photoFlow.dayFinish}
+            variant="secondary"
+            size="compact"
+            onPress={() => setFinished(true)}
+            testID="photo-day-finish"
+          />
+        </View>
       </View>,
       <CapsuleButton
-        title={next ? copy.photoFlow.dayNext(next.name.split(" ")[0] ?? next.name) : copy.photoFlow.dayFinish}
-        icon={next ? "camera" : "check"}
-        onPress={() => {
-          if (timer.current) clearInterval(timer.current);
-          moveOn();
-        }}
-        testID="photo-day-next"
+        title={copy.photoFlow.dayTakeOf(firstName(current))}
+        icon="camera"
+        onPress={() => void shoot(current, queue, true)}
+        style={styles.wide}
+        testID="photo-day-take"
       />,
     );
   }
@@ -325,11 +257,13 @@ export function PhotoDayScreen() {
   const absentList = queue.filter((entry) => absent.has(entry.studentId));
   const busy = uploads.counts.busy > 0;
   const firstAbsent = absentList[0];
+  const left = queue.filter((entry) => !shots[entry.studentId] && !absent.has(entry.studentId));
+  const firstLeft = left[0];
   return frame(
     <View style={styles.body}>
       <Notice
         tone={uploads.counts.failed > 0 ? "critical" : "positive"}
-        title={stage === "summary" ? copy.photoFlow.dayAllDone : undefined}
+        title={firstLeft ? copy.photoFlow.dayPaused(left.length) : copy.photoFlow.dayAllDone}
         message={
           uploads.counts.failed > 0
             ? copy.photoFlow.failedBanner(uploads.counts.failed)
@@ -339,22 +273,31 @@ export function PhotoDayScreen() {
         }
         testID="photo-day-summary"
       />
+      {firstLeft ? (
+        <CapsuleButton
+          title={copy.photoFlow.dayCarryOn(firstName(firstLeft))}
+          icon="camera"
+          onPress={() => {
+            setAt(queue.indexOf(firstLeft));
+            setFinished(false);
+          }}
+          style={styles.wide}
+          testID="photo-day-carry-on"
+        />
+      ) : null}
       {uploads.counts.failed > 0 && !busy ? (
         <CapsuleButton title={copy.photoFlow.retry} icon="refresh" variant="secondary" onPress={uploads.retryFailed} testID="photo-day-retry" />
       ) : null}
       {firstAbsent ? (
         <CapsuleButton
-          title={copy.photoFlow.dayTakeNow(firstAbsent.name.split(" ")[0] ?? firstAbsent.name)}
+          title={copy.photoFlow.dayTakeNow(firstName(firstAbsent))}
           icon="camera"
           variant="secondary"
           onPress={() => {
-            setAbsent((currentAbsent) => {
-              const nextAbsent = new Set(currentAbsent);
-              nextAbsent.delete(firstAbsent.studentId);
-              return nextAbsent;
-            });
-            setAt(queue.indexOf(firstAbsent));
-            void shoot(firstAbsent);
+            const nextAbsent = new Set(absent);
+            nextAbsent.delete(firstAbsent.studentId);
+            setAbsent(nextAbsent);
+            void shoot(firstAbsent, queue, false);
           }}
           testID="photo-day-take-absent"
         />
@@ -379,21 +322,14 @@ export function PhotoDayScreen() {
                           ? copy.photoFlow.subUploading
                           : absent.has(entry.studentId)
                             ? copy.photoFlow.subAbsent
-                            : copy.photoFlow.subNone
+                            : copy.photoFlow.dayNotYet
                   }
                   uri={shot?.uri ?? null}
                   empty={!shot}
                   emptyIcon="camera"
                   status={status}
-                  onPress={
-                    busy
-                      ? undefined
-                      : () => {
-                          setAt(queue.indexOf(entry));
-                          void shoot(entry);
-                        }
-                  }
-                  accessibilityLabel={`${entry.name}, roll ${entry.rollNumber ?? "—"}`}
+                  onPress={busy ? undefined : () => void shoot(entry, queue, false)}
+                  accessibilityLabel={`${entry.name}, ${entry.rollNumber ? `roll ${entry.rollNumber}` : copy.photoFlow.noRoll}`}
                   testID={`photo-day-card-${entry.studentId}`}
                 />
               );
@@ -410,6 +346,7 @@ export function PhotoDayScreen() {
       variant={busy ? "secondary" : "primary"}
       disabled={busy}
       onPress={() => router.back()}
+      style={styles.wide}
       testID="photo-day-done"
     />,
   );
@@ -419,12 +356,24 @@ function WhoCard({ entry, hasPhoto }: { entry: RosterEntry; hasPhoto: boolean })
   return (
     <View style={styles.who} testID="photo-day-who">
       <View style={styles.rollBox}>
-        <ThemedText variant="meta" style={styles.rollLabel}>
-          {copy.photoFlow.dayRoll}
-        </ThemedText>
-        <ThemedText variant="title" style={styles.rollNumber}>
-          {entry.rollNumber ?? "—"}
-        </ThemedText>
+        {entry.rollNumber ? (
+          <>
+            <ThemedText variant="meta" style={styles.rollLabel}>
+              {copy.photoFlow.dayRoll}
+            </ThemedText>
+            <ThemedText variant="title" style={styles.rollNumber}>
+              {entry.rollNumber}
+            </ThemedText>
+          </>
+        ) : (
+          <ThemedText
+            variant="title"
+            style={styles.rollNumber}
+            accessibilityLabel={copy.photoFlow.noRoll}
+          >
+            {initials(entry.name)}
+          </ThemedText>
+        )}
       </View>
       <View style={styles.grow}>
         <ThemedText variant="subtitle" numberOfLines={2} style={styles.whoName}>
@@ -438,15 +387,63 @@ function WhoCard({ entry, hasPhoto }: { entry: RosterEntry; hasPhoto: boolean })
   );
 }
 
-function UpNext({ entry }: { entry: RosterEntry }) {
+function LastShot({
+  entry,
+  uri,
+  status,
+  onRetake,
+}: {
+  entry: RosterEntry;
+  uri: string;
+  status?: UploadStatus;
+  onRetake: () => void;
+}) {
+  const label =
+    status?.state === "failed"
+      ? status.reason
+      : status?.state === "done"
+        ? copy.photoFlow.subSaved
+        : copy.photoFlow.subUploading;
   return (
-    <View style={styles.upNext}>
-      <AppIcon name="chevronRight" size={16} color={colors.muted} />
-      <ThemedText variant="meta">
-        {`${copy.photoFlow.dayUpNext}: ${entry.rollNumber ? `${entry.rollNumber} · ` : ""}${entry.name}`}
-      </ThemedText>
+    <View style={styles.last} testID="photo-day-last">
+      <Image source={{ uri }} recyclingKey={uri} style={styles.lastPhoto} contentFit="cover" />
+      <View style={styles.grow}>
+        <ThemedText variant="bodyStrong" numberOfLines={1}>
+          {entry.name}
+        </ThemedText>
+        <View style={styles.lastState}>
+          <AppIcon
+            name={status?.state === "failed" ? "warning" : status?.state === "done" ? "checkCircle" : "clock"}
+            size={14}
+            color={status?.state === "failed" ? colors.tone.critical.fg : colors.accentDeep}
+          />
+          <ThemedText variant="meta" numberOfLines={1} style={styles.grow}>
+            {label}
+          </ThemedText>
+        </View>
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${copy.photoFlow.dayRetake}, ${entry.name}`}
+        onPress={onRetake}
+        hitSlop={8}
+        style={({ pressed }) => [styles.retake, pressed ? styles.pressed : null]}
+        testID="photo-day-retake"
+      >
+        <AppIcon name="refresh" size={16} color={colors.ink} />
+        <ThemedText variant="bodyStrong">{copy.photoFlow.dayRetake}</ThemedText>
+      </Pressable>
     </View>
   );
+}
+
+function initials(name: string): string {
+  return name
+    .split(/s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]!.toUpperCase())
+    .join("");
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -458,6 +455,8 @@ function chunk<T>(items: T[], size: number): T[][] {
 const styles = StyleSheet.create({
   body: { gap: spacing.md },
   grow: { flex: 1, minWidth: 0 },
+  wide: { alignSelf: "stretch" },
+  row: { flexDirection: "row", gap: spacing.sm },
   who: {
     flexDirection: "row",
     alignItems: "center",
@@ -465,22 +464,41 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     borderRadius: radius.xl,
     backgroundColor: colors.ink,
+    minHeight: 140,
   },
   rollBox: {
-    width: 64,
-    height: 64,
+    width: 72,
+    height: 72,
     borderRadius: radius.md,
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
   },
   rollLabel: { fontSize: 10, letterSpacing: 0.5 },
-  rollNumber: { fontSize: 26, lineHeight: 30 },
-  whoName: { color: "#fff" },
+  rollNumber: { fontSize: 30, lineHeight: 34 },
+  whoName: { color: "#fff", fontSize: 22, lineHeight: 28 },
   whoMeta: { color: "rgba(255,255,255,0.7)" },
-  upNext: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
-  review: { flexDirection: "row", gap: spacing.md, alignItems: "center" },
-  reviewPhoto: { width: 120, height: 160, borderRadius: radius.lg, backgroundColor: colors.field },
+  upNext: { paddingHorizontal: spacing.xs },
+  last: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    padding: spacing.sm,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+  },
+  lastPhoto: { width: 48, height: 64, borderRadius: radius.sm, backgroundColor: colors.field },
+  lastState: { flexDirection: "row", alignItems: "center", gap: spacing.xxs },
+  retake: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xxs,
+    paddingHorizontal: spacing.md,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.field,
+  },
+  pressed: { opacity: 0.7 },
   grid: { gap: spacing.md },
   gridRow: { flexDirection: "row", gap: spacing.sm + 2 },
 });

@@ -1429,9 +1429,21 @@ export const copy = {
     filters: { all: "All", missing: "Missing", has: "Has photo", extra: "Extra" },
     emptyTitle: "Add this section's photos",
     emptyBody:
-      "Pick them in the order they were taken. They go to the students in roll order, and you check every face before anything uploads.",
+      "Pick them all at once. They go to students in roll order by the time they were taken, and you check every face before anything uploads.",
     choosePhotos: "Choose photos",
     takePhotos: "Take photos instead",
+    missingOfSection: (missing: number, total: number) =>
+      missing === 0
+        ? `All ${total} students have a photo`
+        : `${missing} of ${total} students need a photo`,
+    foldedRow: (count: number) =>
+      count === 1
+        ? "1 student already has a photo and is skipped."
+        : `${count} students already have a photo and are skipped.`,
+    show: "Show",
+    hiddenNamesTitle: "This phone hid the file names",
+    hiddenNamesBody:
+      "Android's photo picker gives numbers instead of names like 2026-0142.jpg, so these can't match. Use the web, or a section's roll order.",
     registerEmptyTitle: "Choose the named photos",
     registerEmptyBody:
       "Each file is named with an admission number, like 2026-0142.jpg. Students are found across the whole school.",
@@ -1497,6 +1509,12 @@ export const copy = {
     dayNoPhotoYet: "No photo yet",
     dayHasPhoto: "Has a photo — this replaces it",
     dayTake: "Take photo",
+    dayTakeOf: (name: string) => `Take ${name}'s photo`,
+    noRoll: "No roll",
+    dayPaused: (left: number) =>
+      left === 1 ? "Paused — 1 student left" : `Paused — ${left} students left`,
+    dayCarryOn: (name: string) => `Carry on with ${name}`,
+    dayNotYet: "Not yet",
     dayAbsent: "Absent",
     dayNext: (name: string) => `Next: ${name}`,
     dayUpNext: "Up next",
