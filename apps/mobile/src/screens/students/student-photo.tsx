@@ -182,11 +182,14 @@ export function StudentPhotoView({
   name,
   size,
   busy = false,
+  onDark = false,
   onPress,
   accessibilityLabel,
   accessibilityHint,
   testID,
 }: {
+  /** Sits on the profile's coloured band: white initials on a translucent circle. */
+  onDark?: boolean;
   uri: string | null;
   /** The stored photo's id; caches the file across changing links. */
   cacheKey?: string | null;
@@ -212,13 +215,17 @@ export function StudentPhotoView({
           accessibilityIgnoresInvertColors
         />
       ) : (
-        <View style={[styles.face, styles.empty, circle]}>
+        <View style={[styles.face, styles.empty, onDark ? styles.emptyOnDark : null, circle]}>
           {name ? (
-            <ThemedText variant="title" color={colors.muted} allowFontScaling={false}>
+            <ThemedText
+              variant="title"
+              color={onDark ? colors.onAccent : colors.muted}
+              allowFontScaling={false}
+            >
               {initials(name)}
             </ThemedText>
           ) : (
-            <AppIcon name="camera" size={size * 0.36} color={colors.muted} />
+            <AppIcon name="camera" size={size * 0.36} color={onDark ? colors.onAccent : colors.muted} />
           )}
         </View>
       )}
@@ -227,8 +234,8 @@ export function StudentPhotoView({
           <ActivityIndicator color={colors.surface} />
         </View>
       ) : onPress && (uri || name) ? (
-        <View style={styles.badge}>
-          <AppIcon name="camera" size={14} color={colors.surface} />
+        <View style={[styles.badge, onDark ? styles.badgeOnDark : null]}>
+          <AppIcon name="camera" size={14} color={onDark ? colors.accentDeep : colors.surface} />
         </View>
       ) : null}
     </>
@@ -260,6 +267,13 @@ export function StudentPhotoView({
 const styles = StyleSheet.create({
   face: {
     backgroundColor: colors.field,
+  },
+  emptyOnDark: {
+    backgroundColor: colors.onBandWash,
+  },
+  badgeOnDark: {
+    backgroundColor: colors.onBand,
+    borderColor: colors.band,
   },
   empty: {
     alignItems: "center",

@@ -1,0 +1,703 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Student Profile Mockups</title>
+<style>
+/* ============================================================
+   Student profile revamp, round 2 (2026-11-09). Mockup only.
+   One page for every staff member: each block appears when the
+   viewer holds its permission (and scope), never by role name.
+   Values are tokens from apps/mobile/src/theme: type {11,12,13,
+   14,15,16,20,30,34}, 4-pt spacing, radii 12/14/16/24/full, the
+   emerald accent; red/amber/slate only as status.
+   Phones are 360 wide. Aarav's family, fees, marks and homework
+   are made up to show a full profile.
+   ============================================================ */
+@font-face { font-family: Clash; font-weight: 400; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Regular.ttf); }
+@font-face { font-family: Clash; font-weight: 500; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Medium.ttf); }
+@font-face { font-family: Clash; font-weight: 600; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Semibold.ttf); }
+@font-face { font-family: Clash; font-weight: 700; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Bold.ttf); }
+:root {
+  --canvas: #F2F3F7; --surface: #FFFFFF; --ink: #101828; --muted: #5D6674;
+  --hair: rgba(16, 24, 40, 0.08); --accent: #0F7A44; --deep: #0B6B3A; --tint: #E8F5EE;
+  --field: #ECEEF3; --chip: #E9EDF3; --chev: #98A2B3;
+  --scrim: rgba(16, 24, 40, 0.45); --grab: #D5DAE2;
+  --amb: #B54708; --amb-t: #FFFAEB; --red: #B42318; --red-t: #FEF3F2; --slate: #475467; --slate-t: #F2F4F7;
+  --note: #6941C6;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { color-scheme: light; }
+body { background: #DADBD6; color: var(--ink); font-family: Clash, system-ui, sans-serif; font-size: 15px; padding: 32px 16px 64px; }
+svg { display: block; flex: none; }
+code { font-family: ui-monospace, Consolas, monospace; font-size: 12px; background: rgba(16,24,40,.06); padding: 1px 5px; border-radius: 4px; }
+
+/* ---------- page around the phones ---------- */
+.intro { max-width: 1160px; margin: 0 auto 20px; display: flex; gap: 24px; align-items: flex-end; flex-wrap: wrap; }
+.intro h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.6px; }
+.intro p { margin-top: 4px; color: var(--muted); max-width: 720px; line-height: 1.45; }
+.toggle { margin-left: auto; height: 40px; padding: 0 16px; border-radius: 999px; border: 0; background: var(--ink); color: #fff; font: 600 14px Clash, system-ui, sans-serif; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.toggle i { width: 10px; height: 10px; border-radius: 999px; background: #B9A6F0; }
+body.annot .toggle i { background: #fff; box-shadow: 0 0 0 3px #B9A6F0; }
+.why { max-width: 1160px; margin: 0 auto 8px; display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px; }
+.why div { background: rgba(255,255,255,.55); border-radius: 14px; padding: 12px 16px; font-size: 14px; line-height: 1.45; color: #3C4450; }
+.why b { display: block; color: var(--ink); font-weight: 600; font-size: 15px; margin-bottom: 2px; }
+.group { max-width: 1160px; margin: 40px auto 16px; font-size: 12px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: #3C4450; }
+.frames { max-width: 1160px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 32px 24px; }
+figure { width: 360px; max-width: 100%; }
+figcaption { margin-top: 12px; font-size: 13px; color: #3C4450; line-height: 1.45; }
+figcaption b { font-weight: 600; color: var(--ink); }
+figcaption em { font-style: normal; color: var(--amb); font-weight: 600; }
+
+/* permission labels: a review overlay, off by default */
+.pa { position: relative; }
+.pa .perm { display: none; position: absolute; z-index: 5; top: -8px; right: 6px; height: 18px; padding: 0 6px; border-radius: 6px; background: var(--note); color: #fff; font: 600 10px ui-monospace, Consolas, monospace; align-items: center; white-space: nowrap; box-shadow: 0 0 0 2px rgba(255,255,255,.9); }
+.pa .perm.l { right: auto; left: 6px; }
+body.annot .pa .perm { display: inline-flex; }
+body.annot .pa { outline: 1.5px dashed rgba(105, 65, 198, .55); outline-offset: 2px; border-radius: 12px; }
+
+/* ---------- phone ---------- */
+.phone { position: relative; width: 360px; height: 760px; max-width: 100%; background: var(--canvas); border-radius: 32px; overflow: hidden; box-shadow: 0 0 0 1px rgba(16,24,40,.1), 0 14px 34px rgba(16,24,40,.12); }
+.status { height: 32px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 600; }
+.status i { width: 40px; height: 8px; border-radius: 999px; background: currentColor; opacity: .75; }
+.body { padding: 0 20px 24px; }
+.meta { font-size: 13px; color: var(--muted); }
+.label { font-size: 12px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); }
+.name { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
+.tnum { font-variant-numeric: tabular-nums; }
+.grow { flex: 1; min-width: 0; }
+.clip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card { background: var(--surface); border-radius: 16px; }
+.pill { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; flex: none; }
+.pill.n { color: var(--slate); background: var(--slate-t); }
+
+/* app bar */
+.bar { height: 56px; padding: 0 16px 0 4px; display: flex; align-items: center; gap: 8px; }
+.back { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; flex: none; }
+.edit { height: 38px; padding: 0 14px 0 12px; border-radius: 999px; display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; flex: none; }
+.round { width: 38px; height: 38px; border-radius: 999px; display: flex; align-items: center; justify-content: center; flex: none; }
+.bar.scrolled { background: var(--deep); color: #fff; }
+.bar.scrolled .edit, .bar.scrolled .round { background: rgba(255,255,255,.14); color: #fff; }
+.bar .mini { display: flex; align-items: center; gap: 10px; }
+
+/* ---------- the emerald band: who, where, and are they here today ---------- */
+.band { background: var(--deep); color: #fff; border-radius: 0 0 24px 24px; padding-bottom: 52px; }
+.band .edit, .band .round { background: rgba(255,255,255,.14); color: #fff; }
+.hero { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 0; }
+.photo { position: relative; width: 88px; height: 88px; border-radius: 999px; background: rgba(255,255,255,.16); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 30px; font-weight: 600; letter-spacing: -0.6px; box-shadow: 0 0 0 4px rgba(255,255,255,.12); }
+.photo .cam { position: absolute; right: -2px; bottom: -2px; width: 30px; height: 30px; border-radius: 999px; background: #fff; color: var(--deep); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 3px var(--deep); }
+.photo.gone { filter: grayscale(1); opacity: .7; }
+.hname { margin-top: 12px; font-size: 30px; font-weight: 700; letter-spacing: -0.6px; line-height: 1.1; }
+.hmeta { margin-top: 8px; font-size: 13px; color: rgba(255,255,255,.75); }
+.hmeta b { font-weight: 600; color: #fff; }
+.place { margin-top: 12px; height: 36px; display: inline-flex; align-items: stretch; background: rgba(255,255,255,.14); border-radius: 999px; overflow: hidden; }
+.place span { display: flex; align-items: center; gap: 4px; padding: 0 14px; font-size: 14px; font-weight: 600; white-space: nowrap; }
+.place span + span { box-shadow: -1px 0 0 rgba(255,255,255,.18); }
+.place span small { font-size: 12px; font-weight: 500; color: rgba(255,255,255,.7); }
+.place span.fill { background: #fff; color: var(--deep); }
+.today { margin-top: 12px; display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px 0 10px; border-radius: 999px; background: #fff; color: var(--ink); font-size: 13px; font-weight: 600; }
+.today i { width: 10px; height: 10px; border-radius: 999px; background: var(--accent); box-shadow: 0 0 0 3px var(--tint); }
+.today.abs i { background: var(--red); box-shadow: 0 0 0 3px var(--red-t); }
+.today.none i { background: var(--chev); box-shadow: 0 0 0 3px var(--slate-t); }
+.today small { font-size: 12px; font-weight: 500; color: var(--muted); }
+
+/* actions: a white card resting on the band's edge */
+.lift { margin: -38px 20px 0; padding: 14px 4px 12px; position: relative; box-shadow: 0 1px 0 var(--hair); }
+.acts { display: grid; grid-template-columns: repeat(var(--n, 4), 1fr); gap: 4px; }
+.act { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--ink); text-align: center; }
+.act i { width: 48px; height: 48px; border-radius: 999px; background: var(--tint); color: var(--deep); display: flex; align-items: center; justify-content: center; }
+.act.main i { background: var(--accent); color: #fff; }
+
+/* ---------- heads up: what this child needs from you, worst first ---------- */
+.heads { margin-top: 12px; }
+.heads .h { padding: 12px 16px 4px; display: flex; align-items: center; justify-content: space-between; }
+.flag { position: relative; border-radius: 12px; min-height: 52px; padding: 8px 12px 8px 16px; display: flex; align-items: center; gap: 12px; }
+.flag + .flag::before { content: ""; position: absolute; top: 0; left: 60px; right: 0; height: 1px; background: var(--hair); }
+.flag .ico { width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex: none; }
+.flag .ico.r { background: var(--red-t); color: var(--red); }
+.flag .ico.a { background: var(--amb-t); color: var(--amb); }
+.flag .ico.s { background: var(--slate-t); color: var(--slate); }
+.flag .ico.g { background: var(--tint); color: var(--deep); }
+.flag b { display: block; font-size: 15px; font-weight: 600; }
+.flag span { font-size: 13px; color: var(--muted); }
+.flag .go { font-size: 13px; font-weight: 600; color: var(--deep); white-space: nowrap; }
+.chev { color: var(--chev); }
+
+/* ---------- at a glance: one tile per area the viewer may read ---------- */
+.section { margin: 24px 4px 8px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.section a { font-size: 14px; font-weight: 600; color: var(--deep); text-decoration: none; display: inline-flex; align-items: center; gap: 2px; }
+.glance { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tile { padding: 14px 14px 12px; min-height: 124px; display: flex; flex-direction: column; }
+.tile.wide { grid-column: 1 / -1; min-height: 0; }
+.tile .head { display: flex; align-items: center; justify-content: space-between; }
+.tile .num { margin-top: 8px; font-size: 20px; font-weight: 700; letter-spacing: -0.2px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.tile .sub { margin-top: 2px; font-size: 13px; color: var(--muted); }
+.tile .foot { margin-top: auto; padding-top: 10px; }
+.months { display: grid; grid-template-columns: repeat(12, 1fr); gap: 2px; align-items: end; height: 20px; }
+.months i { height: 14px; border-radius: 3px; }
+.months .k-today { height: 20px; }
+.days { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; }
+.days i { aspect-ratio: 1; border-radius: 4px; }
+.days .k-today { outline: 1.5px solid var(--ink); outline-offset: 1px; }
+.scale { margin-top: 4px; display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+.k-paid, .k-p { background: var(--accent); } .k-over, .k-a { background: var(--red); } .k-due, .k-l { background: var(--amb); }
+.k-later, .k-h { background: var(--field); }
+.bars { display: flex; flex-direction: column; gap: 5px; }
+.bars div { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+.bars div span { width: 40px; flex: none; }
+.bars div i { height: 6px; border-radius: 999px; background: var(--accent); display: block; }
+.bars div b { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.bars div.low i { background: var(--amb); }
+.hw { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; }
+.hw i { height: 14px; border-radius: 3px; background: var(--accent); }
+.hw i.miss { background: var(--red); } .hw i.late { background: var(--amb); } .hw i.open { background: var(--field); }
+.new { font-size: 10px; font-weight: 600; color: var(--note); background: #F4EBFF; border-radius: 999px; padding: 2px 6px; }
+
+/* ---------- family, details ---------- */
+.row { position: relative; min-height: 64px; padding: 10px 12px 10px 16px; display: flex; align-items: center; gap: 12px; }
+.row + .row::before { content: ""; position: absolute; top: 0; left: 68px; right: 0; height: 1px; background: var(--hair); }
+.av { width: 40px; height: 40px; border-radius: 999px; background: var(--chip); color: var(--slate); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; flex: none; }
+.sq { width: 40px; height: 40px; border-radius: 12px; background: var(--tint); color: var(--deep); display: flex; align-items: center; justify-content: center; flex: none; }
+.sq.r { background: var(--red-t); color: var(--red); }
+.call { width: 44px; height: 44px; border-radius: 999px; background: var(--tint); color: var(--deep); display: flex; align-items: center; justify-content: center; flex: none; }
+.tag { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--tint); color: var(--deep); margin-left: 6px; vertical-align: 2px; }
+.tag.n { background: var(--slate-t); color: var(--slate); }
+.facts { display: grid; grid-template-columns: 1fr 1fr; }
+.fact { padding: 12px 16px; min-height: 60px; display: flex; flex-direction: column; justify-content: center; gap: 2px; position: relative; }
+.fact span { font-size: 12px; color: var(--muted); }
+.fact b { font-size: 15px; font-weight: 600; letter-spacing: -0.1px; }
+.fact:nth-child(n+3)::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--hair); }
+.fact:nth-child(even)::after { content: ""; position: absolute; left: 0; top: 14px; bottom: 14px; width: 1px; background: var(--hair); }
+.more-row { min-height: 52px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--hair); font-size: 14px; font-weight: 600; color: var(--deep); }
+.btn { height: 40px; padding: 0 16px; border-radius: 999px; background: var(--accent); color: #fff; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; }
+
+/* sheet */
+.scrim { position: absolute; inset: 0; background: var(--scrim); z-index: 3; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; background: var(--surface); border-radius: 24px 24px 0 0; padding: 8px 0 20px; }
+.grabber { width: 36px; height: 5px; border-radius: 999px; background: var(--grab); margin: 0 auto 8px; }
+.sheet .shead { padding: 8px 20px 12px; display: flex; align-items: center; gap: 12px; }
+.sheet .row { padding-left: 20px; }
+.sheet .row + .row::before { left: 72px; }
+.sheet .sep { height: 8px; background: var(--canvas); margin: 4px 0; }
+.sheet .sep + .row::before { display: none; }
+
+/* banner for a student who left */
+.gonebar { margin: 0 20px 12px; padding: 10px 12px; border-radius: 14px; background: rgba(255,255,255,.12); display: flex; gap: 10px; align-items: center; text-align: left; }
+.gonebar b { display: block; font-size: 14px; font-weight: 600; }
+.gonebar span { font-size: 12px; color: rgba(255,255,255,.75); }
+.band.left { background: #3E4A5C; }
+.band.left .photo .cam { display: none; }
+
+/* permission map */
+.map { max-width: 1160px; margin: 0 auto; background: var(--surface); border-radius: 16px; overflow: hidden; }
+.map table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.map th { text-align: left; font-size: 12px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: var(--muted); padding: 12px 16px; background: #F7F8FA; }
+.map td { padding: 12px 16px; border-top: 1px solid var(--hair); vertical-align: top; line-height: 1.4; }
+.map td:first-child { font-weight: 600; width: 22%; }
+.map td.ok { color: var(--deep); font-weight: 600; white-space: nowrap; }
+.map td.nw { color: var(--note); font-weight: 600; white-space: nowrap; }
+.map .or { color: var(--muted); font-size: 12px; }
+.rules { max-width: 1160px; margin: 12px auto 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px; }
+.rules div { background: rgba(255,255,255,.55); border-radius: 14px; padding: 12px 16px; font-size: 14px; line-height: 1.45; color: #3C4450; }
+.rules b { display: block; color: var(--ink); font-weight: 600; font-size: 15px; margin-bottom: 2px; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-back" viewBox="0 0 24 24"><path fill="currentColor" d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4-4.6-4.6z"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><path fill="currentColor" d="M6 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm12 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></symbol>
+  <symbol id="i-call" viewBox="0 0 24 24"><path fill="currentColor" d="M6.62 10.79a15.15 15.15 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24c1.12.37 2.33.57 3.57.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1.02l-2.2 2.2z"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path fill="currentColor" d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM7 9h10v2H7V9zm6 5H7v-2h6v2zm4-6H7V6h10v2z"/></symbol>
+  <symbol id="i-rupee" viewBox="0 0 24 24"><path fill="currentColor" d="M6 3h12v2h-3.3c.6.6 1 1.3 1.2 2H18v2h-2.1c-.4 2.5-2.6 4.4-5.3 4.5L17 20v.1h-2.7L7.9 13.6V12h2.6c1.6 0 3-1.2 3.3-3H6V7h7.6c-.5-1.2-1.7-2-3.1-2H6V3z"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><path fill="currentColor" d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 16H5V9h14v11zM7 11h5v5H7z"/></symbol>
+  <symbol id="i-cam" viewBox="0 0 24 24"><path fill="currentColor" d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4zM9 2 7.17 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3.17L15 2H9z"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path fill="currentColor" d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></symbol>
+  <symbol id="i-add" viewBox="0 0 24 24"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><path fill="currentColor" d="M12.65 10A6 6 0 1 0 12.65 14H17v4h4v-4h2v-4H12.65zM7 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/></symbol>
+  <symbol id="i-health" viewBox="0 0 24 24"><path fill="currentColor" d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm-1 11h-4v4h-4v-4H6v-4h4V6h4v4h4v4z"/></symbol>
+  <symbol id="i-id" viewBox="0 0 24 24"><path fill="currentColor" d="M20 7h-5V4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v3H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2zM9 12a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm3 6H6v-.75c0-1 2-1.5 3-1.5s3 .5 3 1.5V18zm1-9h-2V4h2v5zm5 7.5h-4V15h4v1.5zm0-3h-4V12h4v1.5z"/></symbol>
+  <symbol id="i-leave" viewBox="0 0 24 24"><path fill="currentColor" d="M10.09 15.59 11.5 17l5-5-5-5-1.41 1.41L12.67 11H3v2h9.67l-2.58 2.59zM19 3H5a2 2 0 0 0-2 2v4h2V5h14v14H5v-4H3v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><path fill="currentColor" d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6a7 7 0 1 1 2.06 4.94l-1.42 1.42A9 9 0 1 0 13 3zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></symbol>
+  <symbol id="i-swap" viewBox="0 0 24 24"><path fill="currentColor" d="M6.99 11 3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z"/></symbol>
+  <symbol id="i-person-add" viewBox="0 0 24 24"><path fill="currentColor" d="M15 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path fill="currentColor" d="M18 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM6 4h5v8l-2.5-1.5L6 12V4z"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path fill="currentColor" d="M5 9.2h3V19H5V9.2zM10.6 5h2.8v14h-2.8V5zm5.6 8H19v6h-2.8v-6z"/></symbol>
+  <symbol id="i-seat" viewBox="0 0 24 24"><path fill="currentColor" d="M4 18v3h3v-3h10v3h3v-6H4v3zm15-8h3v3h-3v-3zM2 10h3v3H2v-3zm15 3H7V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v8z"/></symbol>
+</svg>
+
+<header class="intro">
+  <div>
+    <h1>Student profile</h1>
+    <p>Round 2. One page for every staff member. Each block appears only when the person looking holds its permission for this student's class. Role names never come into it: a teacher with every permission sees exactly what an admin sees. Turn on the labels to see which permission each block needs.</p>
+  </div>
+  <button class="toggle" onclick="document.body.classList.toggle('annot')"><i></i>Show permissions</button>
+</header>
+
+<section class="why">
+  <div><b>Is the child here today?</b>The first thing a teacher or the front desk needs when a parent calls. It sits in the header as Present, Absent, Late or Not marked yet.</div>
+  <div><b>What does this child need from me?</b>"Heads up" lists only the problems, worst first: overdue fees, a run of absences, missed homework, falling marks, plus any health note. Each one taps through to where you fix it. With nothing wrong, the card disappears.</div>
+  <div><b>How are they doing?</b>One tile per area you're allowed to read: attendance, fees, results, homework. The tiles reflow, so two tiles fill the row and one tile spans it. Nothing shows as a lock.</div>
+  <div><b>Do it from here</b>Call, message, collect a fee, print the ID card. Each button needs its own permission, and the row shrinks to whatever is left.</div>
+</section>
+
+<!-- ======================================================= -->
+<h2 class="group">One student, every permission</h2>
+<div class="frames">
+
+<!-- A. top -->
+<figure>
+<div class="phone">
+  <div class="band">
+    <div class="status"><span>9:41</span><i></i></div>
+    <div class="bar">
+      <span class="back"><svg width="24" height="24"><use href="#i-back"/></svg></span>
+      <span class="grow"></span>
+      <span class="edit pa"><svg width="16" height="16"><use href="#i-edit"/></svg>Edit<span class="perm">student:update</span></span>
+      <span class="round pa"><svg width="20" height="20"><use href="#i-more"/></svg></span>
+    </div>
+    <div class="hero">
+      <div class="photo">AM<span class="cam"><svg width="15" height="15"><use href="#i-cam"/></svg></span></div>
+      <div class="hname">Aarav Mehta</div>
+      <div class="hmeta">Adm <b>WALK-001</b> · 12 yrs · Male · B+</div>
+      <div class="pa" style="display:inline-block"><div class="place"><span><small>Class</small>6</span><span><small>Sec</small>A</span><span><small>Roll</small>2</span></div><span class="perm" style="top:2px;right:-78px">enrollment:read</span></div>
+      <div class="today pa"><i></i>Present today<small>· marked 9:05</small><span class="perm">attendance:read</span></div>
+    </div>
+  </div>
+  <div class="card lift">
+    <div class="acts">
+      <div class="act main pa"><i><svg width="22" height="22"><use href="#i-call"/></svg></i>Call mother<span class="perm l">student:read</span></div>
+      <div class="act"><i><svg width="22" height="22"><use href="#i-chat"/></svg></i>Message</div>
+      <div class="act pa"><i><svg width="22" height="22"><use href="#i-rupee"/></svg></i>Collect<span class="perm">fee_payment:create</span></div>
+      <div class="act pa"><i><svg width="22" height="22"><use href="#i-id"/></svg></i>ID card<span class="perm" style="top:-14px;right:-4px">id_card:print</span></div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="card heads">
+      <div class="h"><span class="label">Heads up</span><span class="meta">4</span></div>
+      <div class="flag pa">
+        <span class="ico a"><svg width="18" height="18"><use href="#i-health"/></svg></span>
+        <div class="grow"><b>Asthma</b><span>Carries an inhaler · call Priya</span></div>
+        <span class="call" style="width:36px;height:36px"><svg width="16" height="16"><use href="#i-call"/></svg></span>
+        <span class="perm">student:read</span>
+      </div>
+      <div class="flag pa">
+        <span class="ico r"><svg width="18" height="18"><use href="#i-rupee"/></svg></span>
+        <div class="grow"><b>₹5,450 overdue</b><span>October and November unpaid</span></div>
+        <span class="go">Collect</span>
+        <span class="perm">fee_report:read</span>
+      </div>
+      <div class="flag pa">
+        <span class="ico a"><svg width="18" height="18"><use href="#i-cal"/></svg></span>
+        <div class="grow"><b>Absent 3 of the last 7 days</b><span>Mon, Tue and Thu last week</span></div>
+        <svg class="chev" width="18" height="18"><use href="#i-chev"/></svg>
+        <span class="perm">attendance:read</span>
+      </div>
+      <div class="flag pa">
+        <span class="ico a"><svg width="18" height="18"><use href="#i-book"/></svg></span>
+        <div class="grow"><b>2 homework missed</b><span>Maths worksheet, Hindi essay</span></div>
+        <svg class="chev" width="18" height="18"><use href="#i-chev"/></svg>
+        <span class="perm">homework:read</span>
+      </div>
+    </div>
+  </div>
+</div>
+<figcaption><b>The top: here today, what's wrong, what to do.</b> The header says whether he's in school today. The action row holds the four jobs people open a profile for. Heads up puts the health note first, because whoever is in the room needs it, then the problems from worst to mildest. Collect on the fee line opens Collect with his dues already loaded.</figcaption>
+</figure>
+
+<!-- B. scrolled -->
+<figure>
+<div class="phone">
+  <div class="status" style="background:var(--deep);color:#fff"><span>9:41</span><i></i></div>
+  <div class="bar scrolled">
+    <span class="back"><svg width="24" height="24"><use href="#i-back"/></svg></span>
+    <div class="mini grow">
+      <span class="av" style="width:32px;height:32px;font-size:12px;background:rgba(255,255,255,.16);color:#fff">AM</span>
+      <div class="grow"><div class="name clip">Aarav Mehta</div><div class="clip" style="font-size:12px;color:rgba(255,255,255,.75)">6 A · Roll 2 · Present today</div></div>
+    </div>
+    <span class="edit" style="width:38px;padding:0;justify-content:center"><svg width="16" height="16"><use href="#i-edit"/></svg></span>
+    <span class="round"><svg width="20" height="20"><use href="#i-more"/></svg></span>
+  </div>
+  <div class="body">
+    <div class="section" style="margin-top:16px"><span class="label">At a glance</span><span class="meta">2026-27</span></div>
+    <div class="glance">
+      <div class="card tile pa">
+        <div class="head"><span class="label">Attendance</span><svg class="chev" width="18" height="18"><use href="#i-chev"/></svg></div>
+        <div class="num">88%</div>
+        <div class="sub">This year · 92% Nov</div>
+        <div class="foot"><div class="days"><i class="k-p"></i><i class="k-a"></i><i class="k-a"></i><i class="k-p"></i><i class="k-a"></i><i class="k-l"></i><i class="k-p"></i><i class="k-p"></i><i class="k-p"></i><i class="k-p k-today"></i></div><div class="scale"><span>Last 10 days</span><span>Today</span></div></div>
+        <span class="perm">attendance:read</span>
+      </div>
+      <div class="card tile pa">
+        <div class="head"><span class="label">Fees</span><svg class="chev" width="18" height="18"><use href="#i-chev"/></svg></div>
+        <div class="num" style="color:var(--red)">₹5,450</div>
+        <div class="sub">Due now · 7 of 12 paid</div>
+        <div class="foot"><div class="months"><i class="k-paid"></i><i class="k-paid"></i><i class="k-paid"></i><i class="k-paid"></i><i class="k-paid"></i><i class="k-paid"></i><i class="k-over"></i><i class="k-due k-today"></i><i class="k-later"></i><i class="k-later"></i><i class="k-later"></i><i class="k-later"></i></div><div class="scale"><span>Apr</span><span>Mar</span></div></div>
+        <span class="perm">fee_report:read</span>
+      </div>
+      <div class="card tile pa">
+        <div class="head"><span class="label">Results</span><span class="new">new</span></div>
+        <div class="num">78%<span style="font-size:13px;font-weight:600;color:var(--muted);margin-left:6px">B1</span></div>
+        <div class="sub">Half-yearly · down 6</div>
+        <div class="foot bars">
+          <div><span>Maths</span><i style="width:44px"></i><b>91</b></div>
+          <div class="low"><span>Hindi</span><i style="width:22px"></i><b>54</b></div>
+        </div>
+        <span class="perm">marks:read</span>
+      </div>
+      <div class="card tile pa">
+        <div class="head"><span class="label">Homework</span><span class="new">new</span></div>
+        <div class="num">8<span style="font-size:15px;color:var(--muted)">/10</span></div>
+        <div class="sub">Handed in · last 10</div>
+        <div class="foot"><div class="hw"><i></i><i></i><i class="miss"></i><i></i><i class="late"></i><i></i><i></i><i class="miss"></i><i></i><i class="open"></i></div><div class="scale"><span>Oldest</span><span>Due Fri</span></div></div>
+        <span class="perm">homework:read</span>
+      </div>
+    </div>
+
+    <div class="section"><span class="label">Family</span><a class="pa"><svg width="16" height="16"><use href="#i-add"/></svg>Add<span class="perm" style="top:-14px">student:update</span></a></div>
+    <div class="card">
+      <div class="row">
+        <span class="av">PM</span>
+        <div class="grow"><div class="name clip">Priya Mehta<span class="tag">Primary</span></div><div class="meta">Mother · 98300 12345</div></div>
+        <span class="call"><svg width="18" height="18"><use href="#i-call"/></svg></span>
+      </div>
+      <div class="row">
+        <span class="av">RM</span>
+        <div class="grow"><div class="name clip">Rohit Mehta<span class="tag n">Emergency</span></div><div class="meta">Father · 98310 67890</div></div>
+        <span class="call"><svg width="18" height="18"><use href="#i-call"/></svg></span>
+      </div>
+      <div class="row pa">
+        <span class="sq"><svg width="20" height="20"><use href="#i-key"/></svg></span>
+        <div class="grow"><div class="name">Family app</div><div class="meta">On · Priya signs in with 98300 12345</div></div>
+        <svg class="chev" width="20" height="20"><use href="#i-chev"/></svg>
+        <span class="perm">portal_access:read</span>
+      </div>
+    </div>
+  </div>
+</div>
+<figcaption><b>Scrolled: how he's doing.</b> The header shrinks into the bar but keeps "Present today", so the most useful fact stays in view. Each tile opens the full screen behind it: the attendance month, the fee page, his result card, his homework list. Results and Homework are marked <em>new</em> because they each need one small read the server doesn't have yet (see the map below).</figcaption>
+</figure>
+
+<!-- C. details + more sheet -->
+<figure>
+<div class="phone">
+  <div class="status" style="background:var(--deep);color:#fff"><span>9:41</span><i></i></div>
+  <div class="bar scrolled">
+    <span class="back"><svg width="24" height="24"><use href="#i-back"/></svg></span>
+    <div class="mini grow">
+      <span class="av" style="width:32px;height:32px;font-size:12px;background:rgba(255,255,255,.16);color:#fff">AM</span>
+      <div class="grow"><div class="name clip">Aarav Mehta</div><div class="clip" style="font-size:12px;color:rgba(255,255,255,.75)">6 A · Roll 2 · Present today</div></div>
+    </div>
+    <span class="edit" style="width:38px;padding:0;justify-content:center"><svg width="16" height="16"><use href="#i-edit"/></svg></span>
+    <span class="round"><svg width="20" height="20"><use href="#i-more"/></svg></span>
+  </div>
+  <div class="body">
+    <div class="section" style="margin-top:16px"><span class="label">Details</span></div>
+    <div class="card">
+      <div class="facts">
+        <div class="fact"><span>Admitted</span><b>4 Apr 2023</b></div>
+        <div class="fact"><span>Born</span><b>12 May 2014</b></div>
+        <div class="fact"><span>Phone</span><b class="tnum">98300 55120</b></div>
+        <div class="fact"><span>Mother tongue</span><b>Bengali</b></div>
+      </div>
+      <div class="more-row">All details · address, Aadhaar, background<svg width="18" height="18"><use href="#i-chev"/></svg></div>
+    </div>
+  </div>
+  <div class="scrim"></div>
+  <div class="sheet">
+    <div class="grabber"></div>
+    <div class="shead">
+      <span class="av">AM</span>
+      <div class="grow"><div class="name">Aarav Mehta</div><div class="meta">Class 6 A · Roll 2</div></div>
+    </div>
+    <div class="row pa">
+      <span class="sq"><svg width="20" height="20"><use href="#i-cam"/></svg></span>
+      <div class="grow"><div class="name">Change photo</div></div>
+      <svg class="chev" width="20" height="20"><use href="#i-chev"/></svg>
+      <span class="perm">student:update</span>
+    </div>
+    <div class="row pa">
+      <span class="sq"><svg width="20" height="20"><use href="#i-swap"/></svg></span>
+      <div class="grow"><div class="name">Change section or roll</div><div class="meta">Within Class 6</div></div>
+      <svg class="chev" width="20" height="20"><use href="#i-chev"/></svg>
+      <span class="perm">enrollment:update</span>
+    </div>
+    <div class="row pa">
+      <span class="sq"><svg width="20" height="20"><use href="#i-key"/></svg></span>
+      <div class="grow"><div class="name">Family app sign-in</div><div class="meta">Turn on, change phone, reset</div></div>
+      <svg class="chev" width="20" height="20"><use href="#i-chev"/></svg>
+      <span class="perm">portal_access:activate</span>
+    </div>
+    <div class="row pa">
+      <span class="sq"><svg width="20" height="20"><use href="#i-chart"/></svg></span>
+      <div class="grow"><div class="name">Fee statement</div><div class="meta">Print or share as PDF</div></div>
+      <svg class="chev" width="20" height="20"><use href="#i-chev"/></svg>
+      <span class="perm">fee_report:read</span>
+    </div>
+    <div class="sep"></div>
+    <div class="row pa">
+      <span class="sq r"><svg width="20" height="20"><use href="#i-leave"/></svg></span>
+      <div class="grow"><div class="name" style="color:var(--red)">Student is leaving</div><div class="meta">Transfer, dropped out or graduated</div></div>
+      <svg class="chev" width="20" height="20"><use href="#i-chev"/></svg>
+      <span class="perm">enrollment:update</span>
+    </div>
+  </div>
+</div>
+<figcaption><b>Details and More.</b> The page shows only the four facts staff actually reach for. "All details" opens the full record, which is today's sections minus the duplicates. More collects the occasional jobs, each behind its own permission. When none are allowed, the ⋯ button isn't drawn at all. "Student is leaving" sits alone at the bottom in red and opens today's two-step sheet.</figcaption>
+</figure>
+
+</div>
+
+<!-- ======================================================= -->
+<h2 class="group">Same student, fewer permissions</h2>
+<div class="frames">
+
+<figure>
+<div class="phone">
+  <div class="band" style="padding-bottom:52px">
+    <div class="status"><span>9:41</span><i></i></div>
+    <div class="bar">
+      <span class="back"><svg width="24" height="24"><use href="#i-back"/></svg></span>
+      <span class="grow"></span>
+    </div>
+    <div class="hero">
+      <div class="photo">AM</div>
+      <div class="hname">Aarav Mehta</div>
+      <div class="hmeta">Adm <b>WALK-001</b> · 12 yrs · Male · B+</div>
+      <div class="place"><span><small>Class</small>6</span><span><small>Sec</small>A</span><span><small>Roll</small>2</span></div>
+      <div class="today"><i></i>Present today<small>· marked 9:05</small></div>
+    </div>
+  </div>
+  <div class="card lift">
+    <div class="acts" style="--n:2">
+      <div class="act main"><i><svg width="22" height="22"><use href="#i-call"/></svg></i>Call mother</div>
+      <div class="act"><i><svg width="22" height="22"><use href="#i-chat"/></svg></i>Message</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="card heads">
+      <div class="h"><span class="label">Heads up</span><span class="meta">3</span></div>
+      <div class="flag">
+        <span class="ico a"><svg width="18" height="18"><use href="#i-health"/></svg></span>
+        <div class="grow"><b>Asthma</b><span>Carries an inhaler · call Priya</span></div>
+        <span class="call" style="width:36px;height:36px"><svg width="16" height="16"><use href="#i-call"/></svg></span>
+      </div>
+      <div class="flag">
+        <span class="ico a"><svg width="18" height="18"><use href="#i-cal"/></svg></span>
+        <div class="grow"><b>Absent 3 of the last 7 days</b><span>Mon, Tue and Thu last week</span></div>
+        <svg class="chev" width="18" height="18"><use href="#i-chev"/></svg>
+      </div>
+      <div class="flag">
+        <span class="ico a"><svg width="18" height="18"><use href="#i-book"/></svg></span>
+        <div class="grow"><b>2 homework missed</b><span>Maths worksheet, Hindi essay</span></div>
+        <svg class="chev" width="18" height="18"><use href="#i-chev"/></svg>
+      </div>
+    </div>
+    <div class="glance" style="margin-top:12px">
+      <div class="card tile">
+        <div class="head"><span class="label">Attendance</span><svg class="chev" width="18" height="18"><use href="#i-chev"/></svg></div>
+        <div class="num">88%</div>
+        <div class="sub">This year · 92% Nov</div>
+      </div>
+      <div class="card tile">
+        <div class="head"><span class="label">Homework</span><svg class="chev" width="18" height="18"><use href="#i-chev"/></svg></div>
+        <div class="num">8<span style="font-size:15px;color:var(--muted)">/10</span></div>
+        <div class="sub">Handed in · last 10</div>
+      </div>
+    </div>
+  </div>
+</div>
+<figcaption><b>Holds:</b> <code>student:read</code>, <code>enrollment:read</code>, <code>attendance:read</code> and <code>homework:read</code>, for Class 6 A only. There's no Edit and no ⋯ (none of its jobs are allowed). Calling and messaging stay. The fee warning, the Fees and Results tiles, Collect and ID card are simply absent, with no locks, greyed buttons or "ask your admin". The same student shows less, never something broken.</figcaption>
+</figure>
+
+<figure>
+<div class="phone">
+  <div class="band" style="padding-bottom:52px">
+    <div class="status"><span>9:41</span><i></i></div>
+    <div class="bar">
+      <span class="back"><svg width="24" height="24"><use href="#i-back"/></svg></span>
+      <span class="grow"></span>
+    </div>
+    <div class="hero">
+      <div class="photo">AM</div>
+      <div class="hname">Aarav Mehta</div>
+      <div class="hmeta">Adm <b>WALK-001</b> · 12 yrs · Male · B+</div>
+      <div class="place"><span><small>Class</small>6</span><span><small>Sec</small>A</span><span><small>Roll</small>2</span></div>
+    </div>
+  </div>
+  <div class="card lift">
+    <div class="acts" style="--n:3">
+      <div class="act main"><i><svg width="22" height="22"><use href="#i-call"/></svg></i>Call mother</div>
+      <div class="act"><i><svg width="22" height="22"><use href="#i-chat"/></svg></i>Message</div>
+      <div class="act"><i><svg width="22" height="22"><use href="#i-rupee"/></svg></i>Collect</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="card heads">
+      <div class="h"><span class="label">Heads up</span><span class="meta">2</span></div>
+      <div class="flag">
+        <span class="ico a"><svg width="18" height="18"><use href="#i-health"/></svg></span>
+        <div class="grow"><b>Asthma</b><span>Carries an inhaler · call Priya</span></div>
+        <span class="call" style="width:36px;height:36px"><svg width="16" height="16"><use href="#i-call"/></svg></span>
+      </div>
+      <div class="flag">
+        <span class="ico r"><svg width="18" height="18"><use href="#i-rupee"/></svg></span>
+        <div class="grow"><b>₹5,450 overdue</b><span>October and November unpaid</span></div>
+        <span class="go">Collect</span>
+      </div>
+    </div>
+    <div class="glance" style="margin-top:12px">
+      <div class="card tile wide">
+        <div class="head"><span class="label">Fees</span><svg class="chev" width="18" height="18"><use href="#i-chev"/></svg></div>
+        <div style="display:flex;align-items:baseline;gap:8px"><div class="num" style="color:var(--red)">₹5,450</div><div class="sub">due now · 7 of 12 months paid</div></div>
+        <div class="foot"><div class="months"><i class="k-paid"></i><i class="k-paid"></i><i class="k-paid"></i><i class="k-paid"></i><i class="k-paid"></i><i class="k-paid"></i><i class="k-over"></i><i class="k-due k-today"></i><i class="k-later"></i><i class="k-later"></i><i class="k-later"></i><i class="k-later"></i></div><div class="scale"><span>Apr</span><span>Mar</span></div></div>
+      </div>
+    </div>
+    <div class="section" style="margin-top:20px"><span class="label">Family</span></div>
+    <div class="card">
+      <div class="row">
+        <span class="av">PM</span>
+        <div class="grow"><div class="name clip">Priya Mehta<span class="tag">Primary</span></div><div class="meta">Mother · 98300 12345</div></div>
+        <span class="call"><svg width="18" height="18"><use href="#i-call"/></svg></span>
+      </div>
+    </div>
+  </div>
+</div>
+<figcaption><b>Holds:</b> <code>student:read</code>, <code>enrollment:read</code>, <code>fee_report:read</code> and <code>fee_payment:create</code>, school-wide. The header has no "today" line because there's no attendance permission. The one tile left spans the full width, so the page never shows a half-empty row. This is what the fee desk would see if that's what its permissions are, but the page never asks who you are.</figcaption>
+</figure>
+
+</div>
+
+<!-- ======================================================= -->
+<h2 class="group">The student's state changes the page too</h2>
+<div class="frames">
+
+<figure>
+<div class="phone">
+  <div class="band">
+    <div class="status"><span>9:41</span><i></i></div>
+    <div class="bar">
+      <span class="back"><svg width="24" height="24"><use href="#i-back"/></svg></span>
+      <span class="grow"></span>
+      <span class="edit"><svg width="16" height="16"><use href="#i-edit"/></svg>Edit</span>
+      <span class="round"><svg width="20" height="20"><use href="#i-more"/></svg></span>
+    </div>
+    <div class="hero">
+      <div class="photo">RS<span class="cam"><svg width="15" height="15"><use href="#i-cam"/></svg></span></div>
+      <div class="hname">Riya Sharma</div>
+      <div class="hmeta">Adm <b>2026-118</b> · 6 yrs · Female</div>
+      <div class="place"><span><small>Class</small>1</span><span class="fill"><svg width="14" height="14"><use href="#i-add"/></svg>Section</span><span class="fill"><svg width="14" height="14"><use href="#i-add"/></svg>Roll</span></div>
+      <div class="today none"><i></i>No attendance until placed</div>
+    </div>
+  </div>
+  <div class="card lift">
+    <div class="acts" style="--n:3">
+      <div class="act main"><i><svg width="22" height="22"><use href="#i-person-add"/></svg></i>Add parent</div>
+      <div class="act"><i><svg width="22" height="22"><use href="#i-seat"/></svg></i>Place</div>
+      <div class="act"><i><svg width="22" height="22"><use href="#i-id"/></svg></i>ID card</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="card heads">
+      <div class="h"><span class="label">To finish her admission</span><span class="meta">3 left</span></div>
+      <div class="flag">
+        <span class="ico g"><svg width="18" height="18"><use href="#i-seat"/></svg></span>
+        <div class="grow"><b>Put her in a section</b><span>Attendance and homework start then</span></div>
+        <span class="go">Place</span>
+      </div>
+      <div class="flag">
+        <span class="ico g"><svg width="18" height="18"><use href="#i-person-add"/></svg></span>
+        <div class="grow"><b>Add a parent</b><span>So the school can call home</span></div>
+        <span class="go">Add</span>
+      </div>
+      <div class="flag">
+        <span class="ico g"><svg width="18" height="18"><use href="#i-rupee"/></svg></span>
+        <div class="grow"><b>Start her fees</b><span>Class 1 plan, from November</span></div>
+        <span class="go">Start</span>
+      </div>
+    </div>
+  </div>
+</div>
+<figcaption><b>A new admission.</b> Heads up turns into a short to-do list in green, because these are steps rather than problems. Each step shows only if you're allowed to do it: Place needs <code>enrollment:update</code>, Add needs <code>student:update</code>, Start needs <code>student_fee_assignment:create</code>. Steps you can't do appear as one plain line, "2 more steps for the office", so you know it isn't finished.</figcaption>
+</figure>
+
+<figure>
+<div class="phone">
+  <div class="band left">
+    <div class="status"><span>9:41</span><i></i></div>
+    <div class="bar">
+      <span class="back"><svg width="24" height="24"><use href="#i-back"/></svg></span>
+      <span class="grow"></span>
+      <span class="round"><svg width="20" height="20"><use href="#i-more"/></svg></span>
+    </div>
+    <div class="gonebar">
+      <svg width="20" height="20"><use href="#i-leave"/></svg>
+      <div class="grow"><b>Transferred on 14 Oct 2026</b><span>Family moved to Pune · nothing deleted</span></div>
+    </div>
+    <div class="hero">
+      <div class="photo gone">KS</div>
+      <div class="hname">Kabir Singh</div>
+      <div class="hmeta">Adm <b>2019-042</b> · 13 yrs · Male</div>
+      <div class="place"><span><small>Was in</small>Class 8</span><span><small>Sec</small>B</span><span><small>Roll</small>14</span></div>
+    </div>
+  </div>
+  <div class="card lift">
+    <div class="acts" style="--n:3">
+      <div class="act"><i><svg width="22" height="22"><use href="#i-call"/></svg></i>Call father</div>
+      <div class="act main"><i><svg width="22" height="22"><use href="#i-rupee"/></svg></i>Collect</div>
+      <div class="act"><i><svg width="22" height="22"><use href="#i-history"/></svg></i>Rejoin</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="card heads">
+      <div class="h"><span class="label">Before his TC</span></div>
+      <div class="flag">
+        <span class="ico r"><svg width="18" height="18"><use href="#i-rupee"/></svg></span>
+        <div class="grow"><b>₹1,200 still due</b><span>From September and October</span></div>
+        <span class="go">Collect</span>
+      </div>
+    </div>
+    <div class="glance" style="margin-top:12px">
+      <div class="card tile"><div class="head"><span class="label">Attendance</span></div><div class="num">86%</div><div class="sub">Final, till 14 Oct</div></div>
+      <div class="card tile"><div class="head"><span class="label">Results</span></div><div class="num">71%</div><div class="sub">Last: Half-yearly</div></div>
+    </div>
+  </div>
+</div>
+<figcaption><b>A student who has left.</b> The band turns slate, so you can tell from across the room that he's no longer studying here. The banner says when and why. Dues outlive leaving, so Collect becomes the main action. Rejoin needs <code>student:update</code>. A graduate gets the same layout with a green "Graduated" line and no Rejoin.</figcaption>
+</figure>
+
+</div>
+
+<!-- ======================================================= -->
+<h2 class="group">The permission map</h2>
+<div class="map">
+<table>
+  <tr><th>Block</th><th>Shows when you hold</th><th>Without it</th><th>Data</th></tr>
+  <tr><td>The page itself</td><td><code>student:read</code> for this student's branch</td><td>Today's "can't see students" screen</td><td class="ok">student.byId</td></tr>
+  <tr><td>Class · Sec · Roll</td><td><code>enrollment:read</code></td><td>Capsule hidden; name and admission no. stay</td><td class="ok">enrollment.list</td></tr>
+  <tr><td>Fill a gap (+ Section, + Roll)</td><td><code>enrollment:update</code> <span class="or">(Enrol: <code>enrollment:create</code>)</span></td><td>Gap reads "Not set", not tappable</td><td class="ok">enrollment.*</td></tr>
+  <tr><td>Edit, change photo</td><td><code>student:update</code></td><td>No Edit; photo not tappable</td><td class="ok">student.update</td></tr>
+  <tr><td>Call, Message, family list, health note</td><td><code>student:read</code></td><td>(always there with the page)</td><td class="ok">guardian.list</td></tr>
+  <tr><td>Add or edit a parent</td><td><code>student:update</code></td><td>Rows still call; no Add, no edit</td><td class="ok">guardian.*</td></tr>
+  <tr><td>Present today, Attendance tile, absence warning</td><td><code>attendance:read</code> in his section</td><td>All three gone</td><td class="ok">attendance.statusHistory</td></tr>
+  <tr><td>Fees tile, overdue warning, Fee statement</td><td><code>fee_report:read</code> <span class="or">or <code>student_fee_assignment:read</code></span></td><td>All gone</td><td class="ok">fees.dashboard.student</td></tr>
+  <tr><td>Collect</td><td><code>fee_payment:create</code></td><td>Button and "Collect" links gone</td><td class="ok">existing Collect</td></tr>
+  <tr><td>Results tile, falling-marks warning</td><td><code>marks:read</code> <span class="or">or <code>report_card:read</code>; published exams only</span></td><td>Gone</td><td class="nw">new: latest result for one student</td></tr>
+  <tr><td>Homework tile, missed warning</td><td><code>homework:read</code></td><td>Gone</td><td class="nw">new: one student's last 10</td></tr>
+  <tr><td>Family app line, sign-in jobs</td><td><code>portal_access:read</code>; changes need <code>portal_access:activate</code></td><td>Line gone / read-only</td><td class="ok">portalAccess.status</td></tr>
+  <tr><td>ID card</td><td><code>id_card:print</code></td><td>Button gone</td><td class="ok">ID card print (ADR-065)</td></tr>
+  <tr><td>Student is leaving, change section</td><td><code>enrollment:update</code></td><td>Not in More</td><td class="ok">enrollment.leave</td></tr>
+  <tr><td>Rejoin</td><td><code>student:update</code></td><td>Banner only</td><td class="ok">student.rejoin</td></tr>
+</table>
+</div>
+<section class="rules">
+  <div><b>Scope counts, not just the permission</b>Attendance permission held for Class 6 A only shows nothing on a Class 7 student. The server already refuses it, and the page hides that block the same way it hides a missing permission.</div>
+  <div><b>Hidden is not the same as failed</b>"Not allowed" removes the block quietly. A failed load for any other reason keeps the block and shows Retry inside it, so the rest of the page still works.</div>
+  <div><b>Rows reflow, nothing goes grey</b>The action row draws 1–4 buttons, the tiles fill 2-up or span the full width, and ⋯ disappears when it would be empty. No locks and no disabled buttons, so nobody wonders what they're missing.</div>
+  <div><b>Two new reads, both small</b>One student's latest published result, and his last 10 homework items with their state. Everything else on the page already exists.</div>
+</section>
+
+</body>
+</html>

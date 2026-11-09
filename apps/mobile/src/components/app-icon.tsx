@@ -109,6 +109,9 @@ const iconMap = {
   viewYear: { ios: "square.grid.3x3.fill", android: "grid-on" },
   camera: { ios: "camera.fill", android: "photo-camera" },
   call: { ios: "phone.fill", android: "call" },
+  message: { ios: "message.fill", android: "sms" },
+  health: { ios: "cross.case.fill", android: "medical-services" },
+  personAdd: { ios: "person.badge.plus", android: "person-add" },
   /** Remove a row from a local draft (a band, a paper part). */
   trash: { ios: "trash", android: "delete" },
   // Payment modes on collect.

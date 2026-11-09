@@ -43,6 +43,10 @@ const palette = {
   chevron: "#98A2B3",
   scrim: "rgba(16, 24, 40, 0.45)",
   grabber: "#D5DAE2",
+  /** Fills, text and rules on the student profile's coloured band. */
+  bandWash: "rgba(255, 255, 255, 0.14)",
+  bandMuted: "rgba(255, 255, 255, 0.75)",
+  bandLine: "rgba(255, 255, 255, 0.18)",
 } as const;
 
 /**
@@ -99,6 +103,16 @@ export const colors = {
   glyphSoft: palette.glyphSoft,
   /** The current month's column in the year view. */
   nowWash: palette.blueWash,
+  /**
+   * The student profile's header band: deep emerald while studying, slate once
+   * they've left, with white text, a translucent wash for chips and a faint rule.
+   */
+  band: palette.emeraldDeep,
+  bandLeft: palette.slate,
+  onBand: palette.white,
+  onBandMuted: palette.bandMuted,
+  onBandWash: palette.bandWash,
+  onBandLine: palette.bandLine,
   /** Sheet grabber. */
   grabber: palette.grabber,
   tone,
