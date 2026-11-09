@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import { trpc } from "../../../lib/trpc";
 import { useFamilyChild } from "../../child-context";
 import { useFormat } from "../../i18n/format";
-import { countdown, groupDone, groupOpen, tonight } from "../../lib/homework";
+import { countdown, groupDone, groupOpen, isOpen, tonight } from "../../lib/homework";
 import type { PortalItem } from "../../lib/homework";
 import { Enter, Reveal } from "../../motion";
 import { useFamilyTheme } from "../../theme";
@@ -58,7 +58,8 @@ export function FamilyHomework() {
   const items = list.data ?? [];
   const open = groupOpen(items, now);
   const done = groupDone(items, now);
-  const openCount = open.filter((g) => g.key !== "waiting").reduce((n, g) => n + g.items.length, 0);
+  // Only what the child still has to do: not new results, not work with the teacher.
+  const openCount = items.filter(isOpen).length;
   const openHref = (item: PortalItem) =>
     router.push({ pathname: "/family/homework/[id]", params: { id: item.studentAssignmentId } });
 
