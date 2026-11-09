@@ -53,7 +53,11 @@ export function HomeworkScreen() {
   const scope = { organizationId: organizationId ?? "", ...(schoolId ? { schoolId } : {}) };
 
   const home = trpc.homework.home.useQuery(scope, { enabled: Boolean(organizationId), staleTime: 30_000 });
-  const pairs = trpc.homework.pairs.useQuery(scope, { enabled: Boolean(organizationId), staleTime: 60_000 });
+  // "My classes" follow the viewed session (ADR-066); the day strip and to-dos stay date-based.
+  const pairs = trpc.homework.pairs.useQuery(
+    { ...scope, ...(academicYear ? { academicYearId: academicYear.id } : {}) },
+    { enabled: Boolean(organizationId), staleTime: 60_000 },
+  );
   const data = home.data;
 
   const today = localDateToIso(new Date());

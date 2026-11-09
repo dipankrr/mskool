@@ -46,9 +46,11 @@ type Step = 0 | 1 | 2 | 3;
  * for the subject, so most days it is a glance and Give.
  */
 export function GiveScreen() {
-  const { organizationId, schoolId } = useActiveContext();
+  const { organizationId, schoolId, academicYear } = useActiveContext();
   const utils = trpc.useUtils();
   const scopeInput = { organizationId: organizationId ?? "", ...(schoolId ? { schoolId } : {}) };
+  // The session the shell is viewing (ADR-066): the classes offered and "same as last time" come from it.
+  const yearInput = { ...scopeInput, ...(academicYear ? { academicYearId: academicYear.id } : {}) };
 
   const [step, setStep] = useState<Step>(0);
   const [kind, setKind] = useState<GiveKind | null>(null);
@@ -79,7 +81,7 @@ export function GiveScreen() {
   const [quizBusy, setQuizBusy] = useState(false);
   const [quizError, setQuizError] = useState<unknown>(null);
 
-  const pairsQuery = trpc.homework.pairs.useQuery(scopeInput, {
+  const pairsQuery = trpc.homework.pairs.useQuery(yearInput, {
     enabled: Boolean(organizationId),
     staleTime: 60_000,
   });
@@ -90,7 +92,7 @@ export function GiveScreen() {
   const sectionIds = pickedSectionIds.length || !singleClass ? pickedSectionIds : [pairs[0]!.sections[0]!.sectionId];
 
   const lastQuery = trpc.homework.list.useQuery(
-    { ...scopeInput, mine: true, limit: 1 },
+    { ...yearInput, mine: true, limit: 1 },
     { enabled: Boolean(organizationId), staleTime: 60_000 },
   );
   const last = lastQuery.data?.[0] ?? null;

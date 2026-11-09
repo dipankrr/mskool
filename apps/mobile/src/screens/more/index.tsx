@@ -23,6 +23,7 @@ import { usePermissions } from "../../hooks/use-permissions";
 import { logout } from "../../lib/auth";
 import { copy } from "../../lib/copy";
 import { thrownMessage } from "../../lib/errors";
+import { formatReadableDateRange } from "../../lib/format";
 import { roleLabel } from "../../lib/labels";
 import { colors } from "../../theme/brand-admin";
 import { gutter, spacing } from "../../theme/tokens";
@@ -34,10 +35,12 @@ import { gutter, spacing } from "../../theme/tokens";
  *
  * The branch row is a real switcher only when the org grants more than one
  * branch: one branch is a fact, not a choice, so it stays a plain line with no
- * chevron. The session is always the branch's current one (ADR-047): changing
- * it is an administrative act in Sessions management, never a personal viewing
- * mode, so this row is a label — and a retry target when the session list is
- * the thing that failed.
+ * chevron. The session row works the same way (ADR-066, as on web): a holder
+ * of `academic_year:read_history` whose branch has more than one session can
+ * choose which one every screen shows; everyone else sees the running one as a
+ * label. Choosing here is viewing only — making a session the running one
+ * stays an administrative act in Sessions management. The row is also a retry
+ * target when the session list is the thing that failed.
  *
  * Manage appears only when a write hint exists. Every gate is a permission
  * string (ADR-044); the role pills are labels, never gates. Profile and access
@@ -53,6 +56,9 @@ export function MoreScreen() {
     schoolId,
     branches,
     academicYear,
+    currentYear,
+    years,
+    selectYear,
     yearPending,
     yearError,
     retryYears,
@@ -64,6 +70,7 @@ export function MoreScreen() {
   const tabSpace = useTabBarSpace();
   const [signingOut, setSigningOut] = useState(false);
   const [branchSheetOpen, setBranchSheetOpen] = useState(false);
+  const [sessionSheetOpen, setSessionSheetOpen] = useState(false);
 
   const handleSignOut = () => {
     setSigningOut(true);
@@ -107,11 +114,20 @@ export function MoreScreen() {
 
   const canSwitchBranch = branches.length > 1;
   const branchValue = ready ? branchName ?? copy.more.notSet : copy.more.loading;
+  const canSwitchSession =
+    !yearError && has("academic_year:read_history") && years.length > 1;
+  const viewingPast = Boolean(
+    academicYear && academicYear.id !== currentYear?.id,
+  );
   const sessionValue = yearError
     ? copy.more.sessionRetry
     : !ready || yearPending
       ? copy.more.loading
-      : academicYear?.name ?? copy.more.notSet;
+      : academicYear
+        ? viewingPast
+          ? copy.more.sessionViewing(academicYear.name)
+          : academicYear.name
+        : copy.more.notSet;
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -171,9 +187,19 @@ export function MoreScreen() {
             value={sessionValue}
             icon="sessions"
             iconTone="accent"
-            onPress={yearError ? retryYears : undefined}
+            onPress={
+              yearError
+                ? retryYears
+                : canSwitchSession
+                  ? () => setSessionSheetOpen(true)
+                  : undefined
+            }
             accessibilityHint={
-              yearError ? copy.more.sessionRetryHint : undefined
+              yearError
+                ? copy.more.sessionRetryHint
+                : canSwitchSession
+                  ? copy.more.sessionHint
+                  : undefined
             }
             testID="more-session"
           />
@@ -308,6 +334,30 @@ export function MoreScreen() {
         }}
         onDismiss={() => setBranchSheetOpen(false)}
         testIDPrefix="branch-option"
+      />
+
+      <ChoiceSheet
+        visible={sessionSheetOpen}
+        title={copy.more.sessionSheetTitle}
+        options={years.map((year) => ({
+          id: year.id,
+          label: year.name,
+          detail: [
+            year.isCurrent ? copy.more.sessionRunning : null,
+            formatReadableDateRange(year.startDate, year.endDate),
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        }))}
+        currentId={academicYear?.id ?? ""}
+        onSelect={(id) => {
+          // Back to the running one stores nothing, so a later change of the
+          // running session is followed without a stale pin.
+          selectYear(id === currentYear?.id ? null : id);
+          setSessionSheetOpen(false);
+        }}
+        onDismiss={() => setSessionSheetOpen(false)}
+        testIDPrefix="session-option"
       />
     </SafeAreaView>
   );

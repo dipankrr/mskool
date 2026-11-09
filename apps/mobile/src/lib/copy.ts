@@ -102,6 +102,11 @@ export const copy = {
     sessionRetryHint: "Reloads the current session",
     branchHint: "Opens the branch picker",
     branchSheetTitle: "Choose branch",
+    sessionHint: "Opens the session picker",
+    sessionSheetTitle: "View session",
+    /** Second line of a picker row, and the More row's suffix when viewing a past session. */
+    sessionRunning: "Running",
+    sessionViewing: (name: string) => `${name} · not the running session`,
     workspace: "Workspace",
     manage: "Manage",
     account: "Account",

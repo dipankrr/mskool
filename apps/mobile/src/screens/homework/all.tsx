@@ -38,20 +38,23 @@ const STATUS: Partial<Record<HomeworkSummary["status"], { label: string; tone: T
  * search by title or book, filter by type, and page back in time.
  */
 export function AllHomeworkScreen() {
-  const { organizationId, schoolId } = useActiveContext();
+  const { organizationId, schoolId, academicYear } = useActiveContext();
   const utils = trpc.useUtils();
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState<Kind | null>(null);
   const term = search.trim();
+  const yearId = academicYear?.id;
 
   const query = useInfiniteQuery({
-    queryKey: ["homework-all", organizationId, schoolId, kind, term],
+    queryKey: ["homework-all", organizationId, schoolId, yearId, kind, term],
     enabled: Boolean(organizationId),
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) =>
       utils.client.homework.list.query({
         organizationId: organizationId ?? "",
         ...(schoolId ? { schoolId } : {}),
+        // The viewed session only (ADR-066); without it the list spans every session.
+        ...(yearId ? { academicYearId: yearId } : {}),
         ...(kind ? { kind } : {}),
         ...(term ? { search: term } : {}),
         ...(pageParam ? { before: pageParam } : {}),

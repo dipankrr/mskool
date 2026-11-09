@@ -2095,7 +2095,8 @@ model); an unbounded history endpoint (a report, not a register glance).
 
 ## ADR-047 - The staff shell runs in the branch's current session; changing a session is an admin act, not a viewing mode
 
-Date: 2026-10-23. Status: accepted. Supersedes the global year picker in
+Date: 2026-10-23. Status: accepted; points 2 and 5 superseded by ADR-066 (mobile
+gets web's session picker). Supersedes the global year picker in
 `docs/MOBILE_PLAN.md` §6.1; refines ADR-043 (mobile staff shell).
 
 **Context.** The plan inherited the web console's three context switchers
@@ -3208,3 +3209,44 @@ reads the server HTML too. Template editing stays on the web by owner decision.
 **Rejected.** A React Native renderer with a screenshot: a third renderer and fixes that need a
 store release. Signed photo links in the HTML: the PDF could be made before they load. A phone
 designer: the drag-and-place canvas stays on the web.
+
+---
+
+## ADR-066 - Mobile gets web's session picker: viewing a past session is a choice, not an admin act
+
+Date: 2026-11-09. Status: accepted. Supersedes ADR-047 points 2 and 5 (no year in the
+shell; history only inside each screen). ADR-047's point 4 stands.
+
+**Context.** ADR-047 kept one session on the phone, the branch's running one, so that a
+teacher could not mark a closed session by mistake. That fits a teacher. It does not fit
+the principal or the accountant, who use the phone for last year's dues and results too,
+and it meant building a year control into every screen that looks back. The web console
+already lets a `read_history` holder choose the session every screen shows. The owner
+asked for the same on mobile, including the same write behaviour.
+
+**Decision.**
+
+1. Two different acts. **Making a session the running one** stays an admin write in
+   Sessions management (`academic.year.setCurrent`). **Choosing which session to view**
+   is a personal setting in More, like the branch.
+2. The session row in More is a picker only for a holder of `academic_year:read_history`
+   whose branch has more than one session, as on web. Everyone else sees a label. The
+   server already returns the running session only to callers without the permission.
+3. Every screen works in the chosen session, else the running one. The chosen id is
+   remembered on the phone, dropped when it is no longer in the branch's list, and
+   cleared on a branch or org switch and on sign-out. Choosing the running session
+   stores nothing, so a later change of the running session is followed.
+4. **Writes are not locked in a past session**, the same as web. The server's only
+   refusal is a fee write in a closed session (`assertSessionOpen`).
+5. A screen names the session under its heading when it is not the running one, and
+   More says "not the running session". Web shows this only on its home page.
+6. Homework's classes (`homework.pairs`) and lists (`homework.list`) now pass the chosen
+   session. Without it the server falls back to the running session and every session
+   respectively. Homework Home's day strip and to-dos stay date-based.
+
+**Consequences.** Shell state is three ids again. A past session can be written to from
+the phone by anyone whose permissions allow it, as on web. If that bites, the fix is one
+server guard reused across the writes, not a phone-only lock.
+
+**Rejected.** A read-only past session: the owner chose web's behaviour. A year control
+inside each history screen (ADR-047 point 5): repeated work, and history scattered.

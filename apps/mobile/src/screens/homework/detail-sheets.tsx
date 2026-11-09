@@ -185,8 +185,13 @@ export function MoveDueSheet({ hw, onClose, onSaved }: { hw: Detail; onClose: ()
 /** Give the same homework to other classes of the subject (frame 27). */
 export function GiveAgainSheet({ hw, onClose, onSaved }: { hw: Detail; onClose: () => void; onSaved: () => void }) {
   const base = useBase(hw);
-  const { organizationId, schoolId } = useActiveContext();
-  const pairs = trpc.homework.pairs.useQuery({ organizationId: organizationId ?? "", ...(schoolId ? { schoolId } : {}) });
+  const { organizationId, schoolId, academicYear } = useActiveContext();
+  // The viewed session's classes (ADR-066); the server already refuses a class from another session.
+  const pairs = trpc.homework.pairs.useQuery({
+    organizationId: organizationId ?? "",
+    ...(schoolId ? { schoolId } : {}),
+    ...(academicYear ? { academicYearId: academicYear.id } : {}),
+  });
   const given = new Set(hw.sections.map((s) => s.sectionId));
   const options = (pairs.data?.find((p) => p.subjectId === hw.subjectId)?.sections ?? []).filter((s) => !given.has(s.sectionId));
   const [picked, setPicked] = useState<string[]>([]);
