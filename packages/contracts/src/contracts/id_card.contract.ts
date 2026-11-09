@@ -2,6 +2,7 @@ import { idCardTemplates } from "@repo/db/schema";
 import { createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 import { imageRefSchema } from "./storage.contract";
+import { studentRosterInput } from "./student.contract";
 
 /**
  * ID CARDS — the template vocabulary and the card-data payload (slice 2a).
@@ -309,3 +310,63 @@ export const idCardStudentCardSchema = z.object({
 export type IdCardStudentCard = z.infer<typeof idCardStudentCardSchema>;
 
 
+
+// ---------------------------------------------------------------------------
+// Printing from the phone: the Students list's own filters in, finished HTML out
+// ---------------------------------------------------------------------------
+
+/** The most cards one PDF holds. More is refused with wording, never cut short. */
+export const ID_CARD_PRINT_LIMIT = 200;
+
+/**
+ * What the Students list is showing: its view, search, filters and sort, without its
+ * paging. The server finds every match, not only the pages the phone has loaded.
+ */
+export const idCardPrintListSchema = studentRosterInput.omit({ limit: true, cursor: true });
+export type IdCardPrintList = z.infer<typeof idCardPrintListSchema>;
+
+/**
+ * The paper. A4 lays cards on a grid centred on the sheet, so a back printed on the
+ * other side lands behind its front; `flip` says which edge the stack turns on. Card
+ * size is one card per page, for a card printer or a vendor.
+ */
+export const idCardPrintPaperSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("a4"),
+    columnGapMm: z.number().min(0).max(20).default(4),
+    rowGapMm: z.number().min(0).max(20).default(4),
+    flip: z.enum(["long", "short"]).default("long"),
+  }),
+  z.object({ kind: z.literal("card") }),
+]);
+export type IdCardPrintPaper = z.infer<typeof idCardPrintPaperSchema>;
+
+/** Who the list would print, before anything is drawn. */
+export const idCardPrintSummarySchema = z.object({
+  /** Everyone the list's filters match. */
+  matched: z.number().int(),
+  /** Those with a class this session, still studying: the ones that print. */
+  printable: z.number().int(),
+  /** Printable students without a photo; their cards print an empty photo box. */
+  noPhoto: z.number().int(),
+  limit: z.number().int(),
+});
+export type IdCardPrintSummary = z.infer<typeof idCardPrintSummarySchema>;
+
+export const idCardDocumentInput = z.object({
+  list: idCardPrintListSchema,
+  /** Omitted: the school's default design. */
+  templateId: z.uuid().optional(),
+  paper: idCardPrintPaperSchema,
+});
+export type IdCardDocumentInput = z.infer<typeof idCardDocumentInput>;
+
+/** Finished HTML and its page size in points, which expo-print turns into the PDF. */
+export const idCardDocumentSchema = z.object({
+  html: z.string(),
+  fileName: z.string(),
+  width: z.number(),
+  height: z.number(),
+  cardCount: z.number().int(),
+});
+export type IdCardDocument = z.infer<typeof idCardDocumentSchema>;

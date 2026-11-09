@@ -8,10 +8,14 @@ import {
   closeIdCardTemplateInput,
   updateIdCardTemplateInput,
   idCardTemplateWithImagesSchema,
+  idCardDocumentInput,
+  idCardDocumentSchema,
+  idCardPrintListSchema,
+  idCardPrintSummarySchema,
   uploadRequestSchema,
   uploadTicketSchema,
 } from "@repo/contracts";
-import { idCardService } from "@repo/services";
+import { idCardPrintService, idCardService } from "@repo/services";
 import { db } from "@repo/db";
 import { idCardTemplates } from "@repo/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -325,6 +329,24 @@ export const idCardRouter = router({
         studentIds: input.studentIds,
       }),
     ),
+
+  /**
+   * PRINTING FROM THE PHONE: the Students list's own filters in, finished HTML out
+   * (ADR-059's pattern). Same gate and branch rule as `cardData`. A page of HTML is
+   * no use to a REST caller, so these stay off the REST surface.
+   */
+  print: router({
+    /** Who the list would print: everyone it matches, and who of them gets a card. */
+    summary: staffProcedure("id_card:print")
+      .input(z.object({ schoolId: z.uuid(), list: idCardPrintListSchema }))
+      .output(idCardPrintSummarySchema)
+      .query(({ ctx, input }) => idCardPrintService.summary(ctx.scope, input.list)),
+
+    document: staffProcedure("id_card:print")
+      .input(idCardDocumentInput.extend({ schoolId: z.uuid() }))
+      .output(idCardDocumentSchema)
+      .query(({ ctx, input }) => idCardPrintService.document(ctx.scope, input)),
+  }),
 });
 
 /**

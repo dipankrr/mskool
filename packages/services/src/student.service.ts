@@ -126,6 +126,62 @@ function rosterSource(scopes: DataScope[], academicYearId: string) {
   return { year, latest, scopeFilter, hasGuardian, views, academicYearId };
 }
 
+type RosterSource = Omit<ReturnType<typeof rosterSource>, "academicYearId">;
+
+/**
+ * The list's conditions and order, shared by the paged list and the ID-card print,
+ * so a printed list is exactly the list the screen showed. Both queries join the
+ * selected year, the latest row, the class, the section and the photo the same way.
+ */
+function rosterQueryParts(
+  { year, latest, scopeFilter, hasGuardian, views }: RosterSource,
+  input: Omit<StudentRosterInput, "limit" | "cursor">,
+) {
+  const classId = sql<string | null>`case when ${year.id} is not null then ${year.classId} else ${latest.classId} end`;
+  const sectionId = sql<string | null>`case when ${year.id} is not null then ${year.sectionId} else ${latest.sectionId} end`;
+  const rollNumber = sql<string | null>`case when ${year.id} is not null then ${year.rollNumber} else ${latest.rollNumber} end`;
+  const pattern = input.q ? `%${escapeLike(input.q)}%` : null;
+
+  const orderBy: Record<StudentRosterInput["sort"], SQL[]> = {
+    class: [
+      sql`${classes.numericOrder} asc nulls last`,
+      sql`${sections.name} asc nulls last`,
+      sql`nullif(regexp_replace(${rollNumber}, '\\D', '', 'g'), '')::numeric asc nulls last`,
+      asc(students.firstName),
+      asc(students.lastName),
+    ],
+    name: [asc(students.firstName), asc(students.lastName)],
+    newest: [
+      sql`${students.admissionDate} desc nulls last`,
+      desc(students.createdAt),
+    ],
+  };
+
+  const where = and(
+    scopeFilter,
+    views[input.view],
+    pattern
+      ? or(
+          ilike(students.firstName, pattern),
+          ilike(students.middleName, pattern),
+          ilike(students.lastName, pattern),
+          ilike(students.admissionNumber, pattern),
+        )
+      : undefined,
+    input.classId ? eq(year.classId, input.classId) : undefined,
+    input.sectionId ? eq(year.sectionId, input.sectionId) : undefined,
+    input.gender ? eq(students.gender, input.gender) : undefined,
+    input.admissionYear
+      ? sql`extract(year from ${students.admissionDate}) = ${input.admissionYear}`
+      : undefined,
+    input.noSection ? eq(year.enrollmentStatus, "admitted") : undefined,
+    input.noGuardian ? sql`not ${hasGuardian}` : undefined,
+    input.noPhoto ? isNull(studentPhotos.id) : undefined,
+  );
+
+  return { classId, sectionId, rollNumber, where, orderBy: orderBy[input.sort] };
+}
+
 export class StudentService {
   /**
    * Admits a student into the registry. No parent FKs and no scope node, so
@@ -405,25 +461,10 @@ export class StudentService {
     );
     const limit = input.limit ?? ROSTER_PAGE_SIZE;
     const offset = input.cursor ?? 0;
-    const classId = sql<string | null>`case when ${year.id} is not null then ${year.classId} else ${latest.classId} end`;
-    const sectionId = sql<string | null>`case when ${year.id} is not null then ${year.sectionId} else ${latest.sectionId} end`;
-    const rollNumber = sql<string | null>`case when ${year.id} is not null then ${year.rollNumber} else ${latest.rollNumber} end`;
-    const pattern = input.q ? `%${escapeLike(input.q)}%` : null;
-
-    const orderBy: Record<StudentRosterInput["sort"], SQL[]> = {
-      class: [
-        sql`${classes.numericOrder} asc nulls last`,
-        sql`${sections.name} asc nulls last`,
-        sql`nullif(regexp_replace(${rollNumber}, '\\D', '', 'g'), '')::numeric asc nulls last`,
-        asc(students.firstName),
-        asc(students.lastName),
-      ],
-      name: [asc(students.firstName), asc(students.lastName)],
-      newest: [
-        sql`${students.admissionDate} desc nulls last`,
-        desc(students.createdAt),
-      ],
-    };
+    const { classId, sectionId, rollNumber, where, orderBy } = rosterQueryParts(
+      { year, latest, scopeFilter, hasGuardian, views },
+      input,
+    );
 
     const rows = await db
       .select({
@@ -453,30 +494,8 @@ export class StudentService {
       .leftJoin(classes, eq(classes.id, classId))
       .leftJoin(sections, eq(sections.id, sectionId))
       .leftJoin(studentPhotos, eq(studentPhotos.studentId, students.id))
-      .where(
-        and(
-          scopeFilter,
-          views[input.view],
-          pattern
-            ? or(
-                ilike(students.firstName, pattern),
-                ilike(students.middleName, pattern),
-                ilike(students.lastName, pattern),
-                ilike(students.admissionNumber, pattern),
-              )
-            : undefined,
-          input.classId ? eq(year.classId, input.classId) : undefined,
-          input.sectionId ? eq(year.sectionId, input.sectionId) : undefined,
-          input.gender ? eq(students.gender, input.gender) : undefined,
-          input.admissionYear
-            ? sql`extract(year from ${students.admissionDate}) = ${input.admissionYear}`
-            : undefined,
-          input.noSection ? eq(year.enrollmentStatus, "admitted") : undefined,
-          input.noGuardian ? sql`not ${hasGuardian}` : undefined,
-          input.noPhoto ? isNull(studentPhotos.id) : undefined,
-        ),
-      )
-      .orderBy(...orderBy[input.sort])
+      .where(where)
+      .orderBy(...orderBy)
       .limit(limit + 1)
       .offset(offset);
 
@@ -499,6 +518,37 @@ export class StudentService {
       })),
       nextCursor: rows.length > limit ? offset + limit : null,
     };
+  }
+
+  /**
+   * Every student the list shows, in the list's order, ids only: what the ID-card
+   * print reads instead of the phone's loaded pages. Stops at `max` rows; the
+   * caller asks for one more than it allows, to know when there are too many.
+   */
+  async listRosterIds(
+    scopes: DataScope[],
+    input: Omit<StudentRosterInput, "limit" | "cursor">,
+    max: number,
+  ): Promise<string[]> {
+    const source = rosterSource(scopes, input.academicYearId);
+    const { year, latest } = source;
+    const { classId, sectionId, where, orderBy } = rosterQueryParts(source, input);
+
+    const rows = await db
+      .select({ id: students.id })
+      .from(students)
+      .leftJoin(
+        year,
+        and(eq(year.studentId, students.id), eq(year.academicYearId, input.academicYearId)),
+      )
+      .leftJoinLateral(latest, sql`true`)
+      .leftJoin(classes, eq(classes.id, classId))
+      .leftJoin(sections, eq(sections.id, sectionId))
+      .leftJoin(studentPhotos, eq(studentPhotos.studentId, students.id))
+      .where(where)
+      .orderBy(...orderBy)
+      .limit(max);
+    return rows.map((row) => row.id);
   }
 
   /** The counts on the Students tab: its views, and who needs attention. */

@@ -104,6 +104,8 @@ export {
 // ID cards: template CRUD, the starter-design adopt, and the card-data
 // resolver the print page renders against. Slice 2a.
 export * from "./idcard.service";
+// Printing ID cards from the phone: the Students list in, finished HTML out.
+export * from "./id-card-print.service";
 
 // Homework: give, check, the student side. ADR-039, rebuilt by ADR-064.
 export * from "./homework.service";

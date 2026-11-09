@@ -29,7 +29,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import type { DataScope } from "@repo/authz";
 import { db } from "@repo/db";
 import { idCardTemplates } from "@repo/db/schema";
-import { idCardService, storageService } from "@repo/services";
+import { idCardPrintService, idCardService, storageService } from "@repo/services";
 import { and, eq } from "drizzle-orm";
 import { TINY_PNG, useMemoryStore } from "./storage-fixtures";
 import { buildWorld } from "./world";
@@ -416,5 +416,82 @@ describe("id cards & storage (slice 2a)", () => {
         world.users.adminB,
       ),
     ).toBeNull();
+  });
+
+  // ── Printing from the phone: the Students list in, finished HTML out ──────
+
+  const sectionList = (academicYearId: string, sectionId: string) => ({
+    academicYearId,
+    sectionId,
+    view: "current" as const,
+    sort: "class" as const,
+  });
+
+  it("print summary counts the list's matches and who of them gets a card", async () => {
+    const summary = await idCardPrintService.summary(scopeA1, sectionList(currentYearAId, section6aId));
+    const cards = await idCardService.cardData(scopeA1, {
+      academicYearId: currentYearAId,
+      sectionId: section6aId,
+    });
+    expect(summary.printable).toBe(cards.length);
+    expect(summary.matched).toBeGreaterThanOrEqual(summary.printable);
+    expect(summary.limit).toBe(200);
+
+    // The "left" view lists students who have gone: none of them print.
+    const left = await idCardPrintService.summary(scopeA1, {
+      academicYearId: currentYearAId,
+      view: "left",
+      sort: "name",
+    });
+    expect(left.printable).toBe(0);
+  });
+
+  it("print document draws the list's cards on exact A4 with the default design", async () => {
+    const document = await idCardPrintService.document(scopeA1, {
+      list: sectionList(currentYearAId, section6aId),
+      paper: { kind: "a4", columnGapMm: 4, rowGapMm: 4, flip: "long" },
+    });
+    expect(document.cardCount).toBeGreaterThan(0);
+    expect(document.html).toContain("Itg ITG-0001");
+    expect(document.html).toContain("@page{size:210mm 297mm;margin:0}");
+    expect(document.width).toBeCloseTo((210 * 72) / 25.4);
+    expect(document.fileName).toMatch(/^ID-cards-.*\.pdf$/);
+
+    const cardSize = await idCardPrintService.document(scopeA1, {
+      list: sectionList(currentYearAId, section6aId),
+      templateId: defaultTemplateId,
+      paper: { kind: "card" },
+    });
+    expect(cardSize.html).toContain("@page{size:86mm 54mm;margin:0}");
+  });
+
+  it("print never reaches past the caller's scope or another org's design", async () => {
+    const world = await buildWorld();
+    // A teacher held to 6-B asking for 6-A's list prints no one.
+    const sixB: DataScope = {
+      organizationId: orgAId,
+      schoolId: schoolA1Id,
+      classId: world.class6Id,
+      sectionId: world.section6bId,
+    };
+    await expect(
+      idCardPrintService.document(sixB, {
+        list: sectionList(currentYearAId, section6aId),
+        paper: { kind: "card" },
+      }),
+    ).rejects.toMatchObject({ name: "ServiceRefusal", code: "BAD_REQUEST" });
+
+    // Org B naming org A's session and section finds no one either.
+    const foreign = await idCardPrintService.summary(scopeB1, sectionList(currentYearAId, section6aId));
+    expect(foreign.printable).toBe(0);
+
+    // Another org's design is the same not found as a made-up one.
+    await expect(
+      idCardPrintService.document(scopeA1, {
+        list: sectionList(currentYearAId, section6aId),
+        templateId: templateBId,
+        paper: { kind: "card" },
+      }),
+    ).rejects.toMatchObject({ name: "ServiceRefusal", code: "NOT_FOUND" });
   });
 });

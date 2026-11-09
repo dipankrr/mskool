@@ -25,4 +25,8 @@ export const env = createEnv({
   STORAGE_FORCE_PATH_STYLE: z.enum(["true", "false"]).default("false"),
   // Where the public bucket is served from (its custom domain), no trailing slash.
   PUBLIC_FILES_BASE_URL: unsetIfEmpty(z.url()),
+  // The staff web app's address, no trailing slash. ID cards printed from the phone
+  // put a QR of `<this>/students/<id>` on the card, the same as the web prints.
+  // Unset: the QR slot prints empty.
+  WEB_APP_URL: unsetIfEmpty(z.url()),
 });
