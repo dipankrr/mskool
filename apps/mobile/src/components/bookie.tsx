@@ -4,6 +4,7 @@ import type { StyleProp, ViewStyle } from "react-native";
 import Animated, {
   cancelAnimation,
   Easing,
+  useAnimatedProps,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
@@ -12,7 +13,8 @@ import Animated, {
   withSequence,
   withTiming,
 } from "react-native-reanimated";
-import Svg, { Circle, G, Path } from "react-native-svg";
+import type { SharedValue } from "react-native-reanimated";
+import Svg, { Ellipse, Path } from "react-native-svg";
 
 import { bookie } from "../theme/brand-bookie";
 
@@ -43,8 +45,8 @@ const SMILE = "M460 690 Q512 740 564 690";
 const EYE_LEFT = 341;
 const EYE_RIGHT = 683;
 const EYE_Y = 574;
-/** Eye line as a share of the drawing's height: the blink squeezes toward it. */
-const EYE_ORIGIN = `50% ${(((EYE_Y - 300) / 560) * 100).toFixed(1)}%`;
+
+const AnimatedEllipse = Animated.createAnimatedComponent(Ellipse);
 
 /** Where the pupils sit inside the eye whites, in drawing units. */
 const GAZE: Record<BookieLook, { dx: number; dy: number }> = {
@@ -120,9 +122,6 @@ export function Bookie({
   const swayStyle = useAnimatedStyle(() => ({
     transform: [{ rotate: `${sway.value}deg` }],
   }));
-  const blinkStyle = useAnimatedStyle(() => ({
-    transform: [{ scaleY: blink.value }],
-  }));
 
   const height = Math.round(size * ASPECT);
   const gaze = GAZE[mood === "happy" ? "up" : look];
@@ -154,19 +153,45 @@ export function Bookie({
         {mood === "happy" ? (
           <Path d={SMILE} fill="none" stroke={colors.ink} strokeWidth={16} strokeLinecap="round" />
         ) : null}
+        <Eye cx={EYE_LEFT} gaze={gaze} blink={blink} colors={colors} />
+        <Eye cx={EYE_RIGHT} gaze={gaze} blink={blink} colors={colors} />
       </Svg>
-      <Animated.View style={[StyleSheet.absoluteFill, { transformOrigin: EYE_ORIGIN }, blinkStyle]}>
-        <Svg width={size} height={height} viewBox={VIEW_BOX}>
-          {[EYE_LEFT, EYE_RIGHT].map((x) => (
-            <G key={x}>
-              <Circle cx={x} cy={EYE_Y} r={80} fill={colors.white} />
-              <Circle cx={x + gaze.dx} cy={EYE_Y + gaze.dy} r={46} fill={colors.ink} />
-              <Circle cx={x + gaze.dx + 18} cy={EYE_Y + gaze.dy - 20} r={16} fill={colors.white} />
-            </G>
-          ))}
-        </Svg>
-      </Animated.View>
     </Animated.View>
+  );
+}
+
+/**
+ * One eye. The blink shrinks each part's height toward the eye's own centre
+ * (`blink` runs 1 → 0.1 → 1), so the eye closes in place. Scaling a whole
+ * layer instead depends on `transformOrigin`, which is not honoured
+ * everywhere and made the eyes fly to the top edge.
+ */
+function Eye({
+  cx,
+  gaze,
+  blink,
+  colors,
+}: {
+  cx: number;
+  gaze: { dx: number; dy: number };
+  blink: SharedValue<number>;
+  colors: BookieColors;
+}) {
+  const whiteProps = useAnimatedProps(() => ({ ry: 80 * blink.value }));
+  const pupilProps = useAnimatedProps(() => ({
+    cy: EYE_Y + gaze.dy * blink.value,
+    ry: 46 * blink.value,
+  }));
+  const shineProps = useAnimatedProps(() => ({
+    cy: EYE_Y + (gaze.dy - 20) * blink.value,
+    ry: 16 * blink.value,
+  }));
+  return (
+    <>
+      <AnimatedEllipse cx={cx} cy={EYE_Y} rx={80} fill={colors.white} animatedProps={whiteProps} />
+      <AnimatedEllipse cx={cx + gaze.dx} rx={46} fill={colors.ink} animatedProps={pupilProps} />
+      <AnimatedEllipse cx={cx + gaze.dx + 18} rx={16} fill={colors.white} animatedProps={shineProps} />
+    </>
   );
 }
 
