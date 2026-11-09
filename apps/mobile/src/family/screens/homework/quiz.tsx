@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
 import { useTranslation } from "react-i18next";
 import type { inferRouterOutputs } from "@trpc/server";
@@ -200,6 +201,16 @@ function Taking({
           {t("quiz.ofMarks", { n: index + 1, total: questions.length, count: Number(q.marks), marks: format.marks(q.marks) })}
         </FText>
         <FText variant="title">{q.body}</FText>
+        {q.image ? (
+          <Image
+            source={{ uri: q.image.url }}
+            recyclingKey={q.image.id}
+            cachePolicy="disk"
+            contentFit="contain"
+            accessibilityIgnoresInvertColors
+            style={{ width: "100%", aspectRatio: q.image.width && q.image.height ? q.image.width / q.image.height : 4 / 3, maxHeight: 280, borderRadius: theme.radius.lg, backgroundColor: theme.color.surfaceMuted }}
+          />
+        ) : null}
         {q.questionType === "mcq_multi" ? (
           <FText variant="meta" color="muted">
             {t("quiz.pickMany")}
@@ -215,6 +226,7 @@ function Taking({
                   key={o.id}
                   letter={String.fromCharCode(65 + i)}
                   text={o.text}
+                  image={o.image?.thumbUrl ?? o.image?.url ?? null}
                   on={on}
                   onPress={() =>
                     answer({
@@ -305,7 +317,19 @@ function Taking({
   );
 }
 
-function Option({ letter, text, on, onPress }: { letter: string; text: string; on: boolean; onPress: () => void }) {
+function Option({
+  letter,
+  text,
+  image = null,
+  on,
+  onPress,
+}: {
+  letter: string;
+  text: string;
+  image?: string | null;
+  on: boolean;
+  onPress: () => void;
+}) {
   const theme = useFamilyTheme();
   const opt = theme.components.homework.option;
   return (
@@ -330,6 +354,9 @@ function Option({ letter, text, on, onPress }: { letter: string; text: string; o
           {letter}
         </FText>
       </View>
+      {image ? (
+        <Image source={{ uri: image }} cachePolicy="disk" contentFit="cover" style={{ width: 64, height: 64, borderRadius: theme.radius.sm }} />
+      ) : null}
       <FText variant="bodyStrong" tint={on ? opt.onFg : theme.color.ink} style={styles.flex}>
         {text}
       </FText>

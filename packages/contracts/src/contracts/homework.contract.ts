@@ -676,11 +676,14 @@ export const attemptQuestionStudentSchema = z.object({
   questionType: z.string(),
   body: z.string(),
   imageFileId: z.uuid().nullable(),
+  /** The question's picture, as a link the app can show. */
+  image: imageRefSchema.nullable(),
   options: z.array(
     z.object({
       id: z.number().int(),
       text: z.string(),
       imageFileId: z.uuid().nullable(),
+      image: imageRefSchema.nullable(),
     }),
   ).nullable(),
   marks: z.string(),

@@ -2,6 +2,7 @@ import { scopeWhere, type DataScope } from "@repo/authz";
 import type {
   CreateBankItemInput,
   GradeAttemptAnswerInput,
+  ImageRef,
   SaveAnswerInput,
   SetAssignmentQuestionsInput,
 } from "@repo/contracts";
@@ -25,6 +26,7 @@ import {
 import { and, asc, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 
 import { refuse } from "./service-error";
+import { storageService } from "./storage.service";
 
 /**
  * HOMEWORK QUESTIONS (ADR-039 slice B) — the bank, the per-assignment
@@ -532,17 +534,27 @@ export class HomeworkQuestionsService {
       .from(assignmentQuestions)
       .where(eq(assignmentQuestions.assignmentId, assignmentId))
       .orderBy(asc(assignmentQuestions.position));
+    // Pictures go out as links (ADR-063); the bare ids alone show nothing.
+    const imageIds = rows.flatMap((q) => [
+      q.imageObjectId,
+      ...((q.options as SnapshotOption[] | null) ?? []).map((o) => o.image_object_id),
+    ]).filter((id): id is string => Boolean(id));
+    const refs = rows[0] && imageIds.length > 0
+      ? await storageService.imageRefs(rows[0].organizationId, imageIds)
+      : new Map<string, ImageRef>();
     return rows.map((q) => ({
       id: q.id,
       position: q.position,
       questionType: q.questionType,
       body: q.body,
       imageFileId: q.imageObjectId,
+      image: q.imageObjectId ? (refs.get(q.imageObjectId) ?? null) : null,
       // THE STRIP: id/text/image only — is_correct never leaves the server.
       options: (q.options as SnapshotOption[] | null)?.map((o) => ({
         id: o.id,
         text: o.text,
         imageFileId: o.image_object_id,
+        image: o.image_object_id ? (refs.get(o.image_object_id) ?? null) : null,
       })) ?? null,
       marks: q.marks,
       savedAnswer: savedAnswers.get(q.position)?.answer ?? null,
