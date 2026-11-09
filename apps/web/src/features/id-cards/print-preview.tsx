@@ -21,6 +21,7 @@ export function A4Sheets({
   cardHeightMm,
   columnGapMm,
   rowGapMm,
+  padding,
   scale = 0.55,
 }: {
   /** One page per entry; null = an empty card slot (backs of a partial
@@ -35,6 +36,8 @@ export function A4Sheets({
   columnGapMm: number;
   /** Vertical spacing between card rows (mm). */
   rowGapMm: number;
+  /** The sheet's padding: the print sheet's own, which centres the grid. */
+  padding: string;
   /** On-screen reduction — the sheet itself stays in physical mm. */
   scale?: number;
 }) {
@@ -57,7 +60,7 @@ export function A4Sheets({
               style={{
                 width: "210mm",
                 height: "297mm",
-                padding: "10mm",
+                padding,
                 background: "#ffffff",
                 color: "#111827",
                 boxSizing: "border-box",

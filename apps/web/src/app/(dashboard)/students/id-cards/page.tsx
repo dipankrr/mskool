@@ -290,6 +290,16 @@ export default function IdCardsPage() {
     Math.floor((277 + ROW_GAP_MM) / (printSize.heightMm + ROW_GAP_MM)),
   );
   const perPage = printColumns * printRows;
+  // The grid is CENTRED on the sheet, both ways. Turning a sheet over mirrors it
+  // about its middle, so a back lands behind its front only when the grid sits in
+  // the middle: pinned to the 10mm margin, two landscape cards (176mm of the 190mm
+  // printable width) put every back 14mm off. The padding is the same on every
+  // page, partial ones included, so the slots stay put.
+  const gridWidthMm =
+    printColumns * printSize.widthMm + (printColumns - 1) * COLUMN_GAP_MM;
+  const gridHeightMm =
+    printRows * printSize.heightMm + (printRows - 1) * ROW_GAP_MM;
+  const sheetPadding = `${(297 - gridHeightMm) / 2}mm ${(210 - gridWidthMm) / 2}mm`;
   const printableCards = selectedPairs
     .map((pair) => cardByStudentId.get(pair.student.id))
     .filter((card): card is IdCardStudentCard => card !== undefined);
@@ -652,6 +662,7 @@ export default function IdCardsPage() {
                 cardHeightMm={printSize.heightMm}
                 columnGapMm={COLUMN_GAP_MM}
                 rowGapMm={ROW_GAP_MM}
+                padding={sheetPadding}
               />
               {backDesign && backPages.length > 0 ? (
                 <div className="mt-2 flex flex-col gap-3">
@@ -697,6 +708,7 @@ export default function IdCardsPage() {
                     cardHeightMm={printSize.heightMm}
                     columnGapMm={COLUMN_GAP_MM}
                     rowGapMm={ROW_GAP_MM}
+                    padding={sheetPadding}
                   />
                   <p className="text-destructive text-xs">
                     {copy.idCards.backsHint}
@@ -1126,7 +1138,7 @@ export default function IdCardsPage() {
       {/* ── The print sheet (print-only; chrome hides via globals.css) ── */}
       <div className="idcard-print-sheet" aria-hidden>
         {printPages.map((pageCards, pageIndex) => (
-          <div key={pageIndex} className="idcard-print-page">
+          <div key={pageIndex} className="idcard-print-page" style={{ padding: sheetPadding }}>
             <div
               className="idcard-print-grid"
               style={{
@@ -1149,7 +1161,7 @@ export default function IdCardsPage() {
         ))}
         {backDesign
           ? backPages.map((pageCards, pageIndex) => (
-              <div key={`back-${pageIndex}`} className="idcard-print-page">
+              <div key={`back-${pageIndex}`} className="idcard-print-page" style={{ padding: sheetPadding }}>
                 <div
                   className="idcard-print-grid"
                   style={{
