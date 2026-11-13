@@ -18,14 +18,14 @@ export function useAttendanceSection(preferredId: string | null | undefined) {
 
   const sectionsQuery = trpc.academic.section.list.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
-      ...(schoolId ? { schoolId } : {}),
       academicYearId: academicYear?.id ?? "",
     },
     { enabled: Boolean(organizationId && academicYear), staleTime: 60_000 },
   );
   const classesQuery = trpc.academic.class.list.useQuery(
-    { organizationId: organizationId ?? "", ...(schoolId ? { schoolId } : {}) },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "",},
     { enabled: Boolean(organizationId), staleTime: 300_000 },
   );
 

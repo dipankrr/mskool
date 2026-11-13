@@ -22,7 +22,7 @@ import { fontFamily, fontSize, radius, spacing } from "../../theme/tokens";
  * then collect. Search is the whole screen because the parent is standing there.
  */
 export function CollectSearchScreen() {
-  const { organizationId, academicYear, ready } = useActiveContext();
+  const { organizationId, schoolId, academicYear, ready } = useActiveContext();
   const words = feesCopy.collectSearch;
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
@@ -34,6 +34,7 @@ export function CollectSearchScreen() {
 
   const list = trpc.fees.dashboard.list.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
       academicYearId: academicYear?.id ?? "",
       search,

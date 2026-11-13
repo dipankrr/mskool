@@ -124,8 +124,8 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
 
   const periodsQuery = trpc.attendance.period.list.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
-      ...(schoolId ? { schoolId } : {}),
       sectionId,
     },
     { enabled: ready && periodWise, staleTime: 300_000 },
@@ -141,14 +141,14 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
     : "";
 
   const statusQuery = trpc.attendance.status.useQuery(
-    { organizationId: organizationId ?? "", sectionId, date },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "", sectionId, date },
     { enabled: ready, staleTime: 30_000 },
   );
 
   const calendarQuery = trpc.attendance.calendar.list.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
-      ...(schoolId ? { schoolId } : {}),
       academicYearId: academicYear?.id ?? "",
       month: Number(date.slice(5, 7)),
     },
@@ -285,7 +285,7 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
     if (!complete) return;
     markSubmit.mutate({
       organizationId: organizationId ?? "",
-      ...(schoolId ? { schoolId } : {}),
+      schoolId: schoolId ?? "",
       sectionId,
       date,
       ...(periodWise && selectedPeriodId ? { periodId: selectedPeriodId } : {}),

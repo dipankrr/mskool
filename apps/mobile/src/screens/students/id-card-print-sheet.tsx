@@ -62,10 +62,9 @@ export function IdCardPrintSheet({
 
   const designs = useMemo(
     () =>
-      (templates.data ?? []).filter(
-        (row) => row.schoolId === schoolId && row.status === "active",
-      ),
-    [templates.data, schoolId],
+      // The server returns this branch's templates only (ADR-067).
+      (templates.data ?? []).filter((row) => row.status === "active"),
+    [templates.data],
   );
   const [pickedId, setPickedId] = useState<string | null>(null);
   const design =

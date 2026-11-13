@@ -31,9 +31,10 @@ export function AcademicSetupScreen() {
   const tabSpace = useTabBarSpace();
 
   const orgReady = ready && Boolean(organizationId);
-  const orgArgs = { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined };
+  const orgArgs = { organizationId: organizationId ?? "", schoolId: schoolId ?? "" };
   const yearArgs = {
     organizationId: organizationId ?? "",
+    schoolId: schoolId ?? "",
     academicYearId: academicYear?.id ?? "",
   };
   const hasYear = Boolean(academicYear?.id);
@@ -48,7 +49,7 @@ export function AcademicSetupScreen() {
     enabled: orgReady && has("subject:read"),
   });
   const coverage = trpc.assignment.subjectMapping.coverage.useQuery(
-    { organizationId: organizationId ?? "", academicYearId: academicYear?.id ?? "" },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "", academicYearId: academicYear?.id ?? "" },
     { enabled: orgReady && hasYear && has("subject:read") },
   );
   const terms = trpc.academic.term.list.useQuery(yearArgs, {

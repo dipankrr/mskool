@@ -37,7 +37,7 @@ export function ManagePeriods() {
     { enabled: ready && canManage, staleTime: 60_000 },
   );
   const periodsQuery = trpc.attendance.period.list.useQuery(
-    { organizationId: organizationId ?? "", sectionId: section?.id ?? "" },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "", sectionId: section?.id ?? "" },
     { enabled: ready && canManage, staleTime: 60_000 },
   );
 

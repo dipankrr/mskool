@@ -111,7 +111,7 @@ export function PhotoWorkbenchScreen({
     lookup
       .mutateAsync({
         organizationId,
-        schoolId: schoolId ?? undefined,
+        schoolId: schoolId ?? "",
         academicYearId: academicYear.id,
         admissions: admissionsKey.split("|"),
       })

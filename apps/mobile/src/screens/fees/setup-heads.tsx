@@ -62,7 +62,7 @@ export function FeeHeadsScreen() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const list = trpc.fees.head.list.useQuery(
-    { organizationId: organizationId ?? "" },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "" },
     { enabled: ready && canRead && Boolean(organizationId) },
   );
 

@@ -51,8 +51,8 @@ export function AllHomeworkScreen() {
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) =>
       utils.client.homework.list.query({
+        schoolId: schoolId ?? "",
         organizationId: organizationId ?? "",
-        ...(schoolId ? { schoolId } : {}),
         // The viewed session only (ADR-066); without it the list spans every session.
         ...(yearId ? { academicYearId: yearId } : {}),
         ...(kind ? { kind } : {}),

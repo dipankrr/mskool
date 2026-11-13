@@ -85,8 +85,8 @@ export function DaySheet({
   const month = Number(boundedAnchor.slice(5, 7));
   const calendarQuery = trpc.attendance.calendar.list.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
-      ...(schoolId ? { schoolId } : {}),
       academicYearId: academicYear?.id ?? "",
       month,
     },
@@ -100,8 +100,8 @@ export function DaySheet({
   const monthEnd = isoOf(year, month, daysInMonth(year, month));
   const historyQuery = trpc.attendance.statusHistory.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
-      ...(schoolId ? { schoolId } : {}),
       sectionId,
       fromDate: monthStart,
       toDate: monthEnd,

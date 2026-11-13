@@ -106,7 +106,7 @@ export function StudentsScreen({
 
   const base = {
     organizationId: organizationId ?? "",
-    schoolId: schoolId ?? undefined,
+    schoolId: schoolId ?? "",
     academicYearId: academicYear?.id ?? "",
   };
   const enabled = ready && Boolean(organizationId) && canRead && Boolean(academicYear?.id);
@@ -136,7 +136,7 @@ export function StudentsScreen({
   );
   const summary = trpc.student.rosterSummary.useQuery(base, { enabled });
   const classes = trpc.academic.class.list.useQuery(
-    { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
+    { organizationId: organizationId ?? "", schoolId: schoolId ?? "" },
     { enabled: enabled && canFilterClasses },
   );
   const sections = trpc.academic.section.list.useQuery(base, {

@@ -62,8 +62,8 @@ export function ManageCalendar() {
 
   const calendarQuery = trpc.attendance.calendar.list.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
-      ...(schoolId ? { schoolId } : {}),
       academicYearId: academicYear?.id ?? "",
       month,
     },

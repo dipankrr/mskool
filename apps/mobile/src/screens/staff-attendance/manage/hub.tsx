@@ -42,13 +42,13 @@ export function ManageHub() {
     { enabled: ready && canManage, staleTime: 60_000 },
   );
   const periodsQuery = trpc.attendance.period.list.useQuery(
-    { organizationId: organizationId ?? "", sectionId: section?.id ?? "" },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "", sectionId: section?.id ?? "" },
     { enabled: ready && canManage && Boolean(section), staleTime: 60_000 },
   );
   const calendarQuery = trpc.attendance.calendar.list.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
-      ...(schoolId ? { schoolId } : {}),
       academicYearId: academicYear?.id ?? "",
     },
     { enabled: ready && canManage, staleTime: 300_000 },

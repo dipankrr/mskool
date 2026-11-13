@@ -57,7 +57,7 @@ const FILTERS: readonly SegmentOption<PaymentFilter>[] = [
  * list is small enough to hold; that keeps one read and instant switching.
  */
 export function PaymentsScreen() {
-  const { organizationId, academicYear, yearPending, ready } =
+  const { organizationId, schoolId, academicYear, yearPending, ready } =
     useActiveContext();
   const branchName = useBranchMeta();
   const { has } = usePermissions();
@@ -70,6 +70,7 @@ export function PaymentsScreen() {
 
   const list = trpc.fees.payment.list.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
       academicYearId: academicYear?.id ?? "",
     },

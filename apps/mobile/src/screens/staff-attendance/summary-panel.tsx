@@ -223,8 +223,8 @@ export function SummaryPanel({
 
   const summaryQuery = trpc.attendance.summary.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
-      ...(schoolId ? { schoolId } : {}),
       academicYearId: academicYear?.id ?? "",
       sectionId,
     },

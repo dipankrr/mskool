@@ -49,8 +49,8 @@ export function useExamList() {
   const scope = useExamScope();
   return trpc.exam.exam.list.useQuery(
     {
+      schoolId: scope.schoolId ?? "",
       organizationId: scope.organizationId ?? "",
-      ...(scope.schoolId ? { schoolId: scope.schoolId } : {}),
       academicYearId: scope.academicYear?.id,
     },
     {
@@ -80,8 +80,8 @@ export function useClassSubjectNames() {
   const scope = useExamScope();
   const classes = trpc.academic.class.list.useQuery(
     {
+      schoolId: scope.schoolId ?? "",
       organizationId: scope.organizationId ?? "",
-      ...(scope.schoolId ? { schoolId: scope.schoolId } : {}),
     },
     {
       enabled: scope.ready && Boolean(scope.organizationId) && scope.canReadClasses,
@@ -90,8 +90,8 @@ export function useClassSubjectNames() {
   );
   const subjects = trpc.subject.list.useQuery(
     {
+      schoolId: scope.schoolId ?? "",
       organizationId: scope.organizationId ?? "",
-      ...(scope.schoolId ? { schoolId: scope.schoolId } : {}),
     },
     {
       enabled: scope.ready && Boolean(scope.organizationId) && scope.canReadSubjects,
@@ -122,8 +122,8 @@ export function useExamSections(enabled = true) {
   const scope = useExamScope();
   return trpc.academic.section.list.useQuery(
     {
+      schoolId: scope.schoolId ?? "",
       organizationId: scope.organizationId ?? "",
-      ...(scope.schoolId ? { schoolId: scope.schoolId } : {}),
       academicYearId: scope.academicYear?.id ?? "",
     },
     {
@@ -165,7 +165,7 @@ export function useMyPairs(classIds: readonly string[]): {
   const staffing = trpc.useQueries((t) =>
     relevant.map((section) =>
       t.assignment.teacherAssignment.list(
-        { organizationId: scope.organizationId ?? "", sectionId: section.id },
+        { schoolId: scope.schoolId ?? "", organizationId: scope.organizationId ?? "", sectionId: section.id },
         {
           enabled: constrained && scope.canReadStaffing && scope.ready,
           staleTime: 60_000,

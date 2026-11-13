@@ -40,13 +40,13 @@ export function TeacherAssignmentsScreen() {
   const selectedSectionId = sectionId ?? null;
 
   const classes = trpc.academic.class.list.useQuery(
-    { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
+    { organizationId: organizationId ?? "", schoolId: schoolId ?? "" },
     { enabled: ready && Boolean(organizationId) && canRead },
   );
   const sections = trpc.academic.section.list.useQuery(
     {
       organizationId: organizationId ?? "",
-      schoolId: schoolId ?? undefined,
+      schoolId: schoolId ?? "",
       academicYearId: academicYear?.id ?? "",
     },
     {
@@ -55,16 +55,16 @@ export function TeacherAssignmentsScreen() {
     },
   );
   const directory = trpc.assignment.teacherDirectory.useQuery(
-    { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
+    { organizationId: organizationId ?? "", schoolId: schoolId ?? "" },
     { enabled: ready && Boolean(organizationId) && canRead },
   );
   const subjects = trpc.subject.list.useQuery(
-    { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
+    { organizationId: organizationId ?? "", schoolId: schoolId ?? "" },
     { enabled: ready && Boolean(organizationId) && canRead },
   );
 
   const list = trpc.assignment.teacherAssignment.list.useQuery(
-    { organizationId: organizationId ?? "", sectionId: selectedSectionId ?? "" },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "", sectionId: selectedSectionId ?? "" },
     {
       enabled:
         ready && Boolean(organizationId) && canRead && Boolean(selectedSectionId),

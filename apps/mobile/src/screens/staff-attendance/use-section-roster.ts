@@ -16,8 +16,8 @@ export function useSectionRoster(sectionId: string, date?: string) {
 
   const query = trpc.enrollment.list.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
-      ...(schoolId ? { schoolId } : {}),
       academicYearId: academicYear?.id ?? "",
       sectionId,
       // Students who left still belong on the days before they did.

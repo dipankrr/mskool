@@ -45,7 +45,7 @@ const ALL_TYPES = "all";
  * view is opened from the desk with the name in the route.
  */
 export function LedgerScreen() {
-  const { organizationId, academicYear, yearPending, ready } =
+  const { organizationId, schoolId, academicYear, yearPending, ready } =
     useActiveContext();
   const branchName = useBranchMeta();
   const params = useLocalSearchParams<{
@@ -69,6 +69,7 @@ export function LedgerScreen() {
 
   const list = trpc.fees.ledger.list.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
       academicYearId: academicYear?.id ?? "",
       studentId,

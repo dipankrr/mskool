@@ -16,8 +16,8 @@ export function useExamTerms() {
   const scope = useExamScope();
   return trpc.academic.term.list.useQuery(
     {
+      schoolId: scope.schoolId ?? "",
       organizationId: scope.organizationId ?? "",
-      ...(scope.schoolId ? { schoolId: scope.schoolId } : {}),
       academicYearId: scope.academicYear?.id ?? "",
     },
     {
@@ -31,8 +31,8 @@ export function useSubjectTypes() {
   const scope = useExamScope();
   return trpc.exam.subjectTypes.list.useQuery(
     {
+      schoolId: scope.schoolId ?? "",
       organizationId: scope.organizationId ?? "",
-      ...(scope.schoolId ? { schoolId: scope.schoolId } : {}),
     },
     {
       enabled: scope.ready && scope.canRead && Boolean(scope.organizationId),
@@ -46,8 +46,8 @@ export function useClassMappings(classId: string | null, enabled: boolean) {
   const scope = useExamScope();
   return trpc.assignment.subjectMapping.list.useQuery(
     {
+      schoolId: scope.schoolId ?? "",
       organizationId: scope.organizationId ?? "",
-      ...(scope.schoolId ? { schoolId: scope.schoolId } : {}),
       academicYearId: scope.academicYear?.id ?? "",
       classId: classId ?? "",
     },
@@ -67,8 +67,8 @@ export function useLinkedExamOptions(excludeExamId: string | null) {
   const scope = useExamScope();
   const list = trpc.exam.exam.list.useQuery(
     {
+      schoolId: scope.schoolId ?? "",
       organizationId: scope.organizationId ?? "",
-      ...(scope.schoolId ? { schoolId: scope.schoolId } : {}),
       academicYearId: scope.academicYear?.id,
     },
     { enabled: scope.addressable, staleTime: THIRTY_SECONDS },

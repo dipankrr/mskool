@@ -59,6 +59,7 @@ export function FeeStructuresScreen() {
 
   const list = trpc.fees.structure.list.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
       academicYearId: academicYear?.id ?? "",
       // One read, filtered locally: the toggle then answers instantly and the
@@ -76,7 +77,7 @@ export function FeeStructuresScreen() {
   );
 
   const classes = trpc.academic.class.list.useQuery(
-    { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
+    { organizationId: organizationId ?? "", schoolId: schoolId ?? "" },
     {
       enabled: ready && canReadClasses && Boolean(organizationId),
       staleTime: 5 * 60_000,

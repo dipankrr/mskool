@@ -38,7 +38,7 @@ export function ClassCard({
   sectionCount: number;
 }) {
   const { me } = useMe();
-  const { organizationId } = useActiveContext();
+  const { organizationId, schoolId } = useActiveContext();
   const { has, hasAny } = usePermissions();
 
   const canReadAttendance = has("attendance:read");
@@ -47,14 +47,14 @@ export function ClassCard({
   const ready = Boolean(organizationId);
 
   const statusQuery = trpc.attendance.status.useQuery(
-    { organizationId: organizationId ?? "", sectionId, date: todayIso() },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "", sectionId, date: todayIso() },
     {
       enabled: ready && canReadAttendance,
       staleTime: 30_000,
     },
   );
   const assignmentsQuery = trpc.assignment.teacherAssignment.list.useQuery(
-    { organizationId: organizationId ?? "", sectionId },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "", sectionId },
     {
       enabled: ready && canReadAssignments,
       staleTime: 300_000,

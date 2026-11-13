@@ -201,6 +201,12 @@ export const copy = {
     studentsWriteTitle: "Student management isn't in your account",
     studentsWriteBody:
       "Admitting or editing students needs a student management permission. Ask your administrator.",
+    /** No branch this account can open (ADR-067): a new org, or no school:read. */
+    noBranchTitle: "No branch to open",
+    noBranchBody:
+      "Your account can't see any branch in this organization yet. Add one under Branches, or ask your administrator for access.",
+    noBranchBranches: "Open Branches",
+    noBranchProfile: "My profile",
   },
   /** Chunk B — the trust's branches (`school.*`). */
   branches: {

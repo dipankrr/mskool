@@ -135,7 +135,8 @@ export function ActiveContextProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
 
   // Resolve defaults on each new identity: persisted ids when still granted,
-  // else first org → first granted branch.
+  // else first org → home branch (ADR-067: the user's own staff record) →
+  // first granted branch.
   useEffect(() => {
     if (!isFetched) return;
     let cancelled = false;
@@ -152,7 +153,10 @@ export function ActiveContextProvider({ children }: { children: ReactNode }) {
         memberships[0] ??
         null;
       const school =
-        org?.schools.find((s) => s.id === storedSchool) ?? org?.schools[0] ?? null;
+        org?.schools.find((s) => s.id === storedSchool) ??
+        org?.schools.find((s) => s.id === org.homeSchoolId) ??
+        org?.schools[0] ??
+        null;
 
       setOrganizationId(org?.organization.id ?? null);
       setSchoolId(school?.id ?? null);
@@ -166,18 +170,14 @@ export function ActiveContextProvider({ children }: { children: ReactNode }) {
   }, [me, isFetched]);
 
   /**
-   * The org's sessions, fetched once and narrowed to the active branch below.
-   *
-   * `schoolId` is deliberately NOT in the input: the permissive list returns
-   * every session the caller's grants cover, and keeping it out of the query
-   * key means a branch switch resolves the new year from data already in hand
-   * instead of flashing a loading state. The `schoolId` filter in `useMemo` is
-   * what makes the active-year pick branch-correct.
+   * The active branch's sessions (ADR-067: every list names its branch). The
+   * branch is in the query key, so a switch to a branch not yet seen shows a
+   * short load; after that the cache answers.
    */
   const yearQuery = trpc.academic.year.list.useQuery(
-    { organizationId: organizationId ?? "" },
+    { organizationId: organizationId ?? "", schoolId: schoolId ?? "" },
     {
-      enabled: hydrated && Boolean(organizationId),
+      enabled: hydrated && Boolean(organizationId) && Boolean(schoolId),
       // A reference list: the year changes at most between sessions.
       staleTime: 300_000,
     },
@@ -195,10 +195,8 @@ export function ActiveContextProvider({ children }: { children: ReactNode }) {
   // instead of silently picking one.
   const years = useMemo(
     () =>
-      (yearQuery.data ?? [])
-        .filter((row) => !schoolId || row.schoolId === schoolId)
-        .sort((a, b) => b.startDate.localeCompare(a.startDate)),
-    [yearQuery.data, schoolId],
+      [...(yearQuery.data ?? [])].sort((a, b) => b.startDate.localeCompare(a.startDate)),
+    [yearQuery.data],
   );
 
   const currentYear = useMemo(() => {
@@ -213,7 +211,7 @@ export function ActiveContextProvider({ children }: { children: ReactNode }) {
     return chosen ?? currentYear;
   }, [years, chosenYearId, currentYear]);
 
-  const yearPending = Boolean(organizationId) && yearQuery.isPending;
+  const yearPending = Boolean(organizationId && schoolId) && yearQuery.isPending;
   const yearError = yearQuery.isError;
   const { refetch: refetchYears } = yearQuery;
   const retryYears = useCallback(() => {

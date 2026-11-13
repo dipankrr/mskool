@@ -55,8 +55,8 @@ export function useSectionByStudent(
   const willRun = enabled && scope.addressable && Boolean(classId);
   const query = trpc.enrollment.list.useQuery(
     {
+      schoolId: scope.schoolId ?? "",
       organizationId: scope.organizationId ?? "",
-      ...(scope.schoolId ? { schoolId: scope.schoolId } : {}),
       academicYearId: scope.academicYear?.id ?? "",
       classId: classId ?? undefined,
     },

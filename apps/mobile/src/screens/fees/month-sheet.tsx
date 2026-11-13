@@ -8,6 +8,7 @@ import { FormSheet } from "../../components/form-sheet";
 import { Skeleton } from "../../components/skeleton";
 import { StatTile } from "../../components/stat-tile";
 import { ThemedText } from "../../components/themed-text";
+import { useActiveContext } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
 import { copy } from "../../lib/copy";
 import { installmentTitle, monthNameOf } from "../../lib/fees";
@@ -49,7 +50,9 @@ export function MonthSheet({
   onPay?: (focus: string) => void;
 }) {
   const { has } = usePermissions();
+  const { schoolId } = useActiveContext();
   const cell = trpc.fees.matrix.cell.useQuery({
+    schoolId: schoolId ?? "",
     organizationId,
     academicYearId,
     studentId,

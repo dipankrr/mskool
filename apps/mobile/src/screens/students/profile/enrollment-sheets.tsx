@@ -136,11 +136,11 @@ export function EnrollmentSheet({
 }) {
   const visible = true;
   const classes = trpc.academic.class.list.useQuery(
-    { organizationId, schoolId: schoolId ?? undefined },
+    { organizationId, schoolId: schoolId ?? "" },
     { enabled: visible },
   );
   const sections = trpc.academic.section.list.useQuery(
-    { organizationId, schoolId: schoolId ?? undefined, academicYearId: academicYearId ?? "" },
+    { organizationId, schoolId: schoolId ?? "", academicYearId: academicYearId ?? "" },
     { enabled: visible && Boolean(academicYearId) },
   );
   const [classId, setClassId] = useState<string | null>(existing?.classId ?? null);

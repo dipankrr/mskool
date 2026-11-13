@@ -56,8 +56,8 @@ export function StudentAttendanceMap({
   const toDate = isoOf(year, month, daysInMonth(year, month));
   const query = trpc.attendance.statusHistory.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
-      ...(schoolId ? { schoolId } : {}),
       sectionId,
       fromDate,
       toDate,

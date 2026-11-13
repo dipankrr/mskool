@@ -44,11 +44,11 @@ export function HomeworkBankPickerSheet({
   /** Where to write new bank questions; without it the empty state only explains. */
   onOpenBank?: () => void;
 }) {
-  const { organizationId, ready } = useActiveContext();
+  const { organizationId, schoolId, ready } = useActiveContext();
   const text = copy.homework.questions;
 
   const list = trpc.homework.bank.list.useQuery(
-    { organizationId: organizationId ?? "", subjectId },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "", subjectId },
     { enabled: ready && Boolean(organizationId) },
   );
 

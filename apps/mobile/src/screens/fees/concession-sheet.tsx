@@ -81,7 +81,7 @@ export function ConcessionSheet({
 
   const utils = trpc.useUtils();
   const heads = trpc.fees.head.list.useQuery(
-    { organizationId },
+    { schoolId: schoolId ?? "", organizationId },
     { staleTime: 5 * 60_000 },
   );
   const add = trpc.fees.assignment.addConcession.useMutation();

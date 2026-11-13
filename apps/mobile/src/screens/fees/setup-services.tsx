@@ -105,6 +105,7 @@ export function FeeServicesScreen() {
 
   const students = trpc.student.list.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
       q: search.length > 0 ? search : undefined,
     },
@@ -117,6 +118,7 @@ export function FeeServicesScreen() {
 
   const subscriptions = trpc.fees.subscription.list.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
       academicYearId: academicYear?.id ?? "",
       includeHistory: true,
@@ -130,6 +132,7 @@ export function FeeServicesScreen() {
 
   const openings = trpc.fees.ledger.listOpeningBalances.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
       academicYearId: academicYear?.id ?? "",
       studentId: selected?.id ?? "",
@@ -141,7 +144,7 @@ export function FeeServicesScreen() {
   );
 
   const heads = trpc.fees.head.list.useQuery(
-    { organizationId: organizationId ?? "" },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "" },
     {
       enabled:
         ready && canReadHeads && Boolean(organizationId) && Boolean(selected),
@@ -150,7 +153,7 @@ export function FeeServicesScreen() {
   );
 
   const years = trpc.academic.year.list.useQuery(
-    { organizationId: organizationId ?? "" },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "" },
     { enabled: enabled && Boolean(organizationId), staleTime: 5 * 60_000 },
   );
 

@@ -35,7 +35,7 @@ export function PhotoStartScreen() {
   const enabled = ready && Boolean(organizationId) && Boolean(academicYear?.id);
   const base = {
     organizationId: organizationId ?? "",
-    schoolId: schoolId ?? undefined,
+    schoolId: schoolId ?? "",
     academicYearId: academicYear?.id ?? "",
   };
   const coverage = trpc.student.photoCoverage.useQuery(base, { enabled });

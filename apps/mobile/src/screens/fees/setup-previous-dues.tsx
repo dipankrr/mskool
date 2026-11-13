@@ -43,11 +43,12 @@ export function PreviousDuesScreen() {
   const enabled = ready && Boolean(organizationId) && Boolean(yearId);
 
   const classes = trpc.academic.class.list.useQuery(
-    { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
+    { organizationId: organizationId ?? "", schoolId: schoolId ?? "" },
     { enabled },
   );
   const students = trpc.enrollment.list.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
       academicYearId: yearId,
       classId: classId ?? undefined,
@@ -55,7 +56,7 @@ export function PreviousDuesScreen() {
     { enabled: enabled && Boolean(classId) },
   );
   const existing = trpc.fees.ledger.listOpeningBalances.useQuery(
-    { organizationId: organizationId ?? "", academicYearId: yearId },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "", academicYearId: yearId },
     { enabled },
   );
   const record = trpc.fees.ledger.recordOpeningBalance.useMutation();

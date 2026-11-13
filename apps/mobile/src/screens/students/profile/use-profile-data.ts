@@ -78,8 +78,8 @@ export function useProfileData(input: {
   // 30 days covers ten school days and today; the server caps a range at 45.
   const history = trpc.attendance.statusHistory.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: org,
-      ...(schoolId ? { schoolId } : {}),
       sectionId: input.sectionId ?? "",
       fromDate: shiftIsoDays(today, -30),
       toDate: today,
@@ -87,23 +87,23 @@ export function useProfileData(input: {
     { enabled: base && can.attendance && Boolean(input.sectionId), staleTime: 60_000 },
   );
   const summary = trpc.attendance.summary.useQuery(
-    { organizationId: org, academicYearId: yearId, studentId },
+    { schoolId: schoolId ?? "", organizationId: org, academicYearId: yearId, studentId },
     { enabled: base && can.attendance && Boolean(yearId), staleTime: 60_000 },
   );
   const fees = trpc.fees.dashboard.student.useQuery(
-    { organizationId: org, academicYearId: yearId, studentId },
+    { schoolId: schoolId ?? "", organizationId: org, academicYearId: yearId, studentId },
     { enabled: base && can.fees && Boolean(yearId) },
   );
   const results = trpc.exam.results.studentLatest.useQuery(
-    { organizationId: org, academicYearId: yearId, studentId },
+    { schoolId: schoolId ?? "", organizationId: org, academicYearId: yearId, studentId },
     { enabled: base && can.results && Boolean(yearId), staleTime: 5 * 60_000 },
   );
   const homework = trpc.homework.studentRecent.useQuery(
-    { organizationId: org, academicYearId: yearId, studentId },
+    { schoolId: schoolId ?? "", organizationId: org, academicYearId: yearId, studentId },
     { enabled: base && can.homework && Boolean(yearId), staleTime: 60_000 },
   );
   const portal = trpc.portalAccess.status.useQuery(
-    { organizationId: org, schoolId: schoolId ?? undefined, studentId },
+    { organizationId: org, schoolId: schoolId ?? "", studentId },
     { enabled: base && can.portal },
   );
 

@@ -45,12 +45,12 @@ export function PeriodEditor() {
     typeof params.periodId === "string" && params.periodId.length > 0
       ? params.periodId
       : null;
-  const { organizationId, academicYear } = useActiveContext();
+  const { organizationId, schoolId, academicYear } = useActiveContext();
   const { section, sectionLabel } = useAttendanceSection(params.sectionId);
   const ready = Boolean(organizationId && academicYear && section);
 
   const listQuery = trpc.attendance.period.list.useQuery(
-    { organizationId: organizationId ?? "", sectionId: section?.id ?? "" },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "", sectionId: section?.id ?? "" },
     { enabled: ready && canManage && periodId === null, staleTime: 60_000 },
   );
   const periodQuery = trpc.attendance.period.byId.useQuery(

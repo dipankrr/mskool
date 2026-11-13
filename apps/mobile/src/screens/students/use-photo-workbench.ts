@@ -19,7 +19,7 @@ export function useSectionRoster(sectionId: string | undefined, enabled: boolean
   const roster = trpc.student.roster.useInfiniteQuery(
     {
       organizationId: organizationId ?? "",
-      schoolId: schoolId ?? undefined,
+      schoolId: schoolId ?? "",
       academicYearId: academicYear?.id ?? "",
       sectionId: sectionId ?? "",
       view: "current",

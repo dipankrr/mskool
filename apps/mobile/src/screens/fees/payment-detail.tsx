@@ -123,6 +123,7 @@ export function PaymentDetailScreen() {
 
   const ledger = trpc.fees.ledger.list.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
       academicYearId: payment?.academicYearId ?? "",
       studentId: payment?.studentId,

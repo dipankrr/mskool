@@ -77,6 +77,7 @@ export function FeesPrintSheet({
   // How many students owe here, so a notice run says how many sheets it takes.
   const owing = trpc.fees.dashboard.list.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId,
       academicYearId,
       classId: classId || undefined,

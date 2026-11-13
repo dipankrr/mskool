@@ -48,7 +48,7 @@ type Step = 0 | 1 | 2 | 3;
 export function GiveScreen() {
   const { organizationId, schoolId, academicYear } = useActiveContext();
   const utils = trpc.useUtils();
-  const scopeInput = { organizationId: organizationId ?? "", ...(schoolId ? { schoolId } : {}) };
+  const scopeInput = { organizationId: organizationId ?? "", schoolId: schoolId ?? "" };
   // The session the shell is viewing (ADR-066): the classes offered and "same as last time" come from it.
   const yearInput = { ...scopeInput, ...(academicYear ? { academicYearId: academicYear.id } : {}) };
 

@@ -37,7 +37,7 @@ function useArgs() {
 export function useAnnualPolicies() {
   const { scope, args, yearId, ready } = useArgs();
   return trpc.exam.annual.policies.list.useQuery(
-    { ...args, academicYearId: yearId },
+    { schoolId: scope.schoolId ?? "", ...args, academicYearId: yearId },
     { enabled: ready && scope.canRead, staleTime: CONFIG_STALE },
   );
 }
@@ -46,7 +46,7 @@ export function useAnnualPolicies() {
 export function useYearTerms() {
   const { scope, yearId, ready } = useArgs();
   const query = trpc.academic.term.list.useQuery(
-    { organizationId: scope.organizationId ?? "", academicYearId: yearId },
+    { schoolId: scope.schoolId ?? "", organizationId: scope.organizationId ?? "", academicYearId: yearId },
     { enabled: ready && scope.canRead, staleTime: CONFIG_STALE },
   );
   const terms = useMemo<TermLite[]>(
@@ -80,7 +80,7 @@ export function useAnnualPolicyActions() {
 export function useAnnualOverview() {
   const { scope, args, yearId, ready } = useArgs();
   return trpc.exam.annual.overview.useQuery(
-    { ...args, academicYearId: yearId },
+    { schoolId: scope.schoolId ?? "", ...args, academicYearId: yearId },
     { enabled: ready && scope.canRead, staleTime: LIVE_STALE },
   );
 }

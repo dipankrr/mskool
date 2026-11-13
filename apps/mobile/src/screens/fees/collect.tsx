@@ -187,6 +187,7 @@ export function CollectPaymentScreen() {
 
   const dues = trpc.fees.installment.dues.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
       academicYearId: academicYear?.id ?? "",
       studentId,
@@ -222,6 +223,7 @@ export function CollectPaymentScreen() {
 
   const openings = trpc.fees.ledger.listOpeningBalances.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
       academicYearId: academicYear?.id ?? "",
       studentId,

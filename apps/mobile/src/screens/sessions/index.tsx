@@ -62,7 +62,7 @@ export function SessionsScreen() {
   const canReadHistory = has("academic_year:read_history");
 
   const list = trpc.academic.year.list.useQuery(
-    { organizationId: organizationId ?? "" },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "" },
     {
       enabled: ready && Boolean(organizationId) && canRead,
       // The active context already treats this as a reference list; sharing
@@ -156,7 +156,8 @@ export function SessionsScreen() {
     );
   }
 
-  const rows = (list.data ?? []).filter((year) => year.schoolId === schoolId);
+  // Already the active branch's sessions (ADR-067).
+  const rows = list.data ?? [];
 
   if (rows.length === 0) {
     return frame(

@@ -251,8 +251,8 @@ export function PaperScreen() {
   // -- eligibility (advisory badges) -----------------------------------------------
   const eligibility = trpc.exam.eligibility.list.useQuery(
     {
+      schoolId: scope.schoolId ?? "",
       organizationId: scope.organizationId ?? "",
-      ...(scope.schoolId ? { schoolId: scope.schoolId } : {}),
       examId,
     },
     {

@@ -145,7 +145,7 @@ function PolicyBody({
   const savedLateRule = initialPolicyForm(initial).lateCountsAsPresent;
 
   const periodsQuery = trpc.attendance.period.list.useQuery(
-    { organizationId, sectionId: sectionId ?? "" },
+    { schoolId: schoolId ?? "", organizationId, sectionId: sectionId ?? "" },
     {
       enabled: sectionId !== null && form.mode === "period_wise",
       staleTime: 60_000,

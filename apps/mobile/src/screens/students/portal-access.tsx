@@ -56,7 +56,7 @@ export function PortalAccessScreen() {
   const status = trpc.portalAccess.status.useQuery(
     {
       organizationId: organizationId ?? "",
-      schoolId: schoolId ?? undefined,
+      schoolId: schoolId ?? "",
       studentId: studentId ?? "",
     },
     { enabled: ready && Boolean(organizationId) && canActivate && Boolean(studentId) },
@@ -87,7 +87,7 @@ export function PortalAccessScreen() {
     try {
       await ensureLink.mutateAsync({
         organizationId,
-        schoolId: schoolId ?? undefined,
+        schoolId: schoolId ?? "",
         studentId,
         phone: phone.trim(),
         guardianId: selectedGuardianId,
@@ -121,7 +121,7 @@ export function PortalAccessScreen() {
     try {
       await revokeLink.mutateAsync({
         organizationId,
-        schoolId: schoolId ?? undefined,
+        schoolId: schoolId ?? "",
         studentId,
         userId: row.userId,
       });

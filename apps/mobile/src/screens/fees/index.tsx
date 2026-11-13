@@ -112,6 +112,7 @@ export function FeesScreen({
 
   const overview = trpc.fees.dashboard.overview.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
       academicYearId: academicYear?.id ?? "",
     },
@@ -120,6 +121,7 @@ export function FeesScreen({
 
   const list = trpc.fees.dashboard.list.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
       academicYearId: academicYear?.id ?? "",
       search: search.length > 0 ? search : undefined,
@@ -135,13 +137,13 @@ export function FeesScreen({
   );
 
   const classes = trpc.academic.class.list.useQuery(
-    { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
+    { organizationId: organizationId ?? "", schoolId: schoolId ?? "" },
     { enabled: enabled && canFilter, staleTime: 5 * 60_000 },
   );
   const sections = trpc.academic.section.list.useQuery(
     {
       organizationId: organizationId ?? "",
-      schoolId: schoolId ?? undefined,
+      schoolId: schoolId ?? "",
       academicYearId: academicYear?.id ?? "",
     },
     { enabled: enabled && canFilter, staleTime: 5 * 60_000 },

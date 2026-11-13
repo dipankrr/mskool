@@ -30,7 +30,7 @@ export function ClassPageScreen() {
   const { organizationId, schoolId } = useActiveContext();
   const { has } = usePermissions();
   const view = trpc.homework.classView.useQuery(
-    { organizationId: organizationId ?? "", ...(schoolId ? { schoolId } : {}), forSectionId: sectionId, subjectId },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "", forSectionId: sectionId, subjectId },
     { enabled: Boolean(organizationId && sectionId && subjectId) },
   );
   const v = view.data;

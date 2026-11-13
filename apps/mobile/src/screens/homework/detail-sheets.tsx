@@ -188,8 +188,8 @@ export function GiveAgainSheet({ hw, onClose, onSaved }: { hw: Detail; onClose: 
   const { organizationId, schoolId, academicYear } = useActiveContext();
   // The viewed session's classes (ADR-066); the server already refuses a class from another session.
   const pairs = trpc.homework.pairs.useQuery({
+    schoolId: schoolId ?? "",
     organizationId: organizationId ?? "",
-    ...(schoolId ? { schoolId } : {}),
     ...(academicYear ? { academicYearId: academicYear.id } : {}),
   });
   const given = new Set(hw.sections.map((s) => s.sectionId));

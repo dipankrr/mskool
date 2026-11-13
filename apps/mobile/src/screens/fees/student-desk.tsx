@@ -124,6 +124,7 @@ export function StudentFeeDeskScreen() {
 
   const summary = trpc.fees.dashboard.student.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
       academicYearId: academicYear?.id ?? "",
       studentId,

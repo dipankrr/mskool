@@ -140,7 +140,7 @@ export function FeeStructureScreen() {
   );
 
   const heads = trpc.fees.head.list.useQuery(
-    { organizationId: organizationId ?? "" },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "" },
     {
       enabled: enabled && canReadHeads && Boolean(organizationId),
       staleTime: 5 * 60_000,
@@ -148,14 +148,14 @@ export function FeeStructureScreen() {
   );
 
   const rules = trpc.fees.structure.listLateFeeRules.useQuery(
-    { organizationId: organizationId ?? "" },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "" },
     { enabled: enabled && Boolean(structure.data), staleTime: 60_000 },
   );
 
   // A deep link arrives without the list's className; the class register
   // fills the gap when the caller may read it.
   const classes = trpc.academic.class.list.useQuery(
-    { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
+    { organizationId: organizationId ?? "", schoolId: schoolId ?? "" },
     {
       enabled:
         enabled && canReadClasses && !routeClassName && Boolean(structure.data),

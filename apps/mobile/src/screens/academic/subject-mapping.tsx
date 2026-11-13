@@ -55,7 +55,7 @@ export function SubjectMappingScreen() {
   const orgEnabled = ready && Boolean(organizationId);
   const yearId = academicYear?.id ?? "";
   const hasYear = Boolean(yearId);
-  const orgArgs = { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined };
+  const orgArgs = { organizationId: organizationId ?? "", schoolId: schoolId ?? "" };
 
   const subjects = trpc.subject.list.useQuery(orgArgs, { enabled: orgEnabled && canRead });
   const classes = trpc.academic.class.list.useQuery(orgArgs, {
@@ -66,13 +66,14 @@ export function SubjectMappingScreen() {
     retry: false,
   });
   const coverage = trpc.assignment.subjectMapping.coverage.useQuery(
-    { organizationId: organizationId ?? "", academicYearId: yearId },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "", academicYearId: yearId },
     { enabled: orgEnabled && canRead && hasYear },
   );
 
   const [selectedClassId, setSelectedClassId] = useState<string | null>(params.classId ?? null);
   const mappings = trpc.assignment.subjectMapping.list.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
       academicYearId: yearId,
       classId: selectedClassId ?? "",

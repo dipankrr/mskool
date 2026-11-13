@@ -39,8 +39,8 @@ export function useTermGradeSubjects(classId: string | null) {
   const names = useClassSubjectNames();
   const mappings = trpc.assignment.subjectMapping.list.useQuery(
     {
+      schoolId: scope.schoolId ?? "",
       organizationId: scope.organizationId ?? "",
-      ...(scope.schoolId ? { schoolId: scope.schoolId } : {}),
       academicYearId: scope.academicYear?.id ?? "",
       classId: classId ?? "",
     },
@@ -51,8 +51,8 @@ export function useTermGradeSubjects(classId: string | null) {
   );
   const types = trpc.exam.subjectTypes.list.useQuery(
     {
+      schoolId: scope.schoolId ?? "",
       organizationId: scope.organizationId ?? "",
-      ...(scope.schoolId ? { schoolId: scope.schoolId } : {}),
     },
     {
       enabled: scope.ready && scope.canRead && Boolean(scope.organizationId),
@@ -113,8 +113,8 @@ export function useTermGradeRoster(sectionId: string | null) {
   const scope = useExamScope();
   const query = trpc.enrollment.list.useQuery(
     {
+      schoolId: scope.schoolId ?? "",
       organizationId: scope.organizationId ?? "",
-      ...(scope.schoolId ? { schoolId: scope.schoolId } : {}),
       academicYearId: scope.academicYear?.id ?? "",
       ...(sectionId ? { sectionId } : {}),
     },
@@ -164,8 +164,8 @@ export function useTermGradeEntries(termId: string | null, mappingId: string | n
   const scope = useExamScope();
   const query = trpc.exam.termGrades.list.useQuery(
     {
+      schoolId: scope.schoolId ?? "",
       organizationId: scope.organizationId ?? "",
-      ...(scope.schoolId ? { schoolId: scope.schoolId } : {}),
       termId: termId ?? "",
     },
     {

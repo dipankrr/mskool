@@ -16,7 +16,7 @@ type TermRow = inferRouterOutputs<AppRouter>["academic"]["term"]["list"][number]
 /** The running session's terms (Step 2 chunk B) — no delete: a childless term
  * is removed on the web, terms with children never leave. */
 export function TermsScreen() {
-  const { organizationId, academicYear, ready } = useActiveContext();
+  const { organizationId, schoolId, academicYear, ready } = useActiveContext();
   const branchName = useBranchMeta();
   const { has } = usePermissions();
 
@@ -25,7 +25,7 @@ export function TermsScreen() {
   const canOpen = has("academic_year:update");
 
   const list = trpc.academic.term.list.useQuery(
-    { organizationId: organizationId ?? "", academicYearId: academicYear?.id ?? "" },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "", academicYearId: academicYear?.id ?? "" },
     {
       enabled:
         ready && Boolean(organizationId) && canRead && Boolean(academicYear?.id),

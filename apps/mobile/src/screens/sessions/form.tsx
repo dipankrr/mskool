@@ -77,7 +77,7 @@ export function SessionFormScreen() {
     },
   );
   const list = trpc.academic.year.list.useQuery(
-    { organizationId: organizationId ?? "" },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "" },
     {
       enabled: ready && Boolean(organizationId) && canRead,
       staleTime: 300_000,

@@ -48,8 +48,8 @@ export function EligibilityScreen() {
 
   const list = trpc.exam.eligibility.list.useQuery(
     {
+      schoolId: scope.schoolId ?? "",
       organizationId: scope.organizationId ?? "",
-      ...(scope.schoolId ? { schoolId: scope.schoolId } : {}),
       examId,
     },
     {
@@ -70,8 +70,8 @@ export function EligibilityScreen() {
   const rosters = trpc.useQueries((t) =>
     classIds.map((classId) =>
       t.enrollment.list({
+        schoolId: scope.schoolId ?? "",
         organizationId: scope.organizationId ?? "",
-        ...(scope.schoolId ? { schoolId: scope.schoolId } : {}),
         academicYearId: scope.academicYear?.id ?? "",
         classId,
       }),

@@ -243,8 +243,8 @@ export function ExamSetupScreen() {
     setBanner(null);
     try {
       const mappings = await utils.assignment.subjectMapping.list.fetch({
+        schoolId: scope.schoolId ?? "",
         organizationId: scope.organizationId ?? "",
-        ...(scope.schoolId ? { schoolId: scope.schoolId } : {}),
         academicYearId: scope.academicYear?.id ?? "",
         classId,
       });
@@ -618,8 +618,8 @@ export function ExamSetupScreen() {
     setBanner(null);
     try {
       const mappings = await utils.assignment.subjectMapping.list.fetch({
+        schoolId: scope.schoolId ?? "",
         organizationId: scope.organizationId ?? "",
-        ...(scope.schoolId ? { schoolId: scope.schoolId } : {}),
         academicYearId: scope.academicYear?.id ?? "",
         classId,
       });

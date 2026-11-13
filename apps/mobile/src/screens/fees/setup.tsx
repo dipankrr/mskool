@@ -61,11 +61,12 @@ export function FeeSetupScreen() {
   const enabled = ready && Boolean(organizationId) && Boolean(schoolId) && Boolean(yearId);
 
   const heads = trpc.fees.head.list.useQuery(
-    { organizationId: organizationId ?? "" },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "" },
     { enabled: enabled && canReadHeads, staleTime: 60_000 },
   );
   const structures = trpc.fees.structure.list.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
       academicYearId: yearId,
       includeHistory: false,

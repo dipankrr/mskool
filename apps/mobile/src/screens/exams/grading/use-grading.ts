@@ -28,7 +28,7 @@ function useScopeArgs() {
     scope,
     scopeArgs: {
       organizationId: scope.organizationId ?? "",
-      ...(scope.schoolId ? { schoolId: scope.schoolId } : {}),
+      schoolId: scope.schoolId ?? "",
     },
     /** A branch is the unit of grading policy. */
     ready: scope.ready && Boolean(scope.organizationId) && Boolean(scope.schoolId),

@@ -152,13 +152,13 @@ function AssignmentFormBody({
   }, [ended, sectionId]);
 
   const directory = trpc.assignment.teacherDirectory.useQuery(
-    { organizationId },
+    { schoolId: schoolId ?? "", organizationId },
     { enabled: Boolean(organizationId) },
   );
   const subjects = trpc.subject.list.useQuery(
     {
       organizationId,
-      schoolId: schoolId ?? undefined,
+      schoolId: schoolId ?? "",
     },
     { enabled: Boolean(organizationId) },
   );

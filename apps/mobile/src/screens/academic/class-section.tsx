@@ -88,13 +88,14 @@ export function ClassSectionScreen() {
   const canEditSection = has("section:update") || has("section:delete");
 
   const classes = trpc.academic.class.list.useQuery(
-    { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
+    { organizationId: organizationId ?? "", schoolId: schoolId ?? "" },
     { enabled: ready && Boolean(organizationId) && canRead },
   );
   const sectionsEnabled =
     ready && Boolean(organizationId) && canReadSections && Boolean(academicYear?.id);
   const sections = trpc.academic.section.list.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
       academicYearId: academicYear?.id ?? "",
     },

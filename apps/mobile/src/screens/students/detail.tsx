@@ -138,6 +138,7 @@ export function StudentDetailScreen() {
     ready && Boolean(organizationId) && can.enrolRead && Boolean(academicYear?.id);
   const enrollmentsQuery = trpc.enrollment.list.useQuery(
     {
+      schoolId: schoolId ?? "",
       organizationId: organizationId ?? "",
       academicYearId: academicYear?.id ?? "",
       includeLeft: true,
@@ -146,13 +147,13 @@ export function StudentDetailScreen() {
   );
   // Enrollments only carry ids, and a name is what anyone is looking for.
   const classesQuery = trpc.academic.class.list.useQuery(
-    { organizationId: organizationId ?? "", schoolId: schoolId ?? undefined },
+    { organizationId: organizationId ?? "", schoolId: schoolId ?? "" },
     { enabled: enrollmentsEnabled && has("class:read") },
   );
   const sectionsQuery = trpc.academic.section.list.useQuery(
     {
       organizationId: organizationId ?? "",
-      schoolId: schoolId ?? undefined,
+      schoolId: schoolId ?? "",
       academicYearId: academicYear?.id ?? "",
     },
     { enabled: enrollmentsEnabled && has("section:read") },
