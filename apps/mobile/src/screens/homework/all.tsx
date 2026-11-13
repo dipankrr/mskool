@@ -38,23 +38,26 @@ const STATUS: Partial<Record<HomeworkSummary["status"], { label: string; tone: T
  * search by title or book, filter by type, and page back in time.
  */
 export function AllHomeworkScreen() {
-  const { organizationId, schoolId, academicYear } = useActiveContext();
+  const { organizationId, schoolId, academicYear, yearPending } = useActiveContext();
   const utils = trpc.useUtils();
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState<Kind | null>(null);
   const term = search.trim();
   const yearId = academicYear?.id;
+  // Without a session the server lists every session's homework, so this
+  // waits for one and shows "no session" when the branch has none.
+  const noYear = !yearId && !yearPending;
 
   const query = useInfiniteQuery({
     queryKey: ["homework-all", organizationId, schoolId, yearId, kind, term],
-    enabled: Boolean(organizationId),
+    enabled: Boolean(organizationId && schoolId && yearId),
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) =>
       utils.client.homework.list.query({
         schoolId: schoolId ?? "",
         organizationId: organizationId ?? "",
-        // The viewed session only (ADR-066); without it the list spans every session.
-        ...(yearId ? { academicYearId: yearId } : {}),
+        // The viewed session only (ADR-066).
+        academicYearId: yearId ?? "",
         ...(kind ? { kind } : {}),
         ...(term ? { search: term } : {}),
         ...(pageParam ? { before: pageParam } : {}),
@@ -109,7 +112,9 @@ export function AllHomeworkScreen() {
         </View>
       }
     >
-      {query.isPending ? (
+      {noYear ? (
+        <EmptyState icon="homework" title={copy.session.noYearTitle} message={copy.session.noYearBody} />
+      ) : query.isPending ? (
         <View style={styles.stack}>
           <Skeleton height={72} />
           <Skeleton height={72} />

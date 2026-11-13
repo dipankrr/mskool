@@ -93,7 +93,8 @@ export function GiveScreen() {
 
   const lastQuery = trpc.homework.list.useQuery(
     { ...yearInput, mine: true, limit: 1 },
-    { enabled: Boolean(organizationId), staleTime: 60_000 },
+    // Waits for the session: without one the server would search every session.
+    { enabled: Boolean(organizationId && academicYear), staleTime: 60_000 },
   );
   const last = lastQuery.data?.[0] ?? null;
 
