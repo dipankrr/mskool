@@ -306,7 +306,8 @@ in a warm cache entry.
 
 ## ADR-017 — Two authorization questions: covering a node vs. overlapping it
 
-**Accepted. Refines the `DataScope` contract described in ADR-005.**
+**Accepted. Refines the `DataScope` contract described in ADR-005.** The client rule that
+lists send the org only is superseded by ADR-067: every staff list names its branch.
 
 Authorization asks one of two questions, and the first implementation conflated them.
 
@@ -3264,3 +3265,57 @@ server guard reused across the writes, not a phone-only lock.
 
 **Rejected.** A read-only past session: the owner chose web's behaviour. A year control
 inside each history screen (ADR-047 point 5): repeated work, and history scattered.
+
+## ADR-067 - Every staff list names its branch
+
+Date: 2026-11-13. Status: accepted. Supersedes the client rule in ADR-017 ("lists send
+`organizationId` only and let the server clip"). ADR-017's two builders and its clipping
+stand.
+
+**Context.** A user whose role covers the whole organisation saw every branch's fee heads
+on both apps: the fee setup lists mixed rows from all branches, and editing one from
+another branch failed. The cause was not authorization. `staffListProcedure` clips the
+caller's grants to the node the request names, and the clients named only the org, as
+ADR-017 told them to. For a branch principal that is their branch; for an org admin it is
+every branch. Lists with a session, class or section in the input came out right only
+because those belong to one branch. Three patterns had grown for one concern: send
+`schoolId`, filter on the device, or send nothing. Homework's teaching pairs ignored the
+branch altogether. The tests had two branches in one org but only asked whether a branch
+principal could reach the other branch, never whether a list followed the branch the
+user was working in.
+
+**Decision.**
+
+1. **`staffListProcedure` requires `schoolId`.** Every staff list answers for one branch.
+   A class or section id may narrow further, and must sit in that branch: a class from
+   another branch is the same 403 as a node that does not exist.
+2. **Org-wide lists use `orgListProcedure`**, named so the choice is visible: the branch
+   list and the role and permission lists. Any future org-wide summary (fees across
+   branches, say) is built as its own endpoint on this builder, returning per-branch
+   figures. An ordinary list called without a branch never becomes one by accident.
+3. **Homework's teaching pairs** are filtered to the named branch, as every other list is.
+4. **Clients send the branch on every list** and leave the query off when there is none.
+   Device-side `schoolId` filters are removed; sessions and ID card templates come from
+   the server already narrowed.
+5. **The default branch**, the same on web and mobile: the branch last chosen on this
+   device if still reachable, else the user's home branch, else the first branch they
+   can reach, else none (the existing no-branch state). The home branch is the branch of
+   the user's own staff record; `me` returns it per org as `homeSchoolId`, null when the
+   user has no staff record there or records in more than one branch. Web now auto-picks
+   like mobile already did.
+6. **Links from outside the app** (notifications, shared links) carry `schoolId` and
+   switch the app to that branch before opening.
+7. A role without `school:read` gets no branch, so no lists. That is the admin's choice
+   in the permission matrix; nothing works around it.
+
+**Consequences.** Forgetting the branch on a new list is a type error, not a quiet leak.
+Staff working in two branches switch branch to see the other one, including a subject
+teacher giving homework. Nobody gets a mixed-branch list. The mobile session list is
+fetched per branch, so the first switch to a branch shows a short load. Tests that called
+lists with the org only now name the branch.
+
+**Rejected.** The branch in a request header: the query cache keys on the input, so a
+branch switch would keep serving the old branch's rows. Keeping it optional with a lint
+rule: still "remember to do it", which is what failed. A setting for the default branch:
+the staff record already says where someone works; a setting can come later if owners
+without one ask.

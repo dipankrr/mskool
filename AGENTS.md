@@ -113,6 +113,8 @@ Rationale in `docs/CONVENTIONS.md`.
 11. **Always `timestamp({ withTimezone: true })`.**
 12. **Creating a school/class/section MUST also insert a `scope_nodes` row**, in the same
     transaction. Miss it and every request for that node 403s.
+13. **Every staff list names its branch.** `staffListProcedure` requires `schoolId`; only
+    lists that are truly org-wide use `orgListProcedure` (ADR-067).
 
 ---
 
