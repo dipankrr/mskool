@@ -28,10 +28,10 @@ import type { UpdateClassInput } from "@repo/contracts";
 const THIRTY_SECONDS = 30 * 1000;
 
 export function useClasses() {
-  const { organizationId, schoolId } = useActiveContext();
+  const { scopeArgs } = useActiveContext();
 
   return trpc.academic.class.list.useQuery(
-    { organizationId, ...(schoolId ? { schoolId } : {}) },
+    scopeArgs(),
     // Retry policy comes from the QueryClient default (see provider.tsx).
     { staleTime: THIRTY_SECONDS },
   );

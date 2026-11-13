@@ -45,9 +45,14 @@ export type PortalLinkStatus = RouterOutputs["portalAccess"]["status"][number];
 /** One calendar day — the marking gate's row. */
 export type CalendarDay = RouterOutputs["attendance"]["calendar"]["list"][number];
 
-/** The scope every staff call carries. Lists send the org; mutations add a branch. */
-export type StaffScopeArgs = { organizationId: string };
-export type WriteScopeArgs = StaffScopeArgs & { schoolId: string };
+/**
+ * The scope every staff call carries (ADR-067): the org and the branch. Lists and
+ * writes both name the branch; only the org-wide lists (branches, roles) send the
+ * org alone, as `OrgScopeArgs`.
+ */
+export type StaffScopeArgs = { organizationId: string; schoolId: string };
+export type WriteScopeArgs = StaffScopeArgs;
+export type OrgScopeArgs = { organizationId: string };
 
 /*
  * Fees. The router is mounted as `fees` (plural) in router.ts — the router

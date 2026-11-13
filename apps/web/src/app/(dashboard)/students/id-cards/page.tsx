@@ -92,7 +92,7 @@ import { trpc } from "@/lib/trpc/client";
 const THIRTY_SECONDS = 30 * 1000;
 
 export default function IdCardsPage() {
-  const { organizationId, schoolId, activeSession } = useActiveContext();
+  const { organizationId, schoolId, activeSession, scopeArgs } = useActiveContext();
   const router = useRouter();
 
   const templates = useIdCardTemplates();
@@ -103,7 +103,7 @@ export default function IdCardsPage() {
 
   const roster = trpc.enrollment.list.useQuery(
     {
-      organizationId,
+      ...scopeArgs(),
       academicYearId: activeSession?.id ?? "",
       ...(classId ? { classId } : {}),
       ...(sectionId ? { sectionId } : {}),

@@ -1502,6 +1502,10 @@ export const copy = {
     /** Shown when a write is attempted with no branch selected. */
     chooseBranchTitle: "Choose a branch first",
     chooseBranchBody: "This has to be saved against one branch. Pick one to continue.",
+    /** No branch this account can open: an org with none yet, or a role without school:read. */
+    noBranchTitle: "No branch to open",
+    noBranchBody:
+      "Your account cannot see any branch in this organization yet. Create one under Branches, or ask your administrator for access.",
   },
 
   /** The employment register and its roles (ADR-035). */

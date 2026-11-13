@@ -146,7 +146,7 @@ function OrderSegments({
 }
 
 export function BulkPhotos() {
-  const { organizationId, schoolId, activeSession, has } = useActiveContext();
+  const { organizationId, schoolId, activeSession, has, scopeArgs } = useActiveContext();
   const utils = trpc.useUtils();
   const [mode, setMode] = useState<Mode>("section");
   const [classId, setClassId] = useState("");
@@ -176,7 +176,7 @@ export function BulkPhotos() {
   // sections), so the mapping waits for both.
   const roster = trpc.enrollment.list.useQuery(
     {
-      organizationId,
+      ...scopeArgs(),
       academicYearId: activeSession?.id ?? "",
       ...(classId ? { classId } : {}),
       ...(sectionId ? { sectionId } : {}),

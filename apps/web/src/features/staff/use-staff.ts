@@ -66,19 +66,19 @@ export function useStaff(staffId: string) {
 
 /** The staff member's ACTIVE role assignments, labeled for display. */
 export function useStaffRoles(userId?: string) {
-  const { scopeArgs } = useActiveContext();
+  const { orgScopeArgs } = useActiveContext();
 
   return trpc.role.assignments.useQuery(
-    { ...scopeArgs(), userId: userId ?? "" },
+    { ...orgScopeArgs(), userId: userId ?? "" },
     { enabled: Boolean(userId), staleTime: THIRTY_SECONDS },
   );
 }
 
 /** The org's role → permission matrix (ADR-036 made it editable in place). */
 export function useRolePermissions(enabled: boolean) {
-  const { scopeArgs } = useActiveContext();
+  const { orgScopeArgs } = useActiveContext();
 
-  return trpc.role.permissions.useQuery(scopeArgs(), {
+  return trpc.role.permissions.useQuery(orgScopeArgs(), {
     enabled,
     staleTime: 5 * 60 * 1000,
   });
@@ -230,9 +230,9 @@ export function useRoleMutations() {
 
 /** The permission editor's vocabulary: grouped catalog + shipped defaults. */
 export function usePermissionDefaults(enabled: boolean) {
-  const { scopeArgs } = useActiveContext();
+  const { orgScopeArgs } = useActiveContext();
 
-  return trpc.role.permissionDefaults.useQuery(scopeArgs(), {
+  return trpc.role.permissionDefaults.useQuery(orgScopeArgs(), {
     enabled,
     staleTime: 5 * 60 * 1000,
     // A missing catalog is not retryable, and a refused one is not
@@ -242,7 +242,7 @@ export function usePermissionDefaults(enabled: boolean) {
 }
 
 export function usePermissionMutations() {
-  const { scopeArgs } = useActiveContext();
+  const { orgScopeArgs } = useActiveContext();
   const utils = trpc.useUtils();
 
   const refresh = async () => {
@@ -270,20 +270,20 @@ export function usePermissionMutations() {
     update: {
       ...update,
       submit: (input: { roleType: RoleType; add: string[]; remove: string[] }) =>
-        update.mutateAsync({ ...scopeArgs(), ...input }),
+        update.mutateAsync({ ...orgScopeArgs(), ...input }),
     },
     reset: {
       ...reset,
-      submit: (roleType: RoleType) => reset.mutateAsync({ ...scopeArgs(), roleType }),
+      submit: (roleType: RoleType) => reset.mutateAsync({ ...orgScopeArgs(), roleType }),
     },
   };
 }
 
 /** WHO holds each role — the Roles area's companion read. */
 export function useRoleHolders(enabled: boolean) {
-  const { scopeArgs } = useActiveContext();
+  const { orgScopeArgs } = useActiveContext();
 
-  return trpc.role.holders.useQuery(scopeArgs(), {
+  return trpc.role.holders.useQuery(orgScopeArgs(), {
     enabled,
     staleTime: THIRTY_SECONDS,
   });

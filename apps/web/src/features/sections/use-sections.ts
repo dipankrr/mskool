@@ -40,12 +40,11 @@ const THIRTY_SECONDS = 30 * 1000;
  * caller should not ask until the class is known to be theirs — hence `enabled`.
  */
 export function useSections(classId?: string, options?: { enabled?: boolean }) {
-  const { organizationId, schoolId, academicYearId } = useActiveContext();
+  const { scopeArgs, academicYearId } = useActiveContext();
 
   return trpc.academic.section.list.useQuery(
     {
-      organizationId,
-      ...(schoolId ? { schoolId } : {}),
+      ...scopeArgs(),
       // Never sent as a placeholder: the query below is disabled until it is real.
       academicYearId: academicYearId ?? "",
       ...(classId ? { classId } : {}),

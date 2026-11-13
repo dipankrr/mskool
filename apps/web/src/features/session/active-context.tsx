@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import {
   createContext,
@@ -32,6 +32,7 @@ import type {
   AcademicYear,
   Me,
   Membership,
+  OrgScopeArgs,
   School,
   StaffScopeArgs,
   WriteScopeArgs,
@@ -41,32 +42,22 @@ import { useMe } from "./use-me";
 /**
  * WHICH ORGANIZATION, WHICH BRANCH, WHICH SESSION — resolved once, for everything.
  *
- * Every staff procedure takes `{ organizationId, schoolId?, classId?, sectionId? }`,
- * and the two builders ask opposite questions of it (ADR-017):
- *
- *   lists     → send `organizationId` only. The server clips the caller's grants to
- *               the addressed subtree, so a branch principal automatically sees just
- *               their branch. `schoolId` is an optional narrowing, never a filter the
- *               client has to apply.
- *   mutations → must also send `schoolId`. Omitting it reaches `requireSchoolId`,
- *               which after ADR-026 is a 400 telling the user to choose a branch.
- *
- * `scopeArgs()` and `writeScopeArgs()` are those two answers, so no screen has to
+ * Every staff call names the org AND the branch (ADR-067). The list builder clips the
+ * caller's grants to that branch, so an org admin sees one branch's rows rather than
+ * every branch's, and a class teacher sees what their grant reaches inside it. Only
+ * the org-wide lists (branches, roles) send the org alone. `scopeArgs()`,
+ * `orgScopeArgs()` and `writeScopeArgs()` are those answers, so no screen has to
  * remember which one it needs.
  *
- * **The session comes from `academic.year.list`, not `academic.year.current`.** That
- * looks like the obvious call and is the wrong one: `current` is a strict
- * `staffProcedure`, so the caller must address a node their grant covers. Probing
- * the seeded logins, a branch principal addressing the org node gets
- * `403 Missing permission: academic_year:read` — and a class-scoped teacher gets
- * `schools: []` from `me`, so they cannot name a branch to address instead. The
- * permissive list works for all three, returns the rows the caller may see, and is
- * the same query the session picker needs anyway.
+ * **There is always a branch when the user can see one:** the last one chosen on this
+ * device, else their home branch (`homeSchoolId`, from their staff record), else the
+ * first by name. With none visible, `ActiveContextGate` explains it instead of
+ * rendering branch screens.
  *
- * **`isCurrent` is per school.** An org-wide list legitimately contains one current
- * row per branch, so "the running session" only means something once a branch is
- * chosen. With several branches and none selected, `activeSession` is undefined
- * rather than a guess.
+ * **The session comes from `academic.year.list`, not `academic.year.current`.**
+ * `current` is a strict `staffProcedure`, so a class teacher, whose grant does not
+ * cover the school node, would get a 403. The permissive list returns the rows their
+ * grant reaches, and is the same query the session picker needs anyway.
  *
  * **Persisted selections are validated, never trusted.** A branch id left in
  * localStorage after the grant was revoked would make every subsequent call fail
@@ -156,22 +147,30 @@ function resolveOrganizationId(
 }
 
 /**
- * The persisted branch if it is still visible, else the only one, else none.
+ * The default branch (ADR-067 point 5): the one last chosen on this device if still
+ * visible, else the user's home branch from their staff record, else the first.
  *
- * Unlike the org, this does *not* default to the first of several. A branch is the
- * target of every write, and silently picking one would let an admin create a class
- * in the wrong school. `null` is a valid, useful state: lists still work org-wide,
- * and `writeScopeArgs()` returns null so the UI can ask.
+ * This used to stop at "the only one" and leave a multi-branch admin on no branch,
+ * where lists ran org-wide and mixed every branch's rows. Every list now names a
+ * branch, so there is always one unless the user can see none. The active branch is
+ * named in the shell and the switcher is one click away.
  */
 function resolveSchoolId(
   schools: readonly School[],
   storedId: string | undefined,
+  homeSchoolId: string | null | undefined,
 ): string | null {
   if (storedId && schools.some((s) => s.id === storedId)) return storedId;
-  if (schools.length === 1) return schools[0]?.id ?? null;
+  if (homeSchoolId && schools.some((s) => s.id === homeSchoolId)) return homeSchoolId;
 
-  return null;
+  return schools[0]?.id ?? null;
 }
+
+/**
+ * Pages about the organisation itself, which work without a branch. Branches must
+ * stay reachable: a new org has none until its admin creates the first one there.
+ */
+const ORG_PAGES = ["/branches", "/roles", "/profile"];
 
 export type ActiveContextValue = {
   me: Me;
@@ -212,8 +211,15 @@ export type ActiveContextValue = {
   selectSchool: (schoolId: string | null) => void;
   selectSession: (academicYearId: string | null) => void;
 
-  /** For `staffListProcedure` calls. Org only — let the server clip. */
+  /**
+   * For every staff call (ADR-067): the org and the active branch. Screens behind
+   * `ActiveContextGate` always have a branch; on an org page with none, the branch
+   * is empty and a branch list would be refused, which is why those pages only call
+   * org-wide lists (`orgScopeArgs`).
+   */
   scopeArgs: () => StaffScopeArgs;
+  /** For the org-wide lists only: branches, roles and permissions. */
+  orgScopeArgs: () => OrgScopeArgs;
   /** For mutations. Null means "ask the user for a branch first". */
   writeScopeArgs: () => WriteScopeArgs | null;
 };
@@ -280,8 +286,22 @@ export function ActiveContextGate({ children }: { children: ReactNode }) {
   const state = useActiveContextState();
   const me = useMe();
   const router = useRouter();
+  const pathname = usePathname();
 
   if (state.status === "loading") return <ContextSkeleton />;
+
+  // No branch to open (ADR-067 point 7): every branch screen would be refused, so
+  // say so once instead. Org pages still render — Branches is where a new org
+  // creates its first one.
+  if (
+    state.status === "ready" &&
+    !state.value.schoolId &&
+    !ORG_PAGES.some((page) => pathname === page || pathname.startsWith(`${page}/`))
+  ) {
+    return (
+      <ContextMessage title={copy.access.noBranchTitle} body={copy.access.noBranchBody} />
+    );
+  }
 
   if (state.status === "error") {
     return (
@@ -386,21 +406,19 @@ export function ActiveContextProvider({ children }: { children: ReactNode }) {
   const membership = memberships.find((m) => m.organization.id === organizationId);
 
   const schools = useMemo(() => byName(membership?.schools ?? []), [membership]);
-  const schoolId = resolveSchoolId(schools, stored?.schoolId);
+  const schoolId = resolveSchoolId(schools, stored?.schoolId, membership?.homeSchoolId);
 
   /**
-   * Sessions for the active org, narrowed to the branch when one is chosen so that
-   * `isCurrent` identifies exactly one row. The permissive builder means this is
-   * safe to call with org scope for every role — including a class-scoped teacher,
-   * who has no branch to name.
+   * The active branch's sessions, so that `isCurrent` identifies exactly one row.
+   * The permissive builder clips a class teacher's grant to the branch it sits in.
    */
   const sessionsQuery = trpc.academic.year.list.useQuery(
     {
       organizationId: organizationId ?? "",
-      ...(schoolId ? { schoolId } : {}),
+      schoolId: schoolId ?? "",
     },
     {
-      enabled: Boolean(organizationId) && stored !== null,
+      enabled: Boolean(organizationId) && Boolean(schoolId) && stored !== null,
       staleTime: ONE_MINUTE,
       // Retry policy comes from the QueryClient default (see provider.tsx). A
       // role without `academic_year:read` gets FORBIDDEN here, and that is a
@@ -409,16 +427,8 @@ export function ActiveContextProvider({ children }: { children: ReactNode }) {
     },
   );
 
-  const sessions = sessionsQuery.data ?? NO_SESSIONS;
-
-  /**
-   * Belt and braces: the query is already narrowed by branch, but a cached response
-   * from before a branch switch could still be in hand for one render.
-   */
-  const branchSessions = useMemo(
-    () => (schoolId ? sessions.filter((s) => s.schoolId === schoolId) : sessions),
-    [sessions, schoolId],
-  );
+  // The branch is in the query key, so a cached list is always this branch's.
+  const branchSessions = sessionsQuery.data ?? NO_SESSIONS;
 
   const currentSession = useMemo(() => {
     const flagged = branchSessions.filter((s) => s.isCurrent);
@@ -503,7 +513,8 @@ export function ActiveContextProvider({ children }: { children: ReactNode }) {
       selectOrganization,
       selectSchool,
       selectSession,
-      scopeArgs: () => ({ organizationId }),
+      scopeArgs: () => ({ organizationId, schoolId: schoolId ?? "" }),
+      orgScopeArgs: () => ({ organizationId }),
       writeScopeArgs: () => (schoolId ? { organizationId, schoolId } : null),
     };
   }, [

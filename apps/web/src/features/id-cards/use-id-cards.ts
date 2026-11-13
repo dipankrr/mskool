@@ -41,10 +41,10 @@ export type TemplateChoice = {
 };
 
 export function useIdCardTemplates() {
-  const { organizationId } = useActiveContext();
+  const { organizationId, scopeArgs } = useActiveContext();
 
   const query = trpc.idCard.template.list.useQuery(
-    { organizationId },
+    scopeArgs(),
     {
       enabled: Boolean(organizationId),
       staleTime: 30_000,

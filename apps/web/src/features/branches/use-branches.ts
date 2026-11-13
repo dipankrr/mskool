@@ -36,9 +36,9 @@ import type { CreateSchoolInput, UpdateSchoolInput } from "@repo/contracts";
 const THIRTY_SECONDS = 30 * 1000;
 
 export function useBranches() {
-  const { scopeArgs } = useActiveContext();
+  const { orgScopeArgs } = useActiveContext();
 
-  return trpc.school.list.useQuery(scopeArgs(), {
+  return trpc.school.list.useQuery(orgScopeArgs(), {
     staleTime: THIRTY_SECONDS,
     // Retry policy comes from the QueryClient default (see provider.tsx).
   });

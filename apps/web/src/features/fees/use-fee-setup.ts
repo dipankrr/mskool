@@ -36,7 +36,7 @@ import { trpc } from "@/lib/trpc/client";
 
 const THIRTY_SECONDS = 30 * 1000;
 
-/** Active heads at the caller's scope. The list is permissive (ADR-017). */
+/** The active branch's heads (ADR-067: every list names its branch). */
 export function useFeeHeads() {
   const { scopeArgs } = useActiveContext();
 
