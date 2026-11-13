@@ -133,6 +133,7 @@ import {
   assertStudentOwnership,
   protectedProcedure,
   resolveStudentOwner,
+  orgListProcedure,
   router as makeRouter,
   staffListProcedure,
   staffProcedure,
@@ -280,6 +281,7 @@ function listCaller(permission: Permission, userId: string) {
   const probe = makeRouter({
     probe: staffListProcedure(permission).query(({ ctx }) => ({
       scopes: ctx.scopes,
+      schoolId: ctx.schoolId,
     })),
   });
   return probe.createCaller({
@@ -637,15 +639,15 @@ describe("staffListProcedure", () => {
     ], PRINCIPAL_PERMS);
   });
 
-  it("clips grants to the addressed subtree", async () => {
-    // She does not COVER the org node, yet listing her own branch is exactly
-    // what the school switcher needs — the permissive question.
+  it("answers for the named branch", async () => {
     const result = await listCaller("school:read", PRINCIPAL_A).probe({
       organizationId: ORG,
+      schoolId: SCHOOL_A,
     });
 
     expect(result.scopes).toHaveLength(1);
     expect(result.scopes[0]?.schoolId).toBe(SCHOOL_A);
+    expect(result.schoolId).toBe(SCHOOL_A);
   });
 
   it("a grant disjoint from the addressed node is a 403, never a wider filter", async () => {
@@ -657,6 +659,77 @@ describe("staffListProcedure", () => {
       "FORBIDDEN",
       "A role you hold has school:read but not at this school.",
     );
+  });
+
+  it("refuses a call that names no branch (ADR-067)", async () => {
+    await expectTrpcError(
+      listCaller("school:read", PRINCIPAL_A).probe({ organizationId: ORG } as never),
+      "BAD_REQUEST",
+    );
+  });
+
+  it("an org-wide role naming branch B gets branch B only, not every branch", async () => {
+    // The bug ADR-067 closes: an org grant clipped to the ORG node used to
+    // yield one org-wide scope, so a screen about one branch listed all.
+    seedGrants([{ userId: ADMIN, roleType: "org_admin", scopeType: "org", scopeId: ORG }], ORG_ADMIN_PERMS);
+
+    const result = await listCaller("school:read", ADMIN).probe({
+      organizationId: ORG,
+      schoolId: SCHOOL_B,
+    });
+
+    expect(result.scopes).toEqual([
+      { organizationId: ORG, schoolId: SCHOOL_B, classId: null, sectionId: null },
+    ]);
+  });
+
+  it("a class from another branch than the one named is a 403", async () => {
+    // CLASS_6 sits in SCHOOL_A. Without this the class would silently win.
+    seedGrants([{ userId: ADMIN, roleType: "org_admin", scopeType: "org", scopeId: ORG }], ORG_ADMIN_PERMS);
+
+    await expectTrpcError(
+      listCaller("school:read", ADMIN).probe({
+        organizationId: ORG,
+        schoolId: SCHOOL_B,
+        classId: CLASS_6,
+      }),
+      "FORBIDDEN",
+      "You do not have access to this resource.",
+    );
+  });
+});
+
+// --- orgListProcedure -------------------------------------------------------
+
+describe("orgListProcedure", () => {
+  function orgListCaller(permission: Permission, userId: string) {
+    const probe = makeRouter({
+      probe: orgListProcedure(permission).query(({ ctx }) => ({ scopes: ctx.scopes })),
+    });
+    return probe.createCaller({ session: { user: { id: userId } } } as never);
+  }
+
+  it("clips a branch principal to their branch when the org is addressed", async () => {
+    // She does not COVER the org node, yet listing her own branch is exactly
+    // what the branch switcher needs — the permissive question.
+    seedGrants([
+      { userId: PRINCIPAL_A, roleType: "principal", scopeType: "school", scopeId: SCHOOL_A },
+    ], PRINCIPAL_PERMS);
+
+    const result = await orgListCaller("school:read", PRINCIPAL_A).probe({ organizationId: ORG });
+
+    expect(result.scopes).toHaveLength(1);
+    expect(result.scopes[0]?.schoolId).toBe(SCHOOL_A);
+  });
+
+  it("gives an org-wide role the whole org", async () => {
+    seedGrants([{ userId: ADMIN, roleType: "org_admin", scopeType: "org", scopeId: ORG }], ORG_ADMIN_PERMS);
+
+    const result = await orgListCaller("school:read", ADMIN).probe({ organizationId: ORG });
+
+    expect(result.scopes).toEqual([
+      { organizationId: ORG, schoolId: null, classId: null, sectionId: null },
+    ]);
   });
 });
 

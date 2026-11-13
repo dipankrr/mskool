@@ -589,80 +589,134 @@ export function staffProcedure(
 }
 
 /**
- * PERMISSIVE staff track. For list endpoints only.
+ * A branch list's input: the branch is REQUIRED (ADR-067). A class or section
+ * may narrow further and must sit inside that branch.
+ */
+const staffListInput = staffScopeInput.extend({ schoolId: z.uuid() });
+
+/**
+ * PERMISSIVE staff track, one branch. For list endpoints only (ADR-017,
+ * ADR-067).
  *
- *   staffListProcedure("school:read").query(...)
+ *   staffListProcedure("subject:read").query(...)
  *
  * Asks the opposite question to staffProcedure: not "do you cover this node"
- * but "which of your grants fall inside it". A principal scoped to one branch
- * listing schools addresses the org node, which their grant does not cover —
- * under the strict check that is a 403, yet listing their own branch is
- * exactly what the school switcher needs.
+ * but "which of your grants fall inside it". A class teacher listing her
+ * branch's subjects addresses the school node, which her class grant does not
+ * cover — under the strict check that is a 403, yet her own rows are exactly
+ * what the screen needs.
  *
  * The handler receives `scopes`, already clipped to the addressed subtree, to
  * be ORed by scopeWhere(). Clipping happens in getDataScopes(); a grant in
  * another school cannot survive it, so it can never reach the OR.
+ *
+ * **The branch is required.** Before ADR-067 the clients named the org alone
+ * and let this builder clip, which for a user whose role covers the whole org
+ * meant every branch's rows on a screen that was about one. Requiring
+ * `schoolId` makes forgetting it a type error. Lists that really are org-wide
+ * use `orgListProcedure`.
  */
 export function staffListProcedure(permission: Permission) {
+  return t.procedure
+    .input(staffListInput)
+    .use(translateErrors)
+    .use(async ({ ctx, input, next }) => {
+      const resolved = await resolveListScopes(ctx, input, permission);
+
+      // A class or section from another branch is the same 403 as a node that
+      // does not exist: the request contradicts itself, and the most specific
+      // id would otherwise silently win over the branch it named.
+      if (resolved.node.type !== "org" && dataScopeFromNode(resolved.node).schoolId !== input.schoolId) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You do not have access to this resource.",
+        });
+      }
+
+      return next({ ctx: { ...ctx, ...resolved.ctx, schoolId: input.schoolId } });
+    });
+}
+
+/**
+ * PERMISSIVE staff track, the whole org. Only for lists that are about the
+ * organisation itself — its branches, its roles and permissions — or a summary
+ * built on purpose to span branches (ADR-067 point 2).
+ *
+ *   orgListProcedure("school:read").query(...)
+ *
+ * `schoolId` stays optional here, and the clipping is the same as
+ * staffListProcedure's: a branch principal listing schools sees their branch.
+ */
+export function orgListProcedure(permission: Permission) {
   return t.procedure
     .input(staffScopeInput)
     .use(translateErrors)
     .use(async ({ ctx, input, next }) => {
-      if (!ctx.session) {
-        throw new TRPCError({
-          code: "UNAUTHORIZED",
-          message: "Sign in required.",
-        });
-      }
-
-      const userId = ctx.session.user.id;
-      const { organizationId } = input;
-
-      const node = await resolveNode(organizationId, addressedNodeId(input));
-
-      const authCache = await getUserAuthCache(userId, {
-        skipCache: SENSITIVE_PERMISSIONS.has(permission),
-      });
-
-      const scopes = getDataScopes(
-        authCache,
-        permission,
-        dataScopeFromNode(node),
-      );
-
-      // Empty means no grant overlaps the addressed subtree. It must never be
-      // read as "unfiltered" — scopeWhere() throws on an empty list for the
-      // same reason.
-      if (scopes.length === 0) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: forbiddenMessage(authCache, organizationId, permission, node.type),
-        });
-      }
-
-      return next({
-        ctx: {
-          ...ctx,
-          session: ctx.session,
-          userId,
-          organizationId,
-          authCache,
-          /** Granted subtrees within the addressed node. OR these. */
-          scopes,
-          /**
-           * The PERMISSIVE counterpart of staffProcedure's `can`: does any
-           * grant within the addressed subtree carry `p`? The academic list
-           * endpoints gate on `academic_year:read` and use this to decide
-           * whether `read_history` widens the query to closed sessions
-           * (ADR-024). A school principal holds read_history at their branch,
-           * not at the org node they address to list years, so the strict
-           * question would wrongly deny them — this asks the one the list needs.
-           */
-          canWithin: (p: Permission) =>
-            getDataScopes(authCache, p, dataScopeFromNode(node)).length > 0,
-        },
-      });
+      const resolved = await resolveListScopes(ctx, input, permission);
+      return next({ ctx: { ...ctx, ...resolved.ctx } });
     });
+}
+
+/** Shared by both list builders: sign-in, node, grants clipped to it. */
+async function resolveListScopes(
+  ctx: Context,
+  input: z.infer<typeof staffScopeInput>,
+  permission: Permission,
+) {
+  if (!ctx.session) {
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "Sign in required.",
+    });
+  }
+
+  const userId = ctx.session.user.id;
+  const { organizationId } = input;
+
+  const node = await resolveNode(organizationId, addressedNodeId(input));
+
+  const authCache = await getUserAuthCache(userId, {
+    skipCache: SENSITIVE_PERMISSIONS.has(permission),
+  });
+
+  const scopes = getDataScopes(
+    authCache,
+    permission,
+    dataScopeFromNode(node),
+  );
+
+  // Empty means no grant overlaps the addressed subtree. It must never be
+  // read as "unfiltered" — scopeWhere() throws on an empty list for the
+  // same reason.
+  if (scopes.length === 0) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: forbiddenMessage(authCache, organizationId, permission, node.type),
+    });
+  }
+
+  return {
+    node,
+    ctx: {
+  session: ctx.session,
+  userId,
+  organizationId,
+  authCache,
+  /** Granted subtrees within the addressed node. OR these. */
+  scopes,
+  /**
+   * The PERMISSIVE counterpart of staffProcedure's `can`: does any
+   * grant within the addressed subtree carry `p`? The academic list
+   * endpoints gate on `academic_year:read` and use this to decide
+   * whether `read_history` widens the query to closed sessions
+   * (ADR-024). A school principal holds read_history at their branch,
+   * not at the org node they address, so the strict question would
+   * wrongly deny them — this asks the one the list needs.
+   */
+  canWithin: (p: Permission) =>
+    getDataScopes(authCache, p, dataScopeFromNode(node)).length > 0,
+    },
+  };
 }
 
 /**
@@ -689,27 +743,27 @@ export const studentProcedure = t.procedure
 
   if (studentIds.length === 0) {
     throw new TRPCError({
-      code: "FORBIDDEN",
-      message: "This account has no portal access.",
+  code: "FORBIDDEN",
+  message: "This account has no portal access.",
     });
   }
 
   return next({
     ctx: {
-      ...ctx,
-      session: ctx.session,
-      userId,
-      /** Every student this login may act for. Filter all queries by this. */
-      studentIds,
-      /**
-       * Confirms the requested student belongs to this login. Call it before
-       * returning anything about a specific child — passing a studentId
-       * straight from input to a query is the leak this prevents. The pure
-       * gate lives above (`assertStudentOwnership`); this is its seam.
-       */
-      assertOwnsStudent(studentId: string) {
-        assertStudentOwnership(studentIds, studentId);
-      },
+  ...ctx,
+  session: ctx.session,
+  userId,
+  /** Every student this login may act for. Filter all queries by this. */
+  studentIds,
+  /**
+   * Confirms the requested student belongs to this login. Call it before
+   * returning anything about a specific child — passing a studentId
+   * straight from input to a query is the leak this prevents. The pure
+   * gate lives above (`assertStudentOwnership`); this is its seam.
+   */
+  assertOwnsStudent(studentId: string) {
+    assertStudentOwnership(studentIds, studentId);
+  },
     },
   });
 });
@@ -765,13 +819,13 @@ export const publicProcedure = t.procedure
 export const healthRouter = router({
   health: t.procedure
     .meta({
-      openapi: {
-        method: "GET",
-        path: "/health",
-        tags: ["health"],
-        summary: "Liveness check",
-        protect: false,
-      },
+  openapi: {
+    method: "GET",
+    path: "/health",
+    tags: ["health"],
+    summary: "Liveness check",
+    protect: false,
+  },
     })
     .input(z.undefined())
     .output(z.string())
@@ -793,23 +847,23 @@ export const healthRouter = router({
    */
   orgBySlug: t.procedure
     .meta({
-      openapi: {
-        method: "GET",
-        path: "/public/org",
-        tags: ["health"],
-        summary: "Resolve a school's org slug for the family login",
-        protect: false,
-      },
+  openapi: {
+    method: "GET",
+    path: "/public/org",
+    tags: ["health"],
+    summary: "Resolve a school's org slug for the family login",
+    protect: false,
+  },
     })
     .input(z.object({ name: z.string().min(1).max(255) }))
     .output(z.object({ slug: z.string(), name: z.string() }).nullable())
     .query(({ input }) =>
-      db
-        .select({ slug: organizations.slug, name: organizations.name })
-        .from(organizations)
-        .where(eq(organizations.name, input.name))
-        .limit(1)
-        .then((rows) => rows[0] ?? null),
+  db
+    .select({ slug: organizations.slug, name: organizations.name })
+    .from(organizations)
+    .where(eq(organizations.name, input.name))
+    .limit(1)
+    .then((rows) => rows[0] ?? null),
     ),
 
   /**
@@ -821,23 +875,23 @@ export const healthRouter = router({
    */
   orgsByNamePrefix: t.procedure
     .meta({
-      openapi: {
-        method: "GET",
-        path: "/public/orgs",
-        tags: ["health"],
-        summary: "School names for the family-login picker",
-        protect: false,
-      },
+  openapi: {
+    method: "GET",
+    path: "/public/orgs",
+    tags: ["health"],
+    summary: "School names for the family-login picker",
+    protect: false,
+  },
     })
     .input(z.object({ prefix: z.string().max(255) }))
     .output(z.array(z.object({ slug: z.string(), name: z.string() })))
     .query(({ input }) =>
-      db
-        .select({ slug: organizations.slug, name: organizations.name })
-        .from(organizations)
-        // Escape first: prefix:"%" must suggest nothing, not ten orgs.
-        .where(ilike(organizations.name, `${escapeLike(input.prefix)}%`))
-        .orderBy(asc(organizations.name))
-        .limit(10),
+  db
+    .select({ slug: organizations.slug, name: organizations.name })
+    .from(organizations)
+    // Escape first: prefix:"%" must suggest nothing, not ten orgs.
+    .where(ilike(organizations.name, `${escapeLike(input.prefix)}%`))
+    .orderBy(asc(organizations.name))
+    .limit(10),
     ),
 });

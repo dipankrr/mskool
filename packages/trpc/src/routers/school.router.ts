@@ -2,7 +2,7 @@ import { createSchoolSchema, schoolSelectSchema, updateSchoolSchema } from "@rep
 import { organizationService } from "@repo/services";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { router, staffListProcedure, staffProcedure } from "../trpc";
+import { orgListProcedure, router, staffProcedure } from "../trpc";
 
 /**
  * Schools — branches under the organization (ADR-001: the tenant is the org,
@@ -30,7 +30,7 @@ export const schoolRouter = router({
   // A list, so the permissive builder: a principal scoped to one branch does
   // not "cover" the org node they address here, but must still see their own
   // branch. ctx.scopes is already clipped to the addressed subtree.
-  list: staffListProcedure("school:read")
+  list: orgListProcedure("school:read")
     .meta({
       openapi: {
         method: "GET",

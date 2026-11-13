@@ -105,11 +105,12 @@ const pairOf = (input: { sectionId: string; subjectId: string }) => ({
 async function accessFor(ctx: {
   userId: string;
   organizationId: string;
+  schoolId: string;
   scopes: HomeworkAccess["scopes"];
   authCache: Parameters<typeof onlySubjectTeacher>[0];
 }): Promise<HomeworkAccess> {
   const pairs = onlySubjectTeacher(ctx.authCache, ctx.organizationId, "homework:read")
-    ? await homeworkService.teachingPairs(ctx.organizationId, ctx.userId)
+    ? await homeworkService.teachingPairs(ctx.organizationId, ctx.schoolId, ctx.userId)
     : null;
   return { userId: ctx.userId, scopes: ctx.scopes, pairs };
 }
@@ -144,7 +145,7 @@ export const homeworkRouter = router({
     .output(givePairsSchema)
     .query(async ({ ctx, input }) => {
       const pairs = onlySubjectTeacher(ctx.authCache, ctx.organizationId, "homework:create")
-        ? await homeworkService.teachingPairs(ctx.organizationId, ctx.userId)
+        ? await homeworkService.teachingPairs(ctx.organizationId, ctx.schoolId, ctx.userId)
         : null;
       return homeworkService.givePairs(
         { userId: ctx.userId, scopes: ctx.scopes, pairs },

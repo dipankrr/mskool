@@ -5,8 +5,8 @@ import {
 } from "@repo/authz";
 import type { Membership } from "@repo/contracts";
 import { db } from "@repo/db";
-import { organizations } from "@repo/db/schema";
-import { inArray } from "drizzle-orm";
+import { organizations, staff } from "@repo/db/schema";
+import { and, eq, inArray } from "drizzle-orm";
 import { organizationService } from "./organization.service";
 
 /**
@@ -77,10 +77,36 @@ export class IdentityService {
         roleTypes: [...new Set(assignments.map((a) => a.roleType))],
         permissions: permissionsInOrg(authCache, organization.id),
         schools,
+        homeSchoolId: await this.homeSchoolId(authCache.userId, organization.id, schools),
       });
     }
 
     return memberships;
+  }
+
+  /**
+   * The default branch (ADR-067 point 5): where this user's own staff record
+   * says they work. Only a current record counts, and only one branch — two
+   * branches is no answer, and the client falls back to the first branch.
+   */
+  private async homeSchoolId(
+    userId: string,
+    organizationId: string,
+    visible: { id: string }[],
+  ): Promise<string | null> {
+    if (visible.length === 0) return null;
+    const rows = await db
+      .selectDistinct({ schoolId: staff.schoolId })
+      .from(staff)
+      .where(
+        and(
+          eq(staff.userId, userId),
+          eq(staff.organizationId, organizationId),
+          inArray(staff.status, ["active", "on_leave"]),
+        ),
+      );
+    const only = rows.length === 1 ? rows[0]?.schoolId : undefined;
+    return only && visible.some((school) => school.id === only) ? only : null;
   }
 }
 

@@ -35,6 +35,13 @@ export const membershipSchema = z.object({
   permissions: z.array(z.string()),
   /** Active schools visible under this user's grants in this org. */
   schools: z.array(schoolSelectSchema),
+  /**
+   * The branch this user works in, from their own staff record (ADR-067), used
+   * as the default branch when the device remembers none. Null when they have
+   * no current staff record here, records in more than one branch, or a
+   * record in a branch they cannot see.
+   */
+  homeSchoolId: z.uuid().nullable(),
 });
 export type Membership = z.infer<typeof membershipSchema>;
 

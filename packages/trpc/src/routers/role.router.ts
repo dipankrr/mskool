@@ -13,7 +13,7 @@ import {
 import { roleService } from "@repo/services";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { router, staffListProcedure, staffProcedure } from "../trpc";
+import { orgListProcedure, router, staffProcedure } from "../trpc";
 
 /**
  * ROLES — granting, revoking, and reading `role_assignments` (ADR-005,
@@ -54,7 +54,7 @@ export const roleRouter = router({
   // The ACTIVE assignments of one staff member, labeled for display. The
   // caller needs `role_assignment:read` SOMEWHERE in the org (permissive
   // list); the rows themselves belong to the caller's org by construction.
-  assignments: staffListProcedure("role_assignment:read")
+  assignments: orgListProcedure("role_assignment:read")
     .meta({
       openapi: {
         method: "GET",
@@ -125,7 +125,7 @@ export const roleRouter = router({
 
   // The org's permission matrix, read-only. Editing lives in the ADR-036
   // procedures below.
-  permissions: staffListProcedure("role_permission:read")
+  permissions: orgListProcedure("role_permission:read")
     .meta({
       openapi: {
         method: "GET",
@@ -142,7 +142,7 @@ export const roleRouter = router({
 
   // WHO holds each role — the Roles area's companion read. Same permission
   // as the matrix: knowing who has power is part of seeing the power.
-  holders: staffListProcedure("role_permission:read")
+  holders: orgListProcedure("role_permission:read")
     .meta({
       openapi: {
         method: "GET",
@@ -160,7 +160,7 @@ export const roleRouter = router({
   // The editor's vocabulary: the grouped catalog (resource → actions, by
   // display category) and the shipped defaults, as DATA — the web never
   // imports @repo/authz runtime code (ADR-036).
-  permissionDefaults: staffListProcedure("role_permission:read")
+  permissionDefaults: orgListProcedure("role_permission:read")
     .meta({
       openapi: {
         method: "GET",

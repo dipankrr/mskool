@@ -21,7 +21,7 @@ import { idCardTemplates } from "@repo/db/schema";
 import { and, eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { router, staffListProcedure, staffProcedure } from "../trpc";
+import { orgListProcedure, router, staffListProcedure, staffProcedure } from "../trpc";
 
 /**
  * ID CARDS (slice 2a) — the template surface and the card-data resolver.
@@ -260,7 +260,7 @@ export const idCardRouter = router({
    * Documented in the TASKS 2b entry as well, so it cannot look forgotten.
    */
   gallery: router({
-    list: staffListProcedure("id_card:manage")
+    list: orgListProcedure("id_card:manage")
       .meta({
         openapi: {
           method: "GET",

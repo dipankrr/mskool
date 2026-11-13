@@ -2519,13 +2519,18 @@ export class HomeworkService {
   }
 
   /** A caller's open subject_teacher pairs in an organisation. */
-  async teachingPairs(organizationId: string, userId: string): Promise<TeachingPair[]> {
+  /**
+   * A subject teacher's own (section, subject) pairs in ONE branch (ADR-067):
+   * someone teaching in two branches sees the branch they are working in.
+   */
+  async teachingPairs(organizationId: string, schoolId: string, userId: string): Promise<TeachingPair[]> {
     const rows = await db
       .select({ sectionId: sectionTeacherAssignments.sectionId, subjectId: sectionTeacherAssignments.subjectId })
       .from(sectionTeacherAssignments)
       .where(
         and(
           eq(sectionTeacherAssignments.organizationId, organizationId),
+          eq(sectionTeacherAssignments.schoolId, schoolId),
           eq(sectionTeacherAssignments.userId, userId),
           eq(sectionTeacherAssignments.role, "subject_teacher"),
           isNull(sectionTeacherAssignments.effectiveTo),
