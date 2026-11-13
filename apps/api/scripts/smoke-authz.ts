@@ -541,11 +541,12 @@ async function main() {
 
   console.log("\nacademic years — tenancy (principal @ school A)");
 
-  // Principal is scoped to school A. Listing years at the org node must clip to
-  // their branch: both of A's years and NONE of B's. yearB appearing here is a
-  // cross-tenant leak the single-school school.list test could never catch.
+  // Principal is scoped to school A. Listing A's years must return both of A's
+  // years and NONE of B's. yearB appearing here is a cross-tenant leak the
+  // single-school school.list test could never catch.
   const principalYears = await query(principalCookie, "academic.year.list", {
     organizationId: orgId,
+    schoolId: schoolA.id,
   });
   report(
     "principal lists ONLY school A's years",
@@ -557,6 +558,30 @@ async function main() {
     principalYears.ok
       ? `got ${principalYears.data?.length}`
       : `HTTP ${principalYears.status}`,
+  );
+
+  // ADR-067: every staff list names its branch. A list sent with the org alone
+  // used to clip to the caller's grants, which for an org admin is every branch.
+  const orgOnlyYears = await query(adminCookie, "academic.year.list", {
+    organizationId: orgId,
+  });
+  report(
+    "a list naming no branch is refused (ADR-067)",
+    !orgOnlyYears.ok && orgOnlyYears.code === "BAD_REQUEST",
+    orgOnlyYears.ok ? "LIST SUCCEEDED without a branch" : `${orgOnlyYears.code}`,
+  );
+
+  const adminYearsA = await query(adminCookie, "academic.year.list", {
+    organizationId: orgId,
+    schoolId: schoolA.id,
+  });
+  report(
+    "org_admin naming school A gets ONLY school A's years (ADR-067)",
+    adminYearsA.ok &&
+      Array.isArray(adminYearsA.data) &&
+      adminYearsA.data.length > 0 &&
+      adminYearsA.data.every((y: any) => y.schoolId === schoolA.id),
+    adminYearsA.ok ? `got ${adminYearsA.data?.length}` : `HTTP ${adminYearsA.status}`,
   );
 
   // B6: years are owner-resolved — {organizationId, id}, no scope-node naming.
@@ -656,7 +681,7 @@ async function main() {
   // List-level gate: without read_history the year picker offers only the
   // current session, never the closed one.
   const teacherYears = await query(teacherCookie, "academic.year.list", {
-    organizationId: orgId,
+    organizationId: orgId, schoolId: schoolA.id,
     classId: classA.id,
   });
   report(
@@ -737,7 +762,7 @@ async function main() {
   // alike, and the school-level widening is the entity-shape reasoning the
   // service documents, not an accident to be fixed.
   const mappingList = await query(principalCookie, "assignment.subjectMapping.list", {
-    organizationId: orgId,
+    organizationId: orgId, schoolId: schoolA.id,
     academicYearId: currentYearA.id,
     classId: classA.id,
   });
@@ -755,6 +780,7 @@ async function main() {
     "assignment.subjectMapping.list",
     {
       organizationId: orgId,
+      schoolId: schoolA.id,
       academicYearId: currentYearA.id,
       classId: classA.id,
     },
@@ -772,7 +798,7 @@ async function main() {
   const staList = await query(
     subjectTeacherCookie,
     "assignment.teacherAssignment.list",
-    { organizationId: orgId, sectionId: sectionA.id },
+    { organizationId: orgId, schoolId: schoolA.id, sectionId: sectionA.id },
   );
   report(
     "subject_teacher lists 6-A's open assignments",
@@ -790,7 +816,7 @@ async function main() {
   const teacherStaList = await query(
     teacherCookie,
     "assignment.teacherAssignment.list",
-    { organizationId: orgId, sectionId: sectionA.id },
+    { organizationId: orgId, schoolId: schoolA.id, sectionId: sectionA.id },
   );
   report(
     "class_teacher holds NO teacher_assignment:read",
@@ -903,7 +929,7 @@ async function main() {
   console.log("\nterms — the year edge, history-pinned");
 
   const termListA = await query(principalCookie, "academic.term.list", {
-    organizationId: orgId,
+    organizationId: orgId, schoolId: schoolA.id,
     academicYearId: currentYearA.id,
   });
   report(
@@ -916,7 +942,7 @@ async function main() {
   );
 
   const teacherTermsCurrent = await query(teacherCookie, "academic.term.list", {
-    organizationId: orgId,
+    organizationId: orgId, schoolId: schoolA.id,
     academicYearId: currentYearA.id,
   });
   report(
@@ -927,7 +953,7 @@ async function main() {
   );
 
   const teacherTermsClosed = await query(teacherCookie, "academic.term.list", {
-    organizationId: orgId,
+    organizationId: orgId, schoolId: schoolA.id,
     academicYearId: closedYearA.id,
   });
   report(
@@ -941,7 +967,7 @@ async function main() {
   const principalTermsClosed = await query(
     principalCookie,
     "academic.term.list",
-    { organizationId: orgId, academicYearId: closedYearA.id },
+    { organizationId: orgId, schoolId: schoolA.id, academicYearId: closedYearA.id },
   );
   report(
     "principal reads the closed year's term (read_history) — non-vacuity",
@@ -1023,7 +1049,7 @@ async function main() {
   console.log("\nenrollments — the year anchor, and the portal's first live proof");
 
   const enrollmentList = await query(principalCookie, "enrollment.list", {
-    organizationId: orgId,
+    organizationId: orgId, schoolId: schoolA.id,
     academicYearId: currentYearA.id,
   });
   report(
@@ -1038,7 +1064,7 @@ async function main() {
   // NO widening: the section teacher's own grant is the whole answer — the
   // admitted classmate has no section and a NULL never equals her section id.
   const teacherEnrollmentList = await query(teacherCookie, "enrollment.list", {
-    organizationId: orgId,
+    organizationId: orgId, schoolId: schoolA.id,
     academicYearId: currentYearA.id,
   });
   report(
@@ -1051,7 +1077,7 @@ async function main() {
   const subjectTeacherEnrollmentList = await query(
     subjectTeacherCookie,
     "enrollment.list",
-    { organizationId: orgId, academicYearId: currentYearA.id },
+    { organizationId: orgId, schoolId: schoolA.id, academicYearId: currentYearA.id },
   );
   report(
     "subject_teacher sees EXACTLY her section's student",
@@ -1191,7 +1217,7 @@ async function main() {
   );
 
   const subjectStatus = await query(subjectTeacherCookie, "attendance.status", {
-    organizationId: orgId,
+    organizationId: orgId, schoolId: schoolA.id,
     sectionId: sectionA.id,
     date: MARK_DATE,
   });

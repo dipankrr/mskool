@@ -56,6 +56,7 @@ import {
   assignmentService,
   attendanceService,
   enrollmentService,
+  homeworkService,
   organizationService,
   studentService,
   subjectService,
@@ -77,6 +78,7 @@ import { z } from "zod";
 import { router as makeRouter } from "../trpc";
 import type { OwnerResolver } from "../trpc";
 import {
+  orgListProcedure,
   resolveStudentOwner,
   staffListProcedure,
   staffProcedure,
@@ -96,7 +98,7 @@ const rowId = (input: unknown): string => (input as { id: string }).id;
 // --- probes: each mirrors its real router's builder options ------------------
 
 const schoolListRouter = makeRouter({
-  probe: staffListProcedure("school:read").query(({ ctx }) =>
+  probe: orgListProcedure("school:read").query(({ ctx }) =>
     organizationService.listSchools(ctx.scopes),
   ),
 });
@@ -946,6 +948,65 @@ describe("subjects — the school-level catalogue", () => {
 
 // --- sections ------------------------------------------------------------------
 
+describe("ADR-067 — every staff list names its branch", () => {
+  // The bug this pins: an org admin's grant clipped to the ORG node is one
+  // org-wide scope, so a list sent with the org alone returned every branch's
+  // rows on a screen about one. Same-named subjects in A1 and A2 make the
+  // leak visible by id.
+  it("an org admin naming A1 gets A1's subjects, never A2's", async () => {
+    const ids = await okIds(
+      callerOf(subjectListRouter, U().adminA).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
+      }),
+    );
+    expect(ids).toEqual([world.subjectA1MathId, world.subjectA1PhysicsId].sort());
+    expect(ids).not.toContain(world.subjectA2MathId);
+  });
+
+  it("the same admin naming A2 gets A2's subject only", async () => {
+    const ids = await okIds(
+      callerOf(subjectListRouter, U().adminA).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA2Id,
+      }),
+    );
+    expect(ids).toContain(world.subjectA2MathId);
+    expect(ids).not.toContain(world.subjectA1MathId);
+    expect(ids).not.toContain(world.subjectA1PhysicsId);
+  });
+
+  it("a list naming no branch is refused", async () => {
+    await expectTrpcError(
+      callerOf(subjectListRouter, U().adminA).probe({ organizationId: world.orgAId }),
+      "BAD_REQUEST",
+    );
+  });
+
+  it("a class from A1 named under A2 is refused, not silently answered for A1", async () => {
+    await expectTrpcError(
+      callerOf(classListRouter, U().adminA).probe({
+        organizationId: world.orgAId,
+        schoolId: world.schoolA2Id,
+        classId: world.class6Id,
+      }),
+      "FORBIDDEN",
+      "You do not have access to this resource.",
+    );
+  });
+
+  it("a subject teacher's homework pairs follow the named branch", async () => {
+    // Her open subject assignments are all in A1's sections. Before ADR-067
+    // the pairs ignored the branch, so a teacher in two branches saw both.
+    const a1Sections = [world.section6aId, world.section6bId];
+    const inA1 = await homeworkService.teachingPairs(world.orgAId, world.schoolA1Id, U().subjectS6A);
+    const inA2 = await homeworkService.teachingPairs(world.orgAId, world.schoolA2Id, U().subjectS6A);
+    expect(inA1.length).toBeGreaterThan(0);
+    expect(inA1.every((pair) => a1Sections.includes(pair.sectionId))).toBe(true);
+    expect(inA2).toEqual([]);
+  });
+});
+
 describe("sections — the exact-data crown assertions", () => {
   const listAt = (userId: string) =>
     okIds(
@@ -1088,6 +1149,7 @@ describe("terms — the year edge, history-pinned like their year", () => {
     okIds(
       callerOf(termListRouter, userId).probe({
         organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
         academicYearId,
       }),
     );
@@ -1303,6 +1365,7 @@ describe("enrollments — the year anchor, in both tracks", () => {
     callerOf(enrollmentListRouter, userId)
       .probe({
         organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
         academicYearId: world.currentYearAId,
         ...filters,
       })
@@ -1576,6 +1639,7 @@ describe("the teaching-assignment layer — the template and the staffing", () =
     okIds(
       callerOf(mappingListRouter, userId).probe({
         organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
         academicYearId: world.currentYearAId,
         classId: world.class6Id,
       }),
@@ -1602,6 +1666,7 @@ describe("the teaching-assignment layer — the template and the staffing", () =
     await expectTrpcError(
       callerOf(mappingListRouter, U().adminB).probe({
         organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
         academicYearId: world.currentYearAId,
         classId: world.class6Id,
       }),
@@ -1755,6 +1820,7 @@ describe("the teaching-assignment layer — the template and the staffing", () =
       okIds(
         callerOf(staListRouter, userId).probe({
           organizationId: world.orgAId,
+          schoolId: world.schoolA1Id,
           sectionId: world.section6aId,
         }),
       );
@@ -1768,6 +1834,7 @@ describe("the teaching-assignment layer — the template and the staffing", () =
     await expectTrpcError(
       callerOf(staListRouter, U().teacherC6).probe({
         organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
         sectionId: world.section6aId,
       }),
       "FORBIDDEN",
@@ -1867,6 +1934,7 @@ describe("the teaching-assignment layer — the template and the staffing", () =
     const after = await okIds(
       callerOf(staListRouter, U().principalA1).probe({
         organizationId: world.orgAId,
+        schoolId: world.schoolA1Id,
         sectionId: world.section6bId,
       }),
     );
@@ -2109,7 +2177,9 @@ describe("students — the registry, searched and admitted", () => {
   // coordinator's FORBIDDEN cell lives in the smoke matrix.
   const listAt = (userId: string, q?: string) =>
     callerOf(studentListRouter, userId)
-      .probe(q ? { organizationId: world.orgAId, q } : { organizationId: world.orgAId })
+      .probe(q
+          ? { organizationId: world.orgAId, schoolId: world.schoolA1Id, q }
+          : { organizationId: world.orgAId, schoolId: world.schoolA1Id })
       .then((rows: { id: string }[]) => rows.map((r) => r.id).sort());
 
   it("wide and narrow roles search the SAME registry, clipped to their grants", async () => {
@@ -2283,6 +2353,7 @@ describe("attendance — the marking flow", () => {
   const readDay = (userId: string, sectionId: string, date: string) =>
     callerOf(attendanceStatusRouter, userId).probe({
       organizationId: world.orgAId,
+      schoolId: world.schoolA1Id,
       sectionId,
       date,
     });
@@ -2685,6 +2756,7 @@ describe("attendance — the marking flow", () => {
     // discriminator is live.
     const summaries = await callerOf(attendanceSummaryRouter, U().subjectS6A).probe({
       organizationId: world.orgAId,
+      schoolId: world.schoolA1Id,
       academicYearId: world.currentYearAId,
     });
     expect(summaries.length).toBeGreaterThan(0);
