@@ -96,6 +96,16 @@ export function StaffFormScreen({ id }: { id?: string }) {
     !update.isPending &&
     !photoUploader.busy;
 
+  // Say why the button is off instead of leaving it silently grey.
+  const missing =
+    firstName.length > 0 && lastName.length === 0
+      ? 'Add a surname too, like "Priya Sharma"'
+      : digits.length > 0 && digits.length < 10
+        ? "A phone number is 10 digits"
+        : digits.length === 10 && check.isError
+          ? "Couldn't check this number. Try again in a moment."
+          : null;
+
   const suggestions = (hints.data?.designations ?? [])
     .filter((d) => !designation || d.toLowerCase().includes(designation.trim().toLowerCase()))
     .filter((d) => d.toLowerCase() !== designation.trim().toLowerCase())
@@ -148,6 +158,7 @@ export function StaffFormScreen({ id }: { id?: string }) {
           disabled={!canSave}
           loading={create.isPending || update.isPending || photoUploader.busy}
           testID="staff-form-save"
+          style={{ alignSelf: "stretch" }}
         />
       }
     >
@@ -196,11 +207,16 @@ export function StaffFormScreen({ id }: { id?: string }) {
         </ThemedText>
         <TextInput
           value={phone}
-          onChangeText={setPhone}
+          onChangeText={(text) => {
+            // Digits only, at most 10. A pasted "+91 98765 43210" or
+            // "098765 43210" drops its prefix instead of being cut off.
+            let d = text.replace(/\D/g, "");
+            if (d.length > 10 && (d.startsWith("91") || d.startsWith("0"))) d = d.slice(d.length - 10);
+            setPhone(d.slice(0, 10));
+          }}
           placeholder="Phone · they sign in with this"
           placeholderTextColor={colors.muted}
-          keyboardType="phone-pad"
-          maxLength={14}
+          keyboardType="number-pad"
           style={styles.input}
           testID="staff-form-phone"
           accessibilityLabel="Phone number"
@@ -214,6 +230,11 @@ export function StaffFormScreen({ id }: { id?: string }) {
           </View>
         ) : null}
       </Field>
+      {missing && !phoneState ? (
+        <ThemedText variant="meta" style={styles.fieldHint}>
+          {missing}
+        </ThemedText>
+      ) : null}
       {phoneState?.tone === "critical" ? (
         <ThemedText variant="meta" style={styles.fieldError}>
           {phoneState.text}
@@ -418,6 +439,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: colors.tone.positive.bg,
   },
+  fieldHint: { color: colors.muted, marginLeft: spacing.xs, marginTop: spacing.xs },
   fieldError: { color: colors.tone.critical.fg, marginLeft: spacing.xs, marginTop: spacing.xs },
   designation: {
     marginTop: spacing.sm,

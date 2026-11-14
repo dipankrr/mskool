@@ -130,6 +130,7 @@ export function ChangeTeacherSheet({
             disabled={!ready || busy}
             loading={busy}
             testID="change-teacher-save"
+          style={{ alignSelf: "stretch" }}
           />
         }
       >

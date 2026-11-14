@@ -159,6 +159,7 @@ export function StaffWelcomeScreen() {
       <View style={[styles.foot, { paddingBottom: insets.bottom + spacing.lg }]}>
         <CapsuleButton
           testID="welcome-start"
+          style={{ alignSelf: "stretch" }}
           title="Get started"
           icon="chevronRight"
           onPress={() => router.replace("/")}

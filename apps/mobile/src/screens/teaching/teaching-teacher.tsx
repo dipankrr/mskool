@@ -121,6 +121,7 @@ export function TeachingTeacherScreen({ staffId }: { staffId: string }) {
             disabled={changes === 0 || saving}
             loading={saving}
             testID="teacher-save"
+          style={{ alignSelf: "stretch" }}
           />
         ) : undefined
       }

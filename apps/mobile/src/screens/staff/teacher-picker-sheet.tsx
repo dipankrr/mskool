@@ -83,6 +83,7 @@ export function TeacherPickerSheet({
           onPress={() => onDone(picked)}
           disabled={picked.length === 0}
           testID="teacher-picker-done"
+          style={{ alignSelf: "stretch" }}
         />
       }
     >

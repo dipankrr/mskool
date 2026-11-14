@@ -122,6 +122,7 @@ export function StaffLeaveScreen({ id }: { id: string }) {
           loading={saving}
           disabled={saving || !row.data}
           testID="leave-confirm"
+          style={{ alignSelf: "stretch" }}
         />
       }
     >

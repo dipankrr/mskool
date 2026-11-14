@@ -103,6 +103,7 @@ export function InviteSheet({
             onPress={() => void whatsapp()}
             disabled={!data}
             testID="invite-whatsapp"
+          style={{ alignSelf: "stretch" }}
           />
           <CapsuleButton
             title="Share code another way"
@@ -112,6 +113,7 @@ export function InviteSheet({
             onPress={() => void Share.share({ message })}
             disabled={!data}
             testID="invite-share"
+          style={{ alignSelf: "stretch" }}
           />
         </View>
       }
