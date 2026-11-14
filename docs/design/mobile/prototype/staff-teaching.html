@@ -342,20 +342,36 @@ figcaption .no { display: inline-flex; min-width: 26px; height: 20px; padding: 0
             <div class="lbl">Phone number</div>
             <div class="fld on"><span class="cc">+91</span><span class="tnum">98765 43210</span><span class="caret"></span></div>
           </div>
-          <div class="fgroup">
-            <div class="lbl">Password</div>
-            <div class="fld"><svg class="i ic"><use href="#i-lock"/></svg><span class="grow ph">Your password</span><svg class="i ic"><use href="#i-eye"/></svg></div>
-          </div>
-          <div style="padding:16px 16px 0"><div class="btn">Sign in</div></div>
-          <div class="meta" style="text-align:center;margin-top:12px">Forgot it? Ask your school office for a new code.</div>
+          <div style="padding:16px 16px 0"><div class="btn">Continue<svg class="i"><use href="#i-arrow"/></svg></div></div>
+          <div class="meta" style="text-align:center;margin-top:12px;padding:0 24px;line-height:1.45">New here? Your school office gives you a joining code. We'll ask for it next.</div>
         </div>
-        <div class="card" style="position:absolute;left:16px;right:16px;bottom:24px;padding:14px;display:flex;gap:12px;align-items:center;box-shadow:0 0 0 1px var(--hair)">
-          <div class="sj" style="background:var(--amb-t);color:var(--amb)"><svg class="i"><use href="#i-key"/></svg></div>
-          <div class="grow"><div style="font-size:15px;font-weight:600">First time here?</div><div class="meta">Join with the code from your school</div></div>
-          <span class="pill p" style="height:32px;padding:0 12px;font-size:13px">Join</span>
+        <div class="pad">
+          <span>1</span><span>2<small>ABC</small></span><span>3<small>DEF</small></span>
+          <span>4<small>GHI</small></span><span>5<small>JKL</small></span><span>6<small>MNO</small></span>
+          <span>7<small>PQRS</small></span><span>8<small>TUV</small></span><span>9<small>WXYZ</small></span>
+          <span class="k"></span><span>0</span><span class="k"><svg class="i"><use href="#i-left"/></svg></span>
         </div>
       </div>
-      <figcaption><span class="no">01</span><b>Sign in.</b> Phone and password, nothing else. No email, no school picker: the phone finds the school. The welcome screen's "I'm staff" card leads here. First-timers use the card at the bottom.</figcaption>
+      <figcaption><span class="no">01</span><b>Sign in: phone first.</b> One field. No email, no school picker: the phone finds the school. Continue opens the password (01b) for someone who has joined, and the code (02) for everyone else, including a number nobody knows, so the screen only ever gives away "has joined". The check is rate-limited.</figcaption>
+    </figure>
+
+    <!-- 01b password -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back"><svg class="i"><use href="#i-left"/></svg></span></div>
+        <div style="padding:10px 20px 0">
+          <div class="h1" style="font-size:26px">Welcome back</div>
+          <div class="lead" style="display:flex;align-items:center;gap:8px">+91 98765 43210 <span class="link" style="font-size:14px">Change</span></div>
+        </div>
+        <div class="fgroup" style="margin-top:22px">
+          <div class="lbl">Password</div>
+          <div class="fld on"><svg class="i ic"><use href="#i-lock"/></svg><span class="dots">••••••</span><span class="caret" style="margin-left:-6px"></span><span class="grow"></span><svg class="i ic"><use href="#i-eye"/></svg></div>
+        </div>
+        <div style="padding:16px 16px 0"><div class="btn">Sign in</div></div>
+        <div class="info mx" style="margin-top:16px"><svg class="i"><use href="#i-key"/></svg><div><b>Forgot it?</b> Ask your school office for a new code. You'll set a new password with it.</div></div>
+      </div>
+      <figcaption><span class="no">01b</span><b>Password.</b> Only for numbers that have joined. It shows the number, not the name, so typing someone's number reveals nothing about them. Forgot password goes through the office, as agreed (no SMS).</figcaption>
     </figure>
 
     <!-- 02 join with code -->
@@ -368,11 +384,8 @@ figcaption .no { display: inline-flex; min-width: 26px; height: 20px; padding: 0
           <div class="h1" style="font-size:24px;margin-top:14px">Enter your code</div>
           <div class="lead">The 6-digit code your school office sent you.</div>
         </div>
-        <div class="fgroup" style="margin-top:20px">
-          <div class="lbl">Phone number</div>
-          <div class="fld"><span class="cc">+91</span><span class="tnum">98765 43210</span></div>
-        </div>
-        <div style="padding:20px 16px 0">
+        <div class="lead" style="padding:0 20px;display:flex;align-items:center;gap:8px;margin-top:4px">+91 98765 43210 <span class="link" style="font-size:14px">Change</span></div>
+        <div style="padding:24px 16px 0">
           <div class="lbl">Joining code</div>
           <div class="code"><span>4</span><span>8</span><span>1</span><span class="on"></span><span></span><span></span></div>
           <div class="meta" style="text-align:center;margin-top:12px;display:flex;justify-content:center;gap:6px;align-items:center"><svg class="i-s"><use href="#i-clock"/></svg>A code works once and lasts 7 days</div>
@@ -384,7 +397,7 @@ figcaption .no { display: inline-flex; min-width: 26px; height: 20px; padding: 0
           <span class="k"></span><span>0</span><span class="k"><svg class="i"><use href="#i-left"/></svg></span>
         </div>
       </div>
-      <figcaption><span class="no">02</span><b>Join with a code.</b> The phone the school entered, then the code. The number pad stays up, and the sixth digit moves on by itself. After 5 wrong tries the code stops working, and the screen says to ask the office for a new one.</figcaption>
+      <figcaption><span class="no">02</span><b>Join with a code.</b> The number from 01 carries over, then the code. The number pad stays up, and the sixth digit moves on by itself. After 5 wrong tries the code stops working, and the screen says to ask the office for a new one.</figcaption>
     </figure>
 
     <!-- 03 set password -->
@@ -427,7 +440,10 @@ figcaption .no { display: inline-flex; min-width: 26px; height: 20px; padding: 0
         <div class="wash" style="height:340px"></div>
         <div class="status"><span>9:42</span><i></i></div>
         <div style="position:relative;padding:20px 20px 0">
-          <div class="av xl t1">PR</div>
+          <div style="display:flex;align-items:center;gap:14px">
+            <div class="av xl t1">PR<span style="position:absolute;right:-2px;bottom:-2px;width:30px;height:30px;border-radius:99px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 3px #fff"><svg class="i-s"><use href="#i-camera"/></svg></span></div>
+            <div><div style="font-size:15px;font-weight:600">Add your photo</div><div class="meta">For your ID card and staff lists</div></div>
+          </div>
           <div class="h1" style="margin-top:16px">Hi Priya, you're in</div>
           <div class="lead">Main Campus · Session 2026-27</div>
         </div>
@@ -447,7 +463,7 @@ figcaption .no { display: inline-flex; min-width: 26px; height: 20px; padding: 0
         </div>
         <div class="foot"><div class="btn">Get started<svg class="i"><use href="#i-arrow"/></svg></div></div>
       </div>
-      <figcaption><span class="no">04</span><b>Welcome.</b> The office's work shows up the moment she joins: her section and her subjects, with the class teacher job on top. The three cards are a one-time tour (each opens a short tip), and Get started lands on Home.</figcaption>
+      <figcaption><span class="no">04</span><b>Welcome.</b> The office's work shows up the moment she joins: her section and her subjects, with the class teacher job on top. She can add her own photo here; the office can also add or replace it. The three cards are a one-time tour (each opens a short tip), and Get started lands on Home.</figcaption>
     </figure>
 
     <!-- 18 no classes yet -->
@@ -609,7 +625,7 @@ figcaption .no { display: inline-flex; min-width: 26px; height: 20px; padding: 0
         <div class="status"><span>9:41</span><i></i></div>
         <div class="nav"><span class="back"><svg class="i"><use href="#i-left"/></svg>Staff</span><span class="end"><svg class="i"><use href="#i-edit"/></svg></span></div>
         <div style="display:flex;align-items:center;gap:14px;padding:2px 16px 0">
-          <div class="av lg t1">PR</div>
+          <div class="av lg t1">PR<span style="position:absolute;right:-3px;bottom:-3px;width:26px;height:26px;border-radius:99px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 3px var(--canvas)"><svg style="width:13px;height:13px"><use href="#i-camera"/></svg></span></div>
           <div class="grow"><div style="font-size:24px;font-weight:700;letter-spacing:-.4px">Priya Rao</div><div class="meta">TGT Maths · Main Campus</div><div style="margin-top:6px"><span class="pill p"><span class="d"></span>Joined 12 Nov</span></div></div>
         </div>
         <div class="qa" style="margin-top:16px">
@@ -868,7 +884,7 @@ figcaption .no { display: inline-flex; min-width: 26px; height: 20px; padding: 0
         </div>
         <div class="foot"><div class="meta" style="text-align:center;margin-bottom:10px">Nothing changes until you tap Copy</div><div class="btn"><svg class="i"><use href="#i-layers"/></svg>Copy 41 assignments</div></div>
       </div>
-      <figcaption><span class="no">15</span><b>Copy from last session.</b> Sections match by name. What can't come across is listed first, with the reason in plain words, and becomes a gap to fill. Nothing goes live until Copy. Usually it's a two-minute job instead of an afternoon.</figcaption>
+      <figcaption><span class="no">15</span><b>Copy from last session. Later, not in the first build.</b> Sections match by name. What can't come across is listed first, with the reason in plain words, and becomes a gap to fill. Nothing goes live until Copy. Usually it's a two-minute job instead of an afternoon.</figcaption>
     </figure>
 
     <!-- 17 settings -->
@@ -890,16 +906,20 @@ figcaption .no { display: inline-flex; min-width: 26px; height: 20px; padding: 0
         </div>
         <div class="info mx" style="margin-top:14px"><svg class="i"><use href="#i-info"/></svg><div>These open the same permission editor as Roles, already filtered to teaching. Changes apply to every teacher at once.</div></div>
       </div>
-      <figcaption><span class="no">17</span><b>Teaching settings.</b> The class teacher switch, plus shortcuts into the permission editor for the two teacher bundles and for who may assign. Nothing here is hard-coded: a school that wants every teacher correcting attendance turns it on here.</figcaption>
+      <figcaption><span class="no">17</span><b>Teaching settings.</b> The class teacher switch is <b>off by default</b>; this school has turned it on, which is why the other frames show class teachers. Then plus shortcuts into the permission editor for the two teacher bundles and for who may assign. Nothing here is hard-coded: a school that wants every teacher correcting attendance turns it on here.</figcaption>
     </figure>
   </div>
 
-  <div class="h2">Open questions for the owner</div>
+  <div class="h2">Decided at review (2026-11-14)</div>
   <div class="qs">
-    <div><b>1. Subject colours.</b> Each subject has a soft tinted tile with an icon (∑ Maths, Aa English, a flask for Science, अ Hindi…). It's the first colour in the staff app that isn't a status. Keep it, or go back to plain grey tiles?</div>
-    <div><b>2. Can teachers see the whole grid?</b> Read-only, so a teacher can see who else teaches 6-A. Or only their own classes?</div>
-    <div><b>3. Substitute "until" date (frame 13).</b> Keep it in v1, or leave substitutes to the timetable later?</div>
-    <div><b>4. Where Teaching lives.</b> More → Teaching only, or also as the last step of Academic setup ("Now assign teachers")?</div>
+    <div><b>Sign-in is phone first</b> (01, 01b, 02). Password for people who have joined, code for everyone else.</div>
+    <div><b>Subject colours stay.</b> Soft tiles with icons, only on subjects.</div>
+    <div><b>Teachers can see the whole teaching grid,</b> read-only.</div>
+    <div><b>The substitute "until" date stays</b> in the first build (13).</div>
+    <div><b>Teaching is also the last step of Academic setup,</b> as well as More → Teaching.</div>
+    <div><b>Staff photos: both sides.</b> The office adds or replaces (06, 08); the teacher adds their own after joining (04).</div>
+    <div><b>Class teachers are off by default</b> (17).</div>
+    <div><b>Copy from last session is later</b> (15), before a school's second session.</div>
   </div>
 </div>
 </body>
