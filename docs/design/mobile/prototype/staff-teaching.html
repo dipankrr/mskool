@@ -1,0 +1,877 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Staff and Teaching</title>
+<style>
+/* ============================================================
+   Staff, sign-in and teacher assignment (2026-11-14). Mockup only,
+   no app code. Design doc: ../06-staff-and-teaching.md.
+   Tokens from apps/mobile/src/theme (same as students-tab.html):
+   one emerald accent, tones only as status, 4-pt spacing, radii
+   12/16/24/full. New here: soft subject tiles (open question 1).
+   Phones are 360 x 760.
+   ============================================================ */
+@font-face { font-family: Clash; font-weight: 400; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Regular.ttf); }
+@font-face { font-family: Clash; font-weight: 500; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Medium.ttf); }
+@font-face { font-family: Clash; font-weight: 600; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Semibold.ttf); }
+@font-face { font-family: Clash; font-weight: 700; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Bold.ttf); }
+:root {
+  --canvas: #F2F3F7; --surface: #FFFFFF; --ink: #101828; --muted: #5D6674;
+  --hair: rgba(16, 24, 40, 0.08); --line: rgba(16, 24, 40, 0.16);
+  --accent: #0F7A44; --deep: #0B6B3A; --tint: #E8F5EE;
+  --field: #ECEEF3; --chip: #E9EDF3; --chev: #98A2B3;
+  --scrim: rgba(16, 24, 40, 0.45); --grab: #D5DAE2;
+  --amb: #B54708; --amb-t: #FFFAEB; --red: #B42318; --red-t: #FEF3F2; --slate: #475467; --slate-t: #F2F4F7;
+  --wa: #1DA851;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { color-scheme: light; }
+body { background: #DADBD6; color: var(--ink); font-family: Clash, system-ui, sans-serif; font-size: 15px; padding: 32px 16px 64px; }
+svg { display: block; flex: none; }
+.i { width: 20px; height: 20px; }
+.i-s { width: 16px; height: 16px; }
+.i-l { width: 24px; height: 24px; }
+
+/* ---------- page around the phones ---------- */
+.wrap { max-width: 1180px; margin: 0 auto; }
+.intro h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.6px; }
+.intro p { margin-top: 6px; color: #3C4450; max-width: 780px; line-height: 1.5; }
+.h2 { margin: 44px 0 14px; font-size: 12px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: #3C4450; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px; }
+.grid div { background: rgba(255,255,255,.6); border-radius: 14px; padding: 12px 16px; font-size: 14px; line-height: 1.45; color: #3C4450; }
+.grid b { display: block; color: var(--ink); font-weight: 600; font-size: 15px; margin-bottom: 3px; }
+.frames { display: flex; flex-wrap: wrap; gap: 36px 24px; }
+figure { width: 360px; max-width: 100%; }
+figcaption { margin-top: 12px; font-size: 13px; color: #3C4450; line-height: 1.5; }
+figcaption b { font-weight: 600; color: var(--ink); }
+figcaption .no { display: inline-flex; min-width: 26px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 11px; font-weight: 700; align-items: center; justify-content: center; margin-right: 6px; vertical-align: 1px; }
+.qs { display: flex; flex-direction: column; gap: 10px; max-width: 780px; }
+.qs div { background: rgba(255,255,255,.6); border-radius: 14px; padding: 12px 16px; font-size: 14px; line-height: 1.5; color: #3C4450; }
+.qs b { color: var(--ink); font-weight: 600; }
+
+/* ---------- phone ---------- */
+.phone { position: relative; width: 360px; height: 760px; max-width: 100%; background: var(--canvas); border-radius: 32px; overflow: hidden; box-shadow: 0 0 0 1px rgba(16,24,40,.1), 0 14px 34px rgba(16,24,40,.12); }
+.phone.white { background: var(--surface); }
+.status { height: 32px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 600; position: relative; z-index: 2; }
+.status i { width: 40px; height: 8px; border-radius: 999px; background: var(--ink); opacity: .75; }
+.meta { font-size: 13px; color: var(--muted); }
+.tnum { font-variant-numeric: tabular-nums; }
+.grow { flex: 1; min-width: 0; }
+.clip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card { background: var(--surface); border-radius: 16px; }
+.mx { margin-left: 16px; margin-right: 16px; }
+.pill { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; flex: none; }
+.pill.c { color: var(--amb); background: var(--amb-t); }
+.pill.r { color: var(--red); background: var(--red-t); }
+.pill.n { color: var(--slate); background: var(--slate-t); }
+.pill.p { color: var(--deep); background: var(--tint); }
+.pill .d { width: 6px; height: 6px; border-radius: 99px; background: currentColor; }
+
+/* headers */
+.top { display: flex; align-items: flex-end; justify-content: space-between; padding: 10px 16px 0; }
+.title { font-size: 30px; font-weight: 700; letter-spacing: -0.6px; line-height: 1.1; }
+.sub { padding: 6px 16px 0; }
+.nav { height: 48px; display: flex; align-items: center; padding: 0 8px; gap: 4px; position: relative; z-index: 2; }
+.nav .back { height: 40px; padding: 0 8px 0 4px; display: flex; align-items: center; gap: 2px; color: var(--deep); font-size: 16px; font-weight: 600; }
+.nav .ttl { position: absolute; left: 0; right: 0; text-align: center; font-size: 16px; font-weight: 600; pointer-events: none; }
+.nav .end { margin-left: auto; height: 40px; padding: 0 10px; display: flex; align-items: center; color: var(--deep); font-size: 16px; font-weight: 600; position: relative; }
+.iconbtn { width: 40px; height: 40px; border-radius: 999px; background: var(--surface); box-shadow: 0 0 0 1px var(--hair); display: flex; align-items: center; justify-content: center; color: var(--ink); flex: none; }
+.cap { height: 40px; padding: 0 16px 0 12px; border-radius: 999px; background: var(--accent); color: #fff; display: inline-flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; box-shadow: 0 4px 12px rgba(15,122,68,.25); flex: none; }
+
+/* buttons */
+.btn { height: 52px; border-radius: 999px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 16px; font-weight: 600; box-shadow: 0 6px 16px rgba(15,122,68,.22); }
+.btn.ghost { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.btn.soft { background: var(--tint); color: var(--deep); box-shadow: none; }
+.btn.wa { background: var(--wa); box-shadow: 0 6px 16px rgba(29,168,81,.25); }
+.btn.danger { background: var(--red); box-shadow: 0 6px 16px rgba(180,35,24,.2); }
+.btn.off { background: #C7CDD6; box-shadow: none; }
+.link { color: var(--deep); font-weight: 600; }
+.foot { position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 16px 22px; background: linear-gradient(rgba(242,243,247,0), var(--canvas) 26%); z-index: 4; }
+.phone.white .foot { background: linear-gradient(rgba(255,255,255,0), #fff 26%); }
+
+/* fields */
+.lbl { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 4px 6px; }
+.fld { height: 52px; border-radius: 14px; background: var(--field); box-shadow: inset 0 0 0 1px var(--line); display: flex; align-items: center; gap: 10px; padding: 0 14px; font-size: 16px; color: var(--ink); }
+.fld.on { background: var(--surface); box-shadow: inset 0 0 0 2px var(--accent); }
+.fld .ph { color: var(--muted); }
+.fld .cc { font-weight: 600; padding-right: 10px; border-right: 1px solid var(--line); color: var(--ink); }
+.fld .caret { width: 2px; height: 22px; background: var(--accent); margin-left: -8px; }
+.fld .ic { color: var(--muted); }
+.fld .dots { letter-spacing: 3px; font-size: 18px; }
+.fgroup { padding: 0 16px; }
+.fgroup + .fgroup { margin-top: 14px; }
+
+/* form card rows */
+.form { margin: 14px 16px 0; overflow: hidden; }
+.frow { min-height: 56px; display: flex; align-items: center; gap: 12px; padding: 8px 14px; position: relative; }
+.frow + .frow::before { content: ""; position: absolute; top: 0; left: 14px; right: 0; height: 1px; background: var(--hair); }
+.frow .k { font-size: 12px; font-weight: 600; color: var(--muted); }
+.frow .v { font-size: 16px; font-weight: 500; margin-top: 2px; }
+.frow .v.ph { color: var(--chev); }
+.frow.on { box-shadow: inset 3px 0 0 var(--accent); background: #FBFEFC; }
+.sw { width: 50px; height: 30px; border-radius: 999px; background: var(--accent); position: relative; flex: none; }
+.sw::after { content: ""; position: absolute; top: 3px; right: 3px; width: 24px; height: 24px; border-radius: 99px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.sw.off { background: #D0D5DD; }
+.sw.off::after { right: auto; left: 3px; }
+.sugg { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 14px 14px; }
+.sugg span { height: 32px; padding: 0 12px; border-radius: 999px; background: var(--chip); font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 5px; color: var(--ink); }
+.sugg span.hot { background: var(--tint); color: var(--deep); }
+.sugg .h { font-size: 11px; font-weight: 600; color: var(--muted); width: 100%; height: auto; background: none; padding: 0; letter-spacing: .6px; text-transform: uppercase; }
+
+/* avatars */
+.av { width: 40px; height: 40px; border-radius: 999px; flex: none; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; color: var(--slate); background: var(--chip); position: relative; }
+.av.sm { width: 28px; height: 28px; font-size: 11px; }
+.av.xs { width: 24px; height: 24px; font-size: 10px; box-shadow: 0 0 0 2px #fff; }
+.av.lg { width: 64px; height: 64px; font-size: 22px; }
+.av.xl { width: 80px; height: 80px; font-size: 28px; box-shadow: 0 0 0 4px rgba(255,255,255,.9), 0 8px 20px rgba(16,24,40,.12); }
+.av.t1 { background: #DDF3E6; color: #0B6B3A; }
+.av.t2 { background: #E0EAFF; color: #2F4FB3; }
+.av.t3 { background: #ECE6FD; color: #5B3FC4; }
+.av.t4 { background: #FFE9D5; color: #A24B0C; }
+.av.t5 { background: #FDE4EC; color: #B4235A; }
+.av.t6 { background: #D9F2F2; color: #0F7275; }
+.av .badge { position: absolute; right: -2px; bottom: -2px; width: 18px; height: 18px; border-radius: 99px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #fff; }
+.stack { display: flex; }
+.stack .av + .av { margin-left: -6px; }
+
+/* subject tiles */
+.sj { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex: none; font-weight: 700; font-size: 15px; }
+.sj.sm { width: 32px; height: 32px; border-radius: 10px; font-size: 13px; }
+.sj.m { background: #E6EEFF; color: #2556D9; }
+.sj.e { background: #EFEAFE; color: #6440D8; }
+.sj.s { background: #E3F5F2; color: #0E8274; }
+.sj.h { background: #FFEEDF; color: #C0550B; }
+.sj.so { background: #FDE9F1; color: #BE2F6E; }
+.sj.c { background: #E8ECFF; color: #3F3CC9; }
+.sj.a { background: #FBE8FB; color: #A62BB6; }
+.sj.pe { background: #E1F4FA; color: #0B7197; }
+.sj.ct { background: var(--accent); color: #fff; }
+
+/* list */
+.gh { display: flex; align-items: baseline; justify-content: space-between; padding: 18px 20px 6px; }
+.gh .l { font-size: 12px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); }
+.gh .r { font-size: 13px; color: var(--deep); font-weight: 600; }
+.list { margin: 0 16px; overflow: hidden; }
+.row { min-height: 60px; display: flex; align-items: center; gap: 12px; padding: 8px 12px; position: relative; }
+.row + .row::before { content: ""; position: absolute; top: 0; left: 64px; right: 0; height: 1px; background: var(--hair); }
+.nm { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
+.sm2 { font-size: 13px; color: var(--muted); margin-top: 1px; }
+.chev { color: var(--chev); }
+.row.gap { background: linear-gradient(90deg, var(--amb-t), #fff 70%); }
+.assign { height: 32px; padding: 0 12px 0 9px; border-radius: 999px; background: var(--amb-t); color: var(--amb); font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 4px; flex: none; box-shadow: inset 0 0 0 1px rgba(181,71,8,.25); }
+
+/* search + chips */
+.search { display: flex; gap: 8px; padding: 14px 16px 0; }
+.sfield { flex: 1; height: 44px; border-radius: 12px; background: var(--field); box-shadow: inset 0 0 0 1px var(--line); display: flex; align-items: center; gap: 8px; padding: 0 12px; color: var(--muted); font-size: 15px; }
+.strip { display: flex; gap: 6px; padding: 12px 16px 0; overflow: hidden; }
+.chipc { height: 34px; padding: 0 12px; border-radius: 999px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--hair); display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; white-space: nowrap; flex: none; }
+.chipc span { font-size: 12px; font-weight: 500; color: var(--muted); }
+.chipc.on { background: var(--ink); color: #fff; box-shadow: none; }
+.chipc.on span { color: rgba(255,255,255,.7); }
+.chipc .dot { width: 7px; height: 7px; border-radius: 99px; background: var(--amb); }
+.seg { margin: 14px 16px 0; height: 40px; border-radius: 12px; background: var(--chip); padding: 3px; display: flex; }
+.seg span { flex: 1; border-radius: 9px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.seg span.on { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(16,24,40,.12); }
+
+/* tab bar */
+.tabbar { position: absolute; left: 12px; right: 12px; bottom: 12px; height: 64px; border-radius: 32px; background: rgba(255,255,255,.96); box-shadow: 0 10px 30px rgba(16,24,40,.14); display: flex; align-items: center; justify-content: space-around; font-size: 11px; font-weight: 600; color: var(--muted); z-index: 6; padding: 0 6px; }
+.tabbar span { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 8px; min-width: 56px; border-radius: 22px; }
+.tabbar span.on { color: var(--deep); background: rgba(15,122,68,.12); }
+.fade { position: absolute; left: 0; right: 0; bottom: 0; height: 110px; background: linear-gradient(transparent, var(--canvas) 70%); z-index: 5; pointer-events: none; }
+
+/* sheet */
+.scrim { position: absolute; inset: 0; background: var(--scrim); z-index: 7; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; background: var(--surface); border-radius: 24px 24px 0 0; z-index: 8; padding: 8px 0 22px; }
+.grab { width: 36px; height: 5px; border-radius: 99px; background: var(--grab); margin: 0 auto 12px; }
+.sheet h3 { font-size: 20px; font-weight: 600; letter-spacing: -0.3px; padding: 4px 20px 2px; }
+.sheet .hint { padding: 2px 20px 12px; font-size: 14px; color: var(--muted); line-height: 1.4; }
+.sbtns { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px 0; }
+
+/* misc */
+.wash { position: absolute; left: 0; right: 0; top: 0; height: 300px; background: radial-gradient(120% 90% at 10% 0%, #CFEEDC 0%, rgba(207,238,220,0) 60%), radial-gradient(90% 80% at 100% 10%, #DCE8FF 0%, rgba(220,232,255,0) 60%); }
+.mark { width: 56px; height: 56px; border-radius: 18px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 24px rgba(15,122,68,.3); }
+.h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.6px; line-height: 1.15; }
+.lead { font-size: 15px; color: var(--muted); line-height: 1.45; margin-top: 6px; }
+.steps { display: flex; gap: 6px; }
+.steps i { width: 22px; height: 5px; border-radius: 99px; background: var(--grab); }
+.steps i.on { background: var(--accent); width: 34px; }
+.code { display: flex; gap: 8px; justify-content: center; }
+.code span { width: 44px; height: 56px; border-radius: 14px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.code span.on { box-shadow: inset 0 0 0 2px var(--accent); }
+.code span.on::after { content: ""; width: 2px; height: 26px; background: var(--accent); }
+.code.big span { width: 46px; height: 60px; font-size: 30px; background: var(--tint); box-shadow: none; color: var(--deep); }
+.pad { position: absolute; left: 0; right: 0; bottom: 0; background: #E3E5EA; padding: 8px 6px 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; z-index: 6; }
+.pad span { height: 46px; border-radius: 8px; background: #fff; box-shadow: 0 1px 0 rgba(0,0,0,.16); display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 22px; font-weight: 500; }
+.pad span small { font-size: 9px; letter-spacing: 1.5px; color: var(--muted); font-weight: 600; margin-top: -2px; }
+.pad span.k { background: transparent; box-shadow: none; }
+.rule { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
+.rule .ok { width: 20px; height: 20px; border-radius: 99px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; }
+.rule .no { width: 20px; height: 20px; border-radius: 99px; box-shadow: inset 0 0 0 2px var(--grab); }
+.rule.done { color: var(--ink); }
+.info { display: flex; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--slate-t); font-size: 14px; line-height: 1.45; color: #344054; }
+.info.amb { background: var(--amb-t); color: #7A2E0E; }
+.info.g { background: var(--tint); color: #074D2A; }
+.info svg { margin-top: 1px; }
+.qa { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 0 16px; }
+.qa a { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--ink); text-decoration: none; padding: 10px 0 8px; border-radius: 16px; background: var(--surface); }
+.qa a .ic { width: 40px; height: 40px; border-radius: 999px; background: var(--tint); display: flex; align-items: center; justify-content: center; color: var(--deep); }
+.qa a .ic.wa { background: #E3F7EA; color: var(--wa); }
+.ring { position: relative; width: 76px; height: 76px; flex: none; }
+.ring b { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; letter-spacing: -.4px; }
+.ring b small { font-size: 10px; font-weight: 600; color: var(--muted); letter-spacing: 0; margin-top: -2px; }
+.bar { height: 8px; border-radius: 99px; background: var(--chip); overflow: hidden; }
+.bar i { display: block; height: 100%; border-radius: 99px; background: var(--accent); }
+.secchip { height: 40px; min-width: 64px; padding: 0 12px; border-radius: 12px; background: var(--canvas); display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 15px; font-weight: 600; box-shadow: inset 0 0 0 1px var(--hair); }
+.secchip.on { background: var(--accent); color: #fff; box-shadow: none; }
+.secchip.new { background: var(--accent); color: #fff; box-shadow: 0 0 0 3px #BDE6CD; }
+.secchip.taken { color: var(--muted); flex-direction: column; gap: 0; line-height: 1.1; height: 44px; }
+.secchip.taken small { font-size: 10px; font-weight: 500; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.clabel { font-size: 12px; font-weight: 600; color: var(--muted); width: 58px; flex: none; padding-top: 12px; }
+.ctrow { display: flex; gap: 6px; padding: 4px 14px; }
+.tour { display: flex; gap: 8px; }
+.tour div { flex: 1; border-radius: 16px; background: var(--surface); padding: 12px 10px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; font-weight: 600; line-height: 1.25; }
+.tour .ic { width: 36px; height: 36px; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
+.waprev { margin: 0 16px; padding: 12px 14px; border-radius: 14px 14px 14px 4px; background: #E7F8EC; font-size: 13px; line-height: 1.5; color: #1E3A2A; }
+.waprev b { font-weight: 600; }
+.tile2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tile2 > div { border-radius: 16px; background: var(--surface); padding: 12px 14px; }
+.tile2 .n { font-size: 28px; font-weight: 700; letter-spacing: -.5px; }
+.tile2 .t { font-size: 13px; color: var(--muted); }
+.hello { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px 0; }
+.dim { opacity: .55; }
+.swap { display: flex; align-items: center; gap: 10px; padding: 4px 20px 8px; }
+.swap .who { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 6px; border-radius: 16px; background: var(--canvas); font-size: 14px; font-weight: 600; text-align: center; }
+.swap .who small { font-size: 12px; color: var(--muted); font-weight: 500; }
+.swap .who.new { background: var(--tint); }
+.swap .who.old .av { filter: grayscale(.6); opacity: .8; }
+.datepair { display: flex; gap: 8px; padding: 0 16px; }
+.datepair > div { flex: 1; border-radius: 14px; background: var(--canvas); padding: 10px 12px; }
+.datepair .k { font-size: 12px; font-weight: 600; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.datepair .v { font-size: 16px; font-weight: 600; margin-top: 3px; }
+.datepair .on { box-shadow: inset 0 0 0 2px var(--accent); background: #fff; }
+.empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 0 32px; }
+.illus { position: relative; width: 160px; height: 140px; margin-bottom: 18px; }
+.illus div { position: absolute; border-radius: 22px; display: flex; align-items: center; justify-content: center; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1Z"/></symbol>
+    <symbol id="i-wa" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5a9.4 9.4 0 0 0-8.1 14.2L2.6 21.5l4.9-1.3A9.4 9.4 0 1 0 12 2.5Zm0 1.7a7.7 7.7 0 1 1-3.9 14.3l-.3-.2-2.9.8.8-2.8-.2-.3A7.7 7.7 0 0 1 12 4.2Zm-3 3.6c-.2 0-.5 0-.7.3-.3.3-1 1-1 2.4s1 2.8 1.2 3c.1.2 2 3.2 5 4.4 2.5 1 3 .8 3.5.7.5 0 1.7-.7 2-1.4.2-.7.2-1.3.2-1.4-.1-.1-.3-.2-.6-.4l-1.8-.9c-.3-.1-.5-.1-.7.1l-.8 1c-.2.2-.3.2-.6.1a6.3 6.3 0 0 1-3.1-2.7c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.5l-.8-2c-.2-.5-.4-.4-.6-.4H9Z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="3"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="3"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8M16 7l2 2M14 9l2 2"/></symbol>
+    <symbol id="i-badge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.4 3 8.3 7 9.5 4-1.2 7-5.1 7-9.5V6z"/><path d="m9 11.8 2.2 2.2L15.5 9.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24" fill="currentColor"><path d="m12 3.2 2.6 5.5 6 .7-4.4 4.1 1.2 5.9L12 16.5l-5.4 2.9 1.2-5.9-4.4-4.1 6-.7z"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20c1.2-3.6 4-5.5 7.5-5.5s6.3 1.9 7.5 5.5"/></symbol>
+    <symbol id="i-useradd" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="10" cy="8" r="4"/><path d="M3 20c1.1-3.6 3.8-5.5 7-5.5 1.5 0 2.9.4 4 1.2M18 13v6M15 16h6"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 19.5c.9-3 3.4-4.8 6.5-4.8s5.6 1.8 6.5 4.8"/><path d="M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.9c1.7.6 3 2 3.5 4.6"/></symbol>
+    <symbol id="i-cal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+    <symbol id="i-once" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M11 8.5 13 7.5v9"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.6v.4"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 4.2 2.8 17.5A2 2 0 0 0 4.5 20.5h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z"/><path d="M12 9.5v4M12 17v.2"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></symbol>
+    <symbol id="i-door" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4H6v16h8M10 12h10M17 9l3 3-3 3"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m12 3.5 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5" stroke-linecap="round"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M21.2 12h-2.4M5.2 12H2.8M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7M18.5 18.5l-1.7-1.7M7.2 7.2 5.5 5.5" stroke-linecap="round"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.4 3 8.3 7 9.5 4-1.2 7-5.1 7-9.5V6z"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5V20h-5v-6H9v6H4z"/></symbol>
+    <symbol id="i-att" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="m8.5 12 2.5 2.5 4.5-5"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 4.5h10a4 4 0 0 1 4 4V20H9a4 4 0 0 1-4-4z"/><path d="M5 16a4 4 0 0 1 4-4h10"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24" fill="currentColor"><circle cx="5.5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18.5" cy="12" r="2"/></symbol>
+    <symbol id="i-pen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><path d="M6 16 15.5 6.5l2.5 2.5L8.5 18.5H6z"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M16 14.5h2"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5c.6 3.9 2.6 5.9 6.5 6.5-3.9.6-5.9 2.6-6.5 6.5-.6-3.9-2.6-5.9-6.5-6.5 3.9-.6 5.9-2.6 6.5-6.5ZM18.5 14c.3 1.9 1.3 2.9 3.2 3.2-1.9.3-2.9 1.3-3.2 3.2-.3-1.9-1.3-2.9-3.2-3.2 1.9-.3 2.9-1.3 3.2-3.2Z"/></symbol>
+    <symbol id="i-flask" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 3.5h5M10.5 3.5v5.5L5 18.5a1.5 1.5 0 0 0 1.3 2h11.4a1.5 1.5 0 0 0 1.3-2L13.5 9V3.5"/><path d="M7.5 14.5h9"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.3 3.6 5.2 3.6 8.5s-1.1 6.2-3.6 8.5c-2.5-2.3-3.6-5.2-3.6-8.5S9.5 5.8 12 3.5Z"/></symbol>
+    <symbol id="i-monitor" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="12" rx="2.5"/><path d="M9 20.5h6M12 16.5v4" stroke-linecap="round"/></symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3.5a8.5 8.5 0 0 0 0 17c1.3 0 1.8-.8 1.8-1.6 0-1.4-1.2-1.7-1.2-2.9 0-1 .8-1.6 1.8-1.6h2.1c2.2 0 4-1.6 4-4.3 0-3.7-3.8-6.6-8.5-6.6Z"/><circle cx="8" cy="11" r="1.1" fill="currentColor"/><circle cx="11" cy="7.6" r="1.1" fill="currentColor"/><circle cx="15.3" cy="8.4" r="1.1" fill="currentColor"/></symbol>
+    <symbol id="i-run" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="14.5" cy="4.8" r="1.8"/><path d="m6 20 3.5-5 3 2.5V21M8 10.5l3-3 3.5 1.5 2 3.5 2.5 1M11 7.5l-1.5 7.5"/></symbol>
+    <symbol id="i-school" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m12 3.5 9 4.5-9 4.5L3 8z"/><path d="M7 10.5V15c1.4 1.4 3 2 5 2s3.6-.6 5-2v-4.5M21 8v5" stroke-linecap="round"/></symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <div class="intro">
+    <h1>Staff, sign-in and teacher assignment</h1>
+    <p>A mockup for review, with no app code changed. It follows the design doc <b>06-staff-and-teaching.md</b>: one kind of teacher, phone sign-in with a joining code, and one place to say who teaches what. Assigning a teacher is what lets them work, so these screens set up marks, homework, attendance and Home for every teacher. Names and numbers are made up for the mockup (Main Campus, session 2026-27, 20 sections).</p>
+  </div>
+
+  <div class="h2">What the screens are built around</div>
+  <div class="grid">
+    <div><b>One kind of teacher</b>Staff are just "Teacher". What they teach, and whether they look after a section as its class teacher, is on the assignment, not on the person.</div>
+    <div><b>Assigning is the access</b>Put Priya in 6-A Maths and she can open 6-A Maths. There's no Roles step for teachers any more.</div>
+    <div><b>Gaps are always visible</b>Every teaching screen counts what's empty. Empty slots are amber and say Assign, so the office always knows what's left.</div>
+    <div><b>Phone and a code, no email</b>The office adds the teacher and shares a 6-digit code on WhatsApp. The teacher sets their own password and finds their classes waiting.</div>
+    <div><b>Subjects you can spot</b>Each subject gets a soft tile with an icon, so a section's eight subjects read at a glance. It's the first non-status colour in the staff app (open question 1).</div>
+    <div><b>Leaving hands over</b>Marking someone as left lists everything they taught, so nothing goes silently unstaffed.</div>
+  </div>
+
+  <!-- ===================================================== SIGN-IN -->
+  <div class="h2">Sign-in and joining</div>
+  <div class="frames">
+
+    <!-- 01 sign in -->
+    <figure>
+      <div class="phone">
+        <div class="wash"></div>
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back"><svg class="i"><use href="#i-left"/></svg>Not staff?</span></div>
+        <div style="position:relative;padding:18px 20px 0">
+          <div class="mark"><svg class="i-l" style="width:28px;height:28px"><use href="#i-school"/></svg></div>
+          <div class="h1" style="margin-top:18px">Staff sign in</div>
+          <div class="lead">Use the phone number your school has for you.</div>
+        </div>
+        <div style="position:relative;margin-top:26px">
+          <div class="fgroup">
+            <div class="lbl">Phone number</div>
+            <div class="fld on"><span class="cc">+91</span><span class="tnum">98765 43210</span><span class="caret"></span></div>
+          </div>
+          <div class="fgroup">
+            <div class="lbl">Password</div>
+            <div class="fld"><svg class="i ic"><use href="#i-lock"/></svg><span class="grow ph">Your password</span><svg class="i ic"><use href="#i-eye"/></svg></div>
+          </div>
+          <div style="padding:16px 16px 0"><div class="btn">Sign in</div></div>
+          <div class="meta" style="text-align:center;margin-top:12px">Forgot it? Ask your school office for a new code.</div>
+        </div>
+        <div class="card" style="position:absolute;left:16px;right:16px;bottom:24px;padding:14px;display:flex;gap:12px;align-items:center;box-shadow:0 0 0 1px var(--hair)">
+          <div class="sj" style="background:var(--amb-t);color:var(--amb)"><svg class="i"><use href="#i-key"/></svg></div>
+          <div class="grow"><div style="font-size:15px;font-weight:600">First time here?</div><div class="meta">Join with the code from your school</div></div>
+          <span class="pill p" style="height:32px;padding:0 12px;font-size:13px">Join</span>
+        </div>
+      </div>
+      <figcaption><span class="no">01</span><b>Sign in.</b> Phone and password, nothing else. No email, no school picker: the phone finds the school. The welcome screen's "I'm staff" card leads here. First-timers use the card at the bottom.</figcaption>
+    </figure>
+
+    <!-- 02 join with code -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back"><svg class="i"><use href="#i-left"/></svg></span><span class="ttl">Join your school</span></div>
+        <div style="padding:10px 20px 0">
+          <div class="steps"><i class="on"></i><i></i></div>
+          <div class="h1" style="font-size:24px;margin-top:14px">Enter your code</div>
+          <div class="lead">The 6-digit code your school office sent you.</div>
+        </div>
+        <div class="fgroup" style="margin-top:20px">
+          <div class="lbl">Phone number</div>
+          <div class="fld"><span class="cc">+91</span><span class="tnum">98765 43210</span></div>
+        </div>
+        <div style="padding:20px 16px 0">
+          <div class="lbl">Joining code</div>
+          <div class="code"><span>4</span><span>8</span><span>1</span><span class="on"></span><span></span><span></span></div>
+          <div class="meta" style="text-align:center;margin-top:12px;display:flex;justify-content:center;gap:6px;align-items:center"><svg class="i-s"><use href="#i-clock"/></svg>A code works once and lasts 7 days</div>
+        </div>
+        <div class="pad">
+          <span>1</span><span>2<small>ABC</small></span><span>3<small>DEF</small></span>
+          <span>4<small>GHI</small></span><span>5<small>JKL</small></span><span>6<small>MNO</small></span>
+          <span>7<small>PQRS</small></span><span>8<small>TUV</small></span><span>9<small>WXYZ</small></span>
+          <span class="k"></span><span>0</span><span class="k"><svg class="i"><use href="#i-left"/></svg></span>
+        </div>
+      </div>
+      <figcaption><span class="no">02</span><b>Join with a code.</b> The phone the school entered, then the code. The number pad stays up, and the sixth digit moves on by itself. After 5 wrong tries the code stops working, and the screen says to ask the office for a new one.</figcaption>
+    </figure>
+
+    <!-- 03 set password -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back"><svg class="i"><use href="#i-left"/></svg></span><span class="ttl">Join your school</span></div>
+        <div style="padding:10px 20px 0">
+          <div class="steps"><i></i><i class="on"></i></div>
+        </div>
+        <div class="card mx" style="margin-top:16px;padding:14px;display:flex;gap:12px;align-items:center">
+          <div class="av t1" style="width:48px;height:48px;font-size:17px">PR<span class="badge"><svg style="width:11px;height:11px"><use href="#i-check"/></svg></span></div>
+          <div class="grow"><div style="font-size:17px;font-weight:600">Priya Rao</div><div class="meta">TGT Maths · Demo Public School, Main Campus</div></div>
+        </div>
+        <div style="padding:20px 20px 0">
+          <div class="h1" style="font-size:24px">Choose a password</div>
+          <div class="lead">You'll use it with your phone number every time.</div>
+        </div>
+        <div class="fgroup" style="margin-top:18px">
+          <div class="lbl">New password</div>
+          <div class="fld"><svg class="i ic"><use href="#i-lock"/></svg><span class="grow dots">••••••••••</span><svg class="i ic"><use href="#i-eye"/></svg></div>
+        </div>
+        <div class="fgroup">
+          <div class="lbl">Type it again</div>
+          <div class="fld on"><svg class="i ic"><use href="#i-lock"/></svg><span class="dots">•••••••</span><span class="caret" style="margin-left:-2px"></span></div>
+        </div>
+        <div style="padding:16px 20px 0;display:flex;flex-direction:column;gap:10px">
+          <div class="rule done"><span class="ok"><svg style="width:12px;height:12px"><use href="#i-check"/></svg></span>8 or more characters</div>
+          <div class="rule done"><span class="ok"><svg style="width:12px;height:12px"><use href="#i-check"/></svg></span>At least one number</div>
+          <div class="rule"><span class="no"></span>Both match</div>
+        </div>
+        <div class="foot"><div class="btn off">Set password</div></div>
+      </div>
+      <figcaption><span class="no">03</span><b>Set a password.</b> The card shows whose record this is, so a teacher who got a colleague's code notices straight away. The rules tick as they type. Nobody at the school ever knows the password.</figcaption>
+    </figure>
+
+    <!-- 04 welcome -->
+    <figure>
+      <div class="phone">
+        <div class="wash" style="height:340px"></div>
+        <div class="status"><span>9:42</span><i></i></div>
+        <div style="position:relative;padding:20px 20px 0">
+          <div class="av xl t1">PR</div>
+          <div class="h1" style="margin-top:16px">Hi Priya, you're in</div>
+          <div class="lead">Main Campus · Session 2026-27</div>
+        </div>
+        <div class="gh" style="position:relative"><span class="l">Your classes</span><span class="r" style="color:var(--muted);font-weight:500">5 classes</span></div>
+        <div class="card mx" style="position:relative;padding:14px;display:flex;gap:12px;align-items:center;background:linear-gradient(135deg,#0F7A44,#16935A);color:#fff">
+          <div class="sj" style="background:rgba(255,255,255,.18);color:#fff"><svg class="i"><use href="#i-star"/></svg></div>
+          <div class="grow"><div style="font-size:12px;font-weight:600;opacity:.8;letter-spacing:.4px">CLASS TEACHER</div><div style="font-size:20px;font-weight:600;letter-spacing:-.3px">6-A <span style="font-size:14px;font-weight:500;opacity:.85">· 34 students</span></div></div>
+        </div>
+        <div class="list card" style="margin-top:8px;position:relative">
+          <div class="row"><div class="sj m">∑</div><div class="grow"><div class="nm">Maths</div><div class="sm2">6-A · 6-B · 7-A</div></div></div>
+          <div class="row"><div class="sj s"><svg class="i"><use href="#i-flask"/></svg></div><div class="grow"><div class="nm">Science</div><div class="sm2">8-A</div></div></div>
+        </div>
+        <div style="padding:16px 16px 0" class="tour">
+          <div><span class="ic" style="background:var(--tint);color:var(--deep)"><svg class="i"><use href="#i-att"/></svg></span>Take attendance</div>
+          <div><span class="ic" style="background:#EFEAFE;color:#6440D8"><svg class="i"><use href="#i-book"/></svg></span>Give homework</div>
+          <div><span class="ic" style="background:#E6EEFF;color:#2556D9"><svg class="i"><use href="#i-pen"/></svg></span>Enter marks</div>
+        </div>
+        <div class="foot"><div class="btn">Get started<svg class="i"><use href="#i-arrow"/></svg></div></div>
+      </div>
+      <figcaption><span class="no">04</span><b>Welcome.</b> The office's work shows up the moment she joins: her section and her subjects, with the class teacher job on top. The three cards are a one-time tour (each opens a short tip), and Get started lands on Home.</figcaption>
+    </figure>
+
+    <!-- 18 no classes yet -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:42</span><i></i></div>
+        <div class="hello"><div><div class="meta">Friday, 14 Nov</div><div class="title" style="font-size:26px">Hi Meera</div></div><div class="av t3">MN</div></div>
+        <div class="empty" style="margin-top:80px">
+          <div class="illus">
+            <div style="left:10px;top:30px;width:70px;height:70px;background:#E6EEFF;color:#2556D9;transform:rotate(-10deg);font-size:28px;font-weight:700">∑</div>
+            <div style="left:80px;top:16px;width:70px;height:70px;background:#EFEAFE;color:#6440D8;transform:rotate(8deg)"><svg style="width:30px;height:30px"><use href="#i-book"/></svg></div>
+            <div style="left:46px;top:62px;width:70px;height:70px;background:#fff;color:var(--deep);box-shadow:0 10px 24px rgba(16,24,40,.12)"><svg style="width:30px;height:30px"><use href="#i-clock"/></svg></div>
+          </div>
+          <div style="font-size:22px;font-weight:600;letter-spacing:-.3px">No classes yet</div>
+          <div class="lead" style="margin-top:8px">The office hasn't given you any classes for 2026-27. They'll appear here as soon as they do.</div>
+          <div class="btn ghost" style="margin-top:22px;width:100%"><svg class="i"><use href="#i-phone"/></svg>Call the office</div>
+        </div>
+        <div class="tabbar">
+          <span class="on"><svg class="i"><use href="#i-home"/></svg>Home</span>
+          <span><svg class="i"><use href="#i-att"/></svg>Attendance</span>
+          <span><svg class="i"><use href="#i-users"/></svg>Students</span>
+          <span><svg class="i"><use href="#i-book"/></svg>Homework</span>
+          <span><svg class="i"><use href="#i-more"/></svg>More</span>
+        </div>
+      </div>
+      <figcaption><span class="no">18</span><b>Joined, nothing assigned.</b> A teacher can join before the office fills in the year. Instead of empty tabs and refusals, Home says why and who to ask. The welcome screen (04) shows the same message in place of the class list.</figcaption>
+    </figure>
+  </div>
+
+  <!-- ===================================================== STAFF -->
+  <div class="h2">Staff (office side)</div>
+  <div class="frames">
+
+    <!-- 05 staff list -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav" style="height:36px"><span class="back"><svg class="i"><use href="#i-left"/></svg>More</span></div>
+        <div class="top"><div class="title">Staff</div><span class="cap"><svg class="i"><use href="#i-plus"/></svg>Add</span></div>
+        <div class="sub meta">Main Campus · 42 people</div>
+        <div class="search"><div class="sfield"><svg class="i"><use href="#i-search"/></svg>Name, phone or code</div></div>
+        <div class="strip">
+          <span class="chipc on">All <span>42</span></span>
+          <span class="chipc">Teaching <span>31</span></span>
+          <span class="chipc"><i class="dot"></i>Not joined <span>6</span></span>
+          <span class="chipc">Left <span>4</span></span>
+        </div>
+        <div class="gh"><span class="l">Teaching · 31</span></div>
+        <div class="list card">
+          <div class="row"><div class="av t1">PR</div><div class="grow"><div class="nm">Priya Rao</div><div class="sm2 clip">TGT Maths · Class teacher 6-A</div></div><span class="pill p"><span class="d"></span>Joined</span></div>
+          <div class="row"><div class="av t2">AD</div><div class="grow"><div class="nm">Arjun Das</div><div class="sm2 clip">PGT English · 6 classes</div></div><span class="pill p"><span class="d"></span>Joined</span></div>
+          <div class="row"><div class="av t6">KI</div><div class="grow"><div class="nm">Kavita Iyer</div><div class="sm2 clip">TGT Science · 4 classes</div></div><span class="pill n">Invited</span></div>
+          <div class="row"><div class="av t4">RS</div><div class="grow"><div class="nm">Rahul Sen</div><div class="sm2 clip">PRT · No classes yet</div></div><span class="pill c">Not invited</span></div>
+          <div class="row"><div class="av t5">SJ</div><div class="grow"><div class="nm">Sunita Jha</div><div class="sm2 clip">TGT Hindi · 5 classes</div></div><span class="pill p"><span class="d"></span>Joined</span></div>
+        </div>
+        <div class="gh"><span class="l">Office · 11</span></div>
+        <div class="list card">
+          <div class="row"><div class="av t3">MG</div><div class="grow"><div class="nm">Mohan Gupta</div><div class="sm2">Accountant</div></div><span class="pill p"><span class="d"></span>Joined</span></div>
+        </div>
+        <div class="fade"></div>
+        <div class="tabbar">
+          <span><svg class="i"><use href="#i-home"/></svg>Home</span>
+          <span><svg class="i"><use href="#i-att"/></svg>Attendance</span>
+          <span><svg class="i"><use href="#i-users"/></svg>Students</span>
+          <span><svg class="i"><use href="#i-wallet"/></svg>Fees</span>
+          <span class="on"><svg class="i"><use href="#i-more"/></svg>More</span>
+        </div>
+      </div>
+      <figcaption><span class="no">05</span><b>Staff list.</b> Teaching staff first, then the office. Each row says what they teach and whether they've joined. "Not joined" is the one chip with a dot, because those people can't work yet. Tap a row for the profile (08).</figcaption>
+    </figure>
+
+    <!-- 06 add staff -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back" style="color:var(--muted)">Cancel</span><span class="ttl">Add staff</span></div>
+        <div class="form card">
+          <div class="frow"><div class="grow"><div class="k">Full name</div><div class="v">Kavita Iyer</div></div></div>
+          <div class="frow"><div class="grow"><div class="k">Phone · they sign in with this</div><div class="v tnum">+91 98301 22745</div></div><svg class="i" style="color:var(--accent)"><use href="#i-check"/></svg></div>
+          <div class="frow on"><div class="grow"><div class="k" style="color:var(--deep)">Designation</div><div class="v">TGT Sci<span style="display:inline-block;width:2px;height:18px;background:var(--accent);vertical-align:-3px"></span></div></div></div>
+          <div class="sugg">
+            <span class="h">Suggestions</span>
+            <span class="hot">TGT Science</span><span>TGT Maths</span><span>TGT</span><span>PGT</span><span>PRT</span><span>Lab assistant</span>
+          </div>
+        </div>
+        <div class="form card">
+          <div class="frow"><div class="sj sm" style="background:var(--tint);color:var(--deep)"><svg class="i-s"><use href="#i-school"/></svg></div><div class="grow"><div style="font-size:16px;font-weight:600">Teaches classes</div><div class="meta">Shows up when you assign teachers</div></div><span class="sw"></span></div>
+          <div class="frow"><div class="sj sm" style="background:var(--slate-t);color:var(--slate)"><svg class="i-s"><use href="#i-home"/></svg></div><div class="grow"><div class="k">Branch</div><div class="v">Main Campus</div></div><svg class="i chev"><use href="#i-right"/></svg></div>
+        </div>
+        <div class="form card">
+          <div class="frow"><div class="sj sm" style="background:var(--slate-t);color:var(--slate)"><svg class="i-s"><use href="#i-plus"/></svg></div><div class="grow"><div style="font-size:15px;font-weight:600">More details</div><div class="meta">Code EMP-043 · email · joining date · photo</div></div><svg class="i chev"><use href="#i-down"/></svg></div>
+        </div>
+        <div class="foot" style="display:flex;flex-direction:column;gap:8px">
+          <div class="btn"><svg class="i"><use href="#i-wa"/></svg>Save and invite</div>
+          <div class="btn ghost" style="height:46px;font-size:15px">Save without inviting</div>
+        </div>
+      </div>
+      <figcaption><span class="no">06</span><b>Add staff.</b> Three fields and a switch. Designation is free text, with suggestions from a starter list and from what this school already uses. "Teaches classes" turns on by itself for teacher-like designations (PRT, TGT, PGT). The employee code is filled in for you.</figcaption>
+    </figure>
+
+    <!-- 07 invite sheet -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back"><svg class="i"><use href="#i-left"/></svg>Staff</span></div>
+        <div class="scrim"></div>
+        <div class="sheet">
+          <div class="grab"></div>
+          <div style="display:flex;align-items:center;gap:12px;padding:4px 20px 0">
+            <div class="av t6" style="width:48px;height:48px;font-size:17px">KI</div>
+            <div class="grow"><h3 style="padding:0">Invite Kavita Iyer</h3><div class="meta">She joins with 98301 22745 and this code</div></div>
+          </div>
+          <div class="code big" style="margin-top:18px"><span>4</span><span>8</span><span>1</span><span>2</span><span>0</span><span>7</span></div>
+          <div style="display:flex;justify-content:center;gap:8px;margin:12px 0 16px">
+            <span class="pill n"><svg class="i-s"><use href="#i-clock"/></svg>Valid till 21 Nov</span>
+            <span class="pill n"><svg class="i-s"><use href="#i-once"/></svg>Works once</span>
+          </div>
+          <div class="waprev">Hi Kavita, you've been added to <b>Demo Public School</b> on the school app.<br>1. Install the app and tap <b>I'm staff</b><br>2. Tap <b>Join with a code</b><br>3. Phone <b>98301 22745</b>, code <b>481207</b><br>The code works once, till 21 Nov.</div>
+          <div class="sbtns">
+            <div class="btn wa"><svg class="i"><use href="#i-wa"/></svg>Share on WhatsApp</div>
+            <div class="btn ghost" style="height:46px;font-size:15px"><svg class="i"><use href="#i-copy"/></svg>Copy code</div>
+          </div>
+        </div>
+      </div>
+      <figcaption><span class="no">07</span><b>Invite.</b> The code, how long it lasts, and the message already written. WhatsApp opens with it filled in, sent to her number. The office can also copy the code to read out or print. No SMS cost.</figcaption>
+    </figure>
+
+    <!-- 08 profile -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back"><svg class="i"><use href="#i-left"/></svg>Staff</span><span class="end"><svg class="i"><use href="#i-edit"/></svg></span></div>
+        <div style="display:flex;align-items:center;gap:14px;padding:2px 16px 0">
+          <div class="av lg t1">PR</div>
+          <div class="grow"><div style="font-size:24px;font-weight:700;letter-spacing:-.4px">Priya Rao</div><div class="meta">TGT Maths · Main Campus</div><div style="margin-top:6px"><span class="pill p"><span class="d"></span>Joined 12 Nov</span></div></div>
+        </div>
+        <div class="qa" style="margin-top:16px">
+          <a><span class="ic"><svg class="i"><use href="#i-phone"/></svg></span>Call</a>
+          <a><span class="ic wa"><svg class="i"><use href="#i-wa"/></svg></span>WhatsApp</a>
+          <a><span class="ic"><svg class="i"><use href="#i-school"/></svg></span>Classes</a>
+          <a><span class="ic"><svg class="i"><use href="#i-key"/></svg></span>New code</a>
+        </div>
+        <div class="gh"><span class="l">This session · 2026-27</span><span class="r">Edit</span></div>
+        <div class="list card">
+          <div class="row"><div class="sj ct"><svg class="i"><use href="#i-star"/></svg></div><div class="grow"><div class="nm">Class teacher</div><div class="sm2">6-A · 34 students</div></div></div>
+          <div class="row"><div class="sj m">∑</div><div class="grow"><div class="nm">Maths</div><div class="sm2">6-A · 6-B · 7-A</div></div></div>
+          <div class="row"><div class="sj s"><svg class="i"><use href="#i-flask"/></svg></div><div class="grow"><div class="nm">Science</div><div class="sm2">8-A</div></div></div>
+        </div>
+        <div class="gh"><span class="l">Office roles</span><span class="r">Add</span></div>
+        <div class="list card"><div class="row" style="min-height:48px"><div class="sj sm" style="background:var(--slate-t);color:var(--slate)"><svg class="i-s"><use href="#i-shield"/></svg></div><div class="grow meta">None. Teachers don't need one.</div></div></div>
+        <div class="card mx" style="margin-top:12px;height:50px;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--red);font-weight:600"><svg class="i"><use href="#i-door"/></svg>Mark as left</div>
+      </div>
+      <figcaption><span class="no">08</span><b>Staff profile.</b> One place for the person: contact, what they teach this session (Edit opens frame 12), office roles if any, and login actions. "New code" is the forgot-password path. Mark as left starts the handover (14).</figcaption>
+    </figure>
+
+    <!-- 14 mark as left -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back" style="color:var(--muted)">Cancel</span><span class="ttl">Mark as left</span></div>
+        <div class="card mx" style="padding:12px 14px;display:flex;gap:12px;align-items:center">
+          <div class="av t2">AD</div><div class="grow"><div class="nm">Arjun Das</div><div class="sm2">PGT English · 6 classes</div></div>
+        </div>
+        <div class="datepair" style="margin-top:10px">
+          <div class="on"><div class="k"><svg class="i-s"><use href="#i-cal"/></svg>Last working day</div><div class="v">Sun, 30 Nov 2026</div></div>
+        </div>
+        <div class="gh"><span class="l">Who takes over</span><span class="r" style="color:var(--muted);font-weight:500">from 1 Dec</span></div>
+        <div class="list card">
+          <div class="row gap"><div class="sj ct sm"><svg class="i-s"><use href="#i-star"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Class teacher 7-B</div></div><span class="assign"><svg class="i-s"><use href="#i-plus"/></svg>Choose</span></div>
+          <div class="row"><div class="sj e sm">Aa</div><div class="grow"><div class="nm" style="font-size:15px">English 6-A</div></div><div class="av xs t3">MN</div><span style="font-size:14px;font-weight:600">Meera Nair</span></div>
+          <div class="row"><div class="sj e sm">Aa</div><div class="grow"><div class="nm" style="font-size:15px">English 6-B</div></div><div class="av xs t3">MN</div><span style="font-size:14px;font-weight:600">Meera Nair</span></div>
+          <div class="row gap"><div class="sj e sm">Aa</div><div class="grow"><div class="nm" style="font-size:15px">English 7-A</div></div><span class="assign"><svg class="i-s"><use href="#i-plus"/></svg>Choose</span></div>
+        </div>
+        <div class="info mx" style="margin-top:12px"><svg class="i"><use href="#i-info"/></svg><div>His sign-in stops after 30 Nov. Work he entered keeps his name. Anything left on <b>Choose</b> shows as a gap.</div></div>
+        <div class="foot"><div class="btn danger">Mark Arjun as left</div></div>
+      </div>
+      <figcaption><span class="no">14</span><b>Mark as left.</b> The date, then everything he taught, each with a picker. Picking Meera for one line offers to use her for the rest of his English too. Leaving lines empty is allowed; they show up as gaps. His phone number is freed for whoever needs it next.</figcaption>
+    </figure>
+  </div>
+
+  <!-- ===================================================== TEACHING -->
+  <div class="h2">Who teaches what</div>
+  <div class="frames">
+
+    <!-- 16 admin home -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>8:10</span><i></i></div>
+        <div class="hello"><div><div class="meta">Friday, 14 Nov · Main Campus</div><div class="title" style="font-size:26px">Good morning, Anita</div></div><div class="av t5">AS</div></div>
+        <div class="card mx" style="margin-top:16px;padding:16px;box-shadow:0 0 0 1px rgba(181,71,8,.2)">
+          <div style="display:flex;gap:12px;align-items:center">
+            <div class="sj" style="background:var(--amb-t);color:var(--amb)"><svg class="i"><use href="#i-school"/></svg></div>
+            <div class="grow"><div style="font-size:18px;font-weight:600;letter-spacing:-.2px">9 teaching gaps</div><div class="meta">3 sections without a class teacher · 6 subjects</div></div>
+          </div>
+          <div class="bar" style="margin-top:14px"><i style="width:81%"></i></div>
+          <div style="display:flex;justify-content:space-between;margin-top:8px" class="meta"><span>38 of 47 filled</span><span class="link">Fill gaps</span></div>
+        </div>
+        <div class="card mx" style="margin-top:10px;padding:14px;display:flex;gap:12px;align-items:center">
+          <div class="stack"><div class="av sm t4">RS</div><div class="av sm t6">KI</div><div class="av sm t3">VI</div></div>
+          <div class="grow"><div style="font-size:15px;font-weight:600">6 staff haven't joined</div><div class="meta">They can't open their classes yet</div></div>
+          <span class="pill p" style="height:32px;padding:0 12px;font-size:13px">Invite</span>
+        </div>
+        <div class="gh"><span class="l">Today</span></div>
+        <div class="tile2 mx dim">
+          <div><div class="n tnum">18<span style="font-size:16px;color:var(--muted)">/20</span></div><div class="t">Sections marked</div></div>
+          <div><div class="n tnum">₹42k</div><div class="t">Fees collected</div></div>
+        </div>
+        <div class="fade"></div>
+        <div class="tabbar">
+          <span class="on"><svg class="i"><use href="#i-home"/></svg>Home</span>
+          <span><svg class="i"><use href="#i-att"/></svg>Attendance</span>
+          <span><svg class="i"><use href="#i-users"/></svg>Students</span>
+          <span><svg class="i"><use href="#i-wallet"/></svg>Fees</span>
+          <span><svg class="i"><use href="#i-more"/></svg>More</span>
+        </div>
+      </div>
+      <figcaption><span class="no">16</span><b>Admin Home.</b> While there are gaps, a card sits at the top saying how many and how close the session is to full. Fill gaps opens the overview on the first one. A second card nudges staff who haven't joined. Both go away when there's nothing to do. (Today's cards are dimmed only to keep the focus here.)</figcaption>
+    </figure>
+
+    <!-- 09 overview -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav" style="height:36px"><span class="back"><svg class="i"><use href="#i-left"/></svg>More</span><span class="end" style="gap:8px;padding:0 6px"><span class="iconbtn"><svg class="i"><use href="#i-layers"/></svg></span><span class="iconbtn"><svg class="i"><use href="#i-gear"/></svg></span></span></div>
+        <div class="top"><div class="title">Teaching</div></div>
+        <div class="sub meta">Main Campus · 2026-27</div>
+        <div class="card mx" style="margin-top:14px;padding:14px;display:flex;gap:14px;align-items:center">
+          <div class="ring">
+            <svg viewBox="0 0 76 76" width="76" height="76"><circle cx="38" cy="38" r="31" fill="none" stroke="#E9EDF3" stroke-width="9"/><circle cx="38" cy="38" r="31" fill="none" stroke="#0F7A44" stroke-width="9" stroke-linecap="round" stroke-dasharray="158 195" transform="rotate(-90 38 38)"/></svg>
+            <b>81%<small>filled</small></b>
+          </div>
+          <div class="grow" style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:center;gap:8px;font-size:14px"><span class="pill c" style="min-width:30px;justify-content:center">3</span>No class teacher</div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:14px"><span class="pill c" style="min-width:30px;justify-content:center">6</span>Subjects with no teacher</div>
+          </div>
+        </div>
+        <div class="seg"><span class="on"><svg class="i-s"><use href="#i-school"/></svg>By section</span><span><svg class="i-s"><use href="#i-users"/></svg>By teacher</span></div>
+        <div class="gh"><span class="l">Class 6</span></div>
+        <div class="list card">
+          <div class="row"><div class="sj" style="background:var(--tint);color:var(--deep);font-size:14px">6-A</div><div class="grow"><div class="nm" style="font-size:15px">Priya Rao</div><div class="sm2">8 of 8 subjects</div></div><span style="width:24px;height:24px;border-radius:99px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center"><svg style="width:13px;height:13px"><use href="#i-check"/></svg></span></div>
+          <div class="row gap"><div class="sj" style="background:var(--amb-t);color:var(--amb);font-size:14px">6-B</div><div class="grow"><div class="nm" style="font-size:15px;color:var(--amb)">No class teacher</div><div class="sm2">5 of 7 subjects</div></div><span class="pill c">3 gaps</span></div>
+        </div>
+        <div class="gh"><span class="l">Class 7</span></div>
+        <div class="list card">
+          <div class="row"><div class="sj" style="background:var(--tint);color:var(--deep);font-size:14px">7-A</div><div class="grow"><div class="nm" style="font-size:15px">Sunita Jha</div><div class="sm2">8 of 8 subjects</div></div><span style="width:24px;height:24px;border-radius:99px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center"><svg style="width:13px;height:13px"><use href="#i-check"/></svg></span></div>
+          <div class="row gap"><div class="sj" style="background:var(--amb-t);color:var(--amb);font-size:14px">7-B</div><div class="grow"><div class="nm" style="font-size:15px">Arjun Das</div><div class="sm2">5 of 8 subjects</div></div><span class="pill c">3 gaps</span></div>
+        </div>
+        <div class="fade"></div>
+      </div>
+      <figcaption><span class="no">09</span><b>Teaching overview.</b> How full the session is, the two kinds of gap, then every section with its class teacher and a tick or a gap count. Sections with gaps are tinted. Top right: copy from last session (15) and settings (17). By teacher lists people with their load.</figcaption>
+    </figure>
+
+    <!-- 10 section -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back"><svg class="i"><use href="#i-left"/></svg>Teaching</span><span class="end"><svg class="i"><use href="#i-more"/></svg></span></div>
+        <div class="top" style="padding-top:0"><div class="title">6-B</div><span class="pill c" style="margin-bottom:6px">3 gaps</span></div>
+        <div class="sub meta">Class 6 · 36 students</div>
+        <div class="card mx" style="margin-top:14px;padding:12px 12px 12px 14px;display:flex;gap:12px;align-items:center;box-shadow:inset 0 0 0 1.5px rgba(181,71,8,.35);background:var(--amb-t)">
+          <div class="sj" style="background:#fff;color:var(--amb);border:1.5px dashed rgba(181,71,8,.5)"><svg class="i"><use href="#i-star"/></svg></div>
+          <div class="grow"><div style="font-size:12px;font-weight:600;color:var(--amb);letter-spacing:.4px">CLASS TEACHER</div><div style="font-size:16px;font-weight:600">Nobody yet</div></div>
+          <span class="cap" style="height:36px;font-size:14px;padding:0 14px 0 10px"><svg class="i-s"><use href="#i-plus"/></svg>Assign</span>
+        </div>
+        <div class="gh"><span class="l">Subjects · 7</span><span class="r">One teacher for all</span></div>
+        <div class="list card">
+          <div class="row"><div class="sj m">∑</div><div class="grow"><div class="nm">Maths</div><div class="sm2">Priya Rao</div></div><div class="av sm t1">PR</div></div>
+          <div class="row"><div class="sj e">Aa</div><div class="grow"><div class="nm">English</div><div class="sm2">Arjun Das</div></div><div class="av sm t2">AD</div></div>
+          <div class="row"><div class="sj s"><svg class="i"><use href="#i-flask"/></svg></div><div class="grow"><div class="nm">Science</div><div class="sm2">Kavita Iyer, Vikram Iyer</div></div><div class="stack"><div class="av sm t6">KI</div><div class="av sm t3">VI</div></div></div>
+          <div class="row"><div class="sj h">अ</div><div class="grow"><div class="nm">Hindi</div><div class="sm2">Sunita Jha</div></div><div class="av sm t5">SJ</div></div>
+          <div class="row gap"><div class="sj so"><svg class="i"><use href="#i-globe"/></svg></div><div class="grow"><div class="nm">Social Science</div><div class="sm2" style="color:var(--amb)">No teacher</div></div><span class="assign"><svg class="i-s"><use href="#i-plus"/></svg>Assign</span></div>
+          <div class="row"><div class="sj c"><svg class="i"><use href="#i-monitor"/></svg></div><div class="grow"><div class="nm">Computer</div><div class="sm2">Rahul Sen</div></div><div class="av sm t4">RS</div></div>
+          <div class="row gap"><div class="sj a"><svg class="i"><use href="#i-palette"/></svg></div><div class="grow"><div class="nm">Art</div><div class="sm2" style="color:var(--amb)">No teacher</div></div><span class="assign"><svg class="i-s"><use href="#i-plus"/></svg>Assign</span></div>
+        </div>
+        <div class="fade"></div>
+      </div>
+      <figcaption><span class="no">10</span><b>A section.</b> The class teacher on top, then every subject mapped to Class 6 with its teachers. Two teachers can share one (Science). Tap a filled row to add a second teacher or change one (13). "One teacher for all" makes one person class teacher plus every subject, for primary sections.</figcaption>
+    </figure>
+
+    <!-- 11 picker -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back"><svg class="i"><use href="#i-left"/></svg>Teaching</span></div>
+        <div class="top" style="padding-top:0"><div class="title">6-B</div></div>
+        <div class="scrim"></div>
+        <div class="sheet" style="top:96px;padding-bottom:0">
+          <div class="grab"></div>
+          <div style="display:flex;align-items:center;gap:12px;padding:0 20px">
+            <div class="sj so"><svg class="i"><use href="#i-globe"/></svg></div>
+            <div class="grow"><h3 style="padding:0">Social Science, 6-B</h3><div class="meta">Pick one or more teachers</div></div>
+          </div>
+          <div class="search" style="padding-top:14px"><div class="sfield"><svg class="i"><use href="#i-search"/></svg>Search teachers</div></div>
+          <div class="gh" style="padding-top:14px"><span class="l">Teaches Social Science</span></div>
+          <div class="list" style="background:var(--canvas);border-radius:16px">
+            <div class="row" style="background:var(--tint);border-radius:16px 16px 0 0"><div class="av t5">NK</div><div class="grow"><div class="nm">Neha Kapoor</div><div class="sm2">TGT Social · 4 classes</div></div><span style="width:26px;height:26px;border-radius:99px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center"><svg style="width:14px;height:14px"><use href="#i-check"/></svg></span></div>
+            <div class="row"><div class="av t4">RK</div><div class="grow"><div class="nm">Rakesh Kumar</div><div class="sm2">PGT History · <span style="color:var(--amb);font-weight:600">9 classes, busiest</span></div></div><span style="width:26px;height:26px;border-radius:99px;box-shadow:inset 0 0 0 2px var(--grab)"></span></div>
+          </div>
+          <div class="gh"><span class="l">Other teachers · 29</span></div>
+          <div class="list" style="background:var(--canvas);border-radius:16px">
+            <div class="row"><div class="av t4">RS</div><div class="grow"><div class="nm">Rahul Sen</div><div class="sm2">PRT · 2 classes</div></div><span style="width:26px;height:26px;border-radius:99px;box-shadow:inset 0 0 0 2px var(--grab)"></span></div>
+            <div class="row"><div class="av t3">MN</div><div class="grow"><div class="nm">Meera Nair</div><div class="sm2">TGT English · 3 classes</div></div><span style="width:26px;height:26px;border-radius:99px;box-shadow:inset 0 0 0 2px var(--grab)"></span></div>
+          </div>
+          <div class="foot" style="background:linear-gradient(rgba(255,255,255,0),#fff 26%)"><div class="btn">Assign Neha Kapoor</div></div>
+        </div>
+      </div>
+      <figcaption><span class="no">11</span><b>Teacher picker.</b> Only staff with "Teaches classes" on. People who already teach this subject come first, and everyone shows their load, so the office can spread the work. A load well above the rest is amber. More than one can be ticked.</figcaption>
+    </figure>
+
+    <!-- 12 by teacher -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back"><svg class="i"><use href="#i-left"/></svg>Teaching</span></div>
+        <div style="display:flex;align-items:center;gap:12px;padding:0 16px">
+          <div class="av lg t1" style="width:52px;height:52px;font-size:18px">PR</div>
+          <div class="grow"><div style="font-size:22px;font-weight:700;letter-spacing:-.4px">Priya Rao</div><div class="meta">TGT Maths · 5 classes</div></div>
+        </div>
+        <div class="card mx" style="margin-top:14px;padding:12px 14px;display:flex;gap:12px;align-items:center">
+          <div class="sj ct sm"><svg class="i-s"><use href="#i-star"/></svg></div>
+          <div class="grow"><div style="font-size:15px;font-weight:600">Class teacher</div></div>
+          <span class="secchip on" style="height:34px;min-width:54px">6-A</span>
+          <svg class="i chev"><use href="#i-down"/></svg>
+        </div>
+        <div class="card mx" style="margin-top:10px;padding:12px 0 8px">
+          <div style="display:flex;gap:12px;align-items:center;padding:0 14px 6px"><div class="sj m sm">∑</div><div class="grow" style="font-size:16px;font-weight:600">Maths</div><span class="meta">5 sections</span></div>
+          <div class="ctrow"><span class="clabel">Class 6</span><div class="chips"><span class="secchip on">6-A</span><span class="secchip on">6-B</span></div></div>
+          <div class="ctrow"><span class="clabel">Class 7</span><div class="chips"><span class="secchip on">7-A</span><span class="secchip new"><svg class="i-s"><use href="#i-check"/></svg>7-B</span></div></div>
+          <div class="ctrow"><span class="clabel">Class 8</span><div class="chips"><span class="secchip taken">8-A<small>Rakesh</small></span><span class="secchip">8-B</span></div></div>
+        </div>
+        <div class="card mx" style="margin-top:10px;padding:12px 0 8px">
+          <div style="display:flex;gap:12px;align-items:center;padding:0 14px 6px"><div class="sj s sm"><svg class="i-s"><use href="#i-flask"/></svg></div><div class="grow" style="font-size:16px;font-weight:600">Science</div><span class="meta">1 section</span></div>
+          <div class="ctrow"><span class="clabel">Class 8</span><div class="chips"><span class="secchip on">8-A</span><span class="secchip taken">8-B<small>Kavita</small></span></div></div>
+        </div>
+        <div class="mx" style="margin-top:10px;height:46px;border-radius:16px;border:1.5px dashed var(--line);display:flex;align-items:center;justify-content:center;gap:6px;font-size:15px;font-weight:600;color:var(--deep)"><svg class="i"><use href="#i-plus"/></svg>Add a subject</div>
+        <div class="foot"><div class="btn">Save · 1 added</div></div>
+      </div>
+      <figcaption><span class="no">12</span><b>By teacher.</b> For "she teaches Maths in four sections": tap sections to tick them. A section someone else teaches shows their name, and ticking it adds Priya alongside them (it never replaces). Changes collect into one Save, so the six-tap target holds.</figcaption>
+    </figure>
+
+    <!-- 13 change teacher -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back"><svg class="i"><use href="#i-left"/></svg>Teaching</span></div>
+        <div class="top" style="padding-top:0"><div class="title">6-A</div></div>
+        <div class="scrim"></div>
+        <div class="sheet">
+          <div class="grab"></div>
+          <h3>Change the English teacher</h3>
+          <div class="hint">6-A · Arjun Das is going on leave</div>
+          <div class="swap">
+            <div class="who old"><div class="av t2">AD</div>Arjun Das<small>now</small></div>
+            <svg class="i" style="color:var(--chev)"><use href="#i-arrow"/></svg>
+            <div class="who new"><div class="av t3">MN</div>Meera Nair<small>new</small></div>
+          </div>
+          <div class="datepair">
+            <div class="on"><div class="k"><svg class="i-s"><use href="#i-cal"/></svg>From</div><div class="v">Today, 14 Nov</div></div>
+            <div><div class="k"><svg class="i-s"><use href="#i-clock"/></svg>Until <span style="font-weight:500">(optional)</span></div><div class="v">Fri, 28 Nov</div></div>
+          </div>
+          <div class="info g" style="margin:12px 16px 0"><svg class="i"><use href="#i-swap"/></svg><div>Meera can enter 6-A English marks and homework from today. On <b>29 Nov</b> it goes back to Arjun.</div></div>
+          <div class="sbtns">
+            <div class="btn">Change teacher</div>
+            <div class="btn ghost" style="height:46px;font-size:15px">Add Meera alongside instead</div>
+          </div>
+        </div>
+      </div>
+      <figcaption><span class="no">13</span><b>Change a teacher.</b> Replacing is never silent: who goes, who comes, and from when. An "until" date makes it a substitute, so access goes back by itself. "Alongside" keeps both, for two teachers sharing a subject.</figcaption>
+    </figure>
+
+    <!-- 15 copy -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back" style="color:var(--muted)">Cancel</span><span class="ttl">Copy from 2025-26</span></div>
+        <div style="padding:4px 16px 0" class="tile2">
+          <div><div style="display:flex;align-items:center;gap:6px;color:var(--deep)"><svg class="i"><use href="#i-check"/></svg><span class="n tnum" style="color:var(--ink)">41</span></div><div class="t">Ready to copy</div></div>
+          <div style="background:var(--amb-t)"><div style="display:flex;align-items:center;gap:6px;color:var(--amb)"><svg class="i"><use href="#i-alert"/></svg><span class="n tnum">6</span></div><div class="t">Can't be copied</div></div>
+        </div>
+        <div class="gh"><span class="l">Can't be copied</span></div>
+        <div class="list card">
+          <div class="row"><div class="av t2">AD</div><div class="grow"><div class="nm" style="font-size:15px">Arjun Das has left</div><div class="sm2">English 6-A, 6-B, 7-A stay empty</div></div><span class="pill c">3</span></div>
+          <div class="row"><div class="sj" style="background:var(--slate-t);color:var(--slate);font-size:14px">8-C</div><div class="grow"><div class="nm" style="font-size:15px">8-C isn't in 2026-27</div><div class="sm2">Its 2 teachers aren't copied</div></div><span class="pill c">2</span></div>
+          <div class="row"><div class="sj c"><svg class="i"><use href="#i-monitor"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Computer left Class 9</div><div class="sm2">Rahul Sen in 9-A isn't copied</div></div><span class="pill c">1</span></div>
+        </div>
+        <div class="gh"><span class="l">Ready · 14 sections</span><span class="r">Show all</span></div>
+        <div class="list card">
+          <div class="row"><div class="sj" style="background:var(--tint);color:var(--deep);font-size:14px">6-A</div><div class="grow"><div class="nm" style="font-size:15px">Priya Rao + 8 subjects</div></div><svg class="i" style="color:var(--accent)"><use href="#i-check"/></svg></div>
+          <div class="row"><div class="sj" style="background:var(--tint);color:var(--deep);font-size:14px">6-B</div><div class="grow"><div class="nm" style="font-size:15px">Neha Kapoor + 6 subjects</div></div><svg class="i" style="color:var(--accent)"><use href="#i-check"/></svg></div>
+        </div>
+        <div class="foot"><div class="meta" style="text-align:center;margin-bottom:10px">Nothing changes until you tap Copy</div><div class="btn"><svg class="i"><use href="#i-layers"/></svg>Copy 41 assignments</div></div>
+      </div>
+      <figcaption><span class="no">15</span><b>Copy from last session.</b> Sections match by name. What can't come across is listed first, with the reason in plain words, and becomes a gap to fill. Nothing goes live until Copy. Usually it's a two-minute job instead of an afternoon.</figcaption>
+    </figure>
+
+    <!-- 17 settings -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back"><svg class="i"><use href="#i-left"/></svg></span><span class="ttl">Teaching settings</span></div>
+        <div class="form card" style="margin-top:8px">
+          <div class="frow" style="align-items:flex-start;padding-top:14px;padding-bottom:14px"><div class="sj sm ct"><svg class="i-s"><use href="#i-star"/></svg></div><div class="grow"><div style="font-size:16px;font-weight:600">We have class teachers</div><div class="meta" style="margin-top:3px;line-height:1.4">Each section gets one, who looks after it as a whole. Turn off if your school doesn't use them: the slot and its gap warnings disappear.</div></div><span class="sw"></span></div>
+        </div>
+        <div class="gh"><span class="l">What teachers can do</span></div>
+        <div class="list card">
+          <div class="row"><div class="sj sm" style="background:var(--tint);color:var(--deep)"><svg class="i-s"><use href="#i-school"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Every teacher</div><div class="sm2">In what they teach: marks, homework, attendance</div></div><svg class="i chev"><use href="#i-right"/></svg></div>
+          <div class="row"><div class="sj sm ct"><svg class="i-s"><use href="#i-star"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Class teacher, on top</div><div class="sm2">All subjects' marks, corrections, remark, fees</div></div><svg class="i chev"><use href="#i-right"/></svg></div>
+        </div>
+        <div class="gh"><span class="l">Who can assign teachers</span></div>
+        <div class="list card">
+          <div class="row"><div class="sj sm" style="background:var(--slate-t);color:var(--slate)"><svg class="i-s"><use href="#i-shield"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Anyone with the permission</div><div class="sm2">Now: Org admin, Principal, Vice principal</div></div><svg class="i chev"><use href="#i-right"/></svg></div>
+        </div>
+        <div class="info mx" style="margin-top:14px"><svg class="i"><use href="#i-info"/></svg><div>These open the same permission editor as Roles, already filtered to teaching. Changes apply to every teacher at once.</div></div>
+      </div>
+      <figcaption><span class="no">17</span><b>Teaching settings.</b> The class teacher switch, plus shortcuts into the permission editor for the two teacher bundles and for who may assign. Nothing here is hard-coded: a school that wants every teacher correcting attendance turns it on here.</figcaption>
+    </figure>
+  </div>
+
+  <div class="h2">Open questions for the owner</div>
+  <div class="qs">
+    <div><b>1. Subject colours.</b> Each subject has a soft tinted tile with an icon (∑ Maths, Aa English, a flask for Science, अ Hindi…). It's the first colour in the staff app that isn't a status. Keep it, or go back to plain grey tiles?</div>
+    <div><b>2. Can teachers see the whole grid?</b> Read-only, so a teacher can see who else teaches 6-A. Or only their own classes?</div>
+    <div><b>3. Substitute "until" date (frame 13).</b> Keep it in v1, or leave substitutes to the timetable later?</div>
+    <div><b>4. Where Teaching lives.</b> More → Teaching only, or also as the last step of Academic setup ("Now assign teachers")?</div>
+  </div>
+</div>
+</body>
+</html>
