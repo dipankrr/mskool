@@ -12,6 +12,7 @@ import { createContext } from "@repo/trpc";
 import { openApiDocument } from "./openapi";
 import { feesWebhookRouter } from "./fees-webhook";
 import { mountPortalClaim } from "./portal-claim";
+import { mountStaffJoin } from "./staff-join";
 import { homeworkWorkerHealth } from "./homework-worker";
 import { feesWorkerHealth } from "./fees-worker";
 import { storageWorkerHealth } from "./storage-worker";
@@ -199,6 +200,8 @@ export function createServer(): Server {
   // re-sets) the password. Mounted here, not in tRPC, because routers/ must
   // stay gated (check-builders). Own hourly limiter; uniform refusals.
   mountPortalClaim(app);
+  // Public staff sign-in (ADR-068): account status + join with a code.
+  mountStaffJoin(app);
 
   // Native tRPC endpoint — this is what apps/web's httpBatchLink talks
   // to (full type inference, batched calls, no REST/JSON-schema layer

@@ -34,15 +34,18 @@ export type StaffWithPhoto = z.infer<typeof staffWithPhotoSchema>;
 
 export const createStaffSchema = createInsertSchema(staff, {
   // School-issued, unique per org (`staff_org_employee_code_uq`, refused by
-  // the database per ADR-022, not pre-checked here).
-  employeeCode: z.string().min(1).max(50),
+  // the database per ADR-022, not pre-checked here). Left out, the service
+  // suggests the next "EMP-###" (ADR-068).
+  employeeCode: z.string().max(50).optional(),
   firstName: z.string().min(1).max(100),
   lastName: z.string().min(1).max(100),
   // A school hires first and fills the rest in — dates are optional, unlike
   // the student contract's admission-time DOB.
   dateOfBirth: isoDate.optional(),
   dateOfJoining: isoDate.optional(),
-  phone: z.string().min(5).max(20).nullish(),
+  // ADR-068: the phone is the staff sign-in, so it is required. The service
+  // normalises it to 10 digits and refuses a number already in use.
+  phone: z.string().min(10).max(20),
   email: z.email().nullish(),
   pincode: z
     .string()
@@ -127,3 +130,37 @@ export const resetStaffLoginInput = z.object({
   password: z.string().min(8, "At least 8 characters.").max(72),
 });
 export type ResetStaffLoginInput = z.infer<typeof resetStaffLoginInput>;
+
+// ── Phone sign-in (ADR-068) ────────────────────────────────────────────────
+
+/** The public join: phone + the office's 6-digit code + a new password. */
+export const joinStaffInput = z.object({
+  phone: z.string().min(10).max(20),
+  code: z.string().min(6).max(12),
+  password: z.string().min(8, "At least 8 characters.").max(72),
+});
+export type JoinStaffInput = z.infer<typeof joinStaffInput>;
+
+/** What the office gets back from an invite: the code, shown once. */
+export const staffInviteSchema = z.object({
+  code: z.string(),
+  expiresAt: z.string(),
+  phone: z.string(),
+  firstName: z.string(),
+  lastName: z.string(),
+  organizationName: z.string(),
+  resetsPassword: z.boolean(),
+});
+export type StaffInvite = z.infer<typeof staffInviteSchema>;
+
+/** The add form's live phone check (frame 06). */
+export const staffPhoneCheckSchema = z.object({
+  state: z.enum(["invalid", "free", "here", "elsewhere"]),
+  name: z.string().nullable(),
+});
+
+/** The add form's suggestions (frame 06). */
+export const staffFormHintsSchema = z.object({
+  designations: z.array(z.string()),
+  nextEmployeeCode: z.string(),
+});

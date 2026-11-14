@@ -4,13 +4,16 @@ import {
   deactivateStaffSchema,
   resetStaffLoginInput,
   imageRefSchema,
+  staffFormHintsSchema,
+  staffInviteSchema,
+  staffPhoneCheckSchema,
   staffSelectSchema,
   staffWithPhotoSchema,
   updateStaffSchema,
   uploadRequestSchema,
   uploadTicketSchema,
 } from "@repo/contracts";
-import { staffPhotoService, staffService } from "@repo/services";
+import { staffLoginService, staffPhotoService, staffService } from "@repo/services";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { router, staffListProcedure, staffProcedure } from "../trpc";
@@ -165,7 +168,7 @@ export const staffRouter = router({
     .input(z.object({ id: z.uuid(), data: deactivateStaffSchema }))
     .output(staffSelectSchema)
     .mutation(async ({ ctx, input }) => {
-      const row = await staffService.deactivateStaff(ctx.scope, input.id, input.data);
+      const row = await staffService.deactivateStaff(ctx.scope, input.id, input.data, ctx.userId);
 
       if (!row) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Staff member not found." });
@@ -296,4 +299,33 @@ export const staffRouter = router({
     .mutation(async ({ ctx, input }) => ({
       removed: await staffPhotoService.remove(ctx.scope.organizationId, input.id),
     })),
+
+  // ── Sign-in (ADR-068) ────────────────────────────────────────────────────
+
+  /**
+   * A joining code for this staff member, shown once. Also the forgot-
+   * password path: a new code lets someone who has joined set a new password.
+   */
+  invite: staffProcedure("staff:update", {
+    resolveOwner: resolveStaffOwner,
+  })
+    .input(z.object({ id: z.uuid() }))
+    .output(staffInviteSchema)
+    .mutation(({ ctx, input }) =>
+      staffLoginService.invite(ctx.scope.organizationId, input.id, ctx.userId),
+    ),
+
+  /** The add/edit form's live phone check: free, used here (named) or elsewhere. */
+  checkPhone: staffProcedure("staff:read")
+    .input(z.object({ phone: z.string().max(20), exceptId: z.uuid().optional() }))
+    .output(staffPhoneCheckSchema)
+    .query(({ ctx, input }) =>
+      staffLoginService.checkPhone(ctx.scope.organizationId, input.phone, input.exceptId),
+    ),
+
+  /** Designation suggestions and the next employee code, for the add form. */
+  formHints: staffProcedure("staff:read")
+    .input(z.object({}))
+    .output(staffFormHintsSchema)
+    .query(({ ctx }) => staffService.formHints(ctx.scope.organizationId)),
 });

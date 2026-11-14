@@ -8,7 +8,23 @@ import type {
 } from "@repo/contracts";
 import { db } from "@repo/db";
 import { authzAuditLog, organizations, staff, user } from "@repo/db/schema";
-import { and, asc, eq, ilike, or } from "drizzle-orm";
+import { and, asc, eq, ilike, isNotNull, or, sql } from "drizzle-orm";
+
+import { staffLoginService } from "./staff-login.service";
+
+/** Starter designations offered before a school has any of its own (ADR-068). */
+const STARTER_DESIGNATIONS = [
+  "PRT",
+  "TGT",
+  "PGT",
+  "Principal",
+  "Vice Principal",
+  "Coordinator",
+  "Accountant",
+  "Librarian",
+  "Lab Assistant",
+  "Office Staff",
+];
 
 /**
  * STAFF — the employment register (ADR-008). The row is the EMPLOYMENT
@@ -62,11 +78,18 @@ export class StaffService {
    */
   async createStaff(scope: DataScope, input: CreateStaffInput) {
     const schoolId = requireSchoolId(scope);
+    // ADR-068: the phone is the sign-in, so it is required, 10 digits, and
+    // not current staff anywhere else. The code is suggested when left out.
+    const phone = await staffLoginService.requireUsablePhone(scope.organizationId, input.phone);
+    const employeeCode =
+      input.employeeCode?.trim() || (await this.nextEmployeeCode(scope.organizationId));
 
     const [row] = await db
       .insert(staff)
       .values({
         ...input,
+        phone,
+        employeeCode,
         organizationId: scope.organizationId,
         schoolId,
       })
@@ -143,9 +166,20 @@ export class StaffService {
     if (Object.keys(input).length === 0) {
       throw new Error("Nothing to update — send at least one field.");
     }
+    const patch = { ...input };
+    if (input.phone !== undefined) {
+      if (!input.phone) {
+        throw new Error("A staff member needs a phone number: it is how they sign in.");
+      }
+      patch.phone = await staffLoginService.requireUsablePhone(
+        scope.organizationId,
+        input.phone,
+        staffId,
+      );
+    }
     const [row] = await db
       .update(staff)
-      .set(input)
+      .set(patch)
       .where(
         and(
           eq(staff.id, staffId),
@@ -167,6 +201,7 @@ export class StaffService {
     scope: DataScope,
     staffId: string,
     input: DeactivateStaffInput,
+    actorUserId: string,
   ) {
     const leaving = input.status !== "suspended";
     const [row] = await db
@@ -183,7 +218,49 @@ export class StaffService {
       )
       .returning();
 
+    // ADR-068: someone who leaves can no longer sign in, and their number is
+    // free for whoever needs it next. A suspension keeps the login.
+    if (row && leaving) {
+      await staffLoginService.switchOff(scope.organizationId, staffId, actorUserId);
+    }
+
     return row ?? null;
+  }
+
+  /** The next free "EMP-###" code in the organisation (the add form's default). */
+  async nextEmployeeCode(organizationId: string): Promise<string> {
+    const [row] = await db
+      .select({
+        max: sql<number | null>`max(nullif(regexp_replace(${staff.employeeCode}, '[^0-9]', '', 'g'), '')::int)`,
+      })
+      .from(staff)
+      .where(and(eq(staff.organizationId, organizationId), ilike(staff.employeeCode, "EMP-%")));
+    const next = (row?.max ?? 0) + 1;
+    return `EMP-${String(next).padStart(3, "0")}`;
+  }
+
+  /**
+   * What the add form suggests (frame 06): designations this organisation
+   * already uses, most used first, then the starter list; and the next code.
+   */
+  async formHints(organizationId: string) {
+    const used = await db
+      .select({ designation: staff.designation, n: sql<number>`count(*)::int` })
+      .from(staff)
+      .where(and(eq(staff.organizationId, organizationId), isNotNull(staff.designation)))
+      .groupBy(staff.designation)
+      .orderBy(sql`count(*) desc`)
+      .limit(30);
+    const seen = new Set<string>();
+    const designations: string[] = [];
+    for (const name of [...used.map((row) => row.designation ?? ""), ...STARTER_DESIGNATIONS]) {
+      const clean = name.trim();
+      const key = clean.toLowerCase();
+      if (!clean || seen.has(key)) continue;
+      seen.add(key);
+      designations.push(clean);
+    }
+    return { designations, nextEmployeeCode: await this.nextEmployeeCode(organizationId) };
   }
 
   /**

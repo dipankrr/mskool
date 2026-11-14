@@ -38,6 +38,9 @@ import { and, eq, isNull } from "drizzle-orm";
 
 const RUN = Date.now();
 const code = (suffix: string) => `ITG-${RUN}-${suffix}`;
+// ADR-068: a staff record needs a phone, unique among current staff.
+const phone = (suffix: string) =>
+  `${String(RUN).slice(-8)}${String([...suffix].reduce((n, ch) => n * 31 + ch.charCodeAt(0), 7) % 100).padStart(2, "0")}`;
 
 const schoolScope = (organizationId: string, schoolId: string): DataScope => ({
   organizationId,
@@ -75,6 +78,7 @@ describe("staff & roles (ADR-035)", () => {
   it("creates a staff member with no login (employment ≠ credential, ADR-008)", async () => {
     const row = await staffService.createStaff(scopeA1, {
       employeeCode: code("T1"),
+      phone: phone("T1"),
       firstName: "Integration",
       lastName: "Teacher",
       designation: "Teacher",
@@ -95,6 +99,7 @@ describe("staff & roles (ADR-035)", () => {
     try {
       await staffService.createStaff(scopeA1, {
         employeeCode: code("T1"),
+        phone: phone("T1b"),
         firstName: "Duplicate",
         lastName: "Probe",
       });
@@ -115,21 +120,30 @@ describe("staff & roles (ADR-035)", () => {
   });
 
   it("soft-deletes with an honest leaving status and a stamped dateOfLeaving", async () => {
-    const resigned = await staffService.deactivateStaff(scopeA1, loginlessStaffId, {
-      status: "resigned",
-    });
+    const resigned = await staffService.deactivateStaff(
+    scopeA1,
+    loginlessStaffId,
+    { status: "resigned" },
+    adminAId,
+    );
     expect(resigned?.status).toBe("resigned");
     expect(resigned?.dateOfLeaving).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 
     // A suspension is NOT a departure: no leaving date.
     const suspended = await staffService.createStaff(scopeA1, {
       employeeCode: code("T2"),
+      phone: phone("T2"),
       firstName: "Integration",
       lastName: "Suspended",
     });
-    const out = await staffService.deactivateStaff(scopeA1, suspended.id, {
+    const out = await staffService.deactivateStaff(
+      scopeA1,
+      suspended.id,
+      {
       status: "suspended",
-    });
+      },
+      adminAId,
+    );
     expect(out?.status).toBe("suspended");
     expect(out?.dateOfLeaving).toBeNull();
   });
@@ -213,6 +227,7 @@ describe("staff & roles (ADR-035)", () => {
   it("refuses provisioning without an email — the login would be unusable (ADR-037)", async () => {
     const noEmail = await staffService.createStaff(scopeA1, {
       employeeCode: code("T9"),
+      phone: phone("T9"),
       firstName: "Integration",
       lastName: "NoEmail",
     });
@@ -255,9 +270,12 @@ describe("staff & roles (ADR-035)", () => {
     // A resignation with a live login: the credential stays usable until
     // someone resets it (ADR-035 defers deprovisioning automation), so the
     // reset path must stay open for inactive records.
-    await staffService.deactivateStaff(scopeA1, loginlessStaffId, {
-      status: "resigned",
-    });
+    await staffService.deactivateStaff(
+    scopeA1,
+    loginlessStaffId,
+    { status: "resigned" },
+    adminAId,
+    );
     await staffService.resetLogin(scopeA1, adminAId, loginlessStaffId, "AfterLeaving123!");
     const [user] = await db
       .select()
@@ -279,6 +297,7 @@ describe("staff & roles (ADR-035)", () => {
   it("adopts a login stranded by a crashed provisioning instead of stranding the record", async () => {
     const t3 = await staffService.createStaff(scopeA1, {
       employeeCode: code("T3"),
+      phone: phone("T3"),
       firstName: "Integration",
       lastName: "Orphan",
       email: `itg-${RUN}-t3@itg.test`,
@@ -333,6 +352,7 @@ describe("staff & roles (ADR-035)", () => {
           schoolId: schoolA1Id,
           userId: principalA1Id,
           employeeCode: code("P1"),
+          phone: phone("P1"),
           firstName: "Integration",
           lastName: "Principal",
           designation: "Principal",
@@ -477,6 +497,7 @@ describe("staff & roles (ADR-035)", () => {
           schoolId: schoolB1Id,
           userId: principalA1Id,
           employeeCode: code("PX"),
+          phone: phone("PX"),
           firstName: "Foreign",
           lastName: "Twin",
         })

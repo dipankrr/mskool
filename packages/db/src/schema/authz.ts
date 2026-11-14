@@ -176,6 +176,10 @@ export const authzAuditActionEnum = pgEnum("authz_audit_action", [
   // forced password change, is exactly what an audit asks about.
   "staff_login_created",
   "staff_password_reset",
+  // ADR-068: phone sign-in with an office-issued joining code.
+  "staff_invited",
+  "staff_joined",
+  "staff_left",
 ]);
 
 /**

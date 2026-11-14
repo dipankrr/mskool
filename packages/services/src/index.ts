@@ -86,6 +86,7 @@ export * from "./guardian.service";
 // Staff: the employment register and its login provisioning (ADR-035).
 export * from "./staff.service";
 export * from "./staff-photo.service";
+export * from "./staff-login.service";
 
 // Roles: granting, revoking, and reading role assignments (ADR-005, ADR-035).
 export * from "./role.service";

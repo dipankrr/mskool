@@ -1,8 +1,9 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
   boolean,
   date,
   index,
+  integer,
   pgEnum,
   pgTable,
   text,
@@ -95,8 +96,48 @@ export const staff = pgTable(
   },
   (t) => [
     uniqueIndex("staff_org_employee_code_uq").on(t.organizationId, t.employeeCode),
+    // ADR-068: the phone is how a staff member signs in, so two current staff
+    // in one organisation can never share it. People who have left free it.
+    uniqueIndex("staff_org_phone_current_uq")
+      .on(t.organizationId, t.phone)
+      .where(sql`${t.phone} IS NOT NULL AND ${t.status} IN ('active', 'on_leave', 'suspended')`),
+    index("staff_phone_idx").on(t.phone),
     index("staff_school_idx").on(t.schoolId),
     index("staff_user_idx").on(t.userId),
+  ],
+);
+
+/**
+ * A JOINING CODE (ADR-068): the office hands a staff member a 6-digit code
+ * (WhatsApp, read out, printed); with it and their phone they set their own
+ * password. Only the hash is stored. A code works once, lasts 7 days, dies
+ * after 5 wrong tries, and issuing a new one revokes the old. The same code
+ * is the forgot-password path: a staff member who has joined gets a new one
+ * from the office.
+ */
+export const staffJoinCodes = pgTable(
+  "staff_join_codes",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    organizationId: uuid()
+      .notNull()
+      .references(() => organizations.id),
+    staffId: uuid()
+      .notNull()
+      .references(() => staff.id),
+    codeHash: text().notNull(),
+    expiresAt: timestamp({ withTimezone: true }).notNull(),
+    failedAttempts: integer().notNull().default(0),
+    usedAt: timestamp({ withTimezone: true }),
+    revokedAt: timestamp({ withTimezone: true }),
+    createdBy: text().references(() => user.id),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("staff_join_codes_staff_idx").on(t.staffId),
+    index("staff_join_codes_open_idx")
+      .on(t.staffId)
+      .where(sql`${t.usedAt} IS NULL AND ${t.revokedAt} IS NULL`),
   ],
 );
 
