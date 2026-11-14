@@ -120,6 +120,18 @@ const iconMap = {
   modeBank: { ios: "building.columns.fill", android: "account-balance" },
   modeCard: { ios: "creditcard", android: "credit-card" },
   modeDraft: { ios: "doc.text", android: "article" },
+  // Teaching (ADR-068): subject tiles, the class teacher star, staff acts.
+  science: { ios: "flask.fill", android: "science" },
+  globe: { ios: "globe.asia.australia.fill", android: "public" },
+  computer: { ios: "desktopcomputer", android: "computer" },
+  art: { ios: "paintpalette.fill", android: "palette" },
+  sport: { ios: "figure.run", android: "directions-run" },
+  music: { ios: "music.note", android: "music-note" },
+  star: { ios: "star.fill", android: "star" },
+  swap: { ios: "arrow.left.arrow.right", android: "swap-horiz" },
+  leave: { ios: "rectangle.portrait.and.arrow.right", android: "logout" },
+  copySession: { ios: "square.on.square", android: "content-copy" },
+  whatsapp: { ios: "message.fill", android: "chat" },
 } as const satisfies Record<
   string,
   { ios: SFSymbol; android: keyof typeof MaterialIcons.glyphMap }

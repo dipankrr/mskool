@@ -35,8 +35,23 @@ export class IdentityService {
    * nothing reaches this result that the user does not already hold a grant on.
    */
   async getMemberships(authCache: UserAuthCache): Promise<Membership[]> {
+    // ADR-068: a staff member with no grants yet (joined, no classes given)
+    // is still staff in their organisation: they see their home branch and
+    // an honest "no classes yet", not the no-access notice.
+    const records = await db
+      .select({ organizationId: staff.organizationId, schoolId: staff.schoolId })
+      .from(staff)
+      .where(
+        and(
+          eq(staff.userId, authCache.userId),
+          inArray(staff.status, ["active", "on_leave", "suspended"]),
+        ),
+      );
     const orgIds = [
-      ...new Set(authCache.assignments.map((a) => a.organizationId)),
+      ...new Set([
+        ...authCache.assignments.map((a) => a.organizationId),
+        ...records.map((r) => r.organizationId),
+      ]),
     ];
 
     if (orgIds.length === 0) return [];
@@ -67,9 +82,20 @@ export class IdentityService {
       // A role that lacks school:read is legitimate — an accountant, say. They
       // get the org with no schools rather than a 403, because the session and
       // the membership are both valid; only that one list is empty.
-      const schools = scopes.length > 0
-        ? await organizationService.listSchools(scopes)
-        : [];
+      const ownSchools = records
+        .filter((r) => r.organizationId === organization.id)
+        .map((r) => ({
+          organizationId: organization.id,
+          schoolId: r.schoolId,
+          classId: null,
+          sectionId: null,
+        }));
+      const schools =
+        scopes.length > 0
+          ? await organizationService.listSchools(scopes)
+          : assignments.length === 0 && ownSchools.length > 0
+            ? await organizationService.listSchools(ownSchools)
+            : [];
 
       memberships.push({
         organization,

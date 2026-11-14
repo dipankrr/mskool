@@ -8,7 +8,7 @@ import { useMe } from "../../hooks/use-me";
 import { clearLoginChoice, readLoginChoice, saveLoginChoice } from "../../lib/login-choice";
 import type { LoginChoice } from "../../lib/login-choice";
 import { bestEffort } from "../../lib/with-timeout";
-import { StaffLoginForm } from "../../screens/auth/staff-login-form";
+import { StaffSignIn } from "../../screens/auth/staff-sign-in";
 
 /** Bounded post-sign-in session settle (see the staff form). */
 const SIGN_IN_SETTLE_MS = 4_000;
@@ -56,7 +56,16 @@ export default function LoginScreen() {
     return <Welcome onChoose={choose} />;
   }
   if (view === "staff") {
-    return <StaffLoginForm onBack={back} />;
+    return (
+      <StaffSignIn
+        onBack={back}
+        onSignedIn={async (firstJoin) => {
+          await bestEffort(refetchSession(), SIGN_IN_SETTLE_MS);
+          // ADR-068: someone who just joined sees their classes first.
+          router.replace(firstJoin ? "/staff-welcome" : "/");
+        }}
+      />
+    );
   }
   return (
     <FamilyLogin

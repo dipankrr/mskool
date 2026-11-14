@@ -1912,6 +1912,32 @@ async function main() {
   await invalidateUserAuthCache(subjectTeacherUser.id);
   await invalidateUserAuthCache(parentUser.id);
 
+  // ADR-068: staff sign in by phone (`staff.<10 digits>`). Give every demo
+  // staff login a phone and that username; the email stays on the user so
+  // the test harnesses that still sign in by email keep working.
+  const staffLogins = await db
+    .select({ id: staff.id, userId: staff.userId, phone: staff.phone, code: staff.employeeCode })
+    .from(staff)
+    .where(and(eq(staff.organizationId, organization.id), eq(staff.status, "active")))
+    .orderBy(staff.employeeCode);
+  const phoneLines: string[] = [];
+  let next = 1;
+  for (const row of staffLogins) {
+    if (!row.userId) continue;
+    let digits = row.phone?.replace(/\D/g, "").slice(-10) ?? "";
+    if (digits.length !== 10) {
+      digits = `90000000${String(next).padStart(2, "0")}`;
+      next += 1;
+      await db.update(staff).set({ phone: digits }).where(eq(staff.id, row.id));
+    }
+    await db
+      .update(user)
+      .set({ username: `staff.${digits}`, displayUsername: digits })
+      .where(eq(user.id, row.userId));
+    phoneLines.push(`  ${row.code.padEnd(14)} ${digits}`);
+  }
+  console.log(`\nStaff phone sign-in (password ${SEED_PASSWORD}):\n${phoneLines.join("\n")}`);
+
   console.log(`
 Done.
 
