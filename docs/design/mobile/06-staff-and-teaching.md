@@ -1,7 +1,9 @@
 # Journey 6: Staff, sign-in and teacher assignment
 
-Status: **design agreed in discussion, v2 (2026-11-14); final owner review before any build.**
-Nothing is built, and no ADR or other doc is changed yet.
+Status: **built on `feat/staff-teaching` (2026-11-14) as ADR-068; not walked on a device yet.**
+The build differs from the mockup in three places: no "Fill from phone contacts" (needs a native
+module and a new app build), a substitute (Cover) keeps the regular teacher's access during the
+cover, and copy from last session is not built.
 Mockups: `prototype/staff-teaching.html` (20 phone frames, grouped by journey; the numbers match this doc).
 
 This journey covers four things that only work together: the staff record, how staff sign in,

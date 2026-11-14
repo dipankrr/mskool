@@ -3319,3 +3319,63 @@ branch switch would keep serving the old branch's rows. Keeping it optional with
 rule: still "remember to do it", which is what failed. A setting for the default branch:
 the staff record already says where someone works; a setting can come later if owners
 without one ask.
+
+---
+
+## ADR-068 - Staff sign in by phone; assigning a teacher is what gives the access
+
+**Status:** accepted (owner, 2026-11-14, after the design discussion recorded in
+`docs/design/mobile/06-staff-and-teaching.md`). Amends ADR-012 (the assignment table now
+writes the matching grants), ADR-035 (staff logins are no longer provisioned with a typed
+password) and ADR-029a (the teaching role's fact is keyed on the staff record's login).
+
+**Context.** Teacher assignment fed marks, homework, attendance, Home and Exams, yet it was
+set up one section at a time and lived beside a separate, hand-granted "class teacher" /
+"subject teacher" role. The two drifted (a role with no classes, classes with no role), the
+roles could only be granted branch-wide from the web, and the picker only offered staff who
+already had an email login.
+
+**Decision.**
+
+1. **One kind of person, "Teacher".** A teaching assignment is `session · section · subject
+   (or class teacher) · staff record · from–to`. Two kinds only (`co_teacher` and
+   `activity_teacher` are dropped). Any number of teachers per subject in a section; one
+   standing class teacher per section (a partial unique index). Assignments point at the
+   **staff record**, so the office can assign before the person has joined.
+2. **Assigning is the access (option A).** `can()` is unchanged and still reads only role
+   grants. `assignment-access.service` keeps grants in step: any current class teacher row →
+   one `class_teacher` grant at the section; any subject row → one `subject_teacher` grant at
+   the section (the subject gate still limits which subjects); none → revoked. A substitute's
+   end date becomes the grant's `expiresAt`. Every change clears the auth cache. Joining turns
+   earlier assignments into grants; leaving ends every assignment. `role.assign` refuses
+   hand-made class/subject teacher grants. Ending an assignment is gated on its section.
+3. **`effectiveTo` is exclusive.** Ending today sets today; a substitute "until 28 Nov" is
+   stored as 29 Nov. A row counts while `effectiveTo` is null or after today.
+4. **Class teachers are optional and off by default** (`schools.class_teachers_enabled`).
+   A class teacher can enter marks for every subject in their section; the class teacher
+   default scope is the section, not the class.
+5. **Staff sign in by phone + password.** The login's username is `staff.` + 10 digits; families
+   keep the bare digits (ADR-037), so one phone can hold both, with separate passwords. The
+   office issues a **joining code** (6 digits, hash only, 7 days, once, 5 wrong tries, a new
+   invite revokes the old); the public `/api/staff/account-status` says `password` or `code`
+   (unknown numbers get `code`) and `/api/staff/join` sets the password, also the
+   forgot-password path. No SMS. Email stays on the staff record as contact only. A staff
+   record needs a phone, unique among current staff in the organisation and refused while it is
+   current staff anywhere else (no override). Leaving renames the username to
+   `left.<staffId>`, ends sessions and grants, and frees the number; the user row stays.
+6. **Staff photos** live in `staff_photos` (storage purpose `staff_photo`); the office
+   (`staff:update`) or the staff member (their own record) sets one.
+7. **Defaults.** VP gets `teacher_assignment:create/read/update`; class teachers can read
+   assignments (the read-only grid). Who assigns is a permission, not a fixed role.
+
+**Rejected.** Option C (the permission check reads assignments directly): cleaner, but a
+rewrite of the permission core and its tests for the same result on screen. Keeping roles and
+assignments separate with warnings (option B): two steps for the office forever. SMS codes:
+cost; the office already talks to staff on WhatsApp.
+
+**Consequences.** Migrations 0054–0056 (0056 fills `staff_id` from the login and drops
+`user_id`). Existing organisations need the permission backfill (`pnpm db:seed`) and an auth
+cache flush for the new defaults. Test harnesses that sign in by email still work because the
+seed keeps emails on its users; new staff have none. Not built: fill from contacts (needs a
+native module and a new app build), copy assignments to the next session (deferred until
+before a school's second session), electives across sections.
