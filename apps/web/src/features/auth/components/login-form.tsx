@@ -1,5 +1,4 @@
 "use client";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -28,7 +27,6 @@ import { Input } from "@/components/ui/input"
 // package's src/ resolved by accident and bypassed the type chain
 // (db → contracts → services → trpc → web), so a schema change would not have
 // surfaced here as an error.
-import { LoginUserInput, type LoginUserInputT } from "@repo/contracts";
 
 import { copy } from "@/lib/copy";
 
@@ -55,7 +53,7 @@ export function LoginForm({
   // and on a shared computer the previous user's tab state is still in
   // memory. Clearing again on the way IN is what makes the pair airtight.
   const clearSessionState = useSessionBoundary();
-  const { login, loginByPhone } = useAuth();
+  const { loginByPhone } = useAuth();
 
   const [mode, setMode] = useState<"staff" | "family">("staff");
   // The family's two steps (ADR-037 follow-up): digits first, then the
@@ -64,8 +62,9 @@ export function LoginForm({
   const [familyStep, setFamilyStep] = useState<"phone" | "password" | "setup">("phone");
   const [familyBusy, setFamilyBusy] = useState(false);
 
-  const staffForm = useForm<LoginUserInputT>({
-    resolver: zodResolver(LoginUserInput),
+  // ADR-068: staff sign in with their phone; the login is `staff.<digits>`.
+  const staffForm = useForm<{ phone: string; password: string }>({
+    defaultValues: { phone: "", password: "" },
   });
 
   const familyForm = useForm<{
@@ -78,8 +77,13 @@ export function LoginForm({
     defaultValues: { phone: "", password: "", admissionNumber: "", dateOfBirth: "", newPassword: "" },
   });
 
-  const onStaffSubmit = staffForm.handleSubmit(async (data: LoginUserInputT) => {
-    const result = await login(data.email, data.password);
+  const onStaffSubmit = staffForm.handleSubmit(async (data) => {
+    const digits = data.phone.replace(/D/g, "").slice(-10);
+    if (!/^d{10}$/.test(digits)) {
+      staffForm.setError("phone", { message: "A phone number is 10 digits." });
+      return;
+    }
+    const result = await loginByPhone(`staff.${digits}`, data.password);
     if (result.error) {
       // better-auth's own message, not a tRPC error, so `lib/errors.ts` does not
       // apply here — it already says "Invalid email or password" and deliberately
@@ -193,28 +197,26 @@ export function LoginForm({
           {mode === "staff" ? (
             <form onSubmit={onStaffSubmit}>
               <FieldGroup>
-                <Field data-invalid={staffForm.formState.errors.email ? true : undefined}>
-                  <FieldLabel htmlFor="email">{copy.auth.email}</FieldLabel>
+                <Field data-invalid={staffForm.formState.errors.phone ? true : undefined}>
+                  <FieldLabel htmlFor="staff-phone">Phone number</FieldLabel>
                   <Input
-                    id="email"
-                    type="email"
-                    autoComplete="email"
-                    placeholder="m@example.com"
+                    id="staff-phone"
+                    type="tel"
+                    inputMode="numeric"
+                    autoComplete="tel"
+                    placeholder="98765 43210"
                     required
-                    aria-invalid={staffForm.formState.errors.email ? true : undefined}
-                    {...staffForm.register("email")}
+                    aria-invalid={staffForm.formState.errors.phone ? true : undefined}
+                    {...staffForm.register("phone")}
                   />
-                  <FieldError>{staffForm.formState.errors.email?.message}</FieldError>
+                  <FieldError>{staffForm.formState.errors.phone?.message}</FieldError>
                 </Field>
                 <Field>
                   <div className="flex items-center">
                     <FieldLabel htmlFor="password">{copy.auth.password}</FieldLabel>
-                    <a
-                      href="#"
-                      className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
-                    >
-                      {copy.auth.forgotPassword}
-                    </a>
+                    <span className="ml-auto text-sm text-muted-foreground">
+                      Forgot it? Ask the office for a new code.
+                    </span>
                   </div>
                   <Input id="password" type="password" autoComplete="current-password" required {...staffForm.register("password")} />
                 </Field>

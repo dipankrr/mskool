@@ -130,22 +130,6 @@ export function useStaffMutations() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  const createLogin = trpc.staff.createLogin.useMutation({
-    onSuccess: async () => {
-      toast.success(copy.staff.loginCreated);
-      await refresh();
-    },
-    onError: (error) => toast.error(errorMessage(error)),
-  });
-
-  const resetLogin = trpc.staff.resetLogin.useMutation({
-    onSuccess: async () => {
-      toast.success(copy.staff.loginResetDone);
-      await refresh();
-    },
-    onError: (error) => toast.error(errorMessage(error)),
-  });
-
   return {
     create: {
       ...create,
@@ -169,16 +153,6 @@ export function useStaffMutations() {
     reactivate: {
       ...reactivate,
       submit: (id: string) => reactivate.mutateAsync({ ...scopeArgs(), id }),
-    },
-    createLogin: {
-      ...createLogin,
-      submit: (id: string, password: string) =>
-        createLogin.mutateAsync({ ...scopeArgs(), id, password }),
-    },
-    resetLogin: {
-      ...resetLogin,
-      submit: (id: string, password: string) =>
-        resetLogin.mutateAsync({ ...scopeArgs(), id, password }),
     },
   };
 }

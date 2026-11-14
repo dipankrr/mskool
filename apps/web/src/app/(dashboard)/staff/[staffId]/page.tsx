@@ -31,7 +31,7 @@ import {
   DeactivateStaffDialog,
   EditStaffDialog,
 } from "@/features/staff/staff-form-dialogs";
-import { StaffLoginDialog } from "@/features/staff/staff-login-dialog";
+import { StaffInviteDialog } from "@/features/staff/staff-login-dialog";
 import { StaffRolesCard } from "@/features/staff/staff-roles-card";
 import { useStaff, useStaffMutations } from "@/features/staff/use-staff";
 import { copy } from "@/lib/copy";
@@ -53,13 +53,13 @@ export default function StaffDetailPage() {
 
   const { has } = useActiveContext();
   const staff = useStaff(staffId);
-  const { update, deactivate, reactivate, createLogin, resetLogin } =
+  const { update, deactivate, reactivate } =
     useStaffMutations();
 
   const [editOpen, setEditOpen] = useState(false);
   const [deactivateOpen, setDeactivateOpen] = useState(false);
   const [reactivateOpen, setReactivateOpen] = useState(false);
-  const [loginMode, setLoginMode] = useState<"create" | "reset" | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const canUpdate = has("staff:update");
   const canDeactivate = has("staff:delete");
@@ -220,25 +220,17 @@ export default function StaffDetailPage() {
                       {member.email ?? copy.common.none}
                     </span>
                   </p>
-                ) : !member.email ? (
+                ) : !member.phone ? (
                   <p className="text-muted-foreground text-sm">
-                    {copy.staff.loginNeedsEmail}
+                    Add their phone number first: staff sign in with it.
                   </p>
                 ) : null}
-                {isActive && !hasLogin ? (
+                {isActive && member.phone ? (
                   <Button
-                    variant="default"
-                    onClick={() => setLoginMode("create")}
+                    variant={hasLogin ? "outline" : "default"}
+                    onClick={() => setInviteOpen(true)}
                   >
-                    {copy.staff.loginCreate}
-                  </Button>
-                ) : null}
-                {hasLogin ? (
-                  <Button
-                    variant="outline"
-                    onClick={() => setLoginMode("reset")}
-                  >
-                    {copy.staff.loginReset}
+                    {hasLogin ? "Send a new code" : "Invite to the app"}
                   </Button>
                 ) : null}
               </CardContent>
@@ -293,29 +285,12 @@ export default function StaffDetailPage() {
         }}
       />
 
-      {loginMode ? (
-        <StaffLoginDialog
-          open
-          onOpenChange={(open) => {
-            if (!open) setLoginMode(null);
-          }}
-          mode={loginMode}
-          staffName={[member.firstName, member.lastName].filter(Boolean).join(" ")}
-          pending={loginMode === "create" ? createLogin.isPending : resetLogin.isPending}
-          onSubmit={async (password) => {
-            try {
-              if (loginMode === "create") {
-                await createLogin.submit(member.id, password);
-              } else {
-                await resetLogin.submit(member.id, password);
-              }
-              setLoginMode(null);
-            } catch {
-              // The error toast is shown by the hook; the form stays.
-            }
-          }}
-        />
-      ) : null}
+      <StaffInviteDialog
+        open={inviteOpen}
+        onOpenChange={setInviteOpen}
+        staffId={member.id}
+        staffName={[member.firstName, member.lastName].filter(Boolean).join(" ")}
+      />
     </>
   );
 }

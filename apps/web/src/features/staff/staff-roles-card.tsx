@@ -58,8 +58,8 @@ export const ROLE_TYPES = [
   "org_admin",
   "principal",
   "vice_principal",
-  "class_teacher",
-  "subject_teacher",
+  // ADR-068: no class/subject teacher here — teaching assignments give that
+  // access (Teaching), and the server refuses hand-made teacher roles.
   "accountant",
   "librarian",
   "staff_coordinator",
@@ -204,7 +204,7 @@ function AssignRoleDialog({
   const { scopeArgs } = useActiveContext();
   const branches = useBranches();
 
-  const [roleType, setRoleType] = useState<RoleType>("subject_teacher");
+  const [roleType, setRoleType] = useState<RoleType>("accountant");
   const [scopeChoice, setScopeChoice] = useState<ScopeChoice>("school");
   const [schoolId, setSchoolId] = useState<string>("");
   const [expires, setExpires] = useState("");
