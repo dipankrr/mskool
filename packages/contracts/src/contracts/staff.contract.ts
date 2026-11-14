@@ -34,6 +34,16 @@ export const staffWithPhotoSchema = staffSelectSchema.extend({
 });
 export type StaffWithPhoto = z.infer<typeof staffWithPhotoSchema>;
 
+const teachingSectionSchema = z.object({ className: z.string(), sectionName: z.string() });
+
+/** A staff list row: the staff row plus what they teach this session. */
+export const staffListItemSchema = staffWithPhotoSchema.extend({
+  teaching: z.object({
+    classTeacherOf: teachingSectionSchema.nullable(),
+    subjects: z.array(z.object({ subjectName: z.string(), sections: z.array(teachingSectionSchema) })),
+  }),
+});
+
 export const createStaffSchema = createInsertSchema(staff, {
   // School-issued, unique per org (`staff_org_employee_code_uq`, refused by
   // the database per ADR-022, not pre-checked here). Left out, the service

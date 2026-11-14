@@ -121,7 +121,8 @@ export type PublishedReportCard = RouterOutputs["portalExam"]["results"]["list"]
 
 // Staff & roles (ADR-008, ADR-035). The employment register and the
 // assignment views the browser receives.
-export type Staff = RouterOutputs["staff"]["list"][number];
+// One staff row as byId returns it; list rows add `teaching` on top.
+export type Staff = RouterOutputs["staff"]["byId"];
 export type RoleAssignmentView = RouterOutputs["role"]["assignments"][number];
 export type RolePermissionRow = RouterOutputs["role"]["permissions"][number];
 

@@ -18,7 +18,7 @@ import {
   subjectTypes,
   termAssessments,
 } from "@repo/db/schema";
-import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 
 import { ServiceRefusal } from "./service-error";
 import {
@@ -617,6 +617,58 @@ export class AssignmentService {
       slots: byStaff.get(person.staffId)?.slots ?? 0,
       sections: byStaff.get(person.staffId)?.sections ?? 0,
     }));
+  }
+
+  /**
+   * What each of these staff teaches this session, for the staff list:
+   * the section they are class teacher of, and each subject with its
+   * sections, in class order. Last session's never-ended rows don't count.
+   */
+  async teachingByStaff(scopes: DataScope[], staffIds: string[]) {
+    type Section = { className: string; sectionName: string };
+    type Summary = { classTeacherOf: Section | null; subjects: { subjectName: string; sections: Section[] }[] };
+    const out = new Map<string, Summary>();
+    if (staffIds.length === 0) return out;
+    const rows = await db
+      .select({
+        staffId: sectionTeacherAssignments.staffId,
+        role: sectionTeacherAssignments.role,
+        className: classes.name,
+        sectionName: sections.name,
+        subjectName: subjects.name,
+      })
+      .from(sectionTeacherAssignments)
+      .innerJoin(
+        academicYears,
+        and(
+          eq(academicYears.id, sectionTeacherAssignments.academicYearId),
+          eq(academicYears.isCurrent, true),
+        ),
+      )
+      .innerJoin(sections, eq(sectionTeacherAssignments.sectionId, sections.id))
+      .innerJoin(classes, eq(sections.classId, classes.id))
+      .leftJoin(subjects, eq(sectionTeacherAssignments.subjectId, subjects.id))
+      .where(
+        and(
+          inArray(sectionTeacherAssignments.staffId, staffIds),
+          scopeWhere(scopes.map(atSchoolLevel), ASSIGNMENT_SCOPE_COLUMNS),
+          assignmentIsCurrent(),
+        ),
+      )
+      .orderBy(asc(subjects.name), asc(classes.numericOrder), asc(sections.name));
+    for (const row of rows) {
+      const summary = out.get(row.staffId) ?? { classTeacherOf: null, subjects: [] };
+      out.set(row.staffId, summary);
+      const section = { className: row.className, sectionName: row.sectionName };
+      if (row.role === "class_teacher") {
+        summary.classTeacherOf ??= section;
+      } else if (row.subjectName) {
+        const subject = summary.subjects.find((s) => s.subjectName === row.subjectName);
+        if (subject) subject.sections.push(section);
+        else summary.subjects.push({ subjectName: row.subjectName, sections: [section] });
+      }
+    }
+    return out;
   }
 
   async getSectionTeacherAssignmentById(scope: DataScope, assignmentId: string) {

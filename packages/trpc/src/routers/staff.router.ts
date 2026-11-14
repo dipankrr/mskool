@@ -8,12 +8,13 @@ import {
   staffInviteSchema,
   staffPhoneCheckSchema,
   staffSelectSchema,
+  staffListItemSchema,
   staffWithPhotoSchema,
   updateStaffSchema,
   uploadRequestSchema,
   uploadTicketSchema,
 } from "@repo/contracts";
-import { staffLoginService, staffPhotoService, staffService } from "@repo/services";
+import { assignmentService, staffLoginService, staffPhotoService, staffService } from "@repo/services";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { router, staffListProcedure, staffProcedure } from "../trpc";
@@ -65,18 +66,20 @@ export const staffRouter = router({
         includeInactive: z.boolean().optional(),
       }),
     )
-    .output(z.array(staffWithPhotoSchema))
+    .output(z.array(staffListItemSchema))
     .query(async ({ ctx, input }) => {
       const rows = await staffService.listStaff(ctx.scopes, input.q, input.includeInactive);
       const ids = rows.map((row) => row.id);
-      const [photos, states] = await Promise.all([
+      const [photos, states, teaching] = await Promise.all([
         staffPhotoService.many(input.organizationId, ids),
         staffLoginService.joinStates(ids),
+        assignmentService.teachingByStaff(ctx.scopes, ids),
       ]);
       return rows.map((row) => ({
         ...row,
         photo: photos.get(row.id) ?? null,
         joinState: states.get(row.id) ?? "not_invited",
+        teaching: teaching.get(row.id) ?? { classTeacherOf: null, subjects: [] },
       }));
     }),
 

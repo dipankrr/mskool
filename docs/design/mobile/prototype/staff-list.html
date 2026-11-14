@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Staff List Redesign</title>
+<style>
+/* ============================================================
+   Staff list redesign (2026-11-15). Mockup only, no app code.
+   Tokens from apps/mobile/src/theme, same as students-tab.html.
+   People and statuses follow the demo seed on the emulator on
+   2026-11-15 (13 current, 0 left, 2 not on the app). The
+   "what they teach" lines are illustrative.
+   ============================================================ */
+@font-face { font-family: Clash; font-weight: 400; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Regular.ttf); }
+@font-face { font-family: Clash; font-weight: 500; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Medium.ttf); }
+@font-face { font-family: Clash; font-weight: 600; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Semibold.ttf); }
+@font-face { font-family: Clash; font-weight: 700; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Bold.ttf); }
+:root {
+  --canvas: #F2F3F7; --surface: #FFFFFF; --ink: #101828; --muted: #5D6674;
+  --hair: rgba(16, 24, 40, 0.08); --line: rgba(16, 24, 40, 0.16);
+  --accent: #0F7A44; --deep: #0B6B3A; --tint: #E8F5EE;
+  --field: #ECEEF3; --chip: #E9EDF3;
+  --amb: #B54708; --amb-t: #FFFAEB; --slate: #475467; --slate-t: #F2F4F7;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #DADBD6; color: var(--ink); font-family: Clash, system-ui, sans-serif; font-size: 15px; padding: 32px 16px 64px; }
+svg { display: block; flex: none; }
+.wrap { max-width: 1560px; margin: 0 auto; }
+.intro h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.6px; }
+.intro p { margin-top: 6px; color: #3C4450; max-width: 780px; line-height: 1.5; }
+.h2 { margin: 36px 0 14px; font-size: 12px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: #3C4450; }
+.frames { display: flex; flex-wrap: wrap; gap: 36px 24px; }
+figure { width: 360px; max-width: 100%; }
+figcaption { margin-top: 12px; font-size: 13px; color: #3C4450; line-height: 1.5; }
+figcaption b { color: var(--ink); font-weight: 600; }
+.before { width: 360px; height: 760px; border-radius: 32px; overflow: hidden; box-shadow: 0 0 0 1px rgba(16,24,40,.1), 0 14px 34px rgba(16,24,40,.12); }
+.before img { width: 100%; display: block; }
+.notes { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.notes div { background: rgba(255,255,255,.6); border-radius: 14px; padding: 12px 16px; font-size: 14px; line-height: 1.5; color: #3C4450; }
+.notes b { display: block; color: var(--ink); font-weight: 600; margin-bottom: 2px; }
+.notes em { font-style: normal; color: var(--amb); font-weight: 600; }
+
+/* phone */
+.phone { position: relative; width: 360px; height: 760px; background: var(--canvas); border-radius: 32px; overflow: hidden; box-shadow: 0 0 0 1px rgba(16,24,40,.1), 0 14px 34px rgba(16,24,40,.12); }
+.status { height: 32px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 600; }
+.status i { width: 40px; height: 8px; border-radius: 999px; background: var(--ink); opacity: .75; }
+.nav { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px 0 8px; height: 48px; }
+.back { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; }
+.add { height: 40px; padding: 0 16px 0 12px; border-radius: 999px; background: var(--accent); color: #fff; display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; box-shadow: 0 4px 12px rgba(15,122,68,.25); }
+.title { padding: 2px 16px 0; font-size: 30px; font-weight: 700; letter-spacing: -.6px; line-height: 1.1; }
+.meta { font-size: 13px; color: var(--muted); }
+.sub { padding: 4px 16px 0; }
+.grow { flex: 1; min-width: 0; }
+.clip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* search + segmented */
+.tools { display: flex; gap: 8px; padding: 14px 16px 0; align-items: center; }
+.field { flex: 1; height: 44px; border-radius: 12px; background: var(--field); box-shadow: inset 0 0 0 1px var(--line); display: flex; align-items: center; gap: 8px; padding: 0 12px; color: var(--muted); font-size: 15px; min-width: 0; }
+.field.on { background: var(--surface); box-shadow: inset 0 0 0 2px var(--accent); color: var(--ink); }
+.caret { width: 2px; height: 20px; background: var(--accent); margin-left: -6px; }
+.cancel { font-size: 15px; font-weight: 600; color: var(--deep); padding-left: 4px; }
+.seg { margin: 12px 16px 0; height: 36px; border-radius: 999px; background: var(--chip); padding: 3px; display: flex; }
+.seg span { flex: 1; border-radius: 999px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: 600; color: var(--slate); }
+.seg span small { font-size: 12px; font-weight: 500; color: var(--muted); }
+.seg span.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(16,24,40,.12); }
+
+/* "not on the app" card */
+.nudge { margin: 14px 16px 0; padding: 12px; border-radius: 16px; background: var(--surface); display: flex; align-items: center; gap: 12px; }
+.stack { display: flex; flex: none; }
+.stack .av { width: 32px; height: 32px; font-size: 12px; box-shadow: 0 0 0 2px var(--surface); }
+.stack .av + .av { margin-left: -10px; }
+.nudge b { font-size: 15px; font-weight: 600; display: block; }
+.btn { height: 34px; padding: 0 14px; border-radius: 999px; background: var(--tint); color: var(--deep); font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 5px; flex: none; }
+.btn.solid { background: var(--accent); color: #fff; }
+
+/* groups + rows */
+.gh { display: flex; align-items: baseline; justify-content: space-between; padding: 18px 20px 6px; }
+.gh .l { font-size: 12px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: var(--muted); }
+.gh .r { font-size: 12px; color: var(--muted); }
+.list { margin: 0 16px; background: var(--surface); border-radius: 16px; overflow: hidden; }
+.row { min-height: 64px; display: flex; align-items: center; gap: 12px; padding: 10px 12px; position: relative; }
+.row + .row::before { content: ""; position: absolute; top: 0; left: 64px; right: 0; height: 1px; background: var(--hair); }
+.av { width: 40px; height: 40px; border-radius: 999px; flex: none; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; position: relative; }
+.av.a { background: #E0F2F1; color: #0E7468; } .av.b { background: #E5ECFB; color: #2F4FB0; }
+.av.c { background: #E3F4E8; color: #1F7A45; } .av.d { background: #FCE7EF; color: #B0285E; }
+.av.e { background: #FDEBDD; color: #B2541A; } .av.f { background: #ECE8FB; color: #5B3FB8; }
+.av.ph { background: linear-gradient(160deg, #7FC4A0, #2E8A5C); color: transparent; }
+.av .ring { position: absolute; right: -2px; bottom: -2px; width: 14px; height: 14px; border-radius: 999px; background: var(--amb); box-shadow: 0 0 0 2px var(--surface); }
+.nm { font-size: 16px; font-weight: 600; letter-spacing: -.1px; }
+.ln { font-size: 13px; color: var(--muted); margin-top: 1px; }
+.ln b { font-weight: 600; color: var(--slate); }
+.tags { display: flex; gap: 4px; margin-top: 5px; flex-wrap: wrap; }
+.tag { height: 22px; padding: 0 8px; border-radius: 6px; background: var(--slate-t); color: var(--slate); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
+.tag.ct { background: var(--tint); color: var(--deep); }
+.pill { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; flex: none; }
+.pill.c { color: var(--amb); background: var(--amb-t); }
+.pill.n { color: var(--slate); background: var(--slate-t); }
+.call { width: 36px; height: 36px; border-radius: 999px; background: var(--canvas); display: flex; align-items: center; justify-content: center; flex: none; }
+.dim { opacity: .5; }
+.hl { background: #FFF3C4; border-radius: 3px; }
+.fade { position: absolute; left: 0; right: 0; bottom: 0; height: 60px; background: linear-gradient(transparent, var(--canvas)); }
+.home { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); width: 108px; height: 4px; border-radius: 999px; background: var(--ink); opacity: .8; }
+.seg3 span { font-size: 13px; }
+.togrow { margin: 14px 16px 0; height: 52px; border-radius: 16px; background: var(--surface); display: flex; align-items: center; gap: 10px; padding: 0 14px; }
+.togrow b { font-size: 15px; font-weight: 600; flex: 1; }
+.togrow small { font-size: 13px; color: var(--muted); }
+.sw { width: 44px; height: 26px; border-radius: 999px; background: var(--chip); position: relative; flex: none; }
+.sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 999px; background: #fff; box-shadow: 0 1px 3px rgba(16,24,40,.25); }
+.sw.on { background: var(--accent); }
+.sw.on::after { left: 21px; }
+.row.gone .av, .row.gone .nm, .row.gone .ln { opacity: .55; }
+.both { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 600; color: var(--muted); }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+  <symbol id="search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 16l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="phone" viewBox="0 0 24 24"><path d="M6.6 3.5h2.6l1.4 4-2 1.3a11 11 0 006.6 6.6l1.3-2 4 1.4v2.6a2 2 0 01-2 2A16 16 0 014.6 5.5a2 2 0 012-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+  <symbol id="send" viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2-7-8-1z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></symbol>
+  <symbol id="star" viewBox="0 0 24 24"><path d="M12 4l2.4 5 5.4.6-4 3.7 1.1 5.3L12 16l-4.9 2.6 1.1-5.3-4-3.7 5.4-.6z" fill="currentColor"/></symbol>
+</svg>
+
+<div class="wrap">
+  <div class="intro">
+    <h1>Staff list, redesigned</h1>
+    <p>The current list puts a green “Joined” pill on almost every row, shows employee codes nobody reads, and says nothing about what a teacher actually does. This version stays quiet when someone is fine, flags people only when they need something, and shows each teacher's subjects and classes. Mockup only; no app code has changed.</p>
+  </div>
+
+  <div class="h2">Now</div>
+  <div class="frames">
+    <figure><div class="before"><img src="shots/staff-list/now.png" alt="Current staff list"></div>
+      <figcaption><b>Today.</b> 11 of 13 rows say “Joined”. EMP codes take the second line. A teacher row gives no clue what they teach.</figcaption></figure>
+  </div>
+
+  <div class="h2">Proposed · v2</div>
+  <div class="frames">
+
+    <!-- 1. All -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>12:46</span><i></i></div>
+        <div class="nav"><span class="back"><svg width="24" height="24"><use href="#back"/></svg></span>
+          <span class="add"><svg width="18" height="18"><use href="#plus"/></svg>Add</span></div>
+        <div class="title">Staff</div>
+        <div class="sub meta">Main Campus · 13 people</div>
+        <div class="tools"><div class="field"><svg width="18" height="18"><use href="#search"/></svg>Name or phone</div></div>
+        <div class="seg seg3"><span class="on">All <small>13</small></span><span>Teaching <small>5</small></span><span>Office <small>9</small></span></div>
+
+        <div class="nudge">
+          <div class="stack"><span class="av ph"></span><span class="av d">DA</span></div>
+          <div class="grow"><b>2 not on the app yet</b><span class="meta">New teacher, Demo Assistant</span></div>
+          <span class="btn">Invite</span>
+        </div>
+
+        <div class="gh"><span class="l">Teaching</span><span class="r">5</span></div>
+        <div class="list">
+          <div class="row"><span class="av c">MN</span>
+            <div class="grow"><div class="nm clip">Meera Nair</div>
+              <div class="tags"><span class="tag ct"><svg width="11" height="11"><use href="#star"/></svg>6-A</span><span class="tag">Science · 6-A 6-B</span></div></div>
+            <span class="call"><svg width="18" height="18"><use href="#phone"/></svg></span></div>
+          <div class="row"><span class="av ph"><span class="ring"></span></span>
+            <div class="grow"><div class="nm clip">New teacher</div>
+              <div class="ln">Nothing assigned yet</div></div>
+            <span class="pill n">Invited</span></div>
+          <div class="row"><span class="av a">PC</span>
+            <div class="grow"><div class="nm clip">Priya Chatterjee</div>
+              <div class="tags"><span class="tag">English · 6-A 7-A</span></div></div>
+            <span class="call"><svg width="18" height="18"><use href="#phone"/></svg></span></div>
+          <div class="row"><span class="av b">RI</span>
+            <div class="grow"><div class="nm clip">Rakesh Iyer</div>
+              <div class="ln">Principal</div>
+              <div class="tags"><span class="tag">Maths · 9-A</span></div></div>
+            <span class="call"><svg width="18" height="18"><use href="#phone"/></svg></span></div>
+        </div>
+        <div class="fade"></div><div class="home"></div>
+      </div>
+      <figcaption><b>1 · All.</b> Everyone once, grouped Teaching then Office. Rakesh Iyer is Principal and teaches Maths in 9-A, so he sits under Teaching here with both lines. The Invite card shows only when someone isn't on the app.</figcaption>
+    </figure>
+
+    <!-- 2. Office -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>12:46</span><i></i></div>
+        <div class="nav"><span class="back"><svg width="24" height="24"><use href="#back"/></svg></span>
+          <span class="add"><svg width="18" height="18"><use href="#plus"/></svg>Add</span></div>
+        <div class="title">Staff</div>
+        <div class="sub meta">Main Campus · 13 people</div>
+        <div class="tools"><div class="field"><svg width="18" height="18"><use href="#search"/></svg>Name or phone</div></div>
+        <div class="seg seg3"><span>All <small>13</small></span><span>Teaching <small>5</small></span><span class="on">Office <small>9</small></span></div>
+
+        <div class="list" style="margin-top:14px">
+          <div class="row"><span class="av f">AV</span>
+            <div class="grow"><div class="nm clip">Asha Verma</div><div class="ln">Trust Administrator</div></div>
+            <span class="call"><svg width="18" height="18"><use href="#phone"/></svg></span></div>
+          <div class="row"><span class="av d">DA</span>
+            <div class="grow"><div class="nm clip">Demo Accountant</div><div class="ln">Accountant</div></div>
+            <span class="call"><svg width="18" height="18"><use href="#phone"/></svg></span></div>
+          <div class="row"><span class="av d">DA<span class="ring"></span></span>
+            <div class="grow"><div class="nm clip">Demo Assistant</div><div class="ln">Office Assistant</div></div>
+            <span class="pill c">Not invited</span></div>
+          <div class="row"><span class="av a">DL</span>
+            <div class="grow"><div class="nm clip">Demo Librarian</div><div class="ln">Librarian</div></div>
+            <span class="call"><svg width="18" height="18"><use href="#phone"/></svg></span></div>
+          <div class="row"><span class="av b">RI</span>
+            <div class="grow"><div class="nm clip">Rakesh Iyer</div><div class="ln">Principal · <span class="both">also teaches</span></div></div>
+            <span class="call"><svg width="18" height="18"><use href="#phone"/></svg></span></div>
+          <div class="row"><span class="av e">DP</span>
+            <div class="grow"><div class="nm clip">Demo Principal</div><div class="ln">Principal</div></div>
+            <span class="call"><svg width="18" height="18"><use href="#phone"/></svg></span></div>
+          <div class="row"><span class="av f">DC</span>
+            <div class="grow"><div class="nm clip">Demo Staff Coordinator</div><div class="ln">Staff Coordinator</div></div>
+            <span class="call"><svg width="18" height="18"><use href="#phone"/></svg></span></div>
+        </div>
+        <div class="fade"></div><div class="home"></div>
+      </div>
+      <figcaption><b>2 · Office.</b> One list, A to Z, no group headings. Rakesh Iyer shows here too, marked "also teaches", so the counts add to more than All: 5 + 9 = 14 for 13 people.</figcaption>
+    </figure>
+
+    <!-- 3. Show people who left -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>12:46</span><i></i></div>
+        <div class="nav"><span class="back"><svg width="24" height="24"><use href="#back"/></svg></span><span></span></div>
+        <div class="list" style="margin-top:6px">
+          <div class="row"><span class="av e">DP</span>
+            <div class="grow"><div class="nm clip">Demo Principal</div><div class="ln">Principal</div></div>
+            <span class="call"><svg width="18" height="18"><use href="#phone"/></svg></span></div>
+          <div class="row"><span class="av f">DC</span>
+            <div class="grow"><div class="nm clip">Demo Staff Coordinator</div><div class="ln">Staff Coordinator</div></div>
+            <span class="call"><svg width="18" height="18"><use href="#phone"/></svg></span></div>
+          <div class="row"><span class="av e">DV</span>
+            <div class="grow"><div class="nm clip">Demo Vice Principal</div><div class="ln">Vice Principal</div></div>
+            <span class="call"><svg width="18" height="18"><use href="#phone"/></svg></span></div>
+          <div class="row gone"><span class="av c">SK</span>
+            <div class="grow"><div class="nm clip">Sunil Kumar</div><div class="ln">Clerk · left Mar 2026</div></div>
+            <span class="pill n">Left</span></div>
+          <div class="row gone"><span class="av a">AR</span>
+            <div class="grow"><div class="nm clip">Anita Roy</div><div class="ln">Receptionist · retired Jan 2026</div></div>
+            <span class="pill n">Left</span></div>
+        </div>
+        <div class="togrow"><b>Show people who left</b><small>2</small><span class="sw on"></span></div>
+        <div class="meta" style="padding:10px 20px">Off by default. Hidden when nobody has left.</div>
+        <div class="home"></div>
+      </div>
+      <figcaption><b>3 · Show people who left.</b> A switch at the end of the list. When it's on, they appear in their usual place, greyed, with a Left pill and when they left. It stays off each time you open the list. Sunil and Anita are made up; the demo has nobody who left.</figcaption>
+    </figure>
+
+    <!-- 4. Search -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>12:46</span><i></i></div>
+        <div class="nav"><span class="back"><svg width="24" height="24"><use href="#back"/></svg></span><span></span></div>
+        <div class="tools"><div class="field on">iyer<span class="caret"></span></div><span class="cancel">Cancel</span></div>
+        <div class="gh"><span class="l">2 people</span></div>
+        <div class="list">
+          <div class="row"><span class="av b">VI</span>
+            <div class="grow"><div class="nm clip">Vikram <span class="hl">Iyer</span></div><div class="tags"><span class="tag">Maths · 6-A</span></div></div>
+            <span class="call"><svg width="18" height="18"><use href="#phone"/></svg></span></div>
+          <div class="row"><span class="av b">RI</span>
+            <div class="grow"><div class="nm clip">Rakesh <span class="hl">Iyer</span></div><div class="ln">Principal</div><div class="tags"><span class="tag">Maths · 9-A</span></div></div>
+            <span class="call"><svg width="18" height="18"><use href="#phone"/></svg></span></div>
+        </div>
+        <div class="meta" style="padding:10px 20px">Search covers everyone, whichever tab is open. It also finds a phone number or an employee code.</div>
+        <div class="home"></div>
+      </div>
+      <figcaption><b>4 · Searching.</b> The title and tabs fold away so results sit under your thumb. Matches are highlighted.</figcaption>
+    </figure>
+  </div>
+
+  <div class="h2">What changes</div>
+  <div class="notes">
+    <div><b>All · Teaching · Office</b>Teaching = "Teaches classes" is on. Office = the title isn't a teacher title (the same check the Add staff form uses). Someone can be in both. <em>A guess from the title</em>; a role field would make it exact.</div>
+    <div><b>Show people who left</b>A switch at the end of the list, off by default, hidden when nobody has left. Covers resigned, retired and let go.</div>
+    <div><b>Status only when it matters</b>"Joined" disappears. An amber dot on the photo and a pill appear only for Invited or Not invited. The Invite card on top opens just those people.</div>
+    <div><b>What they teach</b>Subject and sections for each teacher, ★ for the class they lead. <em>Needs the staff list to return this</em>; the Teaching overview already has it.</div>
+    <div><b>Call button</b>The most common reason to open this list is to reach someone. No phone, no button.</div>
+    <div><b>Codes off the row</b>Employee codes move to the profile. Search still finds them.</div>
+  </div>
+</div>
+</body>
+</html>
