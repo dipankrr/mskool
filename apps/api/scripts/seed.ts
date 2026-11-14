@@ -351,6 +351,8 @@ async function findOrCreateStaff(
       firstName,
       lastName,
       designation,
+      // ADR-068: teachers show in the teaching pickers.
+      teachesClasses: /teacher/i.test(designation ?? ""),
     })
     .returning();
 

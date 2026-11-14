@@ -25,7 +25,7 @@ export function orderPicker(
 ): { groups: { title: string; people: PickerPerson[] }[]; total: number } {
   const needle = opts.query.trim().toLowerCase();
   const pool = people
-    .filter((p) => opts.showAll || p.teachesClasses)
+    .filter((p) => opts.showAll || p.teachesClasses || p.slots > 0)
     .filter((p) => !opts.exclude.includes(p.staffId))
     .filter((p) => !needle || `${p.name} ${p.designation ?? ""}`.toLowerCase().includes(needle))
     .sort((a, b) => a.name.localeCompare(b.name));

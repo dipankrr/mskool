@@ -226,7 +226,7 @@ export class StaffLoginService {
 
   /**
    * Where each staff member stands with the app (frame 05): `joined` (a
-   * staff login with a password), `invited` (an open, unexpired code), or
+   * live login with a password, phone or older email), `invited` (an open, unexpired code), or
    * `not_invited`.
    */
   async joinStates(
@@ -240,7 +240,10 @@ export class StaffLoginService {
       .from(staff)
       .leftJoin(user, eq(staff.userId, user.id))
       .where(inArray(staff.id, ids));
-    const withLogin = rows.filter((row) => row.userId && row.username?.startsWith(STAFF_USERNAME_PREFIX));
+    // Any live login with a password has joined: older email logins too.
+    // A left login is renamed `left.<id>` and never counts.
+    const live = (row: (typeof rows)[number]) => Boolean(row.userId && !row.username?.startsWith("left."));
+    const withLogin = rows.filter(live);
     const passwords = withLogin.length
       ? await db
           .select({ userId: account.userId })
@@ -266,8 +269,7 @@ export class StaffLoginService {
       );
     const invited = new Set(open.map((row) => row.staffId));
     for (const row of rows) {
-      const joined =
-        row.userId && row.username?.startsWith(STAFF_USERNAME_PREFIX) && hasPw.has(row.userId);
+      const joined = live(row) && hasPw.has(row.userId!);
       out.set(row.id, joined ? "joined" : invited.has(row.id) ? "invited" : "not_invited");
     }
     return out;

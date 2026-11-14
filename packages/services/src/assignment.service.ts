@@ -591,6 +591,15 @@ export class AssignmentService {
         sections: sql<number>`count(distinct ${sectionTeacherAssignments.sectionId})::int`,
       })
       .from(sectionTeacherAssignments)
+      // The running session only: last session's rows that were never
+      // ended must not count as load (they are not on any screen).
+      .innerJoin(
+        academicYears,
+        and(
+          eq(academicYears.id, sectionTeacherAssignments.academicYearId),
+          eq(academicYears.isCurrent, true),
+        ),
+      )
       .where(
         and(
           scopeWhere(scopes.map(atSchoolLevel), ASSIGNMENT_SCOPE_COLUMNS),

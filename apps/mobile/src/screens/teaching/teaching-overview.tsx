@@ -230,7 +230,7 @@ function Ring({ pct }: { pct: number }) {
         />
       </Svg>
       <View style={styles.ringLabel}>
-        <ThemedText variant="title">{pct}%</ThemedText>
+        <ThemedText variant="name" style={styles.ringText} maxFontSizeMultiplier={1.2}>{pct}%</ThemedText>
       </View>
     </View>
   );
@@ -242,6 +242,7 @@ const styles = StyleSheet.create({
   summaryText: { flex: 1, gap: spacing.sm },
   ring: { width: 76, height: 76 },
   ringLabel: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center" },
+  ringText: { fontSize: 19, lineHeight: 24 },
   gapLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   count: { minWidth: 30, height: 24, borderRadius: 999, paddingHorizontal: spacing.sm, alignItems: "center", justifyContent: "center", backgroundColor: colors.tone.caution.bg },
   countOk: { backgroundColor: colors.tone.positive.bg },

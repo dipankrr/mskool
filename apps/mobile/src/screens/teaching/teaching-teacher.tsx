@@ -171,11 +171,13 @@ export function TeachingTeacherScreen({ staffId }: { staffId: string }) {
                   {subject.subjectName}
                 </ThemedText>
                 <ThemedText variant="meta">
-                  {subject.classes.reduce(
-                    (n, c) => n + c.sections.filter((s) => (s.mine ? !toggled.has(s.key) : toggled.has(s.key))).length,
-                    0,
-                  )}{" "}
-                  sections
+                  {plural(
+                    subject.classes.reduce(
+                      (n, c) => n + c.sections.filter((s) => (s.mine ? !toggled.has(s.key) : toggled.has(s.key))).length,
+                      0,
+                    ),
+                    "section",
+                  )}
                 </ThemedText>
               </View>
               {subject.classes.map((cls) => (
@@ -204,7 +206,11 @@ export function TeachingTeacherScreen({ staffId }: { staffId: string }) {
                           testID={`teacher-chip-${s.key}`}
                         >
                           <View style={styles.chipTop}>
-                            {changed && on ? <AppIcon name="check" size={12} color={colors.onAccent} /> : null}
+                            {changed && on ? (
+                              <View style={styles.tick}>
+                                <AppIcon name="check" size={14} color={colors.onAccent} />
+                              </View>
+                            ) : null}
                             <ThemedText variant="bodyStrong" style={on ? styles.onAccent : null}>
                               {s.label}
                             </ThemedText>
@@ -276,6 +282,10 @@ export function TeachingTeacherScreen({ staffId }: { staffId: string }) {
   );
 }
 
+function plural(n: number, word: string) {
+  return `${n} ${n === 1 ? word : `${word}s`}`;
+}
+
 const styles = StyleSheet.create({
   gap: { gap: spacing.sm },
   person: { flexDirection: "row", alignItems: "center", gap: spacing.md },
@@ -293,6 +303,7 @@ const styles = StyleSheet.create({
   chipNew: { borderWidth: 3, borderColor: "#BDE6CD" },
   chipRemoved: { borderStyle: "dashed", borderColor: colors.tone.critical.fg },
   chipTop: { flexDirection: "row", alignItems: "center", gap: 4 },
+  tick: { width: 16, height: 16, alignItems: "center", justifyContent: "center" },
   onAccent: { color: colors.onAccent },
   muted: { color: colors.muted },
   other: { color: colors.muted, fontSize: 10 },
