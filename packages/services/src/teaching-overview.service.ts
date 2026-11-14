@@ -1,3 +1,4 @@
+import type { ImageRef } from "@repo/contracts";
 import { scopeWhere, type DataScope } from "@repo/authz";
 import { db } from "@repo/db";
 import {
@@ -13,6 +14,7 @@ import { and, asc, eq } from "drizzle-orm";
 
 import { atSchoolLevel } from "./academic.service";
 import { assignmentIsCurrent } from "./assignment-access.service";
+import { staffPhotoService } from "./staff-photo.service";
 
 /**
  * TEACHING READ MODELS (ADR-068) — what the Teaching screens show.
@@ -31,6 +33,7 @@ export interface TeacherRef {
   assignmentId: string;
   staffId: string;
   name: string;
+  photo: ImageRef | null;
   /** Exclusive end for a substitute; null when open-ended. */
   effectiveTo: string | null;
 }
@@ -110,10 +113,14 @@ export class TeachingOverviewService {
       )
       .orderBy(asc(STA.createdAt));
 
+    const photos = await staffPhotoService.many(scopes[0]!.organizationId, [
+      ...new Set(assignmentRows.map((row) => row.staffId)),
+    ]);
     const ref = (row: (typeof assignmentRows)[number]): TeacherRef => ({
       assignmentId: row.assignmentId,
       staffId: row.staffId,
       name: `${row.firstName} ${row.lastName}`.trim(),
+      photo: photos.get(row.staffId) ?? null,
       effectiveTo: row.effectiveTo,
     });
 

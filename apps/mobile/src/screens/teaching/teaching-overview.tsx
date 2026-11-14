@@ -174,7 +174,7 @@ export function TeachingOverviewScreen() {
                         }
                         style={({ pressed }) => [styles.row, i > 0 ? styles.line : null, pressed ? styles.pressed : null]}
                       >
-                        <StaffAvatar name={person.name} />
+                        <StaffAvatar name={person.name} uri={person.photo?.url} cacheKey={person.photo?.id} />
                         <View style={styles.grow}>
                           <ThemedText variant="name" numberOfLines={1}>
                             {person.name}

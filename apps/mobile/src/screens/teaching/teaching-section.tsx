@@ -111,6 +111,7 @@ export function TeachingSectionScreen({ sectionId }: { sectionId: string }) {
                     assignmentId: section.classTeacher!.assignmentId,
                     staffId: section.classTeacher!.staffId,
                     name: section.classTeacher!.name,
+                    photo: section.classTeacher!.photo,
                     role: "class_teacher",
                     subjectId: null,
                     title: `Class teacher, ${label}`,
@@ -125,7 +126,7 @@ export function TeachingSectionScreen({ sectionId }: { sectionId: string }) {
                   </ThemedText>
                   <ThemedText variant="name">{section.classTeacher.name}</ThemedText>
                 </View>
-                <StaffAvatar name={section.classTeacher.name} size={30} />
+                <StaffAvatar name={section.classTeacher.name} uri={section.classTeacher.photo?.url} cacheKey={section.classTeacher.photo?.id} size={30} />
               </Pressable>
             ) : (
               <View style={[styles.ct, styles.ctEmpty]}>
@@ -189,6 +190,7 @@ export function TeachingSectionScreen({ sectionId }: { sectionId: string }) {
                                 assignmentId: t.assignmentId,
                                 staffId: t.staffId,
                                 name: t.name,
+                                photo: t.photo,
                                 role: "subject_teacher",
                                 subjectId: subject.subjectId,
                                 title: `${subject.subjectName}, ${label}`,
@@ -196,7 +198,7 @@ export function TeachingSectionScreen({ sectionId }: { sectionId: string }) {
                             }
                             style={styles.teacher}
                           >
-                            <StaffAvatar name={t.name} size={22} />
+                            <StaffAvatar name={t.name} uri={t.photo?.url} cacheKey={t.photo?.id} size={22} />
                             <ThemedText variant="meta" style={styles.teacherName} numberOfLines={1}>
                               {t.name}
                               {t.effectiveTo ? ` · till ${lastDayOf(t.effectiveTo).slice(5)}` : ""}

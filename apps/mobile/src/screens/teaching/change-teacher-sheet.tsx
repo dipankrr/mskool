@@ -20,6 +20,7 @@ export type ChangeTarget = {
   assignmentId: string;
   staffId: string;
   name: string;
+  photo?: { id: string; url: string } | null;
   role: "class_teacher" | "subject_teacher";
   subjectId: string | null;
   title: string;
@@ -62,7 +63,8 @@ export function ChangeTeacherSheet({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const nextName = directory.data?.find((p) => p.staffId === next)?.name ?? "";
+  const nextPerson = directory.data?.find((p) => p.staffId === next);
+  const nextName = nextPerson?.name ?? "";
   const today = todayIst();
   const coverOk = mode !== "cover" || (until !== null && until >= today);
   const ready = mode === "remove" || (Boolean(next) && coverOk);
@@ -143,7 +145,7 @@ export function ChangeTeacherSheet({
         />
         <View style={styles.swap}>
           <View style={[styles.who, styles.whoOld]}>
-            <StaffAvatar name={target.name} size={36} />
+            <StaffAvatar name={target.name} uri={target.photo?.url} cacheKey={target.photo?.id} size={36} />
             <ThemedText variant="bodyStrong" numberOfLines={1}>
               {target.name}
             </ThemedText>
@@ -160,7 +162,7 @@ export function ChangeTeacherSheet({
                 style={[styles.who, next ? styles.whoNew : styles.whoEmpty]}
                 testID="change-pick"
               >
-                {next ? <StaffAvatar name={nextName} size={36} /> : <AppIcon name="personAdd" size={24} color={colors.tone.caution.fg} />}
+                {next ? <StaffAvatar name={nextName} uri={nextPerson?.photo?.url} cacheKey={nextPerson?.photo?.id} size={36} /> : <AppIcon name="personAdd" size={24} color={colors.tone.caution.fg} />}
                 <ThemedText variant="bodyStrong" numberOfLines={1} style={next ? null : styles.gapText}>
                   {next ? nextName : "Choose"}
                 </ThemedText>

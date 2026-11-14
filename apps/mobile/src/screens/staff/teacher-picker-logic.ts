@@ -8,6 +8,7 @@ export type DirectoryPerson = {
   designation: string | null;
   teachesClasses: boolean;
   slots: number;
+  photo?: { id: string; url: string } | null;
 };
 
 export type PickerPerson = DirectoryPerson & { busiest: boolean };

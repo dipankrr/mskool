@@ -4,6 +4,7 @@ import {
 } from "@repo/db/schema";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
+import { imageRefSchema } from "./storage.contract";
 
 // ---------------------------------------------------------------------------
 // Class-subject mappings (the template layer)
@@ -90,6 +91,8 @@ const teacherRefSchema = z.object({
   assignmentId: z.uuid(),
   staffId: z.uuid(),
   name: z.string(),
+  /** The staff photo, so pickers and lists show faces, not initials. */
+  photo: imageRefSchema.nullable(),
   /** Exclusive end for a substitute; null when open-ended. */
   effectiveTo: z.string().nullable(),
 });

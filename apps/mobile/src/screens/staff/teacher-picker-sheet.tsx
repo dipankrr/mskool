@@ -128,7 +128,7 @@ export function TeacherPickerSheet({
                         style={[styles.row, i > 0 ? styles.line : null, on ? styles.rowOn : null]}
                         testID={`picker-${person.staffId}`}
                       >
-                        <StaffAvatar name={person.name} />
+                        <StaffAvatar name={person.name} uri={person.photo?.url} cacheKey={person.photo?.id} />
                         <View style={styles.grow}>
                           <ThemedText variant="name" numberOfLines={1}>
                             {person.name}

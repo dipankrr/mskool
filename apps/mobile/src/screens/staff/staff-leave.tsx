@@ -51,7 +51,7 @@ export function StaffLeaveScreen({ id }: { id: string }) {
   const deactivate = trpc.staff.deactivate.useMutation();
   const assign = trpc.assignment.teacherAssignment.create.useMutation();
   const [reason, setReason] = useState<(typeof REASONS)[number]["id"]>("resigned");
-  const [handover, setHandover] = useState<Record<string, { staffId: string; name: string }>>({});
+  const [handover, setHandover] = useState<Record<string, { staffId: string; name: string; photo?: { id: string; url: string } | null }>>({});
   const [picking, setPicking] = useState<Slot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -176,7 +176,7 @@ export function StaffLeaveScreen({ id }: { id: string }) {
                 >
                   {next ? (
                     <>
-                      <StaffAvatar name={next.name} size={22} />
+                      <StaffAvatar name={next.name} uri={next.photo?.url} cacheKey={next.photo?.id} size={22} />
                       <ThemedText variant="chip" numberOfLines={1}>
                         {next.name}
                       </ThemedText>
@@ -224,7 +224,7 @@ export function StaffLeaveScreen({ id }: { id: string }) {
               .fetch({ organizationId, schoolId })
               .then((people) => {
                 const person = people.find((p) => p.staffId === staffId);
-                const chosen = { staffId, name: person?.name ?? "" };
+                const chosen = { staffId, name: person?.name ?? "", photo: person?.photo ?? null };
                 setHandover((current) => {
                   const next = { ...current, [picking.key]: chosen };
                   // Offer the same person the rest of this subject's lines.

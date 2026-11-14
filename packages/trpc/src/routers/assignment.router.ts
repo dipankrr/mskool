@@ -8,7 +8,8 @@ import {
   sectionTeacherAssignmentSelectSchema,
   updateClassSubjectMappingSchema,
 } from "@repo/contracts";
-import { assignmentService, teachingOverviewService } from "@repo/services";
+import { assignmentService, staffPhotoService, teachingOverviewService } from "@repo/services";
+import { imageRefSchema } from "@repo/contracts";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -372,15 +373,21 @@ export const assignmentRouter = router({
           name: z.string(),
           designation: z.string().nullable(),
           teachesClasses: z.boolean(),
+          photo: imageRefSchema.nullable(),
           // (section, subject) slots and distinct sections held now (ADR-068).
           slots: z.number().int(),
           sections: z.number().int(),
         }),
       ),
     )
-    .query(async ({ ctx }) =>
-      assignmentService.listTeacherDirectory(ctx.scopes),
-    ),
+    .query(async ({ ctx, input }) => {
+      const rows = await assignmentService.listTeacherDirectory(ctx.scopes);
+      const photos = await staffPhotoService.many(
+        input.organizationId,
+        rows.map((row) => row.staffId),
+      );
+      return rows.map((row) => ({ ...row, photo: photos.get(row.staffId) ?? null }));
+    }),
 
   // ── Teaching (ADR-068) ────────────────────────────────────────────────────
 
