@@ -51,5 +51,12 @@
     "attendance": "Attendance",
     "fees": "Fees",
     "exams": "Exams"
+  },
+  "home": {
+    "busy": "Busy",
+    "done": "Done",
+    "exam": "Exam",
+    "absent": "Absent",
+    "holiday": "Holiday"
   }
 }
