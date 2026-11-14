@@ -1,16 +1,18 @@
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useFamilyChild } from "../child-context";
 import { childClass } from "../child-context";
 import { FChildSwitcher, FHeader } from "../ui";
 
-/** A family tab's header: the child switcher line, then the tab's title. */
-export function FamilyTabHeader({ title }: { title: string }) {
+/** A family tab's header: the child switcher line, then the tab's title. `trailing` sits at the end of the top line. */
+export function FamilyTabHeader({ title, trailing }: { title: string; trailing?: ReactNode }) {
   const { t } = useTranslation("family");
   const { children, child, select, line } = useFamilyChild();
   return (
     <FHeader
       title={title}
+      trailing={trailing}
       context={
         child ? (
           <FChildSwitcher

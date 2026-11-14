@@ -244,6 +244,44 @@ export const components = {
     photo: { radius: radius.sm },
   },
 
+  /** Home, the evening loop: Bookie's line, tonight's list, the bag, tomorrow, today's timeline. */
+  home: {
+    mascot: 92,
+    hand: 30,
+    avatar: { size: 36, bg: palette.coral, fg: palette.white },
+    progress: { height: 8, track: color.surfaceSunk, fill: color.accent, full: tone.positive.fg },
+    tick: { size: 30, border: color.ink, on: tone.positive.fg, fg: palette.white },
+    action: { height: 34, bg: color.accent, fg: color.onAccent },
+    bag: {
+      height: 46,
+      tick: 26,
+      bg: color.surface,
+      border: color.hairline,
+      onBg: tone.positive.bg,
+      onBorder: palette.greenEdge,
+      onFg: tone.positive.fg,
+    },
+    empty: { border: palette.faint, radius: radius.lg },
+    tomorrow: {
+      radius: radius.xl,
+      look: {
+        plain: { bg: color.surfaceMuted, border: color.hairline, fg: color.ink },
+        exam: { bg: palette.coralTint, border: palette.coralEdge, fg: palette.red },
+        off: { bg: palette.blueTint, border: palette.blueEdge, fg: palette.blue },
+      },
+      /** A subject as a small flat character: two eyes on its colour. */
+      face: { height: 40, radius: 13, eye: palette.ink, eyeWidth: 7, eyeHeight: 9, eyeGap: 5 },
+    },
+    timeline: {
+      line: palette.stoneDeep,
+      lineWidth: 2,
+      dot: 14,
+      ring: palette.white,
+      indent: 28,
+      neutral: palette.faint,
+    },
+  },
+
   /**
    * The first screen before sign-in: a soft colour wash up top, a Bookie-blue
    * stage below, and two role cards built like Bookie (a light face on a
