@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Student Home v2: the daily loop</title>
+<style>
+/* ============================================================
+   Family Home v2 (2026-11-15). Mockup only, no app code.
+   One concept: Home is the evening loop.
+     1 Bookie says one line about the day and reacts as it changes
+     2 Tonight: the work, then the bag
+     3 Tomorrow: what the day looks like
+     4 Today at school: what happened
+   For a student or a parent on the same screen, so copy never
+   says "you" or "your child".
+   Style: the flat reference, same as student-home.html. No glows,
+   glass, glossy gradients or heavy shadows. No streak, stamps or
+   confetti in this round; Bookie is the only playful piece.
+   Colours from family palette.ts and brand-bookie.ts.
+   Phones are 360 wide. Data is made up.
+   ============================================================ */
+@font-face { font-family: Clash; font-weight: 400; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Regular.ttf); }
+@font-face { font-family: Clash; font-weight: 500; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Medium.ttf); }
+@font-face { font-family: Clash; font-weight: 600; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Semibold.ttf); }
+@font-face { font-family: Clash; font-weight: 700; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Bold.ttf); }
+@font-face { font-family: Hand; font-weight: 700; src: url(../../../../apps/mobile/assets/fonts/Caveat-Bold.ttf); }
+:root {
+  --body: #2F6BFF; --depth: #1C3FB0; --bink: #0E1A4F;
+  --ink: #1B1B1A; --soft: #3A3A38; --muted: #6E6E6A; --faint: #A3A39E;
+  --stone: #F3F3F0; --stone-d: #E9E9E4; --hair: rgba(27,27,26,.08);
+  --green: #1F7A4A; --green-t: #E6F4EC; --green-e: #CFEBDC;
+  --amber: #A15C07; --amber-t: #FDF3E2;
+  --red: #C2410C; --red-t: #FDEDE6;
+  --blue-t: #EAF0FF; --blue-e: #D5E1FF;
+  --coral: #F2705A; --coral-t: #FDE9E4; --coral-e: #FBDCD3;
+  --grape: #7A4DE8; --grape-t: #EFE8FF;
+  --note: #FFF4B8; --note-ink: #3B3320; --note-muted: #7A6A33;
+  --wash: linear-gradient(180deg, #EEF3FF 0%, #FFFFFF 42%, #FFF6EF 100%);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { color-scheme: light; }
+body { background: #DADBD6; color: var(--ink); font-family: Clash, system-ui, sans-serif; font-size: 15px; padding: 32px 16px 64px; }
+svg { display: block; flex: none; }
+.hand { font-family: Hand, cursive; font-weight: 700; letter-spacing: 0; }
+
+/* ---------- page around the phones ---------- */
+.intro { max-width: 1160px; margin: 0 auto 20px; }
+.intro h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.6px; }
+.intro p { margin-top: 4px; color: #3C4450; max-width: 780px; line-height: 1.45; }
+.switch { max-width: 1160px; margin: 0 auto 24px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.switch span { font-size: 13px; color: #3C4450; margin-right: 4px; }
+.switch button { font: inherit; font-size: 14px; font-weight: 600; border: 0; height: 36px; padding: 0 16px; border-radius: 999px; background: rgba(255,255,255,.6); color: var(--ink); cursor: pointer; }
+.switch button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+.frames { max-width: 1160px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 32px 24px; align-items: flex-start; }
+figure { width: 360px; max-width: 100%; }
+figcaption { margin-top: 12px; font-size: 13px; color: #3C4450; line-height: 1.45; }
+figcaption b { font-weight: 600; color: var(--ink); }
+.notes { max-width: 1160px; margin: 40px auto 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px; }
+.notes div { background: rgba(255,255,255,.55); border-radius: 14px; padding: 12px 16px; font-size: 14px; line-height: 1.45; color: #3C4450; }
+.notes b { display: block; color: var(--ink); font-weight: 600; font-size: 15px; margin-bottom: 2px; }
+
+/* ---------- phone ---------- */
+.phone { position: relative; width: 360px; height: 760px; max-width: 100%; border-radius: 32px; overflow: hidden; display: flex; flex-direction: column; background: var(--wash); box-shadow: 0 0 0 1px rgba(16,24,40,.1), 0 14px 34px rgba(16,24,40,.12); }
+.status { height: 32px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 600; flex: none; }
+.status i { width: 40px; height: 8px; border-radius: 999px; background: currentColor; opacity: .75; }
+.scroll { flex: 1; overflow-y: auto; padding: 4px 20px 100px; scrollbar-width: none; }
+.scroll::-webkit-scrollbar { display: none; }
+
+.hdr { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 48px; }
+.child { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px 0 4px; border-radius: 999px; background: #fff; box-shadow: 0 0 0 1px var(--hair); font-size: 14px; font-weight: 600; }
+.av { width: 32px; height: 32px; border-radius: 999px; display: grid; place-items: center; font-size: 13px; font-weight: 700; color: #fff; background: var(--coral); flex: none; }
+.child small { color: var(--muted); font-weight: 500; }
+.iconbtn { width: 40px; height: 40px; border-radius: 999px; display: grid; place-items: center; background: #fff; box-shadow: 0 0 0 1px var(--hair); position: relative; }
+.iconbtn .dot { position: absolute; top: 9px; right: 10px; width: 8px; height: 8px; border-radius: 99px; background: var(--coral); box-shadow: 0 0 0 2px #fff; }
+
+.sec { margin: 24px 0 10px; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.sec h3 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+.sec span { font-size: 13px; font-weight: 600; color: var(--muted); }
+
+/* stone row */
+.row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 22px; background: var(--stone); box-shadow: inset 0 0 0 1px var(--hair); min-height: 68px; cursor: pointer; transition: transform .12s; }
+.row:active { transform: scale(.98); }
+.row + .row { margin-top: 8px; }
+.row .t { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
+.row .m { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.grow { flex: 1; min-width: 0; }
+.tick { width: 30px; height: 30px; border-radius: 99px; box-shadow: inset 0 0 0 2px var(--ink); display: grid; place-items: center; flex: none; color: transparent; transition: background .2s, color .2s; }
+.done .tick { background: var(--green); box-shadow: none; color: #fff; }
+.row.done .t { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 2px; }
+.act { height: 34px; padding: 0 14px; border-radius: 99px; background: var(--ink); color: #fff; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; flex: none; }
+.row.done .act { background: var(--green-t); color: var(--green); }
+
+.pill { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600; flex: none; }
+.p-red { background: var(--red-t); color: var(--red); } .p-amber { background: var(--amber-t); color: var(--amber); }
+.p-green { background: var(--green-t); color: var(--green); } .p-blue { background: var(--blue-t); color: var(--body); }
+
+/* tab bar */
+.tabs { position: absolute; left: 16px; right: 16px; bottom: 16px; height: 64px; border-radius: 999px; background: #fff; box-shadow: 0 0 0 1px var(--hair), 0 8px 22px rgba(27,27,26,.08); display: flex; align-items: center; justify-content: space-between; padding: 6px; }
+.tabs div { width: 52px; height: 52px; border-radius: 26px; display: grid; place-items: center; color: var(--muted); position: relative; }
+.tabs div.on { background: var(--ink); color: #fff; width: 84px; }
+.tabs .badge { position: absolute; top: 8px; right: 10px; width: 8px; height: 8px; border-radius: 9px; background: var(--coral); box-shadow: 0 0 0 2px #fff; }
+
+/* ---------- Bookie, with moods ---------- */
+.bk .mouth { display: none; }
+.bk[data-mood="calm"] .m-calm, .bk[data-mood="happy"] .m-happy, .bk[data-mood="cheer"] .m-cheer,
+.bk[data-mood="worried"] .m-worried, .bk[data-mood="sleepy"] .m-sleepy, .bk[data-mood="focus"] .m-focus { display: block; }
+.bk .sway { transform-box: view-box; transform-origin: 50% 90%; animation: sway 4s ease-in-out infinite alternate; }
+.bk[data-mood="cheer"] .sway { animation: hop .5s cubic-bezier(.3,1.6,.5,1) 2 alternate; }
+.bk[data-mood="sleepy"] .sway { animation-duration: 7s; }
+.bk .eyes { transform-box: view-box; transform-origin: 50% 48.9%; animation: bblink 4.48s infinite; }
+.bk[data-mood="sleepy"] .eyes { animation: none; transform: scaleY(.38); }
+.bk[data-mood="worried"] .pupils { transform: translate(-8px, 22px); }
+.bk[data-mood="focus"] .pupils { transform: translate(-12px, 26px); }
+.bk .pupils { transition: transform .3s; }
+@keyframes sway { from { transform: rotate(4deg); } to { transform: rotate(-4deg); } }
+@keyframes hop { from { transform: translateY(0); } to { transform: translateY(-34px); } }
+@keyframes bblink { 0%, 96% { transform: scaleY(1); } 98% { transform: scaleY(.1); } 100% { transform: scaleY(1); } }
+
+.say { display: flex; align-items: center; gap: 10px; margin-top: 10px; min-height: 96px; }
+.say .line { font-size: 30px; line-height: 1; color: var(--body); }
+.say .sub { font-size: 13px; color: var(--muted); margin-top: 6px; font-weight: 500; }
+.swap { animation: swap .3s ease both; }
+@keyframes swap { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.prog { height: 8px; border-radius: 99px; background: var(--stone-d); overflow: hidden; margin-bottom: 10px; }
+.prog i { display: block; height: 100%; border-radius: 99px; background: var(--ink); transition: width .4s, background .3s; }
+.prog.full i { background: var(--green); }
+
+/* the bag */
+.bag { display: flex; flex-wrap: wrap; gap: 8px; }
+.item { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 14px 0 8px; border-radius: 99px; background: #fff; box-shadow: inset 0 0 0 1px var(--hair); font-size: 14px; font-weight: 600; cursor: pointer; }
+.item .tick { width: 26px; height: 26px; }
+.item.done { background: var(--green-t); box-shadow: inset 0 0 0 1px var(--green-e); color: var(--green); }
+.empty { padding: 18px 16px; border-radius: 22px; border: 1.5px dashed var(--faint); font-size: 14px; color: var(--muted); text-align: center; }
+
+/* tomorrow */
+.tmr { border-radius: 24px; background: var(--stone); box-shadow: inset 0 0 0 1px var(--hair); padding: 14px; cursor: pointer; }
+.tmr .t { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
+.tmr .m { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.pers { display: flex; gap: 6px; margin-top: 12px; }
+.per { flex: 1; min-width: 0; text-align: center; }
+.per .face { height: 40px; border-radius: 13px; display: grid; place-items: center; }
+.per .e { display: flex; gap: 5px; }
+.per .e i { width: 7px; height: 9px; border-radius: 99px; background: var(--ink); animation: blink 5s infinite; }
+.per:nth-child(2) i { animation-delay: 1.1s; } .per:nth-child(4) i { animation-delay: 2.3s; } .per:nth-child(5) i { animation-delay: 3.4s; }
+@keyframes blink { 0%, 94% { transform: scaleY(1); } 97% { transform: scaleY(.15); } 100% { transform: scaleY(1); } }
+.per small { display: block; font-size: 11px; font-weight: 600; color: var(--muted); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mth { background: var(--blue-t); } .eng { background: var(--coral-t); } .sci { background: var(--green-t); }
+.soc { background: var(--grape-t); } .hin { background: var(--amber-t); } .pt { background: var(--stone-d); }
+.flag { margin-top: 12px; padding: 10px 12px; border-radius: 14px; background: #fff; font-size: 13px; font-weight: 600; display: flex; gap: 8px; align-items: center; }
+.flag i { width: 8px; height: 8px; border-radius: 9px; background: var(--coral); flex: none; }
+.tmr.exam { background: var(--coral-t); box-shadow: inset 0 0 0 1px var(--coral-e); }
+.tmr.off { background: var(--blue-t); box-shadow: inset 0 0 0 1px var(--blue-e); }
+.tmr .bigd { font-size: 28px; font-weight: 700; letter-spacing: -1px; margin-top: 8px; }
+
+/* today at school: a short timeline */
+.day { position: relative; padding-left: 26px; }
+.day::before { content: ""; position: absolute; left: 7px; top: 10px; bottom: 16px; width: 2px; border-radius: 2px; background: var(--stone-d); }
+.ev { position: relative; padding: 4px 0 14px; cursor: pointer; }
+.ev::before { content: ""; position: absolute; left: -26px; top: 8px; width: 16px; height: 16px; border-radius: 99px; background: var(--faint); box-shadow: 0 0 0 3px #fff; }
+.ev.green::before { background: var(--green); } .ev.red::before { background: var(--red); }
+.ev.blue::before { background: var(--body); } .ev.coral::before { background: var(--coral); } .ev.amber::before { background: var(--amber); }
+.ev .k { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+.ev .t { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; margin-top: 1px; }
+.ev .m { font-size: 13px; color: var(--muted); margin-top: 2px; line-height: 1.35; }
+.ev .big { font-size: 28px; font-weight: 700; letter-spacing: -1px; }
+.ev .big small { font-size: 15px; color: var(--muted); letter-spacing: 0; }
+.tnote { margin-top: 8px; display: inline-block; background: var(--note); color: var(--note-ink); border-radius: 6px 6px 16px 6px; padding: 8px 12px; font-size: 14px; font-weight: 500; transform: rotate(-1.2deg); }
+.tnote small { display: block; font-size: 12px; color: var(--note-muted); margin-top: 2px; }
+
+.tiles { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.tl { border-radius: 22px; background: var(--stone); box-shadow: inset 0 0 0 1px var(--hair); padding: 12px; cursor: pointer; }
+.tl .k { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.tl .v { font-size: 20px; font-weight: 700; letter-spacing: -0.6px; margin-top: 10px; }
+.tl .m { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.tl.hot .v { color: var(--red); }
+
+/* Bookie's lines sheet */
+.lines { width: 360px; max-width: 100%; background: #fff; border-radius: 32px; padding: 20px; box-shadow: 0 0 0 1px rgba(16,24,40,.1); }
+.lines h3 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+.lines p { font-size: 13px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+.ln { display: flex; gap: 12px; align-items: center; padding: 12px 0; border-top: 1px solid var(--hair); }
+.ln:first-of-type { margin-top: 12px; }
+.ln .hand { font-size: 22px; line-height: 1; color: var(--body); }
+.ln small { display: block; font-size: 12px; color: var(--muted); margin-top: 4px; font-weight: 500; }
+
+.pop { animation: pop .42s cubic-bezier(.2,1.3,.4,1) both; }
+@keyframes pop { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; } }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5V20H4z"/><path d="M10 20v-5h4v5"/></symbol>
+    <symbol id="i-hw" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5V6a2 2 0 0 1 2-2h12v14H6a2 2 0 0 0-2 2Z"/><path d="M4 19.5A2 2 0 0 0 6 22h12v-4"/><path d="M9 8h5"/></symbol>
+    <symbol id="i-cal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></symbol>
+    <symbol id="i-exam" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l4 4v14H7z"/><path d="M10 12h5M10 16h5"/></symbol>
+    <symbol id="i-fee" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M16 15h2"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 21h4"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 12.5 4 4 8-9"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+  </defs>
+</svg>
+
+<!-- Bookie with every mouth; data-mood on the svg picks one. -->
+<template id="bookie-tpl">
+  <svg class="bk" viewBox="160 260 704 600" data-mood="calm">
+    <g class="sway">
+      <path d="M512 744 C560 800 690 818 806 818 C822 818 828 808 828 792 V500 C828 400 754 330 664 330 C584 330 529 390 516 450 Q512 468 508 450 C495 390 440 330 360 330 C270 330 196 400 196 500 V792 C196 808 202 818 218 818 C334 818 464 800 512 744 Z" fill="#fff" stroke="#fff" stroke-width="44" stroke-linejoin="round"/>
+      <path d="M512 774 C560 830 690 848 806 848 C822 848 828 838 828 822 V530 C828 430 754 360 664 360 C584 360 529 420 516 480 Q512 498 508 480 C495 420 440 360 360 360 C270 360 196 430 196 530 V822 C196 838 202 848 218 848 C334 848 464 830 512 774 Z" fill="#1C3FB0"/>
+      <path d="M512 744 C560 800 690 818 806 818 C822 818 828 808 828 792 V500 C828 400 754 330 664 330 C584 330 529 390 516 450 Q512 468 508 450 C495 390 440 330 360 330 C270 330 196 400 196 500 V792 C196 808 202 818 218 818 C334 818 464 800 512 744 Z" fill="#2F6BFF"/>
+      <path d="M512 476 V728" stroke="#1C3FB0" stroke-width="12" stroke-linecap="round"/>
+      <path class="mouth m-calm" d="M460 690 Q512 740 564 690" fill="none" stroke="#0E1A4F" stroke-width="16" stroke-linecap="round"/>
+      <path class="mouth m-happy" d="M446 684 Q512 760 578 684" fill="none" stroke="#0E1A4F" stroke-width="16" stroke-linecap="round"/>
+      <path class="mouth m-cheer" d="M452 682 Q512 790 572 682 Z" fill="#0E1A4F" stroke="#0E1A4F" stroke-width="14" stroke-linejoin="round"/>
+      <path class="mouth m-worried" d="M468 716 Q512 686 556 716" fill="none" stroke="#0E1A4F" stroke-width="16" stroke-linecap="round"/>
+      <path class="mouth m-focus" d="M476 706 H548" fill="none" stroke="#0E1A4F" stroke-width="16" stroke-linecap="round"/>
+      <ellipse class="mouth m-sleepy" cx="512" cy="708" rx="18" ry="22" fill="#0E1A4F"/>
+      <g class="eyes">
+        <circle cx="341" cy="574" r="80" fill="#fff"/><circle cx="683" cy="574" r="80" fill="#fff"/>
+        <g class="pupils">
+          <circle cx="353" cy="552" r="46" fill="#0E1A4F"/><circle cx="371" cy="532" r="16" fill="#fff"/>
+          <circle cx="695" cy="552" r="46" fill="#0E1A4F"/><circle cx="713" cy="532" r="16" fill="#fff"/>
+        </g>
+      </g>
+    </g>
+  </svg>
+</template>
+
+<header class="intro">
+  <h1>Student Home v2: the daily loop</h1>
+  <p>One Home, shown in two halves because it scrolls. The evening goes top to bottom: Bookie says one line, <b>Tonight</b> lists the work and the bag, <b>Tomorrow</b> shows the day ahead, and <b>Today at school</b> tells what happened. Tick things in the first phone and watch Bookie. Switch the day to see how Home changes.</p>
+</header>
+
+<div class="switch" role="group" aria-label="Day">
+  <span>The day:</span>
+  <button data-s="busy" aria-pressed="true">Busy evening</button>
+  <button data-s="done" aria-pressed="false">All done</button>
+  <button data-s="exam" aria-pressed="false">Exam tomorrow</button>
+  <button data-s="absent" aria-pressed="false">Was absent</button>
+  <button data-s="holiday" aria-pressed="false">Holiday tomorrow</button>
+</div>
+
+<div class="frames">
+  <figure>
+    <div class="phone">
+      <div class="status"><span id="clock">6:40</span><i></i></div>
+      <div class="scroll">
+        <div class="hdr">
+          <div class="child"><span class="av">A</span>Aarav <small>7-B</small><svg width="14" height="14"><use href="#i-down"/></svg></div>
+          <div class="iconbtn"><svg width="20" height="20"><use href="#i-bell"/></svg><span class="dot"></span></div>
+        </div>
+        <div class="say">
+          <div id="bookie" style="width:104px"></div>
+          <div class="grow"><div class="hand line" id="line"></div><div class="sub" id="sub"></div></div>
+        </div>
+        <div class="sec"><h3>Tonight</h3><span id="count"></span></div>
+        <div class="prog" id="prog"><i></i></div>
+        <div id="tonight"></div>
+        <div id="bagwrap">
+          <div class="sec"><h3>Pack the bag</h3><span id="bagcount"></span></div>
+          <div class="bag" id="bag"></div>
+        </div>
+        <div class="sec"><h3>Tomorrow</h3><span id="tmrday"></span></div>
+        <div id="tomorrow"></div>
+      </div>
+      <div class="tabs">
+        <div class="on"><svg width="22" height="22"><use href="#i-home"/></svg></div>
+        <div><svg width="22" height="22"><use href="#i-hw"/></svg></div>
+        <div><svg width="22" height="22"><use href="#i-cal"/></svg></div>
+        <div><svg width="22" height="22"><use href="#i-exam"/></svg></div>
+        <div><svg width="22" height="22"><use href="#i-fee"/></svg><span class="badge"></span></div>
+      </div>
+    </div>
+    <figcaption><b>Home, top half.</b> Tonight is the work first, then the bag, then what tomorrow looks like. Homework that only needs a tick is ticked here; work that needs photos or a quiz opens its own page. When the list and the bag are both done, the day is closed and Bookie says so.</figcaption>
+  </figure>
+
+  <figure>
+    <div class="phone">
+      <div class="status"><span>6:40</span><i></i></div>
+      <div class="scroll">
+        <div class="sec" style="margin-top:8px"><h3>Today at school</h3><span id="todaydate"></span></div>
+        <div class="day" id="today"></div>
+        <div class="sec"><h3>Keeping track</h3></div>
+        <div class="tiles" id="tiles"></div>
+      </div>
+      <div class="tabs">
+        <div class="on"><svg width="22" height="22"><use href="#i-home"/></svg></div>
+        <div><svg width="22" height="22"><use href="#i-hw"/></svg></div>
+        <div><svg width="22" height="22"><use href="#i-cal"/></svg></div>
+        <div><svg width="22" height="22"><use href="#i-exam"/></svg></div>
+        <div><svg width="22" height="22"><use href="#i-fee"/></svg><span class="badge"></span></div>
+      </div>
+    </div>
+    <figcaption><b>Home, scrolled down.</b> The day's story in order: attendance, what each class did, work that came back checked, marks, notices. Each line opens its own screen. The three tiles are the slow numbers that don't change every day.</figcaption>
+  </figure>
+
+  <div class="lines">
+    <h3>What Bookie says</h3>
+    <p>One line at a time, picked by the most pressing thing. The face changes with it. This is the only playful piece in this round.</p>
+    <div id="lines"></div>
+  </div>
+</div>
+
+<div class="notes">
+  <div><b>For both readers</b>Copy never says "you" or "your child", so it reads right for a student and for a parent on the same phone.</div>
+  <div><b>Works with what exists</b>Homework rows, the bag items that come from bring-to-class homework, attendance, checked work with the teacher's note, fees and the exam schedule.</div>
+  <div><b>Needs new backend</b>Tomorrow's periods (timetable is designed, not built), "what the class did" (a class diary), exam marks on Home (results are still out of scope) and notices.</div>
+  <div><b>Bag ticks stay on the phone</b>Ticking a bag item is a reminder for the family only. Nothing is sent to the teacher.</div>
+  <div><b>Not in this round</b>Streak, stamps, confetti and a results reveal. Sign out moves off Home to a profile page behind the name chip.</div>
+  <div><b>Open</b>The five tabs are unchanged here. Whether Attendance, Exams and Fees still each deserve a tab is a separate question.</div>
+</div>
+
+<script>
+const hw = (t, m, kind, pill, done) => ({ t, m, kind: kind || 'tick', pill, done: !!done });
+const TILES = [['Attendance', '94%', 'this year', ''], ['Fees', '₹2,400', 'due 20 Nov', 'hot'], ['Next exam', '8 days', 'Half-yearly', '']];
+const PERIODS = [['mth', 'Maths'], ['eng', 'English'], ['sci', 'Science'], ['pt', 'PT'], ['hin', 'Hindi'], ['soc', 'Social']];
+const PRESENT = { c: 'green', k: 'Attendance', t: 'Present, on time' };
+const S = {
+  busy: {
+    date: 'Mon 16 Nov', tmr: 'Tue 17 Nov',
+    tonight: [hw('Fractions worksheet', 'Maths · 20 min · due tomorrow', 'send', 'Send'), hw('Read chapter 4', 'English · 15 min'), hw('Learn the poem', 'Hindi · 10 min')],
+    bag: ['Drawing book', 'Sports shoes', 'Maths worksheet'],
+    tomorrow: { t: '6 periods, starts 7:45', m: 'Home by 1:30', periods: PERIODS, flag: 'PT in period 4. Sports shoes.' },
+    today: [PRESENT,
+      { c: 'blue', k: 'Maths', t: 'Adding unlike fractions', m: 'Worksheet given for tomorrow' },
+      { c: 'coral', k: 'Science homework checked', t: 'Good', note: ['Neat diagram. Label the roots next time.', 'Ms Rao'] },
+      { c: 'grape', k: 'English unit test', big: ['18', '/20'], m: 'Class average 14' },
+      { c: 'amber', k: 'Notice', t: 'Parent-teacher meeting', m: 'Sat 21 Nov, 9 to 12' }],
+  },
+  done: {
+    date: 'Mon 16 Nov', tmr: 'Tue 17 Nov',
+    tonight: [hw('Fractions worksheet', 'Maths · sent 5:50 pm', 'send', 'Sent', 1), hw('Read chapter 4', 'English', 'tick', null, 1), hw('Learn the poem', 'Hindi', 'tick', null, 1)],
+    bag: ['Drawing book', 'Sports shoes', 'Maths worksheet'], bagDone: true,
+    tomorrow: { t: '6 periods, starts 7:45', m: 'Home by 1:30', periods: PERIODS, flag: 'PT in period 4. Sports shoes.' },
+    today: null,
+  },
+  exam: {
+    date: 'Sun 15 Nov', tmr: 'Mon 16 Nov',
+    tonight: [hw('Revise chapters 4 and 5', 'Maths · from the syllabus sheet'), hw('Practice paper 2', 'Maths · 30 min', 'quiz', 'Start')],
+    bag: ['Admit card', 'Geometry box', 'Two pens'],
+    tomorrow: { exam: true, t: 'Half-yearly: Maths', big: '10:00 to 12:00', m: 'Room 12 · Chapters 1 to 5 · Reach by 9:40' },
+    today: [{ c: '', k: 'Sunday', t: 'No school today' },
+      { c: 'amber', k: 'Notice', t: 'Exam days end at 12:30', m: 'Buses leave at 12:45 all week' }],
+    tiles: [['Attendance', '94%', 'this year', ''], ['Fees', '₹2,400', 'due 20 Nov', 'hot'], ['Exams', '1 of 6', 'starts tomorrow', '']],
+  },
+  absent: {
+    date: 'Mon 16 Nov', tmr: 'Tue 17 Nov',
+    tonight: [hw('Fractions worksheet', 'Maths · given today · due Wed', 'send', 'Send'), hw('Copy today\'s Science notes', 'From the class diary'), hw('Learn the poem', 'Hindi · 10 min')],
+    bag: ['Leave note', 'Drawing book'],
+    tomorrow: { t: '6 periods, starts 7:45', m: 'Home by 1:30', periods: PERIODS, flag: 'Bring a leave note for today.' },
+    today: [{ c: 'red', k: 'Attendance', t: 'Absent', m: '3 days missed this year' },
+      { c: 'blue', k: 'Maths', t: 'Adding unlike fractions', m: 'Worksheet given, due Wednesday' },
+      { c: 'blue', k: 'Science', t: 'Parts of a flower', m: 'Notes on the board, 1 page' },
+      { c: 'blue', k: 'English', t: 'Chapter 4 read in class' }],
+  },
+  holiday: {
+    date: 'Mon 16 Nov', tmr: 'Tue 17 Nov',
+    tonight: [], bag: [],
+    tomorrow: { off: true, t: 'No school', big: 'Founder\'s Day', m: 'School opens Wednesday, 7:45' },
+    today: [PRESENT,
+      { c: 'blue', k: 'Science', t: 'Parts of a flower', m: 'Project given, due Friday' },
+      { c: 'coral', k: 'Maths homework checked', t: 'Excellent' }],
+  },
+};
+
+/* Bookie: the most pressing thing wins. */
+function bookieSays(key, left, total, bagLeft) {
+  const s = S[key];
+  if (key === 'holiday') return ['sleepy', 'No school tomorrow.', 'Nothing due until Wednesday.'];
+  if (left === 0 && bagLeft === 0) return ['cheer', 'All set for tomorrow!', key === 'exam' ? 'Sleep early. Exam at 10.' : 'Work done, bag packed.'];
+  if (left === 0) return ['happy', 'Work done. Bag next?', bagLeft + ' to pack'];
+  if (key === 'exam') return ['focus', 'Maths exam tomorrow.', left + ' to revise tonight'];
+  if (key === 'absent' && left === total) return ['worried', 'Missed today. Catch up?', left + ' things from class'];
+  if (left === total) return ['calm', left + ' things for tonight.', 'About 45 min. Maths goes first.'];
+  if (left === 1) return ['happy', 'Just one more!', ''];
+  return ['calm', 'Good start. ' + left + ' to go.', ''];
+}
+const LINES = [
+  ['calm', '3 things for tonight.', 'Work is waiting'],
+  ['happy', 'Just one more!', 'Changes as rows are ticked'],
+  ['cheer', 'All set for tomorrow!', 'List and bag both done. Bookie hops once.'],
+  ['focus', 'Maths exam tomorrow.', 'An exam within a day beats everything else'],
+  ['worried', 'Missed today. Catch up?', 'Absent, a Redo, or something Missed'],
+  ['sleepy', 'No school tomorrow.', 'Holiday or Sunday ahead, nothing due'],
+];
+
+const $ = id => document.getElementById(id);
+const tpl = $('bookie-tpl');
+function bookie(el, mood, w) {
+  el.innerHTML = ''; const n = tpl.content.firstElementChild.cloneNode(true);
+  n.setAttribute('width', w); n.setAttribute('height', w * 600 / 704); n.dataset.mood = mood; el.appendChild(n);
+}
+const check = '<svg width="16" height="16"><use href="#i-check"/></svg>';
+let key = 'busy', lastLine = '';
+
+function refresh() {
+  const rows = [...document.querySelectorAll('#tonight .row')], items = [...document.querySelectorAll('#bag .item')];
+  const left = rows.filter(r => !r.classList.contains('done')).length;
+  const bagLeft = items.filter(r => !r.classList.contains('done')).length;
+  $('count').textContent = rows.length ? (rows.length - left) + ' of ' + rows.length + ' done' : '';
+  $('bagcount').textContent = items.length ? (items.length - bagLeft) + ' of ' + items.length : '';
+  $('prog').style.display = rows.length ? '' : 'none';
+  $('prog').classList.toggle('full', left === 0);
+  $('prog').firstElementChild.style.width = rows.length ? ((rows.length - left) / rows.length * 100) + '%' : '0';
+  const [mood, line, sub] = bookieSays(key, left, rows.length, bagLeft);
+  if (line !== lastLine) {
+    lastLine = line; bookie($('bookie'), mood, 104);
+    $('line').textContent = line; $('sub').textContent = sub;
+    for (const el of [$('line'), $('sub')]) { el.classList.remove('swap'); el.offsetHeight; el.classList.add('swap'); }
+  } else $('sub').textContent = sub;
+}
+
+function render(k) {
+  key = k; lastLine = ''; const s = S[k];
+  $('todaydate').textContent = s.date; $('tmrday').textContent = s.tmr;
+  $('tonight').innerHTML = s.tonight.length ? s.tonight.map(h =>
+    `<div class="row pop${h.done ? ' done' : ''}" data-kind="${h.kind}">` +
+    (h.kind === 'tick' ? `<div class="tick">${check}</div>` : '') +
+    `<div class="grow"><div class="t">${h.t}</div><div class="m">${h.m}</div></div>` +
+    (h.kind !== 'tick' ? `<span class="act">${h.pill}</span>` : '') + `</div>`).join('')
+    : '<div class="empty">Nothing for tonight.</div>';
+  $('bagwrap').style.display = s.bag.length ? '' : 'none';
+  $('bag').innerHTML = s.bag.map(b => `<div class="item${s.bagDone ? ' done' : ''}"><span class="tick">${check}</span>${b}</div>`).join('');
+  const t = s.tomorrow;
+  $('tomorrow').innerHTML = `<div class="tmr pop${t.exam ? ' exam' : ''}${t.off ? ' off' : ''}"><div class="t">${t.t}</div>` +
+    (t.big ? `<div class="bigd">${t.big}</div>` : '') + `<div class="m">${t.m}</div>` +
+    (t.periods ? `<div class="pers">${t.periods.map(p => `<div class="per"><div class="face ${p[0]}"><div class="e"><i></i><i></i></div></div><small>${p[1]}</small></div>`).join('')}</div>` : '') +
+    (t.flag ? `<div class="flag"><i></i>${t.flag}</div>` : '') + `</div>`;
+  const today = s.today || S.busy.today;
+  $('today').innerHTML = today.map(e => `<div class="ev ${e.c === 'grape' ? 'blue' : e.c}"><div class="k">${e.k}</div>` +
+    (e.big ? `<div class="big">${e.big[0]}<small>${e.big[1]}</small></div>` : `<div class="t">${e.t}</div>`) +
+    (e.m ? `<div class="m">${e.m}</div>` : '') +
+    (e.note ? `<div class="tnote">${e.note[0]}<small>${e.note[1]}</small></div>` : '') + `</div>`).join('');
+  $('tiles').innerHTML = (s.tiles || TILES).map(x => `<div class="tl ${x[3]}"><div class="k">${x[0]}</div><div class="v">${x[1]}</div><div class="m">${x[2]}</div></div>`).join('');
+  document.querySelectorAll('#tonight .row').forEach(r => r.addEventListener('click', () => {
+    // Send and quiz rows open their own page in the app; here a tap stands in for finishing them.
+    r.classList.toggle('done');
+    const a = r.querySelector('.act'); if (a) a.textContent = r.classList.contains('done') ? (r.dataset.kind === 'quiz' ? 'Done' : 'Sent') : (r.dataset.kind === 'quiz' ? 'Start' : 'Send');
+    refresh();
+  }));
+  document.querySelectorAll('#bag .item').forEach(r => r.addEventListener('click', () => { r.classList.toggle('done'); refresh(); }));
+  refresh();
+}
+
+$('lines').innerHTML = LINES.map((l, i) => `<div class="ln"><div id="ln${i}"></div><div class="grow"><div class="hand">${l[1]}</div><small>${l[2]}</small></div></div>`).join('');
+LINES.forEach((l, i) => bookie($('ln' + i), l[0], 64));
+
+const btns = document.querySelectorAll('.switch button');
+btns.forEach(b => b.addEventListener('click', () => {
+  btns.forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  render(b.dataset.s);
+}));
+render('busy');
+</script>
+</body>
+</html>
