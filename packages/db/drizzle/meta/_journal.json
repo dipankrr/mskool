@@ -379,6 +379,13 @@
       "when": 1794187107700,
       "tag": "0053_homework_seen",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1794665162409,
+      "tag": "0054_staff_photos",
+      "breakpoints": true
     }
   ]
 }

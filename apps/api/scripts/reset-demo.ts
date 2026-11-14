@@ -114,6 +114,7 @@ import {
   reportCardTemplates,
   storageObjects,
   studentAssignments,
+  staffPhotos,
   studentPhotos,
   submissionFiles,
   submissions,
@@ -383,6 +384,16 @@ async function main() {
       db.delete(students).where(inArray(students.organizationId, orgIds)).returning());
     await wipe("guardians", () =>
       db.delete(guardians).where(inArray(guardians.organizationId, orgIds)).returning());
+    await wipe("staff_photos", () =>
+      db
+        .delete(staffPhotos)
+        .where(
+          inArray(
+            staffPhotos.staffId,
+            db.select({ id: staff.id }).from(staff).where(inArray(staff.organizationId, orgIds)),
+          ),
+        )
+        .returning());
     await wipe("staff", () =>
       db.delete(staff).where(inArray(staff.organizationId, orgIds)).returning());
   }

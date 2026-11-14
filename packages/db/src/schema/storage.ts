@@ -13,7 +13,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
 import { organizations, schools } from "./organization";
-import { students } from "./people";
+import { staff, students } from "./people";
 
 /**
  * STORAGE — metadata for files whose bytes live in an S3-compatible bucket
@@ -145,6 +145,36 @@ export const studentPhotos = pgTable(
     // One photo per student. The upsert path keys on this.
     uniqueIndex("student_photos_student_uq").on(t.studentId),
     index("student_photos_object_idx").on(t.objectId),
+  ],
+);
+
+/**
+ * THE STAFF MEMBER'S PHOTO — the student_photos shape for the employment
+ * record: one live row per staff member, re-pointed on a re-upload. Added by
+ * the office (`staff:update`) or by the staff member for their own record.
+ */
+export const staffPhotos = pgTable(
+  "staff_photos",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    staffId: uuid()
+      .notNull()
+      .references(() => staff.id),
+    objectId: uuid()
+      .notNull()
+      .references(() => storageObjects.id, { onDelete: "restrict" }),
+
+    uploadedBy: text().references(() => user.id),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex("staff_photos_staff_uq").on(t.staffId),
+    index("staff_photos_object_idx").on(t.objectId),
   ],
 );
 

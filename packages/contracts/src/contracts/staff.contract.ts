@@ -1,6 +1,7 @@
 import { staff } from "@repo/db/schema";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
+import { imageRefSchema } from "./storage.contract";
 
 /**
  * STAFF — the employment register (ADR-008). The row is the EMPLOYMENT
@@ -24,6 +25,12 @@ const isoDate = z
 
 export const staffSelectSchema = createSelectSchema(staff);
 export type Staff = z.infer<typeof staffSelectSchema>;
+
+/** A staff row with its photo, ready to show (ADR-068); null without one. */
+export const staffWithPhotoSchema = staffSelectSchema.extend({
+  photo: imageRefSchema.nullable(),
+});
+export type StaffWithPhoto = z.infer<typeof staffWithPhotoSchema>;
 
 export const createStaffSchema = createInsertSchema(staff, {
   // School-issued, unique per org (`staff_org_employee_code_uq`, refused by

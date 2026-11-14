@@ -3,10 +3,14 @@ import {
   createStaffSchema,
   deactivateStaffSchema,
   resetStaffLoginInput,
+  imageRefSchema,
   staffSelectSchema,
+  staffWithPhotoSchema,
   updateStaffSchema,
+  uploadRequestSchema,
+  uploadTicketSchema,
 } from "@repo/contracts";
-import { staffService } from "@repo/services";
+import { staffPhotoService, staffService } from "@repo/services";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { router, staffListProcedure, staffProcedure } from "../trpc";
@@ -58,9 +62,14 @@ export const staffRouter = router({
         includeInactive: z.boolean().optional(),
       }),
     )
-    .output(z.array(staffSelectSchema))
+    .output(z.array(staffWithPhotoSchema))
     .query(async ({ ctx, input }) => {
-      return staffService.listStaff(ctx.scopes, input.q, input.includeInactive);
+      const rows = await staffService.listStaff(ctx.scopes, input.q, input.includeInactive);
+      const photos = await staffPhotoService.many(
+        input.organizationId,
+        rows.map((row) => row.id),
+      );
+      return rows.map((row) => ({ ...row, photo: photos.get(row.id) ?? null }));
     }),
 
   byId: staffProcedure("staff:read", {
@@ -77,7 +86,7 @@ export const staffRouter = router({
       },
     })
     .input(z.object({ id: z.uuid() }))
-    .output(staffSelectSchema)
+    .output(staffWithPhotoSchema)
     .query(async ({ ctx, input }) => {
       const row = await staffService.getStaffById(ctx.scope, input.id);
 
@@ -85,7 +94,7 @@ export const staffRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Staff member not found." });
       }
 
-      return row;
+      return { ...row, photo: await staffPhotoService.get(ctx.scope.organizationId, row.id) };
     }),
 
   create: staffProcedure("staff:create")
@@ -254,4 +263,37 @@ export const staffRouter = router({
 
       return row;
     }),
+
+  // ── The staff member's photo (ADR-068) ──────────────────────────────────
+  // The office's side, gated on the record like the student photo. The
+  // staff member's own side lives on `me` (me.photoUpload / me.setPhoto).
+
+  /** A link to PUT this staff member's new photo to (ADR-063). */
+  photoUpload: staffProcedure("staff:update", {
+    resolveOwner: resolveStaffOwner,
+  })
+    .input(z.object({ id: z.uuid(), file: uploadRequestSchema }))
+    .output(uploadTicketSchema)
+    .mutation(({ ctx, input }) =>
+      staffPhotoService.upload(ctx.scope.organizationId, input.id, input.file, ctx.userId),
+    ),
+
+  /** Makes an uploaded file this staff member's photo. */
+  setPhoto: staffProcedure("staff:update", {
+    resolveOwner: resolveStaffOwner,
+  })
+    .input(z.object({ id: z.uuid(), objectId: z.uuid() }))
+    .output(z.object({ photo: imageRefSchema.nullable() }))
+    .mutation(async ({ ctx, input }) => ({
+      photo: await staffPhotoService.set(ctx.scope.organizationId, input.id, input.objectId, ctx.userId),
+    })),
+
+  removePhoto: staffProcedure("staff:update", {
+    resolveOwner: resolveStaffOwner,
+  })
+    .input(z.object({ id: z.uuid() }))
+    .output(z.object({ removed: z.boolean() }))
+    .mutation(async ({ ctx, input }) => ({
+      removed: await staffPhotoService.remove(ctx.scope.organizationId, input.id),
+    })),
 });

@@ -78,11 +78,14 @@ export const staff = pgTable(
     status: staffStatusEnum().notNull().default("active"),
 
     // Opt-in public profile (ADR-041 §3): when true, a WHITELISTED projection
-    // of this row (name, designation, qualification, photoUrl only) may feed
+    // of this row (name, designation, qualification, photo only) may feed
     // the org's public-site faculty section. Phone/email/address never do.
     isPublicProfile: boolean().notNull().default(false),
 
-    photoUrl: text(),
+    // Shows up in the teacher picker when assigning teachers (ADR-068). It
+    // grants nothing: access comes from teaching assignments and roles. The
+    // photo lives in `staff_photos` (storage, ADR-063).
+    teachesClasses: boolean().notNull().default(false),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true })
