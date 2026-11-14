@@ -46,7 +46,7 @@ describe("by-teacher grid (ADR-068)", () => {
 
   it("adds a picked subject", () => {
     const grid = teacherGrid(overview, "priya", ["eng"]);
-    expect(grid.subjects.map((s) => s.subjectName)).toEqual(["Maths", "English"]);
+    expect(grid.subjects.map((s) => s.subjectName)).toEqual(["English", "Maths"]);
   });
 
   it("plans adds alongside others and ends only this teacher's rows", () => {

@@ -42,7 +42,7 @@ export function teacherGrid(overview: OverviewLike, staffId: string, extraSubjec
       if (subject.teachers.some((t) => t.staffId === staffId)) subjectIds.add(subject.subjectId);
     }
   }
-  // Picked with "Add a subject": after the ones they already teach.
+  // Picked with "Add a subject"; cards are sorted by name below.
   for (const id of extraSubjects) subjectIds.add(id);
 
   const subjects = [...subjectIds]
@@ -66,7 +66,10 @@ export function teacherGrid(overview: OverviewLike, staffId: string, extraSubjec
         else classes.push({ className: section.className, sections: [cell] });
       }
       return { subjectId, subjectName: subjectNames.get(subjectId)!, classes };
-    });
+    })
+    // A fixed order: a card never moves when its subject goes from "added"
+    // to "taught" on save (a reorder crashed Fabric's mounting on Android).
+    .sort((a, b) => a.subjectName.localeCompare(b.subjectName));
 
   const ctSection = overview.sections.find((s) => s.classTeacher?.staffId === staffId) ?? null;
   const cells = subjects.flatMap((s) => s.classes.flatMap((c) => c.sections)).filter((c) => c.mine);
