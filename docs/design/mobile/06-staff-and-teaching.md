@@ -2,7 +2,7 @@
 
 Status: **proposal for owner review, v1 (2026-11-14).** Nothing is built, and no ADR or other doc
 is changed yet.
-Mockups: `prototype/staff-teaching.html` (18 phone frames, grouped by journey; the numbers match this doc).
+Mockups: `prototype/staff-teaching.html` (19 phone frames, grouped by journey; the numbers match this doc).
 
 This journey covers four things that only work together: the staff record, how staff sign in,
 how a new teacher joins, and who teaches what. Teacher assignment is what most of the app
@@ -103,8 +103,11 @@ code cancels the old one. **Forgot password** = ask the office for a new code.
 
 - **Staff list** (05): search, filter chips (All, Teaching, Not joined, Left), each row with a
   join status pill: **Not invited · Invited · Joined**.
-- **Add staff** (06): one short form. Designation suggestions as chips. "Teaches classes" is
-  on when the designation looks like a teacher. **Save and invite** is the main button.
+- **Add staff** (06): optional photo, **Fill from phone contacts**, name, phone (checked as you
+  type), designation with suggestion chips, "Teaches classes" (on by itself for teacher
+  titles, saying why). One button, **Add**.
+- **Added** (06b): the next steps after saving: invite, give classes (with a hint where their
+  subject is short), or add another person.
 - **Invite sheet** (07): the code in large digits, how long it lasts, **Share on WhatsApp**
   with the message written, and **Copy**.
 - **Staff profile** (08): call / WhatsApp / classes, **This session** (what they teach, with
@@ -173,6 +176,13 @@ Maestro sign-ins move from email to phone.
 2. **Can a teacher see the whole teaching grid** (read-only), or only their own classes?
 3. **Substitute "until" date**: keep it in v1, or leave substitutes to the timetable later?
 4. **Where Teaching lives**: More → Teaching only, or also inside Academic setup as the last step?
+5. **Phone first, then password or code.** The sign-in screen could ask for the phone alone,
+   then show the password field to people who have joined and the code boxes to everyone
+   else. Easy to build, but it tells anyone who types a number whether it belongs to a joined
+   staff member (never which school). Rate-limited, like family sign-in.
+6. **Staff photos.** Storage already has a `staff_photo` kind, but nothing uploads to it and
+   `staff.photo_url` is still plain text. Who adds them: the office (06), the teacher
+   themselves after joining, or both? Bulk "photo day" for staff, as for students?
 
 ## 10. Out of scope here
 

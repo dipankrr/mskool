@@ -159,7 +159,7 @@ figcaption .no { display: inline-flex; min-width: 26px; height: 20px; padding: 0
 .nm { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
 .sm2 { font-size: 13px; color: var(--muted); margin-top: 1px; }
 .chev { color: var(--chev); }
-.row.gap { background: linear-gradient(90deg, var(--amb-t), #fff 70%); }
+.row.gap { background: none; }
 .assign { height: 32px; padding: 0 12px 0 9px; border-radius: 999px; background: var(--amb-t); color: var(--amb); font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 4px; flex: none; box-shadow: inset 0 0 0 1px rgba(181,71,8,.25); }
 
 /* search + chips */
@@ -269,6 +269,7 @@ figcaption .no { display: inline-flex; min-width: 26px; height: 20px; padding: 0
     <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
     <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1Z"/></symbol>
     <symbol id="i-wa" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5a9.4 9.4 0 0 0-8.1 14.2L2.6 21.5l4.9-1.3A9.4 9.4 0 1 0 12 2.5Zm0 1.7a7.7 7.7 0 1 1-3.9 14.3l-.3-.2-2.9.8.8-2.8-.2-.3A7.7 7.7 0 0 1 12 4.2Zm-3 3.6c-.2 0-.5 0-.7.3-.3.3-1 1-1 2.4s1 2.8 1.2 3c.1.2 2 3.2 5 4.4 2.5 1 3 .8 3.5.7.5 0 1.7-.7 2-1.4.2-.7.2-1.3.2-1.4-.1-.1-.3-.2-.6-.4l-1.8-.9c-.3-.1-.5-.1-.7.1l-.8 1c-.2.2-.3.2-.6.1a6.3 6.3 0 0 1-3.1-2.7c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.5l-.8-2c-.2-.5-.4-.4-.6-.4H9Z"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
     <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="3"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
     <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="3"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></symbol>
     <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
@@ -431,7 +432,7 @@ figcaption .no { display: inline-flex; min-width: 26px; height: 20px; padding: 0
           <div class="lead">Main Campus · Session 2026-27</div>
         </div>
         <div class="gh" style="position:relative"><span class="l">Your classes</span><span class="r" style="color:var(--muted);font-weight:500">5 classes</span></div>
-        <div class="card mx" style="position:relative;padding:14px;display:flex;gap:12px;align-items:center;background:linear-gradient(135deg,#0F7A44,#16935A);color:#fff">
+        <div class="card mx" style="position:relative;padding:14px;display:flex;gap:12px;align-items:center;background:var(--accent);color:#fff">
           <div class="sj" style="background:rgba(255,255,255,.18);color:#fff"><svg class="i"><use href="#i-star"/></svg></div>
           <div class="grow"><div style="font-size:12px;font-weight:600;opacity:.8;letter-spacing:.4px">CLASS TEACHER</div><div style="font-size:20px;font-weight:600;letter-spacing:-.3px">6-A <span style="font-size:14px;font-weight:500;opacity:.85">· 34 students</span></div></div>
         </div>
@@ -523,28 +524,56 @@ figcaption .no { display: inline-flex; min-width: 26px; height: 20px; padding: 0
       <div class="phone">
         <div class="status"><span>9:41</span><i></i></div>
         <div class="nav"><span class="back" style="color:var(--muted)">Cancel</span><span class="ttl">Add staff</span></div>
-        <div class="form card">
-          <div class="frow"><div class="grow"><div class="k">Full name</div><div class="v">Kavita Iyer</div></div></div>
-          <div class="frow"><div class="grow"><div class="k">Phone · they sign in with this</div><div class="v tnum">+91 98301 22745</div></div><svg class="i" style="color:var(--accent)"><use href="#i-check"/></svg></div>
-          <div class="frow on"><div class="grow"><div class="k" style="color:var(--deep)">Designation</div><div class="v">TGT Sci<span style="display:inline-block;width:2px;height:18px;background:var(--accent);vertical-align:-3px"></span></div></div></div>
-          <div class="sugg">
-            <span class="h">Suggestions</span>
-            <span class="hot">TGT Science</span><span>TGT Maths</span><span>TGT</span><span>PGT</span><span>PRT</span><span>Lab assistant</span>
+        <div style="display:flex;align-items:center;gap:14px;padding:4px 16px 0">
+          <div style="position:relative;width:72px;height:72px;border-radius:999px;background:var(--surface);border:2px dashed var(--line);display:flex;align-items:center;justify-content:center;color:var(--muted);flex:none">
+            <svg style="width:30px;height:30px"><use href="#i-user"/></svg>
+            <span style="position:absolute;right:-2px;bottom:-2px;width:28px;height:28px;border-radius:99px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 3px var(--canvas)"><svg class="i-s"><use href="#i-camera"/></svg></span>
           </div>
+          <div class="grow"><div style="font-size:15px;font-weight:600">Add a photo</div><div class="meta">Optional. Used on ID cards and lists.</div></div>
         </div>
-        <div class="form card">
-          <div class="frow"><div class="sj sm" style="background:var(--tint);color:var(--deep)"><svg class="i-s"><use href="#i-school"/></svg></div><div class="grow"><div style="font-size:16px;font-weight:600">Teaches classes</div><div class="meta">Shows up when you assign teachers</div></div><span class="sw"></span></div>
-          <div class="frow"><div class="sj sm" style="background:var(--slate-t);color:var(--slate)"><svg class="i-s"><use href="#i-home"/></svg></div><div class="grow"><div class="k">Branch</div><div class="v">Main Campus</div></div><svg class="i chev"><use href="#i-right"/></svg></div>
+        <div style="padding:14px 16px 0"><div style="height:44px;border-radius:12px;background:var(--tint);color:var(--deep);display:flex;align-items:center;justify-content:center;gap:8px;font-size:15px;font-weight:600"><svg class="i"><use href="#i-users"/></svg>Fill from phone contacts</div></div>
+        <div class="fgroup" style="margin-top:14px">
+          <div class="fld" style="background:var(--surface);box-shadow:inset 0 0 0 1px var(--hair)"><svg class="i ic"><use href="#i-user"/></svg><span class="grow">Kavita Iyer</span></div>
         </div>
-        <div class="form card">
-          <div class="frow"><div class="sj sm" style="background:var(--slate-t);color:var(--slate)"><svg class="i-s"><use href="#i-plus"/></svg></div><div class="grow"><div style="font-size:15px;font-weight:600">More details</div><div class="meta">Code EMP-043 · email · joining date · photo</div></div><svg class="i chev"><use href="#i-down"/></svg></div>
+        <div class="fgroup" style="margin-top:8px">
+          <div class="fld" style="background:var(--surface);box-shadow:inset 0 0 0 1px var(--hair)"><svg class="i ic"><use href="#i-phone"/></svg><span class="cc" style="padding-right:8px">+91</span><span class="grow tnum">98301 22745</span><span class="pill p"><svg style="width:12px;height:12px"><use href="#i-check"/></svg>Free</span></div>
         </div>
-        <div class="foot" style="display:flex;flex-direction:column;gap:8px">
-          <div class="btn"><svg class="i"><use href="#i-wa"/></svg>Save and invite</div>
-          <div class="btn ghost" style="height:46px;font-size:15px">Save without inviting</div>
+        <div class="card mx" style="margin-top:8px;box-shadow:inset 0 0 0 2px var(--accent)">
+          <div style="display:flex;align-items:center;gap:10px;height:52px;padding:0 14px;font-size:16px"><svg class="i" style="color:var(--muted)"><use href="#i-badge"/></svg>TGT Sci<span style="width:2px;height:20px;background:var(--accent);margin-left:-8px"></span></div>
+          <div class="sugg" style="padding-top:0"><span class="hot">TGT Science</span><span>TGT Maths</span><span>PGT</span><span>PRT</span><span>Lab assistant</span></div>
         </div>
+        <div class="card mx" style="margin-top:8px;padding:12px 14px;display:flex;align-items:center;gap:12px">
+          <div class="sj sm" style="background:var(--tint);color:var(--deep)"><svg class="i-s"><use href="#i-school"/></svg></div>
+          <div class="grow"><div style="font-size:15px;font-weight:600">Teaches classes</div><div class="meta">On, because she's a TGT</div></div><span class="sw"></span>
+        </div>
+        <div class="mx meta" style="margin-top:12px;display:flex;align-items:center;gap:6px"><svg class="i-s"><use href="#i-plus"/></svg><span class="link">More details</span>· code EMP-043, email, joining date</div>
+        <div class="foot"><div class="btn">Add Kavita</div></div>
       </div>
-      <figcaption><span class="no">06</span><b>Add staff.</b> Three fields and a switch. Designation is free text, with suggestions from a starter list and from what this school already uses. "Teaches classes" turns on by itself for teacher-like designations (PRT, TGT, PGT). The employee code is filled in for you.</figcaption>
+      <figcaption><span class="no">06</span><b>Add staff.</b> Photo first, then fill from the phone's contacts or type name and phone. The phone is checked as you type ("Free", or "Ravi Kumar already has this number"). Designation suggestions come from a starter list and what this school already uses. "Teaches classes" switches on by itself for teacher titles and says why. One button; what to do next comes after (06b).</figcaption>
+    </figure>
+
+    <!-- 06b added -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="end" style="margin-left:auto">Done</span></div>
+        <div class="empty" style="margin-top:28px">
+          <div style="position:relative">
+            <div class="av xl t6">KI</div>
+            <span style="position:absolute;right:-4px;bottom:-4px;width:32px;height:32px;border-radius:99px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 4px var(--canvas)"><svg class="i-s"><use href="#i-check"/></svg></span>
+          </div>
+          <div class="h1" style="font-size:24px;margin-top:18px">Kavita is added</div>
+          <div class="lead">TGT Science · Main Campus · EMP-043</div>
+        </div>
+        <div class="gh" style="margin-top:14px"><span class="l">Next</span></div>
+        <div class="list card">
+          <div class="row" style="min-height:72px"><div class="sj" style="background:#E3F7EA;color:var(--wa)"><svg class="i"><use href="#i-wa"/></svg></div><div class="grow"><div class="nm">Invite her to the app</div><div class="sm2">Send her joining code on WhatsApp</div></div><svg class="i chev"><use href="#i-right"/></svg></div>
+          <div class="row" style="min-height:72px"><div class="sj s"><svg class="i"><use href="#i-flask"/></svg></div><div class="grow"><div class="nm">Give her classes</div><div class="sm2">Science teachers are short in 6-B and 7-B</div></div><svg class="i chev"><use href="#i-right"/></svg></div>
+          <div class="row" style="min-height:72px"><div class="sj" style="background:var(--slate-t);color:var(--slate)"><svg class="i"><use href="#i-useradd"/></svg></div><div class="grow"><div class="nm">Add another person</div><div class="sm2">Same branch and designation list</div></div><svg class="i chev"><use href="#i-right"/></svg></div>
+        </div>
+        <div class="meta mx" style="margin-top:12px;text-align:center">You can do these later from her profile.</div>
+      </div>
+      <figcaption><span class="no">06b</span><b>Added.</b> Instead of two Save buttons up front, the next steps come after: invite, give classes (with a hint where her subject is short), or add the next person. Adding 30 staff on day one is a loop of 06 → 06b → Add another.</figcaption>
     </figure>
 
     <!-- 07 invite sheet -->
