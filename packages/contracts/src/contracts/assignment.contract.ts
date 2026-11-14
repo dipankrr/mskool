@@ -51,6 +51,13 @@ export const sectionTeacherAssignmentSelectSchema = createSelectSchema(
 );
 export type SectionTeacherAssignment = z.infer<typeof sectionTeacherAssignmentSelectSchema>;
 
+/** A row with who it is: the teacher's name and login, if they have joined (ADR-068). */
+export const sectionTeacherAssignmentRowSchema = sectionTeacherAssignmentSelectSchema.extend({
+  teacherName: z.string(),
+  userId: z.string().nullable(),
+});
+export type SectionTeacherAssignmentRow = z.infer<typeof sectionTeacherAssignmentRowSchema>;
+
 export const createSectionTeacherAssignmentSchema = createInsertSchema(
   sectionTeacherAssignments,
 )
@@ -77,3 +84,59 @@ export type CreateSectionTeacherAssignmentInput = z.infer<
  * dedicated `endAssignment` service operation owns that transition and hard
  * rule 2's spirit (append-on-change).
  */
+// ── Teaching read models (ADR-068) ─────────────────────────────────────────
+
+const teacherRefSchema = z.object({
+  assignmentId: z.uuid(),
+  staffId: z.uuid(),
+  name: z.string(),
+  /** Exclusive end for a substitute; null when open-ended. */
+  effectiveTo: z.string().nullable(),
+});
+
+/** Every section of a branch's session with its teachers and gaps. */
+export const teachingOverviewSchema = z.object({
+  classTeachersEnabled: z.boolean(),
+  sections: z.array(
+    z.object({
+      sectionId: z.uuid(),
+      sectionName: z.string(),
+      classId: z.uuid(),
+      className: z.string(),
+      classTeacher: teacherRefSchema.nullable(),
+      subjects: z.array(
+        z.object({
+          mappingId: z.uuid(),
+          subjectId: z.uuid(),
+          subjectName: z.string(),
+          shortName: z.string().nullable(),
+          teachers: z.array(teacherRefSchema),
+        }),
+      ),
+      gaps: z.number().int(),
+    }),
+  ),
+  totals: z.object({
+    slots: z.number().int(),
+    filled: z.number().int(),
+    noClassTeacher: z.number().int(),
+    noTeacher: z.number().int(),
+  }),
+});
+export type TeachingOverview = z.infer<typeof teachingOverviewSchema>;
+
+/** What the signed-in person teaches now (Home, Welcome). */
+export const myTeachingSchema = z.array(
+  z.object({
+    assignmentId: z.uuid(),
+    role: z.enum(["class_teacher", "subject_teacher"]),
+    effectiveTo: z.string().nullable(),
+    sectionId: z.uuid(),
+    sectionName: z.string(),
+    classId: z.uuid(),
+    className: z.string(),
+    subjectId: z.uuid().nullable(),
+    subjectName: z.string().nullable(),
+  }),
+);
+export type MyTeaching = z.infer<typeof myTeachingSchema>;

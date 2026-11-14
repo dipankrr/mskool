@@ -36,8 +36,6 @@ type AssignmentRow = inferRouterOutputs<
 const ROLES: AssignmentRole[] = [
   "class_teacher",
   "subject_teacher",
-  "co_teacher",
-  "activity_teacher",
 ];
 
 /**
@@ -120,7 +118,7 @@ function AssignmentFormBody({
   const [initial] = useState<AssignmentForm>(() =>
     row
       ? {
-          userId: row.userId,
+          staffId: row.staffId,
           role: row.role as AssignmentRole,
           subjectId: row.subjectId ?? null,
         }
@@ -274,22 +272,22 @@ function AssignmentFormBody({
         <SelectField
           label={copy.academic.assignments.fields.teacher}
           valueLabel={
-            form.userId
-              ? (directory.data ?? []).find((row) => row.userId === form.userId)
-                  ?.name ?? form.userId
+            form.staffId
+              ? (directory.data ?? []).find((row) => row.staffId === form.staffId)
+                  ?.name ?? form.staffId
               : null
           }
           placeholder={copy.academic.assignments.fields.teacher}
           options={(directory.data ?? []).map((teacher) => ({
-            id: teacher.userId,
+            id: teacher.staffId,
             label: teacher.name,
           }))}
-          currentId={form.userId ?? ""}
-          onSelect={(userId) => {
-            set("userId", userId || null);
-            touch("userId");
+          currentId={form.staffId ?? ""}
+          onSelect={(staffId) => {
+            set("staffId", staffId || null);
+            touch("staffId");
           }}
-          error={fieldError("userId")}
+          error={fieldError("staffId")}
           disabled={!canWrite || editing}
           testID="assignment-teacher"
         />

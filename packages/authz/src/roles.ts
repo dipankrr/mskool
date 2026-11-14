@@ -59,7 +59,8 @@ export const DEFAULT_SCOPE_LEVEL: Record<RoleType, ScopeType> = {
   org_admin: "org",
   principal: "school",
   vice_principal: "school",
-  class_teacher: "class",
+  // ADR-068: a class teacher looks after one section, not the whole class.
+  class_teacher: "section",
   subject_teacher: "section",
   accountant: "school",
   librarian: "school",

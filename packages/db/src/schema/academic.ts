@@ -17,7 +17,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
 import { organizations, schools } from "./organization";
-import { students } from "./people";
+import { staff, students } from "./people";
 
 /**
  * ACADEMIC STRUCTURE — Phase 2 slice 1.
@@ -356,11 +356,11 @@ export const subjectTypes = pgTable(
   ],
 );
 
+// ADR-068: two kinds only. The reference's co_teacher / activity_teacher
+// granted nothing and nothing read them.
 export const teacherAssignmentRoleEnum = pgEnum("teacher_assignment_role", [
   "class_teacher",
   "subject_teacher",
-  "co_teacher",
-  "activity_teacher",
 ]);
 
 /**
@@ -482,17 +482,20 @@ export const sectionTeacherAssignments = pgTable(
       .notNull()
       .references(() => academicYears.id),
 
-    // text, not uuid — better-auth owns the user table (hard rule 10).
-    userId: text()
+    // ADR-068: the staff record, not the login, so the office can assign
+    // before the person has joined. Access follows the record's login once
+    // there is one (assignment-access.service writes the role grants).
+    staffId: uuid()
       .notNull()
-      .references(() => user.id),
+      .references(() => staff.id),
 
     role: teacherAssignmentRoleEnum().notNull(),
     // Populated iff role = 'subject_teacher' — see the CHECK constraint.
     subjectId: uuid().references(() => subjects.id),
 
-    // NULL = currently active. A date-range model, not a status flag: "who
-    // taught this in September" is answerable without ever touching the past.
+    // NULL = open-ended. A date in the future is a substitute's last day
+    // (ADR-068); a date today or earlier means ended. A date-range model, not
+    // a status flag: "who taught this in September" stays answerable.
     effectiveFrom: date().notNull().default(sql`CURRENT_DATE`),
     effectiveTo: date(),
 
@@ -514,7 +517,15 @@ export const sectionTeacherAssignments = pgTable(
           OR (${t.role} <> 'subject_teacher' AND ${t.subjectId} IS NULL)`,
     ),
     index("section_teacher_assignments_section_idx").on(t.sectionId),
-    index("section_teacher_assignments_user_idx").on(t.userId),
+    index("section_teacher_assignments_staff_idx").on(t.staffId),
+    // ADR-068: one standing class teacher per section, enforced here.
+    uniqueIndex("section_teacher_assignments_one_class_teacher_uq")
+      .on(t.sectionId)
+      .where(sql`${t.role} = 'class_teacher' AND ${t.effectiveTo} IS NULL`),
+    // And never the same person twice for the same subject in a section.
+    uniqueIndex("section_teacher_assignments_no_duplicate_uq")
+      .on(t.sectionId, t.staffId, t.subjectId)
+      .where(sql`${t.role} = 'subject_teacher' AND ${t.effectiveTo} IS NULL`),
     index("section_teacher_assignments_school_idx").on(t.schoolId),
     index("section_teacher_assignments_org_idx").on(t.organizationId),
     // "Who is teaching here right now?" — the hot query, served by a small
@@ -735,9 +746,9 @@ export const sectionTeacherAssignmentRelations = relations(
       fields: [sectionTeacherAssignments.academicYearId],
       references: [academicYears.id],
     }),
-    user: one(user, {
-      fields: [sectionTeacherAssignments.userId],
-      references: [user.id],
+    staff: one(staff, {
+      fields: [sectionTeacherAssignments.staffId],
+      references: [staff.id],
     }),
     subject: one(subjects, {
       fields: [sectionTeacherAssignments.subjectId],

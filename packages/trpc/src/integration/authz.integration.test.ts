@@ -84,7 +84,7 @@ import {
   staffProcedure,
   studentProcedure,
 } from "../trpc";
-import { buildWorld, type IntegrationWorld } from "./world";
+import { buildWorld, ensureStaffFor, type IntegrationWorld } from "./world";
 
 const HISTORY = "academic_year:read_history";
 
@@ -313,10 +313,11 @@ const createMappingRouter = makeRouter({
 });
 
 const staOwner: OwnerResolver = async (organizationId, id) => {
-  const schoolId = await assignmentService.getSectionTeacherAssignmentOwnerId(
+  const owner = await assignmentService.getSectionTeacherAssignmentOwnerId(
     organizationId,
     id,
   );
+  const schoolId = owner?.schoolId;
   if (!schoolId) {
     throw new TRPCError({ code: "NOT_FOUND", message: "Teacher assignment not found." });
   }
@@ -350,8 +351,6 @@ const staByIdRouter = makeRouter({
 const staRoles = z.enum([
   "class_teacher",
   "subject_teacher",
-  "co_teacher",
-  "activity_teacher",
 ]);
 
 const createStaRouter = makeRouter({
@@ -373,7 +372,7 @@ const endStaRouter = makeRouter({
           .object({
             sectionId: z.uuid(),
             academicYearId: z.uuid(),
-            userId: z.string(),
+            staffId: z.uuid(),
             role: staRoles,
             subjectId: z.uuid().nullable().optional(),
           })
@@ -1635,6 +1634,14 @@ describe("enrollments — the year anchor, in both tracks", () => {
 // --- the teaching-assignment layer ----------------------------------------------
 
 describe("the teaching-assignment layer — the template and the staffing", () => {
+  // ADR-068: assignments name the staff record behind each world login.
+  let staffOfTeacherC6: string;
+  let staffOfSubjectS6A: string;
+  beforeAll(async () => {
+    staffOfTeacherC6 = await ensureStaffFor(world.orgAId, world.schoolA1Id, U().teacherC6);
+    staffOfSubjectS6A = await ensureStaffFor(world.orgAId, world.schoolA1Id, U().subjectS6A);
+  });
+
   const listMappingsAt = (userId: string) =>
     okIds(
       callerOf(mappingListRouter, userId).probe({
@@ -1830,16 +1837,13 @@ describe("the teaching-assignment layer — the template and the staffing", () =
     expect(await listAt(U().subjectS6A)).toEqual(want);
   });
 
-  it("the class teacher holds NO teacher_assignment:read — the matrix boundary", async () => {
-    await expectTrpcError(
-      callerOf(staListRouter, U().teacherC6).probe({
-        organizationId: world.orgAId,
-        schoolId: world.schoolA1Id,
-        sectionId: world.section6aId,
-      }),
-      "FORBIDDEN",
-      "Missing permission: teacher_assignment:read",
-    );
+  it("the class teacher reads who teaches her section (ADR-068: the read-only grid)", async () => {
+    const rows = await callerOf(staListRouter, U().teacherC6).probe({
+      organizationId: world.orgAId,
+      schoolId: world.schoolA1Id,
+      sectionId: world.section6aId,
+    });
+    expect(Array.isArray(rows)).toBe(true);
   });
 
   it("sta.byId: her own row resolves (overlap reach); a cross-org row is NOT_FOUND", async () => {
@@ -1866,7 +1870,7 @@ describe("the teaching-assignment layer — the template and the staffing", () =
         schoolId: world.schoolA1Id,
         sectionId: world.sectionB1Id,
         academicYearId: world.yearB1Id,
-        userId: U().teacherC6,
+        staffId: staffOfTeacherC6,
         role: "subject_teacher",
         subjectId: world.subjectA1MathId,
       }),
@@ -1884,7 +1888,7 @@ describe("the teaching-assignment layer — the template and the staffing", () =
         schoolId: world.schoolA1Id,
         sectionId: world.section6aId,
         academicYearId: world.closedYearAId,
-        userId: U().teacherC6,
+        staffId: staffOfTeacherC6,
         role: "class_teacher",
       }),
       "BAD_REQUEST",
@@ -1899,7 +1903,7 @@ describe("the teaching-assignment layer — the template and the staffing", () =
         schoolId: world.schoolA1Id,
         sectionId: world.section6aId,
         academicYearId: world.currentYearAId,
-        userId: U().teacherC6,
+        staffId: staffOfTeacherC6,
         role: "subject_teacher",
         subjectId: world.subjectB1MathId,
       }),
@@ -1920,7 +1924,7 @@ describe("the teaching-assignment layer — the template and the staffing", () =
       successor: {
         sectionId: world.section6bId,
         academicYearId: world.currentYearAId,
-        userId: U().subjectS6A,
+        staffId: staffOfSubjectS6A,
         role: "subject_teacher",
         subjectId: world.subjectA1PhysicsId,
       },
@@ -1949,6 +1953,14 @@ describe("the teaching-assignment layer — the template and the staffing", () =
       "CONFLICT",
       "This assignment has already been ended. Refresh to see the current assignments.",
     );
+
+    // ADR-068: the successor's assignment gave her a 6-B grant. End it so the
+    // attendance tests below keep their "never the neighbour's section" world
+    // (ending revokes the grant); the fixture re-opens a scratch row next run.
+    await callerOf(endStaRouter, U().principalA1).probe({
+      organizationId: world.orgAId,
+      id: ended.successor.id,
+    });
   });
 });
 

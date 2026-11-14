@@ -150,22 +150,22 @@ describe("mapping forms", () => {
 
 describe("assignment forms", () => {
   it("demands teacher and role", () => {
-    const errors = validateAssignmentForm({ userId: null, role: "subject_teacher", subjectId: null });
-    expect(errors.userId).toBeDefined();
+    const errors = validateAssignmentForm({ staffId: null, role: "subject_teacher", subjectId: null });
+    expect(errors.staffId).toBeDefined();
   });
 
   it("pairs subject with the subject_teacher role only", () => {
     expect(
-      validateAssignmentForm({ userId: "u1", role: "subject_teacher", subjectId: null }).subjectId,
+      validateAssignmentForm({ staffId: "u1", role: "subject_teacher", subjectId: null }).subjectId,
     ).toBeDefined();
     expect(
-      validateAssignmentForm({ userId: "u1", role: "class_teacher", subjectId: "s1" }).subjectId,
+      validateAssignmentForm({ staffId: "u1", role: "class_teacher", subjectId: "s1" }).subjectId,
     ).toBeDefined();
     expect(
-      validateAssignmentForm({ userId: "u1", role: "class_teacher", subjectId: null }).subjectId,
+      validateAssignmentForm({ staffId: "u1", role: "class_teacher", subjectId: null }).subjectId,
     ).toBeUndefined();
     expect(
-      validateAssignmentForm({ userId: "u1", role: "subject_teacher", subjectId: "s1" }).subjectId,
+      validateAssignmentForm({ staffId: "u1", role: "subject_teacher", subjectId: "s1" }).subjectId,
     ).toBeUndefined();
   });
 });

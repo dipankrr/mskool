@@ -16,6 +16,7 @@ import {
   periods as periodsTable,
   roleAssignments,
   schools,
+  staff,
   sections,
   sectionTeacherAssignments,
   studentEnrollments,
@@ -257,6 +258,34 @@ async function findOrCreateClassSubjectMapping(
 }
 
 /**
+ * The staff record behind a world login (ADR-068: assignments point at staff
+ * records). Some world teachers are bare logins; they get a record here.
+ */
+export async function ensureStaffFor(
+  organizationId: string,
+  schoolId: string,
+  userId: string,
+): Promise<string> {
+  const [person] = await db
+    .select({ id: staff.id })
+    .from(staff)
+    .where(and(eq(staff.userId, userId), eq(staff.organizationId, organizationId)));
+  if (person) return person.id;
+  const [made] = await db
+    .insert(staff)
+    .values({
+      organizationId,
+      schoolId,
+      userId,
+      employeeCode: `WORLD-${userId.slice(0, 12)}`,
+      firstName: "World",
+      lastName: "Teacher",
+    })
+    .returning({ id: staff.id });
+  return made!.id;
+}
+
+/**
  * Keyed on the OPEN row's natural key (section, user, role, subject). Ending an
  * assignment closes the row, so a re-run finds no open one and creates it —
  * the same philosophy as the revoked grant above: the fixture guarantees the
@@ -268,17 +297,28 @@ async function findOrCreateSectionTeacherAssignment(
     sectionId: string;
     academicYearId: string;
     userId: string;
-    role: "class_teacher" | "subject_teacher" | "co_teacher" | "activity_teacher";
+    role: "class_teacher" | "subject_teacher";
     subjectId?: string | null;
   },
 ) {
+  // ADR-068: assignments point at the staff record; fixtures still name the
+  // login, so look the record up.
+  const personId = await ensureStaffFor(scope.organizationId, scope.schoolId, input.userId);
+  const { userId: _login, ...rest } = input;
+  const row = { ...rest, staffId: personId };
+  if (input.role === "class_teacher") {
+    await db
+      .update(schools)
+      .set({ classTeachersEnabled: true })
+      .where(eq(schools.id, scope.schoolId));
+  }
   const [existing] = await db
     .select()
     .from(sectionTeacherAssignments)
     .where(
       and(
         eq(sectionTeacherAssignments.sectionId, input.sectionId),
-        eq(sectionTeacherAssignments.userId, input.userId),
+        eq(sectionTeacherAssignments.staffId, personId),
         eq(sectionTeacherAssignments.role, input.role),
         isNull(sectionTeacherAssignments.effectiveTo),
         input.subjectId
@@ -288,7 +328,13 @@ async function findOrCreateSectionTeacherAssignment(
     );
   if (existing) return existing;
 
-  return assignmentService.createSectionTeacherAssignment(scope, input);
+  // Inserted directly: the authz world pins its grants exactly, and the
+  // service would add the section-level teacher grants (ADR-068).
+  const [created] = await db
+    .insert(sectionTeacherAssignments)
+    .values({ ...row, organizationId: scope.organizationId, schoolId: scope.schoolId })
+    .returning();
+  return created!;
 }
 
 /**

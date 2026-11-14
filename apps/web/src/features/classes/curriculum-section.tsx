@@ -53,7 +53,7 @@ import type {
 const mappingColumn = createAppColumnHelper<ClassSubjectMappingRow>();
 const assignmentColumn = createAppColumnHelper<SectionTeacherAssignmentRow>();
 
-type Teacher = { userId: string; name: string };
+type Teacher = { staffId: string; name: string };
 
 export function CurriculumSection({
   classId,
@@ -213,7 +213,7 @@ export function CurriculumSection({
 
   const teacherNameById = useMemo(() => {
     const map = new Map<string, string>();
-    for (const t of (teachers.data ?? []) as Teacher[]) map.set(t.userId, t.name);
+    for (const t of (teachers.data ?? []) as Teacher[]) map.set(t.staffId, t.name);
     return map;
   }, [teachers.data]);
 
@@ -228,7 +228,7 @@ export function CurriculumSection({
         assignmentColumn.display({
           id: "teacher",
           header: copy.classes.curriculum.teacher,
-          cell: ({ row }) => teacherNameById.get(row.original.userId) ?? copy.common.none,
+          cell: ({ row }) => teacherNameById.get(row.original.staffId) ?? copy.common.none,
         }),
         assignmentColumn.accessor("role", {
           header: copy.classes.curriculum.role,
@@ -361,7 +361,7 @@ export function CurriculumSection({
                   {subjectNameById.get(row.subjectId ?? "") ?? copy.common.none}
                 </p>
                 <p className="text-muted-foreground text-xs">
-                  {teacherNameById.get(row.userId) ?? copy.common.none}
+                  {teacherNameById.get(row.staffId) ?? copy.common.none}
                 </p>
               </div>
             )}
@@ -486,7 +486,7 @@ export function CurriculumSection({
             ...scopeArgs(),
             sectionId: activeSectionId,
             academicYearId,
-            userId: assignmentTeacher,
+            staffId: assignmentTeacher,
             role: assignmentRole as "subject_teacher" | "class_teacher",
             // The CHECK pairs the role with the subject: a class teacher
             // has none; a subject teacher must have hers.
@@ -569,7 +569,7 @@ export function CurriculumSection({
             </SelectTrigger>
             <SelectContent>
               {((teachers.data ?? []) as Teacher[]).map((teacher) => (
-                <SelectItem key={teacher.userId} value={teacher.userId}>
+                <SelectItem key={teacher.staffId} value={teacher.staffId}>
                   {teacher.name}
                 </SelectItem>
               ))}

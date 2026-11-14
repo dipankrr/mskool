@@ -183,7 +183,7 @@ export function TeacherAssignmentsScreen() {
       {(list.data ?? []).map((row: AssignmentRow) => (
         <PersonRow
           key={row.id}
-          name={teacherName(row.userId) ?? row.userId}
+          name={row.teacherName}
           meta={[
             copy.academic.assignments.roles[row.role],
             subjectName(row.subjectId ?? null),

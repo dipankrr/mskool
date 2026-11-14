@@ -1179,8 +1179,6 @@ export const copy = {
       roles: {
         class_teacher: "Class teacher",
         subject_teacher: "Subject teacher",
-        co_teacher: "Co-teacher",
-        activity_teacher: "Activity teacher",
       },
       subjectHelp: "A subject teacher must have a subject; the other roles must not.",
       endNoticeTitle: "End this assignment",

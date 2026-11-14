@@ -13,6 +13,7 @@ import {
 } from "@repo/db/schema";
 import { and, eq, gt, inArray, isNull, ne, sql } from "drizzle-orm";
 
+import { assignmentAccessService } from "./assignment-access.service";
 import { normalizePhone } from "./phone";
 import { ServiceRefusal } from "./service-error";
 
@@ -360,6 +361,10 @@ export class StaffLoginService {
         details: { staffId: match.staffId, viaCode: true },
       });
     });
+
+    // ADR-068: whatever the office assigned before they joined becomes their
+    // access now.
+    await assignmentAccessService.syncStaff(match.organizationId, match.staffId, userId);
 
     return { staffId: match.staffId, userId: userId!, firstJoin };
   }

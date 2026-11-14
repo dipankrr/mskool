@@ -375,20 +375,20 @@ export type AssignmentRole = NonNullable<
 >;
 
 export type AssignmentForm = {
-  userId: string | null;
+  staffId: string | null;
   role: AssignmentRole;
   subjectId: string | null;
 };
 
 export function emptyAssignmentForm(): AssignmentForm {
-  return { userId: null, role: "subject_teacher", subjectId: null };
+  return { staffId: null, role: "subject_teacher", subjectId: null };
 }
 
 export function validateAssignmentForm(
   form: AssignmentForm,
 ): Partial<Record<keyof AssignmentForm, string>> {
   const errors: Partial<Record<keyof AssignmentForm, string>> = {};
-  if (!form.userId) errors.userId = copy.academic.assignments.errors.teacher;
+  if (!form.staffId) errors.staffId = copy.academic.assignments.errors.teacher;
   if (form.role === "subject_teacher" && !form.subjectId) {
     errors.subjectId = copy.academic.assignments.errors.subject;
   }
@@ -409,7 +409,7 @@ export function assignmentPayload(
   return {
     sectionId,
     academicYearId,
-    userId: form.userId ?? "",
+    staffId: form.staffId ?? "",
     role: form.role,
     ...(form.role === "subject_teacher" && form.subjectId
       ? { subjectId: form.subjectId }

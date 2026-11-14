@@ -36,6 +36,7 @@ import {
   examSubjectSchedules,
   roleAssignments,
   sectionTeacherAssignments,
+  staff,
   studentEnrollments,
   students,
   subjects,
@@ -183,9 +184,14 @@ describe("exam router conformance — UI-shaped payloads through the real router
     await db
       .insert(roleAssignments)
       .values({ organizationId: org!.id, userId: teacher!.id, roleType: "subject_teacher", scopeType: "section", scopeId: section.id });
+    // ADR-068: assignments point at the staff record.
+    const [teacherStaff] = await db
+      .insert(staff)
+      .values({ organizationId: org!.id, schoolId: school.id, userId: teacher!.id, employeeCode: `CONF-${RUN}`, firstName: "Conf", lastName: "Teacher" })
+      .returning();
     await db
       .insert(sectionTeacherAssignments)
-      .values({ organizationId: org!.id, schoolId: school.id, sectionId: section.id, academicYearId: year.id, userId: teacher!.id, role: "subject_teacher", subjectId: subject!.id });
+      .values({ organizationId: org!.id, schoolId: school.id, sectionId: section.id, academicYearId: year.id, staffId: teacherStaff!.id, role: "subject_teacher", subjectId: subject!.id });
 
     // The gate truth-table's second subject: a paper the subject teacher
     // is NOT assigned to (the crossing case) and the dual-hat principal

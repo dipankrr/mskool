@@ -10,6 +10,7 @@ import { db } from "@repo/db";
 import { authzAuditLog, organizations, staff, user } from "@repo/db/schema";
 import { and, asc, eq, ilike, isNotNull, or, sql } from "drizzle-orm";
 
+import { assignmentAccessService } from "./assignment-access.service";
 import { staffLoginService } from "./staff-login.service";
 
 /** Starter designations offered before a school has any of its own (ADR-068). */
@@ -221,6 +222,9 @@ export class StaffService {
     // ADR-068: someone who leaves can no longer sign in, and their number is
     // free for whoever needs it next. A suspension keeps the login.
     if (row && leaving) {
+      // Their classes end today (gaps show for the office to fill), then the
+      // login goes and every grant with it.
+      await assignmentAccessService.endAllForStaff(scope.organizationId, staffId);
       await staffLoginService.switchOff(scope.organizationId, staffId, actorUserId);
     }
 

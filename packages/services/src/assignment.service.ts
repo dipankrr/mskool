@@ -11,6 +11,7 @@ import {
   classes,
   examSubjectSchedules,
   sectionTeacherAssignments,
+  schools,
   sections,
   staff as staffTable,
   subjects,
@@ -20,6 +21,11 @@ import {
 import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 
 import { ServiceRefusal } from "./service-error";
+import {
+  assignmentAccessService,
+  assignmentIsCurrent,
+  todayUtc,
+} from "./assignment-access.service";
 
 /**
  * THE TEACHING-ASSIGNMENT LAYER — Phase 2 slice 2.
@@ -383,8 +389,36 @@ export class AssignmentService {
   async createSectionTeacherAssignment(
     scope: DataScope,
     input: CreateSectionTeacherAssignmentInput,
+    actorUserId: string | null = null,
   ) {
-    return db.transaction((tx) => this.insertAssignment(tx, scope, input));
+    const row = await db.transaction((tx) =>
+      this.insertAssignment(tx, scope, input, actorUserId),
+    );
+    // ADR-068: assigning is the access. After commit, so a rollback never
+    // leaves a grant behind.
+    await this.syncAccess(scope.organizationId, row.staffId, row.sectionId, actorUserId);
+    return row;
+  }
+
+  /** Brings the staff member's grants on this section in line (ADR-068). */
+  private async syncAccess(
+    organizationId: string,
+    staffId: string,
+    sectionId: string,
+    actorUserId: string | null,
+  ) {
+    const [person] = await db
+      .select({ userId: staffTable.userId })
+      .from(staffTable)
+      .where(eq(staffTable.id, staffId));
+    if (person?.userId) {
+      await assignmentAccessService.syncSection(
+        organizationId,
+        person.userId,
+        sectionId,
+        actorUserId,
+      );
+    }
   }
 
   /**
@@ -398,12 +432,45 @@ export class AssignmentService {
     tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
     scope: DataScope,
     input: CreateSectionTeacherAssignmentInput,
+    actorUserId: string | null,
   ) {
     const schoolId = atSchoolLevel(scope).schoolId;
     if (!schoolId) {
       throw new Error(
         "A school is required to assign a teacher. The caller's scope must resolve to a school node.",
       );
+    }
+
+    // ADR-068: the teacher is a current staff record of this organisation.
+    const [person] = await tx
+      .select({ id: staffTable.id, status: staffTable.status })
+      .from(staffTable)
+      .where(
+        and(
+          eq(staffTable.id, input.staffId),
+          eq(staffTable.organizationId, scope.organizationId),
+        ),
+      );
+    if (!person) {
+      throw new ServiceRefusal("NOT_FOUND", "Staff member not found.");
+    }
+    if (person.status !== "active") {
+      throw new ServiceRefusal("BAD_REQUEST", "Only current staff can be given classes.");
+    }
+    if (input.role === "class_teacher") {
+      const [school] = await tx
+        .select({ on: schools.classTeachersEnabled })
+        .from(schools)
+        .where(eq(schools.id, schoolId));
+      if (!school?.on) {
+        throw new ServiceRefusal(
+          "BAD_REQUEST",
+          "This school doesn't use class teachers. Turn them on in Teaching settings first.",
+        );
+      }
+    }
+    if (input.effectiveTo && input.effectiveTo <= todayUtc()) {
+      throw new ServiceRefusal("BAD_REQUEST", "A substitute's last day can't be in the past.");
     }
     const organizationId = scope.organizationId;
 
@@ -451,7 +518,7 @@ export class AssignmentService {
 
     const [assignment] = await tx
       .insert(sectionTeacherAssignments)
-      .values({ ...input, organizationId, schoolId })
+      .values({ ...input, organizationId, schoolId, createdBy: actorUserId })
       .returning();
     if (!assignment) {
       throw new Error("Failed to create section-teacher assignment.");
@@ -461,17 +528,28 @@ export class AssignmentService {
 
   /** The open assignments for a section — "who teaches here now". */
   async listSectionTeacherAssignments(scopes: DataScope[], sectionId: string) {
-    return db
-      .select()
+    const rows = await db
+      .select({
+        row: sectionTeacherAssignments,
+        firstName: staffTable.firstName,
+        lastName: staffTable.lastName,
+        userId: staffTable.userId,
+      })
       .from(sectionTeacherAssignments)
+      .innerJoin(staffTable, eq(sectionTeacherAssignments.staffId, staffTable.id))
       .where(
         and(
           eq(sectionTeacherAssignments.sectionId, sectionId),
           scopeWhere(scopes.map(atSchoolLevel), ASSIGNMENT_SCOPE_COLUMNS),
-          isNull(sectionTeacherAssignments.effectiveTo),
+          assignmentIsCurrent(),
         ),
       )
       .orderBy(asc(sectionTeacherAssignments.createdAt));
+    return rows.map(({ row, firstName, lastName, userId }) => ({
+      ...row,
+      teacherName: `${firstName} ${lastName}`.trim(),
+      userId,
+    }));
   }
 
   /**
@@ -483,31 +561,52 @@ export class AssignmentService {
    * does.
    */
   async listTeacherDirectory(scopes: DataScope[]) {
-    // DISTINCT on (userId, name) would split a person listed twice; the
-    // grouping keeps one row per login id, the first name's ordering
-    // preserved.
-    const rows = await db
+    // ADR-068: every current staff member of the branch, login or not (the
+    // office assigns before people join), with whether they teach and how
+    // much they already hold, so pickers can spread the work.
+    const people = await db
       .select({
+        staffId: staffTable.id,
         userId: staffTable.userId,
-        name: sql<string>`max(${staffTable.firstName} || ' ' || ${staffTable.lastName})`,
+        firstName: staffTable.firstName,
+        lastName: staffTable.lastName,
+        designation: staffTable.designation,
+        teachesClasses: staffTable.teachesClasses,
       })
       .from(staffTable)
       .where(
         and(
           eq(staffTable.status, "active"),
-          isNotNull(staffTable.userId),
           scopeWhere(scopes.map(atSchoolLevel), {
             organizationId: staffTable.organizationId,
             schoolId: staffTable.schoolId,
           }),
         ),
       )
-      .groupBy(staffTable.userId)
-      .orderBy(asc(sql`min(${staffTable.firstName})`));
-    // The WHERE pins userId non-null; the select's type cannot see it.
-    return rows.map((row) => ({
-      userId: row.userId as string,
-      name: row.name ?? "",
+      .orderBy(asc(staffTable.firstName), asc(staffTable.lastName));
+    const loads = await db
+      .select({
+        staffId: sectionTeacherAssignments.staffId,
+        slots: sql<number>`count(*)::int`,
+        sections: sql<number>`count(distinct ${sectionTeacherAssignments.sectionId})::int`,
+      })
+      .from(sectionTeacherAssignments)
+      .where(
+        and(
+          scopeWhere(scopes.map(atSchoolLevel), ASSIGNMENT_SCOPE_COLUMNS),
+          assignmentIsCurrent(),
+        ),
+      )
+      .groupBy(sectionTeacherAssignments.staffId);
+    const byStaff = new Map(loads.map((row) => [row.staffId, row]));
+    return people.map((person) => ({
+      staffId: person.staffId,
+      userId: person.userId,
+      name: `${person.firstName} ${person.lastName}`.trim(),
+      designation: person.designation,
+      teachesClasses: person.teachesClasses,
+      slots: byStaff.get(person.staffId)?.slots ?? 0,
+      sections: byStaff.get(person.staffId)?.sections ?? 0,
     }));
   }
 
@@ -535,10 +634,12 @@ export class AssignmentService {
     successor?: {
       sectionId: string;
       academicYearId: string;
-      userId: string;
-      role: "class_teacher" | "subject_teacher" | "co_teacher" | "activity_teacher";
+      staffId: string;
+      role: "class_teacher" | "subject_teacher";
       subjectId?: string | null;
+      effectiveTo?: string | null;
     },
+    actorUserId: string | null = null,
   ) {
     const schoolId = atSchoolLevel(scope).schoolId;
     if (!schoolId) {
@@ -546,7 +647,7 @@ export class AssignmentService {
     }
     const organizationId = scope.organizationId;
 
-    return db.transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
       const [existing] = await tx
         .select()
         .from(sectionTeacherAssignments)
@@ -565,11 +666,11 @@ export class AssignmentService {
       // so a row's open and close agree on what "today" is.
       const closed = await tx
         .update(sectionTeacherAssignments)
-        .set({ effectiveTo: new Date().toISOString().slice(0, 10) })
+        .set({ effectiveTo: todayUtc() })
         .where(
           and(
             eq(sectionTeacherAssignments.id, assignmentId),
-            isNull(sectionTeacherAssignments.effectiveTo),
+            assignmentIsCurrent(),
           ),
         )
         .returning();
@@ -580,20 +681,40 @@ export class AssignmentService {
       let created: (typeof sectionTeacherAssignments.$inferSelect) | undefined;
       if (successor) {
         // Same transaction, same connection — see insertAssignment's comment.
-        created = await this.insertAssignment(tx, scope, successor);
+        created = await this.insertAssignment(tx, scope, successor, actorUserId);
       }
 
       return { closed: closed[0], successor: created ?? null };
     });
+
+    // ADR-068: access follows, for both people, after commit.
+    await this.syncAccess(
+      organizationId,
+      result.closed.staffId,
+      result.closed.sectionId,
+      actorUserId,
+    );
+    if (result.successor) {
+      await this.syncAccess(
+        organizationId,
+        result.successor.staffId,
+        result.successor.sectionId,
+        actorUserId,
+      );
+    }
+    return result;
   }
 
   /** The owning branch of an assignment (B6 adapter) — schoolId column. */
   async getSectionTeacherAssignmentOwnerId(
     organizationId: string,
     assignmentId: string,
-  ): Promise<string | null> {
+  ): Promise<{ schoolId: string; sectionId: string } | null> {
     const [row] = await db
-      .select({ schoolId: sectionTeacherAssignments.schoolId })
+      .select({
+        schoolId: sectionTeacherAssignments.schoolId,
+        sectionId: sectionTeacherAssignments.sectionId,
+      })
       .from(sectionTeacherAssignments)
       .where(
         and(
@@ -601,7 +722,7 @@ export class AssignmentService {
           eq(sectionTeacherAssignments.organizationId, organizationId),
         ),
       );
-    return row?.schoolId ?? null;
+    return row ?? null;
   }
 
   /**
@@ -634,14 +755,15 @@ export class AssignmentService {
     const [row] = await db
       .select({ id: sectionTeacherAssignments.id })
       .from(sectionTeacherAssignments)
+      .innerJoin(staffTable, eq(sectionTeacherAssignments.staffId, staffTable.id))
       .where(
         and(
           eq(sectionTeacherAssignments.organizationId, organizationId),
-          eq(sectionTeacherAssignments.userId, userId),
+          eq(staffTable.userId, userId),
           eq(sectionTeacherAssignments.sectionId, sectionId),
           eq(sectionTeacherAssignments.subjectId, subjectId),
           eq(sectionTeacherAssignments.role, "subject_teacher"),
-          isNull(sectionTeacherAssignments.effectiveTo),
+          assignmentIsCurrent(),
         ),
       );
 

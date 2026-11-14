@@ -26,6 +26,7 @@ import {
   schools,
 } from "@repo/db/schema";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { ServiceRefusal } from "./service-error";
 
 /**
  * ROLES — granting and revoking `role_assignments` (ADR-005, ADR-011).
@@ -63,6 +64,14 @@ export class RoleService {
     actorUserId: string,
     input: AssignRoleInput & { scopeId: string },
   ) {
+    // ADR-068: teaching access comes from teaching assignments, which write
+    // these grants themselves. A hand-made one would drift from the timetable.
+    if (input.roleType === "class_teacher" || input.roleType === "subject_teacher") {
+      throw new ServiceRefusal(
+        "BAD_REQUEST",
+        "Teachers get their access from what they teach. Give them classes in Teaching instead.",
+      );
+    }
     if (input.scopeType === "org") {
       if (input.scopeId !== organizationId) {
         throw new Error(

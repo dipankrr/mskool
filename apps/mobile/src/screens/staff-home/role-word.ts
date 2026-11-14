@@ -19,7 +19,7 @@
 
 /** The fields this decision reads from `teacherAssignment.list` rows. */
 export type TeacherAssignmentRow = {
-  userId: string;
+  userId: string | null;
   role: string;
   effectiveTo: string | null;
 };
@@ -27,7 +27,7 @@ export type TeacherAssignmentRow = {
 export function deriveRoleWord(input: {
   /** undefined = not readable (or not yet settled); [] = readable, none open. */
   assignmentRows: readonly TeacherAssignmentRow[] | undefined;
-  userId: string;
+  userId: string | null;
   roleTypes: readonly string[];
   sectionCount: number;
 }): "class_teacher" | null {

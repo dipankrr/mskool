@@ -197,6 +197,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "role_assignment:read",
     "role_permission:read",
     "portal_access:read",
+    // ADR-068: who teaches what is the academic office's job.
+    "teacher_assignment:create",
+    "teacher_assignment:read",
+    "teacher_assignment:update",
   ],
 
   // Owns a class: marks its attendance, enters its marks, sees its fee status
@@ -241,6 +245,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleType, Permission[]> = {
     "fee_payment:read",
     "leave:create",
     "leave:read",
+    // ADR-068: sees who else teaches the section (the read-only grid).
+    "teacher_assignment:read",
   ],
 
   // Teaches a subject to specific sections. Marks and homework for their own

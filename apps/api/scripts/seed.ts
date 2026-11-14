@@ -574,17 +574,32 @@ async function findOrCreateSectionTeacherAssignment(
     sectionId: string;
     academicYearId: string;
     userId: string;
-    role: "class_teacher" | "subject_teacher" | "co_teacher" | "activity_teacher";
+    role: "class_teacher" | "subject_teacher";
     subjectId?: string | null;
   },
 ) {
+  // ADR-068: assignments point at the staff record; fixtures still name the
+  // login, so look the record up.
+  const [person] = await db
+    .select({ id: staff.id })
+    .from(staff)
+    .where(and(eq(staff.userId, input.userId), eq(staff.organizationId, scope.organizationId)));
+  if (!person) throw new Error("No staff record for this login: " + input.userId);
+  const { userId: _login, ...rest } = input;
+  const row = { ...rest, staffId: person.id };
+  if (input.role === "class_teacher") {
+    await db
+      .update(schools)
+      .set({ classTeachersEnabled: true })
+      .where(eq(schools.id, scope.schoolId));
+  }
   const [existing] = await db
     .select()
     .from(sectionTeacherAssignments)
     .where(
       and(
         eq(sectionTeacherAssignments.sectionId, input.sectionId),
-        eq(sectionTeacherAssignments.userId, input.userId),
+        eq(sectionTeacherAssignments.staffId, person.id),
         eq(sectionTeacherAssignments.role, input.role),
         isNull(sectionTeacherAssignments.effectiveTo),
         input.subjectId
@@ -597,10 +612,7 @@ async function findOrCreateSectionTeacherAssignment(
     return existing;
   }
 
-  const assignment = await assignmentService.createSectionTeacherAssignment(
-    scope,
-    input,
-  );
+  const assignment = await assignmentService.createSectionTeacherAssignment(scope, row);
   console.log(`  + ${input.role} assignment`);
   return assignment;
 }
@@ -1918,7 +1930,7 @@ Done.
 
   mappings (A)   ${mappingMathA.sequenceNumber}. ${subjectMathA.name}, ${mappingPhysicsA.sequenceNumber}. ${subjectPhysicsA.name} → ${classA.name}
   mappings (B)   ${mappingMathB.sequenceNumber}. ${subjectMathB.name} → ${classB.name}  — same name as A's, by design
-  assignments    6-A: subject_teacher (${staSubjectTeacher.userId.slice(0, 8)}…), class_teacher homeroom (${staHomeroom.userId.slice(0, 8)}…)
+  assignments    6-A: subject_teacher (${staSubjectTeacher.staffId.slice(0, 8)}…), class_teacher homeroom (${staHomeroom.staffId.slice(0, 8)}…)
 
   terms (A)      ${term1A.name}, ${term2A.name} → ${currentYearA.name}; ${termFullClosedA.name} → ${closedYearA.name} (closed)
   terms (B)      ${termFullB.name} → ${yearB.name}  — same name as A's closed year, by design

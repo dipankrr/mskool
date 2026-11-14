@@ -35,6 +35,7 @@ import {
   questionAttemptAnswers,
   questionAttempts,
   sectionTeacherAssignments,
+  staff as staffRecords,
   sections,
   studentAssignments,
   studentEnrollments,
@@ -70,6 +71,7 @@ import { compareRoll, studentWord, validateChoices } from "./homework-rules";
 import { fullName, resolvePortalChild } from "./portal-child";
 import { refuse } from "./service-error";
 import { storageService } from "./storage.service";
+import { assignmentIsCurrent } from "./assignment-access.service";
 
 /**
  * HOMEWORK (ADR-039, rebuilt by ADR-064) — the daily homework diary.
@@ -2527,13 +2529,15 @@ export class HomeworkService {
     const rows = await db
       .select({ sectionId: sectionTeacherAssignments.sectionId, subjectId: sectionTeacherAssignments.subjectId })
       .from(sectionTeacherAssignments)
+      // ADR-068: assignments point at the staff record; the login is on it.
+      .innerJoin(staffRecords, eq(sectionTeacherAssignments.staffId, staffRecords.id))
       .where(
         and(
           eq(sectionTeacherAssignments.organizationId, organizationId),
           eq(sectionTeacherAssignments.schoolId, schoolId),
-          eq(sectionTeacherAssignments.userId, userId),
+          eq(staffRecords.userId, userId),
           eq(sectionTeacherAssignments.role, "subject_teacher"),
-          isNull(sectionTeacherAssignments.effectiveTo),
+          assignmentIsCurrent(),
         ),
       );
     return rows

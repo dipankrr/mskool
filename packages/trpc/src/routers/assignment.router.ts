@@ -1,14 +1,23 @@
 import {
+  myTeachingSchema,
+  teachingOverviewSchema,
   classSubjectMappingSelectSchema,
   createClassSubjectMappingSchema,
   createSectionTeacherAssignmentSchema,
+  sectionTeacherAssignmentRowSchema,
   sectionTeacherAssignmentSelectSchema,
   updateClassSubjectMappingSchema,
 } from "@repo/contracts";
-import { assignmentService } from "@repo/services";
+import { assignmentService, teachingOverviewService } from "@repo/services";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { router, staffListProcedure, staffProcedure, type OwnerResolver } from "../trpc";
+import {
+  protectedProcedure,
+  router,
+  staffListProcedure,
+  staffProcedure,
+  type OwnerResolver,
+} from "../trpc";
 
 /**
  * THE TEACHING-ASSIGNMENT LAYER — Phase 2 slice 2.
@@ -205,11 +214,13 @@ const subjectMappingRouter = router({
 // ---------------------------------------------------------------------------
 
 const resolveTeacherAssignmentOwner: OwnerResolver = async (orgId, id) => {
-  const schoolId = await assignmentService.getSectionTeacherAssignmentOwnerId(orgId, id);
-  if (!schoolId) {
+  const owner = await assignmentService.getSectionTeacherAssignmentOwnerId(orgId, id);
+  if (!owner) {
     throw new TRPCError({ code: "NOT_FOUND", message: "Teacher assignment not found." });
   }
-  return { type: "school", id: schoolId };
+  // ADR-068: the SECTION, like create checks — a section-level manager can
+  // change what they could add (it used to need the whole branch).
+  return { type: "section", id: owner.sectionId };
 };
 
 const teacherAssignmentRouter = router({
@@ -228,7 +239,7 @@ const teacherAssignmentRouter = router({
       },
     })
     .input(z.object({ sectionId: z.uuid() }))
-    .output(z.array(sectionTeacherAssignmentSelectSchema))
+    .output(z.array(sectionTeacherAssignmentRowSchema))
     .query(async ({ ctx, input }) =>
       assignmentService.listSectionTeacherAssignments(ctx.scopes, input.sectionId),
     ),
@@ -280,7 +291,7 @@ const teacherAssignmentRouter = router({
     .input(createSectionTeacherAssignmentSchema)
     .output(sectionTeacherAssignmentSelectSchema)
     .mutation(async ({ ctx, input }) => {
-      return assignmentService.createSectionTeacherAssignment(ctx.scope, input);
+      return assignmentService.createSectionTeacherAssignment(ctx.scope, input, ctx.userId);
     }),
 
   /**
@@ -309,14 +320,11 @@ const teacherAssignmentRouter = router({
           .object({
             sectionId: z.uuid(),
             academicYearId: z.uuid(),
-            userId: z.string(),
-            role: z.enum([
-              "class_teacher",
-              "subject_teacher",
-              "co_teacher",
-              "activity_teacher",
-            ]),
+            staffId: z.uuid(),
+            role: z.enum(["class_teacher", "subject_teacher"]),
             subjectId: z.uuid().nullable().optional(),
+            // A substitute's end (exclusive), ADR-068.
+            effectiveTo: z.string().nullable().optional(),
           })
           .optional(),
       }),
@@ -328,7 +336,7 @@ const teacherAssignmentRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      return assignmentService.endAssignment(ctx.scope, input.id, input.successor);
+      return assignmentService.endAssignment(ctx.scope, input.id, input.successor, ctx.userId);
     }),
 });
 
@@ -357,9 +365,53 @@ export const assignmentRouter = router({
       },
     })
     .output(
-      z.array(z.object({ userId: z.string(), name: z.string() })),
+      z.array(
+        z.object({
+          staffId: z.uuid(),
+          userId: z.string().nullable(),
+          name: z.string(),
+          designation: z.string().nullable(),
+          teachesClasses: z.boolean(),
+          // (section, subject) slots and distinct sections held now (ADR-068).
+          slots: z.number().int(),
+          sections: z.number().int(),
+        }),
+      ),
     )
     .query(async ({ ctx }) =>
       assignmentService.listTeacherDirectory(ctx.scopes),
+    ),
+
+  // ── Teaching (ADR-068) ────────────────────────────────────────────────────
+
+  /**
+   * Every section of the branch's session with its class teacher, each mapped
+   * subject's teachers, and the gaps. Read-only for teachers: anyone holding
+   * teacher_assignment:read sees the whole grid; only managers can change it.
+   */
+  overview: staffListProcedure("teacher_assignment:read")
+    .input(z.object({ academicYearId: z.uuid() }))
+    .output(teachingOverviewSchema)
+    .query(({ ctx, input }) =>
+      teachingOverviewService.overview(ctx.scopes, input.schoolId, input.academicYearId),
+    ),
+
+  /**
+   * What the signed-in person teaches now in this branch. No permission: it
+   * is the caller's own timetable, found from the session's login.
+   */
+  mine: protectedProcedure
+    .input(z.object({ organizationId: z.uuid(), schoolId: z.uuid() }))
+    .output(myTeachingSchema)
+    .query(({ ctx, input }) =>
+      teachingOverviewService.mine(input.organizationId, input.schoolId, ctx.session.user.id),
+    ),
+
+  /** Whether this branch's sections have class teachers (off by default). */
+  setClassTeachers: staffProcedure("school_settings:update")
+    .input(z.object({ enabled: z.boolean() }))
+    .output(z.object({ classTeachersEnabled: z.boolean() }))
+    .mutation(({ ctx, input }) =>
+      teachingOverviewService.setClassTeachersEnabled(ctx.scope, input.enabled),
     ),
 });

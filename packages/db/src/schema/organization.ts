@@ -113,6 +113,11 @@ export const schools = pgTable(
 
     feeGenerationMode: feeGenerationModeEnum().notNull().default("monthly_auto"),
 
+    // ADR-068: whether sections here have a class teacher. Off by default:
+    // many schools only use subject teachers, and with this off the class
+    // teacher slot and its gap warnings disappear.
+    classTeachersEnabled: boolean().notNull().default(false),
+
     isActive: boolean().notNull().default(true),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
