@@ -68,11 +68,16 @@ export const staffRouter = router({
     .output(z.array(staffWithPhotoSchema))
     .query(async ({ ctx, input }) => {
       const rows = await staffService.listStaff(ctx.scopes, input.q, input.includeInactive);
-      const photos = await staffPhotoService.many(
-        input.organizationId,
-        rows.map((row) => row.id),
-      );
-      return rows.map((row) => ({ ...row, photo: photos.get(row.id) ?? null }));
+      const ids = rows.map((row) => row.id);
+      const [photos, states] = await Promise.all([
+        staffPhotoService.many(input.organizationId, ids),
+        staffLoginService.joinStates(ids),
+      ]);
+      return rows.map((row) => ({
+        ...row,
+        photo: photos.get(row.id) ?? null,
+        joinState: states.get(row.id) ?? "not_invited",
+      }));
     }),
 
   byId: staffProcedure("staff:read", {
@@ -97,7 +102,11 @@ export const staffRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Staff member not found." });
       }
 
-      return { ...row, photo: await staffPhotoService.get(ctx.scope.organizationId, row.id) };
+      const [photo, states] = await Promise.all([
+        staffPhotoService.get(ctx.scope.organizationId, row.id),
+        staffLoginService.joinStates([row.id]),
+      ]);
+      return { ...row, photo, joinState: states.get(row.id) ?? "not_invited" };
     }),
 
   create: staffProcedure("staff:create")
@@ -325,7 +334,6 @@ export const staffRouter = router({
 
   /** Designation suggestions and the next employee code, for the add form. */
   formHints: staffProcedure("staff:read")
-    .input(z.object({}))
     .output(staffFormHintsSchema)
     .query(({ ctx }) => staffService.formHints(ctx.scope.organizationId)),
 });

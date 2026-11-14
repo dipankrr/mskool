@@ -29,6 +29,8 @@ export type Staff = z.infer<typeof staffSelectSchema>;
 /** A staff row with its photo, ready to show (ADR-068); null without one. */
 export const staffWithPhotoSchema = staffSelectSchema.extend({
   photo: imageRefSchema.nullable(),
+  /** Where they stand with the app (ADR-068): joined, invited, or not yet. */
+  joinState: z.enum(["joined", "invited", "not_invited"]),
 });
 export type StaffWithPhoto = z.infer<typeof staffWithPhotoSchema>;
 

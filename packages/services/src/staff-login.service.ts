@@ -225,6 +225,55 @@ export class StaffLoginService {
   }
 
   /**
+   * Where each staff member stands with the app (frame 05): `joined` (a
+   * staff login with a password), `invited` (an open, unexpired code), or
+   * `not_invited`.
+   */
+  async joinStates(
+    staffIds: string[],
+  ): Promise<Map<string, "joined" | "invited" | "not_invited">> {
+    const out = new Map<string, "joined" | "invited" | "not_invited">();
+    if (staffIds.length === 0) return out;
+    const ids = [...new Set(staffIds)];
+    const rows = await db
+      .select({ id: staff.id, userId: staff.userId, username: user.username })
+      .from(staff)
+      .leftJoin(user, eq(staff.userId, user.id))
+      .where(inArray(staff.id, ids));
+    const withLogin = rows.filter((row) => row.userId && row.username?.startsWith(STAFF_USERNAME_PREFIX));
+    const passwords = withLogin.length
+      ? await db
+          .select({ userId: account.userId })
+          .from(account)
+          .where(
+            and(
+              inArray(account.userId, withLogin.map((row) => row.userId!)),
+              eq(account.providerId, "credential"),
+            ),
+          )
+      : [];
+    const hasPw = new Set(passwords.map((row) => row.userId));
+    const open = await db
+      .selectDistinct({ staffId: staffJoinCodes.staffId })
+      .from(staffJoinCodes)
+      .where(
+        and(
+          inArray(staffJoinCodes.staffId, ids),
+          isNull(staffJoinCodes.usedAt),
+          isNull(staffJoinCodes.revokedAt),
+          gt(staffJoinCodes.expiresAt, new Date()),
+        ),
+      );
+    const invited = new Set(open.map((row) => row.staffId));
+    for (const row of rows) {
+      const joined =
+        row.userId && row.username?.startsWith(STAFF_USERNAME_PREFIX) && hasPw.has(row.userId);
+      out.set(row.id, joined ? "joined" : invited.has(row.id) ? "invited" : "not_invited");
+    }
+    return out;
+  }
+
+  /**
    * Which second step sign-in shows (frame 01): `password` for a phone with a
    * staff login and a password, `code` for everything else, unknown numbers
    * included, so the only thing the answer reveals is "has joined".

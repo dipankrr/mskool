@@ -23,6 +23,7 @@ import { gutter, radius, spacing } from "../../theme/tokens";
 import { ClassCard } from "./class-card";
 import { OpenExamsCard } from "./open-exams";
 import { SetupCard } from "./setup-card";
+import { TeachingCard } from "./teaching-card";
 
 /**
  * Staff home (probe frame 01): branch chip, "Today" and the day line, then
@@ -122,6 +123,8 @@ export function StaffHomeScreen() {
         ) : (
           <SetupCard />
         )}
+
+        {viewingPast ? null : <TeachingCard />}
 
         <OpenExamsCard />
 

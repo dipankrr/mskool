@@ -292,6 +292,34 @@ export function MoreScreen() {
           </>
         ) : null}
 
+        {has("staff:read") || has("teacher_assignment:read") ? (
+          <>
+            <SectionLabel>Staff and teaching</SectionLabel>
+            <Card padless>
+              {has("staff:read") ? (
+                <LinkRow
+                  title="Staff"
+                  detail="Add, invite, photos, leaving"
+                  icon="students"
+                  onPress={() => router.push("/staff-list")}
+                  first
+                  testID="more-staff"
+                />
+              ) : null}
+              {has("teacher_assignment:read") ? (
+                <LinkRow
+                  title="Teaching"
+                  detail="Who teaches what, and the gaps"
+                  icon="school"
+                  onPress={() => router.push("/teaching")}
+                  first={!has("staff:read")}
+                  testID="more-teaching"
+                />
+              ) : null}
+            </Card>
+          </>
+        ) : null}
+
         <SectionLabel>{copy.more.account}</SectionLabel>
         <Card padless>
           <LinkRow

@@ -127,7 +127,7 @@ export function AcademicSetupScreen() {
       detail: hasYear ? rowsCopy.assignmentsDetail : rowsCopy.needsSession,
       icon: "person",
       can: has("teacher_assignment:read"),
-      route: "/teacher-assignments",
+      route: "/teaching",
       locked: !hasYear,
       testID: "academic-assignments",
     },
