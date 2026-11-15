@@ -2383,9 +2383,8 @@ describe("attendance — the marking flow", () => {
   });
 
   it("the calendar gate refuses a date the calendar does not describe", async () => {
-    // Strict by design: 2024-08-15 belongs to the CLOSED year, so the lookup
-    // for (school, current year, date) finds nothing and marking is refused
-    // rather than guessed.
+    // Strict by design: 2024-08-15 belongs to the CLOSED year. Since ADR-069
+    // the session check refuses it before the calendar lookup does.
     await expectTrpcError(
       mark(U().teacherC6, {
         sectionId: world.section6aId,
@@ -2393,7 +2392,7 @@ describe("attendance — the marking flow", () => {
         entries: [{ studentId: world.ownedStudentId, status: "present" }],
       }),
       "BAD_REQUEST",
-      "There is no calendar entry for that date. Generate the year's calendar first, then mark attendance.",
+      "2024-08-15 is outside this session (2025-04-01 to 2026-03-31). Attendance can only be marked inside the session.",
     );
   });
 

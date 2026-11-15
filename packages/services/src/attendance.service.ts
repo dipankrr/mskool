@@ -1149,7 +1149,8 @@ export class AttendanceService {
         .from(academicYears)
         .where(eq(academicYears.id, yearId));
       if (bounds && (input.date < bounds.startDate || input.date > bounds.endDate)) {
-        throw new Error(
+        throw refuse(
+          "BAD_REQUEST",
           `${input.date} is outside this session (${bounds.startDate} to ${bounds.endDate}). Attendance can only be marked inside the session.`,
         );
       }
