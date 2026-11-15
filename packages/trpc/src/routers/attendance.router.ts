@@ -2,6 +2,12 @@ import {
   attendancePolicySelectSchema,
   attendanceSummarySelectSchema,
   calendarDaySelectSchema,
+  calendarUsageSchema,
+  calendarYearSchema,
+  sessionDatesPreviewSchema,
+  setCalendarDaysSchema,
+  setupCalendarSchema,
+  weekPatternDaySchema,
   dailyAttendanceStatusSelectSchema,
   generateCalendarSchema,
   getDailyStatusSchema,
@@ -128,6 +134,176 @@ const calendarRouter = router({
     .output(calendarDaySelectSchema)
     .mutation(async ({ ctx, input }) =>
       attendanceService.upsertCalendarDay(ctx.scope, input.data, ctx.userId),
+    ),
+
+  // ADR-069: the calendar at a glance — saved week, totals, missing dates.
+  overview: staffListProcedure("attendance:read")
+    .meta({
+      openapi: {
+        method: "GET",
+        path: "/attendance/calendar/overview",
+        tags: ["attendance"],
+        summary: "A session's calendar totals, saved weekly pattern and missing dates",
+        protect: true,
+      },
+    })
+    .input(calendarYearSchema)
+    .output(
+      z.object({
+        startDate: z.string(),
+        endDate: z.string(),
+        weekdays: z.array(weekPatternDaySchema).nullable(),
+        entries: z.number().int(),
+        counts: z.object({
+          working: z.number().int(),
+          half_day: z.number().int(),
+          exam_day: z.number().int(),
+          holiday: z.number().int(),
+          weekend: z.number().int(),
+        }),
+        schoolDays: z.number().int(),
+        missing: z.array(z.string()),
+      }),
+    )
+    .query(async ({ ctx, input }) =>
+      attendanceService.calendarOverview(ctx.scopes, input, ctx.canWithin(READ_HISTORY)),
+    ),
+
+  // ADR-069: the guided set-up — week, gap fill, holidays — in one call.
+  setup: staffProcedure("attendance:update")
+    .meta({
+      openapi: {
+        method: "POST",
+        path: "/attendance/calendar/setup",
+        tags: ["attendance"],
+        summary: "Set up a session's calendar: weekly pattern plus holidays",
+        protect: true,
+      },
+    })
+    .input(z.object({ schoolId: z.uuid(), data: setupCalendarSchema }))
+    .output(z.object({ generated: z.number().int(), set: z.number().int() }))
+    .mutation(async ({ ctx, input }) =>
+      attendanceService.setupCalendar(ctx.scope, input.data, ctx.userId),
+    ),
+
+  // ADR-069: several dates to one type at once.
+  setDays: staffProcedure("attendance:update")
+    .meta({
+      openapi: {
+        method: "POST",
+        path: "/attendance/calendar/days/bulk",
+        tags: ["attendance"],
+        summary: "Set several calendar dates to one day type",
+        protect: true,
+      },
+    })
+    .input(z.object({ schoolId: z.uuid(), data: setCalendarDaysSchema }))
+    .output(z.object({ set: z.number().int() }))
+    .mutation(async ({ ctx, input }) =>
+      attendanceService.setCalendarDays(ctx.scope, input.data, ctx.userId),
+    ),
+
+  // ADR-069: fill missing dates from the saved week.
+  fillGaps: staffProcedure("attendance:update")
+    .meta({
+      openapi: {
+        method: "POST",
+        path: "/attendance/calendar/fill-gaps",
+        tags: ["attendance"],
+        summary: "Fill a session's missing calendar dates from its weekly pattern",
+        protect: true,
+      },
+    })
+    .input(z.object({ schoolId: z.uuid(), data: calendarYearSchema }))
+    .output(z.object({ generated: z.number().int() }))
+    .mutation(async ({ ctx, input }) =>
+      attendanceService.fillCalendarGaps(ctx.scope, input.data, ctx.userId),
+    ),
+
+  // ADR-069: which sections have attendance on these dates.
+  usage: staffListProcedure("attendance:read")
+    .meta({
+      openapi: {
+        method: "GET",
+        path: "/attendance/calendar/usage",
+        tags: ["attendance"],
+        summary: "Sections with saved attendance on the given dates",
+        protect: true,
+      },
+    })
+    .input(calendarUsageSchema)
+    .output(
+      z.array(
+        z.object({
+          date: z.string(),
+          sectionId: z.string(),
+          label: z.string(),
+          students: z.number().int(),
+        }),
+      ),
+    )
+    .query(async ({ ctx, input }) => attendanceService.calendarUsage(ctx.scopes, input)),
+
+  // ADR-069: last session's holidays moved into this one (set-up draft).
+  previousEntries: staffProcedure("attendance:update")
+    .meta({
+      openapi: {
+        method: "GET",
+        path: "/attendance/calendar/previous-entries",
+        tags: ["attendance"],
+        summary: "Last session's holidays and exam days, moved into this session",
+        protect: true,
+      },
+    })
+    .input(calendarYearSchema.extend({ schoolId: z.uuid() }))
+    .output(
+      z.object({
+        from: z.string().nullable(),
+        entries: z.array(
+          z.object({
+            date: z.string(),
+            dayType: calendarDaySelectSchema.shape.dayType,
+            reason: z.string().nullable(),
+            check: z.boolean(),
+          }),
+        ),
+      }),
+    )
+    .query(async ({ ctx, input }) =>
+      attendanceService.previousSessionEntries(ctx.scope, input),
+    ),
+
+  // ADR-069: what new session dates would do to the calendar.
+  sessionPreview: staffProcedure("academic_year:update")
+    .meta({
+      openapi: {
+        method: "GET",
+        path: "/attendance/calendar/session-preview",
+        tags: ["attendance"],
+        summary: "Preview how new session dates change the calendar",
+        protect: true,
+      },
+    })
+    .input(sessionDatesPreviewSchema.extend({ schoolId: z.uuid() }))
+    .output(
+      z.object({
+        hasCalendar: z.boolean(),
+        weekdays: z.array(weekPatternDaySchema).nullable(),
+        added: z.number().int(),
+        addedFrom: z.string().nullable(),
+        addedTo: z.string().nullable(),
+        addedSchoolDays: z.number().int(),
+        removed: z.number().int(),
+        removedFrom: z.string().nullable(),
+        removedTo: z.string().nullable(),
+        removedSchoolDays: z.number().int(),
+        blocked: z.array(z.object({ date: z.string(), sections: z.number().int() })),
+        schoolDaysBefore: z.number().int(),
+        schoolDaysAfter: z.number().int(),
+      }),
+    )
+    .query(async ({ ctx, input }) =>
+      attendanceService.previewSessionDates(ctx.scope, input),
     ),
 });
 

@@ -159,7 +159,8 @@ class PortalAttendanceService {
       const enrolled = isOnBooks(ranges, date);
       const mark = statusByDate.get(date) ?? null;
       let status: PortalDayStatus | null = null;
-      if (mark) status = mark;
+      // A mark left on a day that became a holiday is not shown (ADR-069).
+      if (mark && working) status = mark;
       else if (working && enrolled && date <= today) status = "not_marked";
       days.push({
         date,

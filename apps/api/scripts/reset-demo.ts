@@ -28,6 +28,7 @@
 import { db } from "@repo/db";
 import {
   academicCalendar,
+  attendanceWeekPatterns,
   academicYears,
   account,
   attendancePolicies,
@@ -276,6 +277,8 @@ async function main() {
       db.delete(dailyAttendanceStatus).where(inArray(dailyAttendanceStatus.organizationId, orgIds)).returning());
     await wipe("attendance_summary", () =>
       db.delete(attendanceSummary).where(inArray(attendanceSummary.organizationId, orgIds)).returning());
+    await wipe("attendance_week_patterns", () =>
+      db.delete(attendanceWeekPatterns).where(inArray(attendanceWeekPatterns.organizationId, orgIds)).returning());
     await wipe("academic_calendar", () =>
       db.delete(academicCalendar).where(inArray(academicCalendar.organizationId, orgIds)).returning());
     await wipe("section_teacher_assignments", () =>

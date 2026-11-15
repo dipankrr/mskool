@@ -102,6 +102,10 @@ export function countAttendance(input: {
   const end = input.asOf && input.asOf < input.to ? input.asOf : input.to;
   const inPeriod = (iso: string) => iso >= input.from && iso <= end;
 
+  // A mark only counts on a day the calendar still calls a school day: a day
+  // turned into a holiday after it was marked keeps its records but drops out
+  // of every total (ADR-069), so present can never exceed working days.
+  const working = new Set(input.workingDates);
   let workingDays = 0;
   for (const date of input.workingDates) {
     if (inPeriod(date) && isOnBooks(input.ranges, date)) workingDays += 1;
@@ -117,7 +121,7 @@ export function countAttendance(input: {
     daysAttended: 0,
   };
   for (const row of input.statuses) {
-    if (!inPeriod(row.date)) continue;
+    if (!inPeriod(row.date) || !working.has(row.date)) continue;
     if (row.status === "present") counts.daysPresent += 1;
     else if (row.status === "absent") counts.daysAbsent += 1;
     else if (row.status === "late") counts.daysLate += 1;

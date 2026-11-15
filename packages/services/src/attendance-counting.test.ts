@@ -101,6 +101,26 @@ describe("countAttendance", () => {
     expect(counts.daysAttended).toBe(1);
   });
 
+  it("ignores a mark on a day that is no longer a school day", () => {
+    const ranges = enrolledRanges(
+      [{ enrollmentDate: "2025-04-01", leftOn: null, leavingHistory: [] }],
+      null,
+    );
+    // 2 July was marked, then turned into a holiday: it leaves workingDates.
+    const counts = countAttendance({
+      ...base,
+      workingDates: july.filter((d) => d !== "2025-07-02"),
+      ranges,
+      statuses: [
+        { date: "2025-07-01", status: "present" },
+        { date: "2025-07-02", status: "absent" },
+      ],
+    });
+    expect(counts.workingDays).toBe(22);
+    expect(counts.daysPresent).toBe(1);
+    expect(counts.daysAbsent).toBe(0);
+  });
+
   it("counts late as attended only when the school says so", () => {
     const ranges = enrolledRanges(
       [{ enrollmentDate: "2025-04-01", leftOn: null, leavingHistory: [] }],

@@ -2,6 +2,12 @@ import { atSchoolLevel, requireSchoolId, yearVisibilityWhere } from "./academic.
 import { refuse } from "./service-error";
 import { scopeWhere, type DataScope } from "@repo/authz";
 import type {
+  CalendarUsageInput,
+  CalendarYearInput,
+  SessionDatesPreviewInput,
+  SetCalendarDaysInput,
+  SetupCalendarInput,
+  WeekPattern,
   GenerateCalendarInput,
   GetDailyStatusInput,
   GetStatusHistoryInput,
@@ -20,6 +26,8 @@ import {
   attendancePolicies,
   attendanceRecords,
   attendanceSummary,
+  attendanceWeekPatterns,
+  classes,
   dailyAttendanceStatus,
   periods,
   sections,
@@ -30,6 +38,16 @@ import {
 import { and, asc, eq, gt, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 
 import { countAttendance, monthBounds } from "./attendance-counting";
+import {
+  SCHOOL_DAY_TYPES,
+  datesBetween,
+  isFixedDate,
+  patternDayType,
+  patternFromWeekdays,
+  sessionDateDiff,
+  shiftYears,
+  type PatternDay,
+} from "./calendar-tools";
 import { loadCountingInputs } from "./attendance-to-date";
 
 /**
@@ -261,6 +279,14 @@ export class AttendanceService {
     // fill nothing and report 0), so the caller sees the effect, not the
     // intent.
     return db.transaction(async (tx) => {
+      await saveWeekPattern(
+        tx,
+        organizationId,
+        schoolId,
+        year.id,
+        patternFromWeekdays(input.workingWeekdays, input.halfDayWeekdays ?? []),
+        actorId,
+      );
       const inserted = await tx
         .insert(academicCalendar)
         .values(rows)
@@ -272,6 +298,7 @@ export class AttendanceService {
           ],
         })
         .returning({ id: academicCalendar.id });
+      if (inserted.length > 0) await recomputeMarkedInYear(tx, organizationId, schoolId, year.id);
       return { generated: inserted.length };
     });
   }
@@ -333,6 +360,7 @@ export class AttendanceService {
       if (!day) {
         throw new Error("Failed to upsert the calendar day.");
       }
+      await recomputeMarkedInYear(tx, organizationId, schoolId, year.id, [input.date]);
       return day;
     });
   }
@@ -373,6 +401,317 @@ export class AttendanceService {
       .orderBy(asc(academicCalendar.date));
 
     return rows.map((r) => r.day);
+  }
+
+  // -------------------------------------------------------------------------
+  // Calendar set-up and editing (ADR-069)
+  // -------------------------------------------------------------------------
+
+  /**
+   * One session's calendar at a glance: the saved normal week, the totals by
+   * day type, and the dates inside the session that have no entry (from the
+   * first entry on, so a school that joined mid-session is not flagged for
+   * the days before it). An empty calendar has no entries and no gaps.
+   */
+  async calendarOverview(scopes: DataScope[], input: CalendarYearInput, includeHistory: boolean) {
+    const [year] = await db
+      .select({ id: academicYears.id, startDate: academicYears.startDate, endDate: academicYears.endDate })
+      .from(academicYears)
+      .where(
+        and(
+          eq(academicYears.id, input.academicYearId),
+          scopeWhere(scopes.map(atSchoolLevel), YEAR_SCOPE_COLUMNS),
+          yearVisibilityWhere(includeHistory),
+        ),
+      );
+    if (!year) throw refuse("NOT_FOUND", "Session not found.");
+
+    const rows = await db
+      .select({ date: academicCalendar.date, dayType: academicCalendar.dayType })
+      .from(academicCalendar)
+      .where(
+        and(
+          eq(academicCalendar.academicYearId, year.id),
+          scopeWhere(scopes.map(atSchoolLevel), CALENDAR_SCOPE_COLUMNS),
+        ),
+      )
+      .orderBy(asc(academicCalendar.date));
+    const [pattern] = await db
+      .select({ weekdays: attendanceWeekPatterns.weekdays })
+      .from(attendanceWeekPatterns)
+      .where(
+        and(
+          eq(attendanceWeekPatterns.academicYearId, year.id),
+          scopeWhere(scopes.map(atSchoolLevel), {
+            organizationId: attendanceWeekPatterns.organizationId,
+            schoolId: attendanceWeekPatterns.schoolId,
+          }),
+        ),
+      );
+
+    const counts = { working: 0, half_day: 0, exam_day: 0, holiday: 0, weekend: 0 };
+    const inSession = rows.filter((row) => row.date >= year.startDate && row.date <= year.endDate);
+    for (const row of inSession) counts[row.dayType] += 1;
+    const have = new Set(inSession.map((row) => row.date));
+    const first = inSession[0]?.date ?? null;
+    const missing = first ? datesBetween(first, year.endDate).filter((iso) => !have.has(iso)) : [];
+
+    return {
+      startDate: year.startDate,
+      endDate: year.endDate,
+      weekdays: (pattern?.weekdays ?? null) as PatternDay[] | null,
+      entries: inSession.length,
+      counts,
+      schoolDays: counts.working + counts.half_day + counts.exam_day,
+      missing,
+    };
+  }
+
+  /**
+   * The guided set-up in one transaction: save the normal week, fill every
+   * missing date from it (from `startFrom` when the school joins mid-session),
+   * then lay the holidays and exam days on top.
+   */
+  async setupCalendar(scope: DataScope, input: SetupCalendarInput, actorId: string | null) {
+    const year = await this.yearForCalendar(scope, input.academicYearId);
+    const schoolId = requireSchoolId(scope);
+    const organizationId = scope.organizationId;
+    if (input.startFrom && (input.startFrom < year.startDate || input.startFrom > year.endDate)) {
+      throw refuse("BAD_REQUEST", "Pick a start date inside this session.");
+    }
+    const entryDates = new Map<string, { dayType: SetCalendarDaysInput["dayType"]; reason: string | null }>();
+    for (const entry of input.entries) {
+      if (entry.from < year.startDate || entry.to > year.endDate) {
+        throw refuse("BAD_REQUEST", `"${entry.reason ?? entry.from}" falls outside this session (${year.startDate} to ${year.endDate}).`);
+      }
+      for (const iso of datesBetween(entry.from, entry.to)) {
+        entryDates.set(iso, { dayType: entry.dayType, reason: entry.reason ?? null });
+      }
+    }
+
+    return db.transaction(async (tx) => {
+      await saveWeekPattern(tx, organizationId, schoolId, year.id, input.weekdays, actorId);
+      const generated = await fillFromPattern(
+        tx,
+        organizationId,
+        schoolId,
+        year.id,
+        input.weekdays,
+        datesBetween(input.startFrom ?? year.startDate, year.endDate),
+        actorId,
+      );
+      const set = await writeDays(
+        tx,
+        organizationId,
+        schoolId,
+        year.id,
+        [...entryDates].map(([date, v]) => ({ date, ...v })),
+        actorId,
+      );
+      await recomputeMarkedInYear(tx, organizationId, schoolId, year.id);
+      return { generated, set };
+    });
+  }
+
+  /**
+   * Several dates set to one type and name at once — a multi-select or a
+   * from–to range. Every date must sit inside the session. Saved marks on
+   * those dates stay; summaries are re-counted so a day that stops being a
+   * school day stops counting (ADR-069).
+   */
+  async setCalendarDays(scope: DataScope, input: SetCalendarDaysInput, actorId: string | null) {
+    const year = await this.yearForCalendar(scope, input.academicYearId);
+    const schoolId = requireSchoolId(scope);
+    const organizationId = scope.organizationId;
+    const dates = [...new Set(input.dates)].sort();
+    const outside = dates.filter((iso) => iso < year.startDate || iso > year.endDate);
+    if (outside.length > 0) {
+      throw refuse("BAD_REQUEST", `${outside[0]} is outside this session (${year.startDate} to ${year.endDate}).`);
+    }
+    return db.transaction(async (tx) => {
+      const set = await writeDays(
+        tx,
+        organizationId,
+        schoolId,
+        year.id,
+        dates.map((date) => ({ date, dayType: input.dayType, reason: input.reason ?? null })),
+        actorId,
+      );
+      await recomputeMarkedInYear(tx, organizationId, schoolId, year.id, dates);
+      return { set };
+    });
+  }
+
+  /** Fills the session's missing dates from its saved normal week. */
+  async fillCalendarGaps(scope: DataScope, input: CalendarYearInput, actorId: string | null) {
+    const year = await this.yearForCalendar(scope, input.academicYearId);
+    const schoolId = requireSchoolId(scope);
+    const organizationId = scope.organizationId;
+    const [pattern] = await db
+      .select({ weekdays: attendanceWeekPatterns.weekdays })
+      .from(attendanceWeekPatterns)
+      .where(and(eq(attendanceWeekPatterns.schoolId, schoolId), eq(attendanceWeekPatterns.academicYearId, year.id)));
+    if (!pattern) {
+      throw refuse("BAD_REQUEST", "This session has no weekly pattern yet. Set up the calendar first.");
+    }
+    return db.transaction(async (tx) => {
+      const generated = await fillFromPattern(
+        tx,
+        organizationId,
+        schoolId,
+        year.id,
+        pattern.weekdays as PatternDay[],
+        datesBetween(year.startDate, year.endDate),
+        actorId,
+      );
+      if (generated > 0) await recomputeMarkedInYear(tx, organizationId, schoolId, year.id);
+      return { generated };
+    });
+  }
+
+  /**
+   * Which sections already have attendance on these dates, with how many
+   * students — what an admin sees before changing such a day.
+   */
+  async calendarUsage(scopes: DataScope[], input: CalendarUsageInput) {
+    const rows = await db
+      .select({
+        date: dailyAttendanceStatus.date,
+        sectionId: dailyAttendanceStatus.sectionId,
+        sectionName: sections.name,
+        className: classes.name,
+        students: sql<number>`count(*)::int`,
+      })
+      .from(dailyAttendanceStatus)
+      .innerJoin(sections, eq(sections.id, dailyAttendanceStatus.sectionId))
+      .innerJoin(classes, eq(classes.id, dailyAttendanceStatus.classId))
+      .where(
+        and(
+          eq(dailyAttendanceStatus.academicYearId, input.academicYearId),
+          inArray(dailyAttendanceStatus.date, [...new Set(input.dates)]),
+          scopeWhere(scopes.map(atSchoolLevel), STATUS_SCOPE_COLUMNS),
+        ),
+      )
+      .groupBy(
+        dailyAttendanceStatus.date,
+        dailyAttendanceStatus.sectionId,
+        sections.name,
+        classes.name,
+      )
+      .orderBy(asc(dailyAttendanceStatus.date), asc(classes.name), asc(sections.name));
+    return rows.map((row) => ({
+      date: row.date,
+      sectionId: row.sectionId,
+      label: `${row.className} · ${row.sectionName}`,
+      students: row.students,
+    }));
+  }
+
+  /**
+   * Last session's holidays, exam days and named half days, moved into this
+   * session by whole years — the set-up's "copy last session" draft. Dates
+   * that are not fixed national ones (festivals) come back flagged to check.
+   */
+  async previousSessionEntries(scope: DataScope, input: CalendarYearInput) {
+    const year = await this.yearForCalendar(scope, input.academicYearId);
+    const schoolId = requireSchoolId(scope);
+    const [previous] = await db
+      .select({ id: academicYears.id, startDate: academicYears.startDate })
+      .from(academicYears)
+      .where(and(eq(academicYears.schoolId, schoolId), sql`${academicYears.endDate} < ${year.startDate}`))
+      .orderBy(sql`${academicYears.startDate} desc`)
+      .limit(1);
+    if (!previous) return { from: null, entries: [] };
+    const shift = Number(year.startDate.slice(0, 4)) - Number(previous.startDate.slice(0, 4));
+    const rows = await db
+      .select({ date: academicCalendar.date, dayType: academicCalendar.dayType, reason: academicCalendar.reason })
+      .from(academicCalendar)
+      .where(
+        and(
+          eq(academicCalendar.schoolId, schoolId),
+          eq(academicCalendar.academicYearId, previous.id),
+          or(
+            inArray(academicCalendar.dayType, ["holiday", "exam_day"]),
+            and(eq(academicCalendar.dayType, "half_day"), sql`${academicCalendar.reason} is not null`),
+          ),
+        ),
+      )
+      .orderBy(asc(academicCalendar.date));
+    const entries = rows
+      .map((row) => ({
+        date: shiftYears(row.date, shift),
+        dayType: row.dayType,
+        reason: row.reason,
+        check: !isFixedDate(row.date),
+      }))
+      .filter((row) => row.date >= year.startDate && row.date <= year.endDate);
+    return { from: previous.id, entries };
+  }
+
+  /**
+   * What new session dates would do to the calendar, before saving (C1/C2):
+   * days added (and how many become school days from the saved week), days
+   * removed, and the removed days that already have attendance — those block
+   * the change.
+   */
+  async previewSessionDates(scope: DataScope, input: SessionDatesPreviewInput) {
+    const year = await this.yearForCalendar(scope, input.academicYearId);
+    const schoolId = requireSchoolId(scope);
+    return sessionChange(db, schoolId, year, input);
+  }
+
+  /**
+   * Keeps the calendar in step after the session's dates changed: new days
+   * are filled from the saved week (when the calendar was set up), days now
+   * outside the session lose their entries. The caller has already refused a
+   * change that would drop days with attendance.
+   */
+  async syncCalendarToSession(
+    scope: DataScope,
+    before: { id: string; startDate: string; endDate: string },
+    actorId: string | null,
+  ) {
+    const year = await this.yearForCalendar(scope, before.id);
+    const schoolId = requireSchoolId(scope);
+    const organizationId = scope.organizationId;
+    const { added, removed } = sessionDateDiff(before, year);
+    if (added.length === 0 && removed.length === 0) return { added: 0, removed: 0 };
+    return db.transaction(async (tx) => {
+      const [pattern] = await tx
+        .select({ weekdays: attendanceWeekPatterns.weekdays })
+        .from(attendanceWeekPatterns)
+        .where(and(eq(attendanceWeekPatterns.schoolId, schoolId), eq(attendanceWeekPatterns.academicYearId, year.id)));
+      const [anyRow] = await tx
+        .select({ id: academicCalendar.id })
+        .from(academicCalendar)
+        .where(and(eq(academicCalendar.schoolId, schoolId), eq(academicCalendar.academicYearId, year.id)))
+        .limit(1);
+      let filled = 0;
+      if (pattern && anyRow && added.length > 0) {
+        filled = await fillFromPattern(tx, organizationId, schoolId, year.id, pattern.weekdays as PatternDay[], added, actorId);
+      }
+      let dropped = 0;
+      if (removed.length > 0) {
+        const gone = await tx
+          .delete(academicCalendar)
+          .where(
+            and(
+              eq(academicCalendar.schoolId, schoolId),
+              eq(academicCalendar.academicYearId, year.id),
+              or(sql`${academicCalendar.date} < ${year.startDate}`, sql`${academicCalendar.date} > ${year.endDate}`),
+            ),
+          )
+          .returning({ id: academicCalendar.id });
+        dropped = gone.length;
+      }
+      if (filled > 0 || dropped > 0) await recomputeMarkedInYear(tx, organizationId, schoolId, year.id);
+      return { added: filled, removed: dropped };
+    });
+  }
+
+  /** The year as stored, for a caller about to change its dates. */
+  async yearBounds(scope: DataScope, academicYearId: string) {
+    return this.yearForCalendar(scope, academicYearId);
   }
 
   // -------------------------------------------------------------------------
@@ -676,6 +1015,18 @@ export class AttendanceService {
         );
       }
       const yearId = section.academicYearId;
+
+      // The session's own dates (ADR-069): a calendar row left outside them
+      // must not let a mark through.
+      const [bounds] = await tx
+        .select({ startDate: academicYears.startDate, endDate: academicYears.endDate })
+        .from(academicYears)
+        .where(eq(academicYears.id, yearId));
+      if (bounds && (input.date < bounds.startDate || input.date > bounds.endDate)) {
+        throw new Error(
+          `${input.date} is outside this session (${bounds.startDate} to ${bounds.endDate}). Attendance can only be marked inside the session.`,
+        );
+      }
 
       // The school's policy. A missing row is the daily-mode DEFAULTS, not an
       // error — a school can mark before ever opening the policy screen.
@@ -1103,6 +1454,191 @@ export class AttendanceService {
     return db.transaction((tx) =>
       recomputeSummaries(tx, organizationId, schoolId, academicYearId, studentIds),
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Calendar write internals (ADR-069)
+// ---------------------------------------------------------------------------
+
+type CalendarTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+async function saveWeekPattern(
+  tx: CalendarTx,
+  organizationId: string,
+  schoolId: string,
+  academicYearId: string,
+  weekdays: WeekPattern | PatternDay[],
+  actorId: string | null,
+) {
+  await tx
+    .insert(attendanceWeekPatterns)
+    .values({ organizationId, schoolId, academicYearId, weekdays: [...weekdays], updatedBy: actorId })
+    .onConflictDoUpdate({
+      target: [attendanceWeekPatterns.schoolId, attendanceWeekPatterns.academicYearId],
+      set: { weekdays: [...weekdays], updatedBy: actorId },
+    });
+}
+
+/** Inserts the pattern's type for each date that has no row yet. */
+async function fillFromPattern(
+  tx: CalendarTx,
+  organizationId: string,
+  schoolId: string,
+  academicYearId: string,
+  weekdays: readonly PatternDay[],
+  dates: readonly string[],
+  actorId: string | null,
+): Promise<number> {
+  let inserted = 0;
+  for (let i = 0; i < dates.length; i += 400) {
+    const chunk = dates.slice(i, i + 400);
+    const rows = await tx
+      .insert(academicCalendar)
+      .values(
+        chunk.map((date) => ({
+          organizationId,
+          schoolId,
+          academicYearId,
+          date,
+          dayType: patternDayType(weekdays, date),
+          createdFromTemplate: true,
+          createdBy: actorId,
+        })),
+      )
+      .onConflictDoNothing({
+        target: [academicCalendar.schoolId, academicCalendar.academicYearId, academicCalendar.date],
+      })
+      .returning({ id: academicCalendar.id });
+    inserted += rows.length;
+  }
+  return inserted;
+}
+
+/** Creates or overwrites one row per date with its type and name. */
+async function writeDays(
+  tx: CalendarTx,
+  organizationId: string,
+  schoolId: string,
+  academicYearId: string,
+  days: readonly { date: string; dayType: SetCalendarDaysInput["dayType"]; reason: string | null }[],
+  actorId: string | null,
+): Promise<number> {
+  let written = 0;
+  for (let i = 0; i < days.length; i += 400) {
+    const chunk = days.slice(i, i + 400);
+    const rows = await tx
+      .insert(academicCalendar)
+      .values(
+        chunk.map((day) => ({
+          organizationId,
+          schoolId,
+          academicYearId,
+          date: day.date,
+          dayType: day.dayType,
+          reason: day.reason,
+          createdFromTemplate: false,
+          createdBy: actorId,
+        })),
+      )
+      .onConflictDoUpdate({
+        target: [academicCalendar.schoolId, academicCalendar.academicYearId, academicCalendar.date],
+        set: { dayType: sql`excluded.day_type`, reason: sql`excluded.reason` },
+      })
+      .returning({ id: academicCalendar.id });
+    written += rows.length;
+  }
+  return written;
+}
+
+type SessionReader = Pick<typeof db, "select">;
+
+/** The preview behind C1/C2 (and the refusal in the session update). */
+export async function sessionChange(
+  reader: SessionReader,
+  schoolId: string,
+  year: { id: string; startDate: string; endDate: string },
+  next: { startDate: string; endDate: string },
+) {
+  const { added, removed } = sessionDateDiff(year, next);
+  const [pattern] = await reader
+    .select({ weekdays: attendanceWeekPatterns.weekdays })
+    .from(attendanceWeekPatterns)
+    .where(and(eq(attendanceWeekPatterns.schoolId, schoolId), eq(attendanceWeekPatterns.academicYearId, year.id)));
+  const rows = await reader
+    .select({ date: academicCalendar.date, dayType: academicCalendar.dayType })
+    .from(academicCalendar)
+    .where(and(eq(academicCalendar.schoolId, schoolId), eq(academicCalendar.academicYearId, year.id)));
+  const typeOf = new Map(rows.map((row) => [row.date, row.dayType]));
+  const isSchool = (t: string | undefined) => (t ? SCHOOL_DAY_TYPES.has(t) : false);
+  const weekdays = (pattern?.weekdays ?? null) as PatternDay[] | null;
+  const hasCalendar = rows.length > 0;
+
+  const schoolDaysBefore = rows.filter(
+    (row) => row.date >= year.startDate && row.date <= year.endDate && isSchool(row.dayType),
+  ).length;
+  const addedSchoolDays =
+    weekdays && hasCalendar
+      ? added.filter((iso) => isSchool(typeOf.get(iso) ?? patternDayType(weekdays, iso))).length
+      : 0;
+  const removedSchoolDays = removed.filter((iso) => isSchool(typeOf.get(iso))).length;
+
+  let blocked: { date: string; sections: number }[] = [];
+  if (removed.length > 0) {
+    const marks = await reader
+      .select({
+        date: dailyAttendanceStatus.date,
+        sections: sql<number>`count(distinct ${dailyAttendanceStatus.sectionId})::int`,
+      })
+      .from(dailyAttendanceStatus)
+      .where(
+        and(
+          eq(dailyAttendanceStatus.schoolId, schoolId),
+          eq(dailyAttendanceStatus.academicYearId, year.id),
+          inArray(dailyAttendanceStatus.date, removed),
+        ),
+      )
+      .groupBy(dailyAttendanceStatus.date)
+      .orderBy(asc(dailyAttendanceStatus.date));
+    blocked = marks;
+  }
+
+  return {
+    hasCalendar,
+    weekdays,
+    added: added.length,
+    addedFrom: added[0] ?? null,
+    addedTo: added[added.length - 1] ?? null,
+    addedSchoolDays,
+    removed: removed.length,
+    removedFrom: removed[0] ?? null,
+    removedTo: removed[removed.length - 1] ?? null,
+    removedSchoolDays,
+    blocked,
+    schoolDaysBefore,
+    schoolDaysAfter: schoolDaysBefore + addedSchoolDays - removedSchoolDays,
+  };
+}
+
+/**
+ * Re-counts everyone with a mark in this session — after a calendar change
+ * moves the working-days count under them. `touchedDates` narrows it to the
+ * months and terms those dates fall in.
+ */
+async function recomputeMarkedInYear(
+  tx: SummaryTx,
+  organizationId: string,
+  schoolId: string,
+  academicYearId: string,
+  touchedDates?: readonly string[],
+) {
+  const marked = await tx
+    .selectDistinct({ studentId: dailyAttendanceStatus.studentId })
+    .from(dailyAttendanceStatus)
+    .where(and(eq(dailyAttendanceStatus.schoolId, schoolId), eq(dailyAttendanceStatus.academicYearId, academicYearId)));
+  const ids = marked.map((m) => m.studentId);
+  for (let i = 0; i < ids.length; i += SESSION_BATCH) {
+    await recomputeSummaries(tx, organizationId, schoolId, academicYearId, ids.slice(i, i + SESSION_BATCH), touchedDates);
   }
 }
 

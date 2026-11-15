@@ -10,7 +10,7 @@ import {
   updateClassSchema,
   updateSectionSchema,
 } from "@repo/contracts";
-import { academicService } from "@repo/services";
+import { academicService, attendanceService } from "@repo/services";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { router, staffListProcedure, staffProcedure, type OwnerResolver } from "../trpc";
@@ -224,6 +224,28 @@ const academicYearRouter = router({
     .input(z.object({ id: z.uuid(), data: updateAcademicYearSchema }))
     .output(academicYearSelectSchema)
     .mutation(async ({ ctx, input }) => {
+      // ADR-069: the calendar follows the session's dates. A change that
+      // would drop days with attendance is refused before anything is saved.
+      const before = await attendanceService.yearBounds(ctx.scope, input.id);
+      const next = {
+        startDate: input.data.startDate ?? before.startDate,
+        endDate: input.data.endDate ?? before.endDate,
+      };
+      const moved = next.startDate !== before.startDate || next.endDate !== before.endDate;
+      if (moved && next.endDate >= next.startDate) {
+        const preview = await attendanceService.previewSessionDates(ctx.scope, {
+          academicYearId: input.id,
+          ...next,
+        });
+        if (preview.blocked.length > 0) {
+          const days = preview.blocked.map((b) => b.date).join(", ");
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `Attendance is saved on ${days}, which would fall outside the session. Keep those days inside it.`,
+          });
+        }
+      }
+
       const year = await academicService.updateAcademicYear(
         ctx.scope,
         input.id,
@@ -236,6 +258,8 @@ const academicYearRouter = router({
           message: "Academic year not found.",
         });
       }
+
+      if (moved) await attendanceService.syncCalendarToSession(ctx.scope, before, ctx.userId);
 
       return year;
     }),

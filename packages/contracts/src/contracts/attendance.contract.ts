@@ -101,6 +101,71 @@ export const generateCalendarSchema = z
   );
 export type GenerateCalendarInput = z.infer<typeof generateCalendarSchema>;
 
+/**
+ * A session's normal week (ADR-069): seven entries, index = weekday
+ * (0 = Sunday … 6 = Saturday, the same numbers as `weekdaySchema`).
+ */
+export const weekPatternDaySchema = z.enum(["working", "half_day", "weekend"]);
+export const weekPatternSchema = z
+  .array(weekPatternDaySchema)
+  .length(7)
+  .refine((days) => days.some((day) => day !== "weekend"), {
+    message: "Pick at least one day the school is open.",
+  });
+export type WeekPattern = z.infer<typeof weekPatternSchema>;
+
+/** One session, named. The calendar reads that take nothing else. */
+export const calendarYearSchema = z.object({ academicYearId: z.uuid() });
+export type CalendarYearInput = z.infer<typeof calendarYearSchema>;
+
+/** A from–to run of days with one type and name: a break, an exam week. */
+export const calendarEntrySchema = z
+  .object({
+    from: isoDate,
+    to: isoDate,
+    dayType: calendarDaySelectSchema.shape.dayType,
+    reason: z.string().trim().min(1).max(255).nullish(),
+  })
+  .refine((v) => v.from <= v.to, { message: "A range must end on or after it starts.", path: ["to"] });
+export type CalendarEntryInput = z.infer<typeof calendarEntrySchema>;
+
+/**
+ * The guided set-up (ADR-069): the normal week, an optional first day for a
+ * school joining mid-session, and the holidays / exam days to lay on top.
+ * One call, one transaction.
+ */
+export const setupCalendarSchema = z.object({
+  academicYearId: z.uuid(),
+  weekdays: weekPatternSchema,
+  startFrom: isoDate.optional(),
+  entries: z.array(calendarEntrySchema).max(200),
+});
+export type SetupCalendarInput = z.infer<typeof setupCalendarSchema>;
+
+/** Several dates set to one type and name at once (multi-select, ranges). */
+export const setCalendarDaysSchema = z.object({
+  academicYearId: z.uuid(),
+  dates: z.array(isoDate).min(1).max(370),
+  dayType: calendarDaySelectSchema.shape.dayType,
+  reason: z.string().trim().min(1).max(255).nullish(),
+});
+export type SetCalendarDaysInput = z.infer<typeof setCalendarDaysSchema>;
+
+/** Which sections already have attendance on these dates. */
+export const calendarUsageSchema = z.object({
+  academicYearId: z.uuid(),
+  dates: z.array(isoDate).min(1).max(370),
+});
+export type CalendarUsageInput = z.infer<typeof calendarUsageSchema>;
+
+/** What changing a session's dates would do to its calendar (preview). */
+export const sessionDatesPreviewSchema = z.object({
+  academicYearId: z.uuid(),
+  startDate: isoDate,
+  endDate: isoDate,
+});
+export type SessionDatesPreviewInput = z.infer<typeof sessionDatesPreviewSchema>;
+
 export const listCalendarSchema = z.object({
   academicYearId: z.uuid(),
   month: z.number().int().min(1).max(12).optional(),

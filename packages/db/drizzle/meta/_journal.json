@@ -400,6 +400,13 @@
       "when": 1794666367817,
       "tag": "0056_teaching_by_staff",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1794738771073,
+      "tag": "0057_attendance_week_patterns",
+      "breakpoints": true
     }
   ]
 }

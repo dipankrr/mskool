@@ -107,6 +107,42 @@ export const academicCalendar = pgTable(
   ],
 );
 
+/**
+ * A session's normal week (ADR-069): what each weekday is before holidays,
+ * kept so the calendar can fill days on its own — when the session gets
+ * longer, or when days are missing. One row per school per session, written
+ * by the generator and the guided set-up. `weekdays` has seven entries,
+ * index = JS `getUTCDay()` (0 = Sunday … 6 = Saturday), each one of
+ * working / half_day / weekend.
+ */
+export const attendanceWeekPatterns = pgTable(
+  "attendance_week_patterns",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    organizationId: uuid()
+      .notNull()
+      .references(() => organizations.id),
+    schoolId: uuid()
+      .notNull()
+      .references(() => schools.id),
+    academicYearId: uuid()
+      .notNull()
+      .references(() => academicYears.id),
+    weekdays: calendarDayTypeEnum().array().notNull(),
+    updatedBy: text().references(() => user.id),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex("attendance_week_patterns_school_year_uq").on(t.schoolId, t.academicYearId),
+    index("attendance_week_patterns_org_idx").on(t.organizationId),
+    check("attendance_week_patterns_seven_days", sql`cardinality(${t.weekdays}) = 7`),
+  ],
+);
+
 export const attendanceMarkingModeEnum = pgEnum("attendance_marking_mode", [
   "daily",
   "period_wise",
