@@ -16,7 +16,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppIcon } from "../../components/app-icon";
@@ -43,7 +43,7 @@ import { colors } from "../../theme/brand-admin";
 import { fontFamily, fontSize, gutter, motion, radius, shadow, spacing } from "../../theme/tokens";
 import { clampIsoDate, clampMonth } from "./calendar-month";
 import { DaySheet } from "./day-sheet";
-import { DoneStamp } from "./done-stamp";
+import { DoneStamp, STAMP_HEIGHT, STAMP_WIDTH } from "./done-stamp";
 import {
   buildDraft,
   buildEntries,
@@ -181,6 +181,27 @@ export function MarkingPanel({
   const [confirmAbsent, setConfirmAbsent] = useState(false);
   /** True only right after this screen saved, so the stamp presses in once. */
   const [justSaved, setJustSaved] = useState(false);
+  // Geometry for the floating stamp, written from JS without re-rendering.
+  const scrollY = useSharedValue(0);
+  const view = useSharedValue({ w: 0, h: 0 });
+  const parts = useSharedValue({ top: 0, tally: 0, intro: 0, content: 0 });
+  const bottomPadShared = useSharedValue(0);
+  const tabSpaceShared = useSharedValue(0);
+  const listPadTop = spacing.md;
+  const stampStyle = useAnimatedStyle(() => {
+    const rowsTop = listPadTop + parts.value.top + parts.value.tally + parts.value.intro - scrollY.value;
+    const rowsBottom = parts.value.content - bottomPadShared.value - scrollY.value;
+    const regionTop = Math.max(rowsTop, parts.value.tally);
+    const regionBottom = Math.min(view.value.h - tabSpaceShared.value, rowsBottom);
+    const visible = regionBottom - regionTop;
+    const centre = (regionTop + regionBottom) / 2;
+    return {
+      top: centre - STAMP_HEIGHT / 2,
+      left: (view.value.w - STAMP_WIDTH) / 2,
+      opacity: Math.min(1, Math.max(0, (visible - 60) / 80)),
+    };
+  });
+
   const [undo, setUndo] = useState<{ previous: Map<string, Status>; count: number } | null>(null);
   /** Any manual mark makes the teacher's entries the truth; no refetch may
    *  overwrite them until the day changes or a submit resets the flag. */
@@ -612,12 +633,6 @@ export function MarkingPanel({
               </ThemedText>
             ) : null}
           </View>
-          {clean ? (
-            <DoneStamp
-              animate={justSaved}
-              detail={`${formatShortWeekday(date).toUpperCase()} · ${counts.marked}/${roster.length}`}
-            />
-          ) : null}
           <HeadButton
             icon="viewCompact"
             label={words.viewList}
@@ -714,15 +729,26 @@ export function MarkingPanel({
   const renderItem = ({ item }: { item: Item }) => {
     switch (item.kind) {
       case "top":
-        return top;
+        return (
+          <View onLayout={(e) => (parts.value = { ...parts.value, top: e.nativeEvent.layout.height })}>
+            {top}
+          </View>
+        );
       case "tally":
         return (
-          <View style={styles.tallyWrap}>
+          <View
+            style={styles.tallyWrap}
+            onLayout={(e) => (parts.value = { ...parts.value, tally: e.nativeEvent.layout.height })}
+          >
             <Tally counts={counts} filter={activeFilter} onFilter={setFilter} />
           </View>
         );
       case "intro":
-        return intro;
+        return (
+          <View onLayout={(e) => (parts.value = { ...parts.value, intro: e.nativeEvent.layout.height })}>
+            {intro}
+          </View>
+        );
       case "grid":
         return (
           <View>
@@ -732,6 +758,7 @@ export function MarkingPanel({
               onToggle={toggleRow}
               onOpenSheet={setSheetStudentId}
             />
+            {clean ? <View pointerEvents="none" style={styles.dim} /> : null}
             {canEditRows ? (
               <ThemedText variant="caption" color={colors.muted} style={styles.gridHint}>
                 {words.gridHint}
@@ -760,6 +787,7 @@ export function MarkingPanel({
               onToggle={toggleRow}
               onOpenSheet={setSheetStudentId}
             />
+            {clean ? <View pointerEvents="none" style={styles.dim} /> : null}
           </View>
         );
     }
@@ -767,6 +795,8 @@ export function MarkingPanel({
 
   const bottomPad =
     tabSpace + (showSaveBar ? SAVE_HEIGHT + spacing.md + (showReason ? REASON_HEIGHT : 0) : 0);
+  bottomPadShared.value = bottomPad;
+  tabSpaceShared.value = tabSpace;
 
   return (
     <>
@@ -774,6 +804,12 @@ export function MarkingPanel({
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
+        <View
+          style={styles.flex}
+          onLayout={(e) =>
+            (view.value = { w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })
+          }
+        >
         <FlatList
           testID="attendance-roster"
           data={items}
@@ -782,15 +818,27 @@ export function MarkingPanel({
           }
           renderItem={renderItem}
           stickyHeaderIndices={[1]}
-          onScroll={hideTabBarOnScroll}
+          onScroll={(event) => {
+            scrollY.value = event.nativeEvent.contentOffset.y;
+            hideTabBarOnScroll(event);
+          }}
+          onContentSizeChange={(_, height) => (parts.value = { ...parts.value, content: height })}
           scrollEventThrottle={32}
           contentContainerStyle={{
             paddingHorizontal: gutter,
-            paddingTop: spacing.md,
+            paddingTop: listPadTop,
             paddingBottom: bottomPad,
           }}
           keyboardShouldPersistTaps="handled"
         />
+          {clean ? (
+            <DoneStamp
+              animate={justSaved}
+              positionStyle={stampStyle}
+              detail={`${formatShortWeekday(date).toUpperCase()} · ${counts.marked}/${roster.length}`}
+            />
+          ) : null}
+        </View>
         {showSaveBar ? (
           <Animated.View
             style={[styles.bottomBlock, { bottom: tabSpace }, followTabBar]}
@@ -1226,6 +1274,8 @@ const styles = StyleSheet.create({
   },
   headButtonPressed: { backgroundColor: colors.field },
   rowWrap: { backgroundColor: colors.surface, overflow: "hidden" },
+  /** A saved day's list sits slightly back under the stamp. */
+  dim: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: "rgba(16, 24, 40, 0.07)" },
   rowFirst: { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg },
   rowLast: { borderBottomLeftRadius: radius.lg, borderBottomRightRadius: radius.lg },
   rowSeparated: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.hairline },
