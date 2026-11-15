@@ -445,7 +445,7 @@ export function comingUpItems(att: HomeAttendanceToday | undefined, papers: Home
   const out: Upcoming[] = [];
   for (const day of att?.upcoming ?? []) {
     if (day.kind === "holiday") out.push({ date: day.date, kind: "holiday", title: c.holiday, meta: day.reason ?? c.fromCalendar });
-    else if (day.kind === "half_day") out.push({ date: day.date, kind: "half_day", title: c.halfDay, meta: day.reason ?? c.fromCalendar });
+    else if (day.kind === "half_day" && day.reason) out.push({ date: day.date, kind: "half_day", title: c.halfDay, meta: day.reason ?? c.fromCalendar });
     else if (day.kind === "exam_day") out.push({ date: day.date, kind: "exam_day", title: c.examDay, meta: day.reason ?? c.fromCalendar });
   }
   for (const p of papers?.upcoming ?? []) {

@@ -143,7 +143,7 @@ export function StaffHomeScreen() {
     schoolToday: att && att.wholeSchool && dayKind !== "holiday" && dayKind !== "weekend" ? <SchoolToday data={att} /> : null,
     youTeach: (
       <View>
-        <YouTeach pairs={pairs} papers={papers} today={today} classTeacherLabels={ctRows.map((r) => sectionShort(r))} />
+        <YouTeach pairs={pairs} papers={papers} today={today} classTeacherLabels={[...new Set(ctRows.map((r) => sectionShort(r)))]} />
         <MarksCard papers={papers} today={today} />
       </View>
     ),
