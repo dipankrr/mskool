@@ -597,12 +597,16 @@ export function MarkingPanel({
         </>
       ) : (
         <>
-          <ThemedText variant="sectionLabel" numberOfLines={1} style={styles.flex}>
-            {layout === "grid" ? words.gridLabel : words.listLabel}
+          <View style={styles.listTitle}>
+            <ThemedText variant="sectionLabel" numberOfLines={1}>
+              {layout === "grid" ? words.gridLabel : words.listLabel}
+            </ThemedText>
             {layout === "list" && recentDays.length > 0 ? (
-              <ThemedText variant="meta">{words.listLast5}</ThemedText>
+              <ThemedText variant="meta" numberOfLines={1} style={styles.shrink}>
+                {words.listLast5}
+              </ThemedText>
             ) : null}
-          </ThemedText>
+          </View>
           <HeadButton
             icon="viewCompact"
             label={words.viewList}
@@ -1200,6 +1204,7 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.xs,
     minHeight: 44,
   },
+  listTitle: { flex: 1, flexDirection: "row", alignItems: "baseline" },
   clearFilter: { minHeight: 44, justifyContent: "center" },
   headButton: {
     width: 44,
