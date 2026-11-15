@@ -77,6 +77,12 @@ export const staff = pgTable(
     // Never hard-deleted (hard rule 2) — a resigned teacher still has to
     // resolve as the author of last year's attendance and marks.
     status: staffStatusEnum().notNull().default("active"),
+    // On leave: the day they're due back (null = not known). Suspended: null.
+    // Shown on the profile; nothing switches back automatically.
+    statusUntil: date(),
+    // Why they're on leave or suspended, written by the office. Cleared when
+    // they're back at work.
+    statusNote: text(),
 
     // Opt-in public profile (ADR-041 §3): when true, a WHITELISTED projection
     // of this row (name, designation, qualification, photo only) may feed

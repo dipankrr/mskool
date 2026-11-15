@@ -33,6 +33,11 @@ export const membershipSchema = z.object({
   scopeTypes: z.array(z.enum(["org", "school", "class", "section"])),
   roleTypes: z.array(z.string()),
   permissions: z.array(z.string()),
+  /**
+   * The permissions held through org-level grants only: what this user may
+   * do for every branch at once (e.g. give a role for the whole organisation).
+   */
+  orgWidePermissions: z.array(z.string()),
   /** Active schools visible under this user's grants in this org. */
   schools: z.array(schoolSelectSchema),
   /**

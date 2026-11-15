@@ -124,8 +124,33 @@ export type UpdateStaffInput = z.infer<typeof updateStaffSchema>;
  */
 export const deactivateStaffSchema = z.object({
   status: z.enum(["suspended", "resigned", "retired", "terminated"]),
+  /** Why, for a suspension: shown on the profile, cleared when lifted. */
+  note: z.string().max(500).nullish(),
 });
 export type DeactivateStaffInput = z.infer<typeof deactivateStaffSchema>;
+
+/** On leave and back (2026-11-15). Leave keeps the sign-in and classes. */
+export const setStaffLeaveSchema = z.object({
+  onLeave: z.boolean(),
+  /** The day they're due back, if known. */
+  until: isoDate.nullish(),
+  note: z.string().max(500).nullish(),
+});
+export type SetStaffLeaveInput = z.infer<typeof setStaffLeaveSchema>;
+
+/** Move to another branch of the same organisation. */
+export const moveStaffSchema = z.object({
+  toSchoolId: z.uuid(),
+});
+
+/** What a staff export includes beyond name, code, job title and phone. */
+export const staffExportSchema = z.object({
+  teaching: z.boolean().default(true),
+  roles: z.boolean().default(true),
+  personal: z.boolean().default(false),
+  includeLeft: z.boolean().default(false),
+});
+export type StaffExportInput = z.infer<typeof staffExportSchema>;
 
 /**
  * LOGIN PROVISIONING (ADR-035). The initial password is a hand-off secret:

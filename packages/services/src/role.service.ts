@@ -12,6 +12,7 @@ import type {
   RevokeRoleInput,
   RoleAssignmentView,
   RoleType,
+  StaffRoleView,
 } from "@repo/contracts";
 import { db } from "@repo/db";
 import {
@@ -23,9 +24,11 @@ import {
   scopeNodes,
   sections,
   staff,
+  staffPendingRoles,
   schools,
+  user,
 } from "@repo/db/schema";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, notInArray, or } from "drizzle-orm";
 import { ServiceRefusal } from "./service-error";
 
 /**
@@ -554,6 +557,402 @@ export class RoleService {
     }
 
     return labels;
+  }
+
+  // ── Staff roles on the phone (2026-11-15) ────────────────────────────────
+
+  /**
+   * One staff member's office roles: the live grants (if they have a login)
+   * and the ones waiting for them to join. Teacher roles are left out: they
+   * come from Teaching and are shown there.
+   */
+  async forStaff(organizationId: string, staffId: string): Promise<StaffRoleView[]> {
+    const [member] = await db
+      .select({ userId: staff.userId })
+      .from(staff)
+      .where(and(eq(staff.id, staffId), eq(staff.organizationId, organizationId)));
+    if (!member) return [];
+
+    const live = member.userId
+      ? await db
+          .select()
+          .from(roleAssignments)
+          .where(
+            and(
+              eq(roleAssignments.organizationId, organizationId),
+              eq(roleAssignments.userId, member.userId),
+              isNull(roleAssignments.revokedAt),
+              notInArray(roleAssignments.roleType, ["class_teacher", "subject_teacher"]),
+            ),
+          )
+          .orderBy(asc(roleAssignments.grantedAt))
+      : [];
+    const waiting = await db
+      .select()
+      .from(staffPendingRoles)
+      .where(
+        and(
+          eq(staffPendingRoles.organizationId, organizationId),
+          eq(staffPendingRoles.staffId, staffId),
+          isNull(staffPendingRoles.appliedAt),
+          isNull(staffPendingRoles.cancelledAt),
+        ),
+      )
+      .orderBy(asc(staffPendingRoles.createdAt));
+
+    const labels = await this.scopeLabels(organizationId, [...live, ...waiting]);
+    return [
+      ...live.map((r) => ({
+        id: r.id,
+        waiting: false,
+        roleType: r.roleType,
+        scopeType: r.scopeType,
+        scopeId: r.scopeId,
+        scopeLabel: labels.get(r.scopeId) ?? "Unknown",
+        expiresAt: r.expiresAt?.toISOString() ?? null,
+      })),
+      ...waiting.map((r) => ({
+        id: r.id,
+        waiting: true,
+        roleType: r.roleType,
+        scopeType: r.scopeType,
+        scopeId: r.scopeId,
+        scopeLabel: labels.get(r.scopeId) ?? "Unknown",
+        expiresAt: r.expiresAt?.toISOString() ?? null,
+      })),
+    ];
+  }
+
+  /**
+   * Gives a role to a staff member. With a sign-in it is granted now (the
+   * same checks as `assign`); without one it waits on the staff record and
+   * is granted when they join. Returns which happened.
+   */
+  async assignToStaff(
+    organizationId: string,
+    actorUserId: string,
+    input: {
+      staffId: string;
+      roleType: RoleType;
+      scopeType: "org" | "school" | "class" | "section";
+      scopeId: string;
+      expiresAt?: string | null;
+    },
+  ): Promise<{ waiting: boolean; id: string }> {
+    const [member] = await db
+      .select({ userId: staff.userId, status: staff.status, username: user.username })
+      .from(staff)
+      .leftJoin(user, eq(staff.userId, user.id))
+      .where(and(eq(staff.id, input.staffId), eq(staff.organizationId, organizationId)));
+    if (!member) throw new ServiceRefusal("NOT_FOUND", "Staff member not found.");
+    if (!["active", "on_leave", "suspended"].includes(member.status)) {
+      throw new ServiceRefusal("BAD_REQUEST", "They have left. Bring them back first.");
+    }
+    const hasLogin = Boolean(member.userId && !member.username?.startsWith("left."));
+
+    if (hasLogin) {
+      const row = await this.assign(organizationId, actorUserId, {
+        userId: member.userId!,
+        roleType: input.roleType,
+        scopeType: input.scopeType,
+        scopeId: input.scopeId,
+        expiresAt: input.expiresAt ?? null,
+      });
+      return { waiting: false, id: row.id };
+    }
+
+    // The same refusals `assign` makes, before anything is stored.
+    if (input.roleType === "class_teacher" || input.roleType === "subject_teacher") {
+      throw new ServiceRefusal(
+        "BAD_REQUEST",
+        "Teachers get their access from what they teach. Give them classes in Teaching instead.",
+      );
+    }
+    await this.assertScope(organizationId, input.scopeType, input.scopeId);
+    const [dupe] = await db
+      .select({ id: staffPendingRoles.id })
+      .from(staffPendingRoles)
+      .where(
+        and(
+          eq(staffPendingRoles.staffId, input.staffId),
+          eq(staffPendingRoles.roleType, input.roleType),
+          eq(staffPendingRoles.scopeId, input.scopeId),
+          isNull(staffPendingRoles.appliedAt),
+          isNull(staffPendingRoles.cancelledAt),
+        ),
+      );
+    if (dupe) throw new ServiceRefusal("CONFLICT", "They already have this role.");
+
+    const [row] = await db
+      .insert(staffPendingRoles)
+      .values({
+        organizationId,
+        staffId: input.staffId,
+        roleType: input.roleType,
+        scopeType: input.scopeType,
+        scopeId: input.scopeId,
+        expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
+        createdBy: actorUserId,
+      })
+      .returning({ id: staffPendingRoles.id });
+    return { waiting: true, id: row!.id };
+  }
+
+  /** The waiting role's owning scope, for the builder's gate on cancel. */
+  async getPendingOwner(organizationId: string, id: string) {
+    const [row] = await db
+      .select({ scopeType: staffPendingRoles.scopeType, scopeId: staffPendingRoles.scopeId })
+      .from(staffPendingRoles)
+      .where(
+        and(
+          eq(staffPendingRoles.id, id),
+          eq(staffPendingRoles.organizationId, organizationId),
+          isNull(staffPendingRoles.appliedAt),
+          isNull(staffPendingRoles.cancelledAt),
+        ),
+      );
+    return row ?? null;
+  }
+
+  /** Takes back a role that was waiting for someone to join. */
+  async cancelPending(organizationId: string, actorUserId: string, id: string) {
+    const [row] = await db
+      .update(staffPendingRoles)
+      .set({ cancelledAt: new Date(), cancelledBy: actorUserId })
+      .where(
+        and(
+          eq(staffPendingRoles.id, id),
+          eq(staffPendingRoles.organizationId, organizationId),
+          isNull(staffPendingRoles.appliedAt),
+          isNull(staffPendingRoles.cancelledAt),
+        ),
+      )
+      .returning({ id: staffPendingRoles.id });
+    return row ?? null;
+  }
+
+  /**
+   * At join: every waiting role becomes a real grant, made in the name of
+   * whoever picked it. A waiting role that has expired meanwhile, or that
+   * the grant refuses (a scope since closed), is cancelled instead.
+   */
+  async applyPending(organizationId: string, staffId: string, userId: string): Promise<number> {
+    const waiting = await db
+      .select()
+      .from(staffPendingRoles)
+      .where(
+        and(
+          eq(staffPendingRoles.organizationId, organizationId),
+          eq(staffPendingRoles.staffId, staffId),
+          isNull(staffPendingRoles.appliedAt),
+          isNull(staffPendingRoles.cancelledAt),
+        ),
+      );
+    let applied = 0;
+    for (const pick of waiting) {
+      const now = new Date();
+      if (pick.expiresAt && pick.expiresAt <= now) {
+        await db
+          .update(staffPendingRoles)
+          .set({ cancelledAt: now })
+          .where(eq(staffPendingRoles.id, pick.id));
+        continue;
+      }
+      try {
+        const grant = await this.assign(organizationId, pick.createdBy, {
+          userId,
+          roleType: pick.roleType,
+          scopeType: pick.scopeType,
+          scopeId: pick.scopeId,
+          expiresAt: pick.expiresAt?.toISOString() ?? null,
+        });
+        await db
+          .update(staffPendingRoles)
+          .set({ appliedAt: now, assignmentId: grant.id })
+          .where(eq(staffPendingRoles.id, pick.id));
+        applied += 1;
+      } catch {
+        await db
+          .update(staffPendingRoles)
+          .set({ cancelledAt: now })
+          .where(eq(staffPendingRoles.id, pick.id));
+      }
+    }
+    return applied;
+  }
+
+  /**
+   * Pushes out (or removes) a live grant's end date, including one that has
+   * just ended. Audited like a grant.
+   */
+  async extend(
+    organizationId: string,
+    actorUserId: string,
+    assignmentId: string,
+    expiresAt: string | null,
+  ) {
+    const [row] = await db
+      .select()
+      .from(roleAssignments)
+      .where(
+        and(
+          eq(roleAssignments.id, assignmentId),
+          eq(roleAssignments.organizationId, organizationId),
+          isNull(roleAssignments.revokedAt),
+        ),
+      );
+    if (!row) return null;
+    if (row.roleType === "class_teacher" || row.roleType === "subject_teacher") {
+      throw new ServiceRefusal("BAD_REQUEST", "Teacher roles follow Teaching. Change it there.");
+    }
+    const [updated] = await db
+      .update(roleAssignments)
+      .set({ expiresAt: expiresAt ? new Date(expiresAt) : null })
+      .where(eq(roleAssignments.id, assignmentId))
+      .returning();
+    await db.insert(authzAuditLog).values({
+      organizationId,
+      action: "role_extended",
+      actorUserId,
+      targetUserId: row.userId,
+      roleType: row.roleType,
+      scopeType: row.scopeType,
+      scopeId: row.scopeId,
+      permission: "role_assignment:assign",
+      details: { from: row.expiresAt?.toISOString() ?? null, to: expiresAt },
+    });
+    await invalidateUserAuthCache(row.userId);
+    return updated ?? null;
+  }
+
+  /**
+   * Office roles with an end date in the last 7 days or the next 7, for one
+   * branch (its own grants plus org-wide ones). Teacher roles excluded.
+   */
+  async ending(organizationId: string, schoolId: string) {
+    const now = Date.now();
+    const from = new Date(now - 7 * 86_400_000);
+    const to = new Date(now + 7 * 86_400_000);
+    const rows = await db
+      .select({
+        id: roleAssignments.id,
+        roleType: roleAssignments.roleType,
+        scopeType: roleAssignments.scopeType,
+        scopeId: roleAssignments.scopeId,
+        expiresAt: roleAssignments.expiresAt,
+        staffId: staff.id,
+        firstName: staff.firstName,
+        lastName: staff.lastName,
+      })
+      .from(roleAssignments)
+      .innerJoin(
+        staff,
+        and(eq(staff.userId, roleAssignments.userId), eq(staff.organizationId, organizationId)),
+      )
+      .where(
+        and(
+          eq(roleAssignments.organizationId, organizationId),
+          isNull(roleAssignments.revokedAt),
+          notInArray(roleAssignments.roleType, ["class_teacher", "subject_teacher"]),
+          gte(roleAssignments.expiresAt, from),
+          lte(roleAssignments.expiresAt, to),
+          or(eq(roleAssignments.scopeId, schoolId), eq(roleAssignments.scopeType, "org")),
+        ),
+      )
+      .orderBy(asc(roleAssignments.expiresAt));
+    const labels = await this.scopeLabels(organizationId, rows);
+    return rows.map((r) => ({
+      id: r.id,
+      roleType: r.roleType,
+      scopeLabel: labels.get(r.scopeId) ?? "Unknown",
+      expiresAt: r.expiresAt!.toISOString(),
+      staffId: r.staffId,
+      name: `${r.firstName} ${r.lastName}`.trim(),
+    }));
+  }
+
+  /**
+   * One staff member's history from the audit log: roles given, taken away
+   * and extended, sign-in events and status changes, newest first.
+   */
+  async history(organizationId: string, staffId: string, limit = 100) {
+    const [member] = await db
+      .select({ userId: staff.userId })
+      .from(staff)
+      .where(and(eq(staff.id, staffId), eq(staff.organizationId, organizationId)));
+    if (!member) return [];
+    const about = member.userId
+      ? or(eq(authzAuditLog.scopeId, staffId), eq(authzAuditLog.targetUserId, member.userId))
+      : eq(authzAuditLog.scopeId, staffId);
+    const rows = await db
+      .select({
+        id: authzAuditLog.id,
+        action: authzAuditLog.action,
+        at: authzAuditLog.createdAt,
+        roleType: authzAuditLog.roleType,
+        scopeType: authzAuditLog.scopeType,
+        scopeId: authzAuditLog.scopeId,
+        details: authzAuditLog.details,
+        actorUserId: authzAuditLog.actorUserId,
+        actorName: user.name,
+      })
+      .from(authzAuditLog)
+      .leftJoin(user, eq(user.id, authzAuditLog.actorUserId))
+      .where(and(eq(authzAuditLog.organizationId, organizationId), about))
+      .orderBy(desc(authzAuditLog.createdAt))
+      .limit(limit);
+
+    // The actor's name from their staff record here, when they have one.
+    const actorIds = [...new Set(rows.map((r) => r.actorUserId).filter(Boolean))] as string[];
+    const actorStaff = actorIds.length
+      ? await db
+          .select({ userId: staff.userId, firstName: staff.firstName, lastName: staff.lastName })
+          .from(staff)
+          .where(and(eq(staff.organizationId, organizationId), inArray(staff.userId, actorIds)))
+      : [];
+    const names = new Map(actorStaff.map((s) => [s.userId!, `${s.firstName} ${s.lastName}`.trim()]));
+    const roleRows = rows.filter((r) => r.roleType && r.scopeType && r.scopeId);
+    const labels = await this.scopeLabels(
+      organizationId,
+      roleRows.map((r) => ({ scopeType: r.scopeType!, scopeId: r.scopeId! })),
+    );
+    return rows
+      .filter((r) => r.roleType !== "class_teacher" && r.roleType !== "subject_teacher")
+      .map((r) => {
+        const details = (r.details ?? {}) as Record<string, unknown>;
+        return {
+          id: r.id,
+          action: r.action,
+          at: r.at.toISOString(),
+          roleType: r.roleType ?? null,
+          scopeLabel: r.roleType && r.scopeId ? (labels.get(r.scopeId) ?? null) : null,
+          by: r.actorUserId ? (names.get(r.actorUserId) ?? r.actorName ?? null) : null,
+          self: r.actorUserId != null && r.actorUserId === member.userId,
+          reason: typeof details.reason === "string" ? details.reason : null,
+          until: typeof details.to === "string" && r.action === "role_extended" ? details.to : null,
+        };
+      });
+  }
+
+  /** The scope checks `assign` makes, shared with waiting roles. */
+  private async assertScope(organizationId: string, scopeType: string, scopeId: string) {
+    if (scopeType === "org") {
+      if (scopeId !== organizationId) {
+        throw new Error(
+          "An organisation-scoped role is granted at the organisation itself — the scope must be the organisation id.",
+        );
+      }
+      return;
+    }
+    const [node] = await db
+      .select({ id: scopeNodes.id, type: scopeNodes.type })
+      .from(scopeNodes)
+      .where(and(eq(scopeNodes.id, scopeId), eq(scopeNodes.organizationId, organizationId)));
+    if (!node || node.type !== scopeType) {
+      throw new Error(
+        "The scope named for this role does not exist in this organisation, or does not match the chosen scope type.",
+      );
+    }
   }
 }
 

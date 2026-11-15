@@ -12,6 +12,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
 import { organizations } from "./organization";
+import { staff } from "./people";
 
 export const scopeTypeEnum = pgEnum("scope_type", [
   "org",
@@ -155,6 +156,39 @@ export const roleAssignments = pgTable(
   ],
 );
 
+/**
+ * A role picked for someone who has not joined the app yet. A grant needs a
+ * login (`role_assignments.userId`), so the pick waits here, keyed on the
+ * staff record, and becomes a real grant when they join (staff roles,
+ * 2026-11-15). The same idea as teaching assignments made before joining.
+ * Cancelled, never deleted: `cancelledAt`; applied: `appliedAt` + the grant.
+ */
+export const staffPendingRoles = pgTable(
+  "staff_pending_roles",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    organizationId: uuid()
+      .notNull()
+      .references(() => organizations.id),
+    staffId: uuid()
+      .notNull()
+      .references(() => staff.id),
+    roleType: roleTypeEnum().notNull(),
+    scopeType: scopeTypeEnum().notNull(),
+    scopeId: uuid().notNull(),
+    expiresAt: timestamp({ withTimezone: true }),
+    createdBy: text()
+      .notNull()
+      .references(() => user.id),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    appliedAt: timestamp({ withTimezone: true }),
+    assignmentId: uuid().references(() => roleAssignments.id),
+    cancelledAt: timestamp({ withTimezone: true }),
+    cancelledBy: text().references(() => user.id),
+  },
+  (t) => [index("staff_pending_roles_staff_idx").on(t.staffId)],
+);
+
 export const authzAuditActionEnum = pgEnum("authz_audit_action", [
   "role_granted",
   "role_revoked",
@@ -180,6 +214,14 @@ export const authzAuditActionEnum = pgEnum("authz_audit_action", [
   "staff_invited",
   "staff_joined",
   "staff_left",
+  // Staff roles and status (2026-11-15): a suspension switches the sign-in
+  // off and back on, a phone change moves the sign-in, a branch move ends
+  // the old branch's grants, and a role's end date can be pushed out.
+  "staff_suspended",
+  "staff_reinstated",
+  "staff_phone_changed",
+  "staff_moved",
+  "role_extended",
 ]);
 
 /**

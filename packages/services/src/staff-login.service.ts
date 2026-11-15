@@ -14,6 +14,7 @@ import {
 import { and, eq, gt, inArray, isNull, ne, sql } from "drizzle-orm";
 
 import { assignmentAccessService } from "./assignment-access.service";
+import { roleService } from "./role.service";
 import { normalizePhone } from "./phone";
 import { ServiceRefusal } from "./service-error";
 
@@ -165,10 +166,12 @@ export class StaffLoginService {
       .innerJoin(organizations, eq(staff.organizationId, organizations.id))
       .where(and(eq(staff.id, staffId), eq(staff.organizationId, organizationId)));
     if (!row) throw new ServiceRefusal("NOT_FOUND", "Staff member not found.");
-    if (row.status !== "active") {
+    if (row.status !== "active" && row.status !== "on_leave") {
       throw new ServiceRefusal(
         "BAD_REQUEST",
-        "Only current staff can be invited. Bring them back first.",
+        row.status === "suspended"
+          ? "They are suspended. Lift the suspension first."
+          : "Only current staff can be invited. Bring them back first.",
       );
     }
     const digits = row.phone ? normalizePhone(row.phone) : null;
@@ -280,9 +283,17 @@ export class StaffLoginService {
    * staff login and a password, `code` for everything else, unknown numbers
    * included, so the only thing the answer reveals is "has joined".
    */
-  async accountState(rawPhone: string): Promise<"password" | "code"> {
+  async accountState(rawPhone: string): Promise<"password" | "code" | "paused"> {
     const digits = normalizePhone(rawPhone);
     if (!digits) return "code";
+    // A suspended staff member is told so, instead of being sent round the
+    // code path that would refuse them anyway.
+    const [paused] = await db
+      .select({ id: staff.id })
+      .from(staff)
+      .where(and(eq(staff.phone, digits), eq(staff.status, "suspended")))
+      .limit(1);
+    if (paused) return "paused";
     const [login] = await db
       .select({ id: user.id })
       .from(user)
@@ -323,7 +334,7 @@ export class StaffLoginService {
       .where(
         and(
           eq(staff.phone, digits),
-          eq(staff.status, "active"),
+          inArray(staff.status, ["active", "on_leave"]),
           isNull(staffJoinCodes.usedAt),
           isNull(staffJoinCodes.revokedAt),
           gt(staffJoinCodes.expiresAt, now),
@@ -416,6 +427,8 @@ export class StaffLoginService {
     // ADR-068: whatever the office assigned before they joined becomes their
     // access now.
     await assignmentAccessService.syncStaff(match.organizationId, match.staffId, userId);
+    // Office roles picked before they joined become real grants now.
+    await roleService.applyPending(match.organizationId, match.staffId, userId!);
 
     return { staffId: match.staffId, userId: userId!, firstJoin };
   }
@@ -471,6 +484,110 @@ export class StaffLoginService {
       permission: "staff:delete",
       details: { staffId },
     });
+  }
+
+  /**
+   * A suspension switches the sign-in off but keeps everything else: the
+   * username becomes `suspended.<staffId>` (so the phone stops working),
+   * sessions end, open codes are revoked. Role grants and teaching stay in
+   * place, unusable without a sign-in, and work again on `reinstate`.
+   */
+  async suspend(organizationId: string, staffId: string, actorUserId: string): Promise<void> {
+    const [row] = await db
+      .select({ userId: staff.userId })
+      .from(staff)
+      .where(and(eq(staff.id, staffId), eq(staff.organizationId, organizationId)));
+    if (!row) return;
+    await db
+      .update(staffJoinCodes)
+      .set({ revokedAt: new Date() })
+      .where(
+        and(
+          eq(staffJoinCodes.staffId, staffId),
+          isNull(staffJoinCodes.usedAt),
+          isNull(staffJoinCodes.revokedAt),
+        ),
+      );
+    if (row.userId) {
+      await db
+        .update(user)
+        .set({ username: `suspended.${staffId}`, displayUsername: null })
+        .where(eq(user.id, row.userId));
+      await revokeUserSessions(row.userId);
+      await invalidateUserAuthCache(row.userId);
+    }
+    await db.insert(authzAuditLog).values({
+      organizationId,
+      action: "staff_suspended",
+      actorUserId,
+      targetUserId: row.userId,
+      scopeId: staffId,
+      permission: "staff:delete",
+      details: { staffId },
+    });
+  }
+
+  /** Ends a suspension: the sign-in comes back on their current phone. */
+  async reinstate(organizationId: string, staffId: string, actorUserId: string): Promise<void> {
+    const [row] = await db
+      .select({ userId: staff.userId, phone: staff.phone, username: user.username })
+      .from(staff)
+      .leftJoin(user, eq(staff.userId, user.id))
+      .where(and(eq(staff.id, staffId), eq(staff.organizationId, organizationId)));
+    if (!row) return;
+    const digits = row.phone ? normalizePhone(row.phone) : null;
+    if (row.userId && digits && row.username?.startsWith("suspended.")) {
+      await db
+        .update(user)
+        .set({ username: staffUsername(digits), displayUsername: digits })
+        .where(eq(user.id, row.userId));
+      await invalidateUserAuthCache(row.userId);
+    }
+    await db.insert(authzAuditLog).values({
+      organizationId,
+      action: "staff_reinstated",
+      actorUserId,
+      targetUserId: row.userId,
+      scopeId: staffId,
+      permission: "staff:delete",
+      details: { staffId },
+    });
+  }
+
+  /**
+   * The phone on the record changed. A live staff sign-in moves with it at
+   * once: same password, new number. Nothing to do before they join, after
+   * they leave, or while suspended (reinstate uses the record's phone).
+   * Returns whether a sign-in moved.
+   */
+  async movePhone(
+    organizationId: string,
+    staffId: string,
+    digits: string,
+    actorUserId: string,
+  ): Promise<boolean> {
+    const [row] = await db
+      .select({ userId: staff.userId, username: user.username })
+      .from(staff)
+      .innerJoin(user, eq(staff.userId, user.id))
+      .where(and(eq(staff.id, staffId), eq(staff.organizationId, organizationId)));
+    if (!row?.username?.startsWith(STAFF_USERNAME_PREFIX)) return false;
+    const next = staffUsername(digits);
+    if (row.username === next) return false;
+    await db
+      .update(user)
+      .set({ username: next, displayUsername: digits })
+      .where(eq(user.id, row.userId!));
+    await db.insert(authzAuditLog).values({
+      organizationId,
+      action: "staff_phone_changed",
+      actorUserId,
+      targetUserId: row.userId,
+      scopeId: staffId,
+      permission: "staff:update",
+      details: { staffId, from: row.username.slice(STAFF_USERNAME_PREFIX.length), to: digits },
+    });
+    return true;
   }
 }
 

@@ -1,7 +1,7 @@
 import type { Permission } from "./permissions";
 import type { RoleType } from "./roles";
 import { intersectScopes, isAssignmentExpired, scopeCovers } from "./scope";
-import type { DataScope, ResourceContext, UserAuthCache } from "./types";
+import type { DataScope, ResourceContext, RoleAssignment, UserAuthCache } from "./types";
 
 /**
  * The permission check. Pure, synchronous, zero I/O — everything it needs was
@@ -92,6 +92,8 @@ export function getDataScopes(
 export function permissionsInOrg(
   cache: UserAuthCache,
   organizationId: string,
+  /** Only grants made at this scope level, e.g. "org" for org-wide powers. */
+  onlyScopeType?: RoleAssignment["scopeType"],
 ): Permission[] {
   const orgPerms = cache.orgPermissions[organizationId];
   if (!orgPerms) return [];
@@ -101,6 +103,7 @@ export function permissionsInOrg(
 
   for (const assignment of cache.assignments) {
     if (assignment.organizationId !== organizationId) continue;
+    if (onlyScopeType && assignment.scopeType !== onlyScopeType) continue;
     if (isAssignmentExpired(assignment, now)) continue;
     for (const p of orgPerms[assignment.roleType] ?? []) held.add(p);
   }

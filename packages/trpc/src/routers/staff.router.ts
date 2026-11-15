@@ -2,7 +2,10 @@ import {
   createStaffLoginInput,
   createStaffSchema,
   deactivateStaffSchema,
+  moveStaffSchema,
   resetStaffLoginInput,
+  setStaffLeaveSchema,
+  staffExportSchema,
   imageRefSchema,
   staffFormHintsSchema,
   staffInviteSchema,
@@ -14,7 +17,14 @@ import {
   uploadRequestSchema,
   uploadTicketSchema,
 } from "@repo/contracts";
-import { assignmentService, staffLoginService, staffPhotoService, staffService } from "@repo/services";
+import { can } from "@repo/authz";
+import {
+  assignmentService,
+  roleService,
+  staffLoginService,
+  staffPhotoService,
+  staffService,
+} from "@repo/services";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { router, staffListProcedure, staffProcedure } from "../trpc";
@@ -150,7 +160,7 @@ export const staffRouter = router({
     .input(z.object({ id: z.uuid(), data: updateStaffSchema }))
     .output(staffSelectSchema)
     .mutation(async ({ ctx, input }) => {
-      const row = await staffService.updateStaff(ctx.scope, input.id, input.data);
+      const row = await staffService.updateStaff(ctx.scope, input.id, input.data, ctx.userId);
 
       if (!row) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Staff member not found." });
@@ -211,13 +221,162 @@ export const staffRouter = router({
     .input(z.object({ id: z.uuid() }))
     .output(staffSelectSchema)
     .mutation(async ({ ctx, input }) => {
-      const row = await staffService.reactivateStaff(ctx.scope, input.id);
+      const row = await staffService.reactivateStaff(ctx.scope, input.id, ctx.userId);
 
       if (!row) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Staff member not found." });
       }
 
       return row;
+    }),
+
+  /**
+   * On leave and back (2026-11-15). Leave keeps the sign-in, classes and
+   * roles; the office covers the classes in Teaching.
+   */
+  setLeave: staffProcedure("staff:update", {
+    resolveOwner: resolveStaffOwner,
+  })
+    .meta({
+      openapi: {
+        method: "POST",
+        path: "/staff/{id}/leave",
+        tags: ["staff"],
+        summary: "Put a staff member on leave, or mark them back",
+        protect: true,
+      },
+    })
+    .input(z.object({ id: z.uuid(), data: setStaffLeaveSchema }))
+    .output(staffSelectSchema)
+    .mutation(async ({ ctx, input }) => {
+      const row = await staffService.setLeave(ctx.scope, input.id, input.data);
+      if (!row) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Staff member not found." });
+      }
+      return row;
+    }),
+
+  /**
+   * Move to another branch. The gate covers the branch they work at now;
+   * the caller must also hold staff:update at the branch they move to.
+   */
+  move: staffProcedure("staff:update", {
+    resolveOwner: resolveStaffOwner,
+  })
+    .meta({
+      openapi: {
+        method: "POST",
+        path: "/staff/{id}/move",
+        tags: ["staff"],
+        summary: "Move a staff member to another branch",
+        protect: true,
+      },
+    })
+    .input(z.object({ id: z.uuid(), data: moveStaffSchema }))
+    .output(staffSelectSchema)
+    .mutation(async ({ ctx, input }) => {
+      // A branch node: its id IS the school id (ADR-019).
+      const allowed = can(ctx.authCache, "staff:update", {
+        organizationId: ctx.organizationId,
+        nodeId: input.data.toSchoolId,
+        node: {
+          id: input.data.toSchoolId,
+          type: "school",
+          organizationId: ctx.organizationId,
+          schoolId: null,
+          classId: null,
+        },
+      });
+      if (!allowed) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You can't add staff to that branch.",
+        });
+      }
+      const row = await staffService.moveStaff(
+        ctx.organizationId,
+        input.id,
+        input.data.toSchoolId,
+        ctx.userId,
+      );
+      if (!row) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Staff member not found." });
+      }
+      return row;
+    }),
+
+  /**
+   * The branch's staff as a spreadsheet (CSV), for `staff:export` holders.
+   * Personal details and people who left only when asked for.
+   */
+  export: staffListProcedure("staff:export")
+    .meta({
+      openapi: {
+        method: "POST",
+        path: "/staff/export",
+        tags: ["staff"],
+        summary: "Export the branch's staff as CSV",
+        protect: true,
+      },
+    })
+    .input(staffExportSchema)
+    .output(z.object({ fileName: z.string(), csv: z.string(), count: z.number().int() }))
+    .mutation(async ({ ctx, input }) => {
+      const rows = await staffService.listStaff(ctx.scopes, undefined, input.includeLeft);
+      const ids = rows.map((row) => row.id);
+      const teaching = input.teaching ? await assignmentService.teachingByStaff(ctx.scopes, ids) : null;
+      const roles = input.roles
+        ? new Map(
+            await Promise.all(
+              ids.map(async (id) => [id, await roleService.forStaff(ctx.organizationId, id)] as const),
+            ),
+          )
+        : null;
+
+      const label = (c: string, s: string) => `${c.replace(/^class\s+/i, "")}-${s}`;
+      const header = ["Name", "Employee code", "Job title", "Phone", "Status"];
+      if (teaching) header.push("Class teacher of", "Teaches");
+      if (roles) header.push("Roles");
+      if (input.personal) header.push("Email", "Date of birth", "Date of joining", "Address");
+      const lines = [header];
+      for (const row of rows) {
+        const line = [
+          [row.firstName, row.middleName, row.lastName].filter(Boolean).join(" "),
+          row.employeeCode,
+          row.designation ?? "",
+          row.phone ?? "",
+          row.status.replace("_", " "),
+        ];
+        if (teaching) {
+          const t = teaching.get(row.id);
+          line.push(
+            t?.classTeacherOf ? label(t.classTeacherOf.className, t.classTeacherOf.sectionName) : "",
+            (t?.subjects ?? [])
+              .map((x) => `${x.subjectName} ${x.sections.map((y) => label(y.className, y.sectionName)).join(" ")}`)
+              .join("; "),
+          );
+        }
+        if (roles) {
+          line.push(
+            (roles.get(row.id) ?? [])
+              .map((r) => `${r.roleType.replace(/_/g, " ")} (${r.scopeLabel}${r.waiting ? ", waiting" : ""})`)
+              .join("; "),
+          );
+        }
+        if (input.personal) {
+          line.push(
+            row.email ?? "",
+            row.dateOfBirth ?? "",
+            row.dateOfJoining ?? "",
+            [row.addressLine1, row.addressLine2, row.city, row.state, row.pincode].filter(Boolean).join(", "),
+          );
+        }
+        lines.push(line);
+      }
+      const cell = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+      const csv = lines.map((l) => l.map(cell).join(",")).join("\r\n");
+      const today = new Date().toISOString().slice(0, 10);
+      return { fileName: `staff-${today}.csv`, csv, count: rows.length };
     }),
 
   /**

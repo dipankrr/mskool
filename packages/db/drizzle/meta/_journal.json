@@ -414,6 +414,13 @@
       "when": 1794748733955,
       "tag": "0058_week_pattern_ranges",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1794764828536,
+      "tag": "0059_staff_roles_status",
+      "breakpoints": true
     }
   ]
 }

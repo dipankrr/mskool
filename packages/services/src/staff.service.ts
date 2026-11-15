@@ -4,11 +4,22 @@ import { revokeUserSessions, setUserPassword } from "@repo/auth/credentials";
 import type {
   CreateStaffInput,
   DeactivateStaffInput,
+  SetStaffLeaveInput,
   UpdateStaffInput,
 } from "@repo/contracts";
 import { db } from "@repo/db";
-import { authzAuditLog, organizations, staff, user } from "@repo/db/schema";
-import { and, asc, eq, ilike, isNotNull, or, sql } from "drizzle-orm";
+import {
+  authzAuditLog,
+  organizations,
+  roleAssignments,
+  schools,
+  scopeNodes,
+  staff,
+  staffPendingRoles,
+  user,
+} from "@repo/db/schema";
+import { and, asc, eq, ilike, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
+import { invalidateUserAuthCache } from "@repo/authz";
 
 import { assignmentAccessService } from "./assignment-access.service";
 import { staffLoginService } from "./staff-login.service";
@@ -162,7 +173,12 @@ export class StaffService {
    * not (the contract omits the employee code, the status, and the login
    * link — see its docstring).
    */
-  async updateStaff(scope: DataScope, staffId: string, input: UpdateStaffInput) {
+  async updateStaff(
+    scope: DataScope,
+    staffId: string,
+    input: UpdateStaffInput,
+    actorUserId?: string,
+  ) {
     // An empty patch is a client bug, not a no-op: drizzle refuses .set({}).
     if (Object.keys(input).length === 0) {
       throw new Error("Nothing to update — send at least one field.");
@@ -189,6 +205,12 @@ export class StaffService {
       )
       .returning();
 
+    // A joined person's sign-in moves to the new number at once (same
+    // password), so the record and the sign-in never disagree.
+    if (row && patch.phone && actorUserId) {
+      await staffLoginService.movePhone(scope.organizationId, staffId, patch.phone, actorUserId);
+    }
+
     return row ?? null;
   }
 
@@ -210,6 +232,8 @@ export class StaffService {
       .set({
         status: input.status,
         dateOfLeaving: leaving ? todayIst() : null,
+        statusUntil: null,
+        statusNote: input.note?.trim() || null,
       })
       .where(
         and(
@@ -220,12 +244,25 @@ export class StaffService {
       .returning();
 
     // ADR-068: someone who leaves can no longer sign in, and their number is
-    // free for whoever needs it next. A suspension keeps the login.
+    // free for whoever needs it next. A suspension switches the sign-in off
+    // but keeps their classes and roles for when it is lifted.
     if (row && leaving) {
       // Their classes end today (gaps show for the office to fill), then the
       // login goes and every grant with it.
       await assignmentAccessService.endAllForStaff(scope.organizationId, staffId);
       await staffLoginService.switchOff(scope.organizationId, staffId, actorUserId);
+      await db
+        .update(staffPendingRoles)
+        .set({ cancelledAt: new Date(), cancelledBy: actorUserId })
+        .where(
+          and(
+            eq(staffPendingRoles.staffId, staffId),
+            isNull(staffPendingRoles.appliedAt),
+            isNull(staffPendingRoles.cancelledAt),
+          ),
+        );
+    } else if (row) {
+      await staffLoginService.suspend(scope.organizationId, staffId, actorUserId);
     }
 
     return row ?? null;
@@ -275,18 +312,142 @@ export class StaffService {
    * deprovisioning automation): revoking roles and resetting the password
    * stay explicit acts, and the UI says so where the credential lives.
    */
-  async reactivateStaff(scope: DataScope, staffId: string) {
+  async reactivateStaff(scope: DataScope, staffId: string, actorUserId?: string) {
     const row = await this.getStaffById(scope, staffId);
     if (!row) return null;
     if (row.status === "active") {
       throw new Error("This staff record is already active.");
     }
+    // Someone coming back after leaving needs their number free again: it
+    // was released when they left and may belong to someone else now.
+    if (row.status !== "suspended" && row.status !== "on_leave" && row.phone) {
+      await staffLoginService.requireUsablePhone(scope.organizationId, row.phone, staffId);
+    }
     const [updated] = await db
       .update(staff)
-      .set({ status: "active", dateOfLeaving: null })
+      .set({ status: "active", dateOfLeaving: null, statusUntil: null, statusNote: null })
       .where(eq(staff.id, staffId))
       .returning();
 
+    if (updated && row.status === "suspended" && actorUserId) {
+      await staffLoginService.reinstate(scope.organizationId, staffId, actorUserId);
+    }
+
+    return updated ?? null;
+  }
+
+  /**
+   * On leave and back (staff roles, 2026-11-15). Leave keeps the sign-in,
+   * classes and roles; the office covers the classes. Only someone working
+   * or already on leave can be put on leave.
+   */
+  async setLeave(scope: DataScope, staffId: string, input: SetStaffLeaveInput) {
+    const row = await this.getStaffById(scope, staffId);
+    if (!row) return null;
+    if (row.status !== "active" && row.status !== "on_leave") {
+      throw new Error(
+        row.status === "suspended"
+          ? "They are suspended. Lift the suspension first."
+          : "They have left. Bring them back first.",
+      );
+    }
+    const [updated] = await db
+      .update(staff)
+      .set(
+        input.onLeave
+          ? { status: "on_leave", statusUntil: input.until ?? null, statusNote: input.note?.trim() || null }
+          : { status: "active", statusUntil: null, statusNote: null },
+      )
+      .where(eq(staff.id, staffId))
+      .returning();
+    return updated ?? null;
+  }
+
+  /**
+   * Moves someone to another branch of the same organisation. Their classes
+   * end at the old branch (gaps show there), and every grant tied to the old
+   * branch ends: branch roles and the section grants under it. Org-wide
+   * roles stay. Waiting roles for the old branch are cancelled. The record,
+   * photo and sign-in move with them.
+   */
+  async moveStaff(
+    organizationId: string,
+    staffId: string,
+    toSchoolId: string,
+    actorUserId: string,
+  ) {
+    const [row] = await db
+      .select({ id: staff.id, schoolId: staff.schoolId, userId: staff.userId, status: staff.status })
+      .from(staff)
+      .where(and(eq(staff.id, staffId), eq(staff.organizationId, organizationId)));
+    if (!row) return null;
+    if (row.schoolId === toSchoolId) {
+      throw new Error("They already work at this branch.");
+    }
+    if (row.status !== "active" && row.status !== "on_leave") {
+      throw new Error("Only current staff can be moved.");
+    }
+    const [target] = await db
+      .select({ id: schools.id })
+      .from(schools)
+      .where(and(eq(schools.id, toSchoolId), eq(schools.organizationId, organizationId)));
+    if (!target) throw new Error("That branch is not in this organisation.");
+
+    await assignmentAccessService.endAllForStaff(organizationId, staffId);
+    const now = new Date();
+    if (row.userId) {
+      // Every grant made below the org level, at or under the old branch.
+      const nodes = await db
+        .select({ id: scopeNodes.id })
+        .from(scopeNodes)
+        .where(
+          and(
+            eq(scopeNodes.organizationId, organizationId),
+            or(eq(scopeNodes.id, row.schoolId), eq(scopeNodes.schoolId, row.schoolId)),
+          ),
+        );
+      const ids = nodes.map((n) => n.id);
+      if (ids.length > 0) {
+        await db
+          .update(roleAssignments)
+          .set({ revokedAt: now, revokedBy: actorUserId })
+          .where(
+            and(
+              eq(roleAssignments.userId, row.userId),
+              eq(roleAssignments.organizationId, organizationId),
+              ne(roleAssignments.scopeType, "org"),
+              inArray(roleAssignments.scopeId, ids),
+              isNull(roleAssignments.revokedAt),
+            ),
+          );
+      }
+      await invalidateUserAuthCache(row.userId);
+    }
+    await db
+      .update(staffPendingRoles)
+      .set({ cancelledAt: now, cancelledBy: actorUserId })
+      .where(
+        and(
+          eq(staffPendingRoles.staffId, staffId),
+          ne(staffPendingRoles.scopeType, "org"),
+          isNull(staffPendingRoles.appliedAt),
+          isNull(staffPendingRoles.cancelledAt),
+        ),
+      );
+    const [updated] = await db
+      .update(staff)
+      .set({ schoolId: toSchoolId })
+      .where(eq(staff.id, staffId))
+      .returning();
+    await db.insert(authzAuditLog).values({
+      organizationId,
+      action: "staff_moved",
+      actorUserId,
+      targetUserId: row.userId,
+      scopeId: staffId,
+      permission: "staff:update",
+      details: { staffId, from: row.schoolId, to: toSchoolId },
+    });
     return updated ?? null;
   }
 

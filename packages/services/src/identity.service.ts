@@ -102,6 +102,7 @@ export class IdentityService {
         scopeTypes: [...new Set(assignments.map((a) => a.scopeType))],
         roleTypes: [...new Set(assignments.map((a) => a.roleType))],
         permissions: permissionsInOrg(authCache, organization.id),
+        orgWidePermissions: permissionsInOrg(authCache, organization.id, "org"),
         schools,
         homeSchoolId: await this.homeSchoolId(authCache.userId, organization.id, schools),
       });

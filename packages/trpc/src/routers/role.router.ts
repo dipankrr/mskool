@@ -1,5 +1,10 @@
 import {
   assignRoleSchema,
+  assignStaffRoleSchema,
+  endingRoleSchema,
+  extendRoleSchema,
+  staffHistoryEntrySchema,
+  staffRoleViewSchema,
   resetRolePermissionsInput,
   revokeRoleSchema,
   roleAssignmentSelectSchema,
@@ -240,4 +245,71 @@ export const roleRouter = router({
         input.roleType,
       );
     }),
+
+  // ── Staff roles on the phone (2026-11-15) ──────────────────────────────
+
+  // A staff member's office roles, live and waiting. Same gate as assignments.
+  forStaff: orgListProcedure("role_assignment:read")
+    .meta({ openapi: { method: "GET", path: "/role/staff/{staffId}", tags: ["roles"], summary: "A staff member's office roles, live and waiting", protect: true } })
+    .input(z.object({ staffId: z.uuid() }))
+    .output(z.array(staffRoleViewSchema))
+    .query(({ ctx, input }) => roleService.forStaff(ctx.organizationId, input.staffId)),
+
+  // Give a role to a staff member, joined or not. The id is the node the role
+  // is given AT, so the caller must hold role_assignment:assign there.
+  assignStaff: staffProcedure("role_assignment:assign", { addressedBy: "id" })
+    .meta({ openapi: { method: "POST", path: "/role/staff-assignments", tags: ["roles"], summary: "Give a staff member a role (waits until they join)", protect: true } })
+    .input(assignStaffRoleSchema.extend({ id: z.uuid() }))
+    .output(z.object({ waiting: z.boolean(), id: z.uuid() }))
+    .mutation(({ ctx, input }) =>
+      roleService.assignToStaff(ctx.organizationId, ctx.userId, {
+        staffId: input.staffId,
+        roleType: input.roleType,
+        scopeType: input.scopeType,
+        scopeId: input.id,
+        expiresAt: input.expiresAt ?? null,
+      }),
+    ),
+
+  // Take back a role that was waiting for someone to join.
+  cancelPending: staffProcedure("role_assignment:revoke", {
+    resolveOwner: async (organizationId: string, id: string) => {
+      const owner = await roleService.getPendingOwner(organizationId, id);
+      if (!owner) throw new TRPCError({ code: "NOT_FOUND", message: "Role not found." });
+      return { type: owner.scopeType, id: owner.scopeId };
+    },
+  })
+    .meta({ openapi: { method: "POST", path: "/role/pending/{id}/cancel", tags: ["roles"], summary: "Cancel a waiting role", protect: true } })
+    .input(z.object({ id: z.uuid() }))
+    .output(z.object({ id: z.uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const row = await roleService.cancelPending(ctx.organizationId, ctx.userId, input.id);
+      if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Role not found." });
+      return row;
+    }),
+
+  // Push out or remove a role's end date (also brings back one just ended).
+  extend: staffProcedure("role_assignment:assign", { resolveOwner: resolveAssignmentOwner })
+    .meta({ openapi: { method: "POST", path: "/role/assignments/{id}/extend", tags: ["roles"], summary: "Change a role's end date", protect: true } })
+    .input(extendRoleSchema.extend({ id: z.uuid() }))
+    .output(roleAssignmentSelectSchema)
+    .mutation(async ({ ctx, input }) => {
+      const row = await roleService.extend(ctx.organizationId, ctx.userId, input.id, input.expiresAt);
+      if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Role assignment not found." });
+      return row;
+    }),
+
+  // Office roles ending in the next 7 days or ended in the last 7, per branch.
+  ending: orgListProcedure("role_assignment:read")
+    .meta({ openapi: { method: "GET", path: "/role/ending", tags: ["roles"], summary: "Roles ending soon", protect: true } })
+    .input(z.object({ forSchoolId: z.uuid() }))
+    .output(z.array(endingRoleSchema))
+    .query(({ ctx, input }) => roleService.ending(ctx.organizationId, input.forSchoolId)),
+
+  // One staff member's history: roles, sign-in and status changes.
+  history: orgListProcedure("role_assignment:read")
+    .meta({ openapi: { method: "GET", path: "/role/history/{staffId}", tags: ["roles"], summary: "A staff member's role and sign-in history", protect: true } })
+    .input(z.object({ staffId: z.uuid() }))
+    .output(z.array(staffHistoryEntrySchema))
+    .query(({ ctx, input }) => roleService.history(ctx.organizationId, input.staffId)),
 });

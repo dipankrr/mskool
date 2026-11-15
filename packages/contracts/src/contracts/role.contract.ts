@@ -136,3 +136,53 @@ export const roleHolderSchema = z.object({
   userId: z.string(),
 });
 export type RoleHolder = z.infer<typeof roleHolderSchema>;
+
+// ── Staff roles on the phone (2026-11-15) ──────────────────────────────────
+
+/** One office role of a staff member: live, or waiting for them to join. */
+export const staffRoleViewSchema = z.object({
+  id: z.uuid(),
+  /** True while the person hasn't joined; it becomes a grant when they do. */
+  waiting: z.boolean(),
+  roleType: roleTypeSchema,
+  scopeType: scopeTypeSchema,
+  scopeId: z.uuid(),
+  scopeLabel: z.string(),
+  expiresAt: z.string().nullable(),
+});
+export type StaffRoleView = z.infer<typeof staffRoleViewSchema>;
+
+/** Give a role to a staff member, joined or not. `id` is the scope node. */
+export const assignStaffRoleSchema = z.object({
+  staffId: z.uuid(),
+  roleType: roleTypeSchema,
+  scopeType: scopeTypeSchema,
+  expiresAt: assignRoleSchema.shape.expiresAt,
+});
+
+export const extendRoleSchema = z.object({
+  /** The new end; null removes the end date. */
+  expiresAt: z.iso.datetime({ offset: true }).nullable(),
+});
+
+export const endingRoleSchema = z.object({
+  id: z.uuid(),
+  roleType: roleTypeSchema,
+  scopeLabel: z.string(),
+  expiresAt: z.string(),
+  staffId: z.uuid(),
+  name: z.string(),
+});
+
+/** One line of a staff member's history (the audit log, read back). */
+export const staffHistoryEntrySchema = z.object({
+  id: z.string(),
+  action: z.string(),
+  at: z.string(),
+  roleType: roleTypeSchema.nullable(),
+  scopeLabel: z.string().nullable(),
+  by: z.string().nullable(),
+  self: z.boolean(),
+  reason: z.string().nullable(),
+  until: z.string().nullable(),
+});

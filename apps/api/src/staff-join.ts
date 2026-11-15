@@ -9,7 +9,7 @@ import { env } from "./env";
  * and for the same reason: they run without a session, so they cannot live
  * in packages/trpc, whose routers must stay gated.
  *
- * - `POST /api/staff/account-status` { phone } → { state: "password" | "code" }.
+ * - `POST /api/staff/account-status` { phone } → { state: "password" | "code" | "paused" }.
  *   Unknown numbers answer "code", so the only thing it reveals is "has
  *   joined", never a name or a school.
  * - `POST /api/staff/join` { phone, code, password } sets the password (first
