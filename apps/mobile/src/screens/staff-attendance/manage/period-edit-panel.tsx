@@ -42,17 +42,15 @@ export function PeriodEditor() {
     periodId?: string;
   }>();
   const periodId =
-    typeof params.periodId === "string" && params.periodId.length > 0 ? params.periodId : null;
+    typeof params.periodId === "string" && params.periodId.length > 0
+      ? params.periodId
+      : null;
   const { organizationId, schoolId, academicYear } = useActiveContext();
   const { section, sectionLabel } = useAttendanceSection(params.sectionId);
   const ready = Boolean(organizationId && academicYear && section);
 
   const listQuery = trpc.attendance.period.list.useQuery(
-    {
-      schoolId: schoolId ?? "",
-      organizationId: organizationId ?? "",
-      sectionId: section?.id ?? "",
-    },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "", sectionId: section?.id ?? "" },
     { enabled: ready && canManage && periodId === null, staleTime: 60_000 },
   );
   const periodQuery = trpc.attendance.period.byId.useQuery(
@@ -82,7 +80,9 @@ export function PeriodEditor() {
     <ManageFrame title={title} meta={meta}>
       {!ready ? (
         <Card>
-          <ThemedText variant="bodyStrong">{copy.session.noYearTitle}</ThemedText>
+          <ThemedText variant="bodyStrong">
+            {copy.session.noYearTitle}
+          </ThemedText>
           <ThemedText variant="meta" style={styles.cardBody}>
             {copy.session.noYearBody}
           </ThemedText>
@@ -112,7 +112,9 @@ export function PeriodEditor() {
               ? initialPeriodForm(periodQuery.data ?? null, 1)
               : initialPeriodForm(
                   null,
-                  nextSequence((listQuery.data ?? []).map((row) => row.sequenceNumber)),
+                  nextSequence(
+                    (listQuery.data ?? []).map((row) => row.sequenceNumber),
+                  ),
                 )
           }
           periodId={periodId}
@@ -213,7 +215,11 @@ function PeriodBody({
         />
       </View>
       {errors.timeOrder ? (
-        <ThemedText variant="meta" color={colors.tone.critical.fg} style={styles.timeError}>
+        <ThemedText
+          variant="meta"
+          color={colors.tone.critical.fg}
+          style={styles.timeError}
+        >
           {errors.timeOrder}
         </ThemedText>
       ) : null}
@@ -224,7 +230,10 @@ function PeriodBody({
         accessibilityLabel={copy.attendance.manage.periods.homeroomLabel}
         accessibilityHint={copy.attendance.manage.periods.homeroomHelp}
         onPress={() => updateForm({ isHomeroom: !form.isHomeroom })}
-        style={({ pressed }) => [styles.toggle, pressed ? styles.togglePressed : null]}
+        style={({ pressed }) => [
+          styles.toggle,
+          pressed ? styles.togglePressed : null,
+        ]}
       >
         <View style={styles.toggleText}>
           <ThemedText variant="bodyStrong">
@@ -240,9 +249,17 @@ function PeriodBody({
           <View style={styles.ring} />
         )}
       </Pressable>
-      {error ? <ErrorCard cause={error} style={styles.error} testID="period-save-error" /> : null}
+      {error ? (
+        <ErrorCard
+          cause={error}
+          style={styles.error}
+          testID="period-save-error"
+        />
+      ) : null}
       <CapsuleButton
-        title={pending ? copy.common.saving : copy.attendance.manage.periods.save}
+        title={
+          pending ? copy.common.saving : copy.attendance.manage.periods.save
+        }
         loading={pending}
         disabled={hasErrors}
         onPress={submit}

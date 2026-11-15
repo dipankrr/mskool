@@ -23,10 +23,9 @@ function dateFromTime(value: string | null): Date {
 }
 
 function timeOf(date: Date): string {
-  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(
-    2,
-    "0",
-  )}`;
+  return `${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes(),
+  ).padStart(2, "0")}`;
 }
 
 /**
@@ -57,11 +56,16 @@ export function TimeField({
       <Pressable
         testID={testID}
         accessibilityRole="button"
-        accessibilityLabel={`${label}, ${value ?? copy.attendance.manage.periods.notSet}`}
+        accessibilityLabel={`${label}, ${
+          value ?? copy.attendance.manage.periods.notSet
+        }`}
         onPress={() => setOpen(true)}
         style={({ pressed }) => [styles.box, pressed ? styles.boxPressed : null]}
       >
-        <ThemedText variant="bodyStrong" color={value ? colors.ink : colors.muted}>
+        <ThemedText
+          variant="bodyStrong"
+          color={value ? colors.ink : colors.muted}
+        >
           {value ?? copy.attendance.manage.periods.notSet}
         </ThemedText>
         <AppIcon name="clock" size={18} color={colors.muted} />

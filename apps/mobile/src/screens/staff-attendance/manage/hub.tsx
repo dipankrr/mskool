@@ -42,11 +42,7 @@ export function ManageHub() {
     { enabled: ready && canManage, staleTime: 60_000 },
   );
   const periodsQuery = trpc.attendance.period.list.useQuery(
-    {
-      schoolId: schoolId ?? "",
-      organizationId: organizationId ?? "",
-      sectionId: section?.id ?? "",
-    },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "", sectionId: section?.id ?? "" },
     { enabled: ready && canManage && Boolean(section), staleTime: 60_000 },
   );
   const calendarQuery = trpc.attendance.calendar.list.useQuery(
@@ -114,7 +110,10 @@ export function ManageHub() {
           : copy.attendance.manage.periodsSummary.none(sectionName);
 
   return (
-    <ManageFrame title={copy.attendance.manage.title} meta={branchMeta}>
+    <ManageFrame
+      title={copy.attendance.manage.title}
+      meta={branchMeta}
+    >
       <SectionLabel>{copy.attendance.manage.sessionLabel}</SectionLabel>
       <Card padless style={styles.rows}>
         <HubRow
