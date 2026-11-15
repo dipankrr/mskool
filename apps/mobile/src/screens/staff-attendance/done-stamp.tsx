@@ -19,14 +19,14 @@ import { colors } from "../../theme/brand-admin";
 import { fontFamily, radius, spacing } from "../../theme/tokens";
 
 const TILT = "-8deg";
-const INK = colors.accent;
+const INK = colors.ink;
 /** The stamp's own box; the panel centres it over the visible rows with these. */
 export const STAMP_WIDTH = 220;
 export const STAMP_HEIGHT = 96;
 
 /**
  * The register's rubber stamp: once every student is marked and saved, a big
- * green-ink "MARKED" stamp floats over the student list (owner, 2026-11-15),
+ * black-ink "MARKED" stamp floats over the student list (owner, 2026-11-15),
  * which dims slightly beneath it. Right after a save it presses in (big and
  * faint → slight overshoot → rest, an ink flash, a heavy haptic); a day that
  * was already marked shows it at rest. Reduced motion skips the press.
@@ -85,7 +85,7 @@ export function DoneStamp({
           <View style={styles.inner}>
             <ThemedText
               variant="hero"
-              color={colors.accentDeep}
+              color={colors.ink}
               style={styles.word}
               maxFontSizeMultiplier={1}
               numberOfLines={1}
@@ -95,7 +95,7 @@ export function DoneStamp({
             <View style={styles.rule} />
             <ThemedText
               variant="caption"
-              color={colors.accentDeep}
+              color={colors.ink}
               style={styles.detail}
               maxFontSizeMultiplier={1}
               numberOfLines={1}
