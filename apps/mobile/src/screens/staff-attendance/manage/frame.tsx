@@ -15,6 +15,7 @@ export function ManageFrame({
   footer,
   footerVariant,
   action,
+  overflowAction,
   stickyHeader,
   children,
 }: {
@@ -23,6 +24,7 @@ export function ManageFrame({
   footer?: ReactNode;
   footerVariant?: "bar" | "floating";
   action?: HeaderAction;
+  overflowAction?: HeaderAction;
   stickyHeader?: ReactNode;
   children: ReactNode;
 }) {
@@ -36,6 +38,7 @@ export function ManageFrame({
       footer={footer}
       footerVariant={footerVariant}
       action={action}
+      overflowAction={overflowAction}
       stickyHeader={stickyHeader}
     >
       {children}

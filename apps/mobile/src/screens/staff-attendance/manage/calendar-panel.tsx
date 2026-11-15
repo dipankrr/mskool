@@ -5,6 +5,7 @@ import { router } from "expo-router";
 import { AppIcon } from "../../../components/app-icon";
 import { CapsuleButton } from "../../../components/capsule-button";
 import { Card } from "../../../components/card";
+import { ChoiceSheet } from "../../../components/choice-sheet";
 import { ErrorCard } from "../../../components/error-card";
 import { SegmentBar } from "../../../components/segment-bar";
 import { Skeleton } from "../../../components/skeleton";
@@ -56,6 +57,7 @@ export function ManageCalendar() {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [setting, setSetting] = useState<string[] | null>(null);
   const [patternOpen, setPatternOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [entryOpen, setEntryOpen] = useState<{ entry: Entry | null } | null>(null);
 
   const ready = Boolean(organizationId && schoolId && academicYear);
@@ -175,6 +177,17 @@ export function ManageCalendar() {
       action={
         canManage && !empty && !loading && !failed
           ? { label: words.addHoliday, icon: "add", onPress: () => setEntryOpen({ entry: null }) }
+          : undefined
+      }
+      overflowAction={
+        canManage && !empty && !loading && !failed
+          ? {
+              label: words.menu,
+              icon: "moreVertical",
+              iconOnly: true,
+              onPress: () => setMenuOpen(true),
+              testID: "cal-menu",
+            }
           : undefined
       }
     >
@@ -306,27 +319,6 @@ export function ManageCalendar() {
             </>
           ) : view === "year" ? (
             <>
-              <Pressable
-                accessibilityRole={canManage ? "button" : undefined}
-                disabled={!canManage}
-                onPress={() => setPatternOpen(true)}
-                style={({ pressed }) => [styles.patternRow, pressed ? styles.pressedRow : null]}
-                testID="cal-pattern-row"
-              >
-                <View style={styles.flex}>
-                  <ThemedText variant="caption" color={colors.muted}>
-                    {words.patternRow}
-                  </ThemedText>
-                  <ThemedText variant="bodyStrong" numberOfLines={2}>
-                    {patternSummary(pattern)}
-                  </ThemedText>
-                </View>
-                {canManage ? (
-                  <ThemedText variant="chip" color={colors.accentDeep}>
-                    {words.patternChange}
-                  </ThemedText>
-                ) : null}
-              </Pressable>
               <Card style={styles.gapTop}>
                 <SessionMix
                   counts={countDays(start, end, (iso) => typeOf.get(iso) ?? null)}
@@ -429,9 +421,21 @@ export function ManageCalendar() {
         />
       ) : null}
       {writes.confirmSheet}
+      <ChoiceSheet
+        visible={menuOpen}
+        title={words.menu}
+        options={[{ id: "structure", label: words.structureMenu, detail: patternSummary(pattern) || null }]}
+        currentId=""
+        onSelect={() => {
+          setMenuOpen(false);
+          setPatternOpen(true);
+        }}
+        onDismiss={() => setMenuOpen(false)}
+        testIDPrefix="cal-menu-option"
+      />
       {patternOpen ? (
         <PatternSheet
-          current={pattern}
+          ranges={overview.data?.ranges ?? []}
           start={start}
           end={end}
           onClose={() => setPatternOpen(false)}
