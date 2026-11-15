@@ -1,0 +1,1003 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Staff Roles</title>
+<style>
+/* ============================================================
+   Roles in Add staff and the profile (2026-11-15). Mockup only,
+   no app code. Design doc: ../06-staff-and-teaching.md.
+   Tokens from apps/mobile/src/theme (same as students-tab.html):
+   one emerald accent, tones only as status, 4-pt spacing, radii
+   12/16/24/full. New here: soft subject tiles (open question 1).
+   Phones are 360 x 760.
+   ============================================================ */
+@font-face { font-family: Clash; font-weight: 400; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Regular.ttf); }
+@font-face { font-family: Clash; font-weight: 500; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Medium.ttf); }
+@font-face { font-family: Clash; font-weight: 600; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Semibold.ttf); }
+@font-face { font-family: Clash; font-weight: 700; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Bold.ttf); }
+:root {
+  --canvas: #F2F3F7; --surface: #FFFFFF; --ink: #101828; --muted: #5D6674;
+  --hair: rgba(16, 24, 40, 0.08); --line: rgba(16, 24, 40, 0.16);
+  --accent: #0F7A44; --deep: #0B6B3A; --tint: #E8F5EE;
+  --field: #ECEEF3; --chip: #E9EDF3; --chev: #98A2B3;
+  --scrim: rgba(16, 24, 40, 0.45); --grab: #D5DAE2;
+  --amb: #B54708; --amb-t: #FFFAEB; --red: #B42318; --red-t: #FEF3F2; --slate: #475467; --slate-t: #F2F4F7;
+  --wa: #1DA851;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { color-scheme: light; }
+body { background: #DADBD6; color: var(--ink); font-family: Clash, system-ui, sans-serif; font-size: 15px; padding: 32px 16px 64px; }
+svg { display: block; flex: none; }
+.i { width: 20px; height: 20px; }
+.i-s { width: 16px; height: 16px; }
+.i-l { width: 24px; height: 24px; }
+
+/* ---------- page around the phones ---------- */
+.wrap { max-width: 1180px; margin: 0 auto; }
+.intro h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.6px; }
+.intro p { margin-top: 6px; color: #3C4450; max-width: 780px; line-height: 1.5; }
+.h2 { margin: 44px 0 14px; font-size: 12px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: #3C4450; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px; }
+.grid div { background: rgba(255,255,255,.6); border-radius: 14px; padding: 12px 16px; font-size: 14px; line-height: 1.45; color: #3C4450; }
+.grid b { display: block; color: var(--ink); font-weight: 600; font-size: 15px; margin-bottom: 3px; }
+.frames { display: flex; flex-wrap: wrap; gap: 36px 24px; }
+figure { width: 360px; max-width: 100%; }
+figcaption { margin-top: 12px; font-size: 13px; color: #3C4450; line-height: 1.5; }
+figcaption b { font-weight: 600; color: var(--ink); }
+figcaption .no { display: inline-flex; min-width: 26px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 11px; font-weight: 700; align-items: center; justify-content: center; margin-right: 6px; vertical-align: 1px; }
+.qs { display: flex; flex-direction: column; gap: 10px; max-width: 780px; }
+.qs div { background: rgba(255,255,255,.6); border-radius: 14px; padding: 12px 16px; font-size: 14px; line-height: 1.5; color: #3C4450; }
+.qs b { color: var(--ink); font-weight: 600; }
+
+/* ---------- phone ---------- */
+.phone { position: relative; width: 360px; height: 760px; max-width: 100%; background: var(--canvas); border-radius: 32px; overflow: hidden; box-shadow: 0 0 0 1px rgba(16,24,40,.1), 0 14px 34px rgba(16,24,40,.12); }
+.phone.white { background: var(--surface); }
+.status { height: 32px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 600; position: relative; z-index: 2; }
+.status i { width: 40px; height: 8px; border-radius: 999px; background: var(--ink); opacity: .75; }
+.meta { font-size: 13px; color: var(--muted); }
+.tnum { font-variant-numeric: tabular-nums; }
+.grow { flex: 1; min-width: 0; }
+.clip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card { background: var(--surface); border-radius: 16px; }
+.mx { margin-left: 16px; margin-right: 16px; }
+.pill { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; flex: none; }
+.pill.c { color: var(--amb); background: var(--amb-t); }
+.pill.r { color: var(--red); background: var(--red-t); }
+.pill.n { color: var(--slate); background: var(--slate-t); }
+.pill.p { color: var(--deep); background: var(--tint); }
+.pill .d { width: 6px; height: 6px; border-radius: 99px; background: currentColor; }
+
+/* headers */
+.top { display: flex; align-items: flex-end; justify-content: space-between; padding: 10px 16px 0; }
+.title { font-size: 30px; font-weight: 700; letter-spacing: -0.6px; line-height: 1.1; }
+.sub { padding: 6px 16px 0; }
+.nav { height: 48px; display: flex; align-items: center; padding: 0 8px; gap: 4px; position: relative; z-index: 2; }
+.nav .back { height: 40px; padding: 0 8px 0 4px; display: flex; align-items: center; gap: 2px; color: var(--deep); font-size: 16px; font-weight: 600; }
+.nav .ttl { position: absolute; left: 0; right: 0; text-align: center; font-size: 16px; font-weight: 600; pointer-events: none; }
+.nav .end { margin-left: auto; height: 40px; padding: 0 10px; display: flex; align-items: center; color: var(--deep); font-size: 16px; font-weight: 600; position: relative; }
+.iconbtn { width: 40px; height: 40px; border-radius: 999px; background: var(--surface); box-shadow: 0 0 0 1px var(--hair); display: flex; align-items: center; justify-content: center; color: var(--ink); flex: none; }
+.cap { height: 40px; padding: 0 16px 0 12px; border-radius: 999px; background: var(--accent); color: #fff; display: inline-flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; box-shadow: 0 4px 12px rgba(15,122,68,.25); flex: none; }
+
+/* buttons */
+.btn { height: 52px; border-radius: 999px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 16px; font-weight: 600; box-shadow: 0 6px 16px rgba(15,122,68,.22); }
+.btn.ghost { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.btn.soft { background: var(--tint); color: var(--deep); box-shadow: none; }
+.btn.wa { background: var(--wa); box-shadow: 0 6px 16px rgba(29,168,81,.25); }
+.btn.danger { background: var(--red); box-shadow: 0 6px 16px rgba(180,35,24,.2); }
+.btn.off { background: #C7CDD6; box-shadow: none; }
+.link { color: var(--deep); font-weight: 600; }
+.foot { position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 16px 22px; background: linear-gradient(rgba(242,243,247,0), var(--canvas) 26%); z-index: 4; }
+.phone.white .foot { background: linear-gradient(rgba(255,255,255,0), #fff 26%); }
+
+/* fields */
+.lbl { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 4px 6px; }
+.fld { height: 52px; border-radius: 14px; background: var(--field); box-shadow: inset 0 0 0 1px var(--line); display: flex; align-items: center; gap: 10px; padding: 0 14px; font-size: 16px; color: var(--ink); }
+.fld.on { background: var(--surface); box-shadow: inset 0 0 0 2px var(--accent); }
+.fld .ph { color: var(--muted); }
+.fld .cc { font-weight: 600; padding-right: 10px; border-right: 1px solid var(--line); color: var(--ink); }
+.fld .caret { width: 2px; height: 22px; background: var(--accent); margin-left: -8px; }
+.fld .ic { color: var(--muted); }
+.fld .dots { letter-spacing: 3px; font-size: 18px; }
+.fgroup { padding: 0 16px; }
+.fgroup + .fgroup { margin-top: 14px; }
+
+/* form card rows */
+.form { margin: 14px 16px 0; overflow: hidden; }
+.frow { min-height: 56px; display: flex; align-items: center; gap: 12px; padding: 8px 14px; position: relative; }
+.frow + .frow::before { content: ""; position: absolute; top: 0; left: 14px; right: 0; height: 1px; background: var(--hair); }
+.frow .k { font-size: 12px; font-weight: 600; color: var(--muted); }
+.frow .v { font-size: 16px; font-weight: 500; margin-top: 2px; }
+.frow .v.ph { color: var(--chev); }
+.frow.on { box-shadow: inset 3px 0 0 var(--accent); background: #FBFEFC; }
+.sw { width: 50px; height: 30px; border-radius: 999px; background: var(--accent); position: relative; flex: none; }
+.sw::after { content: ""; position: absolute; top: 3px; right: 3px; width: 24px; height: 24px; border-radius: 99px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.sw.off { background: #D0D5DD; }
+.sw.off::after { right: auto; left: 3px; }
+.sugg { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 14px 14px; }
+.sugg span { height: 32px; padding: 0 12px; border-radius: 999px; background: var(--chip); font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 5px; color: var(--ink); }
+.sugg span.hot { background: var(--tint); color: var(--deep); }
+.sugg .h { font-size: 11px; font-weight: 600; color: var(--muted); width: 100%; height: auto; background: none; padding: 0; letter-spacing: .6px; text-transform: uppercase; }
+
+/* avatars */
+.av { width: 40px; height: 40px; border-radius: 999px; flex: none; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; color: var(--slate); background: var(--chip); position: relative; }
+.av.sm { width: 28px; height: 28px; font-size: 11px; }
+.av.xs { width: 24px; height: 24px; font-size: 10px; box-shadow: 0 0 0 2px #fff; }
+.av.lg { width: 64px; height: 64px; font-size: 22px; }
+.av.xl { width: 80px; height: 80px; font-size: 28px; box-shadow: 0 0 0 4px rgba(255,255,255,.9), 0 8px 20px rgba(16,24,40,.12); }
+.av.t1 { background: #DDF3E6; color: #0B6B3A; }
+.av.t2 { background: #E0EAFF; color: #2F4FB3; }
+.av.t3 { background: #ECE6FD; color: #5B3FC4; }
+.av.t4 { background: #FFE9D5; color: #A24B0C; }
+.av.t5 { background: #FDE4EC; color: #B4235A; }
+.av.t6 { background: #D9F2F2; color: #0F7275; }
+.av .badge { position: absolute; right: -2px; bottom: -2px; width: 18px; height: 18px; border-radius: 99px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #fff; }
+.stack { display: flex; }
+.stack .av + .av { margin-left: -6px; }
+
+/* subject tiles */
+.sj { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex: none; font-weight: 700; font-size: 15px; }
+.sj.sm { width: 32px; height: 32px; border-radius: 10px; font-size: 13px; }
+.sj.m { background: #E6EEFF; color: #2556D9; }
+.sj.e { background: #EFEAFE; color: #6440D8; }
+.sj.s { background: #E3F5F2; color: #0E8274; }
+.sj.h { background: #FFEEDF; color: #C0550B; }
+.sj.so { background: #FDE9F1; color: #BE2F6E; }
+.sj.c { background: #E8ECFF; color: #3F3CC9; }
+.sj.a { background: #FBE8FB; color: #A62BB6; }
+.sj.pe { background: #E1F4FA; color: #0B7197; }
+.sj.ct { background: var(--accent); color: #fff; }
+
+/* list */
+.gh { display: flex; align-items: baseline; justify-content: space-between; padding: 18px 20px 6px; }
+.gh .l { font-size: 12px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); }
+.gh .r { font-size: 13px; color: var(--deep); font-weight: 600; }
+.list { margin: 0 16px; overflow: hidden; }
+.row { min-height: 60px; display: flex; align-items: center; gap: 12px; padding: 8px 12px; position: relative; }
+.row + .row::before { content: ""; position: absolute; top: 0; left: 64px; right: 0; height: 1px; background: var(--hair); }
+.nm { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
+.sm2 { font-size: 13px; color: var(--muted); margin-top: 1px; }
+.chev { color: var(--chev); }
+.row.gap { background: none; }
+.assign { height: 32px; padding: 0 12px 0 9px; border-radius: 999px; background: var(--amb-t); color: var(--amb); font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 4px; flex: none; box-shadow: inset 0 0 0 1px rgba(181,71,8,.25); }
+
+/* search + chips */
+.search { display: flex; gap: 8px; padding: 14px 16px 0; }
+.sfield { flex: 1; height: 44px; border-radius: 12px; background: var(--field); box-shadow: inset 0 0 0 1px var(--line); display: flex; align-items: center; gap: 8px; padding: 0 12px; color: var(--muted); font-size: 15px; }
+.strip { display: flex; gap: 6px; padding: 12px 16px 0; overflow: hidden; }
+.chipc { height: 34px; padding: 0 12px; border-radius: 999px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--hair); display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; white-space: nowrap; flex: none; }
+.chipc span { font-size: 12px; font-weight: 500; color: var(--muted); }
+.chipc.on { background: var(--ink); color: #fff; box-shadow: none; }
+.chipc.on span { color: rgba(255,255,255,.7); }
+.chipc .dot { width: 7px; height: 7px; border-radius: 99px; background: var(--amb); }
+.seg { margin: 14px 16px 0; height: 40px; border-radius: 12px; background: var(--chip); padding: 3px; display: flex; }
+.seg span { flex: 1; border-radius: 9px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.seg span.on { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(16,24,40,.12); }
+
+/* tab bar */
+.tabbar { position: absolute; left: 12px; right: 12px; bottom: 12px; height: 64px; border-radius: 32px; background: rgba(255,255,255,.96); box-shadow: 0 10px 30px rgba(16,24,40,.14); display: flex; align-items: center; justify-content: space-around; font-size: 11px; font-weight: 600; color: var(--muted); z-index: 6; padding: 0 6px; }
+.tabbar span { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 8px; min-width: 56px; border-radius: 22px; }
+.tabbar span.on { color: var(--deep); background: rgba(15,122,68,.12); }
+.fade { position: absolute; left: 0; right: 0; bottom: 0; height: 110px; background: linear-gradient(transparent, var(--canvas) 70%); z-index: 5; pointer-events: none; }
+
+/* sheet */
+.scrim { position: absolute; inset: 0; background: var(--scrim); z-index: 7; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; background: var(--surface); border-radius: 24px 24px 0 0; z-index: 8; padding: 8px 0 22px; }
+.grab { width: 36px; height: 5px; border-radius: 99px; background: var(--grab); margin: 0 auto 12px; }
+.sheet h3 { font-size: 20px; font-weight: 600; letter-spacing: -0.3px; padding: 4px 20px 2px; }
+.sheet .hint { padding: 2px 20px 12px; font-size: 14px; color: var(--muted); line-height: 1.4; }
+.sbtns { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px 0; }
+
+/* misc */
+.wash { position: absolute; left: 0; right: 0; top: 0; height: 300px; background: radial-gradient(120% 90% at 10% 0%, #CFEEDC 0%, rgba(207,238,220,0) 60%), radial-gradient(90% 80% at 100% 10%, #DCE8FF 0%, rgba(220,232,255,0) 60%); }
+.mark { width: 56px; height: 56px; border-radius: 18px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 24px rgba(15,122,68,.3); }
+.h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.6px; line-height: 1.15; }
+.lead { font-size: 15px; color: var(--muted); line-height: 1.45; margin-top: 6px; }
+.steps { display: flex; gap: 6px; }
+.steps i { width: 22px; height: 5px; border-radius: 99px; background: var(--grab); }
+.steps i.on { background: var(--accent); width: 34px; }
+.code { display: flex; gap: 8px; justify-content: center; }
+.code span { width: 44px; height: 56px; border-radius: 14px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.code span.on { box-shadow: inset 0 0 0 2px var(--accent); }
+.code span.on::after { content: ""; width: 2px; height: 26px; background: var(--accent); }
+.code.big span { width: 46px; height: 60px; font-size: 30px; background: var(--tint); box-shadow: none; color: var(--deep); }
+.pad { position: absolute; left: 0; right: 0; bottom: 0; background: #E3E5EA; padding: 8px 6px 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; z-index: 6; }
+.pad span { height: 46px; border-radius: 8px; background: #fff; box-shadow: 0 1px 0 rgba(0,0,0,.16); display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 22px; font-weight: 500; }
+.pad span small { font-size: 9px; letter-spacing: 1.5px; color: var(--muted); font-weight: 600; margin-top: -2px; }
+.pad span.k { background: transparent; box-shadow: none; }
+.rule { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
+.rule .ok { width: 20px; height: 20px; border-radius: 99px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; }
+.rule .no { width: 20px; height: 20px; border-radius: 99px; box-shadow: inset 0 0 0 2px var(--grab); }
+.rule.done { color: var(--ink); }
+.info { display: flex; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--slate-t); font-size: 14px; line-height: 1.45; color: #344054; }
+.info.amb { background: var(--amb-t); color: #7A2E0E; }
+.info.g { background: var(--tint); color: #074D2A; }
+.info svg { margin-top: 1px; }
+.qa { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 0 16px; }
+.qa a { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--ink); text-decoration: none; padding: 10px 0 8px; border-radius: 16px; background: var(--surface); }
+.qa a .ic { width: 40px; height: 40px; border-radius: 999px; background: var(--tint); display: flex; align-items: center; justify-content: center; color: var(--deep); }
+.qa a .ic.wa { background: #E3F7EA; color: var(--wa); }
+.ring { position: relative; width: 76px; height: 76px; flex: none; }
+.ring b { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; letter-spacing: -.4px; }
+.ring b small { font-size: 10px; font-weight: 600; color: var(--muted); letter-spacing: 0; margin-top: -2px; }
+.bar { height: 8px; border-radius: 99px; background: var(--chip); overflow: hidden; }
+.bar i { display: block; height: 100%; border-radius: 99px; background: var(--accent); }
+.secchip { height: 40px; min-width: 64px; padding: 0 12px; border-radius: 12px; background: var(--canvas); display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 15px; font-weight: 600; box-shadow: inset 0 0 0 1px var(--hair); }
+.secchip.on { background: var(--accent); color: #fff; box-shadow: none; }
+.secchip.new { background: var(--accent); color: #fff; box-shadow: 0 0 0 3px #BDE6CD; }
+.secchip.taken { color: var(--muted); flex-direction: column; gap: 0; line-height: 1.1; height: 44px; }
+.secchip.taken small { font-size: 10px; font-weight: 500; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.clabel { font-size: 12px; font-weight: 600; color: var(--muted); width: 58px; flex: none; padding-top: 12px; }
+.ctrow { display: flex; gap: 6px; padding: 4px 14px; }
+.tour { display: flex; gap: 8px; }
+.tour div { flex: 1; border-radius: 16px; background: var(--surface); padding: 12px 10px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; font-weight: 600; line-height: 1.25; }
+.tour .ic { width: 36px; height: 36px; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
+.waprev { margin: 0 16px; padding: 12px 14px; border-radius: 14px 14px 14px 4px; background: #E7F8EC; font-size: 13px; line-height: 1.5; color: #1E3A2A; }
+.waprev b { font-weight: 600; }
+.tile2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tile2 > div { border-radius: 16px; background: var(--surface); padding: 12px 14px; }
+.tile2 .n { font-size: 28px; font-weight: 700; letter-spacing: -.5px; }
+.tile2 .t { font-size: 13px; color: var(--muted); }
+.hello { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px 0; }
+.dim { opacity: .55; }
+.swap { display: flex; align-items: center; gap: 10px; padding: 4px 20px 8px; }
+.swap .who { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 6px; border-radius: 16px; background: var(--canvas); font-size: 14px; font-weight: 600; text-align: center; }
+.swap .who small { font-size: 12px; color: var(--muted); font-weight: 500; }
+.swap .who.new { background: var(--tint); }
+.swap .who.old .av { filter: grayscale(.6); opacity: .8; }
+.datepair { display: flex; gap: 8px; padding: 0 16px; }
+.datepair > div { flex: 1; border-radius: 14px; background: var(--canvas); padding: 10px 12px; }
+.datepair .k { font-size: 12px; font-weight: 600; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.datepair .v { font-size: 16px; font-weight: 600; margin-top: 3px; }
+.datepair .on { box-shadow: inset 0 0 0 2px var(--accent); background: #fff; }
+.empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 0 32px; }
+.illus { position: relative; width: 160px; height: 140px; margin-bottom: 18px; }
+.illus div { position: absolute; border-radius: 22px; display: flex; align-items: center; justify-content: center; }
+/* ---------- new in this mockup ---------- */
+.opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 16px; }
+.opt { position: relative; min-height: 62px; border-radius: 16px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--hair); padding: 10px 10px 10px 10px; display: flex; gap: 10px; align-items: flex-start; }
+.opt .sj { width: 34px; height: 34px; border-radius: 11px; }
+.opt b { display: block; font-size: 14px; font-weight: 600; letter-spacing: -.1px; line-height: 1.2; }
+.opt small { display: block; font-size: 11.5px; color: var(--muted); line-height: 1.3; margin-top: 2px; }
+.opt.on { box-shadow: inset 0 0 0 2px var(--accent); background: #FBFEFC; }
+.opt.on::after { content: ""; position: absolute; top: 8px; right: 8px; width: 18px; height: 18px; border-radius: 99px; background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 12.5l4 4 8-9' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/12px no-repeat; }
+.opt.wide { grid-column: span 2; }
+.opt.off { opacity: .45; }
+.sj.ro { background: #EEF0F4; color: var(--slate); }
+.sj.pr { background: #E6EEFF; color: #2556D9; }
+.sj.ac { background: #FFF1DE; color: #B54708; }
+.sj.li { background: #EFEAFE; color: #6440D8; }
+.sj.co { background: #E3F5F2; color: #0E8274; }
+.sj.oa { background: #101828; color: #fff; }
+.sj.te { background: var(--tint); color: var(--deep); }
+.shead { padding: 18px 20px 8px; }
+.shead b { font-size: 17px; font-weight: 600; letter-spacing: -.2px; }
+.shead .meta { margin-top: 1px; }
+.radio { width: 22px; height: 22px; border-radius: 99px; box-shadow: inset 0 0 0 2px var(--line); flex: none; }
+.radio.on { box-shadow: inset 0 0 0 7px var(--accent); }
+.qopts { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.qopts div { background: rgba(255,255,255,.85); border-radius: 12px; padding: 10px 14px; }
+.be { max-width: 780px; display: flex; flex-direction: column; gap: 10px; }
+.be div { background: rgba(255,255,255,.6); border-radius: 14px; padding: 12px 16px; font-size: 14px; line-height: 1.5; color: #3C4450; }
+.be b { color: var(--ink); font-weight: 600; }
+code { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; background: rgba(16,24,40,.06); padding: 1px 5px; border-radius: 5px; }
+    .grp { display: flex; align-items: center; gap: 12px; padding: 10px 12px; min-height: 64px; position: relative; }
+    .grp + .grp::before { content: ""; position: absolute; top: 0; left: 64px; right: 0; height: 1px; background: var(--hair); }
+    .grp .bar { width: 64px; height: 6px; margin-top: 6px; }
+    .cnt { font-size: 13px; font-weight: 600; color: var(--slate); font-variant-numeric: tabular-nums; }
+    .res { padding: 12px 14px; position: relative; }
+    .res + .res::before { content: ""; position: absolute; top: 0; left: 14px; right: 0; height: 1px; background: var(--hair); }
+    .res .rn { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+    .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .act { height: 32px; padding: 0 11px; border-radius: 999px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; background: var(--canvas); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+    .act.on { background: var(--accent); color: #fff; box-shadow: none; }
+    .act.chg { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #F5B544; }
+    .act.lk { opacity: .45; }
+    .act svg { width: 13px; height: 13px; }
+    .savebar { position: absolute; left: 12px; right: 12px; bottom: 14px; height: 56px; border-radius: 18px; background: var(--ink); color: #fff; display: flex; align-items: center; gap: 10px; padding: 0 8px 0 16px; z-index: 6; box-shadow: 0 10px 24px rgba(16,24,40,.25); }
+    .savebar b { font-size: 15px; font-weight: 600; flex: 1; }
+    .savebar span { height: 40px; padding: 0 16px; border-radius: 12px; background: var(--accent); display: flex; align-items: center; font-size: 15px; font-weight: 600; }
+    .savebar i { font-style: normal; font-size: 14px; color: rgba(255,255,255,.7); font-weight: 600; }
+    .diff { display: flex; align-items: center; gap: 10px; padding: 9px 0; font-size: 15px; }
+    .diff .pm { width: 24px; height: 24px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; flex: none; }
+    .diff .pm.a { background: var(--tint); color: var(--deep); }
+    .diff .pm.r { background: var(--red-t); color: var(--red); }
+    .sens { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 600; color: var(--amb); }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1Z"/></symbol>
+    <symbol id="i-wa" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5a9.4 9.4 0 0 0-8.1 14.2L2.6 21.5l4.9-1.3A9.4 9.4 0 1 0 12 2.5Zm0 1.7a7.7 7.7 0 1 1-3.9 14.3l-.3-.2-2.9.8.8-2.8-.2-.3A7.7 7.7 0 0 1 12 4.2Zm-3 3.6c-.2 0-.5 0-.7.3-.3.3-1 1-1 2.4s1 2.8 1.2 3c.1.2 2 3.2 5 4.4 2.5 1 3 .8 3.5.7.5 0 1.7-.7 2-1.4.2-.7.2-1.3.2-1.4-.1-.1-.3-.2-.6-.4l-1.8-.9c-.3-.1-.5-.1-.7.1l-.8 1c-.2.2-.3.2-.6.1a6.3 6.3 0 0 1-3.1-2.7c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.5l-.8-2c-.2-.5-.4-.4-.6-.4H9Z"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="3"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="3"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8M16 7l2 2M14 9l2 2"/></symbol>
+    <symbol id="i-badge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.4 3 8.3 7 9.5 4-1.2 7-5.1 7-9.5V6z"/><path d="m9 11.8 2.2 2.2L15.5 9.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24" fill="currentColor"><path d="m12 3.2 2.6 5.5 6 .7-4.4 4.1 1.2 5.9L12 16.5l-5.4 2.9 1.2-5.9-4.4-4.1 6-.7z"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20c1.2-3.6 4-5.5 7.5-5.5s6.3 1.9 7.5 5.5"/></symbol>
+    <symbol id="i-useradd" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="10" cy="8" r="4"/><path d="M3 20c1.1-3.6 3.8-5.5 7-5.5 1.5 0 2.9.4 4 1.2M18 13v6M15 16h6"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 19.5c.9-3 3.4-4.8 6.5-4.8s5.6 1.8 6.5 4.8"/><path d="M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.9c1.7.6 3 2 3.5 4.6"/></symbol>
+    <symbol id="i-cal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+    <symbol id="i-once" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M11 8.5 13 7.5v9"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.6v.4"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 4.2 2.8 17.5A2 2 0 0 0 4.5 20.5h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z"/><path d="M12 9.5v4M12 17v.2"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></symbol>
+    <symbol id="i-door" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4H6v16h8M10 12h10M17 9l3 3-3 3"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m12 3.5 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5" stroke-linecap="round"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M21.2 12h-2.4M5.2 12H2.8M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7M18.5 18.5l-1.7-1.7M7.2 7.2 5.5 5.5" stroke-linecap="round"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.4 3 8.3 7 9.5 4-1.2 7-5.1 7-9.5V6z"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5V20h-5v-6H9v6H4z"/></symbol>
+    <symbol id="i-att" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="m8.5 12 2.5 2.5 4.5-5"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 4.5h10a4 4 0 0 1 4 4V20H9a4 4 0 0 1-4-4z"/><path d="M5 16a4 4 0 0 1 4-4h10"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24" fill="currentColor"><circle cx="5.5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18.5" cy="12" r="2"/></symbol>
+    <symbol id="i-pen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><path d="M6 16 15.5 6.5l2.5 2.5L8.5 18.5H6z"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M16 14.5h2"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5c.6 3.9 2.6 5.9 6.5 6.5-3.9.6-5.9 2.6-6.5 6.5-.6-3.9-2.6-5.9-6.5-6.5 3.9-.6 5.9-2.6 6.5-6.5ZM18.5 14c.3 1.9 1.3 2.9 3.2 3.2-1.9.3-2.9 1.3-3.2 3.2-.3-1.9-1.3-2.9-3.2-3.2 1.9-.3 2.9-1.3 3.2-3.2Z"/></symbol>
+    <symbol id="i-flask" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 3.5h5M10.5 3.5v5.5L5 18.5a1.5 1.5 0 0 0 1.3 2h11.4a1.5 1.5 0 0 0 1.3-2L13.5 9V3.5"/><path d="M7.5 14.5h9"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.3 3.6 5.2 3.6 8.5s-1.1 6.2-3.6 8.5c-2.5-2.3-3.6-5.2-3.6-8.5S9.5 5.8 12 3.5Z"/></symbol>
+    <symbol id="i-monitor" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="12" rx="2.5"/><path d="M9 20.5h6M12 16.5v4" stroke-linecap="round"/></symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3.5a8.5 8.5 0 0 0 0 17c1.3 0 1.8-.8 1.8-1.6 0-1.4-1.2-1.7-1.2-2.9 0-1 .8-1.6 1.8-1.6h2.1c2.2 0 4-1.6 4-4.3 0-3.7-3.8-6.6-8.5-6.6Z"/><circle cx="8" cy="11" r="1.1" fill="currentColor"/><circle cx="11" cy="7.6" r="1.1" fill="currentColor"/><circle cx="15.3" cy="8.4" r="1.1" fill="currentColor"/></symbol>
+    <symbol id="i-run" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="14.5" cy="4.8" r="1.8"/><path d="m6 20 3.5-5 3 2.5V21M8 10.5l3-3 3.5 1.5 2 3.5 2.5 1M11 7.5l-1.5 7.5"/></symbol>
+    <symbol id="i-school" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m12 3.5 9 4.5-9 4.5L3 8z"/><path d="M7 10.5V15c1.4 1.4 3 2 5 2s3.6-.6 5-2v-4.5M21 8v5" stroke-linecap="round"/></symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <div class="intro">
+    <h1>Roles, status and the rest of staff management</h1>
+    <p>Today the phone can add a librarian or a principal, but it can't give them access: the job title is only text, and roles are given on web. This mockup adds one question to Add staff, “What do they do here?”, and a Roles card on the profile. Teacher is one of the answers, but it gives no role: it marks them as teaching, and their classes come from Teaching, section by section, as now. Frames R10 to R19 cover what else is missing in staff management: on leave and suspended, changing a joined person's phone, moving branch, removing a photo, history, roles that end, export, and reading what a role can do. Leave requests (apply, approve, balances) are left for their own design. Mockup only; no app code has changed. Builds on <code>staff-teaching.html</code> (frames 06, 06b, 08, 14 and 18) and the design note in <code>06-staff-and-teaching.md</code> §11.</p>
+  </div>
+
+  <!-- ===================================================== ADD STAFF -->
+  <div class="h2">Add staff</div>
+  <div class="frames">
+
+    <!-- R1 add staff, teacher -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back" style="color:var(--muted)">Cancel</span><span class="ttl">Add staff</span></div>
+        <div style="display:flex;align-items:center;gap:14px;padding:0 16px">
+          <div class="av lg t6">KI</div>
+          <div class="grow"><div style="font-size:15px;font-weight:600">Kavita Iyer</div><div class="meta tnum">+91 98301 22745 · <span style="color:var(--deep);font-weight:600">Free</span></div></div>
+          <span class="meta" style="color:var(--deep);font-weight:600">Edit</span>
+        </div>
+        <div class="shead"><b>What does Kavita do here?</b><div class="meta">Pick all that apply</div></div>
+        <div class="opts">
+          <div class="opt on wide"><span class="sj te"><svg class="i"><use href="#i-school"/></svg></span><div class="grow"><b>Teacher</b><small>Classes and subjects are given in Teaching, after you add her</small></div></div>
+          <div class="opt"><span class="sj pr"><svg class="i"><use href="#i-star"/></svg></span><div><b>Principal</b><small>Runs the branch</small></div></div>
+          <div class="opt"><span class="sj pr"><svg class="i"><use href="#i-badge"/></svg></span><div><b>Vice principal</b><small>Helps run it</small></div></div>
+          <div class="opt"><span class="sj ac"><svg class="i"><use href="#i-wallet"/></svg></span><div><b>Accountant</b><small>Fees and receipts</small></div></div>
+          <div class="opt"><span class="sj li"><svg class="i"><use href="#i-book"/></svg></span><div><b>Librarian</b><small>Library</small></div></div>
+          <div class="opt"><span class="sj co"><svg class="i"><use href="#i-users"/></svg></span><div><b>Coordinator</b><small>Staff records</small></div></div>
+          <div class="opt"><span class="sj ro"><svg class="i"><use href="#i-user"/></svg></span><div><b>Other staff</b><small>Clerk, driver, peon</small></div></div>
+        </div>
+        <div class="fgroup" style="margin-top:14px">
+          <div class="lbl">Job title</div>
+          <div class="fld on"><svg class="i ic"><use href="#i-badge"/></svg><span class="grow">TGT Science</span></div>
+        </div>
+        <div class="foot"><div class="btn">Add Kavita</div></div>
+      </div>
+      <figcaption><span class="no">R1</span><b>A teacher.</b> The same form as today, with the “Teaches classes” switch replaced by this question. Teacher is pre-picked when the job title reads like one (TGT, PRT, teacher…), as the switch is today. Picking Teacher gives no role; it only puts her in the Teaching tab and the teacher picker. The name and phone collapse into one line here to show the new part; the real form keeps its fields.</figcaption>
+    </figure>
+
+    <!-- R2 add staff, principal who teaches -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back" style="color:var(--muted)">Cancel</span><span class="ttl">Add staff</span></div>
+        <div style="display:flex;align-items:center;gap:14px;padding:0 16px">
+          <div class="av lg t2">RI</div>
+          <div class="grow"><div style="font-size:15px;font-weight:600">Rakesh Iyer</div><div class="meta tnum">+91 90000 00002 · <span style="color:var(--deep);font-weight:600">Free</span></div></div>
+          <span class="meta" style="color:var(--deep);font-weight:600">Edit</span>
+        </div>
+        <div class="shead"><b>What does Rakesh do here?</b><div class="meta">Pick all that apply</div></div>
+        <div class="opts">
+          <div class="opt on wide"><span class="sj te"><svg class="i"><use href="#i-school"/></svg></span><div class="grow"><b>Teacher</b><small>Classes and subjects are given in Teaching, after you add him</small></div></div>
+          <div class="opt on"><span class="sj pr"><svg class="i"><use href="#i-star"/></svg></span><div><b>Principal</b><small>Runs the branch</small></div></div>
+          <div class="opt"><span class="sj pr"><svg class="i"><use href="#i-badge"/></svg></span><div><b>Vice principal</b><small>Helps run it</small></div></div>
+          <div class="opt"><span class="sj ac"><svg class="i"><use href="#i-wallet"/></svg></span><div><b>Accountant</b><small>Fees and receipts</small></div></div>
+          <div class="opt"><span class="sj li"><svg class="i"><use href="#i-book"/></svg></span><div><b>Librarian</b><small>Library</small></div></div>
+          <div class="opt"><span class="sj co"><svg class="i"><use href="#i-users"/></svg></span><div><b>Coordinator</b><small>Staff records</small></div></div>
+          <div class="opt"><span class="sj oa"><svg class="i"><use href="#i-globe"/></svg></span><div><b>Org admin</b><small>Everything, every branch</small></div></div>
+        </div>
+        <div class="info g mx" style="margin-top:12px"><svg class="i"><use href="#i-shield"/></svg><div><b>Principal for Main Campus.</b> It starts when Rakesh joins the app.</div></div>
+        <div class="fgroup" style="margin-top:12px">
+          <div class="lbl">Job title</div>
+          <div class="fld"><svg class="i ic"><use href="#i-badge"/></svg><span class="grow">Principal</span><span class="meta">from your pick</span></div>
+        </div>
+        <div class="foot"><div class="btn">Add Rakesh</div></div>
+      </div>
+      <figcaption><span class="no">R2</span><b>A principal who teaches.</b> Two picks: Teacher (no role) and Principal (the principal role, for this branch). The green line says exactly what will be given and where. Org admin shows only to someone who can give roles for the whole organisation, because that role is always org-wide. Job title fills itself from the first office pick; see question 1.</figcaption>
+    </figure>
+
+    <!-- R3 add staff without role_assignment:assign -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back" style="color:var(--muted)">Cancel</span><span class="ttl">Add staff</span></div>
+        <div style="display:flex;align-items:center;gap:14px;padding:0 16px">
+          <div class="av lg t5">SJ</div>
+          <div class="grow"><div style="font-size:15px;font-weight:600">Sunita Jha</div><div class="meta tnum">+91 98300 44120 · <span style="color:var(--deep);font-weight:600">Free</span></div></div>
+          <span class="meta" style="color:var(--deep);font-weight:600">Edit</span>
+        </div>
+        <div class="shead"><b>What does Sunita do here?</b><div class="meta">Pick all that apply</div></div>
+        <div class="opts">
+          <div class="opt wide"><span class="sj te"><svg class="i"><use href="#i-school"/></svg></span><div class="grow"><b>Teacher</b><small>Classes and subjects are given in Teaching, after you add her</small></div></div>
+          <div class="opt on wide"><span class="sj ro"><svg class="i"><use href="#i-user"/></svg></span><div class="grow"><b>Office staff</b><small>No access to start with</small></div></div>
+        </div>
+        <div class="info mx" style="margin-top:12px"><svg class="i"><use href="#i-lock"/></svg><div>Principal, Accountant, Librarian and other roles are given by someone who can give roles. They can add one from Sunita's profile later.</div></div>
+        <div class="fgroup" style="margin-top:12px">
+          <div class="lbl">Job title</div>
+          <div class="fld on"><svg class="i ic"><use href="#i-badge"/></svg><span class="grow">Librarian</span></div>
+        </div>
+        <div class="foot"><div class="btn">Add Sunita</div></div>
+      </div>
+      <figcaption><span class="no">R3</span><b>Without <code>role_assignment:assign</code>.</b> A staff coordinator can add staff (<code>staff:create</code>) but not give roles. They see only Teacher and Office staff, and one line saying who can do the rest. Nothing is greyed out to tease them. The choices follow the permission, not the person's role name.</figcaption>
+    </figure>
+
+    <!-- R4 added -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="end" style="margin-left:auto">Done</span></div>
+        <div class="empty" style="margin-top:28px">
+          <div style="position:relative">
+            <div class="av xl t2">RI</div>
+            <span style="position:absolute;right:-4px;bottom:-4px;width:32px;height:32px;border-radius:99px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 4px var(--canvas)"><svg class="i-s"><use href="#i-check"/></svg></span>
+          </div>
+          <div class="h1" style="font-size:24px;margin-top:18px">Rakesh is added</div>
+          <div class="lead">Principal · Main Campus · EMP-044</div>
+        </div>
+        <div class="gh" style="margin-top:14px"><span class="l">Next</span></div>
+        <div class="list card">
+          <div class="row" style="min-height:72px"><div class="sj" style="background:#E3F7EA;color:var(--wa)"><svg class="i"><use href="#i-wa"/></svg></div><div class="grow"><div class="nm">Invite him to the app</div><div class="sm2">His Principal access starts when he joins</div></div><svg class="i chev"><use href="#i-right"/></svg></div>
+          <div class="row" style="min-height:72px"><div class="sj m">∑</div><div class="grow"><div class="nm">Give him classes</div><div class="sm2">Maths teachers are short in 9-A</div></div><svg class="i chev"><use href="#i-right"/></svg></div>
+          <div class="row" style="min-height:72px"><div class="sj" style="background:var(--slate-t);color:var(--slate)"><svg class="i"><use href="#i-useradd"/></svg></div><div class="grow"><div class="nm">Add another person</div><div class="sm2">Same branch</div></div><svg class="i chev"><use href="#i-right"/></svg></div>
+        </div>
+        <div class="meta mx" style="margin-top:12px;text-align:center">You can do these later from his profile.</div>
+      </div>
+      <figcaption><span class="no">R4</span><b>Added.</b> Frame 06b with one change: the invite row says when his role starts. “Give him classes” shows only when Teacher was picked. A librarian gets Invite and Add another, nothing else. A teacher who joins before anyone gives classes sees frame 18 (“No classes yet”) instead of an empty app.</figcaption>
+    </figure>
+  </div>
+
+  <!-- ===================================================== PROFILE -->
+  <div class="h2">Profile</div>
+  <div class="frames">
+
+    <!-- R5 profile with roles -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back"><svg class="i"><use href="#i-left"/></svg>Staff</span><span class="end"><svg class="i"><use href="#i-edit"/></svg></span></div>
+        <div style="display:flex;align-items:center;gap:14px;padding:2px 16px 0">
+          <div class="av lg t2">RI</div>
+          <div class="grow"><div style="font-size:24px;font-weight:700;letter-spacing:-.4px">Rakesh Iyer</div><div class="meta">Principal · Main Campus</div><div style="margin-top:6px"><span class="pill n">Invited</span></div></div>
+        </div>
+        <div class="qa" style="margin-top:16px">
+          <a><span class="ic"><svg class="i"><use href="#i-phone"/></svg></span>Call</a>
+          <a><span class="ic wa"><svg class="i"><use href="#i-wa"/></svg></span>WhatsApp</a>
+          <a><span class="ic"><svg class="i"><use href="#i-school"/></svg></span>Classes</a>
+          <a><span class="ic"><svg class="i"><use href="#i-key"/></svg></span>New code</a>
+        </div>
+        <div class="gh"><span class="l">Roles</span><span class="r">Give a role</span></div>
+        <div class="list card">
+          <div class="row"><div class="sj pr"><svg class="i"><use href="#i-star"/></svg></div><div class="grow"><div class="nm">Principal</div><div class="sm2">Main Campus</div></div><span class="pill c">When he joins</span></div>
+          <div class="row"><div class="sj ac"><svg class="i"><use href="#i-wallet"/></svg></div><div class="grow"><div class="nm">Accountant</div><div class="sm2">Main Campus · till 31 Mar</div></div><span class="pill c">When he joins</span></div>
+        </div>
+        <div class="gh"><span class="l">This session · 2026-27</span><span class="r">Edit</span></div>
+        <div class="list card">
+          <div class="row"><div class="sj m">∑</div><div class="grow"><div class="nm">Maths</div><div class="sm2">9-A</div></div></div>
+        </div>
+        <div class="card mx" style="margin-top:12px;height:50px;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--red);font-weight:600"><svg class="i"><use href="#i-door"/></svg>Mark as left</div>
+      </div>
+      <figcaption><span class="no">R5</span><b>Roles card.</b> Replaces frame 08's “Office roles” card. Each role says where it applies, and an end date if it has one. Before he joins, a role waits with an amber “When he joins”; after, the pill goes away. Tap a role to take it away (R7). Only <code>role_assignment:read</code> holders see the card; “Give a role” needs <code>assign</code>.</figcaption>
+    </figure>
+
+    <!-- R6 give a role -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back"><svg class="i"><use href="#i-left"/></svg>Staff</span></div>
+        <div class="scrim"></div>
+        <div class="sheet">
+          <div class="grab"></div>
+          <h3>Give Rakesh a role</h3>
+          <div class="hint">It works the moment he's on the app.</div>
+          <div class="list card" style="margin:0 12px">
+            <div class="row dim"><div class="sj sm pr"><svg class="i-s"><use href="#i-star"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Principal</div></div><span class="meta">Has it</span></div>
+            <div class="row"><div class="sj sm pr"><svg class="i-s"><use href="#i-badge"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Vice principal</div></div><span class="radio"></span></div>
+            <div class="row" style="background:#FBFEFC"><div class="sj sm ac"><svg class="i-s"><use href="#i-wallet"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Accountant</div><div class="sm2">Fees, receipts, concessions</div></div><span class="radio on"></span></div>
+            <div class="row"><div class="sj sm li"><svg class="i-s"><use href="#i-book"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Librarian</div></div><span class="radio"></span></div>
+            <div class="row"><div class="sj sm co"><svg class="i-s"><use href="#i-users"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Coordinator</div></div><span class="radio"></span></div>
+            <div class="row"><div class="sj sm oa"><svg class="i-s"><use href="#i-globe"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Org admin</div><div class="sm2">Always every branch</div></div><span class="radio"></span></div>
+          </div>
+          <div class="seg" style="margin:12px 16px 0"><span class="on">Main Campus</span><span>All branches</span></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:12px 20px 0"><svg class="i" style="color:var(--muted)"><use href="#i-cal"/></svg><span class="grow" style="font-size:15px">Until</span><span class="link">No end date</span></div>
+          <div class="sbtns"><div class="btn">Give Accountant</div></div>
+        </div>
+      </div>
+      <figcaption><span class="no">R6</span><b>Give a role.</b> One role at a time. Roles he already has are shown, not hidden. The branch switch shows only to someone who can give roles for the whole organisation; everyone else gives for their own branch, with no switch. “Until” is optional, for a temporary cover such as an acting principal. No Teacher here: the server refuses teacher roles by hand.</figcaption>
+    </figure>
+
+    <!-- R7 take away -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back"><svg class="i"><use href="#i-left"/></svg>Staff</span></div>
+        <div class="scrim"></div>
+        <div class="sheet">
+          <div class="grab"></div>
+          <div style="display:flex;align-items:center;gap:12px;padding:4px 20px 0">
+            <div class="sj pr"><svg class="i"><use href="#i-star"/></svg></div>
+            <div class="grow"><h3 style="padding:0">Take away Principal?</h3><div class="meta">Rakesh Iyer · Main Campus</div></div>
+          </div>
+          <div class="info amb mx" style="margin-top:14px"><svg class="i"><use href="#i-alert"/></svg><div>He loses principal access straight away. His classes in Teaching stay as they are.</div></div>
+          <div class="fgroup" style="margin-top:14px">
+            <div class="lbl">Why</div>
+            <div class="sugg" style="padding:0 0 8px"><span class="hot">Changed job</span><span>Given by mistake</span><span>Cover is over</span></div>
+            <div class="fld"><span class="ph grow">Or write a reason</span></div>
+          </div>
+          <div class="sbtns"><div class="btn danger">Take away Principal</div><div class="btn ghost" style="height:46px;font-size:15px">Keep it</div></div>
+        </div>
+      </div>
+      <figcaption><span class="no">R7</span><b>Take away a role.</b> The server asks for a reason (it goes to the audit log), so the sheet gives three quick ones and a free line. It says what changes and what doesn't. Teaching is never touched from here.</figcaption>
+    </figure>
+
+    <!-- R8 left, bring back -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back"><svg class="i"><use href="#i-left"/></svg>Staff</span></div>
+        <div style="display:flex;align-items:center;gap:14px;padding:2px 16px 0">
+          <div class="av lg t5" style="opacity:.6">SJ</div>
+          <div class="grow"><div style="font-size:24px;font-weight:700;letter-spacing:-.4px">Sunita Jha</div><div class="meta">Librarian · Main Campus</div><div style="margin-top:6px"><span class="pill n">Left 30 Nov 2026</span></div></div>
+        </div>
+        <div class="qa" style="margin-top:16px;grid-template-columns:repeat(2,1fr)">
+          <a><span class="ic"><svg class="i"><use href="#i-phone"/></svg></span>Call</a>
+          <a><span class="ic wa"><svg class="i"><use href="#i-wa"/></svg></span>WhatsApp</a>
+        </div>
+        <div class="gh"><span class="l">Roles</span></div>
+        <div class="list card"><div class="row dim"><div class="sj li"><svg class="i"><use href="#i-book"/></svg></div><div class="grow"><div class="nm">Librarian</div><div class="sm2">Ended when she left</div></div></div></div>
+        <div class="info mx" style="margin-top:14px"><svg class="i"><use href="#i-info"/></svg><div>Bringing her back makes her record current again. She joins with a new code, and her roles are given again. Nothing comes back by itself.</div></div>
+        <div class="foot"><div class="btn soft">Bring Sunita back</div></div>
+      </div>
+      <figcaption><span class="no">R8</span><b>Someone who left.</b> Leaving already ends her roles and frees her number (that's built). This adds “Bring back” (<code>staff.reactivate</code>, on the server but not on the phone). After it, the profile opens R6 so the office can give her roles again, then the invite.</figcaption>
+    </figure>
+
+    <!-- R9 roles overview -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav" style="height:36px"><span class="back"><svg class="i"><use href="#i-left"/></svg>More</span></div>
+        <div class="top"><div class="title">Roles</div></div>
+        <div class="sub meta">Main Campus · who has each one</div>
+        <div class="list card" style="margin-top:14px">
+          <div class="row"><div class="sj oa"><svg class="i"><use href="#i-globe"/></svg></div><div class="grow"><div class="nm">Org admin</div><div class="sm2">Asha Verma</div></div><div class="stack"><div class="av sm t3">AV</div></div><svg class="i chev"><use href="#i-right"/></svg></div>
+          <div class="row"><div class="sj pr"><svg class="i"><use href="#i-star"/></svg></div><div class="grow"><div class="nm">Principal</div><div class="sm2">Rakesh Iyer</div></div><div class="stack"><div class="av sm t2">RI</div></div><svg class="i chev"><use href="#i-right"/></svg></div>
+          <div class="row"><div class="sj pr"><svg class="i"><use href="#i-badge"/></svg></div><div class="grow"><div class="nm">Vice principal</div><div class="sm2" style="color:var(--amb)">Nobody</div></div><svg class="i chev"><use href="#i-right"/></svg></div>
+          <div class="row"><div class="sj ac"><svg class="i"><use href="#i-wallet"/></svg></div><div class="grow"><div class="nm">Accountant</div><div class="sm2">2 people</div></div><div class="stack"><div class="av sm t4">MG</div><div class="av sm t1">DA</div></div><svg class="i chev"><use href="#i-right"/></svg></div>
+          <div class="row"><div class="sj li"><svg class="i"><use href="#i-book"/></svg></div><div class="grow"><div class="nm">Librarian</div><div class="sm2">Sunita Jha</div></div><div class="stack"><div class="av sm t5">SJ</div></div><svg class="i chev"><use href="#i-right"/></svg></div>
+          <div class="row"><div class="sj co"><svg class="i"><use href="#i-users"/></svg></div><div class="grow"><div class="nm">Coordinator</div><div class="sm2">Arjun Das</div></div><div class="stack"><div class="av sm t2">AD</div></div><svg class="i chev"><use href="#i-right"/></svg></div>
+        </div>
+        <div class="info mx" style="margin-top:12px"><svg class="i"><use href="#i-school"/></svg><div>Teachers aren't listed here: they get access from their classes in Teaching.</div></div>
+        <div class="tabbar">
+          <span><svg class="i"><use href="#i-home"/></svg>Home</span>
+          <span><svg class="i"><use href="#i-att"/></svg>Attendance</span>
+          <span><svg class="i"><use href="#i-users"/></svg>Students</span>
+          <span><svg class="i"><use href="#i-wallet"/></svg>Fees</span>
+          <span class="on"><svg class="i"><use href="#i-more"/></svg>More</span>
+        </div>
+      </div>
+      <figcaption><span class="no">R9</span><b>Roles, from More (optional).</b> Who holds each role, from <code>role.holders</code>. A tap opens the holders, each linking to their profile. What a role can do is question 2; this frame shows the smallest answer, where that stays on web.</figcaption>
+    </figure>
+  </div>
+
+  <!-- ===================================================== STATUS -->
+  <div class="h2">Status: working, on leave, suspended, left</div>
+  <div class="frames">
+
+    <!-- R10 status sheet -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back"><svg class="i"><use href="#i-left"/></svg>Staff</span></div>
+        <div class="scrim"></div>
+        <div class="sheet">
+          <div class="grab"></div>
+          <h3>Priya Rao's status</h3>
+          <div class="hint">Everyone except Left stays on staff and keeps their number.</div>
+          <div class="list card" style="margin:0 12px">
+            <div class="row"><div class="sj sm te"><svg class="i-s"><use href="#i-check"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Working</div><div class="sm2">Now</div></div><span class="radio"></span></div>
+            <div class="row" style="background:#FBFEFC"><div class="sj sm pr"><svg class="i-s"><use href="#i-clock"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">On leave</div><div class="sm2">Away for a while; her classes need cover</div></div><span class="radio on"></span></div>
+            <div class="row"><div class="sj sm ac"><svg class="i-s"><use href="#i-lock"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Suspended</div><div class="sm2">Can't sign in until you lift it</div></div><span class="radio"></span></div>
+            <div class="row"><div class="sj sm" style="background:var(--red-t);color:var(--red)"><svg class="i-s"><use href="#i-door"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Left</div><div class="sm2">Resigned, retired or let go: handover next</div></div><svg class="i chev"><use href="#i-right"/></svg></div>
+          </div>
+          <div class="datepair" style="margin-top:12px">
+            <div class="on"><div class="k"><svg class="i-s"><use href="#i-cal"/></svg>From</div><div class="v">Mon, 17 Nov</div></div>
+            <div><div class="k"><svg class="i-s"><use href="#i-cal"/></svg>Back on</div><div class="v">Sat, 20 Dec</div></div>
+          </div>
+          <div class="sbtns"><div class="btn">Put Priya on leave</div></div>
+        </div>
+      </div>
+      <figcaption><span class="no">R10</span><b>One place for status.</b> The profile's “Mark as left” becomes a status line (“Working · Change”) that opens this. Left still goes to the handover screen (frame 14). <b>On leave can't be set today</b>: edit leaves out status and the server's leave call refuses it, so this needs a server change.</figcaption>
+    </figure>
+
+    <!-- R11 on leave -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back"><svg class="i"><use href="#i-left"/></svg>Staff</span><span class="end"><svg class="i"><use href="#i-edit"/></svg></span></div>
+        <div style="display:flex;align-items:center;gap:14px;padding:2px 16px 0">
+          <div class="av lg t1">PR</div>
+          <div class="grow"><div style="font-size:24px;font-weight:700;letter-spacing:-.4px">Priya Rao</div><div class="meta">TGT Maths · Main Campus</div><div style="margin-top:6px"><span class="pill n"><svg class="i-s"><use href="#i-clock"/></svg>On leave till 20 Dec</span></div></div>
+        </div>
+        <div class="info amb mx" style="margin-top:16px"><svg class="i"><use href="#i-alert"/></svg><div><b>3 of her classes have nobody.</b> Give each a cover until 20 Dec; she gets them back after.</div></div>
+        <div class="gh"><span class="l">This session · 2026-27</span><span class="r">Cover all</span></div>
+        <div class="list card">
+          <div class="row"><div class="sj ct"><svg class="i"><use href="#i-star"/></svg></div><div class="grow"><div class="nm">Class teacher</div><div class="sm2">6-A</div></div><span class="assign"><svg class="i-s"><use href="#i-plus"/></svg>Cover</span></div>
+          <div class="row"><div class="sj m">∑</div><div class="grow"><div class="nm">Maths 6-A, 6-B</div><div class="sm2">Covered by Meera Nair</div></div><div class="av xs t3">MN</div></div>
+          <div class="row"><div class="sj m">∑</div><div class="grow"><div class="nm">Maths 7-A</div><div class="sm2">No cover</div></div><span class="assign"><svg class="i-s"><use href="#i-plus"/></svg>Cover</span></div>
+        </div>
+        <div class="card mx" style="margin-top:12px;min-height:52px;display:flex;align-items:center;gap:10px;padding:0 14px"><svg class="i" style="color:var(--muted)"><use href="#i-user"/></svg><span class="grow" style="font-size:15px">Status</span><span class="meta">On leave</span><span class="link">Change</span></div>
+      </div>
+      <figcaption><span class="no">R11</span><b>On leave.</b> The profile leads with what the leave leaves open, and each line opens the existing cover sheet with “until 20 Dec” already filled. Cover is built (frame 13); only the status is new. Whether she can still sign in while on leave is question 5.</figcaption>
+    </figure>
+
+    <!-- R12 suspended -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back"><svg class="i"><use href="#i-left"/></svg>Staff</span></div>
+        <div style="display:flex;align-items:center;gap:14px;padding:2px 16px 0">
+          <div class="av lg t4" style="filter:grayscale(.5)">RS</div>
+          <div class="grow"><div style="font-size:24px;font-weight:700;letter-spacing:-.4px">Rahul Sen</div><div class="meta">Accountant · Main Campus</div><div style="margin-top:6px"><span class="pill c"><svg class="i-s"><use href="#i-lock"/></svg>Suspended since 12 Nov</span></div></div>
+        </div>
+        <div class="info amb mx" style="margin-top:16px"><svg class="i"><use href="#i-lock"/></svg><div>He can't sign in. His roles and classes are kept, and come back when you lift it.</div></div>
+        <div class="gh"><span class="l">Roles</span></div>
+        <div class="list card"><div class="row dim"><div class="sj ac"><svg class="i"><use href="#i-wallet"/></svg></div><div class="grow"><div class="nm">Accountant</div><div class="sm2">Main Campus · paused</div></div></div></div>
+        <div class="gh"><span class="l">Why</span></div>
+        <div class="card mx" style="padding:12px 14px;font-size:15px;line-height:1.45">Cash count mismatch, inquiry open</div>
+        <div class="foot"><div class="btn soft">Lift suspension</div><div class="meta" style="text-align:center;margin-top:10px">or <span class="link">mark him as left</span></div></div>
+      </div>
+      <figcaption><span class="no">R12</span><b>Suspended.</b> <b>Today a suspension changes only the label</b>: the server keeps his sign-in and every role, so he can still take fees. This frame shows what it should mean: no sign-in, roles paused, everything back when lifted. The mobile leave screen doesn't offer Suspended at all yet.</figcaption>
+    </figure>
+  </div>
+
+  <!-- ===================================================== EDITS -->
+  <div class="h2">Phone, branch and photo</div>
+  <div class="frames">
+
+    <!-- R13 change phone after joining -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back" style="color:var(--muted)">Cancel</span><span class="ttl">Edit Kavita</span></div>
+        <div class="fgroup" style="margin-top:6px">
+          <div class="lbl">Phone</div>
+          <div class="fld on"><svg class="i ic"><use href="#i-phone"/></svg><span class="cc" style="padding-right:8px">+91</span><span class="grow tnum">98301 55410</span><span class="pill p"><svg style="width:12px;height:12px"><use href="#i-check"/></svg>Free</span></div>
+          <div class="meta" style="margin:6px 4px 0">Was 98301 22745</div>
+        </div>
+        <div class="info amb mx" style="margin-top:14px"><svg class="i"><use href="#i-alert"/></svg><div><b>Kavita signs in with this number.</b> Her old number stops working when you save. She joins again with a new code on 98301 55410.</div></div>
+        <div class="card mx" style="margin-top:12px;padding:12px 14px;display:flex;align-items:center;gap:12px">
+          <div class="sj sm" style="background:#E3F7EA;color:var(--wa)"><svg class="i-s"><use href="#i-wa"/></svg></div>
+          <div class="grow"><div style="font-size:15px;font-weight:600">Send the new code on WhatsApp</div><div class="meta">Opens the invite after saving</div></div><span class="sw"></span>
+        </div>
+        <div class="foot"><div class="btn">Save and send code</div></div>
+      </div>
+      <figcaption><span class="no">R13</span><b>Changing a joined person's phone.</b> <b>Today the record changes but her sign-in stays on the old number</b> until she joins again, and the form says nothing (read from the code, not walked). Two ways: switch it at once, as drawn, or keep the old number working until she joins with the new one (question 6). Not joined yet: no warning, just save.</figcaption>
+    </figure>
+
+    <!-- R14 move branch -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back"><svg class="i"><use href="#i-left"/></svg>Staff</span></div>
+        <div class="scrim"></div>
+        <div class="sheet">
+          <div class="grab"></div>
+          <h3>Move Meera Nair</h3>
+          <div class="hint">From Main Campus. Her record, photo and sign-in move with her.</div>
+          <div class="list card" style="margin:0 12px">
+            <div class="row dim"><div class="sj sm ro"><svg class="i-s"><use href="#i-school"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Main Campus</div></div><span class="meta">Now</span></div>
+            <div class="row" style="background:#FBFEFC"><div class="sj sm te"><svg class="i-s"><use href="#i-school"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">North Campus</div></div><span class="radio on"></span></div>
+          </div>
+          <div class="gh" style="padding-top:14px"><span class="l">These end at Main Campus</span></div>
+          <div class="list card" style="margin:0 12px;background:var(--canvas)">
+            <div class="row" style="min-height:48px"><div class="sj sm s"><svg class="i-s"><use href="#i-flask"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Science 6-A, 6-B</div></div><span class="pill c">Gap</span></div>
+            <div class="row" style="min-height:48px"><div class="sj sm li"><svg class="i-s"><use href="#i-book"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Librarian role</div></div></div>
+          </div>
+          <div class="datepair" style="margin-top:12px"><div class="on"><div class="k"><svg class="i-s"><use href="#i-cal"/></svg>From</div><div class="v">Mon, 1 Dec</div></div></div>
+          <div class="sbtns"><div class="btn">Move to North Campus</div></div>
+        </div>
+      </div>
+      <figcaption><span class="no">R14</span><b>Move to another branch.</b> <b>Not possible anywhere today</b>: the branch can't be edited. Her classes and branch roles end at the old branch and show as gaps there; at the new one she starts like a new joiner who already has a login. Offered only to someone with <code>staff:update</code> at both branches. New server call.</figcaption>
+    </figure>
+
+    <!-- R15 photo sheet -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back"><svg class="i"><use href="#i-left"/></svg>Staff</span></div>
+        <div style="display:flex;align-items:center;gap:14px;padding:2px 16px 0">
+          <div class="av lg" style="background:linear-gradient(160deg,#7FC4A0,#2E8A5C)"></div>
+          <div class="grow"><div style="font-size:24px;font-weight:700;letter-spacing:-.4px">Meera Nair</div><div class="meta">TGT Science · Main Campus</div></div>
+        </div>
+        <div class="scrim"></div>
+        <div class="sheet">
+          <div class="grab"></div>
+          <h3>Photo</h3>
+          <div class="list card" style="margin:6px 12px 0">
+            <div class="row"><div class="sj sm te"><svg class="i-s"><use href="#i-camera"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Take a new photo</div></div></div>
+            <div class="row"><div class="sj sm te"><svg class="i-s"><use href="#i-user"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Choose from gallery</div></div></div>
+            <div class="row"><div class="sj sm" style="background:var(--red-t);color:var(--red)"><svg class="i-s"><use href="#i-door"/></svg></div><div class="grow"><div class="nm" style="font-size:15px;color:var(--red)">Remove photo</div><div class="sm2">Her initials show instead</div></div></div>
+          </div>
+        </div>
+      </div>
+      <figcaption><span class="no">R15</span><b>Remove a photo.</b> The camera badge on the profile opens this. Remove calls <code>staff.removePhoto</code>, already on the server. Small, but today a wrong photo can only be replaced.</figcaption>
+    </figure>
+  </div>
+
+  <!-- ===================================================== OVERSIGHT -->
+  <div class="h2">History, ending roles, export, what a role can do</div>
+  <div class="frames">
+
+    <!-- R16 history -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back"><svg class="i"><use href="#i-left"/></svg>Rakesh Iyer</span></div>
+        <div class="top"><div class="title" style="font-size:26px">History</div></div>
+        <div class="sub meta">Roles, sign-in and status changes</div>
+        <div class="gh"><span class="l">This week</span></div>
+        <div class="list card">
+          <div class="row"><div class="sj sm ac"><svg class="i-s"><use href="#i-wallet"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Given Accountant, till 31 Mar</div><div class="sm2">by Asha Verma · Wed 9:12</div></div></div>
+          <div class="row"><div class="sj sm" style="background:#E3F7EA;color:var(--wa)"><svg class="i-s"><use href="#i-key"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Joined the app</div><div class="sm2">Tue 18:40</div></div></div>
+          <div class="row"><div class="sj sm ro"><svg class="i-s"><use href="#i-once"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Joining code sent</div><div class="sm2">by Asha Verma · Tue 11:02</div></div></div>
+        </div>
+        <div class="gh"><span class="l">October</span></div>
+        <div class="list card">
+          <div class="row"><div class="sj sm pr"><svg class="i-s"><use href="#i-star"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Principal taken away</div><div class="sm2">“Cover is over” · by Asha Verma · 30 Oct</div></div></div>
+          <div class="row"><div class="sj sm pr"><svg class="i-s"><use href="#i-star"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Given Principal</div><div class="sm2">by Asha Verma · 1 Oct</div></div></div>
+          <div class="row"><div class="sj sm ro"><svg class="i-s"><use href="#i-useradd"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Added to staff</div><div class="sm2">by Asha Verma · 1 Oct</div></div></div>
+        </div>
+      </div>
+      <figcaption><span class="no">R16</span><b>History, from the profile.</b> The server already writes role and sign-in changes to its audit log; nothing shows them. This reads that log for one person, newest first, with who did it and the reason. Needs a new read call and <code>role_assignment:read</code>. Status changes and edits aren't logged yet.</figcaption>
+    </figure>
+
+    <!-- R17 roles ending -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav" style="height:36px"><span class="back"><svg class="i"><use href="#i-left"/></svg>More</span></div>
+        <div class="top"><div class="title">Roles</div></div>
+        <div class="sub meta">Main Campus · who has each one</div>
+        <div class="card mx" style="margin-top:14px;padding:12px 14px">
+          <div style="display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600"><svg class="i" style="color:var(--amb)"><use href="#i-clock"/></svg>Ending soon</div>
+          <div class="row" style="padding:10px 0 4px"><div class="av sm t2">RI</div><div class="grow"><div class="nm" style="font-size:15px">Rakesh Iyer · Accountant</div><div class="sm2">Ends Fri 21 Nov</div></div><span class="btn soft" style="height:34px;padding:0 12px;font-size:13px">Extend</span></div>
+          <div class="row" style="padding:10px 0 0"><div class="av sm t5">SJ</div><div class="grow"><div class="nm" style="font-size:15px">Sunita Jha · Vice principal</div><div class="sm2">Ended yesterday</div></div><span class="btn soft" style="height:34px;padding:0 12px;font-size:13px">Give again</span></div>
+        </div>
+        <div class="list card" style="margin-top:12px">
+          <div class="row"><div class="sj oa"><svg class="i"><use href="#i-globe"/></svg></div><div class="grow"><div class="nm">Org admin</div><div class="sm2">Asha Verma</div></div><svg class="i chev"><use href="#i-right"/></svg></div>
+          <div class="row"><div class="sj pr"><svg class="i"><use href="#i-star"/></svg></div><div class="grow"><div class="nm">Principal</div><div class="sm2">Rakesh Iyer</div></div><svg class="i chev"><use href="#i-right"/></svg></div>
+          <div class="row"><div class="sj ac"><svg class="i"><use href="#i-wallet"/></svg></div><div class="grow"><div class="nm">Accountant</div><div class="sm2">2 people</div></div><svg class="i chev"><use href="#i-right"/></svg></div>
+          <div class="row"><div class="sj li"><svg class="i"><use href="#i-book"/></svg></div><div class="grow"><div class="nm">Librarian</div><div class="sm2">Sunita Jha</div></div><svg class="i chev"><use href="#i-right"/></svg></div>
+        </div>
+        <div class="fade"></div>
+      </div>
+      <figcaption><span class="no">R17</span><b>Roles that end.</b> A role given “until” a date (R6) stops by itself, and nobody is told. R9 gains an “Ending soon” card for the next 7 days and the last 7: Extend changes the date, Give again opens R6. Needs a read of roles by end date (new) and an extend call (new; today it would be take away and give again).</figcaption>
+    </figure>
+
+    <!-- R18 export -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav"><span class="back"><svg class="i"><use href="#i-left"/></svg>More</span></div>
+        <div class="scrim"></div>
+        <div class="sheet">
+          <div class="grab"></div>
+          <h3>Export staff</h3>
+          <div class="hint">Main Campus · 42 people working now</div>
+          <div class="seg" style="margin:0 16px"><span class="on">Spreadsheet</span><span>PDF list</span></div>
+          <div class="gh" style="padding-top:14px"><span class="l">Include</span></div>
+          <div class="list card" style="margin:0 12px;background:var(--canvas)">
+            <div class="row" style="min-height:48px"><span class="grow" style="font-size:15px">Name, code, job title, phone</span><span class="meta">Always</span></div>
+            <div class="row" style="min-height:48px"><span class="grow" style="font-size:15px">What they teach</span><span class="sw"></span></div>
+            <div class="row" style="min-height:48px"><span class="grow" style="font-size:15px">Roles</span><span class="sw"></span></div>
+            <div class="row" style="min-height:48px"><span class="grow" style="font-size:15px">Date of birth, address</span><span class="sw off"></span></div>
+            <div class="row" style="min-height:48px"><span class="grow" style="font-size:15px">People who left</span><span class="sw off"></span></div>
+          </div>
+          <div class="sbtns"><div class="btn">Export and share</div></div>
+        </div>
+      </div>
+      <figcaption><span class="no">R18</span><b>Export.</b> <code>staff:export</code> can be given to roles, but no export exists, on web or phone. From the staff list's menu; the file goes to the phone's share sheet. Personal details are off by default. New server call.</figcaption>
+    </figure>
+
+    <!-- R19 what a role can do, read-only -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav" style="height:36px"><span class="back"><svg class="i"><use href="#i-left"/></svg>Roles</span></div>
+        <div style="display:flex;align-items:center;gap:12px;padding:6px 16px 0"><div class="sj ac"><svg class="i"><use href="#i-wallet"/></svg></div><div class="grow"><div class="title" style="font-size:26px">Accountant</div><div class="meta">2 people · Main Campus</div></div></div>
+        <div class="gh"><span class="l">Can</span></div>
+        <div class="list card">
+          <div class="row" style="min-height:52px"><div class="sj sm ac"><svg class="i-s"><use href="#i-wallet"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Fees</div><div class="sm2">Collect, give concessions, refunds, reports</div></div></div>
+          <div class="row" style="min-height:52px"><div class="sj sm ro"><svg class="i-s"><use href="#i-users"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Students</div><div class="sm2">See the list and profiles</div></div></div>
+        </div>
+        <div class="gh"><span class="l">Needs someone else for</span></div>
+        <div class="list card">
+          <div class="row" style="min-height:52px"><div class="sj sm ro"><svg class="i-s"><use href="#i-lock"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Approving payments and waivers</div><div class="sm2">Principal</div></div></div>
+          <div class="row" style="min-height:52px"><div class="sj sm ro"><svg class="i-s"><use href="#i-lock"/></svg></div><div class="grow"><div class="nm" style="font-size:15px">Fee heads and structures</div><div class="sm2">Principal</div></div></div>
+        </div>
+        <div class="info mx" style="margin-top:12px"><svg class="i"><use href="#i-monitor"/></svg><div>Change what an Accountant can do on the web, in Roles.</div></div>
+      </div>
+      <figcaption><span class="no">R19</span><b>What a role can do (question 2, option B).</b> The permission list in plain words, grouped, with what the role can't do and who can. Read-only. The lines here are illustrative; the real ones come from the org's own list (<code>role.permissions</code>). Changing it stays on web, and only an Org admin can.</figcaption>
+    </figure>
+  </div>
+
+  <!-- ===================================================== PERMISSION EDITOR -->
+  <div class="h2">What a role can do · the editor (question 2, option C)</div>
+  <div class="frames">
+
+    <!-- R20 role page -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav" style="height:36px"><span class="back"><svg class="i"><use href="#i-left"/></svg>Roles</span><span class="end" style="font-size:22px;font-weight:700;color:var(--ink)">⋯</span></div>
+        <div style="display:flex;align-items:center;gap:12px;padding:6px 16px 0"><div class="sj ac"><svg class="i"><use href="#i-wallet"/></svg></div><div class="grow"><div class="title" style="font-size:26px">Accountant</div><div class="meta">Same at every branch</div></div></div>
+        <div class="card mx" style="margin-top:14px;padding:10px 12px;display:flex;align-items:center;gap:10px">
+          <div class="stack"><div class="av sm t4">MG</div><div class="av sm t1">DA</div></div>
+          <div class="grow" style="font-size:14px"><b style="font-weight:600">Mohan Gupta, Demo Accountant</b><div class="meta">2 people have this role</div></div><svg class="i chev"><use href="#i-right"/></svg>
+        </div>
+        <div class="gh"><span class="l">What they can do</span><span class="r" style="color:var(--muted);font-weight:500">26 of 126</span></div>
+        <div class="list card">
+          <div class="grp"><div class="sj ac"><svg class="i"><use href="#i-wallet"/></svg></div><div class="grow"><div class="nm">Fees</div><div class="bar"><i style="width:70%"></i></div></div><span class="cnt">16 of 23</span><svg class="i chev"><use href="#i-right"/></svg></div>
+          <div class="grp"><div class="sj pr"><svg class="i"><use href="#i-users"/></svg></div><div class="grow"><div class="nm">Students and teaching</div><div class="bar"><i style="width:5%"></i></div></div><span class="cnt">2 of 40</span><svg class="i chev"><use href="#i-right"/></svg></div>
+          <div class="grp"><div class="sj co"><svg class="i"><use href="#i-school"/></svg></div><div class="grow"><div class="nm">School setup</div><div class="bar"><i style="width:17%"></i></div></div><span class="cnt">5 of 29</span><svg class="i chev"><use href="#i-right"/></svg></div>
+          <div class="grp"><div class="sj li"><svg class="i"><use href="#i-user"/></svg></div><div class="grow"><div class="nm">Staff and leave</div><div class="bar"><i style="width:20%"></i></div></div><span class="cnt">2 of 10</span><svg class="i chev"><use href="#i-right"/></svg></div>
+          <div class="grp"><div class="sj ro"><svg class="i"><use href="#i-sparkle"/></svg></div><div class="grow"><div class="nm">Notices</div><div class="bar"><i style="width:20%"></i></div></div><span class="cnt">1 of 5</span><svg class="i chev"><use href="#i-right"/></svg></div>
+          <div class="grp"><div class="sj ro"><svg class="i"><use href="#i-shield"/></svg></div><div class="grow"><div class="nm">Access and logins</div><div class="bar"><i style="width:0"></i></div></div><span class="cnt">0 of 12</span><svg class="i chev"><use href="#i-right"/></svg></div>
+          <div class="grp"><div class="sj ro"><svg class="i"><use href="#i-gear"/></svg></div><div class="grow"><div class="nm">Settings</div><div class="bar"><i style="width:0"></i></div></div><span class="cnt">0 of 4</span><svg class="i chev"><use href="#i-right"/></svg></div>
+        </div>
+        <div class="fade"></div>
+      </div>
+      <figcaption><span class="no">R20</span><b>A role, for someone who can edit.</b> Opened from R9. The groups are the web editor's eight (Academic, Finance, Structure…) in plain names; Website is below the fold. The bar shows how much of each group the role has. “Same at every branch” says up front that this list is organisation-wide. The ⋯ menu holds Reset to defaults (R24). Without <code>role_permission:update</code>, R9 opens R19 instead.</figcaption>
+    </figure>
+
+    <!-- R21 fees group -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav" style="height:36px"><span class="back"><svg class="i"><use href="#i-left"/></svg>Accountant</span></div>
+        <div class="top"><div class="title" style="font-size:26px">Fees</div></div>
+        <div class="sub meta">Tap to turn on or off · <span class="sens"><svg class="i-s" style="width:12px;height:12px"><use href="#i-shield"/></svg>checked again on every use</span></div>
+        <div class="card mx" style="margin-top:12px">
+          <div class="res"><div class="rn">Collecting fees</div><div class="acts"><span class="act on">See</span><span class="act on">Collect</span><span class="act on chg"><svg><use href="#i-shield"/></svg>Approve</span></div></div>
+          <div class="res"><div class="rn">Concessions</div><div class="acts"><span class="act on"><svg><use href="#i-shield"/></svg>Give</span><span class="act on chg">Change</span><span class="act">Delete</span><span class="act"><svg><use href="#i-shield"/></svg>Approve</span></div></div>
+          <div class="res"><div class="rn">Refunds</div><div class="acts"><span class="act on">See</span><span class="act on"><svg><use href="#i-shield"/></svg>Refund</span></div></div>
+          <div class="res"><div class="rn">Fee reports</div><div class="acts"><span class="act on">See</span><span class="act chg">Export</span></div></div>
+          <div class="res"><div class="rn">Fee heads</div><div class="acts"><span class="act on">See</span><span class="act on">Add</span><span class="act on">Change</span><span class="act">Delete</span></div></div>
+          <div class="res"><div class="rn">Fee plans</div><div class="acts"><span class="act on">See</span><span class="act on">Add</span><span class="act on">Change</span><span class="act">Delete</span></div></div>
+        </div>
+        <div class="savebar"><b>3 changes</b><i>Undo</i><span>Review</span></div>
+      </div>
+      <figcaption><span class="no">R21</span><b>One group.</b> Each thing the role works on is a line, and each action a chip: green is on. Chips you've changed get an amber ring until saved, so three taps never get lost. The shield marks the sensitive ones (the server re-checks them on every use). “Student fee assignments” sits below the fold. Nothing is saved until Review.</figcaption>
+    </figure>
+
+    <!-- R22 review -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav" style="height:36px"><span class="back"><svg class="i"><use href="#i-left"/></svg>Accountant</span></div>
+        <div class="scrim"></div>
+        <div class="sheet">
+          <div class="grab"></div>
+          <h3>Save 3 changes to Accountant?</h3>
+          <div class="hint">For Mohan Gupta and Demo Accountant, at every branch, straight away.</div>
+          <div class="card mx" style="background:var(--canvas);padding:4px 14px">
+            <div class="diff"><span class="pm a">+</span><span class="grow">Approve fee payments</span><span class="sens"><svg class="i-s" style="width:12px;height:12px"><use href="#i-shield"/></svg>sensitive</span></div>
+            <div class="diff"><span class="pm a">+</span><span class="grow">Change concessions</span></div>
+            <div class="diff"><span class="pm r">−</span><span class="grow">Export fee reports</span></div>
+          </div>
+          <div class="info amb mx" style="margin-top:12px"><svg class="i"><use href="#i-alert"/></svg><div><b>Approve fee payments</b> is sensitive. Schools usually keep approving away from whoever collects.</div></div>
+          <div class="sbtns"><div class="btn">Save changes</div><div class="btn ghost" style="height:46px;font-size:15px">Keep editing</div></div>
+        </div>
+      </div>
+      <figcaption><span class="no">R22</span><b>Review before saving.</b> What's added and taken away, who it affects, and a plain warning for the risky ones. Each line goes to the change log, as on web. A wrong tap on a phone is why this step exists.</figcaption>
+    </figure>
+
+    <!-- R23 self-role lock -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav" style="height:36px"><span class="back"><svg class="i"><use href="#i-left"/></svg>Principal</span></div>
+        <div class="top"><div class="title" style="font-size:26px">Fees</div></div>
+        <div class="info amb mx" style="margin-top:12px"><svg class="i"><use href="#i-lock"/></svg><div><b>You're a Principal yourself,</b> so you can't change this role. Another Org admin can.</div></div>
+        <div class="card mx" style="margin-top:12px">
+          <div class="res"><div class="rn">Collecting fees</div><div class="acts"><span class="act on lk">See</span><span class="act on lk">Collect</span><span class="act on lk"><svg><use href="#i-shield"/></svg>Approve</span></div></div>
+          <div class="res"><div class="rn">Concessions</div><div class="acts"><span class="act on lk"><svg><use href="#i-shield"/></svg>Give</span><span class="act on lk">Change</span><span class="act on lk">Delete</span><span class="act on lk"><svg><use href="#i-shield"/></svg>Approve</span></div></div>
+          <div class="res"><div class="rn">Refunds</div><div class="acts"><span class="act on lk">See</span><span class="act on lk"><svg><use href="#i-shield"/></svg>Refund</span></div></div>
+          <div class="res"><div class="rn">Fee reports</div><div class="acts"><span class="act on lk">See</span><span class="act on lk">Export</span></div></div>
+        </div>
+        <div class="card mx" style="margin-top:12px;padding:12px 14px;display:flex;gap:10px;align-items:center"><div class="sj sm oa"><svg class="i-s"><use href="#i-globe"/></svg></div><div class="grow meta">Org admin can always do everything and is never edited.</div></div>
+      </div>
+      <figcaption><span class="no">R23</span><b>The two locks, shown up front.</b> You can't change a role you hold, and nobody changes Org admin. Today web finds out about the first only when the server refuses the save; the phone would say it before any tap. The chips show what the role can do, read-only.</figcaption>
+    </figure>
+
+    <!-- R24 reset -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>9:41</span><i></i></div>
+        <div class="nav" style="height:36px"><span class="back"><svg class="i"><use href="#i-left"/></svg>Roles</span></div>
+        <div class="scrim"></div>
+        <div class="sheet">
+          <div class="grab"></div>
+          <h3>Reset Accountant?</h3>
+          <div class="hint">Back to the starting list. Your school changed 2 things since.</div>
+          <div class="card mx" style="background:var(--canvas);padding:4px 14px">
+            <div class="diff"><span class="pm r">−</span><span class="grow">Approve fee payments</span><span class="meta">added 14 Nov</span></div>
+            <div class="diff"><span class="pm a">+</span><span class="grow">Export fee reports</span><span class="meta">removed 14 Nov</span></div>
+          </div>
+          <div class="hint" style="padding-top:12px">Applies to 2 people at every branch, straight away.</div>
+          <div class="sbtns"><div class="btn danger">Reset Accountant</div><div class="btn ghost" style="height:46px;font-size:15px">Cancel</div></div>
+        </div>
+      </div>
+      <figcaption><span class="no">R24</span><b>Reset to defaults.</b> From R20's ⋯ menu, shown only when the role differs from its defaults (web marks these roles too). It lists exactly what the reset undoes. Uses <code>role.permissionReset</code>, already on the server; the dates come from the change log.</figcaption>
+    </figure>
+  </div>
+
+  <!-- ===================================================== QUESTIONS -->
+  <div class="h2">Questions for you</div>
+  <div class="qs">
+    <div><b>1. Job title and the picks.</b> R2 fills the title from the first office pick and lets you change it.
+      <div class="qopts">
+        <div><b>A · Fill it, keep it editable.</b> Fewer taps, and “Principal” in the list matches the title. A school that writes “Head Mistress” has to edit it once.</div>
+        <div><b>B · Keep them separate.</b> The title is only what's printed. Clearer, but people will pick Principal and also type “Principal”.</div>
+      </div></div>
+    <div><b>2. What a role can do, on the phone.</b> Changing it needs <code>role_permission:update</code> (org admin by default).
+      <div class="qopts">
+        <div><b>A · Web only.</b> R9 lists who holds what. Least work; changing a role is rare.</div>
+        <div><b>B · Read-only list on the phone.</b> Tap a role in R9 to see what it can do, in plain words. Editing stays on web.</div>
+        <div><b>C · The full editor on the phone</b> (R20 to R24). Groups, chips per action, a review step before saving, the two locks shown up front, and reset. All the server calls exist; it's phone work only. The most work of the three, and a wrong tap changes access for everyone with the role, which is what R22's review is for.</div>
+      </div></div>
+    <div><b>3. A role before they join.</b> A role belongs to a login today, so R2 and R5 need the role kept with the staff record until the person joins, as Teaching already does. Is “Starts when he joins” the right behaviour, or should roles be offered only after they join?</div>
+    <div><b>4. “Other staff” wording.</b> R1 says Other staff; R3 says Office staff. Pick one name for a person with no role.</div>
+    <div><b>5. Sign-in while on leave.</b>
+      <div class="qopts">
+        <div><b>A · Keeps signing in.</b> She can still see her classes and messages; covers do the work. Simplest.</div>
+        <div><b>B · Blocked like a suspension.</b> Nothing gets done in her name while she's away, but she can't check anything either.</div>
+      </div></div>
+    <div><b>6. A joined person's new phone.</b>
+      <div class="qopts">
+        <div><b>A · Switch at once</b> (R13). The old number stops on save; she needs the new code to sign in again.</div>
+        <div><b>B · Old number works until she joins with the new one.</b> No lock-out, but for a while the record and the sign-in disagree, which is what happens today without a warning.</div>
+      </div></div>
+    <div><b>7. Which of these first.</b> The suspension fix (R12) and the phone warning (R13) fix things that are wrong today. The rest are new features.</div>
+  </div>
+
+  <!-- ===================================================== BACKEND -->
+  <div class="h2">What the server needs</div>
+  <div class="be">
+    <div><b>Already there:</b> <code>role.assign</code>, <code>role.revoke</code> (asks for a reason), <code>role.assignments</code>, <code>role.holders</code>, <code>staff.reactivate</code>. Giving a role checks <code>role_assignment:assign</code> at the branch or organisation it's given for, so a branch holder can give only for that branch, and Org admin needs it at organisation level. Teacher roles by hand are refused. Leaving already takes every role away.</div>
+    <div><b>New:</b> roles waiting for someone who hasn't joined, kept against the staff record and given when they join, like Teaching's grants. Add staff sends its picks with the create call, so saving stays one step.</div>
+    <div><b>Wrong today:</b> a suspension keeps the sign-in and every role (<code>staff.service</code> switches off only on leaving). Editing a joined person's phone leaves the sign-in on the old number (read from the code, not walked). <code>on_leave</code> counts as current but nothing can set it.</div>
+    <div><b>New calls:</b> set on leave and back; lift a suspension (block sign-in on suspend, give access back on lift); move branch; roles by end date and extend; one person's history from <code>authz_audit_log</code>; staff export. Already there: <code>staff.removePhoto</code>, <code>role.permissions</code>.</div>
+    <div><b>To check at build time:</b> how the phone knows the caller can give org-wide roles (for the Org admin choice and the branch switch). It may already follow from the permissions <code>me</code> returns.</div>
+  </div>
+</div>
+</body>
+</html>

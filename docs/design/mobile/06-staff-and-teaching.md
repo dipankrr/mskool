@@ -198,3 +198,58 @@ Copy from last session (later, see section 6), electives across sections (needs 
 choices; a results-sized change), a bulk staff photo day, leave,
 staff attendance, payroll, staff documents, bulk import, branch moves, staff ID cards on
 mobile, the colleague directory, and admin password recovery. Each is a separate decision.
+
+## 11. Roles in Add staff and the profile (draft, 2026-11-15, frames R1-R9)
+
+Mockup: `prototype/staff-roles.html`, screenshot `prototype/shots/staff-roles/mockup.png`.
+
+**Why.** The phone can add a librarian or a principal but can't give them access. The
+job title is only text, and roles are given on web only.
+
+**Agreed in conversation.** Roles are picked on the Add staff form itself. Teacher is one
+of the picks but gives no role: it sets `teachesClasses`, the same as the switch it replaces.
+Teacher access still comes only from Teaching, section by section (the server already
+refuses `class_teacher` and `subject_teacher` by hand).
+
+**What the frames show.**
+- R1-R3: Add staff asks "What do they do here?" (pick all that apply). Office roles show
+  only to holders of `role_assignment:assign`; Org admin only to holders at organisation
+  level. Without the permission the form offers Teacher and Office staff.
+- R4: the Added screen says when a role starts.
+- R5-R7: a Roles card on the profile, a sheet to give a role (branch, optional end
+  date), and a sheet to take one away with a reason.
+- R8: Bring back for someone who left (`staff.reactivate`). Roles are not restored.
+- R9 (optional): who holds each role, from More.
+
+**Server work.** Roles belong to a login today. A role picked for someone who hasn't
+joined needs to wait on the staff record and be given when they join, as Teaching's
+grants already do. Everything else (`role.assign`, `role.revoke`, `role.assignments`,
+`role.holders`, `staff.reactivate`) exists.
+
+**Open, for the owner.** (1) Should the job title fill itself from the pick? (2) What a
+role can do on the phone: web only, read-only, or editable. (3) Roles before joining, or
+only after. (4) One name for a person with no role: "Other staff" or "Office staff".
+
+**Added the same day (frames R10-R19), the rest of staff management.**
+- R10-R12: one status sheet (working, on leave, suspended, left). On leave shows what needs
+  cover; suspended blocks sign-in and pauses roles.
+- R13: a warning when a joined person's phone changes. R14: move to another branch.
+  R15: remove a photo.
+- R16: one person's history from the audit log. R17: roles that end soon, with Extend.
+  R18: staff export. R19: what a role can do, read-only.
+
+Wrong today, found while drawing: a suspension keeps the sign-in and every role; `on_leave`
+counts as current but nothing can set it; editing a joined person's phone leaves the sign-in
+on the old number (read from the code, not walked). Leave requests are left for their own
+design. Open questions 5-7 are in the mockup: sign-in while on leave, how a phone change
+switches over, and which to do first.
+
+**Permission editor on the phone (frames R20-R24, option C of question 2).** The web editor
+(ADR-036) drawn for the phone: a role page with the eight groups and how much of each the
+role has (R20), one group with a chip per action, changed chips ringed until saved and
+sensitive ones marked (R21), a review sheet listing what's added and removed and who it
+affects before saving (R22), the self-role and Org admin locks shown before any tap (R23),
+and reset to defaults with exactly what it undoes (R24). Uses the existing
+`role.permissions`, `permissionUpdate`, `permissionReset` and `permissionDefaults`. The list
+is organisation-wide, and the page says so. Question 2 (web only, read-only, or this) is
+still open.
