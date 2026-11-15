@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  applyRange,
+  fitToSession,
+  removeRange,
+  weekAt,
   datesBetween,
   isFixedDate,
   patternDayType,
@@ -44,5 +48,41 @@ describe("calendar tools", () => {
     expect(longer).toEqual({ added: ["2027-04-01", "2027-04-02"], removed: [] });
     const shorter = sessionDateDiff(before, { startDate: "2026-04-03", endDate: "2027-03-31" });
     expect(shorter).toEqual({ added: [], removed: ["2026-04-01", "2026-04-02"] });
+  });
+});
+
+describe("week ranges", () => {
+  const base = { from: "2026-04-01", to: "2027-03-31", weekdays: patternFromWeekdays([1, 2, 3, 4, 5, 6], [6]) };
+  const satOff = patternFromWeekdays([1, 2, 3, 4, 5]);
+
+  it("cuts a temporary change out of the base and goes back after it", () => {
+    const ranges = applyRange([base], { from: "2026-12-01", to: "2027-02-28", weekdays: satOff });
+    expect(ranges.map((r) => [r.from, r.to])).toEqual([
+      ["2026-04-01", "2026-11-30"],
+      ["2026-12-01", "2027-02-28"],
+      ["2027-03-01", "2027-03-31"],
+    ]);
+    expect(weekAt(ranges, "2027-01-09")![6]).toBe("weekend");
+    expect(weekAt(ranges, "2027-03-06")![6]).toBe("half_day");
+  });
+
+  it("removing the change restores one base range", () => {
+    const ranges = applyRange([base], { from: "2026-12-01", to: "2027-02-28", weekdays: satOff });
+    expect(removeRange(ranges, 1)).toEqual([base]);
+  });
+
+  it("a permanent change replaces what it covers", () => {
+    const ranges = applyRange([base], { from: "2026-12-01", to: "2027-03-31", weekdays: satOff });
+    expect(ranges).toHaveLength(2);
+    expect(ranges[1]).toMatchObject({ from: "2026-12-01", to: "2027-03-31" });
+  });
+
+  it("fits ranges to new session dates", () => {
+    const ranges = applyRange([base], { from: "2026-12-01", to: "2027-03-31", weekdays: satOff });
+    const fitted = fitToSession(ranges, "2026-04-01", "2027-04-30");
+    expect(fitted[1]!.to).toBe("2027-04-30");
+    expect(fitToSession(ranges, "2026-12-15", "2027-03-31")).toEqual([
+      { from: "2026-12-15", to: "2027-03-31", weekdays: satOff },
+    ]);
   });
 });

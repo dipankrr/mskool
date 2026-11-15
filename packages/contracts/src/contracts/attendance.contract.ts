@@ -152,9 +152,19 @@ export const changePatternSchema = z.object({
   academicYearId: z.uuid(),
   weekdays: weekPatternSchema,
   from: isoDate,
+  /** Last day of the change; the end of the session when left out. */
+  to: isoDate.optional(),
   dryRun: z.boolean().optional(),
 });
 export type ChangePatternInput = z.infer<typeof changePatternSchema>;
+
+/** Removes the week structure that starts on `from`; its days go back. */
+export const removePatternRangeSchema = z.object({
+  academicYearId: z.uuid(),
+  from: isoDate,
+  dryRun: z.boolean().optional(),
+});
+export type RemovePatternRangeInput = z.infer<typeof removePatternRangeSchema>;
 
 /** Several dates set to one type and name at once (multi-select, ranges). */
 export const setCalendarDaysSchema = z.object({

@@ -407,6 +407,13 @@
       "when": 1794738771073,
       "tag": "0057_attendance_week_patterns",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1794748733955,
+      "tag": "0058_week_pattern_ranges",
+      "breakpoints": true
     }
   ]
 }

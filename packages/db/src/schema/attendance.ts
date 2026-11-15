@@ -108,7 +108,7 @@ export const academicCalendar = pgTable(
 );
 
 /**
- * A session's normal week (ADR-069): what each weekday is before holidays,
+ * A session's week structure (ADR-069): what each weekday is before holidays,
  * kept so the calendar can fill days on its own — when the session gets
  * longer, or when days are missing. One row per school per session, written
  * by the generator and the guided set-up. `weekdays` has seven entries,
@@ -128,6 +128,10 @@ export const attendanceWeekPatterns = pgTable(
     academicYearId: uuid()
       .notNull()
       .references(() => academicYears.id),
+    // The dates this week structure is in force (ADR-069). A session's rows
+    // never overlap and together cover the session.
+    fromDate: date().notNull(),
+    toDate: date().notNull(),
     weekdays: calendarDayTypeEnum().array().notNull(),
     updatedBy: text().references(() => user.id),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
@@ -137,7 +141,7 @@ export const attendanceWeekPatterns = pgTable(
       .$onUpdate(() => new Date()),
   },
   (t) => [
-    uniqueIndex("attendance_week_patterns_school_year_uq").on(t.schoolId, t.academicYearId),
+    uniqueIndex("attendance_week_patterns_school_year_from_uq").on(t.schoolId, t.academicYearId, t.fromDate),
     index("attendance_week_patterns_org_idx").on(t.organizationId),
     check("attendance_week_patterns_seven_days", sql`cardinality(${t.weekdays}) = 7`),
   ],

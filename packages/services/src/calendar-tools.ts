@@ -73,3 +73,83 @@ export function sessionDateDiff(
 
 /** School days: the types a teacher can mark and every % is out of. */
 export const SCHOOL_DAY_TYPES: ReadonlySet<string> = new Set(["working", "half_day", "exam_day"]);
+
+// ---------------------------------------------------------------------------
+// Week structures as date ranges (ADR-069)
+// ---------------------------------------------------------------------------
+
+/** One week structure in force over [from, to]. Ranges never overlap. */
+export type WeekRange = { from: string; to: string; weekdays: PatternDay[] };
+
+function addDays(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+const sameWeek = (a: readonly PatternDay[], b: readonly PatternDay[]) =>
+  a.length === b.length && a.every((v, i) => v === b[i]);
+
+/** Joins touching ranges that carry the same week. */
+function merge(ranges: readonly WeekRange[]): WeekRange[] {
+  const sorted = [...ranges].sort((a, b) => (a.from < b.from ? -1 : 1));
+  const out: WeekRange[] = [];
+  for (const range of sorted) {
+    const last = out[out.length - 1];
+    if (last && sameWeek(last.weekdays, range.weekdays) && addDays(last.to, 1) >= range.from) {
+      if (range.to > last.to) last.to = range.to;
+    } else {
+      out.push({ ...range, weekdays: [...range.weekdays] });
+    }
+  }
+  return out;
+}
+
+/** The week in force on a date; outside every range, the nearest one's. */
+export function weekAt(ranges: readonly WeekRange[], iso: string): PatternDay[] | null {
+  if (ranges.length === 0) return null;
+  const hit = ranges.find((r) => r.from <= iso && iso <= r.to);
+  if (hit) return hit.weekdays;
+  const before = [...ranges].reverse().find((r) => r.to < iso);
+  return (before ?? ranges[0]!).weekdays;
+}
+
+/** Lays a new week over [from, to]; what it covers is cut out of the others. */
+export function applyRange(ranges: readonly WeekRange[], next: WeekRange): WeekRange[] {
+  const kept: WeekRange[] = [];
+  for (const r of ranges) {
+    if (r.to < next.from || r.from > next.to) {
+      kept.push(r);
+      continue;
+    }
+    if (r.from < next.from) kept.push({ ...r, to: addDays(next.from, -1) });
+    if (r.to > next.to) kept.push({ ...r, from: addDays(next.to, 1) });
+  }
+  return merge([...kept, next]);
+}
+
+/** Removes one range; its days go back to the week before it (or after it). */
+export function removeRange(ranges: readonly WeekRange[], index: number): WeekRange[] {
+  const sorted = [...ranges].sort((a, b) => (a.from < b.from ? -1 : 1));
+  const gone = sorted[index];
+  if (!gone || sorted.length < 2) return sorted;
+  const rest = sorted.filter((_, i) => i !== index);
+  const before = index > 0 ? rest[index - 1] : undefined;
+  if (before) before.to = gone.to > before.to ? gone.to : before.to;
+  else rest[0]!.from = gone.from;
+  return merge(rest);
+}
+
+/** Stretches or trims the ranges to exactly cover the session. */
+export function fitToSession(ranges: readonly WeekRange[], start: string, end: string): WeekRange[] {
+  const inside = merge(ranges)
+    .filter((r) => r.to >= start && r.from <= end)
+    .map((r) => ({ ...r, from: r.from < start ? start : r.from, to: r.to > end ? end : r.to }));
+  if (inside.length === 0) {
+    const fallback = ranges[ranges.length - 1];
+    return fallback ? [{ ...fallback, from: start, to: end }] : [];
+  }
+  inside[0]!.from = start;
+  inside[inside.length - 1]!.to = end;
+  return inside;
+}

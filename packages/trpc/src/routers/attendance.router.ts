@@ -4,6 +4,7 @@ import {
   calendarDaySelectSchema,
   calendarUsageSchema,
   changePatternSchema,
+  removePatternRangeSchema,
   calendarYearSchema,
   sessionDatesPreviewSchema,
   setCalendarDaysSchema,
@@ -154,6 +155,9 @@ const calendarRouter = router({
         startDate: z.string(),
         endDate: z.string(),
         weekdays: z.array(weekPatternDaySchema).nullable(),
+        ranges: z.array(
+          z.object({ from: z.string(), to: z.string(), weekdays: z.array(weekPatternDaySchema) }),
+        ),
         entries: z.number().int(),
         counts: z.object({
           working: z.number().int(),
@@ -219,6 +223,23 @@ const calendarRouter = router({
     .output(z.object({ changed: z.number().int(), skipped: z.number().int(), schoolDelta: z.number().int() }))
     .mutation(async ({ ctx, input }) =>
       attendanceService.changeWeekPattern(ctx.scope, input.data, ctx.userId),
+    ),
+
+  // ADR-069: remove one week structure; its days go back.
+  removePatternRange: staffProcedure("attendance:update")
+    .meta({
+      openapi: {
+        method: "POST",
+        path: "/attendance/calendar/pattern/remove",
+        tags: ["attendance"],
+        summary: "Remove one of a session's week structures",
+        protect: true,
+      },
+    })
+    .input(z.object({ schoolId: z.uuid(), data: removePatternRangeSchema }))
+    .output(z.object({ changed: z.number().int(), skipped: z.number().int(), schoolDelta: z.number().int() }))
+    .mutation(async ({ ctx, input }) =>
+      attendanceService.removeWeekRange(ctx.scope, input.data, ctx.userId),
     ),
 
   // ADR-069: fill missing dates from the saved week.

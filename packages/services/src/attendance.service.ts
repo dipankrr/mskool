@@ -4,6 +4,7 @@ import { scopeWhere, type DataScope } from "@repo/authz";
 import type {
   CalendarUsageInput,
   ChangePatternInput,
+  RemovePatternRangeInput,
   CalendarYearInput,
   SessionDatesPreviewInput,
   SetCalendarDaysInput,
@@ -41,6 +42,11 @@ import { and, asc, eq, gt, gte, inArray, isNull, lte, or, sql } from "drizzle-or
 import { countAttendance, monthBounds } from "./attendance-counting";
 import {
   SCHOOL_DAY_TYPES,
+  applyRange,
+  fitToSession,
+  removeRange,
+  weekAt,
+  type WeekRange,
   datesBetween,
   isFixedDate,
   patternDayType,
@@ -50,6 +56,7 @@ import {
   type PatternDay,
 } from "./calendar-tools";
 import { loadCountingInputs } from "./attendance-to-date";
+import { todayInIst } from "./enrollment-status";
 
 /**
  * ATTENDANCE — Phase 3. Configuration layer (C2): calendar, policy, periods.
@@ -284,7 +291,7 @@ export class AttendanceService {
         tx,
         organizationId,
         schoolId,
-        year.id,
+        year,
         patternFromWeekdays(input.workingWeekdays, input.halfDayWeekdays ?? []),
         actorId,
       );
@@ -437,18 +444,25 @@ export class AttendanceService {
         ),
       )
       .orderBy(asc(academicCalendar.date));
-    const [pattern] = await db
-      .select({ weekdays: attendanceWeekPatterns.weekdays })
-      .from(attendanceWeekPatterns)
-      .where(
-        and(
-          eq(attendanceWeekPatterns.academicYearId, year.id),
-          scopeWhere(scopes.map(atSchoolLevel), {
-            organizationId: attendanceWeekPatterns.organizationId,
-            schoolId: attendanceWeekPatterns.schoolId,
-          }),
-        ),
-      );
+    const ranges = (
+      await db
+        .select({
+          from: attendanceWeekPatterns.fromDate,
+          to: attendanceWeekPatterns.toDate,
+          weekdays: attendanceWeekPatterns.weekdays,
+        })
+        .from(attendanceWeekPatterns)
+        .where(
+          and(
+            eq(attendanceWeekPatterns.academicYearId, year.id),
+            scopeWhere(scopes.map(atSchoolLevel), {
+              organizationId: attendanceWeekPatterns.organizationId,
+              schoolId: attendanceWeekPatterns.schoolId,
+            }),
+          ),
+        )
+        .orderBy(asc(attendanceWeekPatterns.fromDate))
+    ).map((row) => ({ ...row, weekdays: row.weekdays as PatternDay[] }));
 
     const counts = { working: 0, half_day: 0, exam_day: 0, holiday: 0, weekend: 0 };
     const inSession = rows.filter((row) => row.date >= year.startDate && row.date <= year.endDate);
@@ -460,7 +474,9 @@ export class AttendanceService {
     return {
       startDate: year.startDate,
       endDate: year.endDate,
-      weekdays: (pattern?.weekdays ?? null) as PatternDay[] | null,
+      // The week in force today (or at the session's edge), and every range.
+      weekdays: weekAt(ranges, todayInIst()),
+      ranges,
       entries: inSession.length,
       counts,
       schoolDays: counts.working + counts.half_day + counts.exam_day,
@@ -491,13 +507,13 @@ export class AttendanceService {
     }
 
     return db.transaction(async (tx) => {
-      await saveWeekPattern(tx, organizationId, schoolId, year.id, input.weekdays, actorId);
+      await saveWeekPattern(tx, organizationId, schoolId, year, input.weekdays, actorId);
       const generated = await fillFromPattern(
         tx,
         organizationId,
         schoolId,
         year.id,
-        input.weekdays,
+        () => input.weekdays,
         datesBetween(input.startFrom ?? year.startDate, year.endDate),
         actorId,
       );
@@ -544,19 +560,53 @@ export class AttendanceService {
   }
 
   /**
-   * A new normal week from a date on. Days on or after `from` that still
-   * follow the week (no name, a working / half-day / off type) take the new
-   * week's type; named entries keep theirs, and days that already have
-   * attendance are left alone and counted as skipped. The saved pattern
-   * becomes the new week. `dryRun` reports without writing.
+   * A new week structure over [from, to] (to = end of session when left
+   * out). It is cut into the session's ranges; days in it that still follow
+   * the week (no name, a working / half-day / off type) take the new type.
+   * Named entries keep theirs; days with attendance are left and counted as
+   * skipped. `dryRun` reports without writing.
    */
   async changeWeekPattern(scope: DataScope, input: ChangePatternInput, actorId: string | null) {
     const year = await this.yearForCalendar(scope, input.academicYearId);
+    const to = input.to ?? year.endDate;
+    if (input.from < year.startDate || to > year.endDate || input.from > to) {
+      throw refuse("BAD_REQUEST", "Pick dates inside this session, the end on or after the start.");
+    }
+    const schoolId = requireSchoolId(scope);
+    const ranges = await loadRanges(db, schoolId, year.id);
+    const next = fitToSession(
+      applyRange(ranges, { from: input.from, to, weekdays: [...input.weekdays] }),
+      year.startDate,
+      year.endDate,
+    );
+    return this.restyleWeek(scope, year, next, input.from, to, input.dryRun ?? false, actorId);
+  }
+
+  /** Removes the structure starting on `from`; its days go back to the one before it. */
+  async removeWeekRange(scope: DataScope, input: RemovePatternRangeInput, actorId: string | null) {
+    const year = await this.yearForCalendar(scope, input.academicYearId);
+    const schoolId = requireSchoolId(scope);
+    const ranges = await loadRanges(db, schoolId, year.id);
+    const index = ranges.findIndex((range) => range.from === input.from);
+    if (index < 0) throw refuse("NOT_FOUND", "That week structure is not in this session.");
+    if (ranges.length < 2) throw refuse("BAD_REQUEST", "A session always keeps one week structure.");
+    const gone = ranges[index]!;
+    const next = fitToSession(removeRange(ranges, index), year.startDate, year.endDate);
+    return this.restyleWeek(scope, year, next, gone.from, gone.to, input.dryRun ?? false, actorId);
+  }
+
+  /** Saves new ranges and re-types the days in [from, to] that follow the week. */
+  private async restyleWeek(
+    scope: DataScope,
+    year: { id: string; startDate: string; endDate: string },
+    next: WeekRange[],
+    from: string,
+    to: string,
+    dryRun: boolean,
+    actorId: string | null,
+  ) {
     const schoolId = requireSchoolId(scope);
     const organizationId = scope.organizationId;
-    if (input.from < year.startDate || input.from > year.endDate) {
-      throw refuse("BAD_REQUEST", "Pick a date inside this session.");
-    }
     const rows = await db
       .select({ date: academicCalendar.date, dayType: academicCalendar.dayType, reason: academicCalendar.reason })
       .from(academicCalendar)
@@ -564,8 +614,8 @@ export class AttendanceService {
         and(
           eq(academicCalendar.schoolId, schoolId),
           eq(academicCalendar.academicYearId, year.id),
-          gte(academicCalendar.date, input.from),
-          lte(academicCalendar.date, year.endDate),
+          gte(academicCalendar.date, from),
+          lte(academicCalendar.date, to),
         ),
       );
     const marked = new Set(
@@ -577,33 +627,36 @@ export class AttendanceService {
             and(
               eq(dailyAttendanceStatus.schoolId, schoolId),
               eq(dailyAttendanceStatus.academicYearId, year.id),
-              gte(dailyAttendanceStatus.date, input.from),
+              gte(dailyAttendanceStatus.date, from),
+              lte(dailyAttendanceStatus.date, to),
             ),
           )
       ).map((m) => m.date),
     );
     const follows = (row: { dayType: string; reason: string | null }) =>
       row.reason === null && (row.dayType === "working" || row.dayType === "half_day" || row.dayType === "weekend");
-    const changes: { date: string; dayType: PatternDay }[] = [];
+    const changes: { date: string; dayType: PatternDay; was: string }[] = [];
     let skipped = 0;
     for (const row of rows) {
       if (!follows(row)) continue;
-      const next = patternDayType(input.weekdays, row.date);
-      if (next === row.dayType) continue;
+      const week = weekAt(next, row.date);
+      if (!week) continue;
+      const type = patternDayType(week, row.date);
+      if (type === row.dayType) continue;
       if (marked.has(row.date)) {
         skipped += 1;
         continue;
       }
-      changes.push({ date: row.date, dayType: next });
+      changes.push({ date: row.date, dayType: type, was: row.dayType });
     }
-    const schoolDelta = changes.reduce((n, c) => {
-      const was = rows.find((row) => row.date === c.date)!.dayType;
-      return n + (SCHOOL_DAY_TYPES.has(c.dayType) ? 1 : 0) - (SCHOOL_DAY_TYPES.has(was) ? 1 : 0);
-    }, 0);
-    if (input.dryRun) return { changed: changes.length, skipped, schoolDelta };
+    const schoolDelta = changes.reduce(
+      (n, c) => n + (SCHOOL_DAY_TYPES.has(c.dayType) ? 1 : 0) - (SCHOOL_DAY_TYPES.has(c.was) ? 1 : 0),
+      0,
+    );
+    if (dryRun) return { changed: changes.length, skipped, schoolDelta };
 
     return db.transaction(async (tx) => {
-      await saveWeekPattern(tx, organizationId, schoolId, year.id, input.weekdays, actorId);
+      await saveRanges(tx, organizationId, schoolId, year.id, next, actorId);
       if (changes.length > 0) {
         await writeDays(
           tx,
@@ -624,12 +677,9 @@ export class AttendanceService {
     const year = await this.yearForCalendar(scope, input.academicYearId);
     const schoolId = requireSchoolId(scope);
     const organizationId = scope.organizationId;
-    const [pattern] = await db
-      .select({ weekdays: attendanceWeekPatterns.weekdays })
-      .from(attendanceWeekPatterns)
-      .where(and(eq(attendanceWeekPatterns.schoolId, schoolId), eq(attendanceWeekPatterns.academicYearId, year.id)));
-    if (!pattern) {
-      throw refuse("BAD_REQUEST", "This session has no weekly pattern yet. Set up the calendar first.");
+    const ranges = await loadRanges(db, schoolId, year.id);
+    if (ranges.length === 0) {
+      throw refuse("BAD_REQUEST", "This session has no week structure yet. Set up the calendar first.");
     }
     return db.transaction(async (tx) => {
       const generated = await fillFromPattern(
@@ -637,7 +687,7 @@ export class AttendanceService {
         organizationId,
         schoolId,
         year.id,
-        pattern.weekdays as PatternDay[],
+        (iso) => weekAt(ranges, iso)!,
         datesBetween(year.startDate, year.endDate),
         actorId,
       );
@@ -754,18 +804,17 @@ export class AttendanceService {
     const { added, removed } = sessionDateDiff(before, year);
     if (added.length === 0 && removed.length === 0) return { added: 0, removed: 0 };
     return db.transaction(async (tx) => {
-      const [pattern] = await tx
-        .select({ weekdays: attendanceWeekPatterns.weekdays })
-        .from(attendanceWeekPatterns)
-        .where(and(eq(attendanceWeekPatterns.schoolId, schoolId), eq(attendanceWeekPatterns.academicYearId, year.id)));
+      const stored = await loadRanges(tx, schoolId, year.id);
+      const ranges = stored.length > 0 ? fitToSession(stored, year.startDate, year.endDate) : [];
+      if (ranges.length > 0) await saveRanges(tx, organizationId, schoolId, year.id, ranges, actorId);
       const [anyRow] = await tx
         .select({ id: academicCalendar.id })
         .from(academicCalendar)
         .where(and(eq(academicCalendar.schoolId, schoolId), eq(academicCalendar.academicYearId, year.id)))
         .limit(1);
       let filled = 0;
-      if (pattern && anyRow && added.length > 0) {
-        filled = await fillFromPattern(tx, organizationId, schoolId, year.id, pattern.weekdays as PatternDay[], added, actorId);
+      if (ranges.length > 0 && anyRow && added.length > 0) {
+        filled = await fillFromPattern(tx, organizationId, schoolId, year.id, (iso) => weekAt(ranges, iso)!, added, actorId);
       }
       let dropped = 0;
       if (removed.length > 0) {
@@ -1540,21 +1589,65 @@ export class AttendanceService {
 
 type CalendarTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-async function saveWeekPattern(
+type RangeReader = Pick<typeof db, "select">;
+
+/** The session's week structures, oldest first. */
+async function loadRanges(reader: RangeReader, schoolId: string, academicYearId: string): Promise<WeekRange[]> {
+  const rows = await reader
+    .select({
+      from: attendanceWeekPatterns.fromDate,
+      to: attendanceWeekPatterns.toDate,
+      weekdays: attendanceWeekPatterns.weekdays,
+    })
+    .from(attendanceWeekPatterns)
+    .where(and(eq(attendanceWeekPatterns.schoolId, schoolId), eq(attendanceWeekPatterns.academicYearId, academicYearId)))
+    .orderBy(asc(attendanceWeekPatterns.fromDate));
+  return rows.map((row) => ({ ...row, weekdays: row.weekdays as PatternDay[] }));
+}
+
+/** Replaces the session's week structures. No history is kept (owner). */
+async function saveRanges(
   tx: CalendarTx,
   organizationId: string,
   schoolId: string,
   academicYearId: string,
-  weekdays: WeekPattern | PatternDay[],
+  ranges: readonly WeekRange[],
   actorId: string | null,
 ) {
   await tx
-    .insert(attendanceWeekPatterns)
-    .values({ organizationId, schoolId, academicYearId, weekdays: [...weekdays], updatedBy: actorId })
-    .onConflictDoUpdate({
-      target: [attendanceWeekPatterns.schoolId, attendanceWeekPatterns.academicYearId],
-      set: { weekdays: [...weekdays], updatedBy: actorId },
-    });
+    .delete(attendanceWeekPatterns)
+    .where(and(eq(attendanceWeekPatterns.schoolId, schoolId), eq(attendanceWeekPatterns.academicYearId, academicYearId)));
+  if (ranges.length === 0) return;
+  await tx.insert(attendanceWeekPatterns).values(
+    ranges.map((range) => ({
+      organizationId,
+      schoolId,
+      academicYearId,
+      fromDate: range.from,
+      toDate: range.to,
+      weekdays: [...range.weekdays],
+      updatedBy: actorId,
+    })),
+  );
+}
+
+/** One week structure for the whole session (generator, set-up). */
+async function saveWeekPattern(
+  tx: CalendarTx,
+  organizationId: string,
+  schoolId: string,
+  year: { id: string; startDate: string; endDate: string },
+  weekdays: WeekPattern | PatternDay[],
+  actorId: string | null,
+) {
+  await saveRanges(
+    tx,
+    organizationId,
+    schoolId,
+    year.id,
+    [{ from: year.startDate, to: year.endDate, weekdays: [...weekdays] }],
+    actorId,
+  );
 }
 
 /** Inserts the pattern's type for each date that has no row yet. */
@@ -1563,7 +1656,7 @@ async function fillFromPattern(
   organizationId: string,
   schoolId: string,
   academicYearId: string,
-  weekdays: readonly PatternDay[],
+  weekFor: (iso: string) => readonly PatternDay[],
   dates: readonly string[],
   actorId: string | null,
 ): Promise<number> {
@@ -1578,7 +1671,7 @@ async function fillFromPattern(
           schoolId,
           academicYearId,
           date,
-          dayType: patternDayType(weekdays, date),
+          dayType: patternDayType(weekFor(date), date),
           createdFromTemplate: true,
           createdBy: actorId,
         })),
@@ -1638,17 +1731,15 @@ export async function sessionChange(
   next: { startDate: string; endDate: string },
 ) {
   const { added, removed } = sessionDateDiff(year, next);
-  const [pattern] = await reader
-    .select({ weekdays: attendanceWeekPatterns.weekdays })
-    .from(attendanceWeekPatterns)
-    .where(and(eq(attendanceWeekPatterns.schoolId, schoolId), eq(attendanceWeekPatterns.academicYearId, year.id)));
+  const stored = await loadRanges(reader, schoolId, year.id);
+  const fitted = stored.length > 0 ? fitToSession(stored, next.startDate, next.endDate) : [];
   const rows = await reader
     .select({ date: academicCalendar.date, dayType: academicCalendar.dayType })
     .from(academicCalendar)
     .where(and(eq(academicCalendar.schoolId, schoolId), eq(academicCalendar.academicYearId, year.id)));
   const typeOf = new Map(rows.map((row) => [row.date, row.dayType]));
   const isSchool = (t: string | undefined) => (t ? SCHOOL_DAY_TYPES.has(t) : false);
-  const weekdays = (pattern?.weekdays ?? null) as PatternDay[] | null;
+  const weekdays = weekAt(stored, year.startDate);
   const hasCalendar = rows.length > 0;
 
   const schoolDaysBefore = rows.filter(
@@ -1656,7 +1747,7 @@ export async function sessionChange(
   ).length;
   const addedSchoolDays =
     weekdays && hasCalendar
-      ? added.filter((iso) => isSchool(typeOf.get(iso) ?? patternDayType(weekdays, iso))).length
+      ? added.filter((iso) => isSchool(typeOf.get(iso) ?? patternDayType(weekAt(fitted, iso)!, iso))).length
       : 0;
   const removedSchoolDays = removed.filter((iso) => isSchool(typeOf.get(iso))).length;
 
