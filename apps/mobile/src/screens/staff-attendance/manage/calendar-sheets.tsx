@@ -12,12 +12,7 @@ import { formatShortWeekday } from "../../../lib/format";
 import { trpc } from "../../../lib/trpc";
 import { colors } from "../../../theme/brand-admin";
 import { fontFamily, radius, spacing } from "../../../theme/tokens";
-import {
-  datesBetween,
-  isSchoolDay,
-  parseImport,
-  patternType,
-} from "./calendar-lib";
+import { datesBetween, isSchoolDay, parseImport, patternType } from "./calendar-lib";
 import type { DayType, Entry, PatternDay } from "./calendar-lib";
 import { TypePicker, typeName } from "./calendar-ui";
 
@@ -26,7 +21,15 @@ const words = () => copy.attendance.manage.cal;
 type Usage = { date: string; sectionId: string; label: string; students: number }[];
 type Write = { dates: string[]; dayType: DayType; reason: string | null };
 
-const MON_FRI: PatternDay[] = ["weekend", "working", "working", "working", "working", "working", "weekend"];
+const MON_FRI: PatternDay[] = [
+  "weekend",
+  "working",
+  "working",
+  "working",
+  "working",
+  "working",
+  "weekend",
+];
 
 /**
  * Calendar writes from the editing screens. A change that turns days with
@@ -37,7 +40,11 @@ export function useCalendarWrites(pattern: readonly PatternDay[] | null) {
   const { organizationId, schoolId, academicYear } = useActiveContext();
   const utils = trpc.useUtils();
   const setDays = trpc.attendance.calendar.setDays.useMutation();
-  const [confirm, setConfirm] = useState<{ writes: Write[]; usage: Usage; onDone: () => void } | null>(null);
+  const [confirm, setConfirm] = useState<{
+    writes: Write[];
+    usage: Usage;
+    onDone: () => void;
+  } | null>(null);
   const [error, setError] = useState<unknown>(null);
 
   const run = async (writes: Write[]) => {
@@ -47,7 +54,12 @@ export function useCalendarWrites(pattern: readonly PatternDay[] | null) {
       await setDays.mutateAsync({
         organizationId,
         schoolId,
-        data: { academicYearId: academicYear.id, dates: write.dates, dayType: write.dayType, reason: write.reason },
+        data: {
+          academicYearId: academicYear.id,
+          dates: write.dates,
+          dayType: write.dayType,
+          reason: write.reason,
+        },
       });
     }
     await utils.attendance.invalidate();
@@ -133,12 +145,21 @@ function MarkedConfirmSheet({
   const typeWord = copy.attendance.manage.cal.typesLong[type].toLowerCase();
   return (
     <FormSheet
-      title={dates.length === 1 ? words().markedTitle(formatShortWeekday(dates[0])) : words().markedTitleMany(dates.length)}
+      title={
+        dates.length === 1
+          ? words().markedTitle(formatShortWeekday(dates[0]))
+          : words().markedTitleMany(dates.length)
+      }
       onClose={onClose}
       testIDPrefix="cal-marked"
       footer={
         <View style={styles.footerRow}>
-          <CapsuleButton title={words().back} variant="secondary" onPress={onClose} style={styles.flex} />
+          <CapsuleButton
+            title={words().back}
+            variant="secondary"
+            onPress={onClose}
+            style={styles.flex}
+          />
           <CapsuleButton
             title={words().markedConfirm(type === "holiday" ? "a holiday" : typeWord)}
             loading={submitting}
@@ -191,8 +212,7 @@ export function SetDaysSheet({
 }) {
   const [type, setType] = useState<DayType>(initialType);
   const [reason, setReason] = useState(initialReason ?? "");
-  const title =
-    dates.length === 1 ? formatShortWeekday(dates[0]) : words().setTitle(dates.length);
+  const title = dates.length === 1 ? formatShortWeekday(dates[0]) : words().setTitle(dates.length);
   return (
     <FormSheet
       title={title}
@@ -273,7 +293,9 @@ export function EntrySheet({
     const mine = new Set(datesBetween(from, effectiveTo || from));
     return (
       others.find(
-        (other) => other.key !== entry?.key && datesBetween(other.from, other.to).some((iso) => mine.has(iso)),
+        (other) =>
+          other.key !== entry?.key &&
+          datesBetween(other.from, other.to).some((iso) => mine.has(iso)),
       ) ?? null
     );
   }, [from, effectiveTo, others, entry?.key]);
@@ -300,7 +322,12 @@ export function EntrySheet({
             onPress={() => {
               setTried(true);
               if (!valid) return;
-              onSave({ from, to: effectiveTo, dayType: type as Entry["dayType"], reason: reason.trim() });
+              onSave({
+                from,
+                to: effectiveTo,
+                dayType: type as Entry["dayType"],
+                reason: reason.trim(),
+              });
             }}
             style={styles.flex}
             testID="cal-entry-save"

@@ -362,13 +362,198 @@ const styles = StyleSheet.create({
   },
 });
 
-const MINI_FILL: Record<DayType, string> = {
-  working: "#D9EFE3",
-  half_day: "#FCE3B6",
-  exam_day: "#C7D7FE",
-  holiday: "#F9C7C2",
-  weekend: "#F2F4F7",
+/** Day colours at a glance (owner, 2026-11-15: stronger than the first pass). */
+export const MINI_FILL: Record<DayType, string> = {
+  working: "#8FCFAC",
+  half_day: "#F6C46F",
+  exam_day: "#93AEFA",
+  holiday: "#EE8E85",
+  weekend: "#E4E7EC",
 };
+
+const MIX_ORDER: readonly DayType[] = ["working", "half_day", "exam_day", "holiday", "weekend"];
+const MIX_WORDS: Record<DayType, string> = {
+  working: "working",
+  half_day: "half",
+  exam_day: "exam",
+  holiday: "holidays",
+  weekend: "off",
+};
+
+export type DayCounts = Record<DayType, number>;
+
+export function countDays(
+  from: string,
+  to: string,
+  typeAt: (iso: string) => DayType | null,
+): DayCounts {
+  const counts: DayCounts = { working: 0, half_day: 0, exam_day: 0, holiday: 0, weekend: 0 };
+  const cursor = new Date(`${from}T00:00:00Z`);
+  const stop = new Date(`${to}T00:00:00Z`);
+  while (cursor <= stop) {
+    const t = typeAt(cursor.toISOString().slice(0, 10));
+    if (t) counts[t] += 1;
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return counts;
+}
+
+/** The session in one card: school days big, the mix as one bar, a legend. */
+export function SessionMix({ counts, caption }: { counts: DayCounts; caption: string }) {
+  const school = counts.working + counts.half_day + counts.exam_day;
+  return (
+    <View style={mixStyles.card} testID="cal-mix">
+      <View style={mixStyles.heroRow}>
+        <ThemedText style={mixStyles.heroNum} color={colors.accentDeep}>
+          {school}
+        </ThemedText>
+        <ThemedText variant="bodyStrong">{copy.attendance.manage.cal.schoolDays}</ThemedText>
+      </View>
+      <ThemedText variant="meta">{caption}</ThemedText>
+      <View style={mixStyles.split}>
+        {MIX_ORDER.map((type) =>
+          counts[type] > 0 ? (
+            <View key={type} style={{ flex: counts[type], backgroundColor: MINI_FILL[type] }} />
+          ) : null,
+        )}
+      </View>
+      <View style={mixStyles.legend}>
+        {MIX_ORDER.map((type) => (
+          <View key={type} style={mixStyles.legendItem}>
+            <View style={[mixStyles.legendDot, { backgroundColor: MINI_FILL[type] }]} />
+            <ThemedText variant="caption" color={colors.muted}>
+              <ThemedText variant="caption" color={colors.ink} style={mixStyles.bold}>
+                {counts[type]}
+              </ThemedText>{" "}
+              {MIX_WORDS[type]}
+            </ThemedText>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+/** Month by month: a bar of the month's days and its numbers; tap opens it. */
+export function MonthBreakdown({
+  from,
+  end,
+  typeAt,
+  onPickMonth,
+}: {
+  from: string;
+  end: string;
+  typeAt: (iso: string) => DayType | null;
+  onPickMonth?: (monthIso: string) => void;
+}) {
+  const words = copy.attendance.manage.cal;
+  const rows: { key: string; counts: DayCounts }[] = [];
+  for (let m = from.slice(0, 7); m <= end.slice(0, 7);) {
+    const y = Number(m.slice(0, 4));
+    const mo = Number(m.slice(5, 7));
+    const last = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+    const a = `${m}-01` < from ? from : `${m}-01`;
+    const b =
+      `${m}-${String(last).padStart(2, "0")}` > end ? end : `${m}-${String(last).padStart(2, "0")}`;
+    rows.push({ key: m, counts: countDays(a, b, typeAt) });
+    m = mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, "0")}`;
+  }
+  return (
+    <View testID="cal-breakdown">
+      {rows.map(({ key, counts }, index) => {
+        const school = counts.working + counts.half_day + counts.exam_day;
+        const extras = [
+          counts.holiday ? words.breakHol(counts.holiday) : null,
+          counts.exam_day ? words.breakExam(counts.exam_day) : null,
+          counts.half_day ? words.breakHalf(counts.half_day) : null,
+        ].filter(Boolean);
+        return (
+          <Pressable
+            key={key}
+            disabled={!onPickMonth}
+            onPress={() => onPickMonth?.(`${key}-01`)}
+            accessibilityRole={onPickMonth ? "button" : undefined}
+            style={({ pressed }) => [
+              breakStyles.row,
+              index > 0 ? breakStyles.separated : null,
+              pressed ? breakStyles.pressed : null,
+            ]}
+            testID={`cal-breakdown-${key}`}
+          >
+            <ThemedText variant="bodyStrong" style={breakStyles.month}>
+              {MONTHS_SHORT[Number(key.slice(5, 7)) - 1]}
+            </ThemedText>
+            <View style={breakStyles.body}>
+              <View style={breakStyles.bar}>
+                {MIX_ORDER.map((type) =>
+                  counts[type] > 0 ? (
+                    <View
+                      key={type}
+                      style={{ flex: counts[type], backgroundColor: MINI_FILL[type] }}
+                    />
+                  ) : null,
+                )}
+              </View>
+              <ThemedText variant="caption" color={colors.muted} numberOfLines={1}>
+                {extras.length > 0 ? extras.join(" · ") : words.breakNone}
+              </ThemedText>
+            </View>
+            <ThemedText variant="bodyStrong" color={colors.accentDeep} style={breakStyles.num}>
+              {school}
+            </ThemedText>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+const mixStyles = StyleSheet.create({
+  card: { gap: spacing.xs },
+  heroRow: { flexDirection: "row", alignItems: "baseline", gap: spacing.sm },
+  heroNum: {
+    fontSize: 48,
+    lineHeight: 54,
+    fontFamily: fontFamily.bold,
+    letterSpacing: -1.5,
+    fontVariant: ["tabular-nums"],
+  },
+  split: {
+    flexDirection: "row",
+    height: 12,
+    borderRadius: radius.full,
+    overflow: "hidden",
+    gap: 2,
+    marginTop: spacing.sm,
+  },
+  legend: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    columnGap: spacing.md,
+    rowGap: spacing.xxs,
+    marginTop: spacing.xs,
+  },
+  legendItem: { flexDirection: "row", alignItems: "center", gap: 5 },
+  legendDot: { width: 9, height: 9, borderRadius: 3 },
+  bold: { fontFamily: fontFamily.semibold },
+});
+
+const breakStyles = StyleSheet.create({
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    minHeight: 52,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  separated: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.hairline },
+  pressed: { backgroundColor: colors.field },
+  month: { width: 36 },
+  body: { flex: 1, gap: 4 },
+  bar: { flexDirection: "row", height: 8, borderRadius: radius.full, overflow: "hidden", gap: 1.5 },
+  num: { width: 28, textAlign: "right", fontVariant: ["tabular-nums"] },
+});
 
 /**
  * The whole session at a glance: one tiny month per tile with its school-day
@@ -460,11 +645,11 @@ const yearStyles = StyleSheet.create({
     justifyContent: "space-between",
     rowGap: spacing.md,
   },
-  mini: { width: "23%", borderRadius: radius.sm, padding: 2 },
+  mini: { width: "31%", borderRadius: radius.sm, padding: 3 },
   pressed: { backgroundColor: colors.field },
   head: { flexDirection: "row", justifyContent: "space-between", marginBottom: 3 },
   bold: { fontFamily: fontFamily.semibold },
-  grid: { flexDirection: "row", flexWrap: "wrap", width: 7 * 10.5 },
-  cell: { width: 9, height: 9, margin: 0.75, borderRadius: 2 },
+  grid: { flexDirection: "row", flexWrap: "wrap", width: 7 * 14 },
+  cell: { width: 12, height: 12, margin: 1, borderRadius: 3 },
   missing: { borderWidth: 1, borderColor: colors.tone.caution.fg },
 });

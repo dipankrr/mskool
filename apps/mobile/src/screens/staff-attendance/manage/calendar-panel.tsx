@@ -20,7 +20,17 @@ import { clampMonth, daysInMonth, isoOf, monthIndex, shiftMonth } from "../calen
 import { datesBetween, entryLength, groupEntries, isSchoolDay } from "./calendar-lib";
 import type { DayType, Entry, PatternDay } from "./calendar-lib";
 import { EntrySheet, SetDaysSheet, useCalendarWrites } from "./calendar-sheets";
-import { EntryRow, MonthGrid, YearGrid, rangeLabel, typeName } from "./calendar-ui";
+import {
+  EntryRow,
+  MonthBreakdown,
+  MonthGrid,
+  SessionMix,
+  YearGrid,
+  countDays,
+  rangeLabel,
+  sessionRange,
+  typeName,
+} from "./calendar-ui";
 import { ManageFrame } from "./frame";
 
 type View_ = "month" | "year" | "list";
@@ -268,11 +278,6 @@ export function ManageCalendar() {
                   color={colors.tone.critical.fg}
                 />
                 <Stat value={monthCounts.exams} label={words.statExams} color={colors.ink} />
-                <Stat
-                  value={overview.data?.schoolDays ?? 0}
-                  label={words.statSession}
-                  color={colors.ink}
-                />
               </Card>
               <View style={styles.monthRow}>
                 <ThemedText variant="bodyStrong" style={[styles.flex, styles.monthTitle]}>
@@ -314,26 +319,10 @@ export function ManageCalendar() {
             </>
           ) : view === "year" ? (
             <>
-              <Card style={styles.stats}>
-                <Stat
-                  value={overview.data?.schoolDays ?? 0}
-                  label={words.statSession}
-                  color={colors.accentDeep}
-                />
-                <Stat
-                  value={overview.data?.counts.holiday ?? 0}
-                  label={words.statHolidays}
-                  color={colors.tone.critical.fg}
-                />
-                <Stat
-                  value={overview.data?.counts.exam_day ?? 0}
-                  label={words.statExams}
-                  color={colors.ink}
-                />
-                <Stat
-                  value={overview.data?.counts.half_day ?? 0}
-                  label={words.statHalf}
-                  color={colors.tone.caution.fg}
+              <Card style={styles.gapTop}>
+                <SessionMix
+                  counts={countDays(start, end, (iso) => typeOf.get(iso) ?? null)}
+                  caption={words.reviewBody(sessionRange(start, end))}
                 />
               </Card>
               <Card style={styles.yearCard}>
@@ -350,6 +339,20 @@ export function ManageCalendar() {
               <ThemedText variant="meta" style={styles.hint}>
                 {words.yearHint}
               </ThemedText>
+              <ThemedText variant="sectionLabel" style={styles.byMonth}>
+                {words.byMonth}
+              </ThemedText>
+              <Card padless>
+                <MonthBreakdown
+                  from={start}
+                  end={end}
+                  typeAt={(iso) => typeOf.get(iso) ?? null}
+                  onPickMonth={(iso) => {
+                    setAnchor(iso);
+                    setView("month");
+                  }}
+                />
+              </Card>
             </>
           ) : (
             <HolidayList
@@ -625,6 +628,7 @@ const styles = StyleSheet.create({
   off: { opacity: 0.35 },
   monthTitle: { fontSize: 20, lineHeight: 26 },
   yearCard: { marginTop: spacing.md },
+  byMonth: { marginTop: spacing.lg, marginBottom: spacing.xs, paddingHorizontal: spacing.xs },
   gridCard: { paddingHorizontal: spacing.sm, paddingVertical: spacing.sm },
   hint: { marginTop: spacing.sm, textAlign: "center" },
   listHead: {

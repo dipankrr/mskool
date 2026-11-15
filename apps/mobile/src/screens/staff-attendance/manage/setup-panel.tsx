@@ -27,7 +27,7 @@ import {
 } from "./calendar-lib";
 import type { DayType, Entry, PatternDay } from "./calendar-lib";
 import { EntrySheet, ImportSheet } from "./calendar-sheets";
-import { EntryRow, YearGrid, rangeLabel, sessionRange } from "./calendar-ui";
+import { EntryRow, SessionMix, YearGrid, rangeLabel, sessionRange } from "./calendar-ui";
 
 type Source = "last" | "national" | "import" | "empty";
 
@@ -436,20 +436,6 @@ function Choice({
   );
 }
 
-const MINI: Record<DayType, string> = {
-  working: "#D9EFE3",
-  half_day: "#FCE3B6",
-  exam_day: "#C7D7FE",
-  holiday: "#F9C7C2",
-  weekend: "#F2F4F7",
-};
-const LEGEND: Record<DayType, string> = {
-  working: "working",
-  half_day: "half",
-  exam_day: "exam",
-  holiday: "holidays",
-  weekend: "off",
-};
 
 /** A4: the number every % divides by, the mix, and twelve tiny months. */
 function Review({
@@ -468,65 +454,10 @@ function Review({
   range: string;
 }) {
   const words = copy.attendance.manage.cal;
-  const months: string[] = [];
-  for (let m = from.slice(0, 7); m <= end.slice(0, 7);) {
-    months.push(m);
-    const y = Number(m.slice(0, 4));
-    const mo = Number(m.slice(5, 7));
-    m = mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, "0")}`;
-  }
-  const mix: [DayType, number][] = [
-    ["working", totals.working],
-    ["half_day", totals.half_day],
-    ["exam_day", totals.exam_day],
-    ["holiday", totals.holiday],
-    ["weekend", totals.weekend],
-  ];
   return (
     <>
       <Card style={styles.hero}>
-        <View style={styles.heroRow}>
-          <ThemedText style={styles.heroNum} color={colors.accentDeep} testID="setup-school-days">
-            {totals.school}
-          </ThemedText>
-          <ThemedText variant="bodyStrong">{words.schoolDays}</ThemedText>
-        </View>
-        <ThemedText variant="meta">{words.reviewBody(range)}</ThemedText>
-        <View style={styles.split}>
-          {mix.map(([type, n]) =>
-            n > 0 ? (
-              <View
-                key={type}
-                style={{
-                  flex: n,
-                  backgroundColor:
-                    type === "working" ? "#9BD3B4" : type === "weekend" ? "#E4E7EC" : MINI[type],
-                }}
-              />
-            ) : null,
-          )}
-        </View>
-        <View style={styles.legend}>
-          {mix.map(([type, n]) => (
-            <View key={type} style={styles.legendItem}>
-              <View
-                style={[
-                  styles.legendDot,
-                  {
-                    backgroundColor:
-                      type === "working" ? "#9BD3B4" : type === "weekend" ? "#E4E7EC" : MINI[type],
-                  },
-                ]}
-              />
-              <ThemedText variant="caption" color={colors.muted}>
-                <ThemedText variant="caption" color={colors.ink} style={styles.bold}>
-                  {n}
-                </ThemedText>{" "}
-                {LEGEND[type]}
-              </ThemedText>
-            </View>
-          ))}
-        </View>
+        <SessionMix counts={totals} caption={words.reviewBody(range)} />
       </Card>
       <Card style={styles.months}>
         <YearGrid
