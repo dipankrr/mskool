@@ -18,9 +18,12 @@ export type AttendanceView = "mark" | "summary";
 export function ViewToggle({
   value,
   onChange,
+  compact = false,
 }: {
   value: AttendanceView;
   onChange: (view: AttendanceView) => void;
+  /** The small right-aligned pill on the marking screen's day row (v2 mockup). */
+  compact?: boolean;
 }) {
   const options: {
     value: AttendanceView;
@@ -43,7 +46,7 @@ export function ViewToggle({
   ];
 
   return (
-    <View style={styles.bar} accessibilityRole="tablist">
+    <View style={[styles.bar, compact ? styles.barCompact : null]} accessibilityRole="tablist">
       {options.map((option) => {
         const selected = option.value === value;
         return (
@@ -59,11 +62,16 @@ export function ViewToggle({
             }}
             style={({ pressed }) => [
               styles.segment,
-              selected ? styles.segmentOn : null,
+              compact ? styles.segmentCompact : null,
+              selected ? (compact ? styles.segmentOnCompact : styles.segmentOn) : null,
               pressed && !selected ? styles.segmentPressed : null,
             ]}
           >
-            <ThemedText variant="bodyStrong" color={selected ? colors.accentDeep : colors.muted}>
+            <ThemedText
+              variant={compact ? "chip" : "bodyStrong"}
+              color={selected ? (compact ? colors.ink : colors.accentDeep) : colors.muted}
+              numberOfLines={1}
+            >
               {option.label}
             </ThemedText>
           </Pressable>
@@ -91,6 +99,9 @@ const styles = StyleSheet.create({
   segmentOn: {
     backgroundColor: colors.accentTint,
   },
+  barCompact: { marginTop: 0, alignSelf: "center" },
+  segmentCompact: { flex: 0, minHeight: 34, paddingHorizontal: spacing.md },
+  segmentOnCompact: { backgroundColor: colors.surface, boxShadow: "0 1px 2px rgba(16, 24, 40, 0.12)" },
   segmentPressed: {
     backgroundColor: colors.surface,
   },

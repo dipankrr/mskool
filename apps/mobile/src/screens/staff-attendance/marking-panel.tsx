@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -12,15 +13,25 @@ import {
   TextInput,
   View,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppIcon } from "../../components/app-icon";
-import { BulkPill } from "../../components/bulk-pill";
 import { CapsuleButton } from "../../components/capsule-button";
+import { ChoiceSheet } from "../../components/choice-sheet";
+import { ConfirmSheet } from "../../components/confirm-sheet";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorCard } from "../../components/error-card";
 import { Skeleton } from "../../components/skeleton";
-import { useTabBarSpace } from "../../components/tab-bar";
+import { StatusMeter } from "../../components/status-meter";
+import {
+  useFollowTabBarCapped,
+  useHideTabBarOnScroll,
+  useTabBarSpace,
+} from "../../components/tab-bar";
 import { ThemedText } from "../../components/themed-text";
 import { useActiveContext } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
@@ -31,7 +42,6 @@ import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { fontFamily, fontSize, gutter, motion, radius, shadow, spacing } from "../../theme/tokens";
 import { clampIsoDate, clampMonth } from "./calendar-month";
-import { DayPulse } from "./day-pulse";
 import { DaySheet } from "./day-sheet";
 import {
   buildDraft,
@@ -43,22 +53,33 @@ import {
   toggleStatus,
   withStatus,
 } from "./draft";
-import type { Status } from "./draft";
+import type { Status, StatusCounts } from "./draft";
+import { RollGrid } from "./roll-grid";
+import type { SessionMix } from "./roll-ring";
 import { RosterRow } from "./roster-row";
-import type { RecentMark } from "./roster-row";
+import type { RecentMark, RosterRowData } from "./roster-row";
 import { StatusSheet } from "./status-sheet";
-import { MARKABLE_DAY_TYPES, dayTypeLabel } from "./status-meta";
+import type { SheetStudent } from "./status-sheet";
+import { MARKABLE_DAY_TYPES, statusLabel, statusTone } from "./status-meta";
+import { formatPercent, presentSharePercent, summaryByStudent } from "./summary";
+import type { SummaryRow } from "./summary";
+import { Tally } from "./tally";
+import type { TallyFilter } from "./tally";
 import { useRecentAttendance } from "./use-recent-attendance";
 import { useSectionRoster } from "./use-section-roster";
 
 type RefusalKind = "holiday" | "weekend" | "noCalendar" | "other";
+type Layout = "list" | "grid";
 
-/**
- * Why a day cannot be marked, or null when it can. The lookups mirror the
- * service's gate: markable day types pass, holiday and weekend refuse, a date
- * with no calendar row refuses ("generate the calendar first"), and any
- * unknown type is refused rather than assumed safe.
- */
+/** Remembered per device: a teacher who calls rolls keeps the grid. */
+const LAYOUT_KEY = "attendance.markingLayout";
+/** How long "Undo" stays after "Mark all present". */
+const UNDO_MS = 5000;
+const STATUS_ORDER: readonly Status[] = ["present", "absent", "late", "half_day", "on_leave"];
+/** Save bar height used to pad the list's end so the last row clears it. */
+const SAVE_HEIGHT = 54;
+const REASON_HEIGHT = 150;
+
 function refusalOf(day: { dayType: string } | null): RefusalKind | null {
   if (!day) return "noCalendar";
   if (MARKABLE_DAY_TYPES.includes(day.dayType)) return null;
@@ -75,30 +96,74 @@ function gateMessage(kind: RefusalKind, date: string): string {
   return copy.attendance.marking.gateOther(label);
 }
 
-const RosterSeparator = () => <View style={styles.separator} />;
+/** `#RRGGBB` → the same colour at `alpha`, for the save button's tinted bands. */
+function withAlpha(hex: string, alpha: number): string {
+  const a = Math.round(alpha * 255)
+    .toString(16)
+    .padStart(2, "0");
+  return `${hex}${a}`;
+}
+
+/** A student's session so far for the ring and the hold sheet. */
+function sessionOf(row: SummaryRow | undefined): {
+  mix: SessionMix | null;
+  percentText: string | null;
+} {
+  if (!row) return { mix: null, percentText: null };
+  const share = presentSharePercent(row);
+  return {
+    mix: {
+      present: row.daysPresent,
+      absent: row.daysAbsent,
+      late: row.daysLate,
+      half_day: row.daysHalfDay,
+      on_leave: row.daysOnLeave,
+    },
+    percentText: share === null ? null : formatPercent(share),
+  };
+}
+
+type Item =
+  | { kind: "top" }
+  | { kind: "tally" }
+  | { kind: "intro" }
+  | { kind: "row"; row: RosterRowData; first: boolean; last: boolean }
+  | { kind: "grid" }
+  | { kind: "none" };
 
 /**
- * The marking panel — chunk 1's screen body (probe frames 02/03, slice plan
- * §4), now mounted under the shell's section header. One section, one day,
- * one roster. The tap/long-press/bulk interaction and the correction-reason
- * scope are the web page's, ported into `draft.ts`; the owner-approved
- * divergence is the blank draft: an unmarked day shows no statuses until the
- * teacher acts, and the save CTA carries the marking progress.
+ * The marking panel, rebuilt to the v2 mockup the owner approved on
+ * 2026-11-15 (`docs/design/mobile/prototype/attendance-marking-v2.html`).
  *
- * The section id comes from the shell (route params + switcher); a section
- * change remounts this panel via `key`, so draft, reason and sheet state all
- * belong to one section's day.
+ * One scroll: the shell's title and the day row scroll away, the counts card
+ * pins to the top (it doubles as the list's filter), and the tab bar slides
+ * away with the save button dropping into its place. Rows carry the session
+ * ring and the last-5-days strip; a roll-call grid shows the same marks six
+ * across. Tap / hold / bulk rules are unchanged (`draft.ts`).
  */
-export function MarkingPanel({ sectionId }: { sectionId: string }) {
+export function MarkingPanel({
+  sectionId,
+  head,
+  viewToggle,
+}: {
+  sectionId: string;
+  /** The shell's section title row; scrolls away with the day row. */
+  head: ReactNode;
+  /** The compact Mark | Summary switch, placed on the day row. */
+  viewToggle: ReactNode;
+}) {
   const { has } = usePermissions();
   const { organizationId, schoolId, academicYear } = useActiveContext();
   const canMark = has("attendance:create");
   const tabSpace = useTabBarSpace();
+  const insets = useSafeAreaInsets();
+  const hideTabBarOnScroll = useHideTabBarOnScroll();
+  const followTabBar = useFollowTabBarCapped(Math.max(0, tabSpace - insets.bottom - spacing.md));
   const utils = trpc.useUtils();
+  const words = copy.attendance.marking;
 
-  // Today, kept inside the viewed session: a past session (ADR-066) opens on
-  // its last day, not on a date it has no calendar for. The panel is keyed by
-  // session, so a switch re-runs this.
+  // Today, kept inside the viewed session (ADR-066): a past session opens on
+  // its last day. The panel is keyed by session, so a switch re-runs this.
   const [date, setDate] = useState(() =>
     clampIsoDate(todayIso(), academicYear?.startDate, academicYear?.endDate),
   );
@@ -109,12 +174,36 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
   const [editing, setEditing] = useState(false);
   const [sheetStudentId, setSheetStudentId] = useState<string | null>(null);
   const [daySheetOpen, setDaySheetOpen] = useState(false);
+  const [filter, setFilter] = useState<TallyFilter | null>(null);
+  const [layout, setLayout] = useState<Layout>("list");
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [confirmAbsent, setConfirmAbsent] = useState(false);
+  const [undo, setUndo] = useState<{ previous: Map<string, Status>; count: number } | null>(null);
   /** Any manual mark makes the teacher's entries the truth; no refetch may
    *  overwrite them until the day changes or a submit resets the flag. */
   const editedRef = useRef(false);
   const prefillKeyRef = useRef("");
 
   const ready = Boolean(organizationId && academicYear);
+
+  useEffect(() => {
+    AsyncStorage.getItem(LAYOUT_KEY)
+      .then((value) => {
+        if (value === "grid" || value === "list") setLayout(value);
+      })
+      .catch(() => undefined);
+  }, []);
+  const changeLayout = (next: Layout) => {
+    setLayout(next);
+    void Haptics.selectionAsync();
+    AsyncStorage.setItem(LAYOUT_KEY, next).catch(() => undefined);
+  };
+
+  useEffect(() => {
+    if (!undo) return;
+    const timer = setTimeout(() => setUndo(null), UNDO_MS);
+    return () => clearTimeout(timer);
+  }, [undo]);
 
   const policyQuery = trpc.attendance.policy.get.useQuery(
     { organizationId: organizationId ?? "", schoolId: schoolId ?? "" },
@@ -123,17 +212,12 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
   const periodWise = policyQuery.data?.markingMode === "period_wise";
 
   const periodsQuery = trpc.attendance.period.list.useQuery(
-    {
-      schoolId: schoolId ?? "",
-      organizationId: organizationId ?? "",
-      sectionId,
-    },
+    { schoolId: schoolId ?? "", organizationId: organizationId ?? "", sectionId },
     { enabled: ready && periodWise, staleTime: 300_000 },
   );
   const periods = periodsQuery.data ?? [];
-  // Derived, never stored in an effect: the chosen period while it is still
-  // valid, else the section's first. A bare effect setting state would
-  // cascade renders and could prefill the draft against the wrong key.
+  // Derived, never stored in an effect: the chosen period while still valid,
+  // else the section's first.
   const selectedPeriodId = periodWise
     ? periodId !== "" && periods.some((period) => period.id === periodId)
       ? periodId
@@ -155,49 +239,52 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
     { enabled: ready, staleTime: 300_000 },
   );
 
-  // The roster, in roll order, through the shared hook — the summary panel
-  // reads the same query and the same order.
+  // The session ring reads the Summary tab's own query (same key), so opening
+  // Summary afterwards is instant rather than a second fetch.
+  const summaryQuery = trpc.attendance.summary.useQuery(
+    {
+      schoolId: schoolId ?? "",
+      organizationId: organizationId ?? "",
+      academicYearId: academicYear?.id ?? "",
+      sectionId,
+    },
+    { enabled: ready, staleTime: 60_000 },
+  );
+  const summaryRows = useMemo(
+    () => summaryByStudent(summaryQuery.data ?? []),
+    [summaryQuery.data],
+  );
+
   const { roster, rosterIds, query: enrollmentsQuery } = useSectionRoster(sectionId, date);
+  const { days: recentDays } = useRecentAttendance({ sectionId, date, enabled: ready });
 
-  const { days: recentDays } = useRecentAttendance({
-    sectionId,
-    date,
-    enabled: ready,
-  });
-
-  /** One array per student, oldest-to-newest, for the row's history strip. */
   const recentByStudent = useMemo(() => {
     const map = new Map<string, RecentMark[]>();
     for (const studentId of rosterIds) {
       map.set(
         studentId,
-        recentDays.map((day) => ({
-          date: day.date,
-          status: day.statuses.get(studentId) ?? null,
-        })),
+        recentDays.map((day) => ({ date: day.date, status: day.statuses.get(studentId) ?? null })),
       );
     }
     return map;
   }, [recentDays, rosterIds]);
 
-  /** The stored marks as a lookup — the baseline for the changed-set. */
   const storedByStudent = useMemo(() => {
     const map = new Map<string, Status>();
-    for (const row of statusQuery.data ?? []) {
-      map.set(row.studentId, row.status);
-    }
+    for (const row of statusQuery.data ?? []) map.set(row.studentId, row.status);
     return map;
   }, [statusQuery.data]);
 
-  // Prefill, ported from the web page: refill from the authoritative layer
-  // until the teacher edits, then never again until the day changes or a
-  // submit (server-confirmed) resets the flag.
+  // Prefill from the authoritative layer until the teacher edits, then never
+  // again until the day changes or a submit resets the flag.
   useEffect(() => {
     const key = `${sectionId}:${date}:${selectedPeriodId}`;
     if (prefillKeyRef.current !== key) {
       prefillKeyRef.current = key;
       editedRef.current = false;
       setEditing(false);
+      setFilter(null);
+      setUndo(null);
     }
     if (editedRef.current) return;
     setDraft(buildDraft(rosterIds, storedByStudent));
@@ -210,6 +297,7 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
     [rosterIds, draft, storedByStudent],
   );
   const dayIsMarked = (statusQuery.data ?? []).length > 0;
+  const isToday = date === todayIso();
   const isPast = date < todayIso();
   const clean = deriveClean({
     dayIsMarked,
@@ -222,9 +310,11 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
   const showReason = canMark && isPast && dayIsMarked && changing.length > 0;
   const canEditRows = canMark && !clean;
   const showSaveBar = canMark && !clean;
+  const showStarter = canEditRows && !dayIsMarked && counts.marked === 0 && roster.length > 0;
+  // "Not marked" clears itself once nothing is left in it.
+  const activeFilter = filter === "unmarked" && counts.unmarked === 0 ? null : filter;
 
   const calendarDay = (calendarQuery.data ?? []).find((row) => row.date === date) ?? null;
-  const isToday = date === todayIso();
   const refusal = refusalOf(calendarDay);
 
   const state: "loading" | "error" | "refused" | "empty" | "ready" =
@@ -248,15 +338,14 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
     onSuccess: () => {
       editedRef.current = false;
       setEditing(false);
-      // The summary panel reads the same model this mark rewrote — refresh it
-      // in the background so a panel switch shows the new day, not a stale one.
+      setFilter(null);
+      setUndo(null);
       void utils.attendance.status.invalidate();
       void utils.attendance.statusHistory.invalidate();
       void utils.attendance.summary.invalidate();
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      // Announce on server confirmation, not when a previously saved day
-      // happens to render clean on open.
-      AccessibilityInfo.announceForAccessibility(copy.attendance.marking.saved);
+      // Announce on server confirmation only.
+      AccessibilityInfo.announceForAccessibility(words.saved);
     },
     onError: (error) => {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -266,13 +355,16 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
 
   const toggleRow = (studentId: string) => {
     editedRef.current = true;
-    setDraft((current) =>
-      withStatus(current, studentId, toggleStatus(current.get(studentId))),
-    );
+    setDraft((current) => withStatus(current, studentId, toggleStatus(current.get(studentId))));
   };
   const markAll = (status: Status) => {
     editedRef.current = true;
+    if (status === "present") setUndo({ previous: new Map(draft), count: rosterIds.length });
     setDraft(bulkDraft(rosterIds, status));
+  };
+  const clearAll = () => {
+    editedRef.current = true;
+    setDraft(new Map());
   };
   const selectStatus = (status: Status) => {
     if (!sheetStudentId) return;
@@ -289,16 +381,22 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
       sectionId,
       date,
       ...(periodWise && selectedPeriodId ? { periodId: selectedPeriodId } : {}),
-      entries: buildEntries(rosterIds, draft, storedByStudent, {
-        isPast,
-        reason,
-      }),
+      entries: buildEntries(rosterIds, draft, storedByStudent, { isPast, reason }),
     });
   };
-
-  const finishEditing = () => {
-    setEditing(false);
-    setReason("");
+  const onSavePress = () => {
+    if (editingNoChanges) {
+      setEditing(false);
+      setReason("");
+      return;
+    }
+    if (!complete) {
+      // A tap on an unfinished save shows what's missing instead of doing nothing.
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      setFilter("unmarked");
+      return;
+    }
+    submit();
   };
 
   const openDaySheet = () => {
@@ -308,39 +406,88 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
     setDaySheetOpen(true);
   };
 
-  const sheetStudent = sheetStudentId
-    ? (roster.find((row) => row.studentId === sheetStudentId) ?? null)
+  const rowData: RosterRowData[] = useMemo(
+    () =>
+      roster.map((item) => {
+        const status = draft.get(item.studentId) ?? null;
+        const stored = storedByStudent.get(item.studentId) ?? null;
+        return {
+          ...item,
+          status,
+          recent: recentByStudent.get(item.studentId) ?? [],
+          ...sessionOf(summaryRows.get(item.studentId)),
+          was: dayIsMarked && stored && stored !== status ? stored : null,
+        };
+      }),
+    [roster, draft, storedByStudent, recentByStudent, summaryRows, dayIsMarked],
+  );
+  const visibleRows = activeFilter
+    ? rowData.filter((row) =>
+        activeFilter === "unmarked" ? row.status === null : row.status === activeFilter,
+      )
+    : rowData;
+
+  const sheetRow = sheetStudentId
+    ? (rowData.find((entry) => entry.studentId === sheetStudentId) ?? null)
+    : null;
+  const sheetStudent: SheetStudent | null = sheetRow
+    ? {
+        studentId: sheetRow.studentId,
+        name: sheetRow.name,
+        roll: sheetRow.roll,
+        recent: sheetRow.recent,
+        mix: sheetRow.mix,
+        percentText: sheetRow.percentText,
+      }
     : null;
 
-  const header = (
+  const daySheet = (
+    <DaySheet
+      sectionId={sectionId}
+      visible={daySheetOpen}
+      anchor={sheetMonth}
+      onAnchorChange={setSheetMonth}
+      date={date}
+      onSelect={(iso) => {
+        setDate(iso);
+        setDaySheetOpen(false);
+      }}
+      onDismiss={() => setDaySheetOpen(false)}
+    />
+  );
+
+  const top = (
     <View>
-      <View style={styles.subRow}>
+      {head}
+      <View style={styles.dayRow}>
         <Pressable
           testID="attendance-day"
           accessibilityRole="button"
           accessibilityLabel={formatShortWeekday(date)}
-          accessibilityHint={copy.attendance.marking.dayPickerTitle}
-          hitSlop={8}
+          accessibilityHint={words.dayPickerTitle}
+          hitSlop={6}
           onPress={openDaySheet}
-          style={styles.dayButton}
+          style={({ pressed }) => [styles.dayChip, pressed ? styles.pressed : null]}
         >
-          <ThemedText variant="subtitle">{formatShortWeekday(date)}</ThemedText>
-          <AppIcon name="chevronDown" size={14} color={colors.chevron} />
+          <ThemedText variant="bodyStrong" numberOfLines={1} style={styles.shrink}>
+            {formatShortWeekday(date)}
+          </ThemedText>
+          {isToday || isPast ? (
+            <View style={[styles.dayTag, isPast ? styles.dayTagPast : null]}>
+              <ThemedText
+                variant="caption"
+                color={isPast ? colors.tone.caution.fg : colors.accentDeep}
+                numberOfLines={1}
+              >
+                {isPast ? words.pastDay : words.today}
+              </ThemedText>
+            </View>
+          ) : null}
+          <AppIcon name="chevronDown" size={16} color={colors.chevron} />
         </Pressable>
-        {isToday ? (
-          <View style={styles.todayChip}>
-            <ThemedText variant="caption" color={colors.accentDeep}>
-              {copy.attendance.marking.today}
-            </ThemedText>
-          </View>
-        ) : null}
+        <View style={styles.flex} />
+        {viewToggle}
       </View>
-      {enrollmentsQuery.isSuccess ? (
-        <ThemedText variant="meta" numberOfLines={1} style={styles.headerContext}>
-          {calendarDay ? `${dayTypeLabel(calendarDay.dayType)} · ` : ""}
-          {copy.attendance.studentsCount(roster.length)}
-        </ThemedText>
-      ) : null}
       {periodWise && periods.length > 0 ? (
         <ScrollView
           horizontal
@@ -359,7 +506,7 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
                 onPress={() => setPeriodId(period.id)}
                 style={[styles.periodChip, active ? styles.periodChipOn : null]}
               >
-                <ThemedText variant="caption" color={active ? colors.accentDeep : colors.ink}>
+                <ThemedText variant="chip" color={active ? colors.onAccent : colors.ink}>
                   {period.name}
                 </ThemedText>
               </Pressable>
@@ -367,71 +514,33 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
           })}
         </ScrollView>
       ) : null}
+      {isPast && canEditRows && dayIsMarked ? (
+        <View style={styles.banner} testID="attendance-past-banner">
+          <AppIcon name="warning" size={16} color={colors.tone.caution.fg} />
+          <ThemedText variant="meta" color={colors.tone.caution.fg} style={styles.flex}>
+            <ThemedText variant="meta" color={colors.tone.caution.fg} style={styles.bold}>
+              {words.pastBannerTitle}
+            </ThemedText>{" "}
+            {words.pastBannerBody}
+          </ThemedText>
+        </View>
+      ) : null}
     </View>
   );
-
-  const pulse = <DayPulse counts={counts} />;
-
-  const doneCard = clean ? (
-    <DoneCard
-      marked={counts.marked}
-      onEdit={() => {
-        setEditing(true);
-        setReason("");
-      }}
-    />
-  ) : null;
-
-  const controls =
-    canMark && !clean ? (
-      <>
-        <View style={styles.bulkRow}>
-          <BulkPill
-            title={copy.attendance.marking.allPresent}
-            tone="positive"
-            onPress={() => markAll("present")}
-            disabled={markSubmit.isPending}
-            testID="bulk-present"
-          />
-          <BulkPill
-            title={copy.attendance.marking.allAbsent}
-            tone="critical"
-            onPress={() => markAll("absent")}
-            disabled={markSubmit.isPending}
-            testID="bulk-absent"
-          />
-        </View>
-        <ThemedText variant="meta" style={styles.hint}>
-          {copy.attendance.marking.tapHint}
-        </ThemedText>
-      </>
-    ) : canMark ? null : (
-      <ThemedText variant="meta" style={styles.hint}>
-        {copy.attendance.marking.readOnly}
-      </ThemedText>
-    );
-
-  const recentLegend =
-    recentDays.length > 0 ? (
-      <View style={styles.recentLegend} testID="attendance-recent-legend">
-        <AppIcon name="history" size={15} color={colors.muted} />
-        <ThemedText variant="meta">{copy.attendance.marking.recentHint(recentDays.length)}</ThemedText>
-      </View>
-    ) : null;
 
   if (state !== "ready") {
     return (
       <>
         <ScrollView contentContainerStyle={[styles.content, { paddingBottom: tabSpace }]}>
-          {header}
+          {top}
           {state === "loading" ? (
             <>
-              <Skeleton height={146} style={styles.pulseSkeleton} />
+              <Skeleton height={60} style={styles.gapTop} />
               <View style={styles.skeletonBlock}>
-                <Skeleton height={56} />
-                <Skeleton height={56} />
-                <Skeleton height={56} />
-                <Skeleton height={56} />
+                <Skeleton height={64} />
+                <Skeleton height={64} />
+                <Skeleton height={64} />
+                <Skeleton height={64} />
               </View>
             </>
           ) : state === "error" ? (
@@ -444,7 +553,7 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
           ) : state === "refused" && refusal ? (
             <EmptyState
               icon="calendarOff"
-              title={copy.attendance.marking.gateTitle}
+              title={words.gateTitle}
               message={gateMessage(refusal, date)}
               style={styles.gapTopLg}
               testID="attendance-refused"
@@ -452,28 +561,197 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
           ) : (
             <EmptyState
               icon="students"
-              title={copy.attendance.marking.rosterEmptyTitle}
-              message={copy.attendance.marking.rosterEmptyBody}
+              title={words.rosterEmptyTitle}
+              message={words.rosterEmptyBody}
               style={styles.gapTopLg}
               testID="attendance-empty"
             />
           )}
         </ScrollView>
-        <DaySheet
-          sectionId={sectionId}
-          visible={daySheetOpen}
-          anchor={sheetMonth}
-          onAnchorChange={setSheetMonth}
-          date={date}
-          onSelect={(iso) => {
-            setDate(iso);
-            setDaySheetOpen(false);
-          }}
-          onDismiss={() => setDaySheetOpen(false)}
-        />
+        {daySheet}
       </>
     );
   }
+
+  const filterLabel = (key: TallyFilter): string =>
+    key === "unmarked" ? words.tallyUnmarked : key === "on_leave" ? words.tallyLeave : statusLabel(key);
+
+  const listHeader = (
+    <View style={styles.listHead}>
+      {activeFilter ? (
+        <>
+          <ThemedText variant="sectionLabel" style={styles.flex} numberOfLines={1}>
+            {words.filterLabel(filterLabel(activeFilter), visibleRows.length)}
+          </ThemedText>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setFilter(null)}
+            hitSlop={10}
+            style={styles.clearFilter}
+            testID="attendance-clear-filter"
+          >
+            <ThemedText variant="chip" color={colors.accentDeep}>
+              {words.clearFilter}
+            </ThemedText>
+          </Pressable>
+        </>
+      ) : (
+        <>
+          <ThemedText variant="sectionLabel" numberOfLines={1} style={styles.flex}>
+            {layout === "grid" ? words.gridLabel : words.listLabel}
+            {layout === "list" && recentDays.length > 0 ? (
+              <ThemedText variant="meta">{words.listLast5}</ThemedText>
+            ) : null}
+          </ThemedText>
+          <HeadButton
+            icon="viewCompact"
+            label={words.viewList}
+            on={layout === "list"}
+            onPress={() => changeLayout("list")}
+            testID="attendance-layout-list"
+          />
+          <HeadButton
+            icon="viewYear"
+            label={words.viewGrid}
+            on={layout === "grid"}
+            onPress={() => changeLayout("grid")}
+            testID="attendance-layout-grid"
+          />
+          {canEditRows && !showStarter ? (
+            <HeadButton
+              icon="more"
+              label={words.moreOpen}
+              on
+              onPress={() => setMoreOpen(true)}
+              testID="attendance-more"
+            />
+          ) : null}
+        </>
+      )}
+    </View>
+  );
+
+  const intro = (
+    <View>
+      {clean ? (
+        <SavedCard
+          counts={counts}
+          rows={rowData}
+          onEdit={() => {
+            setEditing(true);
+            setReason("");
+          }}
+        />
+      ) : null}
+      {showStarter ? (
+        <View style={styles.starter} testID="attendance-starter">
+          <ThemedText variant="bodyStrong" style={styles.starterText}>
+            {words.starterTitle}{" "}
+            <ThemedText variant="meta">{words.starterBody}</ThemedText>
+          </ThemedText>
+          <View style={styles.starterRow}>
+            <Pressable
+              testID="bulk-present"
+              accessibilityRole="button"
+              onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                markAll("present");
+              }}
+              style={({ pressed }) => [styles.starterGo, pressed ? styles.pressed : null]}
+            >
+              <AppIcon name="check" size={18} color={colors.onAccent} />
+              <ThemedText variant="bodyStrong" color={colors.onAccent} numberOfLines={1}>
+                {words.starterAction(roster.length)}
+              </ThemedText>
+            </Pressable>
+            <Pressable
+              testID="attendance-more"
+              accessibilityRole="button"
+              accessibilityLabel={words.moreOpen}
+              onPress={() => setMoreOpen(true)}
+              style={({ pressed }) => [styles.moreButton, pressed ? styles.pressed : null]}
+            >
+              <AppIcon name="more" size={20} color={colors.ink} />
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+      {!canMark ? (
+        <ThemedText variant="meta" style={styles.gapTop}>
+          {words.readOnly}
+        </ThemedText>
+      ) : null}
+      {listHeader}
+    </View>
+  );
+
+  const items: Item[] = [{ kind: "top" }, { kind: "tally" }, { kind: "intro" }];
+  if (visibleRows.length === 0) {
+    items.push({ kind: "none" });
+  } else if (layout === "grid") {
+    items.push({ kind: "grid" });
+  } else {
+    visibleRows.forEach((row, index) =>
+      items.push({ kind: "row", row, first: index === 0, last: index === visibleRows.length - 1 }),
+    );
+  }
+
+  const renderItem = ({ item }: { item: Item }) => {
+    switch (item.kind) {
+      case "top":
+        return top;
+      case "tally":
+        return (
+          <View style={styles.tallyWrap}>
+            <Tally counts={counts} filter={activeFilter} onFilter={setFilter} />
+          </View>
+        );
+      case "intro":
+        return intro;
+      case "grid":
+        return (
+          <View>
+            <RollGrid
+              tiles={visibleRows}
+              canMark={canEditRows}
+              onToggle={toggleRow}
+              onOpenSheet={setSheetStudentId}
+            />
+            {canEditRows ? (
+              <ThemedText variant="caption" color={colors.muted} style={styles.gridHint}>
+                {words.gridHint}
+              </ThemedText>
+            ) : null}
+          </View>
+        );
+      case "none":
+        return (
+          <ThemedText variant="meta" style={styles.noneText}>
+            {words.filterEmpty}
+          </ThemedText>
+        );
+      case "row":
+        return (
+          <View
+            style={[
+              styles.rowWrap,
+              item.first ? styles.rowFirst : styles.rowSeparated,
+              item.last ? styles.rowLast : null,
+            ]}
+          >
+            <RosterRow
+              row={item.row}
+              canMark={canEditRows}
+              onToggle={toggleRow}
+              onOpenSheet={setSheetStudentId}
+            />
+          </View>
+        );
+    }
+  };
+
+  const bottomPad =
+    tabSpace + (showSaveBar ? SAVE_HEIGHT + spacing.md + (showReason ? REASON_HEIGHT : 0) : 0);
 
   return (
     <>
@@ -483,277 +761,384 @@ export function MarkingPanel({ sectionId }: { sectionId: string }) {
       >
         <FlatList
           testID="attendance-roster"
-          data={roster}
-          keyExtractor={(row) => row.studentId}
-          renderItem={({ item, index }) => (
-            <RosterRow
-              row={{
-                ...item,
-                status: draft.get(item.studentId) ?? null,
-                recent: recentByStudent.get(item.studentId) ?? [],
-              }}
-              canMark={canEditRows}
-              onToggle={toggleRow}
-              onOpenSheet={(studentId) => setSheetStudentId(studentId)}
-              style={[
-                index === 0 ? styles.rowFirst : null,
-                index === roster.length - 1 ? styles.rowLast : null,
-              ]}
-            />
-          )}
-          ItemSeparatorComponent={RosterSeparator}
-          ListHeaderComponent={
-            <View>
-              {header}
-              {doneCard}
-              {pulse}
-              {controls}
-              {recentLegend}
-            </View>
+          data={items}
+          keyExtractor={(item, index) =>
+            item.kind === "row" ? item.row.studentId : `${item.kind}-${index}`
           }
+          renderItem={renderItem}
+          stickyHeaderIndices={[1]}
+          onScroll={hideTabBarOnScroll}
+          scrollEventThrottle={32}
           contentContainerStyle={{
             paddingHorizontal: gutter,
             paddingTop: spacing.md,
-            paddingBottom: showSaveBar ? spacing.md : tabSpace,
+            paddingBottom: bottomPad,
           }}
           keyboardShouldPersistTaps="handled"
         />
         {showSaveBar ? (
-          <View style={[styles.bottomBlock, { marginBottom: tabSpace }]}>
+          <Animated.View
+            style={[styles.bottomBlock, { bottom: tabSpace }, followTabBar]}
+            pointerEvents="box-none"
+          >
+            {undo ? (
+              <Animated.View
+                entering={FadeIn.duration(motion.quick)}
+                exiting={FadeOut.duration(motion.quick)}
+                style={styles.toast}
+                accessibilityLiveRegion="polite"
+              >
+                <AppIcon name="check" size={16} color={colors.onAccent} />
+                <ThemedText variant="body" color={colors.onAccent} style={styles.flex}>
+                  {words.bulkPresentToast(undo.count)}
+                </ThemedText>
+                <Pressable
+                  testID="attendance-undo"
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  onPress={() => {
+                    setDraft(undo.previous);
+                    setUndo(null);
+                  }}
+                  style={styles.undo}
+                >
+                  <ThemedText variant="bodyStrong" color={colors.accentTint}>
+                    {words.undo}
+                  </ThemedText>
+                </Pressable>
+              </Animated.View>
+            ) : null}
             {showReason ? (
               <View style={styles.reasonBlock}>
-                <ThemedText variant="caption" style={styles.reasonLabel}>
-                  {copy.attendance.marking.changedCount(changing.length)}
+                <ThemedText variant="bodyStrong" style={styles.reasonLabel}>
+                  {words.reasonTitle(changing.length)}
                 </ThemedText>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.reasonChips}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {words.reasonChips.map((chip) => {
+                    const on = reason === chip;
+                    return (
+                      <Pressable
+                        key={chip}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: on }}
+                        onPress={() => setReason(on ? "" : chip)}
+                        style={[styles.reasonChip, on ? styles.reasonChipOn : null]}
+                      >
+                        <ThemedText variant="chip" color={on ? colors.onAccent : colors.ink}>
+                          {chip}
+                        </ThemedText>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
                 <TextInput
                   testID="attendance-reason"
                   style={styles.reasonInput}
-                  value={reason}
+                  value={words.reasonChips.includes(reason) ? "" : reason}
                   onChangeText={setReason}
-                  placeholder={copy.attendance.marking.reasonPlaceholder}
+                  placeholder={words.reasonNote}
                   placeholderTextColor={colors.muted}
                   maxLength={500}
-                  accessibilityLabel={copy.attendance.marking.reason}
-                  accessibilityHint={copy.attendance.marking.reasonHelp}
+                  accessibilityLabel={words.reason}
+                  accessibilityHint={words.reasonHelp}
                 />
               </View>
             ) : null}
-            <SaveAttendanceButton
+            <SaveButton
               label={
                 markSubmit.isPending
                   ? copy.common.saving
                   : editingNoChanges
-                    ? copy.attendance.marking.doneAction
+                    ? words.doneAction
                     : dayIsMarked && changing.length > 0
-                      ? copy.attendance.marking.saveChanges(changing.length)
-                      : copy.attendance.marking.save
+                      ? words.saveChanges(changing.length)
+                      : words.save
               }
-              marked={counts.marked}
+              counts={counts}
               total={roster.length}
+              showCount={!(dayIsMarked && changing.length > 0) && !editingNoChanges}
+              complete={complete}
               loading={markSubmit.isPending}
-              disabled={
-                markSubmit.isPending ||
-                (!editingNoChanges && (!complete || clean))
-              }
-              onPress={() => {
-                if (editingNoChanges) {
-                  finishEditing();
-                } else {
-                  submit();
-                }
-              }}
+              onPress={onSavePress}
             />
-          </View>
+          </Animated.View>
         ) : null}
       </KeyboardAvoidingView>
       <StatusSheet
         student={sheetStudent}
-        current={sheetStudent ? (draft.get(sheetStudent.studentId) ?? null) : null}
+        current={sheetStudentId ? (draft.get(sheetStudentId) ?? null) : null}
         onSelect={selectStatus}
         onDismiss={() => setSheetStudentId(null)}
-      />
-      <DaySheet
-        sectionId={sectionId}
-        visible={daySheetOpen}
-        anchor={sheetMonth}
-        onAnchorChange={setSheetMonth}
-        date={date}
-        onSelect={(iso) => {
-          setDate(iso);
-          setDaySheetOpen(false);
+        onOpenProfile={(studentId) => {
+          setSheetStudentId(null);
+          router.push({ pathname: "/students/[studentId]", params: { studentId } });
         }}
-        onDismiss={() => setDaySheetOpen(false)}
       />
+      <ChoiceSheet
+        visible={moreOpen}
+        title={words.moreTitle}
+        currentId=""
+        options={[
+          layout === "list"
+            ? { id: "grid", label: words.moreGrid }
+            : { id: "list", label: words.moreList },
+          { id: "clear", label: words.moreClear },
+          { id: "absent", label: words.moreAllAbsent(roster.length) },
+        ]}
+        onSelect={(id) => {
+          setMoreOpen(false);
+          if (id === "grid" || id === "list") changeLayout(id);
+          else if (id === "clear") clearAll();
+          else if (id === "absent") setConfirmAbsent(true);
+        }}
+        onDismiss={() => setMoreOpen(false)}
+        testIDPrefix="attendance-more-option"
+      />
+      {confirmAbsent ? (
+        <ConfirmSheet
+          title={words.allAbsentTitle}
+          body={words.allAbsentBody}
+          confirmLabel={words.allAbsentConfirm}
+          keepLabel={copy.common.cancel}
+          tone="destructive"
+          submitting={false}
+          error={null}
+          onConfirm={() => {
+            setConfirmAbsent(false);
+            markAll("absent");
+          }}
+          onClose={() => setConfirmAbsent(false)}
+          testIDPrefix="attendance-all-absent"
+        />
+      ) : null}
+      {daySheet}
     </>
   );
 }
 
-function DoneCard({ marked, onEdit }: { marked: number; onEdit: () => void }) {
+function HeadButton({
+  icon,
+  label,
+  on,
+  onPress,
+  testID,
+}: {
+  icon: "viewCompact" | "viewYear" | "more";
+  label: string;
+  on: boolean;
+  onPress: () => void;
+  testID: string;
+}) {
   return (
-    <View
-      testID="attendance-saved"
-      accessibilityLiveRegion="polite"
-      style={styles.doneCard}
+    <Pressable
+      testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: on }}
+      hitSlop={4}
+      onPress={onPress}
+      style={({ pressed }) => [styles.headButton, pressed ? styles.headButtonPressed : null]}
     >
-      <View style={styles.doneIcon}>
-        <AppIcon name="checkCircle" size={24} color={colors.accentDeep} />
+      <AppIcon name={icon} size={20} color={on ? colors.ink : colors.chevron} />
+    </Pressable>
+  );
+}
+
+/**
+ * The saved state (v2 frame 6): it answers "who's missing?" without
+ * scrolling. The composition bar lives here, over the names of everyone who
+ * was not simply present.
+ */
+function SavedCard({
+  counts,
+  rows,
+  onEdit,
+}: {
+  counts: StatusCounts;
+  rows: readonly RosterRowData[];
+  onEdit: () => void;
+}) {
+  const words = copy.attendance.marking;
+  const groups = (["absent", "late", "half_day", "on_leave"] as const)
+    .map((status) => ({
+      status,
+      names: rows
+        .filter((row) => row.status === status)
+        .map((row) => (row.roll ? `${row.roll} ${row.name}` : row.name)),
+    }))
+    .filter((group) => group.names.length > 0);
+  const summary = STATUS_ORDER.filter((status) => counts[status] > 0)
+    .map((status) => `${counts[status]} ${statusLabel(status).toLowerCase()}`)
+    .join(" · ");
+
+  return (
+    <View testID="attendance-saved" accessibilityLiveRegion="polite" style={styles.savedCard}>
+      <View style={styles.savedTop}>
+        <View style={styles.savedIcon}>
+          <AppIcon name="check" size={20} color={colors.onAccent} />
+        </View>
+        <View style={styles.flex}>
+          <ThemedText variant="bodyStrong">{words.savedTitle}</ThemedText>
+          <ThemedText variant="meta">{words.doneBody(counts.marked)}</ThemedText>
+        </View>
+        <CapsuleButton
+          title={words.doneEdit}
+          variant="secondary"
+          size="compact"
+          onPress={onEdit}
+          testID="attendance-edit"
+        />
       </View>
-      <View style={styles.doneCopy}>
-        <ThemedText variant="bodyStrong" color={colors.accentDeep}>
-          {copy.attendance.marking.doneTitle}
-        </ThemedText>
-        <ThemedText variant="meta">{copy.attendance.marking.doneBody(marked)}</ThemedText>
-      </View>
-      <CapsuleButton
-        title={copy.attendance.marking.doneEdit}
-        variant="secondary"
-        size="compact"
-        onPress={onEdit}
-        testID="attendance-edit"
+      <StatusMeter
+        height={10}
+        style={styles.savedMeter}
+        segments={STATUS_ORDER.map((status) => ({
+          key: status,
+          value: counts[status],
+          tone: statusTone[status],
+          ...(status === "half_day" ? { opacity: 0.55 } : {}),
+        }))}
       />
+      <ThemedText variant="meta" style={styles.savedSummary}>
+        {summary}
+      </ThemedText>
+      {groups.length > 0 ? (
+        <View style={styles.who}>
+          {groups.map((group) => (
+            <View key={group.status} style={styles.whoRow}>
+              <ThemedText
+                variant="caption"
+                color={colors.tone[statusTone[group.status]].fg}
+                style={styles.whoKey}
+              >
+                {words.savedWho[group.status].toUpperCase()}
+              </ThemedText>
+              <ThemedText variant="body" style={styles.flex}>
+                {group.names.join(", ")}
+              </ThemedText>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
 
-function SaveAttendanceButton({
+/**
+ * The save button doubles as the progress bar, split by status (owner,
+ * 2026-11-15): green, red, amber and slate bands in a light tint, white for
+ * anyone not marked yet. Complete keeps the colours edge to edge and adds a
+ * green outline and tick. A tap while incomplete jumps to "Not marked".
+ */
+function SaveButton({
   label,
-  marked,
+  counts,
   total,
+  showCount,
+  complete,
   loading,
-  disabled,
   onPress,
 }: {
   label: string;
-  marked: number;
+  counts: StatusCounts;
   total: number;
+  showCount: boolean;
+  complete: boolean;
   loading: boolean;
-  disabled: boolean;
   onPress: () => void;
 }) {
-  const [buttonWidth, setButtonWidth] = useState(0);
-  const progress = total > 0 ? Math.min(100, (marked / total) * 100) : 0;
-  const complete = progress >= 100;
-  const filledWidth = Math.round((buttonWidth * progress) / 100);
-  const progressLabel = copy.attendance.marking.saveProgress(marked, total);
-
+  const progressLabel = copy.attendance.marking.saveProgress(counts.marked, total);
   return (
     <Pressable
       testID="attendance-save"
       accessibilityRole="button"
       accessibilityLabel={`${label}. ${progressLabel}`}
-      accessibilityState={{ disabled, busy: loading }}
-      disabled={disabled || loading}
-      onLayout={(event) => {
-        const nextWidth = Math.round(event.nativeEvent.layout.width);
-        if (nextWidth !== buttonWidth) setButtonWidth(nextWidth);
-      }}
+      accessibilityState={{ busy: loading }}
+      disabled={loading}
       onPressIn={() => {
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }}
       onPress={onPress}
       style={({ pressed }) => [
         styles.saveButton,
-        complete ? styles.saveButtonComplete : styles.saveButtonGhost,
+        complete ? styles.saveReady : null,
         pressed ? styles.savePressed : null,
-        disabled ? styles.saveDisabled : null,
       ]}
     >
-      {/* The button itself is the progress bar: no separate track or count.
-          Use the measured pixel width so the fill edge and the two clipped
-          labels stay on the same coordinate, inside the button's padding. */}
-      <View pointerEvents="none" style={[styles.saveFill, { width: filledWidth }]} />
+      <View pointerEvents="none" style={styles.saveBands}>
+        {total > 0
+          ? STATUS_ORDER.map((status) =>
+              counts[status] > 0 ? (
+                <View
+                  key={status}
+                  style={{
+                    width: `${(counts[status] / total) * 100}%`,
+                    backgroundColor: withAlpha(colors.tone[statusTone[status]].fg, 0.2),
+                  }}
+                />
+              ) : null,
+            )
+          : null}
+      </View>
       {loading ? (
-        <ActivityIndicator color={complete ? colors.onAccent : colors.accentDeep} />
-      ) : buttonWidth === 0 ? (
-        <ThemedText
-          variant="bodyStrong"
-          color={complete ? colors.onAccent : colors.accentDeep}
-          numberOfLines={1}
-          style={styles.saveLabel}
-        >
-          {label}
-        </ThemedText>
+        <ActivityIndicator color={colors.accentDeep} />
       ) : (
-        <>
-          {/* The label switches ink at the fill edge, like a download bar. */}
-          <View
-            pointerEvents="none"
-            accessible={false}
-            importantForAccessibility="no-hide-descendants"
-            style={[styles.saveLabelClip, { left: filledWidth, right: 0 }]}
+        <View style={styles.saveLabelRow}>
+          {complete ? <AppIcon name="check" size={18} color={colors.accentDeep} /> : null}
+          <ThemedText
+            variant="bodyStrong"
+            color={colors.accentDeep}
+            numberOfLines={1}
+            style={styles.saveLabel}
           >
-            <View style={[styles.saveLabelInner, { width: buttonWidth, marginLeft: -filledWidth }]}>
-              <ThemedText
-                variant="bodyStrong"
-                color={colors.accentDeep}
-                numberOfLines={1}
-                style={styles.saveLabel}
-              >
-                {label}
-              </ThemedText>
-            </View>
-          </View>
-          <View
-            pointerEvents="none"
-            accessible={false}
-            importantForAccessibility="no-hide-descendants"
-            style={[styles.saveLabelClip, { left: 0, width: filledWidth }]}
-          >
-            <View style={[styles.saveLabelInner, { width: buttonWidth }]}>
-              <ThemedText
-                variant="bodyStrong"
-                color={colors.onAccent}
-                numberOfLines={1}
-                style={styles.saveLabel}
-              >
-                {label}
-              </ThemedText>
-            </View>
-          </View>
-        </>
+            {label}
+          </ThemedText>
+          {showCount ? (
+            <ThemedText variant="meta" color={colors.accentDeep} style={styles.saveCount}>
+              {`${counts.marked}/${total}`}
+            </ThemedText>
+          ) : null}
+        </View>
       )}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-  },
-  content: {
-    paddingHorizontal: gutter,
-    paddingTop: spacing.md,
-  },
-  subRow: {
+  flex: { flex: 1 },
+  shrink: { flexShrink: 1 },
+  bold: { fontFamily: fontFamily.semibold },
+  pressed: { opacity: 0.8 },
+  content: { paddingHorizontal: gutter, paddingTop: spacing.md },
+  dayRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.sm },
+  dayChip: {
     flexDirection: "row",
     alignItems: "center",
+    gap: spacing.xs + 2,
+    minHeight: 40,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.hairline,
+    flexShrink: 1,
   },
-  dayButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    minHeight: 48,
-    paddingHorizontal: spacing.xs,
-    marginLeft: -spacing.xs,
-  },
-  todayChip: {
-    minHeight: 24,
+  dayTag: {
+    minHeight: 22,
     justifyContent: "center",
     paddingHorizontal: spacing.sm,
     borderRadius: radius.full,
-    backgroundColor: colors.accentStrong,
+    backgroundColor: colors.accentTint,
   },
-  headerContext: {
-    marginTop: spacing.xxs,
-    paddingHorizontal: spacing.xs,
-  },
-  periodScroll: {
-    marginTop: spacing.md,
-  },
-  periodRow: {
-    gap: spacing.sm,
-    paddingRight: spacing.lg,
-  },
+  dayTagPast: { backgroundColor: colors.tone.caution.bg },
+  periodScroll: { marginTop: spacing.md, marginHorizontal: -gutter },
+  periodRow: { gap: spacing.sm, paddingHorizontal: gutter },
   periodChip: {
     height: 36,
     paddingHorizontal: spacing.md,
@@ -764,138 +1149,161 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  periodChipOn: {
-    backgroundColor: colors.accentTint,
-    borderColor: colors.accentTint,
-  },
-  bulkRow: {
+  periodChipOn: { backgroundColor: colors.ink, borderColor: colors.ink },
+  banner: {
     flexDirection: "row",
     gap: spacing.sm,
     marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.tone.caution.bg,
   },
-  hint: {
-    marginTop: spacing.sm,
+  tallyWrap: {
+    backgroundColor: colors.canvas,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
   },
-  recentLegend: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
+  starter: {
     marginTop: spacing.md,
-  },
-  separator: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.hairline,
-    marginLeft: 68,
-  },
-  rowFirst: {
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-  },
-  rowLast: {
-    borderBottomLeftRadius: radius.lg,
-    borderBottomRightRadius: radius.lg,
-  },
-  bottomBlock: {
-    paddingHorizontal: gutter,
-  },
-  reasonBlock: {
-    marginBottom: spacing.sm,
     padding: spacing.md,
     borderRadius: radius.lg,
     backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.hairline,
+    gap: spacing.sm + 2,
   },
-  reasonLabel: {
+  starterText: { paddingLeft: spacing.xs },
+  starterRow: { flexDirection: "row", gap: spacing.sm, alignItems: "center" },
+  starterGo: {
+    flex: 1,
+    minHeight: 48,
+    flexDirection: "row",
+    gap: spacing.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.full,
+    backgroundColor: colors.accent,
+    paddingHorizontal: spacing.lg,
+  },
+  moreButton: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.full,
+    backgroundColor: colors.field,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  listHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xxs,
+    marginTop: spacing.md,
     marginBottom: spacing.xs,
+    paddingLeft: spacing.xs,
+    minHeight: 44,
   },
+  clearFilter: { minHeight: 44, justifyContent: "center" },
+  headButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.full,
+  },
+  headButtonPressed: { backgroundColor: colors.field },
+  rowWrap: { backgroundColor: colors.surface, overflow: "hidden" },
+  rowFirst: { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg },
+  rowLast: { borderBottomLeftRadius: radius.lg, borderBottomRightRadius: radius.lg },
+  rowSeparated: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.hairline },
+  gridHint: { textAlign: "center", marginTop: spacing.sm },
+  noneText: { textAlign: "center", marginTop: spacing.lg },
+  gapTop: { marginTop: spacing.md },
+  gapTopLg: { marginTop: spacing.lg },
+  skeletonBlock: { marginTop: spacing.lg, gap: spacing.sm },
+  bottomBlock: { position: "absolute", left: gutter, right: gutter, gap: spacing.sm },
+  toast: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    minHeight: 48,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.xs,
+    borderRadius: radius.md,
+    backgroundColor: colors.ink,
+    boxShadow: shadow.floating,
+  },
+  undo: { minHeight: 44, paddingHorizontal: spacing.md, justifyContent: "center" },
+  reasonBlock: {
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    boxShadow: shadow.floating,
+  },
+  reasonLabel: { fontSize: fontSize.fine },
+  reasonChips: { gap: spacing.xs + 2, paddingVertical: spacing.sm },
+  reasonChip: {
+    minHeight: 36,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.full,
+    backgroundColor: colors.field,
+    justifyContent: "center",
+  },
+  reasonChipOn: { backgroundColor: colors.ink },
   reasonInput: {
     minHeight: 44,
-    borderRadius: radius.md,
-    backgroundColor: colors.field,
+    borderRadius: radius.sm,
+    backgroundColor: colors.input,
+    borderWidth: 1,
+    borderColor: colors.inputLine,
     fontFamily: fontFamily.regular,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
     color: colors.ink,
     fontSize: fontSize.body,
   },
-  doneCard: {
+  savedCard: {
     marginTop: spacing.md,
-    minHeight: 68,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
     padding: spacing.md,
     borderRadius: radius.lg,
-    backgroundColor: colors.accentTint,
-  },
-  doneIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.full,
-    alignItems: "center",
-    justifyContent: "center",
     backgroundColor: colors.surface,
   },
-  doneCopy: {
-    flex: 1,
-    gap: spacing.xxs,
-  },
-  saveButton: {
-    alignSelf: "stretch",
-    minHeight: 56,
-    paddingHorizontal: spacing.xl,
+  savedTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  savedIcon: {
+    width: 36,
+    height: 36,
     borderRadius: radius.full,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-    boxShadow: shadow.floating,
-  },
-  saveButtonGhost: {
-    backgroundColor: colors.surface,
-    borderColor: colors.hairline,
-  },
-  saveButtonComplete: {
     backgroundColor: colors.accent,
-    borderColor: colors.accent,
-  },
-  saveFill: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: colors.accent,
-  },
-  saveLabelClip: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    overflow: "hidden",
-    justifyContent: "center",
-  },
-  saveLabelInner: {
-    flex: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-  savePressed: {
-    transform: [{ scale: motion.pressScale }],
-  },
-  saveDisabled: {
-    opacity: 0.55,
-  },
-  saveLabel: {
-    fontSize: fontSize.callout,
-  },
-  skeletonBlock: {
-    marginTop: spacing.lg,
+  savedMeter: { marginTop: spacing.md },
+  savedSummary: { marginTop: spacing.xs },
+  who: {
+    marginTop: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.hairline,
     gap: spacing.sm,
   },
-  pulseSkeleton: {
-    marginTop: spacing.lg,
+  whoRow: { flexDirection: "row", gap: spacing.sm, alignItems: "baseline" },
+  whoKey: { width: 64, fontFamily: fontFamily.semibold },
+  saveButton: {
+    minHeight: SAVE_HEIGHT,
+    borderRadius: radius.full,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.hairline,
+    boxShadow: shadow.floating,
   },
-  gapTopLg: {
-    marginTop: spacing.lg,
+  saveReady: { borderWidth: 2, borderColor: colors.accent },
+  savePressed: { transform: [{ scale: motion.pressScale }] },
+  saveBands: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, flexDirection: "row" },
+  saveLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
   },
+  saveLabel: { fontSize: fontSize.callout },
+  saveCount: { fontFamily: fontFamily.medium },
 });

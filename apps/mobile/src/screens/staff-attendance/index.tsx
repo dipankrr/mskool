@@ -126,53 +126,68 @@ export function AttendanceScreen() {
   // above has already returned for that.
   const title = sectionLabel ?? section.name;
 
+  // The title row: in Mark it scrolls away inside the panel (v2 mockup); in
+  // Summary it stays on top with the full-width toggle, as before.
+  const titleBlock = (
+    <View>
+      <View style={styles.titleBar}>
+        <Pressable
+          testID="attendance-section-switcher"
+          accessibilityRole="button"
+          accessibilityLabel={title}
+          accessibilityHint={copy.attendance.section.open}
+          hitSlop={8}
+          onPress={() => setSwitcherOpen(true)}
+          style={styles.titleRow}
+        >
+          <ThemedText variant="title" numberOfLines={1} style={styles.titleText}>
+            {title}
+          </ThemedText>
+          <AppIcon name="chevronDown" size={18} color={colors.chevron} />
+        </Pressable>
+        {canManage ? (
+          <Pressable
+            testID="attendance-manage-entry"
+            accessibilityRole="button"
+            accessibilityLabel={copy.attendance.manage.open}
+            accessibilityHint={copy.attendance.manage.openHint}
+            hitSlop={8}
+            onPress={() =>
+              router.push({
+                pathname: "/attendance/manage",
+                params: { sectionId: section.id },
+              })
+            }
+            style={({ pressed }) => [styles.gear, pressed ? styles.gearPressed : null]}
+          >
+            <AppIcon name="settings" size={20} color={colors.muted} />
+          </Pressable>
+        ) : null}
+      </View>
+      {meta ? (
+        <ThemedText variant="meta" numberOfLines={1} testID="attendance-meta">
+          {meta}
+        </ThemedText>
+      ) : null}
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      <View style={styles.head}>
-        <View style={styles.titleBar}>
-          <Pressable
-            testID="attendance-section-switcher"
-            accessibilityRole="button"
-            accessibilityLabel={title}
-            accessibilityHint={copy.attendance.section.open}
-            hitSlop={8}
-            onPress={() => setSwitcherOpen(true)}
-            style={styles.titleRow}
-          >
-            <ThemedText variant="title" numberOfLines={1} style={styles.titleText}>
-              {title}
-            </ThemedText>
-            <AppIcon name="chevronDown" size={18} color={colors.chevron} />
-          </Pressable>
-          {canManage ? (
-            <Pressable
-              testID="attendance-manage-entry"
-              accessibilityRole="button"
-              accessibilityLabel={copy.attendance.manage.open}
-              accessibilityHint={copy.attendance.manage.openHint}
-              hitSlop={8}
-              onPress={() =>
-                router.push({
-                  pathname: "/attendance/manage",
-                  params: { sectionId: section.id },
-                })
-              }
-              style={({ pressed }) => [styles.gear, pressed ? styles.gearPressed : null]}
-            >
-              <AppIcon name="settings" size={20} color={colors.muted} />
-            </Pressable>
-          ) : null}
+      {view === "summary" ? (
+        <View style={styles.head}>
+          {titleBlock}
+          <ViewToggle value={view} onChange={setView} />
         </View>
-        {meta ? (
-          <ThemedText variant="meta" numberOfLines={1} testID="attendance-meta">
-            {meta}
-          </ThemedText>
-        ) : null}
-        <ViewToggle value={view} onChange={setView} />
-      </View>
+      ) : null}
       <View style={styles.flex}>
         <PanelFrame visible={view === "mark"}>
-          <MarkingPanel key={`mark-${section.id}-${academicYear?.id}`} sectionId={section.id} />
+          <MarkingPanel
+            key={`mark-${section.id}-${academicYear?.id}`}
+            sectionId={section.id}
+            head={titleBlock}
+            viewToggle={<ViewToggle value={view} onChange={setView} compact />}
+          />
         </PanelFrame>
         <PanelFrame visible={view === "summary"}>
           <SummaryPanel

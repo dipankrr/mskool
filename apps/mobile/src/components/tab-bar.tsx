@@ -71,6 +71,16 @@ export function useHideTabBarOnScroll() {
   );
 }
 
+/**
+ * Like useFollowTabBar, but stops after `maxShift`: a bar-wide button drops
+ * into the tab bar's place and stays clear of the home indicator.
+ */
+export function useFollowTabBarCapped(maxShift: number) {
+  return useAnimatedStyle(() => ({
+    transform: [{ translateY: Math.min(tabBarOffset.value, maxShift) }],
+  }));
+}
+
 /** For something floating just above the bar: it moves down with the bar. */
 export function useFollowTabBar() {
   return useAnimatedStyle(() => ({
