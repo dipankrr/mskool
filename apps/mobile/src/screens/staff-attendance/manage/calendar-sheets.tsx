@@ -295,7 +295,7 @@ export function EntrySheet({
             />
           ) : null}
           <CapsuleButton
-            title={entry ? copy.attendance.manage.calendar.save : words().add}
+            title={entry ? words().saveEdit : words().add}
             loading={pending}
             onPress={() => {
               setTried(true);
@@ -381,7 +381,7 @@ export function EntrySheet({
         </View>
       ) : null}
       {onRemove ? (
-        <ThemedText variant="caption" color={colors.muted} style={styles.inline}>
+        <ThemedText variant="caption" color={colors.muted} style={styles.label}>
           {words().removeHint}
         </ThemedText>
       ) : null}

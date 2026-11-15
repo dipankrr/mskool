@@ -1,5 +1,5 @@
-import { memo } from "react";
-import { Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
+import { memo, useState } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
 import * as Haptics from "expo-haptics";
 
 import { AppIcon } from "../../../components/app-icon";
@@ -13,7 +13,20 @@ import { DAY_LOOK, EXAM_TONE } from "./calendar-lib";
 import type { DayType, Entry } from "./calendar-lib";
 
 const WEEK_LETTERS = ["M", "T", "W", "T", "F", "S", "S"] as const;
-const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTHS_SHORT = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 
 export function typeName(type: DayType): string {
   return copy.attendance.manage.cal.types[type];
@@ -59,7 +72,8 @@ export const MonthGrid = memo(function MonthGrid({
   onPress?: (iso: string) => void;
   onLongPress?: (iso: string) => void;
 }) {
-  const { width } = useWindowDimensions();
+  // Measured, so the seven columns always fit whatever card holds the grid.
+  const [width, setWidth] = useState(0);
   const year = Number(anchor.slice(0, 4));
   const month = Number(anchor.slice(5, 7));
   const first = (new Date(Date.UTC(year, month - 1, 1)).getUTCDay() + 6) % 7;
@@ -69,84 +83,90 @@ export const MonthGrid = memo(function MonthGrid({
     ...Array.from({ length: count }, (_, i) => isoOf(year, month, i + 1)),
   ];
   while (cells.length % 7 !== 0) cells.push(null);
-  const gridWidth = Math.min(width - spacing.lg * 2 - spacing.sm * 2, 440);
-  const cellWidth = Math.floor(gridWidth / 7);
+  const cellWidth = Math.floor(Math.min(width, 440) / 7);
 
   return (
-    <View>
-      <View style={styles.weekRow}>
-        {WEEK_LETTERS.map((letter, index) => (
-          <ThemedText
-            key={`${letter}-${index}`}
-            variant="caption"
-            color={index >= 5 ? colors.chevron : colors.muted}
-            style={[styles.weekLetter, { width: cellWidth }]}
-          >
-            {letter}
-          </ThemedText>
-        ))}
-      </View>
-      <View style={styles.grid}>
-        {cells.map((iso, index) => {
-          if (!iso) return <View key={`b-${index}`} style={{ width: cellWidth, height: 52 }} />;
-          const type = typeOf.get(iso) ?? null;
-          const look = type ? DAY_LOOK[type] : null;
-          const outside = iso < start || iso > end;
-          const isSelected = selected.has(iso);
-          const isToday = iso === today;
-          const day = Number(iso.slice(8, 10));
-          const fg = isSelected ? colors.onAccent : type ? look!.fg : colors.tone.caution.fg;
-          return (
-            <Pressable
-              key={iso}
-              testID={`cal-day-${iso}`}
-              disabled={outside || (!onPress && !onLongPress)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: isSelected, disabled: outside }}
-              accessibilityLabel={`${weekdayShort(iso)} ${day}, ${type ? copy.attendance.manage.cal.typesLong[type] : copy.attendance.marking.dayTypes.none}${marked.has(iso) ? `, ${copy.attendance.marking.marked}` : ""}`}
-              onPress={() => onPress?.(iso)}
-              onLongPress={() => {
-                if (!onLongPress) return;
-                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                onLongPress(iso);
-              }}
-              delayLongPress={350}
-              style={{ width: cellWidth, height: 52, padding: 2 }}
-            >
-              {({ pressed }) => (
-                <View
-                  style={[
-                    styles.cell,
-                    { backgroundColor: isSelected ? colors.ink : look?.bg ?? "transparent" },
-                    type === null && !outside ? styles.cellMissing : null,
-                    isToday && !isSelected ? styles.cellToday : null,
-                    pressed && !isSelected ? styles.cellPressed : null,
-                    outside ? styles.cellOutside : null,
-                  ]}
+    <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+      {cellWidth > 0 ? (
+        <>
+          <View style={styles.weekRow}>
+            {WEEK_LETTERS.map((letter, index) => (
+              <ThemedText
+                key={`${letter}-${index}`}
+                variant="caption"
+                color={index >= 5 ? colors.chevron : colors.muted}
+                style={[styles.weekLetter, { width: cellWidth }]}
+              >
+                {letter}
+              </ThemedText>
+            ))}
+          </View>
+          <View style={styles.grid}>
+            {cells.map((iso, index) => {
+              if (!iso) return <View key={`b-${index}`} style={{ width: cellWidth, height: 52 }} />;
+              const type = typeOf.get(iso) ?? null;
+              const look = type ? DAY_LOOK[type] : null;
+              const outside = iso < start || iso > end;
+              const isSelected = selected.has(iso);
+              const isToday = iso === today;
+              const day = Number(iso.slice(8, 10));
+              const fg = isSelected ? colors.onAccent : type ? look!.fg : colors.tone.caution.fg;
+              return (
+                <Pressable
+                  key={iso}
+                  testID={`cal-day-${iso}`}
+                  disabled={outside || (!onPress && !onLongPress)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected, disabled: outside }}
+                  accessibilityLabel={`${weekdayShort(iso)} ${day}, ${type ? copy.attendance.manage.cal.typesLong[type] : copy.attendance.marking.dayTypes.none}${marked.has(iso) ? `, ${copy.attendance.marking.marked}` : ""}`}
+                  onPress={() => onPress?.(iso)}
+                  onLongPress={() => {
+                    if (!onLongPress) return;
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    onLongPress(iso);
+                  }}
+                  delayLongPress={350}
+                  style={{ width: cellWidth, height: 52, padding: 2 }}
                 >
-                  {marked.has(iso) && !isSelected ? <View style={styles.dot} /> : null}
-                  <ThemedText
-                    variant="bodyStrong"
-                    color={fg}
-                    maxFontSizeMultiplier={1.2}
-                    style={[styles.dayNum, type === "weekend" && !isSelected ? styles.dayOff : null]}
-                  >
-                    {day}
-                  </ThemedText>
-                  <ThemedText
-                    variant="tab"
-                    color={fg}
-                    maxFontSizeMultiplier={1}
-                    style={styles.short}
-                  >
-                    {type ? look!.short || " " : outside ? " " : "—"}
-                  </ThemedText>
-                </View>
-              )}
-            </Pressable>
-          );
-        })}
-      </View>
+                  {({ pressed }) => (
+                    <View
+                      style={[
+                        styles.cell,
+                        { backgroundColor: isSelected ? colors.ink : (look?.bg ?? "transparent"), borderRadius: radius.md, overflow: "hidden" },
+                        type === null && !outside ? styles.cellMissing : null,
+                        isToday && !isSelected ? styles.cellToday : null,
+                        pressed && !isSelected ? styles.cellPressed : null,
+                        outside ? styles.cellOutside : null,
+                      ]}
+                    >
+                      {marked.has(iso) && !isSelected ? <View style={styles.dot} /> : null}
+                      <ThemedText
+                        variant="bodyStrong"
+                        color={fg}
+                        maxFontSizeMultiplier={1.2}
+                        style={[
+                          styles.dayNum,
+                          type === "weekend" && !isSelected ? styles.dayOff : null,
+                        ]}
+                      >
+                        {day}
+                      </ThemedText>
+                      <ThemedText
+                        variant="tab"
+                        color={fg}
+                        maxFontSizeMultiplier={1}
+                        style={styles.short}
+                      >
+                        {type ? look!.short || " " : outside ? " " : "—"}
+                      </ThemedText>
+                    </View>
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      ) : null}
     </View>
   );
 });
@@ -165,7 +185,7 @@ export function TypePicker({
     <View style={styles.types} accessibilityRole="radiogroup">
       {options.map((type) => {
         const on = type === value;
-        const swatch = type === "working" ? "#9BD3B4" : type === "weekend" ? "#E4E7EC" : DAY_LOOK[type].bg;
+        const swatch = type === "working" ? colors.accent : type === "weekend" ? colors.chevron : DAY_LOOK[type].fg;
         return (
           <Pressable
             key={type}
@@ -176,9 +196,18 @@ export function TypePicker({
               if (!on) void Haptics.selectionAsync();
               onChange(type);
             }}
-            style={({ pressed }) => [styles.type, on ? styles.typeOn : null, pressed ? styles.pressed : null]}
+            style={({ pressed }) => [
+              styles.type,
+              on ? styles.typeOn : null,
+              pressed ? styles.pressed : null,
+            ]}
           >
-            <View style={[styles.swatch, { backgroundColor: swatch }, type === "exam_day" ? { backgroundColor: "#C7D7FE" } : null]} />
+            <View
+              style={[
+                styles.swatch,
+                { backgroundColor: swatch },
+              ]}
+            />
             <ThemedText variant="bodyStrong" numberOfLines={1} style={styles.typeText}>
               {typeName(type)}
             </ThemedText>
@@ -208,7 +237,11 @@ export function EntryRow({
       accessibilityRole={onPress ? "button" : undefined}
       disabled={!onPress}
       onPress={onPress}
-      style={({ pressed }) => [styles.entry, first ? null : styles.entrySeparated, pressed ? styles.entryPressed : null]}
+      style={({ pressed }) => [
+        styles.entry,
+        first ? null : styles.entrySeparated,
+        pressed ? styles.entryPressed : null,
+      ]}
     >
       <View style={[styles.tile, { backgroundColor: look.bg }]}>
         <ThemedText variant="bodyStrong" color={look.fg} style={styles.tileDay}>

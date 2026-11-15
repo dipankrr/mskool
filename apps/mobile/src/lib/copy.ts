@@ -1968,6 +1968,7 @@ export const copy = {
         type: "Type",
         overlap: (name: string) => `Some of these days are already "${name}". Saving replaces them.`,
         remove: "Remove",
+        saveEdit: "Save",
         removeHint: "The days go back to your normal week.",
         nameRequired: "Give it a name.",
         // gaps (C3)

@@ -60,8 +60,14 @@ export function ManageCalendar() {
     schoolId: schoolId ?? "",
     academicYearId: academicYear?.id ?? "",
   };
-  const overview = trpc.attendance.calendar.overview.useQuery(base, { enabled: ready, staleTime: 60_000 });
-  const yearList = trpc.attendance.calendar.list.useQuery(base, { enabled: ready, staleTime: 60_000 });
+  const overview = trpc.attendance.calendar.overview.useQuery(base, {
+    enabled: ready,
+    staleTime: 60_000,
+  });
+  const yearList = trpc.attendance.calendar.list.useQuery(base, {
+    enabled: ready,
+    staleTime: 60_000,
+  });
 
   const monthDates = useMemo(() => {
     if (!monthAnchor) return [];
@@ -78,7 +84,10 @@ export function ManageCalendar() {
   const typeOf = useMemo(() => new Map(rows.map((r) => [r.date, r.dayType as DayType])), [rows]);
   const reasonOf = useMemo(() => new Map(rows.map((r) => [r.date, r.reason])), [rows]);
   const entries = useMemo(
-    () => groupEntries(rows.map((r) => ({ date: r.date, dayType: r.dayType as DayType, reason: r.reason }))),
+    () =>
+      groupEntries(
+        rows.map((r) => ({ date: r.date, dayType: r.dayType as DayType, reason: r.reason })),
+      ),
     [rows],
   );
   const marked = useMemo(() => new Set((usage.data ?? []).map((u) => u.date)), [usage.data]);
@@ -168,7 +177,6 @@ export function ManageCalendar() {
           ? { label: words.addHoliday, icon: "add", onPress: () => setEntryOpen({ entry: null }) }
           : undefined
       }
-      stickyHeader={selectionBar}
     >
       {loading ? (
         <View style={styles.gapTop}>
@@ -207,7 +215,11 @@ export function ManageCalendar() {
                       variant="secondary"
                       loading={fillGaps.isPending}
                       onPress={() =>
-                        fillGaps.mutate({ organizationId: base.organizationId, schoolId: base.schoolId, data: { academicYearId: base.academicYearId } })
+                        fillGaps.mutate({
+                          organizationId: base.organizationId,
+                          schoolId: base.schoolId,
+                          data: { academicYearId: base.academicYearId },
+                        })
                       }
                       style={styles.gapButton}
                       testID="cal-gaps-fill"
@@ -222,33 +234,63 @@ export function ManageCalendar() {
             </View>
           ) : null}
 
-          <SegmentBar
-            label={copy.attendance.manage.rows.calendar}
-            value={view}
-            onChange={(next) => {
-              setView(next);
-              setSelected(new Set());
-            }}
-            options={[
-              { value: "month", label: words.month, testID: "cal-view-month" },
-              { value: "list", label: words.list, testID: "cal-view-list" },
-            ]}
-          />
+          {/* The selection bar takes the toggle's place, same height, so the
+              grid does not move under the finger when picking starts. */}
+          {selecting ? (
+            selectionBar
+          ) : (
+            <SegmentBar
+              label={copy.attendance.manage.rows.calendar}
+              value={view}
+              onChange={(next) => {
+                setView(next);
+                setSelected(new Set());
+              }}
+              options={[
+                { value: "month", label: words.month, testID: "cal-view-month" },
+                { value: "list", label: words.list, testID: "cal-view-list" },
+              ]}
+            />
+          )}
 
           {view === "month" ? (
             <>
               <Card style={styles.stats}>
-                <Stat value={monthCounts.school} label={words.statSchool} color={colors.accentDeep} />
-                <Stat value={monthCounts.holidays} label={words.statHolidays} color={colors.tone.critical.fg} />
+                <Stat
+                  value={monthCounts.school}
+                  label={words.statSchool}
+                  color={colors.accentDeep}
+                />
+                <Stat
+                  value={monthCounts.holidays}
+                  label={words.statHolidays}
+                  color={colors.tone.critical.fg}
+                />
                 <Stat value={monthCounts.exams} label={words.statExams} color={colors.ink} />
-                <Stat value={overview.data?.schoolDays ?? 0} label={words.statSession} color={colors.ink} />
+                <Stat
+                  value={overview.data?.schoolDays ?? 0}
+                  label={words.statSession}
+                  color={colors.ink}
+                />
               </Card>
               <View style={styles.monthRow}>
-                <ThemedText variant="title" style={styles.flex}>
+                <ThemedText variant="bodyStrong" style={[styles.flex, styles.monthTitle]}>
                   {formatMonthLong(monthAnchor)}
                 </ThemedText>
-                <MonthButton icon="chevronLeft" label={copy.attendance.marking.prevMonth} enabled={canPrev} onPress={() => setAnchor(shiftMonth(monthAnchor, -1))} testID="calendar-prev" />
-                <MonthButton icon="chevronRight" label={copy.attendance.marking.nextMonth} enabled={canNext} onPress={() => setAnchor(shiftMonth(monthAnchor, 1))} testID="calendar-next" />
+                <MonthButton
+                  icon="chevronLeft"
+                  label={copy.attendance.marking.prevMonth}
+                  enabled={canPrev}
+                  onPress={() => setAnchor(shiftMonth(monthAnchor, -1))}
+                  testID="calendar-prev"
+                />
+                <MonthButton
+                  icon="chevronRight"
+                  label={copy.attendance.marking.nextMonth}
+                  enabled={canNext}
+                  onPress={() => setAnchor(shiftMonth(monthAnchor, 1))}
+                  testID="calendar-next"
+                />
               </View>
               <Card style={styles.gridCard}>
                 <MonthGrid
@@ -259,7 +301,9 @@ export function ManageCalendar() {
                   selected={selected}
                   start={start}
                   end={end}
-                  onPress={canManage ? (iso) => (selecting ? toggle(iso) : setSetting([iso])) : undefined}
+                  onPress={
+                    canManage ? (iso) => (selecting ? toggle(iso) : setSetting([iso])) : undefined
+                  }
                   onLongPress={canManage ? toggle : undefined}
                 />
               </Card>
@@ -304,17 +348,30 @@ export function ManageCalendar() {
           onClose={() => setEntryOpen(null)}
           onRemove={
             entryOpen.entry
-              ? () => void writes.submit(writes.revertWrites(datesBetween(entryOpen.entry!.from, entryOpen.entry!.to)), () => setEntryOpen(null))
+              ? () =>
+                  void writes.submit(
+                    writes.revertWrites(datesBetween(entryOpen.entry!.from, entryOpen.entry!.to)),
+                    () => setEntryOpen(null),
+                  )
               : undefined
           }
           onSave={(next) => {
             const nextDates = datesBetween(next.from, next.to);
             const keep = new Set(nextDates);
-            const old = entryOpen.entry ? datesBetween(entryOpen.entry.from, entryOpen.entry.to).filter((iso) => !keep.has(iso)) : [];
+            const old = entryOpen.entry
+              ? datesBetween(entryOpen.entry.from, entryOpen.entry.to).filter(
+                  (iso) => !keep.has(iso),
+                )
+              : [];
             // A range keeps the days that are off anyway as they are.
-            const days = nextDates.filter((iso) => next.from === next.to || typeOf.get(iso) !== "weekend");
+            const days = nextDates.filter(
+              (iso) => next.from === next.to || typeOf.get(iso) !== "weekend",
+            );
             void writes.submit(
-              [...writes.revertWrites(old), { dates: days, dayType: next.dayType, reason: next.reason }],
+              [
+                ...writes.revertWrites(old),
+                { dates: days, dayType: next.dayType, reason: next.reason },
+              ],
               () => setEntryOpen(null),
             );
           }}
@@ -365,7 +422,11 @@ function MonthButton({
       disabled={!enabled}
       hitSlop={4}
       onPress={onPress}
-      style={({ pressed }) => [styles.monthButton, pressed ? styles.monthButtonPressed : null, !enabled ? styles.off : null]}
+      style={({ pressed }) => [
+        styles.monthButton,
+        pressed ? styles.monthButtonPressed : null,
+        !enabled ? styles.off : null,
+      ]}
     >
       <AppIcon name={icon} size={20} color={colors.ink} />
     </Pressable>
@@ -400,7 +461,9 @@ function HolidayList({
       {[...months].map(([key, list]) => (
         <View key={key}>
           <View style={styles.listHead}>
-            <ThemedText variant="sectionLabel">{formatMonthLong(`${key}-01`).split(" ")[0]}</ThemedText>
+            <ThemedText variant="sectionLabel">
+              {formatMonthLong(`${key}-01`).split(" ")[0]}
+            </ThemedText>
             <ThemedText variant="caption" color={colors.muted}>
               {words.entryCount(list.length)}
             </ThemedText>
@@ -430,7 +493,13 @@ function HolidayList({
 }
 
 /** A1, inside the manage screen: an empty session goes to set-up. */
-export function SetupPrompt({ canManage, sessionName }: { canManage: boolean; sessionName: string }) {
+export function SetupPrompt({
+  canManage,
+  sessionName,
+}: {
+  canManage: boolean;
+  sessionName: string;
+}) {
   const words = copy.attendance.manage.cal;
   if (!canManage) {
     return (
@@ -497,7 +566,13 @@ const styles = StyleSheet.create({
   stats: { flexDirection: "row", marginTop: spacing.md, paddingVertical: spacing.md },
   stat: { flex: 1, gap: 1 },
   statValue: { fontVariant: ["tabular-nums"] },
-  monthRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: spacing.lg, marginBottom: spacing.sm },
+  monthRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
   monthButton: {
     width: 40,
     height: 40,
@@ -508,6 +583,7 @@ const styles = StyleSheet.create({
   },
   monthButtonPressed: { backgroundColor: colors.field },
   off: { opacity: 0.35 },
+  monthTitle: { fontSize: 20, lineHeight: 26 },
   gridCard: { paddingHorizontal: spacing.sm, paddingVertical: spacing.sm },
   hint: { marginTop: spacing.sm, textAlign: "center" },
   listHead: {
@@ -523,15 +599,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    minHeight: 52,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.lg,
+    height: 50,
+    paddingHorizontal: spacing.xxs,
+    borderRadius: radius.full,
     backgroundColor: colors.ink,
-    marginBottom: spacing.sm,
   },
-  selClose: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  selClose: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   selSet: {
-    minHeight: 36,
+    height: 42,
     justifyContent: "center",
     paddingHorizontal: spacing.lg,
     borderRadius: radius.full,
