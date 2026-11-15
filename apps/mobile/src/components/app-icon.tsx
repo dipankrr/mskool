@@ -22,6 +22,8 @@ const iconMap = {
   home: { ios: "house.fill", android: "home" },
   attendance: { ios: "checklist", android: "checklist" },
   more: { ios: "ellipsis", android: "more-horiz" },
+  /** Opens the sidebar. */
+  menu: { ios: "line.3.horizontal", android: "menu" },
   /** The overflow menu in a header: three dots, stacked. */
   moreVertical: { ios: "ellipsis", android: "more-vert" },
   school: { ios: "graduationcap.fill", android: "school" },

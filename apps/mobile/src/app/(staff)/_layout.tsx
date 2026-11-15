@@ -6,6 +6,7 @@ import { EmptyState } from "../../components/empty-state";
 import { useActiveContext } from "../../hooks/use-active-context";
 import { useMe } from "../../hooks/use-me";
 import { copy } from "../../lib/copy";
+import { ShellProvider } from "../../screens/shell/shell";
 import { colors } from "../../theme/brand-admin";
 import { spacing } from "../../theme/tokens";
 
@@ -78,13 +79,17 @@ export default function StaffLayout() {
       </View>
     );
   }
+  // The sidebar and the account popup sit above every staff screen, mounted
+  // once here; a tab asks for them through `useShell`.
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        contentStyle: { backgroundColor: colors.canvas },
-      }}
-    />
+    <ShellProvider>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.canvas },
+        }}
+      />
+    </ShellProvider>
   );
 }
 

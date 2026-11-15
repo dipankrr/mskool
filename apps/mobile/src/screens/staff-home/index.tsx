@@ -20,6 +20,7 @@ import { formatLongWeekday, todayIso } from "../../lib/format";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { gutter, radius, spacing } from "../../theme/tokens";
+import { ShellBar } from "../shell/shell-bar";
 import { ClassCard } from "./class-card";
 import { OpenExamsCard } from "./open-exams";
 import { SetupCard } from "./setup-card";
@@ -95,14 +96,16 @@ export function StaffHomeScreen() {
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: tabSpace }]}
       >
-        {branchName ? (
-          <View style={styles.chip}>
-            <AppIcon name="school" size={14} color={colors.tone.neutral.fg} />
-            <ThemedText variant="chip" numberOfLines={1}>
-              {branchName}
-            </ThemedText>
-          </View>
-        ) : null}
+        <ShellBar>
+          {branchName ? (
+            <View style={styles.chip}>
+              <AppIcon name="school" size={14} color={colors.tone.neutral.fg} />
+              <ThemedText variant="chip" numberOfLines={1} style={styles.chipText}>
+                {branchName}
+              </ThemedText>
+            </View>
+          ) : null}
+        </ShellBar>
 
         <View style={styles.header}>
           <ThemedText variant="title">{copy.home.title}</ThemedText>
@@ -188,7 +191,7 @@ const styles = StyleSheet.create({
   chip: {
     flexDirection: "row",
     alignItems: "center",
-    alignSelf: "flex-start",
+    flexShrink: 1,
     gap: spacing.xs,
     height: 32,
     paddingHorizontal: spacing.md,
@@ -197,8 +200,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.hairline,
   },
+  chipText: {
+    flexShrink: 1,
+  },
   header: {
-    marginTop: spacing.xxl,
+    marginTop: spacing.lg,
   },
   cards: {
     marginTop: spacing.md,
