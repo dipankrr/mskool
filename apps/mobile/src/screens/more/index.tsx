@@ -29,7 +29,7 @@ const HUES = {
   exams: { fg: "#C4520A", tint: "#FFF0E3" },
   academics: { fg: "#6941C6", tint: "#F1ECFD" },
   staff: { fg: "#0E7490", tint: "#E3F5F8" },
-  school: { fg: "#475467", tint: "#EEF0F4" },
+  school: { fg: "#1D63C7", tint: "#E8F1FD" },
 } as const satisfies Record<string, Hue>;
 
 /**
@@ -62,7 +62,9 @@ export function MoreScreen() {
   const showSchool = canBranches || canSessions;
   const nothing = !showExams && !showAcademics && !showStaff && !showTeaching && !showSchool;
 
-  const meta = [branchName, academicYear?.name].filter(Boolean).join(" · ");
+  // Session first: a long branch name is cut short in the top row, and the
+  // session is the part that must stay readable.
+  const meta = [academicYear?.name, branchName].filter(Boolean).join(" · ");
   const schoolLinks: ShowcaseLink[] = [
     canBranches
       ? {
@@ -85,15 +87,18 @@ export function MoreScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: tabSpace }]}>
-        <ShellBar />
-        <View style={styles.header}>
-          <ThemedText variant="title">{copy.more.title}</ThemedText>
-          {meta ? (
-            <ThemedText variant="subtitle" numberOfLines={1} testID="more-context">
-              {meta}
+        <ShellBar>
+          <View style={styles.header}>
+            <ThemedText variant="title" numberOfLines={1}>
+              {copy.more.title}
             </ThemedText>
-          ) : null}
-        </View>
+            {meta ? (
+              <ThemedText variant="meta" numberOfLines={1} testID="more-context">
+                {meta}
+              </ThemedText>
+            ) : null}
+          </View>
+        </ShellBar>
 
         {nothing ? (
           <EmptyState
@@ -398,10 +403,11 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
   },
   header: {
-    marginTop: spacing.lg,
-    marginBottom: spacing.lg,
+    flex: 1,
+    paddingLeft: spacing.xs,
   },
   cards: {
+    marginTop: spacing.lg,
     gap: spacing.md,
   },
   aside: {

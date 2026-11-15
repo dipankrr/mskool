@@ -40,6 +40,9 @@ export type NavGroup = { key: string; label: string | null; items: NavItem[] };
 
 type Has = (permission: string) => boolean;
 
+/** Lands on a list with its add sheet already open. */
+const CREATE = { create: "1" } as const;
+
 type SubDraft = NavSub & { can: boolean };
 type ItemDraft = Omit<NavItem, "subs"> & { can: boolean; subs?: SubDraft[] };
 
@@ -103,6 +106,20 @@ export function buildNav(has: Has): NavGroup[] {
             { key: "fees-payments", label: n.payments, href: "/fees/payments", can: has("fee_payment:read") },
             { key: "fees-ledger", label: n.ledger, href: "/fees/ledger", can: has("fee_report:read") },
             { key: "fees-setup", label: n.feeSetup, href: "/fees/setup", can: has("fee_structure:read") },
+            {
+              key: "fees-add-head",
+              label: n.addFeeHead,
+              href: { pathname: "/fees/setup/heads", params: CREATE },
+              action: true,
+              can: has("fee_head:read") && has("fee_head:create"),
+            },
+            {
+              key: "fees-add-structure",
+              label: n.addFeeStructure,
+              href: { pathname: "/fees/setup/structures", params: CREATE },
+              action: true,
+              can: has("fee_structure:read") && has("fee_structure:create"),
+            },
           ],
         },
       ],
@@ -118,11 +135,40 @@ export function buildNav(has: Has): NavGroup[] {
           can: has("class:read"),
           subs: [
             { key: "classes-all", label: n.classSection, href: "/class-section", can: true },
+            {
+              key: "classes-create",
+              label: n.createClass,
+              href: { pathname: "/class-section", params: CREATE },
+              action: true,
+              can: has("class:create"),
+            },
             { key: "classes-terms", label: n.terms, href: "/terms", can: has("academic_year:read") },
+            {
+              key: "classes-add-term",
+              label: n.addTerm,
+              href: "/term-form",
+              action: true,
+              can: has("academic_year:read") && has("academic_year:create"),
+            },
             { key: "classes-setup", label: n.academicSetup, href: "/academic-setup", can: true },
           ],
         },
-        { key: "subjects", label: n.subjects, icon: "subject", href: "/subject-mapping", can: has("subject:read") },
+        {
+          key: "subjects",
+          label: n.subjects,
+          icon: "subject",
+          can: has("subject:read"),
+          subs: [
+            { key: "subjects-all", label: n.allSubjects, href: "/subject-mapping", can: true },
+            {
+              key: "subjects-add",
+              label: n.addSubject,
+              href: { pathname: "/subject-mapping", params: CREATE },
+              action: true,
+              can: has("subject:create"),
+            },
+          ],
+        },
         {
           key: "exams",
           label: n.exams,
@@ -134,6 +180,13 @@ export function buildNav(has: Has): NavGroup[] {
             { key: "exams-term-grades", label: n.termGrades, href: "/exams/term-grades", can: true },
             { key: "exams-final", label: n.finalResults, href: "/exams/final", can: has("exam:update") },
             { key: "exams-setup", label: n.examSetup, href: "/exams/setup", can: canExamSetup },
+            {
+              key: "exams-add-scale",
+              label: n.addGradingScale,
+              href: "/exams/setup/grading-scales/new",
+              action: true,
+              can: has("exam:create"),
+            },
           ],
         },
         {

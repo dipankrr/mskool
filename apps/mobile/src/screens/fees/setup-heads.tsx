@@ -3,6 +3,7 @@ import { Alert, Pressable, StyleSheet, View } from "react-native";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/trpc";
 import type { ReactNode } from "react";
+import { useLocalSearchParams } from "expo-router";
 
 import { CapsuleButton } from "../../components/capsule-button";
 import { Card } from "../../components/card";
@@ -55,10 +56,12 @@ export function FeeHeadsScreen() {
   const canRead = has("fee_head:read");
   const canCreate = has("fee_head:create");
   const canUpdate = has("fee_head:update");
+  const { create } = useLocalSearchParams<{ create?: string }>();
 
   const [sheet, setSheet] = useState<
     { mode: "create" } | { mode: "edit"; head: Head } | null
-  >(null);
+    // The sidebar's "Add a fee head" lands here with the sheet already open.
+  >(() => (create === "1" && canCreate ? { mode: "create" } : null));
   const [notice, setNotice] = useState<string | null>(null);
 
   const list = trpc.fees.head.list.useQuery(

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/trpc";
 import type { ReactNode } from "react";
@@ -50,11 +50,13 @@ export function FeeStructuresScreen() {
   const canRead = has("fee_structure:read");
   const canCreate = has("fee_structure:create") && sessionOpen;
   const canReadClasses = has("class:read");
+  const { create } = useLocalSearchParams<{ create?: string }>();
 
   const [showRetired, setShowRetired] = useState(false);
   const [sheet, setSheet] = useState<
     { mode: "create" } | { mode: "edit"; structure: Structure } | null
-  >(null);
+    // The sidebar's "Add a fee structure" lands here with the sheet already open.
+  >(() => (create === "1" && canCreate ? { mode: "create" } : null));
   const [notice, setNotice] = useState<string | null>(null);
 
   const list = trpc.fees.structure.list.useQuery(

@@ -10,7 +10,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeIn, LinearTransition } from "react-native-reanimated";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@repo/trpc";
 
@@ -82,6 +82,8 @@ export function ClassSectionScreen() {
 
   const canRead = has("class:read");
   const canCreateClass = has("class:create");
+  // The sidebar's "Create a class" lands here with the sheet already open.
+  const { create } = useLocalSearchParams<{ create?: string }>();
   const canEditClass = has("class:update") || has("class:delete");
   const canReadSections = has("section:read");
   const canAddSection = has("section:create") && Boolean(academicYear);
@@ -118,7 +120,7 @@ export function ClassSectionScreen() {
     | { kind: "class"; row: ClassRow | null }
     | { kind: "section"; classRow: ClassRow; row: SectionRow | null }
     | null
-  >(null);
+  >(() => (create === "1" && canCreateClass ? { kind: "class", row: null } : null));
   const [saved, setSaved] = useState<string | null>(null);
   useEffect(() => {
     if (!saved) return;

@@ -7,6 +7,9 @@ import { ThemedText } from "../../components/themed-text";
 import { colors } from "../../theme/brand-admin";
 import { radius, spacing, touch } from "../../theme/tokens";
 
+/** The rules that box the links: a full pixel, darker than the app's hairline. */
+const RULE = "rgba(16, 24, 40, 0.14)";
+
 /** One area's colour: the icon square and the wash behind the card's top. */
 export type Hue = { fg: string; tint: string };
 
@@ -182,8 +185,8 @@ const styles = StyleSheet.create({
   },
   links: {
     flexDirection: "row",
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.hairline,
+    borderTopWidth: 1,
+    borderTopColor: RULE,
   },
   link: {
     flex: 1,
@@ -195,8 +198,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   linkDivider: {
-    borderLeftWidth: StyleSheet.hairlineWidth,
-    borderLeftColor: colors.hairline,
+    borderLeftWidth: 1,
+    borderLeftColor: RULE,
   },
   linkPressed: {
     backgroundColor: colors.field,

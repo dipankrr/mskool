@@ -39,7 +39,7 @@ type SubjectRow = inferRouterOutputs<AppRouter>["subject"]["list"][number];
  * its own permission; the screen as a whole needs only `subject:read`.
  */
 export function SubjectMappingScreen() {
-  const params = useLocalSearchParams<{ classId?: string }>();
+  const params = useLocalSearchParams<{ classId?: string; create?: string }>();
   const { organizationId, schoolId, academicYear, ready } = useActiveContext();
   const meta = useBranchMeta();
   const { has } = usePermissions();
@@ -87,7 +87,8 @@ export function SubjectMappingScreen() {
     | { kind: "mapping"; id: string }
     | { kind: "classes"; row: SubjectRow }
     | null
-  >(null);
+    // The sidebar's "Add a subject" lands here with the sheet already open.
+  >(() => (params.create === "1" && canCreate ? { kind: "subject", row: null } : null));
   const [saved, setSaved] = useState<string | null>(null);
   useEffect(() => {
     if (!saved) return;

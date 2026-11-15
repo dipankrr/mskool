@@ -52,6 +52,30 @@ describe("buildNav", () => {
   });
 });
 
+describe("create lines", () => {
+  it("offers a create line only with the create grant", () => {
+    const read = buildNav(withGrants("class:read", "subject:read"));
+    const classes = read.flatMap((group) => group.items).find((item) => item.key === "classes")!;
+    expect(classes.subs.map((sub) => sub.key)).not.toContain("classes-create");
+
+    const write = buildNav(withGrants("class:read", "class:create", "subject:read", "subject:create"));
+    const items = write.flatMap((group) => group.items);
+    const create = items.find((item) => item.key === "classes")!.subs.find((sub) => sub.key === "classes-create")!;
+    expect(create.action).toBe(true);
+    expect(create.href).toEqual({ pathname: "/class-section", params: { create: "1" } });
+    expect(items.find((item) => item.key === "subjects")!.subs.map((sub) => sub.key)).toEqual([
+      "subjects-all",
+      "subjects-add",
+    ]);
+  });
+
+  it("is found by searching for the verb", () => {
+    const groups = buildNav(withGrants("class:read", "class:create", "fee_report:read", "fee_head:read", "fee_head:create"));
+    expect(searchNav(groups, "create").map((match) => match.key)).toContain("classes-create");
+    expect(searchNav(groups, "add").map((match) => match.key)).toContain("fees-add-head");
+  });
+});
+
 describe("searchNav", () => {
   const groups = buildNav(
     withGrants("student:read", "student:create", "student:update", "exam:read", "exam:create", "subject:read"),

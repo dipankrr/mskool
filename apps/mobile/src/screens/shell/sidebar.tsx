@@ -330,9 +330,13 @@ const styles = StyleSheet.create({
     left: 0,
     backgroundColor: colors.scrim,
   },
+  // Pinned to the window's top and bottom: a height taken from the row left a
+  // strip of the tab bar showing under the panel on Android.
   panel: {
-    flex: 0,
-    height: "100%",
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
     backgroundColor: colors.surface,
     borderTopRightRadius: radius.xl,
     borderBottomRightRadius: radius.xl,
