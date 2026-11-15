@@ -54,9 +54,14 @@ export function useAttendanceSection(preferredId: string | null | undefined) {
     return className ? `${className} · ${row.name}` : row.name;
   };
   const sectionLabel = section ? labelOf(section) : null;
+  // The class list's own order (lowest grade first) groups the picker.
+  const classOrder = new Map((classesQuery.data ?? []).map((cls, index) => [cls.id, index]));
   const sectionOptions = sections.map((row) => ({
     id: row.id,
     label: labelOf(row),
+    className: classNameById.get(row.classId) ?? null,
+    sectionName: row.name,
+    classOrder: classOrder.get(row.classId) ?? Number.MAX_SAFE_INTEGER,
   }));
 
   return { sectionsQuery, section, sectionLabel, sectionOptions };

@@ -1626,6 +1626,11 @@ export const copy = {
     section: {
       open: "Choose a section",
       sheetTitle: "Pick a section",
+      search: "Find a class",
+      noMatch: (query: string) => `No class matches “${query}”`,
+      otherClass: "Other",
+      clearSearch: "Clear search",
+      count: (n: number) => (n === 1 ? "1 section" : `${n} sections`),
     },
     /** The yearly summary panel (chunk 2). */
     summary: {
@@ -1747,6 +1752,7 @@ export const copy = {
       save: "Save attendance",
       saveChanges: (count: number) => (count === 1 ? "Save 1 change" : `Save ${count} changes`),
       saveProgress: (marked: number, total: number) => `${marked} of ${total} marked`,
+      saveRemaining: (left: number) => `${left} more to save`,
       saved: "Attendance done",
       doneTitle: "Attendance done",
       doneBody: (count: number) =>

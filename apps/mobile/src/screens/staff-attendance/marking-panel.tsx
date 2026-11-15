@@ -633,20 +633,27 @@ export function MarkingPanel({
               </ThemedText>
             ) : null}
           </View>
-          <HeadButton
-            icon="viewCompact"
-            label={words.viewList}
-            on={layout === "list"}
-            onPress={() => changeLayout("list")}
-            testID="attendance-layout-list"
-          />
-          <HeadButton
-            icon="viewYear"
-            label={words.viewGrid}
-            on={layout === "grid"}
-            onPress={() => changeLayout("grid")}
-            testID="attendance-layout-grid"
-          />
+          <View style={styles.layoutToggle} accessibilityRole="radiogroup">
+            {(["list", "grid"] as const).map((id) => (
+              <Pressable
+                key={id}
+                accessibilityRole="radio"
+                accessibilityLabel={id === "list" ? words.viewList : words.viewGrid}
+                accessibilityState={{ selected: layout === id }}
+                onPress={() => {
+                  if (layout !== id) changeLayout(id);
+                }}
+                style={[styles.layoutOption, layout === id ? styles.layoutOptionOn : null]}
+                testID={`attendance-layout-${id}`}
+              >
+                <AppIcon
+                  name={id === "list" ? "viewCompact" : "viewYear"}
+                  size={18}
+                  color={layout === id ? colors.accentDeep : colors.muted}
+                />
+              </Pressable>
+            ))}
+          </View>
           {canEditRows && !showStarter ? (
             <HeadButton
               icon="more"
@@ -991,7 +998,7 @@ function HeadButton({
   onPress,
   testID,
 }: {
-  icon: "viewCompact" | "viewYear" | "more";
+  icon: "more";
   label: string;
   on: boolean;
   onPress: () => void;
@@ -1153,15 +1160,31 @@ function SaveButton({
       ) : (
         <View style={styles.saveLabelRow}>
           {complete ? <AppIcon name="check" size={18} color={colors.accentDeep} /> : null}
-          <ThemedText
-            variant="bodyStrong"
-            color={colors.accentDeep}
-            numberOfLines={1}
-            style={styles.saveLabel}
-          >
-            {label}
-          </ThemedText>
-          {showCount ? (
+          {showCount && !complete ? (
+            // Owner, 2026-11-15: while anyone is left, the button says how
+            // many — "7/10 – 3 more to save" — instead of "Save attendance".
+            <ThemedText
+              variant="bodyStrong"
+              color={colors.accentDeep}
+              numberOfLines={1}
+              style={styles.saveLabel}
+            >
+              {`${counts.marked}/${total}`}
+              <ThemedText variant="bodyStrong" color={colors.accentDeep} style={styles.saveMore}>
+                {` – ${copy.attendance.marking.saveRemaining(total - counts.marked)}`}
+              </ThemedText>
+            </ThemedText>
+          ) : (
+            <ThemedText
+              variant="bodyStrong"
+              color={colors.accentDeep}
+              numberOfLines={1}
+              style={styles.saveLabel}
+            >
+              {label}
+            </ThemedText>
+          )}
+          {showCount && complete ? (
             <ThemedText variant="meta" color={colors.accentDeep} style={styles.saveCount}>
               {`${counts.marked}/${total}`}
             </ThemedText>
@@ -1273,6 +1296,23 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
   },
   headButtonPressed: { backgroundColor: colors.field },
+  /** Same pill as the Fees tab's list/year switch. */
+  layoutToggle: {
+    flexDirection: "row",
+    gap: spacing.xxs,
+    padding: spacing.xxs,
+    marginLeft: spacing.xs,
+    borderRadius: radius.full,
+    backgroundColor: colors.field,
+  },
+  layoutOption: {
+    width: 40,
+    height: 34,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  layoutOptionOn: { backgroundColor: colors.surface, boxShadow: "0 1px 2px rgba(16, 24, 40, 0.12)" },
   rowWrap: { backgroundColor: colors.surface, overflow: "hidden" },
   /** A saved day's list sits slightly back under the stamp. */
   dim: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: "rgba(16, 24, 40, 0.07)" },
@@ -1372,4 +1412,5 @@ const styles = StyleSheet.create({
   },
   saveLabel: { fontSize: fontSize.callout },
   saveCount: { fontFamily: fontFamily.medium },
+  saveMore: { fontFamily: fontFamily.medium },
 });
