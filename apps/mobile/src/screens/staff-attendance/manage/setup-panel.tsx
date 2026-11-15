@@ -15,7 +15,7 @@ import { usePermissions } from "../../../hooks/use-permissions";
 import { copy } from "../../../lib/copy";
 import { trpc } from "../../../lib/trpc";
 import { colors } from "../../../theme/brand-admin";
-import { fontFamily, radius, spacing } from "../../../theme/tokens";
+import { fontFamily, gutter, radius, spacing } from "../../../theme/tokens";
 import {
   DEFAULT_PATTERN,
   WEEK_ORDER,
@@ -150,8 +150,6 @@ export function CalendarSetup() {
       backAccessibilityLabel={copy.attendance.manage.back}
       backTestID="setup-back"
       padForTabBar
-      footer={footer}
-      footerVariant="bar"
       stickyHeader={<Steps step={step} onStep={(n) => n < step && setStep(n)} />}
     >
       {step === 1 ? (
@@ -258,6 +256,8 @@ export function CalendarSetup() {
         <Review totals={totals} pattern={pattern} overrides={overrides} from={from} end={end} range={sessionRange(from, end)} />
       ) : null}
       {step === 3 && setup.error ? <ErrorCard cause={setup.error} style={styles.note} /> : null}
+      {/* Inline, not a sticky footer: the attendance stack keeps the tab bar. */}
+      <View style={styles.actions}>{footer}</View>
 
       {editing ? (
         <EntrySheet
@@ -362,6 +362,13 @@ const MINI: Record<DayType, string> = {
   holiday: "#F9C7C2",
   weekend: "#F2F4F7",
 };
+const LEGEND: Record<DayType, string> = {
+  working: "working",
+  half_day: "half",
+  exam_day: "exam",
+  holiday: "holidays",
+  weekend: "off",
+};
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** A4: the number every % divides by, the mix, and twelve tiny months. */
@@ -418,7 +425,7 @@ function Review({
                 <ThemedText variant="caption" color={colors.ink} style={styles.bold}>
                   {n}
                 </ThemedText>{" "}
-                {words.typesLong[type].toLowerCase()}
+                {LEGEND[type]}
               </ThemedText>
             </View>
           ))}
@@ -469,7 +476,8 @@ const styles = StyleSheet.create({
   bold: { fontFamily: fontFamily.semibold },
   pressed: { opacity: 0.85 },
   disabled: { opacity: 0.5 },
-  steps: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingBottom: spacing.sm },
+  steps: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingBottom: spacing.sm, paddingHorizontal: gutter, backgroundColor: colors.canvas },
+  actions: { marginTop: spacing.xl },
   stepBar: { flex: 1, height: 4, borderRadius: radius.full, backgroundColor: colors.field },
   stepOn: { backgroundColor: colors.accent },
   footHint: { textAlign: "center", marginBottom: spacing.sm },
@@ -518,6 +526,6 @@ const styles = StyleSheet.create({
   months: { marginTop: spacing.md, flexDirection: "row", flexWrap: "wrap", rowGap: spacing.md, columnGap: "4%" as unknown as number },
   mini: { width: "22%" },
   miniHead: { flexDirection: "row", justifyContent: "space-between", marginBottom: 3 },
-  miniGrid: { flexDirection: "row", flexWrap: "wrap" },
-  miniCell: { width: `${100 / 7}%`, aspectRatio: 1, borderWidth: 0.75, borderColor: colors.surface, borderRadius: 2 },
+  miniGrid: { flexDirection: "row", flexWrap: "wrap", width: 7 * 10.5 },
+  miniCell: { width: 9, height: 9, margin: 0.75, borderRadius: 2 },
 });
