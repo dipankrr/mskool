@@ -3443,3 +3443,20 @@ page (unchanged, but bound by the same server rules).
 8. New reads: a person's history from `authz_audit_log`, roles ending in ±7 days with extend (`role_extended`), and a CSV staff export for `staff:export`.
 
 **Consequences.** Migration 0059. Leave is not audited. The PDF staff list and leave requests are not built.
+
+## ADR-071 - The staff app has three shell surfaces: More for areas, a sidebar for every screen, an account popup for who and where
+
+**Date:** 2026-11-16. **Status:** accepted (owner, mockup `prototype/more-and-sidebar-v2.html`; built and merged the same day). Replaces section 3 of `docs/design/mobile/04-navigation-proposal.md` (the context chip on Home) and that document's description of More.
+
+**Context.** More had grown into one list that mixed identity, the branch and session switchers, and a row per feature; the owner called it "a pile of tabs". Screens with no tab (exam rules, fee setup, attendance setup, bulk photos) were reachable only from inside another screen. The owner asked for More to give the big untabbed areas a proper place, for a sidebar "like the web sidebar" full of quick actions and redirects, and for identity and context to live in a profile popup.
+
+**Decision.**
+1. **More is a showcase, not a list.** One card per area that has no tab: Exams, Academics, Staff (a teacher sees Teaching in its place), School. A card shows the area's state from reads the app already has and up to four links into it. It holds no account rows and no switchers.
+2. **The sidebar is the map.** It mirrors web's `NAV_GROUPS` (Daily, Academics, Administration) with fold-open items, adds the phone-only screens (Homework, Teaching, Photo day), and has a search over its own lines. It repeats the tabs so it is complete.
+3. **A sidebar line is a place or an action.** An action that needs a choice first goes to the screen where the choice is made (Add a section opens Classes and sections). Four list screens accept `?create=1` and open with their add sheet up. Only what needs one particular student, staff member or paper is left out.
+4. **Every line is filtered on its own permission hint.** A sub-line never rescues an item the caller cannot open; a group the caller holds nothing in is dropped with its heading. The list is pure (`screens/shell/nav.ts`) and tested.
+5. **The sidebar opens from the menu button only.** No edge swipe, so the system back gesture and sideways grids keep working. Back closes it.
+6. **The account popup opens from the avatar.** Name, roles, branch (a list when there is more than one, a fact otherwise), session (ADR-066's rules unchanged; a past session shows first, in the caution tone, with one tap back), Profile and access, Change password, Sign out.
+7. **Both are mounted once**, in `(staff)/_layout.tsx` through `ShellProvider`; a tab shows `ShellBar` (menu left, avatar right) to reach them.
+
+**Consequences.** Mobile only; no API, contract or schema change. Branch and session switching moved from More to the account popup. `ShellBar` is on Home and More only: Attendance, Students, Homework and Fees have their own headers and are not done. Screens web has and the phone lacks are not listed in the sidebar. Several sidebar lines open the same screen by design. Timetable shows as "Soon" on More and in the sidebar. The sidebar and the account popup were not walked on a device before the merge, and iOS and TalkBack are unchecked.

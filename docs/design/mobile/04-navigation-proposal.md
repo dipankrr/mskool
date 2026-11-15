@@ -1,6 +1,10 @@
 # 04 — Navigation proposal (the decision the review locks)
 
 Status: draft for owner review (2026-10-17, grounded at commit `6e1984b`).
+
+> **2026-11-16:** section 3 (the context chip on Home) and the description of
+> More are replaced by ADR-071: More is showcase cards, a sidebar lists every
+> screen, and branch and session live in an account popup opened from the avatar.
 Inputs: the three journeys above, the principal's cross-branch requirement
 (`docs/MOBILE_PLAN.md` lines 389–401), and the real context model below.
 
