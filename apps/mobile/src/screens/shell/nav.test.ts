@@ -76,6 +76,44 @@ describe("create lines", () => {
   });
 });
 
+describe("actions that need a choice first", () => {
+  const groups = buildNav(
+    withGrants(
+      "class:read",
+      "section:create",
+      "teacher_assignment:read",
+      "teacher_assignment:create",
+      "exam:read",
+      "exam:create",
+      "marks:create",
+    ),
+  );
+  const sub = (key: string) =>
+    groups.flatMap((group) => group.items).flatMap((item) => item.subs).find((line) => line.key === key)!;
+
+  it("sends Add a section to the class list", () => {
+    expect(sub("classes-add-section")).toMatchObject({ href: "/class-section", action: true });
+  });
+
+  it("sends Assign a teacher to Teaching", () => {
+    expect(sub("teaching-assign")).toMatchObject({ href: "/teaching", action: true });
+  });
+
+  it("sends Enter marks and the rule adds to their lists", () => {
+    expect(sub("exams-enter-marks").href).toBe("/exams");
+    expect(sub("exams-add-criteria").href).toBe("/exams/setup/pass-criteria");
+    expect(sub("exams-add-rule").href).toBe("/exams/setup/annual-rules");
+  });
+
+  it("hides them without the write grant", () => {
+    const readOnly = buildNav(withGrants("class:read", "teacher_assignment:read", "exam:read"));
+    const keys = readOnly.flatMap((group) => group.items).flatMap((item) => item.subs.map((line) => line.key));
+    expect(keys).not.toContain("classes-add-section");
+    expect(keys).not.toContain("teaching-assign");
+    expect(keys).not.toContain("exams-enter-marks");
+  });
+});
+
 describe("searchNav", () => {
   const groups = buildNav(
     withGrants("student:read", "student:create", "student:update", "exam:read", "exam:create", "subject:read"),

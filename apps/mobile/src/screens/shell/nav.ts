@@ -10,8 +10,10 @@ import { copy } from "../../lib/copy";
  * so a sub-line never rescues a parent the caller cannot open; the server
  * re-checks every screen anyway.
  *
- * Only screens that open with no parameters belong here. A screen that needs a
- * student, a staff member or a paper is reached from that record.
+ * A line is a place or an action. An action that needs something chosen first
+ * (a section needs its class, a teacher needs a section) goes to the screen
+ * where that choice is made, not to a dead end. Only what needs one particular
+ * student, staff member or paper stays out: that is reached from the record.
  */
 
 export type NavSub = {
@@ -51,6 +53,8 @@ export function buildNav(has: Has): NavGroup[] {
   const n = copy.shell.nav;
   const canPhotos = has("student:update") && has("student:read");
   const canExamSetup = has("exam:create") || has("exam:update");
+  const canAttendanceSetup = has("attendance:update");
+  const canFeeSetup = has("fee_structure:read");
 
   const groups: { key: string; label: string | null; items: ItemDraft[] }[] = [
     {
@@ -72,6 +76,9 @@ export function buildNav(has: Has): NavGroup[] {
             { key: "students-admit", label: n.admit, href: "/admit-student", action: true, can: has("student:create") },
             { key: "students-photos", label: n.bulkPhotos, href: "/students/photos", can: canPhotos },
             { key: "students-photo-day", label: n.photoDay, href: "/students/photo-day", can: canPhotos },
+            // Per student: the roster is where one is picked.
+            { key: "students-edit", label: n.editStudent, href: "/(staff)/(tabs)/students", tab: true, action: true, can: has("student:update") },
+            { key: "students-family", label: n.familyLogin, href: "/(staff)/(tabs)/students", tab: true, action: true, can: has("student:update") },
           ],
         },
         {
@@ -81,7 +88,11 @@ export function buildNav(has: Has): NavGroup[] {
           can: any("attendance:read", "attendance:create"),
           subs: [
             { key: "attendance-mark", label: n.markAttendance, href: "/attendance", tab: true, action: has("attendance:create"), can: true },
-            { key: "attendance-setup", label: n.attendanceSetup, href: "/attendance/manage", can: has("attendance:update") },
+            { key: "attendance-calendar", label: n.attendanceCalendar, href: "/attendance/manage/calendar", can: canAttendanceSetup },
+            { key: "attendance-holiday", label: n.markHoliday, href: "/attendance/manage/calendar", action: true, can: canAttendanceSetup },
+            // Periods and policy are per section: the hub is where one is picked.
+            { key: "attendance-periods", label: n.attendancePeriods, href: "/attendance/manage", can: canAttendanceSetup },
+            { key: "attendance-policy", label: n.attendancePolicy, href: "/attendance/manage", can: canAttendanceSetup },
           ],
         },
         {
@@ -92,6 +103,7 @@ export function buildNav(has: Has): NavGroup[] {
           subs: [
             { key: "homework-tab", label: n.homeworkToday, href: "/homework", tab: true, can: true },
             { key: "homework-give", label: n.giveHomework, href: "/homework/give", action: true, can: has("homework:create") },
+            { key: "homework-check", label: n.checkHomework, href: "/homework", tab: true, action: true, can: has("homework:update") },
             { key: "homework-all", label: n.allHomework, href: "/homework/all", can: true },
           ],
         },
@@ -105,7 +117,12 @@ export function buildNav(has: Has): NavGroup[] {
             { key: "fees-collect", label: n.collect, href: "/fees/collect", action: true, can: has("fee_payment:create") },
             { key: "fees-payments", label: n.payments, href: "/fees/payments", can: has("fee_payment:read") },
             { key: "fees-ledger", label: n.ledger, href: "/fees/ledger", can: has("fee_report:read") },
-            { key: "fees-setup", label: n.feeSetup, href: "/fees/setup", can: has("fee_structure:read") },
+            { key: "fees-receipt", label: n.printReceipt, href: "/fees/payments", action: true, can: has("fee_payment:read") },
+            { key: "fees-setup", label: n.feeSetup, href: "/fees/setup", can: canFeeSetup },
+            { key: "fees-heads", label: n.feeHeads, href: "/fees/setup/heads", can: has("fee_head:read") },
+            { key: "fees-structures", label: n.feeStructures, href: "/fees/setup/structures", can: canFeeSetup },
+            { key: "fees-services", label: n.feeServices, href: "/fees/setup/services", can: canFeeSetup },
+            { key: "fees-previous-dues", label: n.previousDues, href: "/fees/setup/previous-dues", can: canFeeSetup },
             {
               key: "fees-add-head",
               label: n.addFeeHead,
@@ -142,6 +159,8 @@ export function buildNav(has: Has): NavGroup[] {
               action: true,
               can: has("class:create"),
             },
+            // A section belongs to a class: the list is where its class is picked.
+            { key: "classes-add-section", label: n.addSection, href: "/class-section", action: true, can: has("section:create") },
             { key: "classes-terms", label: n.terms, href: "/terms", can: has("academic_year:read") },
             {
               key: "classes-add-term",
@@ -167,6 +186,7 @@ export function buildNav(has: Has): NavGroup[] {
               action: true,
               can: has("subject:create"),
             },
+            { key: "subjects-map", label: n.mapSubjects, href: "/subject-mapping", action: true, can: has("subject:update") },
           ],
         },
         {
@@ -177,9 +197,17 @@ export function buildNav(has: Has): NavGroup[] {
           subs: [
             { key: "exams-all", label: n.allExams, href: "/exams", can: true },
             { key: "exams-create", label: n.createExam, href: "/exams/exam-form", action: true, can: has("exam:create") },
+            // Marks belong to a paper: the exam list is where one is picked.
+            { key: "exams-enter-marks", label: n.enterMarks, href: "/exams", action: true, can: has("marks:create") },
             { key: "exams-term-grades", label: n.termGrades, href: "/exams/term-grades", can: true },
             { key: "exams-final", label: n.finalResults, href: "/exams/final", can: has("exam:update") },
             { key: "exams-setup", label: n.examSetup, href: "/exams/setup", can: canExamSetup },
+            { key: "exams-scales", label: n.gradingScales, href: "/exams/setup/grading-scales", can: canExamSetup },
+            { key: "exams-pass-criteria", label: n.passCriteria, href: "/exams/setup/pass-criteria", can: canExamSetup },
+            { key: "exams-add-criteria", label: n.addPassCriteria, href: "/exams/setup/pass-criteria", action: true, can: has("exam:create") },
+            { key: "exams-annual-rules", label: n.annualRules, href: "/exams/setup/annual-rules", can: canExamSetup },
+            { key: "exams-add-rule", label: n.addAnnualRule, href: "/exams/setup/annual-rules", action: true, can: has("exam:create") },
+            { key: "exams-subject-types", label: n.subjectTypes, href: "/exams/setup/subject-types", can: canExamSetup },
             {
               key: "exams-add-scale",
               label: n.addGradingScale,
@@ -196,6 +224,8 @@ export function buildNav(has: Has): NavGroup[] {
           can: has("teacher_assignment:read"),
           subs: [
             { key: "teaching-overview", label: n.teachingOverview, href: "/teaching", can: true },
+            // A teacher is given to a section: Teaching is where one is picked.
+            { key: "teaching-assign", label: n.assignTeacher, href: "/teaching", action: true, can: has("teacher_assignment:create") },
             { key: "teaching-settings", label: n.teachingSettings, href: "/teaching-settings", can: has("school_settings:update") },
           ],
         },
@@ -214,14 +244,21 @@ export function buildNav(has: Has): NavGroup[] {
           subs: [
             { key: "staff-all", label: n.allStaff, href: "/staff-list", can: true },
             { key: "staff-add", label: n.addStaff, href: "/staff-form", action: true, can: has("staff:create") },
+            // Per person: the staff list is where one is picked.
+            { key: "staff-leave", label: n.staffLeave, href: "/staff-list", action: true, can: has("staff:update") },
+            { key: "staff-invite", label: n.inviteStaff, href: "/staff-list", action: true, can: has("staff:update") },
           ],
         },
         {
           key: "roles",
           label: n.roles,
           icon: "shield",
-          href: "/roles",
           can: any("role_assignment:read", "role_permission:read"),
+          subs: [
+            { key: "roles-all", label: n.allRoles, href: "/roles", can: true },
+            { key: "roles-give", label: n.giveRole, href: "/roles", action: true, can: has("role_assignment:assign") },
+            { key: "roles-edit", label: n.editPermissions, href: "/roles", action: true, can: has("role_permission:update") },
+          ],
         },
         {
           key: "branches",

@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  Dimensions,
   Modal,
   Pressable,
   ScrollView,
@@ -10,7 +11,7 @@ import {
 } from "react-native";
 import { usePathname } from "expo-router";
 import type { Href } from "expo-router";
-import Animated, { SlideInLeft } from "react-native-reanimated";
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppIcon } from "../../components/app-icon";
@@ -96,6 +97,19 @@ function Panel({ onClose, onGo }: { onClose: () => void; onGo: GoTo }) {
 
   const meta = [branchName, academicYear?.name].filter(Boolean).join(" · ");
 
+  // The slide is a transform and nothing else. A layout animation measured the
+  // panel once, as it entered, and kept that height: when the modal's window
+  // settled a moment later (it grows under the system bars), the panel stayed
+  // short and the tab bar showed beneath it.
+  const offset = useSharedValue(-width);
+  useEffect(() => {
+    offset.value = withTiming(0, { duration: motion.base });
+  }, [offset]);
+  const slide = useAnimatedStyle(() => ({ transform: [{ translateX: offset.value }] }));
+  // The whole screen, system bars included: the floor under the panel's height
+  // while the window is still settling.
+  const screenHeight = Dimensions.get("screen").height;
+
   return (
     <View style={styles.root}>
       <View style={styles.scrim}>
@@ -108,10 +122,13 @@ function Panel({ onClose, onGo }: { onClose: () => void; onGo: GoTo }) {
         />
       </View>
       <Animated.View
-        entering={SlideInLeft.duration(motion.base)}
         accessibilityViewIsModal
         testID="sidebar"
-        style={[styles.panel, { width, paddingTop: insets.top + spacing.md }]}
+        style={[
+          styles.panel,
+          { width, minHeight: screenHeight, paddingTop: insets.top + spacing.md },
+          slide,
+        ]}
       >
         <View style={styles.head}>
           <IconTile name="school" size={40} tone="accent" />
@@ -247,6 +264,15 @@ function Item({
   onGo: (href: Href, tab: boolean) => void;
 }) {
   const folds = item.subs.length > 0;
+  // Several lines can lead to one screen (the list, and the actions that
+  // start from it); only the place itself is marked as where you are.
+  const currentKey =
+    item.subs.find(
+      (sub) =>
+        !sub.action &&
+        typeof sub.href === "string" &&
+        sub.href.replace(/\/\([^)]+\)/g, "") === pathname,
+    )?.key ?? null;
   return (
     <View>
       <Pressable
@@ -283,8 +309,7 @@ function Item({
       {folds && open ? (
         <View style={styles.subs}>
           {item.subs.map((sub) => {
-            const current =
-              typeof sub.href === "string" && sub.href.replace(/\/\([^)]+\)/g, "") === pathname;
+            const current = sub.key === currentKey;
             return (
               <Pressable
                 key={sub.key}
@@ -330,8 +355,7 @@ const styles = StyleSheet.create({
     left: 0,
     backgroundColor: colors.scrim,
   },
-  // Pinned to the window's top and bottom: a height taken from the row left a
-  // strip of the tab bar showing under the panel on Android.
+  // Pinned to the window's top and bottom, never sized from its row.
   panel: {
     position: "absolute",
     top: 0,
