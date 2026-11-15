@@ -189,7 +189,7 @@ const styles = StyleSheet.create({
   back: {
     width: 48,
     height: 48,
-    marginLeft: -spacing.lg,
+    marginLeft: -gutter,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.full,

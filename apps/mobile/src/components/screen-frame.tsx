@@ -321,7 +321,9 @@ const styles = StyleSheet.create({
   back: {
     width: 48,
     height: 48,
-    marginLeft: -spacing.lg,
+    // The chevron glyph's stroke starts ~20 dp into its 48 dp box; pulling
+    // the box back by the gutter lines the stroke up with the title below.
+    marginLeft: -gutter,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.full,

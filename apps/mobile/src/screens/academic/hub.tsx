@@ -194,7 +194,8 @@ const styles = StyleSheet.create({
   back: {
     width: 44,
     height: 44,
-    marginLeft: -spacing.md,
+    // Lines the chevron stroke up with the title (see ScreenFrame).
+    marginLeft: -18,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 22,
