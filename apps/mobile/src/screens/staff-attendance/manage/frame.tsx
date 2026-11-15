@@ -17,6 +17,7 @@ export function ManageFrame({
   action,
   overflowAction,
   stickyHeader,
+  titleInTopRow,
   children,
 }: {
   title: string;
@@ -26,6 +27,7 @@ export function ManageFrame({
   action?: HeaderAction;
   overflowAction?: HeaderAction;
   stickyHeader?: ReactNode;
+  titleInTopRow?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -40,6 +42,7 @@ export function ManageFrame({
       action={action}
       overflowAction={overflowAction}
       stickyHeader={stickyHeader}
+      titleInTopRow={titleInTopRow}
     >
       {children}
     </ScreenFrame>

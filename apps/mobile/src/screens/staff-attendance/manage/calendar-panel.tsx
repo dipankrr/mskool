@@ -174,6 +174,7 @@ export function ManageCalendar() {
     <ManageFrame
       title={copy.attendance.manage.rows.calendar}
       meta={[academicYear?.name, branchMeta].filter(Boolean).join(" · ")}
+      titleInTopRow
       action={
         canManage && !empty && !loading && !failed
           ? { label: words.addHoliday, icon: "add", onPress: () => setEntryOpen({ entry: null }) }
