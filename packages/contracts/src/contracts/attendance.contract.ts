@@ -142,6 +142,20 @@ export const setupCalendarSchema = z.object({
 });
 export type SetupCalendarInput = z.infer<typeof setupCalendarSchema>;
 
+/**
+ * A new normal week from a date on (ADR-069): "from December, Saturdays are
+ * off". Only days that still follow the week change — named entries
+ * (holidays, exams, named half days) and days with attendance stay. `dryRun`
+ * returns the counts without writing.
+ */
+export const changePatternSchema = z.object({
+  academicYearId: z.uuid(),
+  weekdays: weekPatternSchema,
+  from: isoDate,
+  dryRun: z.boolean().optional(),
+});
+export type ChangePatternInput = z.infer<typeof changePatternSchema>;
+
 /** Several dates set to one type and name at once (multi-select, ranges). */
 export const setCalendarDaysSchema = z.object({
   academicYearId: z.uuid(),

@@ -3,6 +3,7 @@ import { refuse } from "./service-error";
 import { scopeWhere, type DataScope } from "@repo/authz";
 import type {
   CalendarUsageInput,
+  ChangePatternInput,
   CalendarYearInput,
   SessionDatesPreviewInput,
   SetCalendarDaysInput,
@@ -539,6 +540,82 @@ export class AttendanceService {
       );
       await recomputeMarkedInYear(tx, organizationId, schoolId, year.id, dates);
       return { set };
+    });
+  }
+
+  /**
+   * A new normal week from a date on. Days on or after `from` that still
+   * follow the week (no name, a working / half-day / off type) take the new
+   * week's type; named entries keep theirs, and days that already have
+   * attendance are left alone and counted as skipped. The saved pattern
+   * becomes the new week. `dryRun` reports without writing.
+   */
+  async changeWeekPattern(scope: DataScope, input: ChangePatternInput, actorId: string | null) {
+    const year = await this.yearForCalendar(scope, input.academicYearId);
+    const schoolId = requireSchoolId(scope);
+    const organizationId = scope.organizationId;
+    if (input.from < year.startDate || input.from > year.endDate) {
+      throw refuse("BAD_REQUEST", "Pick a date inside this session.");
+    }
+    const rows = await db
+      .select({ date: academicCalendar.date, dayType: academicCalendar.dayType, reason: academicCalendar.reason })
+      .from(academicCalendar)
+      .where(
+        and(
+          eq(academicCalendar.schoolId, schoolId),
+          eq(academicCalendar.academicYearId, year.id),
+          gte(academicCalendar.date, input.from),
+          lte(academicCalendar.date, year.endDate),
+        ),
+      );
+    const marked = new Set(
+      (
+        await db
+          .selectDistinct({ date: dailyAttendanceStatus.date })
+          .from(dailyAttendanceStatus)
+          .where(
+            and(
+              eq(dailyAttendanceStatus.schoolId, schoolId),
+              eq(dailyAttendanceStatus.academicYearId, year.id),
+              gte(dailyAttendanceStatus.date, input.from),
+            ),
+          )
+      ).map((m) => m.date),
+    );
+    const follows = (row: { dayType: string; reason: string | null }) =>
+      row.reason === null && (row.dayType === "working" || row.dayType === "half_day" || row.dayType === "weekend");
+    const changes: { date: string; dayType: PatternDay }[] = [];
+    let skipped = 0;
+    for (const row of rows) {
+      if (!follows(row)) continue;
+      const next = patternDayType(input.weekdays, row.date);
+      if (next === row.dayType) continue;
+      if (marked.has(row.date)) {
+        skipped += 1;
+        continue;
+      }
+      changes.push({ date: row.date, dayType: next });
+    }
+    const schoolDelta = changes.reduce((n, c) => {
+      const was = rows.find((row) => row.date === c.date)!.dayType;
+      return n + (SCHOOL_DAY_TYPES.has(c.dayType) ? 1 : 0) - (SCHOOL_DAY_TYPES.has(was) ? 1 : 0);
+    }, 0);
+    if (input.dryRun) return { changed: changes.length, skipped, schoolDelta };
+
+    return db.transaction(async (tx) => {
+      await saveWeekPattern(tx, organizationId, schoolId, year.id, input.weekdays, actorId);
+      if (changes.length > 0) {
+        await writeDays(
+          tx,
+          organizationId,
+          schoolId,
+          year.id,
+          changes.map((c) => ({ date: c.date, dayType: c.dayType, reason: null })),
+          actorId,
+        );
+        await recomputeMarkedInYear(tx, organizationId, schoolId, year.id, changes.map((c) => c.date));
+      }
+      return { changed: changes.length, skipped, schoolDelta };
     });
   }
 

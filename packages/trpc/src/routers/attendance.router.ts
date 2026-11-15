@@ -3,6 +3,7 @@ import {
   attendanceSummarySelectSchema,
   calendarDaySelectSchema,
   calendarUsageSchema,
+  changePatternSchema,
   calendarYearSchema,
   sessionDatesPreviewSchema,
   setCalendarDaysSchema,
@@ -201,6 +202,23 @@ const calendarRouter = router({
     .output(z.object({ set: z.number().int() }))
     .mutation(async ({ ctx, input }) =>
       attendanceService.setCalendarDays(ctx.scope, input.data, ctx.userId),
+    ),
+
+  // ADR-069: a new normal week from a date on.
+  changePattern: staffProcedure("attendance:update")
+    .meta({
+      openapi: {
+        method: "POST",
+        path: "/attendance/calendar/pattern",
+        tags: ["attendance"],
+        summary: "Change a session's weekly pattern from a date on",
+        protect: true,
+      },
+    })
+    .input(z.object({ schoolId: z.uuid(), data: changePatternSchema }))
+    .output(z.object({ changed: z.number().int(), skipped: z.number().int(), schoolDelta: z.number().int() }))
+    .mutation(async ({ ctx, input }) =>
+      attendanceService.changeWeekPattern(ctx.scope, input.data, ctx.userId),
     ),
 
   // ADR-069: fill missing dates from the saved week.
