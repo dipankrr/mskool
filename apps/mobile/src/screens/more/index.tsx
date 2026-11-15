@@ -292,7 +292,7 @@ export function MoreScreen() {
           </>
         ) : null}
 
-        {has("staff:read") || has("teacher_assignment:read") ? (
+        {has("staff:read") || has("teacher_assignment:read") || has("role_assignment:read") ? (
           <>
             <SectionLabel>Staff and teaching</SectionLabel>
             <Card padless>
@@ -314,6 +314,16 @@ export function MoreScreen() {
                   onPress={() => router.push("/teaching")}
                   first={!has("staff:read")}
                   testID="more-teaching"
+                />
+              ) : null}
+              {has("role_assignment:read") || has("role_permission:read") ? (
+                <LinkRow
+                  title="Roles"
+                  detail="Who has each one, and what it can do"
+                  icon="shield"
+                  onPress={() => router.push("/roles")}
+                  first={!has("staff:read") && !has("teacher_assignment:read")}
+                  testID="more-roles"
                 />
               ) : null}
             </Card>

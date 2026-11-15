@@ -7,10 +7,12 @@ import type { AppIconName } from "../../components/app-icon";
 import { ScreenFrame } from "../../components/screen-frame";
 import { ThemedText } from "../../components/themed-text";
 import { useActiveContext, useActiveBranchName } from "../../hooks/use-active-context";
+import { usePermissions } from "../../hooks/use-permissions";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { radius, spacing } from "../../theme/tokens";
 import { InviteSheet } from "./invite-sheet";
+import { roleLabel } from "./role-logic";
 import { StaffAvatar } from "./staff-photo";
 
 /**
@@ -18,14 +20,20 @@ import { StaffAvatar } from "./staff-photo";
  * steps come after saving — invite, give classes, or add the next person.
  * Adding thirty staff on day one is a loop of Add staff → here → Add another.
  */
-export function StaffAddedScreen({ id }: { id: string }) {
+export function StaffAddedScreen({ id, failed }: { id: string; failed?: string }) {
   const { organizationId } = useActiveContext();
   const branchName = useActiveBranchName();
+  const { has } = usePermissions();
   const row = trpc.staff.byId.useQuery(
     { organizationId: organizationId ?? "", id },
     { enabled: Boolean(organizationId) },
   );
+  const roles = trpc.role.forStaff.useQuery(
+    { organizationId: organizationId ?? "", staffId: id },
+    { enabled: Boolean(organizationId) && has("role_assignment:read") },
+  );
   const [invite, setInvite] = useState(false);
+  const waiting = (roles.data ?? []).filter((r) => r.waiting).map((r) => roleLabel(r.roleType));
   const data = row.data;
   const name = data ? `${data.firstName} ${data.lastName}`.trim() : "";
 
@@ -50,6 +58,15 @@ export function StaffAddedScreen({ id }: { id: string }) {
         </ThemedText>
       </View>
 
+      {failed ? (
+        <View style={styles.failed} testID="added-role-failed">
+          <AppIcon name="warningCircle" size={18} color={colors.tone.critical.fg} />
+          <ThemedText variant="meta" style={styles.failedText}>
+            Couldn’t give {failed}. Try again from their profile.
+          </ThemedText>
+        </View>
+      ) : null}
+
       <ThemedText variant="sectionLabel" style={styles.label}>
         Next
       </ThemedText>
@@ -60,7 +77,11 @@ export function StaffAddedScreen({ id }: { id: string }) {
           bg="#E3F7EA"
           fg="#1DA851"
           title={data?.firstName ? `Invite ${data.firstName} to the app` : "Invite to the app"}
-          sub="Send their joining code on WhatsApp"
+          sub={
+            waiting.length > 0
+              ? `Their ${waiting.join(" and ")} access starts when they join`
+              : "Send their joining code on WhatsApp"
+          }
           onPress={() => setInvite(true)}
           testID="added-invite"
         />
@@ -142,6 +163,15 @@ function Step({
 }
 
 const styles = StyleSheet.create({
+  failed: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.tone.critical.bg,
+    marginTop: spacing.lg,
+  },
+  failedText: { flex: 1, color: colors.tone.critical.fg },
   hero: { alignItems: "center", gap: spacing.xs, marginTop: spacing.lg },
   title: { marginTop: spacing.md },
   label: { marginTop: spacing.xxl, marginLeft: spacing.xs, marginBottom: spacing.xs + 2 },

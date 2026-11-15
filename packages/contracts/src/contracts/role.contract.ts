@@ -95,6 +95,8 @@ export type PermissionCategory = z.infer<typeof permissionCategorySchema>;
 export const rolePermissionDefaultsSchema = z.object({
   catalog: z.array(permissionCategorySchema),
   defaults: z.array(rolePermissionRowSchema),
+  /** Permissions re-checked on every use (money, results, access). */
+  sensitive: z.array(z.string()),
 });
 export type RolePermissionDefaults = z.infer<typeof rolePermissionDefaultsSchema>;
 

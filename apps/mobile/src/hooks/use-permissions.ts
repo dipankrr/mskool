@@ -30,14 +30,33 @@ export function usePermissions() {
     return union;
   }, [me, organizationId]);
 
+  // Held through an org-level grant: may act for every branch at once (give
+  // an org-wide role, for one).
+  const orgWide = useMemo(() => {
+    const memberships = me?.memberships ?? [];
+    const scoped = organizationId
+      ? memberships.filter((m) => m.organization.id === organizationId)
+      : memberships;
+    return new Set(scoped.flatMap((m) => m.orgWidePermissions ?? []));
+  }, [me, organizationId]);
+  // The roles this person holds here: the permission editor's self-lock.
+  const roleTypes = useMemo(() => {
+    const memberships = me?.memberships ?? [];
+    const scoped = organizationId
+      ? memberships.filter((m) => m.organization.id === organizationId)
+      : memberships;
+    return [...new Set(scoped.flatMap((m) => m.roleTypes))];
+  }, [me, organizationId]);
+
   const has = useCallback(
     (permission: string) => permissions.has(permission),
     [permissions],
   );
+  const hasOrgWide = useCallback((permission: string) => orgWide.has(permission), [orgWide]);
   const hasAny = useCallback(
     (...candidates: string[]) => candidates.some((p) => permissions.has(p)),
     [permissions],
   );
 
-  return { permissions, has, hasAny };
+  return { permissions, has, hasAny, hasOrgWide, roleTypes };
 }

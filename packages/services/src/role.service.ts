@@ -5,6 +5,7 @@ import {
   isPermission,
   RESOURCE_ACTIONS,
   RESOURCE_CATEGORIES,
+  SENSITIVE_PERMISSIONS,
 } from "@repo/authz";
 import type {
   AssignRoleInput,
@@ -333,6 +334,7 @@ export class RoleService {
   permissionDefaults(): {
     catalog: PermissionCategory[];
     defaults: { roleType: RoleType; permission: string }[];
+    sensitive: string[];
   } {
     const byCategory = new Map<string, PermissionCategory["resources"]>();
     for (const [category, resources] of Object.entries(RESOURCE_CATEGORIES)) {
@@ -357,7 +359,7 @@ export class RoleService {
         })),
     );
 
-    return { catalog, defaults };
+    return { catalog, defaults, sensitive: [...SENSITIVE_PERMISSIONS] };
   }
 
   /**

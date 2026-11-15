@@ -17,6 +17,7 @@ import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { fontFamily, fontSize, radius, spacing } from "../../theme/tokens";
 import { StaffAvatar } from "./staff-photo";
+import { StaffExportSheet } from "./staff-export";
 import { fullName, hasLeft, isOffice, staffCounts, staffGroups, teachingTags } from "./staff-list-logic";
 import type { StaffTab } from "./staff-list-logic";
 
@@ -37,6 +38,7 @@ export function StaffListScreen() {
   const [q, setQ] = useState("");
   const [showLeft, setShowLeft] = useState(false);
   const [notOnAppOnly, setNotOnAppOnly] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const enabled = Boolean(organizationId && schoolId);
   const list = trpc.staff.list.useQuery(
     { organizationId: organizationId ?? "", schoolId: schoolId ?? "", includeInactive: true },
@@ -90,6 +92,16 @@ export function StaffListScreen() {
             <ThemedText variant="bodyStrong" style={styles.link}>
               Cancel
             </ThemedText>
+          </Pressable>
+        ) : has("staff:export") ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Export staff"
+            onPress={() => setExporting(true)}
+            style={styles.exportBtn}
+            testID="staff-export"
+          >
+            <AppIcon name="share" size={18} color={colors.ink} />
           </Pressable>
         ) : null}
       </View>
@@ -177,6 +189,7 @@ export function StaffListScreen() {
           />
         </View>
       ) : null}
+      {exporting ? <StaffExportSheet count={counts.all} onClose={() => setExporting(false)} /> : null}
     </ScreenFrame>
   );
 }
@@ -316,6 +329,7 @@ function monthYear(iso: string) {
 
 const styles = StyleSheet.create({
   searchRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  exportBtn: { width: 44, height: 44, borderRadius: 12, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.hairline },
   search: {
     flex: 1,
     flexDirection: "row",

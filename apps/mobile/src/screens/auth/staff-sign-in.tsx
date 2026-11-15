@@ -28,6 +28,7 @@ type Step = "phone" | "password" | "code" | "newPassword";
 
 const COPY = {
   title: "Staff sign in",
+  paused: "Your school has paused your access to the app. Talk to the office.",
   phoneLead: "Use the phone number your school has for you.",
   phoneLabel: "Phone number",
   continue: "Continue",
@@ -118,6 +119,7 @@ export function StaffSignIn({
     setBusy(false);
     if (state === "tooMany") setError(COPY.tooMany);
     else if (state === "network") setError(COPY.network);
+    else if (state === "paused") setError(COPY.paused);
     else goto(state);
   }
 

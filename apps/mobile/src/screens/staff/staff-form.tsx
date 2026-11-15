@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pressable, StyleSheet, Switch, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { router } from "expo-router";
 
 import { AppIcon } from "../../components/app-icon";
@@ -8,7 +8,8 @@ import { CapsuleButton } from "../../components/capsule-button";
 import { ScreenFrame } from "../../components/screen-frame";
 import { ThemedText } from "../../components/themed-text";
 import { phoneDigits } from "../../family/lib/sign-in";
-import { useActiveContext } from "../../hooks/use-active-context";
+import { useActiveBranchName, useActiveContext } from "../../hooks/use-active-context";
+import { usePermissions } from "../../hooks/use-permissions";
 import { thrownMessage } from "../../lib/errors";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
@@ -17,13 +18,18 @@ import { PhotoSourceSheet } from "../students/student-photo";
 import type { PickedImage } from "../students/student-photo";
 import { StaffAvatar, useStaffPhotoUploader } from "./staff-photo";
 import { looksLikeTeacher, splitName } from "./staff-logic";
+import { givableRoles, isOrgOnly, roleLabel, titleFromPicks } from "./role-logic";
+import type { OfficeRole } from "./role-logic";
+import { RolePicks } from "./role-picks";
 
 /**
- * Add or edit a staff member (ADR-068, frame 06). Photo first (optional),
- * then name and phone — the phone is checked as it is typed, because it is
- * how they will sign in — then a free-text designation with suggestions and
- * the "Teaches classes" switch, which turns on by itself for teacher titles
- * and says why. One button; what to do next comes after (06b).
+ * Add or edit a staff member (ADR-068, frame 06; frames R1-R3). Photo first
+ * (optional), then name and phone — the phone is checked as it is typed,
+ * because it is how they will sign in — then "What do they do here?": Teacher
+ * (no role; pre-picked for teacher titles), the office roles this person may
+ * give, or Office staff. The job title fills itself from the first office
+ * pick until it is typed over. Roles picked for someone who hasn't joined
+ * wait and start when they join. One button; what to do next comes after.
  */
 export function StaffFormScreen({ id }: { id?: string }) {
   const editing = Boolean(id);
@@ -40,6 +46,9 @@ export function StaffFormScreen({ id }: { id?: string }) {
   );
   const create = trpc.staff.create.useMutation();
   const update = trpc.staff.update.useMutation();
+  const assignRole = trpc.role.assignStaff.useMutation();
+  const { has, hasOrgWide } = usePermissions();
+  const branchName = useActiveBranchName();
   const photoUploader = useStaffPhotoUploader();
 
   const [name, setName] = useState("");
@@ -54,6 +63,9 @@ export function StaffFormScreen({ id }: { id?: string }) {
   const [sheet, setSheet] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(!editing);
+  const [picks, setPicks] = useState<OfficeRole[]>([]);
+  // The title the picks last filled in; typing over it stops the filling.
+  const [autoTitle, setAutoTitle] = useState("");
 
   if (editing && existing.data && !loaded) {
     const row = existing.data;
@@ -69,6 +81,20 @@ export function StaffFormScreen({ id }: { id?: string }) {
 
   // Teacher titles switch "Teaches classes" on until the person decides.
   const teaches = teachesTouched ? teachesPicked : looksLikeTeacher(designation);
+  // Roles are given here only when adding; afterwards on the profile (R5).
+  const roles = editing
+    ? []
+    : givableRoles({
+        canAssign: has("role_assignment:assign"),
+        canAssignOrgWide: hasOrgWide("role_assignment:assign"),
+      });
+
+  function setPicksAndTitle(next: OfficeRole[]) {
+    setPicks(next);
+    const title = titleFromPicks(next);
+    if (designation.trim() === autoTitle.trim()) setDesignation(title);
+    setAutoTitle(title);
+  }
   const digits = phoneDigits(phone);
   const check = trpc.staff.checkPhone.useQuery(
     { organizationId: orgId, schoolId: schoolId ?? "", phone: digits, exceptId: id },
@@ -87,6 +113,12 @@ export function StaffFormScreen({ id }: { id?: string }) {
             ? ({ tone: "critical", text: "Used by staff at another school" } as const)
             : null;
   const { firstName, lastName } = splitName(name);
+  // A joined person's sign-in follows the phone (R13).
+  const phoneMoves =
+    editing &&
+    existing.data?.joinState === "joined" &&
+    digits.length === 10 &&
+    digits !== (existing.data?.phone ?? "");
   const canSave =
     firstName.length > 0 &&
     lastName.length > 0 &&
@@ -94,6 +126,7 @@ export function StaffFormScreen({ id }: { id?: string }) {
     check.data?.state === "free" &&
     !create.isPending &&
     !update.isPending &&
+    !assignRole.isPending &&
     !photoUploader.busy;
 
   // Say why the button is off instead of leaving it silently grey.
@@ -138,8 +171,26 @@ export function StaffFormScreen({ id }: { id?: string }) {
       if (picked) {
         await photoUploader.upload(organizationId, row.id, picked).catch(() => undefined);
       }
+      // Each role is its own grant, checked against where it is given. A
+      // refusal doesn't undo the person: the Added screen says which failed.
+      const failed: string[] = [];
+      for (const role of picks) {
+        await assignRole
+          .mutateAsync({
+            organizationId,
+            schoolId,
+            staffId: row.id,
+            roleType: role,
+            scopeType: isOrgOnly(role) ? "org" : "school",
+            id: isOrgOnly(role) ? organizationId : schoolId,
+          })
+          .catch(() => failed.push(roleLabel(role)));
+      }
       await utils.staff.list.invalidate();
-      router.replace({ pathname: "/staff-added", params: { id: row.id } });
+      router.replace({
+        pathname: "/staff-added",
+        params: { id: row.id, ...(failed.length ? { failed: failed.join(", ") } : {}) },
+      });
     } catch (cause) {
       setError(thrownMessage(cause));
     }
@@ -156,7 +207,7 @@ export function StaffFormScreen({ id }: { id?: string }) {
           title={editing ? "Save" : firstName ? `Add ${firstName}` : "Add"}
           onPress={() => void save()}
           disabled={!canSave}
-          loading={create.isPending || update.isPending || photoUploader.busy}
+          loading={create.isPending || update.isPending || assignRole.isPending || photoUploader.busy}
           testID="staff-form-save"
           style={{ alignSelf: "stretch" }}
         />
@@ -240,18 +291,66 @@ export function StaffFormScreen({ id }: { id?: string }) {
           {phoneState.text}
         </ThemedText>
       ) : null}
+      {phoneMoves ? (
+        <View style={styles.warn} testID="staff-form-phone-warning">
+          <AppIcon name="warning" size={18} color={colors.tone.caution.fg} />
+          <ThemedText variant="meta" style={styles.warnText}>
+            {firstName} signs in with this number. From now on it’s {digits}, with the same password. {existing.data?.phone} stops working when you save.
+          </ThemedText>
+        </View>
+      ) : null}
 
+      <View style={styles.askHead}>
+        <ThemedText variant="name">What does {firstName || "this person"} do here?</ThemedText>
+        <ThemedText variant="meta">{editing ? "Roles are given on the profile" : "Pick all that apply"}</ThemedText>
+      </View>
+      <RolePicks
+        firstName={firstName}
+        teacher={teaches}
+        onTeacher={(next) => {
+          setTeaches(next);
+          setTeachesTouched(true);
+        }}
+        roles={roles}
+        picks={picks}
+        onRole={(role) =>
+          setPicksAndTitle(picks.includes(role) ? picks.filter((r) => r !== role) : [...picks, role])
+        }
+        onOffice={() => {
+          setTeaches(false);
+          setTeachesTouched(true);
+          setPicksAndTitle([]);
+        }}
+      />
+      {picks.length > 0 ? (
+        <View style={styles.given} testID="staff-form-roles-line">
+          <AppIcon name="shield" size={18} color={colors.accentDeep} />
+          <ThemedText variant="meta" style={styles.givenText}>
+            <ThemedText variant="meta" style={styles.givenStrong}>
+              {picks
+                .map((r) => (isOrgOnly(r) ? `${roleLabel(r)} for every branch` : `${roleLabel(r)} for ${branchName ?? "this branch"}`))
+                .join(", ")}
+              .
+            </ThemedText>{" "}
+            {firstName ? `It starts when ${firstName} joins the app.` : "It starts when they join the app."}
+          </ThemedText>
+        </View>
+      ) : null}
+
+      <ThemedText variant="sectionLabel" style={styles.titleLabel}>
+        Job title
+      </ThemedText>
       <View style={[styles.designation, designation ? styles.designationOn : null]}>
         <View style={styles.fieldRow}>
           <AppIcon name="shield" size={18} color={colors.muted} />
           <TextInput
             value={designation}
             onChangeText={setDesignation}
-            placeholder="Designation (PRT, TGT, Accountant…)"
+            placeholder="PRT, TGT, Accountant…"
             placeholderTextColor={colors.muted}
             style={styles.input}
             testID="staff-form-designation"
-            accessibilityLabel="Designation"
+            accessibilityLabel="Job title"
           />
         </View>
         {suggestions.length > 0 ? (
@@ -270,32 +369,6 @@ export function StaffFormScreen({ id }: { id?: string }) {
             ))}
           </View>
         ) : null}
-      </View>
-
-      <View style={styles.switchCard}>
-        <View style={styles.switchIcon}>
-          <AppIcon name="school" size={16} color={colors.accentDeep} />
-        </View>
-        <View style={styles.grow}>
-          <ThemedText variant="bodyStrong">Teaches classes</ThemedText>
-          <ThemedText variant="meta">
-            {teachesTouched
-              ? "Shows up when you assign teachers"
-              : teaches
-                ? `On, because ${designation.trim()} is a teaching title`
-                : "Shows up when you assign teachers"}
-          </ThemedText>
-        </View>
-        <Switch
-          value={teaches}
-          onValueChange={(next) => {
-            setTeaches(next);
-            setTeachesTouched(true);
-          }}
-          trackColor={{ true: colors.accent, false: colors.chip }}
-          accessibilityLabel="Teaches classes"
-          testID="staff-form-teaches"
-        />
       </View>
 
       {!editing ? (
@@ -461,6 +534,27 @@ const styles = StyleSheet.create({
   },
   suggHot: { backgroundColor: colors.accentTint },
   hotText: { color: colors.accentDeep },
+  askHead: { marginTop: spacing.xl, gap: 2, paddingHorizontal: spacing.xs },
+  given: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.accentTint,
+    marginTop: spacing.sm,
+  },
+  givenText: { flex: 1, color: colors.accentDeep },
+  givenStrong: { color: colors.accentDeep, fontFamily: fontFamily.semibold },
+  titleLabel: { marginTop: spacing.lg, marginLeft: spacing.xs },
+  warn: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.tone.caution.bg,
+    marginTop: spacing.sm,
+  },
+  warnText: { flex: 1, color: colors.tone.caution.fg },
   switchCard: {
     flexDirection: "row",
     alignItems: "center",

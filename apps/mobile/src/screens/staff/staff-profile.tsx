@@ -3,6 +3,7 @@ import { Linking, Pressable, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 
 import { AppIcon } from "../../components/app-icon";
+import { CapsuleButton } from "../../components/capsule-button";
 import type { AppIconName } from "../../components/app-icon";
 import { ErrorCard } from "../../components/error-card";
 import { ScreenFrame } from "../../components/screen-frame";
@@ -16,18 +17,24 @@ import { colors } from "../../theme/brand-admin";
 import { radius, spacing } from "../../theme/tokens";
 import { PhotoSourceSheet } from "../students/student-photo";
 import { InviteSheet } from "./invite-sheet";
+import { StaffRolesCard } from "./staff-roles";
+import { MoveSheet, StatusSheet, statusText } from "./staff-status";
+import type { WorkStatus } from "./staff-status";
 import { JoinPill } from "./join-pill";
 import { StaffAvatar, useStaffPhotoUploader } from "./staff-photo";
 import { ClassTeacherTile, SubjectTile } from "./subject-tile";
 import { sectionLabel } from "./teaching-logic";
 
 /**
- * A staff member (ADR-068, frame 08): photo (tap to add or replace), contact,
- * what they teach this session, office roles, the login, and leaving. "New
- * code" is also the forgot-password path.
+ * A staff member (ADR-068, frame 08; frames R5, R8, R10-R12, R14-R16):
+ * photo (tap to add, replace or remove), contact, on leave or suspended
+ * first when it applies, what they teach this session, office roles, status
+ * (working, on leave, suspended, left), history and moving branch. "New
+ * code" is also the forgot-password path. Someone who left can be brought
+ * back.
  */
 export function StaffProfileScreen({ id }: { id: string }) {
-  const { organizationId, schoolId, academicYear } = useActiveContext();
+  const { organizationId, schoolId, academicYear, branches } = useActiveContext();
   const { has } = usePermissions();
   const orgId = organizationId ?? "";
   const row = trpc.staff.byId.useQuery({ organizationId: orgId, id }, { enabled: Boolean(organizationId) });
@@ -39,6 +46,11 @@ export function StaffProfileScreen({ id }: { id: string }) {
   const [sheet, setSheet] = useState(false);
   const [invite, setInvite] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const utils = trpc.useUtils();
+  const removePhoto = trpc.staff.removePhoto.useMutation();
+  const bringBack = trpc.staff.reactivate.useMutation();
   const canEdit = has("staff:update");
 
   if (row.isPending) {
@@ -109,10 +121,24 @@ export function StaffProfileScreen({ id }: { id: string }) {
             {[data.designation, data.employeeCode].filter(Boolean).join(" · ")}
           </ThemedText>
           <View style={styles.pillRow}>
-            {current ? <JoinPill state={data.joinState} /> : (
-              <View style={styles.leftPill}>
-                <ThemedText variant="caption" style={{ color: colors.tone.neutral.fg }}>
-                  Left {data.dateOfLeaving ?? ""}
+            {data.status === "active" ? <JoinPill state={data.joinState} /> : (
+              <View
+                style={[
+                  styles.leftPill,
+                  data.status === "suspended" ? { backgroundColor: colors.tone.caution.bg } : null,
+                ]}
+              >
+                <ThemedText
+                  variant="caption"
+                  style={{ color: data.status === "suspended" ? colors.tone.caution.fg : colors.tone.neutral.fg }}
+                >
+                  {data.status === "on_leave"
+                    ? data.statusUntil
+                      ? `On leave till ${shortDay(data.statusUntil)}`
+                      : "On leave"
+                    : data.status === "suspended"
+                      ? "Suspended"
+                      : `Left ${data.dateOfLeaving ? shortDay(data.dateOfLeaving) : ""}`}
                 </ThemedText>
               </View>
             )}
@@ -123,6 +149,41 @@ export function StaffProfileScreen({ id }: { id: string }) {
         <ThemedText variant="meta" style={styles.errorText}>
           {photoError}
         </ThemedText>
+      ) : null}
+
+      {data.status === "suspended" ? (
+        <View style={[styles.banner, styles.bannerCaution]} testID="profile-suspended">
+          <AppIcon name="lock" size={18} color={colors.tone.caution.fg} />
+          <View style={styles.grow}>
+            <ThemedText variant="meta" style={{ color: colors.tone.caution.fg }}>
+              {data.firstName} can’t sign in. Their roles and classes are kept, and come back when you lift it.
+            </ThemedText>
+            {data.statusNote ? (
+              <ThemedText variant="meta" style={styles.noteText}>
+                Why: {data.statusNote}
+              </ThemedText>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
+      {data.status === "on_leave" ? (
+        <View style={styles.banner} testID="profile-on-leave">
+          <AppIcon name="clock" size={18} color={colors.tone.neutral.fg} />
+          <View style={styles.grow}>
+            <ThemedText variant="meta" style={{ color: colors.ink }}>
+              {data.statusUntil ? `On leave till ${shortDay(data.statusUntil)}.` : "On leave."} Cover their classes from Teaching.
+            </ThemedText>
+            {data.statusNote ? <ThemedText variant="meta">{data.statusNote}</ThemedText> : null}
+          </View>
+        </View>
+      ) : null}
+      {!current ? (
+        <View style={styles.banner}>
+          <AppIcon name="info" size={18} color={colors.tone.neutral.fg} />
+          <ThemedText variant="meta" style={[styles.grow, { color: colors.ink }]}>
+            Bringing {data.firstName} back makes their record current again. They join with a new code, and roles are given again. Nothing comes back by itself.
+          </ThemedText>
+        </View>
       ) : null}
 
       <View style={styles.actions}>
@@ -145,7 +206,7 @@ export function StaffProfileScreen({ id }: { id: string }) {
           icon="key"
           label={data.joinState === "joined" ? "New code" : "Invite"}
           onPress={() => setInvite(true)}
-          disabled={!canEdit || !current || data.status !== "active"}
+          disabled={!canEdit || !(data.status === "active" || data.status === "on_leave")}
         />
       </View>
 
@@ -196,18 +257,57 @@ export function StaffProfileScreen({ id }: { id: string }) {
         )}
       </View>
 
-      {has("staff:delete") && current ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.push({ pathname: "/staff-leave", params: { id } })}
-          style={styles.leave}
-          testID="profile-mark-left"
-        >
-          <AppIcon name="leave" size={18} color={colors.tone.critical.fg} />
-          <ThemedText variant="bodyStrong" style={{ color: colors.tone.critical.fg }}>
-            Mark as left
-          </ThemedText>
-        </Pressable>
+      <StaffRolesCard staffId={id} firstName={data.firstName} current={current} />
+
+      <View style={[styles.card, styles.more]}>
+        {current && (has("staff:update") || has("staff:delete")) ? (
+          <MoreRow
+            icon="person"
+            title="Status"
+            value={statusText(data.status)}
+            onPress={() => setStatusOpen(true)}
+            testID="profile-status"
+          />
+        ) : null}
+        {has("role_assignment:read") ? (
+          <MoreRow
+            icon="history"
+            title="History"
+            value="Roles and sign-in"
+            onPress={() => router.push({ pathname: "/staff-history", params: { id } })}
+            testID="profile-history"
+          />
+        ) : null}
+        {current && canEdit && branches.length > 1 ? (
+          <MoreRow
+            icon="swap"
+            title="Move to another branch"
+            value=""
+            onPress={() => setMoveOpen(true)}
+            testID="profile-move"
+          />
+        ) : null}
+      </View>
+
+      {!current && has("staff:delete") ? (
+        <CapsuleButton
+          title={`Bring ${data.firstName} back`}
+          variant="secondary"
+          onPress={() =>
+            void bringBack
+              .mutateAsync({ organizationId: orgId, id })
+              .then(() => Promise.all([utils.staff.byId.invalidate(), utils.staff.list.invalidate()]))
+              .catch(() => undefined)
+          }
+          loading={bringBack.isPending}
+          style={{ alignSelf: "stretch", marginTop: spacing.lg }}
+          testID="profile-bring-back"
+        />
+      ) : null}
+      {bringBack.error ? (
+        <ThemedText variant="meta" style={styles.errorText}>
+          {thrownMessage(bringBack.error)}
+        </ThemedText>
       ) : null}
 
       <PhotoSourceSheet
@@ -220,13 +320,65 @@ export function StaffProfileScreen({ id }: { id: string }) {
             .upload(orgId, id, picked)
             .catch((cause) => setPhotoError(thrownMessage(cause)));
         }}
-        onRemove={() => undefined}
+        onRemove={() => {
+          setPhotoError(null);
+          void removePhoto
+            .mutateAsync({ organizationId: orgId, id })
+            .then(() => Promise.all([utils.staff.byId.invalidate(), utils.staff.list.invalidate()]))
+            .catch((cause) => setPhotoError(thrownMessage(cause)));
+        }}
         onError={(cause) => setPhotoError(thrownMessage(cause))}
       />
       {invite && organizationId ? (
         <InviteSheet organizationId={organizationId} staffId={id} name={data.firstName} onClose={() => setInvite(false)} />
       ) : null}
+      {statusOpen && current ? (
+        <StatusSheet
+          staffId={id}
+          firstName={data.firstName}
+          status={data.status as WorkStatus}
+          until={data.statusUntil}
+          note={data.statusNote}
+          onClose={() => setStatusOpen(false)}
+        />
+      ) : null}
+      {moveOpen ? (
+        <MoveSheet staffId={id} firstName={data.firstName} fromSchoolId={data.schoolId} onClose={() => setMoveOpen(false)} />
+      ) : null}
     </ScreenFrame>
+  );
+}
+
+const shortDay = (iso: string) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+
+function MoreRow({
+  icon,
+  title,
+  value,
+  onPress,
+  testID,
+}: {
+  icon: AppIconName;
+  title: string;
+  value: string;
+  onPress: () => void;
+  testID: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.moreRow, pressed ? styles.pressed : null]}
+      testID={testID}
+    >
+      <AppIcon name={icon} size={18} color={colors.muted} />
+      <ThemedText variant="body" style={styles.grow}>
+        {title}
+      </ThemedText>
+      {value ? <ThemedText variant="meta">{value}</ThemedText> : null}
+      <AppIcon name="chevronRight" size={18} color={colors.muted} />
+    </Pressable>
   );
 }
 
@@ -292,4 +444,16 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   errorText: { color: colors.tone.critical.fg, marginTop: spacing.sm },
+  banner: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.tone.neutral.bg,
+    marginTop: spacing.lg,
+  },
+  bannerCaution: { backgroundColor: colors.tone.caution.bg },
+  noteText: { color: colors.tone.caution.fg, marginTop: 2 },
+  more: { marginTop: spacing.lg },
+  moreRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 52, paddingHorizontal: spacing.md },
 });

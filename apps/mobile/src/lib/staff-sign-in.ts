@@ -31,13 +31,14 @@ async function post(path: string, body: unknown, signal: AbortSignal) {
 /** Which second step this phone gets; fails closed to `code`. */
 export async function staffAccountState(
   digits: string,
-): Promise<StaffSecondStep | "tooMany" | "network"> {
+): Promise<StaffSecondStep | "paused" | "tooMany" | "network"> {
   try {
     const res = await withTimeout((signal) =>
       post("/staff/account-status", { phone: digits }, signal),
     );
     if (res.status === 429) return "tooMany";
     const body = (await res.json().catch(() => ({}))) as { state?: string };
+    if (body.state === "paused") return "paused";
     return body.state === "password" ? "password" : "code";
   } catch {
     return "network";
