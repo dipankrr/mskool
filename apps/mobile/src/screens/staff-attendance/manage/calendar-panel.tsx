@@ -20,10 +20,10 @@ import { clampMonth, daysInMonth, isoOf, monthIndex, shiftMonth } from "../calen
 import { datesBetween, entryLength, groupEntries, isSchoolDay } from "./calendar-lib";
 import type { DayType, Entry, PatternDay } from "./calendar-lib";
 import { EntrySheet, SetDaysSheet, useCalendarWrites } from "./calendar-sheets";
-import { EntryRow, MonthGrid, rangeLabel, typeName } from "./calendar-ui";
+import { EntryRow, MonthGrid, YearGrid, rangeLabel, typeName } from "./calendar-ui";
 import { ManageFrame } from "./frame";
 
-type View_ = "month" | "list";
+type View_ = "month" | "year" | "list";
 
 /**
  * The calendar, rebuilt (ADR-069, mockup frames B1–B5, C3). Month view with
@@ -248,6 +248,7 @@ export function ManageCalendar() {
               }}
               options={[
                 { value: "month", label: words.month, testID: "cal-view-month" },
+                { value: "year", label: words.year, testID: "cal-view-year" },
                 { value: "list", label: words.list, testID: "cal-view-list" },
               ]}
             />
@@ -309,6 +310,45 @@ export function ManageCalendar() {
               </Card>
               <ThemedText variant="meta" style={styles.hint}>
                 {canManage ? words.tapHint : words.readOnlyHint}
+              </ThemedText>
+            </>
+          ) : view === "year" ? (
+            <>
+              <Card style={styles.stats}>
+                <Stat
+                  value={overview.data?.schoolDays ?? 0}
+                  label={words.statSession}
+                  color={colors.accentDeep}
+                />
+                <Stat
+                  value={overview.data?.counts.holiday ?? 0}
+                  label={words.statHolidays}
+                  color={colors.tone.critical.fg}
+                />
+                <Stat
+                  value={overview.data?.counts.exam_day ?? 0}
+                  label={words.statExams}
+                  color={colors.ink}
+                />
+                <Stat
+                  value={overview.data?.counts.half_day ?? 0}
+                  label={words.statHalf}
+                  color={colors.tone.caution.fg}
+                />
+              </Card>
+              <Card style={styles.yearCard}>
+                <YearGrid
+                  from={start}
+                  end={end}
+                  typeAt={(iso) => typeOf.get(iso) ?? null}
+                  onPickMonth={(iso) => {
+                    setAnchor(iso);
+                    setView("month");
+                  }}
+                />
+              </Card>
+              <ThemedText variant="meta" style={styles.hint}>
+                {words.yearHint}
               </ThemedText>
             </>
           ) : (
@@ -584,6 +624,7 @@ const styles = StyleSheet.create({
   monthButtonPressed: { backgroundColor: colors.field },
   off: { opacity: 0.35 },
   monthTitle: { fontSize: 20, lineHeight: 26 },
+  yearCard: { marginTop: spacing.md },
   gridCard: { paddingHorizontal: spacing.sm, paddingVertical: spacing.sm },
   hint: { marginTop: spacing.sm, textAlign: "center" },
   listHead: {

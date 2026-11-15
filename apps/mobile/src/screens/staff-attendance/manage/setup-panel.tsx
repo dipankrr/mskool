@@ -27,7 +27,7 @@ import {
 } from "./calendar-lib";
 import type { DayType, Entry, PatternDay } from "./calendar-lib";
 import { EntrySheet, ImportSheet } from "./calendar-sheets";
-import { EntryRow, rangeLabel, sessionRange } from "./calendar-ui";
+import { EntryRow, YearGrid, rangeLabel, sessionRange } from "./calendar-ui";
 
 type Source = "last" | "national" | "import" | "empty";
 
@@ -58,14 +58,23 @@ export function CalendarSetup() {
 
   const ready = Boolean(organizationId && schoolId && academicYear);
   const previous = trpc.attendance.calendar.previousEntries.useQuery(
-    { organizationId: organizationId ?? "", schoolId: schoolId ?? "", academicYearId: academicYear?.id ?? "" },
+    {
+      organizationId: organizationId ?? "",
+      schoolId: schoolId ?? "",
+      academicYearId: academicYear?.id ?? "",
+    },
     { enabled: ready && has("attendance:update"), staleTime: 300_000 },
   );
   const lastEntries = useMemo(() => {
     const rows = previous.data?.entries ?? [];
-    const grouped = groupEntries(rows.map((r) => ({ date: r.date, dayType: r.dayType as DayType, reason: r.reason })));
+    const grouped = groupEntries(
+      rows.map((r) => ({ date: r.date, dayType: r.dayType as DayType, reason: r.reason })),
+    );
     const checkOf = new Map(rows.map((r) => [r.date, r.check]));
-    return grouped.map((e) => ({ ...e, check: datesBetween(e.from, e.to).some((iso) => checkOf.get(iso)) }));
+    return grouped.map((e) => ({
+      ...e,
+      check: datesBetween(e.from, e.to).some((iso) => checkOf.get(iso)),
+    }));
   }, [previous.data]);
 
   const setup = trpc.attendance.calendar.setup.useMutation();
@@ -82,12 +91,22 @@ export function CalendarSetup() {
     }
     return map;
   }, [entries, pattern]);
-  const weekOnly = useMemo(() => (start ? countSession(pattern, from, end, new Map()) : null), [pattern, from, end, start]);
-  const totals = useMemo(() => (start ? countSession(pattern, from, end, overrides) : null), [pattern, from, end, overrides, start]);
+  const weekOnly = useMemo(
+    () => (start ? countSession(pattern, from, end, new Map()) : null),
+    [pattern, from, end, start],
+  );
+  const totals = useMemo(
+    () => (start ? countSession(pattern, from, end, overrides) : null),
+    [pattern, from, end, overrides, start],
+  );
 
   if (!ready || !academicYear) {
     return (
-      <ScreenFrame title={words.setupTitle} backAccessibilityLabel={copy.attendance.manage.back} padForTabBar>
+      <ScreenFrame
+        title={words.setupTitle}
+        backAccessibilityLabel={copy.attendance.manage.back}
+        padForTabBar
+      >
         <Card>
           <ThemedText variant="bodyStrong">{copy.session.noYearTitle}</ThemedText>
         </Card>
@@ -114,7 +133,12 @@ export function CalendarSetup() {
           academicYearId: academicYear.id,
           weekdays: pattern,
           ...(startFrom ? { startFrom } : {}),
-          entries: entries.map((e) => ({ from: e.from, to: e.to, dayType: e.dayType, reason: e.reason })),
+          entries: entries.map((e) => ({
+            from: e.from,
+            to: e.to,
+            dayType: e.dayType,
+            reason: e.reason,
+          })),
         },
       });
       await utils.attendance.invalidate();
@@ -130,7 +154,12 @@ export function CalendarSetup() {
         <ThemedText variant="meta" style={styles.footHint}>
           {weekOnly ? words.weekFoot(weekOnly.working, weekOnly.half_day) : ""}
         </ThemedText>
-        <CapsuleButton title={words.nextHolidays} onPress={() => setStep(2)} disabled={!pattern.some((d) => d !== "weekend")} testID="setup-next-1" />
+        <CapsuleButton
+          title={words.nextHolidays}
+          onPress={() => setStep(2)}
+          disabled={!pattern.some((d) => d !== "weekend")}
+          testID="setup-next-1"
+        />
       </View>
     ) : step === 2 ? (
       <CapsuleButton title={words.nextReview} onPress={() => setStep(3)} testID="setup-next-2" />
@@ -139,7 +168,13 @@ export function CalendarSetup() {
         <ThemedText variant="meta" style={styles.footHint}>
           {words.reviewFoot}
         </ThemedText>
-        <CapsuleButton title={words.saveCalendar} icon="check" loading={setup.isPending} onPress={() => void save()} testID="setup-save" />
+        <CapsuleButton
+          title={words.saveCalendar}
+          icon="check"
+          loading={setup.isPending}
+          onPress={() => void save()}
+          testID="setup-save"
+        />
       </View>
     );
 
@@ -180,7 +215,15 @@ export function CalendarSetup() {
                       >
                         <ThemedText
                           variant="chip"
-                          color={on ? (value === "working" ? colors.accentDeep : value === "half_day" ? colors.tone.caution.fg : colors.tone.neutral.fg) : colors.muted}
+                          color={
+                            on
+                              ? value === "working"
+                                ? colors.accentDeep
+                                : value === "half_day"
+                                  ? colors.tone.caution.fg
+                                  : colors.tone.neutral.fg
+                              : colors.muted
+                          }
                         >
                           {words.types[value]}
                         </ThemedText>
@@ -209,14 +252,36 @@ export function CalendarSetup() {
           <Choice
             on={source === "last"}
             title={words.sourceLast}
-            body={lastEntries.length > 0 ? words.sourceLastBody(lastEntries.length) : words.sourceLastNone}
+            body={
+              lastEntries.length > 0
+                ? words.sourceLastBody(lastEntries.length)
+                : words.sourceLastNone
+            }
             disabled={lastEntries.length === 0}
             onPress={() => pick("last")}
             testID="setup-source-last"
           />
-          <Choice on={source === "national"} title={words.sourceNational} body={words.sourceNationalBody} onPress={() => pick("national")} testID="setup-source-national" />
-          <Choice on={source === "import"} title={words.sourceImport} body={words.sourceImportBody} onPress={() => pick("import")} testID="setup-source-import" />
-          <Choice on={source === "empty"} title={words.sourceEmpty} body={words.sourceEmptyBody} onPress={() => pick("empty")} testID="setup-source-empty" />
+          <Choice
+            on={source === "national"}
+            title={words.sourceNational}
+            body={words.sourceNationalBody}
+            onPress={() => pick("national")}
+            testID="setup-source-national"
+          />
+          <Choice
+            on={source === "import"}
+            title={words.sourceImport}
+            body={words.sourceImportBody}
+            onPress={() => pick("import")}
+            testID="setup-source-import"
+          />
+          <Choice
+            on={source === "empty"}
+            title={words.sourceEmpty}
+            body={words.sourceEmptyBody}
+            onPress={() => pick("empty")}
+            testID="setup-source-empty"
+          />
           {note ? (
             <ThemedText variant="meta" color={colors.tone.caution.fg} style={styles.note}>
               {note}
@@ -253,7 +318,14 @@ export function CalendarSetup() {
           </Pressable>
         </>
       ) : totals ? (
-        <Review totals={totals} pattern={pattern} overrides={overrides} from={from} end={end} range={sessionRange(from, end)} />
+        <Review
+          totals={totals}
+          pattern={pattern}
+          overrides={overrides}
+          from={from}
+          end={end}
+          range={sessionRange(from, end)}
+        />
       ) : null}
       {step === 3 && setup.error ? <ErrorCard cause={setup.error} style={styles.note} /> : null}
       {/* Inline, not a sticky footer: the attendance stack keeps the tab bar. */}
@@ -279,7 +351,9 @@ export function CalendarSetup() {
           onSave={(next) => {
             setEntries((list) => {
               const kept = list.filter((e) => e.key !== editing.entry?.key);
-              return [...kept, { ...next, key: `${next.from}-${Date.now()}`, check: false }].sort((a, b) => (a.from < b.from ? -1 : 1));
+              return [...kept, { ...next, key: `${next.from}-${Date.now()}`, check: false }].sort(
+                (a, b) => (a.from < b.from ? -1 : 1),
+              );
             });
             setEditing(null);
           }}
@@ -291,7 +365,9 @@ export function CalendarSetup() {
           end={end}
           onClose={() => setImportOpen(false)}
           onUse={(list, outside) => {
-            setEntries((current) => [...current, ...list].sort((a, b) => (a.from < b.from ? -1 : 1)));
+            setEntries((current) =>
+              [...current, ...list].sort((a, b) => (a.from < b.from ? -1 : 1)),
+            );
             setNote(outside > 0 ? words.outside(outside) : null);
             setImportOpen(false);
           }}
@@ -344,7 +420,12 @@ function Choice({
       accessibilityState={{ checked: on, disabled }}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.choice, on ? styles.choiceOn : null, pressed ? styles.pressed : null, disabled ? styles.disabled : null]}
+      style={({ pressed }) => [
+        styles.choice,
+        on ? styles.choiceOn : null,
+        pressed ? styles.pressed : null,
+        disabled ? styles.disabled : null,
+      ]}
     >
       <View style={[styles.radio, on ? styles.radioOn : null]} />
       <View style={styles.flex}>
@@ -369,7 +450,6 @@ const LEGEND: Record<DayType, string> = {
   holiday: "holidays",
   weekend: "off",
 };
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** A4: the number every % divides by, the mix, and twelve tiny months. */
 function Review({
@@ -389,7 +469,7 @@ function Review({
 }) {
   const words = copy.attendance.manage.cal;
   const months: string[] = [];
-  for (let m = from.slice(0, 7); m <= end.slice(0, 7); ) {
+  for (let m = from.slice(0, 7); m <= end.slice(0, 7);) {
     months.push(m);
     const y = Number(m.slice(0, 4));
     const mo = Number(m.slice(5, 7));
@@ -414,13 +494,30 @@ function Review({
         <ThemedText variant="meta">{words.reviewBody(range)}</ThemedText>
         <View style={styles.split}>
           {mix.map(([type, n]) =>
-            n > 0 ? <View key={type} style={{ flex: n, backgroundColor: type === "working" ? "#9BD3B4" : type === "weekend" ? "#E4E7EC" : MINI[type] }} /> : null,
+            n > 0 ? (
+              <View
+                key={type}
+                style={{
+                  flex: n,
+                  backgroundColor:
+                    type === "working" ? "#9BD3B4" : type === "weekend" ? "#E4E7EC" : MINI[type],
+                }}
+              />
+            ) : null,
           )}
         </View>
         <View style={styles.legend}>
           {mix.map(([type, n]) => (
             <View key={type} style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: type === "working" ? "#9BD3B4" : type === "weekend" ? "#E4E7EC" : MINI[type] }]} />
+              <View
+                style={[
+                  styles.legendDot,
+                  {
+                    backgroundColor:
+                      type === "working" ? "#9BD3B4" : type === "weekend" ? "#E4E7EC" : MINI[type],
+                  },
+                ]}
+              />
               <ThemedText variant="caption" color={colors.muted}>
                 <ThemedText variant="caption" color={colors.ink} style={styles.bold}>
                   {n}
@@ -432,40 +529,11 @@ function Review({
         </View>
       </Card>
       <Card style={styles.months}>
-        {months.map((key) => {
-          const y = Number(key.slice(0, 4));
-          const mo = Number(key.slice(5, 7));
-          const last = new Date(Date.UTC(y, mo, 0)).getUTCDate();
-          const first = (new Date(Date.UTC(y, mo - 1, 1)).getUTCDay() + 6) % 7;
-          const days = Array.from({ length: last }, (_, i) => `${key}-${String(i + 1).padStart(2, "0")}`);
-          const school = days.filter((iso) => {
-            if (iso < from || iso > end) return false;
-            const t = overrides.get(iso) ?? patternType(pattern, iso);
-            return t === "working" || t === "half_day" || t === "exam_day";
-          }).length;
-          return (
-            <View key={key} style={styles.mini}>
-              <View style={styles.miniHead}>
-                <ThemedText variant="tab" color={colors.muted}>
-                  {MONTH_NAMES[mo - 1]}
-                </ThemedText>
-                <ThemedText variant="tab" color={colors.ink} style={styles.bold}>
-                  {school}
-                </ThemedText>
-              </View>
-              <View style={styles.miniGrid}>
-                {Array.from({ length: first }, (_, i) => (
-                  <View key={`e${i}`} style={styles.miniCell} />
-                ))}
-                {days.map((iso) => {
-                  const outside = iso < from || iso > end;
-                  const t = overrides.get(iso) ?? patternType(pattern, iso);
-                  return <View key={iso} style={[styles.miniCell, { backgroundColor: outside ? "transparent" : MINI[t] }]} />;
-                })}
-              </View>
-            </View>
-          );
-        })}
+        <YearGrid
+          from={from}
+          end={end}
+          typeAt={(iso) => overrides.get(iso) ?? patternType(pattern, iso)}
+        />
       </Card>
     </>
   );
@@ -476,17 +544,42 @@ const styles = StyleSheet.create({
   bold: { fontFamily: fontFamily.semibold },
   pressed: { opacity: 0.85 },
   disabled: { opacity: 0.5 },
-  steps: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingBottom: spacing.sm, paddingHorizontal: gutter, backgroundColor: colors.canvas },
+  steps: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    paddingBottom: spacing.sm,
+    paddingHorizontal: gutter,
+    backgroundColor: colors.canvas,
+  },
   actions: { marginTop: spacing.xl },
   stepBar: { flex: 1, height: 4, borderRadius: radius.full, backgroundColor: colors.field },
   stepOn: { backgroundColor: colors.accent },
   footHint: { textAlign: "center", marginBottom: spacing.sm },
   week: { marginTop: spacing.md },
-  weekRow: { flexDirection: "row", alignItems: "center", minHeight: 56, paddingHorizontal: spacing.md, gap: spacing.sm },
+  weekRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 56,
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
+  },
   separated: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.hairline },
   weekName: { width: 44 },
-  tri: { flex: 1, flexDirection: "row", padding: 3, borderRadius: radius.full, backgroundColor: colors.field },
-  triOption: { flex: 1, minHeight: 36, borderRadius: radius.full, alignItems: "center", justifyContent: "center" },
+  tri: {
+    flex: 1,
+    flexDirection: "row",
+    padding: 3,
+    borderRadius: radius.full,
+    backgroundColor: colors.field,
+  },
+  triOption: {
+    flex: 1,
+    minHeight: 36,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   triOn: { backgroundColor: colors.surface, boxShadow: "0 1px 2px rgba(16, 24, 40, 0.12)" },
   startCard: { marginTop: spacing.md },
   choice: {
@@ -500,7 +593,14 @@ const styles = StyleSheet.create({
     borderColor: colors.hairline,
   },
   choiceOn: { borderWidth: 2, borderColor: colors.accent },
-  radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: colors.inputLine, marginTop: 2 },
+  radio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.inputLine,
+    marginTop: 2,
+  },
   radioOn: { borderWidth: 6, borderColor: colors.accent },
   note: { marginTop: spacing.sm },
   listHead: { marginTop: spacing.lg, marginBottom: spacing.xs, paddingHorizontal: spacing.xs },
@@ -518,12 +618,31 @@ const styles = StyleSheet.create({
   },
   hero: { marginTop: spacing.xs, gap: spacing.xs },
   heroRow: { flexDirection: "row", alignItems: "baseline", gap: spacing.sm },
-  heroNum: { fontSize: 52, lineHeight: 58, fontFamily: fontFamily.bold, letterSpacing: -1.5, fontVariant: ["tabular-nums"] },
-  split: { flexDirection: "row", height: 10, borderRadius: radius.full, overflow: "hidden", gap: 2, marginTop: spacing.sm },
-  legend: { flexDirection: "row", flexWrap: "wrap", columnGap: spacing.md, rowGap: spacing.xxs, marginTop: spacing.xs },
+  heroNum: {
+    fontSize: 52,
+    lineHeight: 58,
+    fontFamily: fontFamily.bold,
+    letterSpacing: -1.5,
+    fontVariant: ["tabular-nums"],
+  },
+  split: {
+    flexDirection: "row",
+    height: 10,
+    borderRadius: radius.full,
+    overflow: "hidden",
+    gap: 2,
+    marginTop: spacing.sm,
+  },
+  legend: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    columnGap: spacing.md,
+    rowGap: spacing.xxs,
+    marginTop: spacing.xs,
+  },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 5 },
   legendDot: { width: 9, height: 9, borderRadius: 3 },
-  months: { marginTop: spacing.md, flexDirection: "row", flexWrap: "wrap", rowGap: spacing.md, columnGap: "4%" as unknown as number },
+  months: { marginTop: spacing.md },
   mini: { width: "22%" },
   miniHead: { flexDirection: "row", justifyContent: "space-between", marginBottom: 3 },
   miniGrid: { flexDirection: "row", flexWrap: "wrap", width: 7 * 10.5 },

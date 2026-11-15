@@ -132,7 +132,11 @@ export const MonthGrid = memo(function MonthGrid({
                     <View
                       style={[
                         styles.cell,
-                        { backgroundColor: isSelected ? colors.ink : (look?.bg ?? "transparent"), borderRadius: radius.md, overflow: "hidden" },
+                        {
+                          backgroundColor: isSelected ? colors.ink : (look?.bg ?? "transparent"),
+                          borderRadius: radius.md,
+                          overflow: "hidden",
+                        },
                         type === null && !outside ? styles.cellMissing : null,
                         isToday && !isSelected ? styles.cellToday : null,
                         pressed && !isSelected ? styles.cellPressed : null,
@@ -185,7 +189,12 @@ export function TypePicker({
     <View style={styles.types} accessibilityRole="radiogroup">
       {options.map((type) => {
         const on = type === value;
-        const swatch = type === "working" ? colors.accent : type === "weekend" ? colors.chevron : DAY_LOOK[type].fg;
+        const swatch =
+          type === "working"
+            ? colors.accent
+            : type === "weekend"
+              ? colors.chevron
+              : DAY_LOOK[type].fg;
         return (
           <Pressable
             key={type}
@@ -202,12 +211,7 @@ export function TypePicker({
               pressed ? styles.pressed : null,
             ]}
           >
-            <View
-              style={[
-                styles.swatch,
-                { backgroundColor: swatch },
-              ]}
-            />
+            <View style={[styles.swatch, { backgroundColor: swatch }]} />
             <ThemedText variant="bodyStrong" numberOfLines={1} style={styles.typeText}>
               {typeName(type)}
             </ThemedText>
@@ -356,4 +360,111 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     borderRadius: radius.full,
   },
+});
+
+const MINI_FILL: Record<DayType, string> = {
+  working: "#D9EFE3",
+  half_day: "#FCE3B6",
+  exam_day: "#C7D7FE",
+  holiday: "#F9C7C2",
+  weekend: "#F2F4F7",
+};
+
+/**
+ * The whole session at a glance: one tiny month per tile with its school-day
+ * count. Used by set-up's review and the calendar's Year view, where a tap
+ * opens that month.
+ */
+export function YearGrid({
+  from,
+  end,
+  typeAt,
+  onPickMonth,
+}: {
+  from: string;
+  end: string;
+  /** The day's type, or null when the calendar has no entry. */
+  typeAt: (iso: string) => DayType | null;
+  onPickMonth?: (monthIso: string) => void;
+}) {
+  const months: string[] = [];
+  for (let m = from.slice(0, 7); m <= end.slice(0, 7);) {
+    months.push(m);
+    const y = Number(m.slice(0, 4));
+    const mo = Number(m.slice(5, 7));
+    m = mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, "0")}`;
+  }
+  return (
+    <View style={yearStyles.wrap} testID="cal-year">
+      {months.map((key) => {
+        const y = Number(key.slice(0, 4));
+        const mo = Number(key.slice(5, 7));
+        const last = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+        const first = (new Date(Date.UTC(y, mo - 1, 1)).getUTCDay() + 6) % 7;
+        const days = Array.from(
+          { length: last },
+          (_, i) => `${key}-${String(i + 1).padStart(2, "0")}`,
+        );
+        const school = days.filter((iso) => {
+          if (iso < from || iso > end) return false;
+          const t = typeAt(iso);
+          return t === "working" || t === "half_day" || t === "exam_day";
+        }).length;
+        return (
+          <Pressable
+            key={key}
+            disabled={!onPickMonth}
+            accessibilityRole={onPickMonth ? "button" : undefined}
+            accessibilityLabel={`${MONTHS_SHORT[mo - 1]} ${y}, ${school} ${copy.attendance.manage.cal.schoolDays}`}
+            onPress={() => onPickMonth?.(`${key}-01`)}
+            style={({ pressed }) => [yearStyles.mini, pressed ? yearStyles.pressed : null]}
+            testID={`cal-year-${key}`}
+          >
+            <View style={yearStyles.head}>
+              <ThemedText variant="tab" color={colors.muted}>
+                {MONTHS_SHORT[mo - 1]}
+              </ThemedText>
+              <ThemedText variant="tab" color={colors.ink} style={yearStyles.bold}>
+                {school}
+              </ThemedText>
+            </View>
+            <View style={yearStyles.grid}>
+              {Array.from({ length: first }, (_, i) => (
+                <View key={`e${i}`} style={yearStyles.cell} />
+              ))}
+              {days.map((iso) => {
+                const outside = iso < from || iso > end;
+                const t = outside ? null : typeAt(iso);
+                return (
+                  <View
+                    key={iso}
+                    style={[
+                      yearStyles.cell,
+                      t ? { backgroundColor: MINI_FILL[t] } : outside ? null : yearStyles.missing,
+                    ]}
+                  />
+                );
+              })}
+            </View>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+const yearStyles = StyleSheet.create({
+  wrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    rowGap: spacing.md,
+  },
+  mini: { width: "23%", borderRadius: radius.sm, padding: 2 },
+  pressed: { backgroundColor: colors.field },
+  head: { flexDirection: "row", justifyContent: "space-between", marginBottom: 3 },
+  bold: { fontFamily: fontFamily.semibold },
+  grid: { flexDirection: "row", flexWrap: "wrap", width: 7 * 10.5 },
+  cell: { width: 9, height: 9, margin: 0.75, borderRadius: 2 },
+  missing: { borderWidth: 1, borderColor: colors.tone.caution.fg },
 });
