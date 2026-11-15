@@ -8,6 +8,7 @@ import { enrollmentRouter, portalRouter } from "./routers/enrollment.router";
 import { examRouter, portalExamRouter } from "./routers/exam.router";
 import { feesRouter } from "./routers/fees.router";
 import { guardianRouter } from "./routers/guardian.router";
+import { homeRouter } from "./routers/home.router";
 import { homeworkRouter, portalHomeworkRouter } from "./routers/homework.router";
 import { idCardRouter } from "./routers/id_card.router";
 import { publicSiteRouter } from "./routers/public_site.router";
@@ -29,6 +30,8 @@ export const appRouter = router({
   // Not namespaced by domain: `me` is about the caller, not a domain, and it is
   // the call that supplies the organizationId every other staff route requires.
   me: meRouter,
+  // Staff Home's own reads (ADR-072): home.attendanceToday, home.myPapers, home.org.
+  home: homeRouter,
   school: schoolRouter,
   // Academic structure: academic.year.*, academic.class.*, academic.section.*.
   academic: academicRouter,

@@ -87,3 +87,6 @@ export * from "./contracts/storage.contract";
 // Family reads (ADR-062): the narrow parent/student shapes for portalAttendance,
 // portalFees and portalExam.schedule. Hand-written, never table-derived.
 export * from "./contracts/portal.contract";
+
+// Staff Home's own reads (ADR-072).
+export * from "./contracts/home.contract";
