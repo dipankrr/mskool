@@ -131,6 +131,7 @@ const iconMap = {
   music: { ios: "music.note", android: "music-note" },
   star: { ios: "star.fill", android: "star" },
   swap: { ios: "arrow.left.arrow.right", android: "swap-horiz" },
+  teaching: { ios: "rectangle.inset.filled.and.person.filled", android: "co-present" },
   leave: { ios: "rectangle.portrait.and.arrow.right", android: "logout" },
   copySession: { ios: "square.on.square", android: "content-copy" },
   whatsapp: { ios: "message.fill", android: "chat" },

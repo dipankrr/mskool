@@ -100,6 +100,8 @@ export const radius = {
  */
 export const shadow = {
   floating: "0 10px 24px rgba(16, 24, 40, 0.16)",
+  /** Home's cards (ADR-072): a soft lift off the canvas, no border. */
+  soft: "0 1px 2px rgba(16, 24, 40, 0.04), 0 6px 18px rgba(16, 24, 40, 0.06)",
   tabBar: "0 14px 34px rgba(16, 24, 40, 0.12)",
   sheet: "0 -12px 40px rgba(16, 24, 40, 0.18)",
 } as const;

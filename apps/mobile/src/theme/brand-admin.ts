@@ -61,7 +61,26 @@ const tone = {
   neutral: { fg: palette.slate, bg: palette.slateTint },
 } as const;
 
+/**
+ * One hue per area, for Home's cards only (ADR-072): you can tell what a card
+ * is about before reading it. Attendance keeps the app's emerald. These are
+ * labels, never status — red, amber and the tones above still carry meaning.
+ */
+const area = {
+  attendance: { fg: palette.emeraldDeep, bg: palette.emeraldTint, band: "#DDF0E5" },
+  homework: { fg: "#6941C6", bg: "#F1ECFD", band: "#ECE6FB" },
+  exams: { fg: "#C4520A", bg: "#FFF0E3", band: "#FFEBDB" },
+  fees: { fg: "#1D63C7", bg: "#E8F1FD", band: "#DCE8FA" },
+  students: { fg: "#0E7490", bg: "#E3F5F8", band: "#DDF1F5" },
+  teaching: { fg: "#9E3C8E", bg: "#FBEAF7", band: "#F4E3F1" },
+  calendar: { fg: "#4F46E5", bg: "#EEEDFD", band: "#E6E4FB" },
+  trust: { fg: "#5B3E86", bg: "#EFE9F7", band: "#E9E3F6" },
+} as const;
+export type Area = keyof typeof area;
+
 export const colors = {
+  /** Home's area hues (labels, not status). */
+  area,
   /** App background behind cards. */
   canvas: palette.canvas,
   /** Cards, sheets, solid (Android) tab bar. */
