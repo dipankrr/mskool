@@ -282,6 +282,31 @@ export const components = {
     },
   },
 
+  /** Family Fees: the "to pay now" card, the session's month grid, a payment's mark. */
+  fees: {
+    mascot: 76,
+    hero: {
+      radius: radius.xl,
+      look: {
+        overdue: { bg: palette.coralTint, border: palette.coralEdge, fg: palette.red },
+        due: { bg: color.surfaceMuted, border: color.hairline, fg: color.ink },
+        clear: { bg: tone.positive.bg, border: palette.greenEdge, fg: tone.positive.fg },
+        yearPaid: { bg: tone.positive.bg, border: palette.greenEdge, fg: tone.positive.fg },
+      },
+    },
+    month: {
+      perRow: 6,
+      height: 60,
+      radius: radius.md,
+      gap: space.sm,
+      mark: 16,
+      selectedBorder: color.ink,
+      noneBorder: color.hairline,
+      tone,
+    },
+    payment: { size: 40, tone },
+  },
+
   /**
    * The first screen before sign-in: a soft colour wash up top, a Bookie-blue
    * stage below, and two role cards built like Bookie (a light face on a

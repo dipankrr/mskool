@@ -58,5 +58,12 @@
     "exam": "Exam",
     "absent": "Absent",
     "holiday": "Holiday"
+  },
+  "fees": {
+    "late": "Late",
+    "due": "Due",
+    "paid": "Paid",
+    "year": "Year",
+    "mixed": "Mixed"
   }
 }

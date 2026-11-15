@@ -1,19 +1,8 @@
 {
-  "dueNow": "Due now",
-  "allPaid": "All paid",
-  "allPaidBody": "Nothing is due right now.",
-  "overdue": "{{amount}} overdue",
-  "thisMonth": "{{amount}} due this month",
   "notSet": {
     "title": "Fees aren't set yet",
     "body": "The school hasn't set up fees for this session. They'll show here once it does."
   },
-  "tiles": {
-    "paid": "Paid this session",
-    "concession": "Concession",
-    "later": "Still to come"
-  },
-  "months": "Months",
   "monthA11y": "{{month}}: {{state}}, {{balance}} left",
   "monthState": {
     "overdue": "Overdue",
@@ -22,10 +11,6 @@
     "paid": "Paid",
     "none": "Nothing billed"
   },
-  "showAll": "Show all months",
-  "dues": "To pay",
-  "duesFor": "{{month}}",
-  "duesNone": "Nothing to pay.",
   "dueOn": "Due {{date}}",
   "overdueSince": "Overdue since {{date}}",
   "paidOn": "Paid",
@@ -82,5 +67,44 @@
   },
   "documentFailed": "Couldn't make the PDF. Try again.",
   "dueTitle": "{{head}} · {{month}}",
-  "paymentSubStatus": "{{date}} · {{mode}} · {{status}}"
+  "hero": {
+    "toPay": "To pay now",
+    "lateSince": "Late since {{date}}",
+    "earlier": "From earlier sessions",
+    "payBy": "Pay by {{date}}",
+    "wasDue": "Was due {{date}}",
+    "allPaid": "All paid",
+    "next": "Next: {{amount}} on {{date}}",
+    "nothingDue": "Nothing is due right now.",
+    "yearPaid": "Session paid",
+    "yearPaidBody": "No fee is left for this session.",
+    "part": {
+      "overdue": "Overdue",
+      "thisMonth": "This month",
+      "previousDues": "Earlier sessions"
+    }
+  },
+  "year": {
+    "title": "This session",
+    "percent": "{{percent}}% paid",
+    "paidOf": "{{paid}} of {{total}} paid",
+    "toCome": "{{amount}} to come",
+    "monthNone": "Nothing billed this month.",
+    "close": "Close {{month}}"
+  },
+  "toPay": {
+    "title": "What to pay",
+    "note": "Fees are paid at the school. A payment shows here once the school records it."
+  },
+  "comingUp": {
+    "title": "Coming up",
+    "sub_one": "Due {{date}} · {{count}} fee",
+    "sub_other": "Due {{date}} · {{count}} fees",
+    "more": "{{amount}} more later in the session"
+  },
+  "paymentRow": {
+    "sub": "{{mode}} · {{receipt}}",
+    "subStatus": "{{mode}} · {{receipt}} · {{status}}",
+    "all": "Show all {{count}} payments"
+  }
 }
