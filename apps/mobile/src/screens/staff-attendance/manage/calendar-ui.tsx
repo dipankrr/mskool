@@ -425,7 +425,7 @@ export function SessionMix({ counts, caption }: { counts: DayCounts; caption: st
               <ThemedText variant="caption" color={colors.ink} style={mixStyles.bold}>
                 {counts[type]}
               </ThemedText>{" "}
-              {MIX_WORDS[type]}
+              {type === "holiday" && counts[type] === 1 ? "holiday" : MIX_WORDS[type]}
             </ThemedText>
           </View>
         ))}

@@ -21,16 +21,8 @@ import { radius, spacing } from "../../../theme/tokens";
 import { useAttendanceSection } from "../use-attendance-section";
 import { Field } from "./field";
 import { ManageFrame } from "./frame";
-import {
-  initialPolicyForm,
-  toPolicyPayload,
-  validatePolicyForm,
-} from "./policy-form";
-import type {
-  DailyStatusRule,
-  MarkingMode,
-  PolicyForm,
-} from "./policy-form";
+import { initialPolicyForm, toPolicyPayload, validatePolicyForm } from "./policy-form";
+import type { DailyStatusRule, MarkingMode, PolicyForm } from "./policy-form";
 
 /**
  * The marking policy (chunk 3): mode, the period-wise day rule and threshold,
@@ -76,9 +68,7 @@ export function ManagePolicy() {
     <ManageFrame title={copy.attendance.manage.rows.policy} meta={meta}>
       {!ready ? (
         <Card>
-          <ThemedText variant="bodyStrong">
-            {copy.session.noYearTitle}
-          </ThemedText>
+          <ThemedText variant="bodyStrong">{copy.session.noYearTitle}</ThemedText>
           <ThemedText variant="meta" style={styles.cardBody}>
             {copy.session.noYearBody}
           </ThemedText>
@@ -196,9 +186,7 @@ function PolicyBody({
     <>
       {initial === null ? (
         <Card>
-          <ThemedText variant="bodyStrong">
-            {copy.attendance.manage.policy.unsetTitle}
-          </ThemedText>
+          <ThemedText variant="bodyStrong">{copy.attendance.manage.policy.unsetTitle}</ThemedText>
           <ThemedText variant="meta" style={styles.noticeBody}>
             {copy.attendance.manage.policy.unsetBody}
           </ThemedText>
@@ -261,11 +249,7 @@ function PolicyBody({
           {showCaution ? (
             <Card style={styles.caution}>
               <View style={styles.cautionRow}>
-                <AppIcon
-                  name="calendarOff"
-                  size={18}
-                  color={colors.tone.caution.fg}
-                />
+                <AppIcon name="calendarOff" size={18} color={colors.tone.caution.fg} />
                 <ThemedText variant="meta" style={styles.cautionText}>
                   {copy.attendance.manage.policy.caution(sectionName ?? "")}
                 </ThemedText>
@@ -330,19 +314,11 @@ function PolicyBody({
       </View>
 
       {upsert.error ? (
-        <ErrorCard
-          cause={upsert.error}
-          style={styles.error}
-          testID="policy-save-error"
-        />
+        <ErrorCard cause={upsert.error} style={styles.error} testID="policy-save-error" />
       ) : null}
 
       {saved && !upsert.isPending ? (
-        <View
-          testID="policy-saved"
-          accessibilityLiveRegion="polite"
-          style={styles.savedBar}
-        >
+        <View testID="policy-saved" accessibilityLiveRegion="polite" style={styles.savedBar}>
           <AppIcon name="check" size={18} color={colors.onAccent} />
           <ThemedText variant="bodyStrong" color={colors.onAccent}>
             {copy.attendance.manage.policy.saved}
@@ -350,11 +326,7 @@ function PolicyBody({
         </View>
       ) : (
         <CapsuleButton
-          title={
-            upsert.isPending
-              ? copy.common.saving
-              : copy.attendance.manage.policy.save
-          }
+          title={upsert.isPending ? copy.common.saving : copy.attendance.manage.policy.save}
           loading={upsert.isPending}
           disabled={hasErrors}
           onPress={submit}
@@ -406,10 +378,7 @@ function Segments<T extends string>({
             onPress={() => onChange(option.value)}
             style={[styles.segment, selected ? styles.segmentOn : null]}
           >
-            <ThemedText
-              variant="bodyStrong"
-              color={selected ? colors.accentDeep : colors.muted}
-            >
+            <ThemedText variant="bodyStrong" color={selected ? colors.accentDeep : colors.muted}>
               {option.label}
             </ThemedText>
           </Pressable>

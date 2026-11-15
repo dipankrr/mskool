@@ -28,7 +28,7 @@ export const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
 export const EXAM_TONE = { fg: "#3538CD", bg: "#EEF4FF" } as const;
 
 export const DAY_LOOK: Record<DayType, { fg: string; bg: string; short: string }> = {
-  working: { fg: colors.ink, bg: "transparent", short: "" },
+  working: { fg: colors.ink, bg: colors.accentTint, short: "" },
   half_day: { fg: colors.tone.caution.fg, bg: colors.tone.caution.bg, short: "½" },
   exam_day: { fg: EXAM_TONE.fg, bg: EXAM_TONE.bg, short: "EXAM" },
   holiday: { fg: colors.tone.critical.fg, bg: colors.tone.critical.bg, short: "HOL" },

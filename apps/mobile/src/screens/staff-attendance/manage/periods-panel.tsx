@@ -37,14 +37,16 @@ export function ManagePeriods() {
     { enabled: ready && canManage, staleTime: 60_000 },
   );
   const periodsQuery = trpc.attendance.period.list.useQuery(
-    { schoolId: schoolId ?? "", organizationId: organizationId ?? "", sectionId: section?.id ?? "" },
+    {
+      schoolId: schoolId ?? "",
+      organizationId: organizationId ?? "",
+      sectionId: section?.id ?? "",
+    },
     { enabled: ready && canManage, staleTime: 60_000 },
   );
 
   const sectionName = sectionLabel ?? section?.name ?? "";
-  const meta =
-    [sectionName, academicYear?.name ?? ""].filter(Boolean).join(" · ") ||
-    null;
+  const meta = [sectionName, academicYear?.name ?? ""].filter(Boolean).join(" · ") || null;
 
   if (!canManage) {
     return (
@@ -68,9 +70,7 @@ export function ManagePeriods() {
     <ManageFrame title={copy.attendance.manage.rows.periods} meta={meta}>
       {!ready ? (
         <Card>
-          <ThemedText variant="bodyStrong">
-            {copy.session.noYearTitle}
-          </ThemedText>
+          <ThemedText variant="bodyStrong">{copy.session.noYearTitle}</ThemedText>
           <ThemedText variant="meta" style={styles.cardBody}>
             {copy.session.noYearBody}
           </ThemedText>
@@ -79,9 +79,7 @@ export function ManagePeriods() {
         <>
           {marksDaily ? (
             <Card style={styles.note}>
-              <ThemedText variant="meta">
-                {copy.attendance.manage.periods.dailyNote}
-              </ThemedText>
+              <ThemedText variant="meta">{copy.attendance.manage.periods.dailyNote}</ThemedText>
             </Card>
           ) : null}
           <CapsuleButton
@@ -140,10 +138,7 @@ export function ManagePeriods() {
                           },
                         })
                       }
-                      style={({ pressed }) => [
-                        styles.row,
-                        pressed ? styles.rowPressed : null,
-                      ]}
+                      style={({ pressed }) => [styles.row, pressed ? styles.rowPressed : null]}
                     >
                       <View style={styles.seqBadge}>
                         <ThemedText variant="caption" color={colors.muted}>
@@ -158,19 +153,12 @@ export function ManagePeriods() {
                       </View>
                       {period.isHomeroom ? (
                         <View style={styles.homeroomTag}>
-                          <ThemedText
-                            variant="caption"
-                            color={colors.accentDeep}
-                          >
+                          <ThemedText variant="caption" color={colors.accentDeep}>
                             {copy.attendance.manage.periods.homeroom}
                           </ThemedText>
                         </View>
                       ) : null}
-                      <AppIcon
-                        name="chevronRight"
-                        size={18}
-                        color={colors.chevron}
-                      />
+                      <AppIcon name="chevronRight" size={18} color={colors.chevron} />
                     </Pressable>
                   </View>
                 );

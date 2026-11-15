@@ -436,7 +436,6 @@ function Choice({
   );
 }
 
-
 /** A4: the number every % divides by, the mix, and twelve tiny months. */
 function Review({
   totals,

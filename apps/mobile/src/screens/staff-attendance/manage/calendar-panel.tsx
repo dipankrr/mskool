@@ -17,7 +17,7 @@ import { trpc } from "../../../lib/trpc";
 import { colors } from "../../../theme/brand-admin";
 import { radius, spacing } from "../../../theme/tokens";
 import { clampMonth, daysInMonth, isoOf, monthIndex, shiftMonth } from "../calendar-month";
-import { datesBetween, entryLength, groupEntries, isSchoolDay } from "./calendar-lib";
+import { datesBetween, entryLength, groupEntries } from "./calendar-lib";
 import type { DayType, Entry, PatternDay } from "./calendar-lib";
 import { EntrySheet, SetDaysSheet, useCalendarWrites } from "./calendar-sheets";
 import {
@@ -32,6 +32,7 @@ import {
   typeName,
 } from "./calendar-ui";
 import { ManageFrame } from "./frame";
+import { PatternSheet, patternSummary } from "./pattern-sheet";
 
 type View_ = "month" | "year" | "list";
 
@@ -54,6 +55,7 @@ export function ManageCalendar() {
   const [anchor, setAnchor] = useState<string | null>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [setting, setSetting] = useState<string[] | null>(null);
+  const [patternOpen, setPatternOpen] = useState(false);
   const [entryOpen, setEntryOpen] = useState<{ entry: Entry | null } | null>(null);
 
   const ready = Boolean(organizationId && schoolId && academicYear);
@@ -104,18 +106,6 @@ export function ManageCalendar() {
   const pattern = (overview.data?.weekdays ?? null) as PatternDay[] | null;
   const writes = useCalendarWrites(pattern);
 
-  const monthCounts = useMemo(() => {
-    let school = 0;
-    let holidays = 0;
-    let exams = 0;
-    for (const iso of monthDates) {
-      const t = typeOf.get(iso);
-      if (isSchoolDay(t)) school += 1;
-      if (t === "holiday") holidays += 1;
-      if (t === "exam_day") exams += 1;
-    }
-    return { school, holidays, exams };
-  }, [monthDates, typeOf]);
 
   const canPrev = Boolean(monthAnchor && start && monthIndex(monthAnchor) > monthIndex(start));
   const canNext = Boolean(monthAnchor && end && monthIndex(monthAnchor) < monthIndex(end));
@@ -266,18 +256,15 @@ export function ManageCalendar() {
 
           {view === "month" ? (
             <>
-              <Card style={styles.stats}>
-                <Stat
-                  value={monthCounts.school}
-                  label={words.statSchool}
-                  color={colors.accentDeep}
+              <Card style={styles.gapTop}>
+                <SessionMix
+                  counts={countDays(
+                    monthDates[0]!,
+                    monthDates[monthDates.length - 1]!,
+                    (iso) => typeOf.get(iso) ?? null,
+                  )}
+                  caption={formatMonthLong(monthAnchor)}
                 />
-                <Stat
-                  value={monthCounts.holidays}
-                  label={words.statHolidays}
-                  color={colors.tone.critical.fg}
-                />
-                <Stat value={monthCounts.exams} label={words.statExams} color={colors.ink} />
               </Card>
               <View style={styles.monthRow}>
                 <ThemedText variant="bodyStrong" style={[styles.flex, styles.monthTitle]}>
@@ -319,6 +306,27 @@ export function ManageCalendar() {
             </>
           ) : view === "year" ? (
             <>
+              <Pressable
+                accessibilityRole={canManage ? "button" : undefined}
+                disabled={!canManage}
+                onPress={() => setPatternOpen(true)}
+                style={({ pressed }) => [styles.patternRow, pressed ? styles.pressedRow : null]}
+                testID="cal-pattern-row"
+              >
+                <View style={styles.flex}>
+                  <ThemedText variant="caption" color={colors.muted}>
+                    {words.patternRow}
+                  </ThemedText>
+                  <ThemedText variant="bodyStrong" numberOfLines={2}>
+                    {patternSummary(pattern)}
+                  </ThemedText>
+                </View>
+                {canManage ? (
+                  <ThemedText variant="chip" color={colors.accentDeep}>
+                    {words.patternChange}
+                  </ThemedText>
+                ) : null}
+              </Pressable>
               <Card style={styles.gapTop}>
                 <SessionMix
                   counts={countDays(start, end, (iso) => typeOf.get(iso) ?? null)}
@@ -421,6 +429,14 @@ export function ManageCalendar() {
         />
       ) : null}
       {writes.confirmSheet}
+      {patternOpen ? (
+        <PatternSheet
+          current={pattern}
+          start={start}
+          end={end}
+          onClose={() => setPatternOpen(false)}
+        />
+      ) : null}
     </ManageFrame>
   );
 }
@@ -428,19 +444,6 @@ export function ManageCalendar() {
 function sharedType(dates: readonly string[], typeOf: ReadonlyMap<string, DayType>): DayType {
   const types = new Set(dates.map((iso) => typeOf.get(iso) ?? "working"));
   return types.size === 1 ? [...types][0]! : "holiday";
-}
-
-function Stat({ value, label, color }: { value: number; label: string; color: string }) {
-  return (
-    <View style={styles.stat}>
-      <ThemedText variant="title" color={color} style={styles.statValue}>
-        {value}
-      </ThemedText>
-      <ThemedText variant="caption" color={colors.muted} numberOfLines={1}>
-        {label}
-      </ThemedText>
-    </View>
-  );
 }
 
 function MonthButton({
@@ -628,6 +631,16 @@ const styles = StyleSheet.create({
   off: { opacity: 0.35 },
   monthTitle: { fontSize: 20, lineHeight: 26 },
   yearCard: { marginTop: spacing.md },
+  patternRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+  },
+  pressedRow: { opacity: 0.85 },
   byMonth: { marginTop: spacing.lg, marginBottom: spacing.xs, paddingHorizontal: spacing.xs },
   gridCard: { paddingHorizontal: spacing.sm, paddingVertical: spacing.sm },
   hint: { marginTop: spacing.sm, textAlign: "center" },
