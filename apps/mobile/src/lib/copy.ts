@@ -1816,6 +1816,7 @@ export const copy = {
       reasonChips: ["Came late", "Marked by mistake", "Leave letter"] as readonly string[],
       reasonNote: "Add a note (optional)",
       savedTitle: "Attendance saved",
+      stampWord: "MARKED",
       savedWho: {
         absent: "Absent",
         late: "Late",

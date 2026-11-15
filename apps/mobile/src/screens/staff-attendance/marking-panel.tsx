@@ -43,6 +43,7 @@ import { colors } from "../../theme/brand-admin";
 import { fontFamily, fontSize, gutter, motion, radius, shadow, spacing } from "../../theme/tokens";
 import { clampIsoDate, clampMonth } from "./calendar-month";
 import { DaySheet } from "./day-sheet";
+import { DoneStamp } from "./done-stamp";
 import {
   buildDraft,
   buildEntries,
@@ -178,6 +179,8 @@ export function MarkingPanel({
   const [layout, setLayout] = useState<Layout>("list");
   const [moreOpen, setMoreOpen] = useState(false);
   const [confirmAbsent, setConfirmAbsent] = useState(false);
+  /** True only right after this screen saved, so the stamp presses in once. */
+  const [justSaved, setJustSaved] = useState(false);
   const [undo, setUndo] = useState<{ previous: Map<string, Status>; count: number } | null>(null);
   /** Any manual mark makes the teacher's entries the truth; no refetch may
    *  overwrite them until the day changes or a submit resets the flag. */
@@ -285,6 +288,7 @@ export function MarkingPanel({
       setEditing(false);
       setFilter(null);
       setUndo(null);
+      setJustSaved(false);
     }
     if (editedRef.current) return;
     setDraft(buildDraft(rosterIds, storedByStudent));
@@ -340,6 +344,7 @@ export function MarkingPanel({
       setEditing(false);
       setFilter(null);
       setUndo(null);
+      setJustSaved(true);
       void utils.attendance.status.invalidate();
       void utils.attendance.statusHistory.invalidate();
       void utils.attendance.summary.invalidate();
@@ -607,6 +612,12 @@ export function MarkingPanel({
               </ThemedText>
             ) : null}
           </View>
+          {clean ? (
+            <DoneStamp
+              animate={justSaved}
+              detail={`${formatShortWeekday(date).toUpperCase()} · ${counts.marked}/${roster.length}`}
+            />
+          ) : null}
           <HeadButton
             icon="viewCompact"
             label={words.viewList}
