@@ -14,8 +14,10 @@ import { ThemedText } from "../../components/themed-text";
 import { useActiveContext, useBranchMeta } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
 import { copy } from "../../lib/copy";
+import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { gutter, radius, spacing } from "../../theme/tokens";
+import { SetupPrompt } from "./manage/calendar-panel";
 import { MarkingPanel } from "./marking-panel";
 import { SectionSheet } from "./section-sheet";
 import { SummaryPanel } from "./summary-panel";
@@ -38,7 +40,7 @@ export function AttendanceScreen() {
   const canSee = hasAny("attendance:read", "attendance:create");
   const canManage = has("attendance:update");
   const params = useLocalSearchParams<{ sectionId?: string }>();
-  const { academicYear, yearPending } = useActiveContext();
+  const { academicYear, yearPending, organizationId, schoolId } = useActiveContext();
   const [view, setView] = useState<AttendanceView>("mark");
   const [switcherOpen, setSwitcherOpen] = useState(false);
   // Names a past session (ADR-066) and, with several branches, the branch.
@@ -49,6 +51,15 @@ export function AttendanceScreen() {
   const { sectionsQuery, section, sectionLabel, sectionOptions } = useAttendanceSection(
     params.sectionId,
   );
+
+  // ADR-069: a session with no calendar shows set-up (admin) or a plain
+  // note (teacher) instead of a marking screen that refuses every day.
+  const overview = trpc.attendance.calendar.overview.useQuery(
+    { organizationId: organizationId ?? "", schoolId: schoolId ?? "", academicYearId: academicYear?.id ?? "" },
+    { enabled: Boolean(organizationId && schoolId && academicYear), staleTime: 60_000 },
+  );
+  const noCalendar = overview.data?.entries === 0;
+  const tabSpace = useTabBarSpace();
 
   const yearState = academicYear ? "ready" : yearPending ? "loading" : "none";
 
@@ -181,7 +192,15 @@ export function AttendanceScreen() {
         </View>
       ) : null}
       <View style={styles.flex}>
-        <PanelFrame visible={view === "mark"}>
+        <PanelFrame visible={view === "mark" && noCalendar}>
+          <ScrollView contentContainerStyle={[styles.content, { paddingBottom: tabSpace }]}>
+            {titleBlock}
+            <View style={styles.setupGap}>
+              <SetupPrompt canManage={canManage} sessionName={academicYear?.name ?? ""} />
+            </View>
+          </ScrollView>
+        </PanelFrame>
+        <PanelFrame visible={view === "mark" && !noCalendar}>
           <MarkingPanel
             key={`mark-${section.id}-${academicYear?.id}`}
             sectionId={section.id}
@@ -281,6 +300,7 @@ const styles = StyleSheet.create({
   titleText: {
     flexShrink: 1,
   },
+  setupGap: { marginTop: spacing.lg },
   content: {
     paddingHorizontal: gutter,
     paddingTop: spacing.md,

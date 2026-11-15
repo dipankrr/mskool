@@ -29,6 +29,8 @@ import {
   sessionStartYearOptions,
 } from "../../lib/session-dates";
 import { trpc } from "../../lib/trpc";
+import { CalendarChangeSheet } from "./calendar-change-sheet";
+import type { SessionCalendarPreview } from "./calendar-change-sheet";
 import { spacing } from "../../theme/tokens";
 import {
   initialSessionForm,
@@ -298,11 +300,37 @@ function SessionFormBody({
     setSaveError(null);
   };
 
+  const [calendarPreview, setCalendarPreview] = useState<SessionCalendarPreview | null>(null);
+
   const submit = async () => {
     setSubmitted(true);
     setSaveError(null);
     if (hasErrors) return;
 
+    // ADR-069: moving a session's dates moves its attendance calendar. Show
+    // what changes first; the server refuses the save on its own anyway.
+    if (session && (form.startDate !== session.startDate || form.endDate !== session.endDate)) {
+      try {
+        const payload = sessionPayload(form);
+        const preview = await utils.attendance.calendar.sessionPreview.fetch({
+          organizationId,
+          schoolId: session.schoolId,
+          academicYearId: session.id,
+          startDate: payload.startDate,
+          endDate: payload.endDate,
+        });
+        if (preview.hasCalendar && (preview.added > 0 || preview.removed > 0)) {
+          setCalendarPreview(preview);
+          return;
+        }
+      } catch {
+        // No preview (no permission, offline): save as before.
+      }
+    }
+    await persist();
+  };
+
+  const persist = async () => {
     try {
       if (session) {
         await update.mutateAsync({
@@ -323,7 +351,9 @@ function SessionFormBody({
       await Promise.all([
         utils.academic.year.list.invalidate(),
         utils.academic.year.byId.invalidate(),
+        utils.attendance.invalidate(),
       ]);
+      setCalendarPreview(null);
       setSaved(true);
     } catch (error) {
       setSaveError(error);
@@ -506,6 +536,16 @@ function SessionFormBody({
           testID="session-end-date"
         />
       </Card>
+      {calendarPreview && session ? (
+        <CalendarChangeSheet
+          preview={calendarPreview}
+          before={{ startDate: session.startDate, endDate: session.endDate }}
+          after={sessionPayload(form)}
+          saving={update.isPending}
+          onSave={() => void persist()}
+          onClose={() => setCalendarPreview(null)}
+        />
+      ) : null}
     </ScreenFrame>
   );
 }

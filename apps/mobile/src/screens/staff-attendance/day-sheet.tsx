@@ -19,6 +19,7 @@ import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { fontFamily, radius, spacing } from "../../theme/tokens";
 import { clampMonth, daysInMonth, isoOf, monthIndex, shiftMonth } from "./calendar-month";
+import { EXAM_TONE } from "./manage/calendar-lib";
 import { dayTypeLabel, isMarkableDayType } from "./status-meta";
 
 const weekdays = ["M", "T", "W", "T", "F", "S", "S"] as const;
@@ -234,14 +235,17 @@ export function DaySheet({
                 const pastUnmarked =
                   !disabled && isMarkableDayType(dayType) && iso < today && !marked;
                 const off = dayType === "holiday" || dayType === "weekend" || dayType === null;
-                const special = dayType === "half_day" || dayType === "exam_day";
+                const special = dayType === "half_day";
+                const exam = dayType === "exam_day";
                 const numberColor = selected
                   ? colors.onAccent
                   : off
                     ? colors.chevron
                     : special
                       ? colors.tone.caution.fg
-                      : colors.ink;
+                      : exam
+                        ? EXAM_TONE.fg
+                        : colors.ink;
                 const dot = marked
                   ? colors.tone.positive.fg
                   : pastUnmarked
@@ -264,6 +268,7 @@ export function DaySheet({
                           style={[
                             styles.dayDisc,
                             special && !selected ? styles.dayDiscSpecial : null,
+                            exam && !selected ? { backgroundColor: EXAM_TONE.bg } : null,
                             isToday && !selected ? styles.dayDiscToday : null,
                             pressed && !selected ? styles.dayDiscPressed : null,
                             selected ? styles.dayDiscOn : null,
@@ -290,10 +295,8 @@ export function DaySheet({
             <View style={styles.legend}>
               <LegendDot color={colors.tone.positive.fg} label={words.markedLegend} />
               <LegendDot color={colors.tone.critical.fg} label={words.unmarkedPastLegend} />
-              <LegendDot
-                color={colors.tone.caution.fg}
-                label={`${words.dayTypes.half_day} / ${words.dayTypes.exam_day}`}
-              />
+              <LegendDot color={colors.tone.caution.fg} label={words.dayTypes.half_day} />
+              <LegendDot color={EXAM_TONE.fg} label={words.dayTypes.exam_day} />
               <LegendDot color={colors.chevron} hollow label={words.holidayWeekendLegend} />
             </View>
 

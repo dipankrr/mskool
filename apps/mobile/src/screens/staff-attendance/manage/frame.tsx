@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { ScreenFrame } from "../../../components/screen-frame";
+import type { HeaderAction } from "../../../components/screen-frame";
 import { copy } from "../../../lib/copy";
 
 /**
@@ -11,10 +12,18 @@ import { copy } from "../../../lib/copy";
 export function ManageFrame({
   title,
   meta,
+  footer,
+  footerVariant,
+  action,
+  stickyHeader,
   children,
 }: {
   title: string;
   meta?: string | null;
+  footer?: ReactNode;
+  footerVariant?: "bar" | "floating";
+  action?: HeaderAction;
+  stickyHeader?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -24,6 +33,10 @@ export function ManageFrame({
       backAccessibilityLabel={copy.attendance.manage.back}
       backTestID="manage-back"
       padForTabBar
+      footer={footer}
+      footerVariant={footerVariant}
+      action={action}
+      stickyHeader={stickyHeader}
     >
       {children}
     </ScreenFrame>
