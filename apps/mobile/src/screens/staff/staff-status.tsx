@@ -93,7 +93,9 @@ export function StatusSheet({
   }
 
   const button =
-    pick === "left"
+    pick === status && unchanged
+      ? "No change"
+      : pick === "left"
       ? "Next: handover"
       : pick === "on_leave"
         ? status === "on_leave"

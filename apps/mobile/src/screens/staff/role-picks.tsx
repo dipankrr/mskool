@@ -111,7 +111,7 @@ function Tile({
         <ThemedText variant="bodyStrong" numberOfLines={1}>
           {title}
         </ThemedText>
-        <ThemedText variant="caption" style={styles.line} numberOfLines={2}>
+        <ThemedText variant="meta" style={styles.line} numberOfLines={2}>
           {line}
         </ThemedText>
       </View>

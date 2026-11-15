@@ -97,7 +97,7 @@ export function StaffHistoryScreen({ id }: { id: string }) {
       ) : history.isError ? (
         <ErrorCard cause={history.error} onRetry={() => void history.refetch()} />
       ) : months.size === 0 ? (
-        <ThemedText variant="meta">Nothing yet.</ThemedText>
+        <ThemedText variant="meta">Nothing yet. Roles given before someone joins show here once they join; leave isn’t logged.</ThemedText>
       ) : (
         [...months.entries()].map(([month, entries]) => (
           <View key={month}>

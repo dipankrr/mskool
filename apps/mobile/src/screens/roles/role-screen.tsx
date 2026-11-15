@@ -120,7 +120,7 @@ export function RoleScreen({ type }: { type: string }) {
                 Undo
               </ThemedText>
             </Pressable>
-            <CapsuleButton title="Review" size="compact" onPress={() => setReviewing(true)} testID="role-review" />
+            <CapsuleButton title="Review" size="compact" onPress={() => setReviewing(true)} testID="role-review" style={{ alignSelf: "center" }} />
           </View>
         ) : undefined
       }
@@ -236,7 +236,7 @@ export function RoleScreen({ type }: { type: string }) {
 
       {reviewing ? (
         <FormSheet
-          title={`Save ${diff.count} ${diff.count === 1 ? "change" : "changes"} to ${roleLabel(type)}?`}
+          title={`Save ${diff.count} ${diff.count === 1 ? "change" : "changes"}?`}
           onClose={() => setReviewing(false)}
           testIDPrefix="role-review"
           footer={
@@ -246,10 +246,15 @@ export function RoleScreen({ type }: { type: string }) {
                 onPress={() =>
                   void update
                     .mutateAsync({ organizationId: orgId, roleType: type as never, add: diff.add, remove: diff.remove })
-                    .then(async () => {
-                      await utils.role.permissions.invalidate();
-                      setDraft(null);
+                    .then(() => {
+                      // Show the saved list at once, then confirm it from the server.
+                      utils.role.permissions.setData({ organizationId: orgId }, (rows) => [
+                        ...(rows ?? []).filter((r) => r.roleType !== type),
+                        ...[...held].map((permission) => ({ roleType: type as never, permission })),
+                      ]);
                       setReviewing(false);
+                      setDraft(null);
+                      void utils.role.permissions.invalidate();
                     })
                     .catch(() => undefined)
                 }
@@ -262,6 +267,7 @@ export function RoleScreen({ type }: { type: string }) {
           }
         >
           <ThemedText variant="meta">
+            {`To ${roleLabel(type)}. `}
             {teaching
               ? "For every teacher given this in Teaching, at every branch, straight away."
               : people.length > 0
@@ -294,9 +300,13 @@ export function RoleScreen({ type }: { type: string }) {
                 onPress={() =>
                   void reset
                     .mutateAsync({ organizationId: orgId, roleType: type as never })
-                    .then(async () => {
-                      await utils.role.permissions.invalidate();
+                    .then(() => {
+                      utils.role.permissions.setData({ organizationId: orgId }, (rows) => [
+                        ...(rows ?? []).filter((r) => r.roleType !== type),
+                        ...[...shipped].map((permission) => ({ roleType: type as never, permission })),
+                      ]);
                       setResetting(false);
+                      void utils.role.permissions.invalidate();
                     })
                     .catch(() => undefined)
                 }

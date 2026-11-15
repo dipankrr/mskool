@@ -3425,3 +3425,21 @@ not needed). A file picker for import (needs a native module and a new dev build
 students (batched, 300 at a time). Not built: different calendars per class, telling families
 about a new holiday, changing the weekly pattern partway through a session, the web calendar
 page (unchanged, but bound by the same server rules).
+
+## ADR-070 - Office roles are given on the phone, and can wait for someone to join
+
+**Date:** 2026-11-16. **Status:** accepted (owner, staff roles mockup `prototype/staff-roles.html`, R1-R24).
+
+**Context.** The phone could add a librarian or a principal but not give them access; roles were web-only and a grant needs a login, so nothing could be given before someone joined. A suspension only changed a label, `on_leave` could not be set, and editing a joined person's phone left their sign-in on the old number.
+
+**Decision.**
+1. Add staff asks "What do they do here?". Teacher sets `teachesClasses` and gives no role (teacher access stays with Teaching, ADR-068). Office roles show only to holders of `role_assignment:assign`, Org admin only to holders at org level (`me` memberships now carry `orgWidePermissions`). The job title fills from the first office pick until typed over.
+2. A role picked for someone without a login waits in `staff_pending_roles` and becomes a normal grant at join, in the picker's name. Leaving or moving branch cancels waiting roles.
+3. Suspension switches the sign-in off (`suspended.<staffId>`, sessions end) and keeps roles and classes; lifting it restores the sign-in. Sign-in answers "paused" for a suspended number.
+4. On leave is set with `staff.setLeave` (due-back date and note on `staff.status_until/status_note`); it keeps the sign-in.
+5. A joined person's phone change moves their sign-in at once, same password.
+6. `staff.move` ends the old branch's classes and branch grants; org-wide roles stay.
+7. The phone has the full permission editor (ADR-036's calls), with review before save, the self and Org admin locks shown up front, and reset.
+8. New reads: a person's history from `authz_audit_log`, roles ending in ±7 days with extend (`role_extended`), and a CSV staff export for `staff:export`.
+
+**Consequences.** Migration 0059. Leave is not audited. The PDF staff list and leave requests are not built.
