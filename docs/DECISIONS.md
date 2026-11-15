@@ -3379,3 +3379,49 @@ cache flush for the new defaults. Test harnesses that sign in by email still wor
 seed keeps emails on its users; new staff have none. Not built: fill from contacts (needs a
 native module and a new app build), copy assignments to the next session (deferred until
 before a school's second session), electives across sections.
+
+## ADR-069 - The attendance calendar keeps a weekly pattern and follows the session's dates
+
+**Status.** Accepted 2026-11-15 (owner review of `prototype/attendance-calendar.html`).
+
+**Context.** The calendar was one row per date, written by a generator whose input (which
+weekdays are open) was thrown away. Holidays went in one date at a time. Editing a session's
+dates did not touch the calendar: a longer session left days with no entry (teachers refused),
+a shorter one left entries outside it that the marking check still accepted. Marks on a day
+later turned into a holiday still counted, so a student could show over 100%, and totals were
+only re-counted on the next mark.
+
+**Decision.**
+1. **Weekly pattern.** `attendance_week_patterns` holds a session's normal week, one row per
+   school and session, seven entries (index = `getUTCDay()`), each working / half_day /
+   weekend. The generator and the new set-up write it. It fills days the calendar lacks.
+2. **Set-up in one call.** `attendance.calendar.setup` saves the pattern, fills missing dates
+   from it (from `startFrom` for a school joining mid-session) and writes the holidays and exam
+   days on top, in one transaction. The phone's set-up offers four starting lists: last
+   session's entries moved forward a year (non-fixed dates flagged to check), a bundled
+   national list (festivals flagged; the list needs a yearly update), a pasted import (Excel /
+   Sheets cells, CSV lines, or a .ics file), or empty.
+3. **Many days at once.** `attendance.calendar.setDays` sets any dates inside the session to
+   one type and name. The holiday list is the per-day rows grouped into named runs on the
+   client; no range table.
+4. **Calendar follows the session.** `academic.year.update` refuses new dates that would drop
+   days with attendance, then fills added days from the pattern and deletes calendar rows now
+   outside the session. `attendance.calendar.sessionPreview` shows this before saving.
+   `fillGaps` and `overview.missing` cover gaps from before this rule.
+5. **Marking checks the session's own dates** as well as the calendar row.
+6. **A marked day that stops being a school day keeps its marks, uncounted.** Counting only
+   counts marks on calendar school days; every calendar write re-counts the summaries of
+   everyone marked in the session; the family month map hides such marks. The admin sees
+   which sections are affected and confirms once; there is no keep-or-delete choice (owner:
+   rare case).
+7. **Exam days are indigo**, their own colour, on the phone.
+
+**Rejected.** Pattern on the session row (attendance-only data on a shared table) or on the
+attendance policy (one row for all sessions, so a new year's week would rewrite an old one).
+Deleting marks on a day turned holiday (not reversible). Photo import of a printed list (owner:
+not needed). A file picker for import (needs a native module and a new dev build; paste for now).
+
+**Consequences.** Migration 0057. Calendar writes cost a re-count of the session's marked
+students (batched, 300 at a time). Not built: different calendars per class, telling families
+about a new holiday, changing the weekly pattern partway through a session, the web calendar
+page (unchanged, but bound by the same server rules).
