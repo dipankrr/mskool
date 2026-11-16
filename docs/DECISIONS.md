@@ -3478,3 +3478,19 @@ Date: 2026-11-16. Status: accepted (owner: "implement it, keep it the same as th
 7. **Area hues on Home only** (attendance green, homework violet, exams orange, fees blue, students teal, teaching plum, calendar indigo) as labels; red, amber and the tones keep meaning status.
 
 **Consequences.** No schema change. Not in the data, so left out of the mockup's cards: a concession approval queue (concessions are added directly), marks-entry deadlines, the payment-mode split, week trends, absent streaks, birthdays and family sign-ins. Period-wise schools still see daily status. The past-session Home keeps the existing notice. Seen on the Android emulator as an org admin with two branches (branch view and All branches); the teacher views are covered by render tests only.
+
+## ADR-073 - More is a set of area screens behind a pinned top bar
+
+**Date:** 2026-11-16. **Status:** accepted (owner, mockup `prototype/more-v3.html`). Supersedes ADR-071 point 1 (More as showcase cards); the sidebar and the account popup are unchanged.
+
+**Context.** The v2 More was a page of cards, each pushing another screen. The owner wanted the areas without a bottom tab to have "kind of a dedicated screen", with a top menu like Swiggy's.
+
+**Decision.**
+1. More shows a pinned bar of areas: Overview, Exams, Academics, Staff (Teaching for someone who teaches but cannot read staff), School. Each is offered only when its read is allowed (`areasFor` in `screens/more/areas.ts`); with one area there is no bar.
+2. Overview opens first on a fresh start; within one run of the app More returns to the area last chosen.
+3. Each area is a dashboard: a hero in the area's colour, Needs you rows with their own button, up to four doors, then the area's list. Deeper screens still push on top.
+4. The bar is tap-only (no pager library). It stays pinned and slims as the page scrolls: pictures fold, names stay.
+5. More has no heading row, menu button or avatar; the sidebar and the account popup are reached from Home.
+6. Every figure comes from a read that already exists (Home's ADR-072 reads included). Marks progress across classes and papers waiting for verification are not shown.
+
+**Consequences.** Mobile only; no API change. Exams, Academic setup and the staff list also remain as pushed screens, reached from Home and the sidebar. Not seen running on a device or on web before commit (see TASKS).

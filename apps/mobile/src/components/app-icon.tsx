@@ -22,6 +22,11 @@ const iconMap = {
   home: { ios: "house.fill", android: "home" },
   attendance: { ios: "checklist", android: "checklist" },
   more: { ios: "ellipsis", android: "more-horiz" },
+  /** More v3 area bar: the Overview tab. */
+  dashboard: { ios: "square.grid.2x2.fill", android: "dashboard" },
+  mail: { ios: "envelope.fill", android: "mail" },
+  /** Subjects mapped to classes. */
+  mapping: { ios: "arrow.triangle.branch", android: "account-tree" },
   /** Opens the sidebar. */
   menu: { ios: "line.3.horizontal", android: "menu" },
   /** The overflow menu in a header: three dots, stacked. */
