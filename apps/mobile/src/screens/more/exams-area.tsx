@@ -103,7 +103,10 @@ export function ExamsArea() {
             key: "drafts",
             icon: "edit" as const,
             hue: neutral,
-            title: `${rows.filter((row) => row.status === "draft").length} exams still in draft`,
+            title: (() => {
+              const n = rows.filter((row) => row.status === "draft").length;
+              return n === 1 ? "1 exam still in draft" : `${n} exams still in draft`;
+            })(),
             meta: "Set dates and papers to schedule them",
             action: { label: "Open", onPress: () => router.push("/exams") },
           },

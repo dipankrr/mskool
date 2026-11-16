@@ -22,7 +22,6 @@ import { daysUntil } from "./time";
 
 const look = AREAS.staff;
 const hue: Hue = { fg: look.h0, bg: look.tint };
-const FACES = ["#F2934A", "#9C7BF0", "#3DBE84", "#5B96F2", "#E46A6A", "#0E6E86", "#C4520A", "#5B34B8"];
 
 /**
  * Staff in More: who is on roll and who is away, what needs the caller (gaps,
@@ -138,7 +137,7 @@ export function StaffArea() {
         h1={look.h1}
         kicker={[branchName, "staff"].filter(Boolean).join(" · ")}
         title={`${counts.all} on roll`}
-        sub={`${counts.teaching} teaching · ${counts.all - counts.teaching} office`}
+        sub={`${counts.teaching} teaching · ${counts.office} office`}
         aside={
           current.length > 0 ? (
             <View style={styles.faces}>
@@ -146,7 +145,7 @@ export function StaffArea() {
                 <Avatar
                   key={person.id}
                   name={fullName(person)}
-                  style={[styles.face, { backgroundColor: FACES[index % FACES.length] }, index === 0 ? null : styles.faceOverlap]}
+                  style={[styles.face, index === 0 ? null : styles.faceOverlap]}
                 />
               ))}
             </View>
@@ -219,7 +218,7 @@ export function StaffArea() {
               <Row
                 key={person.id}
                 first={index === 0}
-                leading={<Avatar name={fullName(person)} style={{ backgroundColor: FACES[index % FACES.length] }} />}
+                leading={<Avatar name={fullName(person)} />}
                 hue={hue}
                 title={fullName(person)}
                 meta={tags.length > 0 ? tags.map((t: { label: string; classTeacher: boolean }) => (t.classTeacher ? `★ ${t.label}` : t.label)).join(" · ") : person.designation ?? "Staff"}
@@ -249,7 +248,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255, 255, 255, 0.9)",
   },
   faceOverlap: {
-    marginLeft: -12,
+    marginLeft: -10,
   },
   segment: {
     flexDirection: "row",

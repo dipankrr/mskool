@@ -52,15 +52,17 @@ export function AreaBar({
   const fill = areas.length <= 3;
   const scroller = useRef<ScrollView>(null);
   const width = useRef(0);
+  // Each tab is as wide as its name, so where it sits is measured, not computed.
+  const spots = useRef(new Map<AreaKey, { x: number; w: number }>());
 
-  // Bring the chosen tab into view; the first ones are already there.
+  // Bring the chosen tab into view, centred where the row allows.
   useEffect(() => {
     if (fill) return;
-    const index = areas.indexOf(active);
-    const left = PAD + index * (TAB_W + GAP);
-    const x = Math.max(0, left - (width.current - TAB_W) / 2);
+    const spot = spots.current.get(active);
+    if (!spot) return;
+    const x = Math.max(0, spot.x - (width.current - spot.w) / 2);
     scroller.current?.scrollTo({ x, animated: true });
-  }, [active, areas, fill]);
+  }, [active, fill]);
 
   const tabs = areas.map((key) => (
     <Tab
@@ -69,6 +71,7 @@ export function AreaBar({
       on={key === active}
       fill={fill}
       slim={slim}
+      onPlace={(x, w) => spots.current.set(key, { x, w })}
       onPress={() => {
         if (key === active) return;
         void Haptics.selectionAsync();
@@ -112,12 +115,14 @@ function Tab({
   on,
   fill,
   slim,
+  onPlace,
   onPress,
 }: {
   area: AreaKey;
   on: boolean;
   fill: boolean;
   slim: SharedValue<number>;
+  onPlace: (x: number, width: number) => void;
   onPress: () => void;
 }) {
   const look = AREAS[area];
@@ -137,7 +142,10 @@ function Tab({
   }));
 
   return (
-    <Animated.View style={[styles.tab, fill ? styles.tabFill : null, on ? styles.tabOn : styles.tabOff, box]}>
+    <Animated.View
+      onLayout={(event: LayoutChangeEvent) => onPlace(event.nativeEvent.layout.x, event.nativeEvent.layout.width)}
+      style={[styles.tab, fill ? styles.tabFill : null, on ? styles.tabOn : styles.tabOff, box]}
+    >
       <Pressable
         accessibilityRole="tab"
         accessibilityLabel={look.label}
@@ -211,14 +219,15 @@ const styles = StyleSheet.create({
   fillRow: {
     paddingHorizontal: PAD,
   },
+  // At least the picture's width, and wide enough for the whole name.
   tab: {
-    width: TAB_W,
+    minWidth: TAB_W,
     borderTopLeftRadius: 22,
     borderTopRightRadius: 22,
   },
   tabFill: {
     flex: 1,
-    width: undefined,
+    minWidth: 0,
   },
   tabOff: {
     backgroundColor: "rgba(255, 255, 255, 0.5)",
@@ -236,7 +245,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "flex-end",
     paddingBottom: spacing.md,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: spacing.md,
   },
   icon: {
     width: ICON,

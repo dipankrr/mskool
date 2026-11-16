@@ -66,7 +66,8 @@ export function AcademicsArea() {
 
   // The hero: the running term's week, or the session itself.
   const week = term ? weekOf(term, today) : null;
-  const next = term ? termRows[termRows.indexOf(term) + 1] : null;
+  // The next term to start; test data can hold terms that overlap.
+  const next = term ? termRows.find((row) => row.startDate > today) ?? null : null;
   const title = term && week ? `Week ${week.week} of ${week.weeks}` : (academicYear?.name ?? "Academics");
   const sub = term
     ? [`${term.name} runs to ${formatReadableDate(term.endDate)}`, next ? `${next.name} starts ${formatReadableDate(next.startDate)}` : null]

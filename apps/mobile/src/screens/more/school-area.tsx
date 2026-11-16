@@ -81,7 +81,8 @@ export function SchoolArea() {
         <>
           <Head title="Branches" link={{ label: String(branches.length), onPress: () => router.push("/branches") }} />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.branches} style={styles.branchScroll}>
-            {branches.map((branch) => {
+            {/* The branch you are in comes first. */}
+            {[...branches].sort((a, b) => Number(b.id === schoolId) - Number(a.id === schoolId)).map((branch) => {
               const here = branch.id === schoolId;
               const f = figures.get(branch.id);
               return (
