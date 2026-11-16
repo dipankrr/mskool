@@ -1,0 +1,1608 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>mSkool · Retire the register (v5)</title>
+<meta name="description" content="Attendance, fees, results and homework for your whole school, on the phones your teachers already carry. In English, Hindi and Bengali.">
+<meta name="theme-color" content="#F2F3F7">
+<link rel="icon" href="../../../brand/app-icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://api.fontshare.com/v2/css?f[]=clash-grotesk@400,500,600,700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Anek+Devanagari:wdth,wght@75..125,400..800&family=Anek+Bangla:wdth,wght@75..125,400..800&family=Kalam:wght@400;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<!--
+  mSkool landing, v3 mockup for owner review (2026-11-16). Not wired to anything.
+  Direction: app-first. The real app (Clash Grotesk, area colours from
+  apps/mobile/src/theme/brand-admin.ts) is the hero; the school's paper world
+  (register, receipt, report card, ID card, cheque, homework) floats around the phone
+  and is pulled into it on scroll. A school day is an App Store style card strip,
+  each phone live. Kept from v2: rubber stamps, "never" list, scripts, Ask Bookie,
+  the application letter.
+  Colour rule: brand blue for actions; area colours only where the app uses them.
+  Demo data is invented. Placeholders: WhatsApp number, form target, store links.
+  Hindi and Bengali copy needs a native read.
+-->
+<style>
+:root{
+  --canvas:#F2F3F7; --white:#fff; --ink:#101828; --muted:#5D6674; --line:#E4E7EE;
+  --blue:#2F6BFF; --navy:#0E1A4F; --red:#C8302A;
+  --att:#0B6B3A; --att-bg:#E8F5EE; --att-band:#D3EEDD;
+  --hw:#6941C6;  --hw-bg:#F1ECFD;  --hw-band:#E4DAFB;
+  --ex:#C4520A;  --ex-bg:#FFF0E3;  --ex-band:#FFE2C9;
+  --fee:#1D63C7; --fee-bg:#E8F1FD; --fee-band:#D6E5FB;
+  --stu:#0E7490; --stu-bg:#E3F5F8; --stu-band:#CDEDF2;
+  --tch:#9E3C8E; --tch-bg:#FBEAF7;
+  --trust:#5B3E86; --trust-band:#E5DCF3;
+  --display:"Clash Grotesk",system-ui,sans-serif;
+  --sans:"Clash Grotesk",system-ui,sans-serif;
+  --hand:"Kalam",cursive;
+  --mono:"IBM Plex Mono",ui-monospace,monospace;
+  --ease:cubic-bezier(.22,1,.36,1);
+  --gut:20px;
+}
+:lang(hi){--display:"Anek Devanagari",sans-serif;--sans:"Anek Devanagari","Clash Grotesk",sans-serif}
+:lang(bn){--display:"Anek Bangla",sans-serif;--sans:"Anek Bangla","Clash Grotesk",sans-serif;--hand:"Anek Bangla",cursive}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth;overflow-x:clip}
+body{font-family:var(--sans);font-size:18px;line-height:1.5;color:var(--ink);background:var(--canvas);overflow-x:clip;-webkit-font-smoothing:antialiased}
+img{display:block;max-width:100%}
+a{color:inherit}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
+:focus-visible{outline:3px solid var(--blue);outline-offset:3px;border-radius:8px}
+.wrap{max-width:1200px;margin:0 auto;padding:0 var(--gut)}
+@media(min-width:900px){:root{--gut:40px}}
+.display{font-family:var(--display);font-weight:600;line-height:.95;letter-spacing:-.035em;color:var(--ink);text-wrap:balance}
+:lang(hi) .display,:lang(bn) .display{font-weight:700;font-stretch:85%;line-height:1.15;letter-spacing:0}
+h2.display{font-size:clamp(42px,10.5vw,92px)}
+.lede{font-size:clamp(18px,4.6vw,22px);color:var(--muted);max-width:36ch;text-wrap:pretty}
+.hand{font-family:var(--hand)}
+
+/* CTA: one label everywhere */
+.btn{display:inline-flex;align-items:center;gap:12px;min-height:56px;padding:0 9px 0 26px;border-radius:999px;background:var(--ink);color:#fff;font-weight:600;font-size:18px;text-decoration:none;white-space:nowrap;transition:transform .4s var(--ease)}
+.btn .arr{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:var(--blue);font-size:20px;transition:transform .45s var(--ease)}
+.btn:hover .arr{transform:translateX(3px) rotate(-12deg)}
+.btn:active{transform:scale(.97)}
+.link{font-weight:600;color:var(--ink);text-decoration:underline;text-decoration-color:#C9CFDB;text-decoration-thickness:2px;text-underline-offset:6px}
+.link:hover{text-decoration-color:var(--blue)}
+
+/* stamp */
+.stamp{display:inline-block;font-family:var(--mono);font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:var(--red);border:3px solid currentColor;border-radius:6px;padding:.28em .6em;line-height:1;rotate:var(--r,-9deg);filter:url(#ink);mix-blend-mode:multiply;opacity:.92;box-shadow:inset 0 0 0 2px #fff,inset 0 0 0 3.5px currentColor;pointer-events:none;white-space:nowrap}
+.will-stamp{opacity:0;scale:2.2}
+.will-stamp.hit{animation:stamp .55s cubic-bezier(.2,1.5,.4,1) forwards}
+@keyframes stamp{0%{opacity:0;scale:2.2}60%{opacity:.95}100%{opacity:.92;scale:1}}
+
+/* ===== nav ===== */
+.nav{position:fixed;top:12px;left:0;right:0;z-index:30;pointer-events:none}
+.nav .bar{pointer-events:auto;margin:0 auto;width:min(calc(100% - 24px),1120px);display:flex;align-items:center;gap:10px;height:60px;padding:0 8px 0 10px;border-radius:999px;transition:background .4s var(--ease),box-shadow .4s var(--ease)}
+.nav.solid .bar{background:rgba(255,255,255,.85);backdrop-filter:blur(16px) saturate(1.4);-webkit-backdrop-filter:blur(16px) saturate(1.4);box-shadow:0 12px 30px -18px rgba(16,24,40,.35),inset 0 0 0 1px rgba(16,24,40,.06)}
+.brand{display:flex;align-items:center;gap:9px;text-decoration:none;font-family:"Clash Grotesk",sans-serif;font-weight:600;font-size:23px;letter-spacing:-.03em;color:var(--ink)}
+.brand img{width:38px;height:38px;border-radius:11px}
+.brand b{color:var(--blue);font-weight:600}
+.nav .sp{flex:1}
+.lang{display:flex;gap:2px;padding:3px;border-radius:999px;background:#E6E8EF}
+.lang button{height:36px;min-width:42px;padding:0 10px;border-radius:999px;font-size:15px;font-weight:600;color:var(--muted);transition:background .3s,color .3s}
+.lang button:nth-child(2){font-family:"Anek Devanagari",sans-serif}
+.lang button:nth-child(3){font-family:"Anek Bangla",sans-serif}
+.lang button[aria-pressed=true]{background:#fff;color:var(--ink);box-shadow:0 2px 8px -3px rgba(16,24,40,.3)}
+.nav .btn{display:none;min-height:46px;font-size:16px;padding-left:20px;padding-right:5px}
+.nav .btn .arr{width:36px;height:36px}
+@media(min-width:760px){.nav .btn{display:inline-flex}}
+
+/* ===== phone (matches the real app) ===== */
+.phone{position:relative;width:var(--pw,280px);aspect-ratio:9/19.3;border-radius:calc(var(--pw,280px)*.16);background:#0B0D12;padding:calc(var(--pw,280px)*.034);box-shadow:inset 0 0 0 1.5px #2a2f3a,0 0 0 1px rgba(16,24,40,.08),0 50px 80px -30px rgba(16,24,40,.45),0 20px 30px -20px rgba(16,24,40,.3);flex:none}
+.phone::before{content:"";position:absolute;top:calc(var(--pw,280px)*.06);left:50%;width:30%;height:calc(var(--pw,280px)*.085);translate:-50% 0;border-radius:99px;background:#000;z-index:6}
+.scr{position:relative;width:100%;height:100%;border-radius:calc(var(--pw,280px)*.13);overflow:hidden;background:var(--canvas);font-family:"Clash Grotesk",sans-serif;font-size:11px;line-height:1.3;color:var(--ink);letter-spacing:-.005em}
+.scr *{font-family:inherit}
+.scr .mono{font-family:var(--mono)}
+.sb{display:flex;justify-content:space-between;align-items:center;height:42px;padding:6px 22px 0;font-weight:600;font-size:12px}
+.sb i{font-size:13px;margin-left:3px}
+.pad{padding:0 13px}
+.c{background:#fff;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04),0 8px 20px -14px rgba(16,24,40,.25)}
+.tabs{position:absolute;left:8px;right:8px;bottom:8px;height:54px;border-radius:22px;background:rgba(20,24,34,.9);display:flex;justify-content:space-around;align-items:center;color:rgba(255,255,255,.55);font-size:8.5px;font-weight:500;z-index:4}
+.tabs span{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:7.6px;letter-spacing:-.01em}
+.tabs i{font-size:17px}
+.tabs .on{color:#fff}
+.chip{display:inline-block;padding:2px 7px;border-radius:7px;font-size:9px;font-weight:600}
+.ttl{font-weight:600;letter-spacing:-.03em}
+.mut{color:var(--muted)}
+
+/* home screen */
+.home{background:linear-gradient(180deg,#F4E3F1 0%,var(--canvas) 34%)}
+.h-top{display:flex;justify-content:space-between;align-items:center;margin:4px 0 10px}
+.rbtn{width:34px;height:34px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:16px;box-shadow:0 4px 10px -6px rgba(16,24,40,.3)}
+.ava{width:34px;height:34px;border-radius:50%;background:linear-gradient(140deg,#FFB547,#E8590C);display:grid;place-items:center;color:#fff;font-weight:600;font-size:12px}
+.seg{display:flex;padding:3px;border-radius:12px;background:rgba(255,255,255,.6);margin:10px 0 12px;font-weight:600;font-size:10.5px}
+.seg span{flex:1;display:flex;align-items:center;justify-content:center;gap:4px;height:30px;border-radius:10px}
+.seg .on{background:#fff;box-shadow:0 2px 6px -3px rgba(16,24,40,.3)}
+.ok{display:flex;gap:10px;align-items:center;padding:11px 12px;border-radius:16px;background:var(--att-bg);color:var(--att)}
+.ok .dot{width:30px;height:30px;border-radius:50%;background:var(--att);color:#fff;display:grid;place-items:center;font-size:15px;flex:none}
+.wait{display:flex;align-items:center;gap:7px;margin:16px 2px 8px;font-size:17px}
+.wait em{font-style:normal;background:#B42318;color:#fff;border-radius:99px;font-size:10px;font-weight:600;width:19px;height:19px;display:grid;place-items:center}
+.row{display:flex;gap:9px;align-items:center;padding:10px 11px;border-bottom:1px solid #EEF0F4}
+.row:last-child{border:0}
+.tile{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;font-size:17px;flex:none}
+.row .t{flex:1;min-width:0}
+.row b{font-weight:600;font-size:12px;letter-spacing:-.02em}
+.row .s{display:block;color:var(--muted);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{padding:6px 11px;border-radius:99px;font-weight:600;font-size:10.5px;color:#fff}
+
+/* ===== hero ===== */
+.hero{position:relative;padding:96px 0 40px;overflow:clip}
+.hero .wrap{display:grid;gap:10px;align-items:center}
+@media(min-width:980px){.hero{padding:110px 0 60px;min-height:100dvh;display:flex;align-items:center}.hero .wrap{grid-template-columns:1fr 1fr;gap:40px;width:100%}}
+.hero h1{font-size:clamp(64px,18vw,112px)}
+:lang(hi) .hero h1,:lang(bn) .hero h1{font-size:clamp(50px,12.5vw,104px)}
+.hero .lede{margin:20px 0 30px}
+.hero .cta{display:flex;flex-wrap:wrap;align-items:center;gap:18px 26px}
+.stage{position:relative;height:640px;display:grid;place-items:center;--pw:270px}
+@media(min-width:980px){.stage{height:760px;--pw:320px}}
+.stage .phone{z-index:3;animation:rise 1.1s var(--ease) both .1s}
+@keyframes rise{from{opacity:0;translate:0 60px}}
+.stage .bookie{position:absolute;z-index:4;width:96px;left:50%;top:50%;translate:calc(var(--pw)*.32) calc(var(--pw)*.92);rotate:10deg;animation:rise 1s var(--ease) both .6s}
+@media(min-width:980px){.stage .bookie{width:120px}}
+
+/* floating paper */
+.obj{position:absolute;left:50%;top:50%;z-index:2;translate:calc(-50% + var(--x)) calc(-50% + var(--y));rotate:var(--r);box-shadow:0 18px 34px -16px rgba(16,24,40,.45);animation:drop .9s var(--ease) both;animation-delay:var(--d,0s)}
+@keyframes drop{from{opacity:0;scale:.85}}
+@supports (animation-timeline: scroll()){
+  .obj{animation:drop .9s var(--ease) both var(--d,0s),suck linear both;animation-timeline:auto,scroll(root);animation-range:normal,var(--suck,0px 520px)}
+  @media(max-width:979px){.obj{--suck:380px 900px}}
+  @keyframes suck{to{translate:-50% -50%;rotate:0deg;scale:.12;opacity:0}}
+}
+.o-reg{width:150px;padding:10px 10px 12px 26px;border-radius:3px;background:#fff repeating-linear-gradient(180deg,transparent 0 17px,#D3DCEE 17px 18px);background-position:0 22px;font-family:var(--hand);font-size:12px;color:#1c2a6b;line-height:18px;--x:-210px;--y:-210px;--r:-11deg}
+.o-reg::before{content:"";position:absolute;left:18px;top:0;bottom:0;width:1.5px;background:rgba(200,48,42,.55)}
+.o-reg b{color:var(--blue)}.o-reg u{color:var(--red);text-decoration:none}
+.o-rcpt{width:118px;padding:10px 9px 16px;background:#fff;font-family:var(--mono);font-size:8px;line-height:1.5;color:#333;--x:205px;--y:-170px;--r:9deg;--d:.1s;-webkit-mask:radial-gradient(circle at 5px 100%,transparent 4px,#000 4.5px) 0 0/10px 100% repeat-x;mask:radial-gradient(circle at 5px 100%,transparent 4px,#000 4.5px) 0 0/10px 100% repeat-x}
+.o-rcpt hr{border:0;border-top:1px dashed #aaa;margin:4px 0}
+.o-rc{width:136px;border-radius:6px;background:#fff;overflow:hidden;font-size:10px;--x:-220px;--y:70px;--r:7deg;--d:.2s}
+.o-rc header{background:var(--ex);color:#fff;font-weight:600;padding:6px 9px;font-size:10px;letter-spacing:.04em}
+.o-rc div{display:flex;justify-content:space-between;padding:4px 9px;border-bottom:1px solid #f1f1f1;font-weight:500}
+.o-rc div b{color:var(--ex);font-family:var(--mono)}
+.o-id{width:108px;height:158px;border-radius:12px;background:linear-gradient(180deg,var(--stu) 0 38%,#fff 38%);padding:10px;text-align:center;font-size:9px;color:var(--ink);--x:215px;--y:120px;--r:-8deg;--d:.3s}
+.o-id .p{width:52px;height:52px;border-radius:50%;margin:14px auto 6px;background:#FDE7D3 url(../../../brand/bookie/mascot.svg) center/80% no-repeat;border:3px solid #fff}
+.o-id b{display:block;font-size:11px;font-weight:600}
+.o-id::before{content:"ROSEWOOD";position:absolute;top:9px;left:0;right:0;color:#fff;font-weight:600;font-size:9px;letter-spacing:.14em}
+.o-chq{width:190px;padding:10px 12px;border-radius:6px;background:linear-gradient(135deg,#E8F1FD,#D6E5FB);font-size:9.5px;color:#1D3F7A;--x:-150px;--y:270px;--r:-4deg;--d:.4s}
+.o-chq .l{border-bottom:1px solid rgba(29,63,122,.3);margin:7px 0 2px;font-family:var(--hand);font-size:12px}
+.o-hw{width:128px;padding:10px;border-radius:4px;background:var(--hw-bg);font-size:10px;color:var(--hw);--x:180px;--y:300px;--r:6deg;--d:.5s}
+.o-hw b{display:block;font-weight:600;font-size:12px;margin-bottom:3px}
+.o-hw span{font-family:var(--hand);font-size:13px;color:#3b2a7a}
+@media(max-width:600px){
+  .stage{--pw:236px;height:600px}
+  .obj{z-index:4}
+  .o-reg{--x:-112px;--y:-236px;scale:.78}
+  .o-rcpt{--x:122px;--y:-206px;scale:.8}
+  .o-rc{--x:-128px;--y:-10px;scale:.78}
+  .o-id{--x:128px;--y:46px;scale:.74}
+  .o-chq{--x:-92px;--y:236px;scale:.72}
+  .o-hw{--x:108px;--y:236px;scale:.74}
+  .stage .bookie{width:84px}
+}
+
+/* ===== the day (app store strip) ===== */
+.day{padding:80px 0 60px}
+.day-head{display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:20px;margin-bottom:34px}
+.day-head .lede{margin-top:14px}
+.arrows{display:none;gap:10px}
+.arrows button{width:54px;height:54px;border-radius:50%;background:#fff;font-size:22px;box-shadow:inset 0 0 0 1px var(--line);transition:transform .3s var(--ease)}
+.arrows button:active{transform:scale(.92)}
+@media(min-width:760px){.arrows{display:flex}}
+.strip{display:flex;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-padding:0 var(--gut);padding:6px var(--gut) 30px;scrollbar-width:none;overscroll-behavior-x:contain}
+.strip::-webkit-scrollbar{display:none}
+@media(min-width:1200px){.strip{padding-left:calc((100vw - 1200px)/2 + var(--gut));scroll-padding-left:calc((100vw - 1200px)/2 + var(--gut))}}
+.card{position:relative;flex:0 0 min(86vw,372px);scroll-snap-align:start;border-radius:34px;background:var(--band);padding:24px 22px 0;display:flex;flex-direction:column;overflow:hidden;--pw:262px;min-height:720px}
+.card .when{display:flex;align-items:baseline;gap:8px;font-family:var(--mono);font-size:13px;color:var(--fg)}
+.card .when b{font-weight:500;font-size:22px;letter-spacing:-.03em}
+.card .when .hand{font-size:17px}
+.card h3{font-size:clamp(30px,8vw,36px);margin:10px 0 8px;color:var(--ink)}
+.card p{font-size:16px;color:#3c4452;max-width:30ch;text-wrap:pretty}
+.card .phone{margin:22px auto -44px}
+.card .try{display:block;align-self:flex-end;margin:6px 4px -10px 0;font-family:var(--hand);font-size:17px;color:var(--fg);rotate:-4deg;top:auto!important}
+.card .try::after{content:" \2193"}
+.k-att{--band:var(--att-band);--fg:var(--att)}
+.k-fee{--band:var(--fee-band);--fg:var(--fee)}
+.k-ex{--band:var(--ex-band);--fg:var(--ex)}
+.k-fam{--band:var(--hw-band);--fg:var(--hw)}
+.k-tr{--band:var(--trust-band);--fg:var(--trust)}
+.dots{display:flex;justify-content:center;gap:6px;margin-top:4px}
+.dots i{width:7px;height:7px;border-radius:99px;background:#C9CFDB;transition:width .4s var(--ease),background .3s}
+.dots i.on{width:22px;background:var(--ink)}
+
+/* in-phone: attendance */
+.sc-head{display:flex;justify-content:space-between;align-items:center;margin:4px 0 10px}
+.sc-head .ttl{font-size:18px}
+.cnt{display:flex;gap:5px;margin-bottom:10px}
+.cnt span{flex:1;text-align:center;padding:6px 0 5px;border-radius:11px;font-weight:600;font-size:14px;background:var(--b);color:var(--f)}
+.cnt small{display:block;font-size:8px;font-weight:500;opacity:.85}
+.grid{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}
+.grid button{aspect-ratio:1;border-radius:10px;background:var(--att-bg);color:var(--att);font-weight:600;font-size:12px;transition:transform .25s var(--ease),background .2s,color .2s}
+.grid button[aria-pressed=true]{background:#FEE4E2;color:#B42318}
+.grid button:active{transform:scale(.86)}
+.savebar{position:absolute;left:12px;right:12px;bottom:72px;height:46px;border-radius:15px;background:var(--att);color:#fff;font-weight:600;font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px;z-index:3;box-shadow:0 12px 24px -10px rgba(11,107,58,.7);transition:background .3s}
+.savebar.done{background:#fff;color:var(--att);box-shadow:inset 0 0 0 1.5px var(--att)}
+.scr .stamp{position:absolute;z-index:5}
+#s-att .stamp{right:22px;top:46%;font-size:22px;--r:-12deg}
+
+/* in-phone: fees */
+.stu{display:flex;gap:10px;align-items:center;padding:12px}
+.stu .ph{width:40px;height:40px;border-radius:12px;background:#FDE7D3 url(../../../brand/bookie/mascot.svg) center/78% no-repeat;flex:none}
+.mon{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;padding:0 12px 12px}
+.mon span{text-align:center;padding:6px 0;border-radius:9px;font-weight:600;font-size:9.5px;background:#EEF0F4;color:var(--muted)}
+.mon .pd{background:var(--att-bg);color:var(--att)}
+.mon .sel{background:var(--fee);color:#fff}
+.ln{display:flex;justify-content:space-between;padding:7px 12px;font-weight:500}
+.ln.tot{border-top:1px dashed #D5DAE2;font-weight:600;font-size:15px;padding-top:10px}
+.modes{display:flex;gap:4px;padding:6px 12px 12px}
+.modes span{flex:1;text-align:center;padding:8px 0;border-radius:10px;font-weight:600;font-size:10.5px;box-shadow:inset 0 0 0 1.5px #E4E7EE}
+.modes .on{box-shadow:inset 0 0 0 2px var(--fee);color:var(--fee);background:var(--fee-bg)}
+.collect{position:absolute;left:12px;right:12px;bottom:72px;height:46px;border-radius:15px;background:var(--fee);color:#fff;font-weight:600;font-size:13px;z-index:3;box-shadow:0 12px 24px -10px rgba(29,99,199,.7)}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:6;background:#fff;border-radius:22px 22px 0 0;padding:8px 14px 16px;box-shadow:0 -20px 40px -20px rgba(16,24,40,.4);translate:0 105%;transition:translate .55s var(--ease)}
+.sheet.open{translate:0 0}
+.sheet .grab{width:36px;height:4px;border-radius:9px;background:#D5DAE2;margin:0 auto 10px}
+.slipx{background:#FAFAF7;border-radius:6px;padding:10px;font-family:var(--mono);font-size:9.5px;line-height:1.55;color:#333;position:relative}
+.slipx hr{border:0;border-top:1px dashed #bbb;margin:4px 0}
+.slipx .r{display:flex;justify-content:space-between}
+.slipx .no{background:#FFF3B0;font-weight:600}
+.slipx .bn{font-family:"Anek Bangla",sans-serif;font-weight:700;font-size:12px;text-align:center}
+.sheet .acts{display:flex;gap:6px;margin-top:10px}
+.sheet .acts button{flex:1;height:40px;border-radius:12px;font-weight:600;font-size:11px;display:flex;align-items:center;justify-content:center;gap:5px}
+.sheet .acts .pr{background:var(--ink);color:#fff}
+.sheet .acts .wa{background:#E7F7EE;color:#0B7A3E}
+.sheet .acts .nx{background:#EEF0F4;color:var(--ink)}
+#s-fee .stamp{right:16px;top:16px;font-size:16px;--r:10deg}
+
+/* in-phone: results */
+.sub{display:grid;grid-template-columns:1fr auto auto;gap:10px;padding:9px 12px;border-bottom:1px solid #EEF0F4;font-weight:500;align-items:baseline}
+.sub:last-child{border:0}
+.sub .m{font-family:var(--mono)}
+.sub .g{font-family:var(--mono);font-weight:600;color:var(--ex);min-width:20px;text-align:right}
+.pubc{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;margin-top:10px}
+.pubc b{display:block;font-weight:600;font-size:12.5px}
+.pubc span{font-size:10px;color:var(--muted)}
+.sw{position:relative;width:50px;height:30px;border-radius:99px;background:#C3C9D5;flex:none;transition:background .35s var(--ease)}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 2px 5px rgba(16,24,40,.3);transition:translate .45s var(--ease)}
+.sw[aria-checked=true]{background:var(--ex)}
+.sw[aria-checked=true]::after{translate:20px 0}
+.famline{display:flex;gap:9px;align-items:center;padding:10px 12px;margin-top:8px;border-radius:14px;background:#fff;font-size:10.5px;color:var(--muted);box-shadow:inset 0 0 0 1px #E4E7EE;transition:box-shadow .4s}
+.famline img{width:26px}
+.famline b{color:var(--ink);font-weight:600}
+.famline.live{box-shadow:inset 0 0 0 2px var(--ex)}
+#s-ex .stamp{right:18px;top:96px;font-size:17px;--r:8deg}
+
+/* in-phone: family */
+.fam-top{background:linear-gradient(160deg,#7A55D9,#5B37C2);color:#fff;padding:0 14px 44px;border-radius:0 0 26px 26px;position:relative}
+.fam-top .sb{padding:6px 8px 0}
+.kids{display:flex;gap:5px;margin:2px 0 10px}
+.kids button{height:30px;padding:0 13px;border-radius:99px;background:rgba(255,255,255,.18);font-weight:600;font-size:11px;color:#fff}
+.kids button[aria-pressed=true]{background:#fff;color:var(--hw)}
+.fam-top .ttl{font-size:21px}
+.fam-top .streak{display:inline-flex;gap:4px;align-items:center;margin-top:6px;padding:3px 9px;border-radius:99px;background:rgba(255,190,80,.25);color:#FFE1A8;font-weight:600;font-size:10px}
+.fam-top img{position:absolute;right:4px;bottom:-6px;width:78px;rotate:6deg}
+.frows{margin-top:-30px;position:relative}
+.frow{display:flex;gap:10px;align-items:center;padding:10px 11px;border-bottom:1px solid #EEF0F4;animation:fade .45s var(--ease) both}
+.frow:last-child{border:0}
+.frow:nth-child(2){animation-delay:.05s}.frow:nth-child(3){animation-delay:.1s}.frow:nth-child(4){animation-delay:.15s}
+@keyframes fade{from{opacity:0;translate:0 6px}}
+.frow b{display:block;font-weight:600;font-size:12px}
+.frow span{font-size:10px;color:var(--muted)}
+
+/* in-phone: trust */
+.kp{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:10px}
+.kp div{background:#2B1E4A;color:#fff;border-radius:13px;padding:9px}
+.kp b{display:block;font-weight:600;font-size:15px;letter-spacing:-.02em}
+.kp small{font-size:8.5px;opacity:.7}
+.brn{display:grid;grid-template-columns:1fr auto;gap:1px 8px;padding:11px 12px;border-bottom:1px solid #EEF0F4}
+.brn:last-child{border:0}
+.brn b{font-weight:600;font-size:12.5px}
+.brn .a{font-family:var(--mono);font-weight:600;font-size:11.5px;text-align:right}
+.brn span{font-size:10px;color:var(--muted)}
+.brn .p{text-align:right;color:var(--att);font-weight:600}
+
+/* ===== never ===== */
+.never{padding:110px 0 100px}
+.never .lede{margin-top:20px}
+.nv{margin-top:52px;max-width:1000px}
+.nv-row{position:relative;display:grid;gap:6px;padding:26px 0;border-top:2px solid var(--ink);overflow:clip;overflow-clip-margin:20px}
+.nv-row:last-child{border-bottom:2px solid var(--ink)}
+.nv-row h3{font-family:var(--display);font-size:clamp(24px,6.2vw,36px);font-weight:600;letter-spacing:-.03em;line-height:1.1;padding-right:112px;text-wrap:balance}
+:lang(hi) .nv-row h3,:lang(bn) .nv-row h3{letter-spacing:0;line-height:1.3}
+.nv-row p{color:var(--muted);font-size:16.5px;max-width:52ch;padding-right:112px}
+.nv-row .stamp{position:absolute;right:2px;top:50%;margin-top:-20px;font-size:19px}
+.nv-row:nth-child(odd) .stamp{--r:-7deg}.nv-row:nth-child(even) .stamp{--r:5deg}
+@media(min-width:760px){.nv-row{grid-template-columns:1fr 1fr;align-items:center;gap:32px}.nv-row h3{padding-right:0}.nv-row p{padding-right:160px}.nv-row .stamp{font-size:26px;margin-top:-26px}}
+
+/* ===== language ===== */
+.lang-sec{padding:40px 0 110px;overflow:clip}
+.scripts{margin:0 0 30px}
+.scripts span{display:block;font-weight:700;line-height:1.08;font-size:clamp(70px,21vw,200px);white-space:nowrap}
+.scripts span:nth-child(1){font-family:"Clash Grotesk";font-weight:600;letter-spacing:-.05em;color:var(--ink)}
+.scripts span:nth-child(2){font-family:"Anek Devanagari";color:var(--blue);padding-left:12%}
+.scripts span:nth-child(3){font-family:"Anek Bangla";font-stretch:115%;color:var(--ink);padding-left:24%}
+
+/* ===== ask bookie ===== */
+.ask{padding:30px 0 110px}
+.ask-grid{display:grid;gap:34px}
+@media(min-width:900px){.ask-grid{grid-template-columns:.9fr 1.1fr;gap:64px;align-items:center}}
+.qs{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
+.qs button{min-height:48px;padding:10px 18px;border-radius:999px;background:#fff;box-shadow:inset 0 0 0 1.5px var(--line);font-weight:500;font-size:16.5px;text-align:left;transition:background .3s,color .3s,box-shadow .3s}
+.qs button:hover{box-shadow:inset 0 0 0 1.5px var(--blue)}
+.qs button[aria-pressed=true]{background:var(--ink);color:#fff;box-shadow:none}
+.answer{display:grid;grid-template-columns:88px 1fr;gap:14px;align-items:end}
+.answer img{width:88px;rotate:-6deg}
+.bubble{background:#fff;border-radius:24px 24px 24px 6px;padding:20px 22px 24px;box-shadow:0 24px 50px -28px rgba(16,24,40,.4);font-size:19px;min-height:170px}
+.bubble .q{font-family:var(--hand);color:var(--blue);font-size:18px;margin-bottom:6px}
+.bubble.swap p,.bubble.swap .q{animation:fade .5s var(--ease)}
+
+/* ===== letter ===== */
+.apply{padding:30px 0 140px}
+.letter{position:relative;max-width:780px;margin:44px auto 0;background:#fff;border-radius:4px;padding:40px 20px 44px 64px;font-size:20px;line-height:46px;color:#1c2a6b;box-shadow:0 40px 70px -36px rgba(16,24,40,.5);overflow:clip;overflow-clip-margin:20px;
+  background-image:linear-gradient(90deg,transparent 46px,rgba(200,48,42,.5) 46px,rgba(200,48,42,.5) 47.5px,transparent 47.5px),repeating-linear-gradient(180deg,transparent 0 45px,#D3DCEE 45px 46px);background-position:0 0,0 40px}
+@media(min-width:760px){.letter{padding:48px 56px 52px 100px;font-size:22px;background-image:linear-gradient(90deg,transparent 72px,rgba(200,48,42,.5) 72px,rgba(200,48,42,.5) 73.5px,transparent 73.5px),repeating-linear-gradient(180deg,transparent 0 45px,#D3DCEE 45px 46px);background-position:0 0,0 48px}}
+.letter .to{margin-bottom:46px}
+.letter .sig{margin-top:46px}
+.letter input,.letter select{font-family:"Kalam",var(--sans);font-size:22px;color:var(--blue);background:transparent;border:0;border-bottom:2px dotted var(--muted);border-radius:0;height:38px;padding:0 4px;outline:none;max-width:100%}
+.letter input:focus,.letter select:focus{border-bottom:2px solid var(--blue)}
+.letter input::placeholder{color:#7d87a3;opacity:1}
+.letter input[name=name],.letter input[name=school]{width:min(280px,100%)}
+.letter input[name=phone]{width:190px}
+.letter .err{display:none;font-size:16px;color:var(--red);line-height:1.4;margin-top:12px}
+.letter.invalid .err{display:block}
+.letter .send{margin-top:30px;line-height:1}
+.letter .stamp.ok{position:absolute;right:7%;top:34px;font-size:clamp(34px,9vw,54px);--r:-12deg;display:none}
+.letter.sent .stamp.ok{display:inline-block}
+.letter.sent .send{display:none}
+.after{display:none;margin-top:22px;font-size:18px;line-height:1.5;color:var(--muted);max-width:30ch}
+.letter.sent .after{display:block}
+.alt{text-align:center;margin-top:30px;color:var(--muted)}
+
+footer{padding:40px 0 120px;border-top:1px solid var(--line)}
+footer .wrap{display:flex;flex-wrap:wrap;gap:18px 32px;align-items:center;justify-content:space-between;color:var(--muted);font-size:15px}
+footer nav{display:flex;gap:22px;flex-wrap:wrap}
+footer a{text-decoration:none}
+@media(min-width:760px){footer{padding-bottom:48px}}
+
+.dock{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom));z-index:30;translate:-50% 160%;transition:translate .6s var(--ease)}
+.dock.up{translate:-50% 0}
+.dock .btn{box-shadow:0 18px 40px -14px rgba(16,24,40,.65)}
+@media(min-width:760px){.dock{display:none}}
+
+.rv{opacity:0;translate:0 28px;transition:opacity .9s var(--ease),translate 1s var(--ease)}
+.rv.in{opacity:1;translate:0 0}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  .rv{opacity:1;translate:none}
+  .will-stamp.hit{opacity:.92;scale:1}
+  html{scroll-behavior:auto}
+}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ================= v4 additions ================= */
+/* page texture: Bookie doodles, fixed, faint */
+body::before{content:"";position:fixed;inset:0;background:url(../../../brand/pattern/doodles.svg) 0 0/560px repeat;opacity:.05;pointer-events:none;z-index:-1}
+.hero{background:radial-gradient(60% 50% at 85% 20%,#F4E3F1 0%,rgba(244,227,241,0) 70%),radial-gradient(50% 45% at 10% 85%,#E8F1FD 0%,rgba(232,241,253,0) 70%)}
+.day{background:linear-gradient(180deg,rgba(255,255,255,0) 0%,#fff 22%,#fff 78%,rgba(255,255,255,0) 100%)}
+
+/* islands: full-bleed coloured panels with rounded corners */
+.island{position:relative;margin:0 10px;border-radius:36px;overflow:clip;isolation:isolate}
+@media(min-width:900px){.island{margin:0 20px;border-radius:48px}}
+.island::before{content:"";position:absolute;inset:0;background:url(../../../brand/pattern/doodles.svg) 0 0/520px repeat;filter:brightness(0) invert(1);opacity:.06;z-index:-1;pointer-events:none}
+
+/* ===== rule book ===== */
+.rules{background:radial-gradient(70% 60% at 100% 0%,#26357F 0%,rgba(38,53,127,0) 70%),#0E1A4F;color:#fff;padding:96px 0 110px}
+.rules .display{color:#fff}
+.rules .lede{color:rgba(255,255,255,.7);margin-top:18px}
+.rule-grid{display:grid;gap:18px;margin-top:52px}
+@media(min-width:760px){.rule-grid{grid-template-columns:repeat(2,1fr)}}
+@media(min-width:1040px){.rule-grid{grid-template-columns:repeat(6,1fr)}.rule:nth-child(-n+3){grid-column:span 2}.rule:nth-child(n+4){grid-column:span 3}}
+.rule{position:relative;background:#fff;color:var(--ink);border-radius:6px;padding:20px 20px 26px;rotate:var(--t,0deg);box-shadow:0 30px 50px -28px rgba(0,0,0,.7);overflow:clip;overflow-clip-margin:16px;
+  background-image:repeating-linear-gradient(180deg,transparent 0 27px,#E6ECF7 27px 28px);background-position:0 54px}
+.rule:nth-child(1){--t:-1.2deg}.rule:nth-child(2){--t:.8deg}.rule:nth-child(3){--t:-.6deg}.rule:nth-child(4){--t:1deg}.rule:nth-child(5){--t:-.8deg}
+.rule .tag{display:inline-block;padding:4px 10px;border-radius:8px;font-size:13px;font-weight:600;background:var(--tb);color:var(--tf);margin-bottom:14px}
+.rule h3{font-family:var(--display);font-weight:600;font-size:clamp(23px,5.6vw,28px);line-height:1.12;letter-spacing:-.03em;padding-right:8px;text-wrap:balance}
+:lang(hi) .rule h3,:lang(bn) .rule h3{letter-spacing:0;line-height:1.35}
+.rule p{color:var(--muted);font-size:16px;margin-top:10px;max-width:40ch;padding-right:96px}
+.rule .stamp{position:absolute;right:16px;bottom:22px;font-size:20px;--r:-9deg}
+.rule:nth-child(even) .stamp{--r:7deg}
+
+/* ===== language ===== */
+.lang2{padding:120px 0 110px;background:radial-gradient(55% 50% at 80% 50%,#E8F1FD 0%,rgba(232,241,253,0) 70%)}
+.lang2 .wrap{display:grid;gap:40px;align-items:center}
+@media(min-width:900px){.lang2 .wrap{grid-template-columns:1.1fr .9fr;gap:60px}}
+.lang2 .lede{margin-top:18px}
+.scr-btns{display:grid;gap:4px;margin-top:30px}
+.scr-btns button{display:flex;align-items:center;gap:14px;text-align:left;font-weight:700;line-height:1.15;font-size:clamp(46px,13vw,92px);color:#C7CDDA;transition:color .4s var(--ease),translate .5s var(--ease)}
+.scr-btns button:nth-child(1){font-family:"Clash Grotesk";font-weight:600;letter-spacing:-.04em}
+.scr-btns button:nth-child(2){font-family:"Anek Devanagari"}
+.scr-btns button:nth-child(3){font-family:"Anek Bangla";font-stretch:110%}
+.scr-btns button[aria-pressed=true]{color:var(--ink);translate:10px 0}
+.scr-btns button[aria-pressed=true]::before{content:"";width:14px;height:14px;border-radius:50%;background:var(--blue);flex:none}
+.lang2 .phone{margin:0 auto;--pw:290px}
+.pdfbar{display:flex;align-items:center;gap:10px;padding:6px 14px 10px;font-weight:600;font-size:12px}
+.pdfbar i{font-size:18px}
+.pdfbar .sp{flex:1}
+.notice{margin:0 12px;background:#fff;border-radius:6px;padding:16px 14px 18px;box-shadow:0 10px 24px -14px rgba(16,24,40,.35);text-align:center;color:#222}
+.notice .n1{font-weight:700;font-size:18px;line-height:1.25;color:var(--navy);transition:opacity .25s}
+.notice .n2{font-weight:600;font-size:12.5px;color:var(--fee);margin-top:2px;transition:opacity .25s}
+.notice .fade{opacity:0}
+.notice hr{border:0;border-top:1px dashed #ccc;margin:10px 0}
+.notice .kv{display:flex;justify-content:space-between;font-size:11px;padding:3px 0;font-family:var(--mono)}
+.notice .amt{font-family:"Clash Grotesk";font-weight:600;font-size:28px;letter-spacing:-.03em;margin:6px 0 2px;color:var(--ink)}
+.qr{display:grid;grid-template-columns:repeat(21,1fr);width:116px;aspect-ratio:1;margin:10px auto 6px;gap:0}
+.qr i{background:#fff}.qr i.b{background:#111}
+.notice .scan{font-size:10.5px;color:var(--muted)}
+.wabar{position:absolute;left:12px;right:12px;bottom:16px;height:46px;border-radius:15px;background:#1FAF5A;color:#fff;font-weight:600;font-size:13px;display:flex;align-items:center;justify-content:center;gap:7px}
+
+/* ===== ask bookie chat ===== */
+.ask2{padding:30px 0 120px;background:radial-gradient(50% 50% at 25% 55%,#F1ECFD 0%,rgba(241,236,253,0) 70%)}
+.ask2 .wrap{display:grid;gap:36px;align-items:center}
+@media(min-width:900px){.ask2 .wrap{grid-template-columns:.9fr 1.1fr;gap:60px}.ask2 .phone{order:-1}}
+.ask2 .lede{margin-top:18px}
+.ask2 .phone{margin:0 auto;--pw:300px}
+.chat{display:flex;flex-direction:column;height:100%;background:#EFEAF8}
+.chat-h{display:flex;align-items:center;gap:9px;padding:46px 12px 10px;background:#fff;box-shadow:0 1px 0 #E6E2F0}
+.chat-h img{width:34px;height:34px;border-radius:50%;background:#E8F1FD;padding:3px}
+.chat-h b{display:block;font-weight:600;font-size:13px}
+.chat-h span{font-size:10px;color:#0F7A44}
+.msgs{flex:1;overflow-y:auto;padding:12px 10px;display:flex;flex-direction:column;gap:7px;scrollbar-width:none}
+.msgs::-webkit-scrollbar{display:none}
+.msg{max-width:82%;padding:8px 11px;font-size:11.5px;line-height:1.4;border-radius:16px;animation:fade .35s var(--ease) both}
+.msg.b{align-self:flex-start;background:#fff;border-bottom-left-radius:5px;box-shadow:0 1px 1px rgba(16,24,40,.06)}
+.msg.u{align-self:flex-end;background:var(--blue);color:#fff;border-bottom-right-radius:5px}
+.msg time{display:block;text-align:right;font-size:8.5px;opacity:.55;margin-top:2px}
+.typing{display:flex;gap:4px;padding:11px 12px}
+.typing i{width:6px;height:6px;border-radius:50%;background:#98A2B3;animation:blink 1s infinite}
+.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+@keyframes blink{50%{opacity:.25;translate:0 -2px}}
+.chips{display:flex;gap:6px;overflow-x:auto;padding:8px 10px;scrollbar-width:none;background:#EFEAF8}
+.chips::-webkit-scrollbar{display:none}
+.chips button{flex:none;height:34px;padding:0 13px;border-radius:99px;background:#fff;color:var(--hw);font-weight:600;font-size:11px;box-shadow:inset 0 0 0 1.5px #DCD2F5;transition:background .25s,color .25s}
+.chips button:active{background:var(--hw);color:#fff}
+.chips button[disabled]{opacity:.45}
+.compose{display:flex;align-items:center;gap:8px;padding:8px 10px 18px;background:#fff}
+.compose span{flex:1;height:34px;border-radius:99px;background:#F2F3F7;color:#98A2B3;font-size:11px;display:flex;align-items:center;padding:0 12px}
+.compose i{width:34px;height:34px;border-radius:50%;background:var(--blue);color:#fff;display:grid;place-items:center;font-size:15px}
+
+/* ===== CTA island ===== */
+.apply2{background:radial-gradient(60% 60% at 0% 0%,#5B8CFF 0%,rgba(91,140,255,0) 70%),var(--blue);color:#fff;padding:96px 0 110px}
+.apply2 .display{color:#fff}
+.letter-wrap{position:relative;max-width:780px;margin:76px auto 0}
+.letter-wrap .peek{position:absolute;right:8%;top:-88px;width:130px;rotate:8deg;z-index:0}
+.apply2 .letter{position:relative;z-index:1;margin:0;rotate:-1deg;box-shadow:0 50px 80px -40px rgba(6,20,80,.7)}
+.apply2 .alt{color:rgba(255,255,255,.85)}
+.apply2 .alt .link{color:#fff;text-decoration-color:rgba(255,255,255,.5)}
+
+/* ===== footer ===== */
+.foot{padding:70px 0 120px;overflow:clip}
+.foot .word{font-family:"Clash Grotesk";font-weight:600;letter-spacing:-.06em;line-height:.8;font-size:clamp(96px,27vw,340px);color:var(--ink);white-space:nowrap}
+.foot .word b{color:var(--blue);font-weight:600}
+.foot .row{display:flex;flex-wrap:wrap;gap:16px 32px;align-items:center;justify-content:space-between;margin-top:34px;color:var(--muted);font-size:15px}
+.foot nav{display:flex;gap:22px;flex-wrap:wrap}
+.foot a{text-decoration:none}
+.foot a:hover{color:var(--ink)}
+@media(min-width:760px){.foot{padding-bottom:50px}}
+
+/* ================= v5: rotating hero line ================= */
+.hero h1{--lh:.95}
+:lang(hi) .hero h1,:lang(bn) .hero h1{--lh:1.18}
+.hero h1 .pre,.hero h1 .suf{display:block}
+.hero h1 .pre:empty,.hero h1 .suf:empty{display:none}
+.rot{display:block;position:relative;height:calc(1em * var(--lh) + .12em)}
+.rot .w{position:absolute;left:0;top:0;white-space:nowrap;line-height:var(--lh)}
+.rot .w .ch{display:inline-block;white-space:pre;opacity:0;translate:0 .5em;filter:blur(8px);transition:opacity .45s var(--ease),translate .7s var(--ease),filter .5s var(--ease);transition-delay:calc(var(--i)*22ms)}
+.rot .w.on .ch{opacity:1;translate:0 0;filter:blur(0)}
+.rot .w.out .ch{opacity:0;translate:0 -.45em;filter:blur(8px);transition-delay:calc(var(--i)*12ms)}
+.rot .w.whole{opacity:0;translate:0 .4em;filter:blur(8px);transition:opacity .5s var(--ease),translate .75s var(--ease),filter .5s var(--ease)}
+.rot .w.whole.on{opacity:1;translate:0 0;filter:blur(0)}
+.rot .w.whole.out{opacity:0;translate:0 -.4em}
+.rot svg{position:absolute;left:0;top:calc(1em * var(--lh) - .04em);height:.2em;overflow:visible;pointer-events:none;transition:width .6s var(--ease)}
+.rot svg path{fill:none;stroke:var(--blue);stroke-width:7;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:1}
+.rot svg.draw path{animation:draw .8s var(--ease) .25s forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+.obj{transition:box-shadow .5s var(--ease)}
+.obj.lit{box-shadow:0 0 0 3px var(--blue),0 26px 44px -16px rgba(47,107,255,.6)}
+
+/* ================= v5: gadget wall ================= */
+.tools{padding:110px 0 100px}
+.tools .lede{margin-top:16px}
+.gal{display:grid;gap:16px;margin-top:44px}
+@media(min-width:1000px){.gal{grid-template-columns:repeat(3,1fr);grid-template-areas:"pr id ph" "pr no no" "qz qz ca"}
+  .g-pr{grid-area:pr}.g-id{grid-area:id}.g-ph{grid-area:ph}.g-no{grid-area:no}.g-qz{grid-area:qz}.g-ca{grid-area:ca}}
+.gt{position:relative;border-radius:30px;background:var(--band);padding:24px 22px 24px;display:flex;flex-direction:column;overflow:clip;isolation:isolate}
+.gt h3{font-family:var(--display);font-weight:600;font-size:clamp(26px,6.6vw,32px);letter-spacing:-.03em;line-height:1.05}
+:lang(hi) .gt h3,:lang(bn) .gt h3{letter-spacing:0;line-height:1.3}
+.gt > p{color:#3c4452;font-size:16px;margin-top:8px;max-width:36ch;text-wrap:pretty}
+.gt .box{margin-top:auto;padding-top:22px}
+.gbtn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:50px;border-radius:999px;background:var(--ink);color:#fff;font-weight:600;font-size:16px;transition:transform .3s var(--ease),opacity .3s}
+.gbtn:active{transform:scale(.97)}
+.gbtn[disabled]{opacity:.5;cursor:default}
+.g-pr{--band:var(--fee-band)} .g-id{--band:var(--stu-band)} .g-ph{--band:#FFE2C9} .g-no{--band:#F6DDF0} .g-qz{--band:var(--hw-band)} .g-ca{--band:var(--att-band)}
+
+/* receipt printer */
+.printer{background:var(--ink);border-radius:16px 16px 6px 6px;height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;color:#fff;position:relative;z-index:2}
+.printer .led{width:8px;height:8px;border-radius:50%;background:#5BE0A0}
+.printer .lbl{font-family:var(--mono);font-size:12px;opacity:.7}
+.printer::after{content:"";position:absolute;left:28px;right:28px;bottom:8px;height:4px;border-radius:3px;background:#000}
+.slot{position:relative;height:350px;overflow:hidden;margin:0 28px 18px}
+.slip{position:absolute;left:0;right:0;top:0;background:#fff;padding:16px 14px 26px;font-family:var(--mono);font-size:12px;line-height:1.6;color:#222;translate:0 -100%;
+  -webkit-mask:radial-gradient(circle at 7px 100%,transparent 6px,#000 6.5px) 0 0/14px 100% repeat-x;mask:radial-gradient(circle at 7px 100%,transparent 6px,#000 6.5px) 0 0/14px 100% repeat-x}
+.slip.out{transition:translate 2.2s steps(22,end);translate:0 0}
+.slip .c{text-align:center}
+.slip .bn{font-family:"Anek Bangla",sans-serif;font-weight:700;font-size:15px;text-align:center}
+.slip hr{border:0;border-top:1px dashed #999;margin:6px 0}
+.slip .r{display:flex;justify-content:space-between;gap:8px}
+.slip .tot{font-weight:600;font-size:14.5px}
+.slip .no{font-weight:600;background:#FFF3B0}
+
+/* id cards */
+.idbox{position:relative;height:250px}
+.idslot{position:absolute;left:50%;top:0;width:170px;height:20px;translate:-50% 0;border-radius:10px;background:var(--ink);z-index:3}
+.idcard{position:absolute;left:50%;top:6px;width:128px;height:186px;margin-left:-64px;perspective:700px;opacity:0;translate:0 -30px;scale:.9;transition:opacity .4s var(--ease),translate .7s var(--ease),scale .7s var(--ease),rotate .7s var(--ease);cursor:pointer}
+.idcard.dealt{opacity:1;translate:var(--x) 46px;scale:1;rotate:var(--r)}
+.idcard .in{position:relative;width:100%;height:100%;transition:transform .7s var(--ease);transform-style:preserve-3d}
+.idcard.flip .in{transform:rotateY(180deg)}
+.idf,.idb{position:absolute;inset:0;border-radius:12px;backface-visibility:hidden;-webkit-backface-visibility:hidden;box-shadow:0 14px 26px -12px rgba(16,24,40,.45);overflow:hidden;font-size:9px;text-align:center}
+.idf{background:linear-gradient(180deg,var(--stu) 0 30%,#fff 30%);color:var(--ink);padding-top:8px}
+.idf .sch{color:#fff;font-weight:600;letter-spacing:.12em;font-size:8.5px}
+.idf .ph{width:58px;height:58px;border-radius:50%;margin:10px auto 6px;border:3px solid #fff;background:var(--bg) url(../../../brand/bookie/mascot.svg) center/78% no-repeat}
+.idf b{display:block;font-weight:600;font-size:11.5px}
+.idf .bar{height:16px;margin:8px 14px 0;background:repeating-linear-gradient(90deg,#111 0 1px,#fff 1px 3px,#111 3px 5px,#fff 5px 6px)}
+.idb{transform:rotateY(180deg);background:#fff;padding:14px 10px;color:#344054;line-height:1.5;text-align:left}
+.idb b{display:block;color:var(--ink);font-weight:600;margin-bottom:4px}
+.g-id .hint{text-align:center;font-family:var(--hand);color:var(--stu);font-size:17px;margin:-4px 0 10px;min-height:24px}
+
+/* photo day */
+.vf{position:relative;aspect-ratio:4/4.2;border-radius:20px;background:#111;overflow:hidden}
+.vf .subj{position:absolute;inset:14px;border-radius:12px;background:var(--bg,#FDE7D3);display:grid;place-items:center;transition:background .4s}
+.vf .subj img{width:58%;transition:translate .4s var(--ease),opacity .3s}
+.vf .subj.swap img{translate:40px 0;opacity:0}
+.vf .crn{position:absolute;inset:26px;pointer-events:none;background:
+  linear-gradient(#fff,#fff) 0 0/22px 3px,linear-gradient(#fff,#fff) 0 0/3px 22px,
+  linear-gradient(#fff,#fff) 100% 0/22px 3px,linear-gradient(#fff,#fff) 100% 0/3px 22px,
+  linear-gradient(#fff,#fff) 0 100%/22px 3px,linear-gradient(#fff,#fff) 0 100%/3px 22px,
+  linear-gradient(#fff,#fff) 100% 100%/22px 3px,linear-gradient(#fff,#fff) 100% 100%/3px 22px;background-repeat:no-repeat;opacity:.9}
+.vf .tagl{position:absolute;left:26px;bottom:24px;padding:5px 10px;border-radius:9px;background:rgba(16,24,40,.72);color:#fff;font-size:13px;font-weight:500}
+.vf .cnt{position:absolute;right:26px;top:24px;padding:4px 9px;border-radius:9px;background:rgba(16,24,40,.72);color:#fff;font-family:var(--mono);font-size:12px}
+.vf .flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+.vf .flash.go{animation:flash .45s ease-out}
+@keyframes flash{0%{opacity:.95}100%{opacity:0}}
+.shutrow{display:flex;align-items:center;gap:14px;margin-top:14px}
+.shutter{width:62px;height:62px;border-radius:50%;background:#fff;box-shadow:inset 0 0 0 4px var(--ink),inset 0 0 0 7px #fff,inset 0 0 0 40px var(--ink);flex:none;transition:transform .2s var(--ease)}
+.shutter:active{transform:scale(.9)}
+.thumbs{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;flex:1}
+.thumbs i{aspect-ratio:1;border-radius:8px;background:rgba(16,24,40,.08)}
+.thumbs i.t{background:var(--bg) url(../../../brand/bookie/mascot.svg) center/72% no-repeat;animation:pop .4s var(--ease)}
+@keyframes pop{from{scale:.4;opacity:0}}
+
+/* due notices */
+.nbatch{display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:center}
+@media(max-width:560px){.nbatch{grid-template-columns:1fr}}
+.pile{position:relative;width:170px;height:220px;margin:0 auto}
+.sheetm{position:absolute;left:0;top:0;width:150px;height:196px;background:#fff;border-radius:4px;padding:10px;box-shadow:0 8px 18px -10px rgba(16,24,40,.4);translate:calc(var(--k)*2.4px) calc(var(--k)*2.4px);rotate:calc((var(--k) - 4) * .7deg);animation:land .35s var(--ease) both;font-size:8px;color:#333;text-align:center}
+@keyframes land{from{opacity:0;translate:60px -40px;rotate:12deg}}
+.sheetm .h{font-family:"Anek Bangla";font-weight:700;font-size:10.5px;color:var(--navy)}
+.sheetm .a{font-family:"Clash Grotesk";font-weight:600;font-size:18px;margin:6px 0}
+.sheetm .q{width:56px;height:56px;margin:6px auto 0;background:conic-gradient(#111 25%,#fff 0 50%,#111 0 75%,#fff 0) 0 0/10px 10px;box-shadow:0 0 0 3px #fff,0 0 0 4px #ddd}
+.ncount{font-family:var(--mono);font-weight:500;font-size:clamp(54px,14vw,76px);letter-spacing:-.05em;line-height:1;color:var(--ink);font-variant-numeric:tabular-nums}
+.ncount small{font-size:.4em;color:var(--muted);letter-spacing:0}
+.nstat{color:#3c4452;margin:8px 0 16px;min-height:26px}
+.wa-btn{background:#1FAF5A}
+
+/* quiz */
+.quiz{background:#fff;border-radius:22px;padding:18px;box-shadow:0 18px 36px -24px rgba(16,24,40,.45)}
+.quiz .qh{display:flex;justify-content:space-between;align-items:center;font-size:14px;color:var(--muted);font-weight:500}
+.quiz .qh span:first-child{padding:3px 10px;border-radius:8px;background:var(--hw-bg);color:var(--hw);font-weight:600}
+.quiz .qq{font-family:"Clash Grotesk";font-weight:600;font-size:clamp(30px,8vw,40px);letter-spacing:-.03em;margin:14px 0 16px}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(min-width:1000px){.opts{grid-template-columns:repeat(4,1fr)}}
+.opts button{height:64px;border-radius:16px;background:#F4F2FB;font-family:"Clash Grotesk";font-weight:600;font-size:24px;color:var(--ink);box-shadow:inset 0 0 0 2px transparent;transition:background .3s,box-shadow .3s,color .3s,transform .25s var(--ease)}
+.opts button:active{transform:scale(.95)}
+.opts button.right{background:var(--att-bg);color:var(--att);box-shadow:inset 0 0 0 2px var(--att)}
+.opts button.wrong{background:#FEE4E2;color:#B42318;box-shadow:inset 0 0 0 2px #B42318;animation:shake .4s}
+@keyframes shake{25%{translate:-5px 0}75%{translate:5px 0}}
+.qres{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;min-height:30px;font-size:15.5px;color:#3c4452}
+.qres b{color:var(--ink);font-weight:600}
+.qres button{font-weight:600;color:var(--hw);text-decoration:underline;text-underline-offset:4px}
+
+/* attendance calendar */
+.cal{background:#fff;border-radius:22px;padding:16px;box-shadow:0 18px 36px -24px rgba(16,24,40,.45)}
+.cal .ch{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.cal .ch b{font-weight:600;font-size:17px}
+.cal .pc{font-family:var(--mono);font-weight:600;color:var(--att)}
+.cg{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center}
+.cg .wd{font-size:11px;color:var(--muted);font-weight:500;padding-bottom:2px}
+.cg button{aspect-ratio:1;border-radius:9px;font-size:12.5px;font-weight:600;background:var(--att-bg);color:var(--att);transition:transform .25s var(--ease),box-shadow .25s}
+.cg button.a{background:#FEE4E2;color:#B42318}
+.cg button.l{background:#FFFAEB;color:#B54708}
+.cg button.h{background:#F2F4F7;color:#98A2B3}
+.cg button.f{background:transparent;color:#C3C9D5;cursor:default}
+.cg button.today{box-shadow:inset 0 0 0 2px var(--ink)}
+.cg button.sel{transform:scale(1.12);box-shadow:0 6px 14px -6px rgba(16,24,40,.5)}
+.cdet{margin-top:12px;padding:10px 12px;border-radius:12px;background:var(--canvas);font-size:14.5px;min-height:44px;color:#3c4452}
+.cdet b{color:var(--ink);font-weight:600}
+
+/* ================= feature chips under the hero line ================= */
+.feat{margin:24px calc(var(--gut) * -1) 30px;display:grid;gap:8px}
+@media(min-width:980px){.feat{margin:26px 0 32px}}
+.chiprow{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:3px var(--gut);-webkit-mask-image:linear-gradient(90deg,transparent,#000 7%,#000 93%,transparent);mask-image:linear-gradient(90deg,transparent,#000 7%,#000 93%,transparent);touch-action:pan-x pan-y;cursor:grab}
+@media(min-width:980px){.chiprow{padding:3px 0}}
+.chiprow::-webkit-scrollbar{display:none}
+.fc{flex:none;display:inline-flex;align-items:center;gap:8px;height:42px;padding:0 15px 0 6px;border-radius:999px;background:rgba(255,255,255,.9);box-shadow:inset 0 0 0 1px rgba(16,24,40,.07),0 6px 16px -12px rgba(16,24,40,.35);font-weight:500;font-size:15px;white-space:nowrap;color:var(--ink);user-select:none}
+.fc i{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--b);color:var(--f);font-size:16px}
+
+/* ================= gadget carousel ================= */
+.gctl{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin-top:30px;padding:2px 0 4px;align-items:center}
+.gctl::-webkit-scrollbar{display:none}
+.gc{flex:none;position:relative;height:44px;padding:0 18px;border-radius:999px;background:#fff;box-shadow:inset 0 0 0 1px var(--line);font-weight:600;font-size:15px;color:var(--muted);overflow:hidden;transition:background .35s var(--ease),color .35s}
+.gc .bar{position:absolute;left:0;bottom:0;height:3px;width:0;background:var(--blue)}
+.gc.cur{background:var(--ink);color:#fff}
+.gc.cur .bar{animation:fill var(--dur,7s) linear forwards}
+.gctl.paused .gc.cur .bar{animation-play-state:paused}
+@keyframes fill{to{width:100%}}
+.gplay{flex:none;width:44px;height:44px;border-radius:50%;background:#fff;box-shadow:inset 0 0 0 1px var(--line);display:grid;place-items:center;font-size:18px;margin-left:auto}
+.gal{position:relative;display:flex!important;gap:18px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;padding:18px var(--gut) 24px;margin:12px calc(var(--gut) * -1) 0;grid-template-areas:none!important;overscroll-behavior-x:contain}
+.gal::-webkit-scrollbar{display:none}
+.gal .gt{flex:0 0 min(86vw,470px);scroll-snap-align:center;grid-area:auto!important;transition:opacity .5s var(--ease),scale .6s var(--ease)}
+.gal .gt:not(.cur){opacity:.55;scale:.96}
+
+/* ================= family app showcase ================= */
+.famsec{padding:110px 0 110px;background:radial-gradient(60% 55% at 75% 50%,#E9E1FB 0%,rgba(233,225,251,0) 70%),radial-gradient(40% 40% at 10% 20%,#FBEAF7 0%,rgba(251,234,247,0) 70%)}
+.famsec .wrap{display:grid;gap:30px;align-items:center}
+@media(min-width:980px){.famsec .wrap{grid-template-columns:1fr 1fr;gap:56px}}
+.famsec .lede{margin-top:18px}
+.fam-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:28px}
+.fam-tabs button{position:relative;overflow:hidden;display:inline-flex;align-items:center;gap:8px;height:48px;padding:0 18px 0 8px;border-radius:999px;background:#fff;box-shadow:inset 0 0 0 1px rgba(105,65,198,.18);font-weight:600;font-size:16px;color:var(--muted);transition:background .35s var(--ease),color .35s}
+.fam-tabs button i{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--hw-bg);color:var(--hw);font-size:17px}
+.fam-tabs button[aria-selected=true]{background:var(--hw);color:#fff}
+.fam-tabs button[aria-selected=true] i{background:rgba(255,255,255,.2);color:#fff}
+.fam-tabs button .bar{position:absolute;left:0;bottom:0;height:3px;width:0;background:#FFD27A}
+.fam-tabs button[aria-selected=true] .bar{animation:fill 4.5s linear forwards}
+.fam-tabs.paused .bar{animation:none!important}
+.plat{display:flex;gap:10px;flex-wrap:wrap;margin-top:26px}
+.plat span{display:inline-flex;align-items:center;gap:8px;height:46px;padding:0 16px;border-radius:14px;background:var(--ink);color:#fff;font-weight:500;font-size:15px}
+.plat span i{font-size:20px}
+.fstage{position:relative;height:640px;display:grid;place-items:center;--pw:290px}
+@media(max-width:600px){.fstage{height:600px;--pw:262px}}
+.fstage .phone{z-index:2}
+.fscr{position:absolute;inset:0;opacity:0;translate:0 12px;transition:opacity .45s var(--ease),translate .55s var(--ease);pointer-events:none;background:var(--canvas)}
+.fscr.on{opacity:1;translate:0 0;pointer-events:auto}
+.fhead{background:linear-gradient(160deg,#7A55D9,#5B37C2);color:#fff;padding:0 14px 40px;border-radius:0 0 26px 26px;position:relative}
+.fhead .sb{padding:6px 8px 0}
+.fhead .ttl{font-size:21px}
+.fhead .fsub{font-size:11px;opacity:.8;margin-top:2px}
+.fhead img{position:absolute;right:6px;bottom:-6px;width:74px;rotate:6deg}
+.fbody{padding:0 12px;margin-top:-26px;position:relative;display:grid;gap:8px}
+.fbody .c{padding:11px 12px}
+.fl{display:flex;align-items:center;gap:10px}
+.fl b{display:block;font-weight:600;font-size:12px}
+.fl span{font-size:10px;color:var(--muted)}
+.fl .r{margin-left:auto;font-weight:600;font-size:11px}
+.prog{display:flex;gap:3px;margin-top:8px}
+.prog i{flex:1;height:6px;border-radius:9px;background:#E9E3F6}
+.prog i.d{background:var(--hw)}
+.ring2{position:relative;width:64px;height:64px;flex:none}
+.ring2 svg{rotate:-90deg}
+.ring2 b{position:absolute;inset:0;display:grid;place-items:center;font-weight:600;font-size:18px;color:var(--ex)}
+.feemon{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:8px}
+.feemon span{text-align:center;padding:6px 0;border-radius:9px;font-weight:600;font-size:9.5px;background:var(--att-bg);color:var(--att)}
+.feemon .due{background:#FEE4E2;color:#B42318}
+.feemon .up{background:#EEF0F4;color:var(--muted)}
+.paybtn{display:flex;align-items:center;justify-content:center;height:38px;border-radius:12px;background:var(--hw);color:#fff;font-weight:600;font-size:11.5px;margin-top:10px}
+.fbadge{position:absolute;z-index:3;display:flex;align-items:center;gap:9px;padding:9px 13px 9px 9px;border-radius:16px;background:#fff;box-shadow:0 18px 36px -16px rgba(60,30,120,.45);font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap;animation:bob 5s ease-in-out infinite;animation-delay:var(--d,0s)}
+.fbadge i{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;font-size:17px;background:var(--b);color:var(--f)}
+.fbadge small{display:block;font-size:11px;font-weight:500;color:var(--muted)}
+@keyframes bob{50%{translate:0 -8px}}
+.fb1{left:calc(50% - var(--pw)/2 - 70px);top:90px;--b:#FFF0D6;--f:#D97706}
+.fb2{right:calc(50% - var(--pw)/2 - 80px);top:200px;--b:var(--ex-bg);--f:var(--ex);--d:-1.6s}
+.fb3{left:calc(50% - var(--pw)/2 - 60px);bottom:150px;--b:var(--att-bg);--f:var(--att);--d:-3s}
+.fb4{right:calc(50% - var(--pw)/2 - 64px);bottom:70px;--b:var(--hw-bg);--f:var(--hw);--d:-2.2s}
+@media(max-width:600px){.fbadge{scale:.8}.fb1{left:-14px;top:-8px}.fb2{right:-16px;top:auto;bottom:112px}.fb3,.fb4{display:none}}
+
+.famsec h2.display{font-size:clamp(42px,10.5vw,72px)}
+/* ================= roles ================= */
+.roles{padding:100px 0 110px}
+.roles .lede{margin-top:16px}
+.rl-grid{display:grid;gap:18px;margin-top:40px}
+@media(min-width:980px){.rl-grid{grid-template-columns:320px 1fr;gap:28px;align-items:start}}
+.rl-tabs{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 calc(var(--gut) * -1);padding:2px var(--gut) 6px}
+.rl-tabs::-webkit-scrollbar{display:none}
+@media(min-width:980px){.rl-tabs{flex-direction:column;overflow:visible;margin:0;padding:0}}
+.rl-tabs button{flex:none;display:flex;align-items:center;gap:12px;height:58px;padding:0 18px 0 9px;border-radius:20px;background:#fff;box-shadow:inset 0 0 0 1px var(--line);font-weight:600;font-size:16px;color:var(--ink);text-align:left;transition:background .35s var(--ease),color .35s,box-shadow .35s}
+.rl-tabs button i{width:40px;height:40px;border-radius:13px;display:grid;place-items:center;background:var(--b);color:var(--f);font-size:20px;transition:background .35s,color .35s}
+.rl-tabs button small{display:none;margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--muted)}
+@media(min-width:980px){.rl-tabs button small{display:block}}
+.rl-tabs button[aria-selected=true]{background:var(--f);color:#fff;box-shadow:0 14px 28px -16px var(--f)}
+.rl-tabs button[aria-selected=true] i{background:rgba(255,255,255,.18);color:#fff}
+.rl-tabs button[aria-selected=true] small{color:rgba(255,255,255,.75)}
+.rl-panel{position:relative;border-radius:30px;background:var(--b);padding:26px 22px 26px;overflow:clip;min-height:420px;transition:background .45s var(--ease)}
+.rl-panel .who{display:flex;align-items:center;gap:14px}
+.rl-panel .who i{width:56px;height:56px;border-radius:18px;display:grid;place-items:center;background:var(--f);color:#fff;font-size:28px;flex:none}
+.rl-panel h3{font-family:var(--display);font-weight:600;font-size:clamp(28px,7vw,40px);letter-spacing:-.03em;line-height:1}
+.rl-panel .line{color:#3c4452;margin-top:4px;font-size:16px}
+.rl-list{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:22px}
+@media(max-width:639px){.rl-list li{flex-direction:column;align-items:flex-start;gap:8px;padding:12px;font-size:14.5px;line-height:1.25}}
+@media(min-width:640px){.rl-list{gap:10px}}
+.rl-list li{list-style:none;display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;background:#fff;font-weight:500;font-size:16px;box-shadow:0 8px 20px -16px rgba(16,24,40,.4);animation:fade .45s var(--ease) both;animation-delay:calc(var(--k) * 45ms)}
+.rl-list li i{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:var(--b);color:var(--f);font-size:18px;flex:none}
+.rl-panel .peek{position:absolute;right:-10px;bottom:-18px;width:120px;rotate:-8deg;opacity:.95;pointer-events:none}
+@media(max-width:640px){.rl-panel .peek{display:none}}
+
+/* ===== v5d: glass top bar ===== */
+.nav .bar{background:rgba(255,255,255,.42);backdrop-filter:blur(22px) saturate(1.8);-webkit-backdrop-filter:blur(22px) saturate(1.8);box-shadow:inset 0 1px 0 rgba(255,255,255,.85),inset 0 0 0 1px rgba(255,255,255,.55),0 1px 0 rgba(16,24,40,.04),0 14px 34px -20px rgba(16,24,40,.35)}
+.nav.solid .bar{background:rgba(255,255,255,.62);backdrop-filter:blur(26px) saturate(1.9);-webkit-backdrop-filter:blur(26px) saturate(1.9);box-shadow:inset 0 1px 0 rgba(255,255,255,.9),inset 0 0 0 1px rgba(255,255,255,.6),0 1px 0 rgba(16,24,40,.05),0 16px 36px -18px rgba(16,24,40,.4)}
+.nav .lang{background:rgba(16,24,40,.06)}
+.dock .btn{background:rgba(16,24,40,.78);backdrop-filter:blur(18px) saturate(1.6);-webkit-backdrop-filter:blur(18px) saturate(1.6);box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 18px 40px -14px rgba(16,24,40,.6)}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.nav .bar{background:rgba(255,255,255,.94)}}
+
+/* ===== v5d: smaller day cards and gadget tiles (scaled as a whole) ===== */
+.strip .card{zoom:.84;flex-basis:min(100vw,372px)}
+@media(min-width:760px){.strip .card{zoom:.8}}
+.gal .gt{zoom:.84;flex-basis:min(100vw,460px)}
+@media(min-width:760px){.gal .gt{zoom:.8}}
+@media(max-width:400px){.strip .card{zoom:.8}.gal .gt{zoom:.8}}
+
+/* ===== v5e: a plain form on the ruled paper; every row sits on a ruled line (46px) ===== */
+.letter.formy{line-height:1.3}
+.formy .fhd{height:92px;display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:6px}
+.formy .fhd h3{font-family:var(--display);font-weight:600;font-size:30px;letter-spacing:-.03em;color:var(--ink);line-height:1.1}
+.formy .fhd p{font-size:16px;color:var(--muted);margin-top:4px}
+.formy .fields{display:grid}
+@media(min-width:640px){.formy .fields{grid-template-columns:1fr 1fr;column-gap:28px}.formy .fld.wide{grid-column:1/-1}}
+.formy .fld{height:92px;display:grid;grid-template-rows:46px 46px}
+.formy .fld label{align-self:end;padding-bottom:6px;font-family:var(--sans);font-size:14px;font-weight:600;color:var(--muted)}
+.formy .fld input,.formy .fld select{width:100%!important;align-self:end;height:40px;margin-bottom:1px;font-size:22px}
+.formy .fld select{font-size:19px}
+.formy .send{margin-top:24px}
+.formy .stamp.ok{top:44px}
+:lang(hi) .formy .fld label,:lang(bn) .formy .fld label{font-size:15px}
+.wa-fab{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:31;width:58px;height:58px;border-radius:50%;background:#25D366;color:#fff;display:grid;place-items:center;font-size:31px;text-decoration:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 14px 30px -10px rgba(18,140,64,.75);transition:transform .35s var(--ease)}
+.wa-fab::before{content:"";position:absolute;inset:0;border-radius:50%;background:#25D366;z-index:-1;animation:waPulse 2.6s ease-out infinite}
+@keyframes waPulse{0%{opacity:.55;scale:1}70%,100%{opacity:0;scale:1.6}}
+.wa-fab:hover{transform:scale(1.06)}
+.wa-fab:active{transform:scale(.94)}
+.wa-fab span{position:absolute;right:68px;top:50%;translate:0 -50%;white-space:nowrap;padding:8px 12px;border-radius:12px;background:var(--ink);color:#fff;font-size:14px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .25s,translate .35s var(--ease)}
+.wa-fab:hover span,.wa-fab:focus-visible span{opacity:1;translate:-4px -50%}
+@media(min-width:760px){.wa-fab{right:24px;bottom:24px;width:62px;height:62px}}
+@media(max-width:759px){.dock{left:calc(50% - 30px)}}
+@media(prefers-reduced-motion:reduce){.wa-fab::before{display:none}}
+
+/* ===== v5f: compact contact card ===== */
+.cform-wrap{position:relative;max-width:720px;margin:56px auto 0}
+.cform-wrap .peek{position:absolute;right:8%;top:-70px;width:110px;rotate:8deg;z-index:0}
+.cform{position:relative;z-index:1;background:#fff;border-radius:28px;padding:22px;box-shadow:0 40px 70px -36px rgba(6,20,80,.7);color:var(--ink)}
+@media(min-width:760px){.cform{padding:30px}}
+.cf-grid{display:grid;gap:12px}
+@media(min-width:640px){.cf-grid{grid-template-columns:1fr 1fr;gap:14px 16px}}
+.cf{display:grid;gap:6px;font-size:14px;font-weight:600;color:var(--muted)}
+.cf input,.cf select{height:50px;border-radius:14px;border:1.5px solid var(--line);background:var(--canvas);padding:0 14px;font-family:var(--sans);font-size:16px;font-weight:500;color:var(--ink);outline:none;width:100%;transition:border-color .25s,background .25s,box-shadow .25s}
+.cf input:focus,.cf select:focus{border-color:var(--blue);background:#fff;box-shadow:0 0 0 4px rgba(47,107,255,.15)}
+.cf input::placeholder{color:#8a93a6}
+.cform .err{display:none;margin-top:12px;font-size:15px;color:var(--red)}
+.cform.invalid .err{display:block}
+.cf-send{margin-top:18px;width:100%;justify-content:space-between}
+@media(min-width:640px){.cf-send{width:auto}}
+.cf-ok{display:none;align-items:center;gap:14px;padding:6px 2px}
+.cf-ok i{font-size:44px;color:var(--att);flex:none}
+.cf-ok b{display:block;font-family:var(--display);font-weight:600;font-size:22px;letter-spacing:-.02em}
+.cf-ok span{color:var(--muted);font-size:16px}
+.cform.sent .cf-grid,.cform.sent .cf-send,.cform.sent .err{display:none}
+.cform.sent .cf-ok{display:flex;animation:fade .45s var(--ease)}
+.apply2 .alt{margin-top:22px}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="ink"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="7" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.2"/><feComponentTransfer><feFuncA type="discrete" tableValues="0 1 1 1 1 1 1 .7 1 1"/></feComponentTransfer></filter>
+</svg>
+
+<span id="topSentinel" style="position:absolute;top:0;height:24px;width:1px"></span>
+<header class="nav" id="nav">
+  <div class="bar">
+    <a class="brand" href="#" aria-label="mSkool home"><img src="../../../brand/app-icon.svg" alt=""><span>m<b>S</b>kool</span></a>
+    <span class="sp"></span>
+    <div class="lang" role="group" aria-label="Language">
+      <button data-lang="en" aria-pressed="true">EN</button>
+      <button data-lang="hi" aria-pressed="false" lang="hi">हिं</button>
+      <button data-lang="bn" aria-pressed="false" lang="bn">বাং</button>
+    </div>
+    <a class="btn" href="#apply"><span data-i="cta">Book a demo</span><span class="arr"><i class="ph-bold ph-arrow-right"></i></span></a>
+  </div>
+</header>
+
+<main>
+<!-- ============ HERO ============ -->
+<section class="hero" id="hero">
+  <div class="wrap">
+    <div>
+      <h1 class="display" id="h1" aria-label="Retire the register."><span class="pre"></span><span class="rot"></span><span class="suf"></span></h1>
+      <div class="feat" aria-label="Features"><div class="chiprow"></div><div class="chiprow"></div></div>
+      <div class="cta">
+        <a class="btn" href="#apply"><span data-i="cta">Book a demo</span><span class="arr"><i class="ph-bold ph-arrow-right"></i></span></a>
+        <a class="link" href="#day" data-i="seeday">See a school day</a>
+      </div>
+    </div>
+
+    <div class="stage" aria-hidden="true">
+      <div class="obj o-reg">Class VI A &nbsp;Nov<br>01 Aarav &nbsp;<b>P P P</b><br>02 Ishita &nbsp;<b>P P P</b><br>03 Faiz &nbsp;&nbsp;<u>A</u> <b>P P</b><br>04 Priya &nbsp;<b>P P</b> <u>A</u></div>
+      <div class="obj o-rcpt"><div style="text-align:center;font-weight:600">FEE RECEIPT</div><hr>No. 01482<br>Ishita Roy VI A<br>Tuition Aug-Sep<hr><b>TOTAL ₹5,100</b></div>
+      <div class="obj o-rc"><header>REPORT CARD</header><div>English<b>A2</b></div><div>Maths<b>A1</b></div><div>Science<b>B1</b></div></div>
+      <div class="obj o-id"><div class="p"></div><b>Ishita Roy</b>Class VI A<br>Roll 02</div>
+      <div class="obj o-chq">ROSEWOOD PUBLIC SCHOOL<div class="l">Two hundred fifty only</div><span style="float:right;font-weight:600">₹250.00</span>Cheque 000731</div>
+      <div class="obj o-hw"><b>Homework</b><span>Fractions, page 42, Q1 to Q8</span></div>
+
+      <div class="phone">
+        <div class="scr home">
+          <div class="sb"><span>8:52</span><span><i class="ph-fill ph-cell-signal-full"></i><i class="ph-fill ph-wifi-high"></i><i class="ph-fill ph-battery-high"></i></span></div>
+          <div class="pad">
+            <div class="h-top"><span class="rbtn"><i class="ph ph-list"></i></span><span class="ava">RS</span></div>
+            <div class="mut" style="font-weight:500">Monday, 16 Nov</div>
+            <div class="ttl" style="font-size:25px;margin-top:2px">Good morning, Ritu</div>
+            <div class="seg"><span class="on"><i class="ph-fill ph-graduation-cap"></i>Rosewood Main</span><span><i class="ph ph-stack"></i>All branches</span></div>
+            <div class="ok"><span class="dot"><i class="ph-bold ph-check"></i></span><div><b style="font-weight:600;font-size:13px">Your section is marked</b><br><span style="font-size:11px">37 of 38 present</span></div></div>
+            <div class="wait ttl">Waiting on you <em>3</em></div>
+            <div class="c">
+              <div class="row"><span class="tile" style="background:var(--ex-bg);color:var(--ex)"><i class="ph ph-note-pencil"></i></span><span class="t"><b>Marks to enter</b> <span class="chip" style="background:var(--tch-bg);color:var(--tch)">Teaching</span><span class="s">0/7 papers · VI A Mathematics</span></span><span class="pill" style="background:var(--ex)">Enter</span></div>
+              <div class="row"><span class="tile" style="background:var(--fee-bg);color:var(--fee)"><i class="ph ph-money"></i></span><span class="t"><b>1 cheque to clear</b> <span class="chip" style="background:#EEF0F4;color:#475467">Admin</span><span class="s">₹250</span></span><i class="ph ph-caret-right mut"></i></div>
+              <div class="row"><span class="tile" style="background:var(--hw-bg);color:var(--hw)"><i class="ph ph-book-open-text"></i></span><span class="t"><b>Homework to check</b> <span class="chip" style="background:var(--tch-bg);color:var(--tch)">Teaching</span><span class="s">12 new answers</span></span><i class="ph ph-caret-right mut"></i></div>
+            </div>
+          </div>
+          <div class="tabs"><span class="on"><i class="ph-fill ph-house"></i>Home</span><span><i class="ph ph-list-checks"></i>Attendance</span><span><i class="ph ph-users-three"></i>Students</span><span><i class="ph ph-book-open"></i>Homework</span><span><i class="ph ph-currency-inr"></i>Fees</span><span><i class="ph ph-dots-three"></i>More</span></div>
+        </div>
+      </div>
+      <img class="bookie" src="../../../brand/bookie/mascot.svg" alt="">
+    </div>
+  </div>
+</section>
+
+<!-- ============ A SCHOOL DAY ============ -->
+<section class="day" id="day">
+  <div class="wrap day-head rv">
+    <div>
+      <h2 class="display" data-i="day.h">A school day, on one phone.</h2>
+      <p class="lede" data-i="day.p">Swipe through it. Every screen works.</p>
+    </div>
+    <div class="arrows"><button id="prev" aria-label="Previous"><i class="ph ph-arrow-left"></i></button><button id="next" aria-label="Next"><i class="ph ph-arrow-right"></i></button></div>
+  </div>
+
+  <div class="strip" id="strip">
+    <!-- attendance -->
+    <article class="card k-att">
+      <div class="when"><b>8:47</b>am <span class="hand" data-i="w1">Class teacher, Room 12</span></div>
+      <h3 class="display" data-i="s1.h">Thirty-eight names. Under a minute.</h3>
+      <p data-i="c1">Tap the absent ones. Save. Done before the bell.</p>
+      <span class="try" style="top:250px" data-i="try1">tap a roll number</span>
+      <div class="phone"><div class="scr" id="s-att">
+        <div class="sb"><span>8:47</span><span><i class="ph-fill ph-wifi-high"></i><i class="ph-fill ph-battery-high"></i></span></div>
+        <div class="pad">
+          <div class="sc-head"><div><div class="ttl">Class VI A</div><div class="mut">Mon, 16 Nov · Period 1</div></div><span class="rbtn"><i class="ph ph-calendar-blank"></i></span></div>
+          <div class="cnt"><span style="--b:var(--att-bg);--f:var(--att)" id="cP">37<small>Present</small></span><span style="--b:#FEE4E2;--f:#B42318" id="cA">1<small>Absent</small></span><span style="--b:#FFFAEB;--f:#B54708">0<small>Late</small></span><span style="--b:#EEEDFD;--f:#4F46E5">0<small>Leave</small></span></div>
+          <div class="grid" id="grid"></div>
+        </div>
+        <button class="savebar" id="attSave"><i class="ph-bold ph-check"></i><span id="attLbl">Save · 37 present</span></button>
+        <span class="stamp will-stamp" id="attStamp">Saved 8:48</span>
+        <div class="tabs"><span><i class="ph ph-house"></i>Home</span><span class="on"><i class="ph-fill ph-list-checks"></i>Attendance</span><span><i class="ph ph-users-three"></i>Students</span><span><i class="ph ph-book-open"></i>Homework</span><span><i class="ph ph-currency-inr"></i>Fees</span><span><i class="ph ph-dots-three"></i>More</span></div>
+      </div></div>
+    </article>
+
+    <!-- fees -->
+    <article class="card k-fee">
+      <div class="when"><b>11:20</b>am <span class="hand" data-i="w2">Fee counter</span></div>
+      <h3 class="display" data-i="s2.h">A receipt number never skips.</h3>
+      <p data-i="c2">Collect, then print on 58 mm or send it on WhatsApp.</p>
+      <span class="try" style="top:250px" data-i="try2">tap Collect</span>
+      <div class="phone"><div class="scr" id="s-fee">
+        <div class="sb"><span>11:20</span><span><i class="ph-fill ph-wifi-high"></i><i class="ph-fill ph-battery-high"></i></span></div>
+        <div class="pad">
+          <div class="sc-head"><div class="ttl">Collect fee</div><span class="rbtn"><i class="ph ph-magnifying-glass"></i></span></div>
+          <div class="c">
+            <div class="stu"><span class="ph"></span><div><b style="font-weight:600;font-size:13px" id="feeName">Ishita Roy</b><div class="mut" style="font-size:10px">VI A · Roll 02 · Sibling of Arnav</div></div></div>
+            <div class="mon"><span class="pd">Apr</span><span class="pd">May</span><span class="pd">Jun</span><span class="pd">Jul</span><span class="sel">Aug</span><span class="sel">Sep</span></div>
+          </div>
+          <div class="c" style="margin-top:8px">
+            <div class="ln"><span>Tuition × 2</span><span>₹5,000</span></div>
+            <div class="ln"><span>Computer lab</span><span>₹600</span></div>
+            <div class="ln"><span class="mut">Sibling concession</span><span style="color:var(--att)">−₹500</span></div>
+            <div class="ln tot"><span>Total</span><span>₹5,100</span></div>
+            <div class="modes"><span>Cash</span><span class="on">UPI</span><span>Cheque</span></div>
+          </div>
+        </div>
+        <button class="collect" id="collect">Collect ₹5,100</button>
+        <div class="sheet" id="sheet">
+          <div class="grab"></div>
+          <div class="slipx"><div class="bn">রোজউড পাবলিক স্কুল</div><div style="text-align:center">ROSEWOOD PUBLIC SCHOOL · FEE RECEIPT</div><hr><div class="r"><span>No.</span><span class="no" id="rno">MAIN/26-27/01482</span></div><div class="r"><span>Ishita Roy, VI A</span><span>16-11-2026</span></div><div class="r"><span>Tuition Aug-Sep</span><span>₹5,100.00</span></div><hr><div class="r" style="font-weight:600"><span>PAID BY UPI</span><span>₹5,100.00</span></div></div>
+          <div class="acts"><button class="pr"><i class="ph ph-printer"></i>58 mm</button><button class="wa"><i class="ph ph-whatsapp-logo"></i>WhatsApp</button><button class="nx" id="nextR">Next</button></div>
+          <span class="stamp will-stamp" id="feeStamp">Paid</span>
+        </div>
+        <div class="tabs"><span><i class="ph ph-house"></i>Home</span><span><i class="ph ph-list-checks"></i>Attendance</span><span><i class="ph ph-users-three"></i>Students</span><span><i class="ph ph-book-open"></i>Homework</span><span class="on"><i class="ph-fill ph-currency-inr"></i>Fees</span><span><i class="ph ph-dots-three"></i>More</span></div>
+      </div></div>
+    </article>
+
+    <!-- results -->
+    <article class="card k-ex">
+      <div class="when"><b>3:10</b>pm <span class="hand" data-i="w3">Principal's office</span></div>
+      <h3 class="display" data-i="s3.h">Results go out when you say so.</h3>
+      <p data-i="c3">Families see marks only after you publish.</p>
+      <span class="try" style="top:250px" data-i="try3">flip the switch</span>
+      <div class="phone"><div class="scr" id="s-ex">
+        <div class="sb"><span>3:10</span><span><i class="ph-fill ph-wifi-high"></i><i class="ph-fill ph-battery-high"></i></span></div>
+        <div class="pad">
+          <div class="sc-head"><div><div class="ttl">Half-yearly</div><div class="mut">Ishita Roy · VI A</div></div><span class="rbtn"><i class="ph ph-file-pdf"></i></span></div>
+          <div class="c">
+            <div class="sub"><span>English</span><span class="m">84</span><span class="g">A2</span></div>
+            <div class="sub"><span>Mathematics</span><span class="m">93</span><span class="g">A1</span></div>
+            <div class="sub"><span>Science</span><span class="m">78</span><span class="g">B1</span></div>
+            <div class="sub"><span>Bengali</span><span class="m">88</span><span class="g">A2</span></div>
+            <div class="sub"><span>Social science</span><span class="m">81</span><span class="g">A2</span></div>
+          </div>
+          <div class="c pubc"><div><b id="pubT">Not published</b><span id="pubS">Families can't see these marks</span></div><button class="sw" id="pubSw" role="switch" aria-checked="false" aria-label="Publish results"></button></div>
+          <div class="famline" id="fam"><img src="../../../brand/bookie/mascot.svg" alt=""><span id="famT">Family app: <b>Results not out yet</b></span></div>
+        </div>
+        <span class="stamp will-stamp" id="pubStamp">Published</span>
+        <div class="tabs"><span><i class="ph ph-house"></i>Home</span><span><i class="ph ph-list-checks"></i>Attendance</span><span><i class="ph ph-users-three"></i>Students</span><span><i class="ph ph-book-open"></i>Homework</span><span><i class="ph ph-currency-inr"></i>Fees</span><span class="on"><i class="ph-fill ph-dots-three"></i>More</span></div>
+      </div></div>
+    </article>
+
+    <!-- family -->
+    <article class="card k-fam">
+      <div class="when"><b>7:45</b>pm <span class="hand" data-i="w4">At home</span></div>
+      <h3 class="display" data-i="s4.h">Parents stop calling the office.</h3>
+      <p data-i="c4">One login for every child in the family.</p>
+      <span class="try" style="top:250px" data-i="try4">switch child</span>
+      <div class="phone"><div class="scr">
+        <div class="fam-top">
+          <div class="sb"><span>7:45</span><span><i class="ph-fill ph-wifi-high"></i><i class="ph-fill ph-battery-high"></i></span></div>
+          <div class="kids" role="group" aria-label="Child"><button aria-pressed="true" data-kid="0">Ishita · VI A</button><button aria-pressed="false" data-kid="1">Arnav · II B</button></div>
+          <div class="ttl" id="kidHi">Hi Ishita</div>
+          <div class="streak"><i class="ph-fill ph-fire"></i><span id="kidStreak">12-day homework streak</span></div>
+          <img src="../../../brand/bookie/mascot.svg" alt="">
+        </div>
+        <div class="pad frows"><div class="c" id="famRows"></div></div>
+        <div class="tabs"><span class="on"><i class="ph-fill ph-house"></i>Home</span><span><i class="ph ph-book-open"></i>Homework</span><span><i class="ph ph-medal"></i>Results</span><span><i class="ph ph-currency-inr"></i>Fees</span><span><i class="ph ph-user"></i>Me</span></div>
+      </div></div>
+    </article>
+
+    <!-- trust -->
+    <article class="card k-tr">
+      <div class="when"><b>9:30</b>pm <span class="hand" data-i="w5">Trust secretary</span></div>
+      <h3 class="display" data-i="s5.h">Every branch, before bed.</h3>
+      <p data-i="c5">Every branch in one account. Staff see only theirs.</p>
+      <div class="phone"><div class="scr home">
+        <div class="sb"><span>9:30</span><span><i class="ph-fill ph-wifi-high"></i><i class="ph-fill ph-battery-high"></i></span></div>
+        <div class="pad">
+          <div class="h-top"><span class="rbtn"><i class="ph ph-list"></i></span><span class="ava" style="background:linear-gradient(140deg,#8B6CC9,#5B3E86)">SB</span></div>
+          <div class="ttl" style="font-size:22px">Rosewood Trust</div>
+          <div class="seg"><span><i class="ph ph-graduation-cap"></i>One branch</span><span class="on"><i class="ph-fill ph-stack"></i>All branches</span></div>
+          <div class="kp"><div><b>1,284</b><small>Students</small></div><div><b>₹2.68L</b><small>Today</small></div><div><b>95.6%</b><small>Present</small></div></div>
+          <div class="c">
+            <div class="brn"><b>Main campus</b><span class="a">₹1,84,250</span><span>742 students</span><span class="p">96.1%</span></div>
+            <div class="brn"><b>Barasat</b><span class="a">₹62,900</span><span>398 students</span><span class="p">93.4%</span></div>
+            <div class="brn"><b>Primary wing</b><span class="a">₹21,400</span><span>144 students</span><span class="p">97.9%</span></div>
+          </div>
+        </div>
+        <div class="tabs"><span class="on"><i class="ph-fill ph-house"></i>Home</span><span><i class="ph ph-list-checks"></i>Attendance</span><span><i class="ph ph-users-three"></i>Students</span><span><i class="ph ph-book-open"></i>Homework</span><span><i class="ph ph-currency-inr"></i>Fees</span><span><i class="ph ph-dots-three"></i>More</span></div>
+      </div></div>
+    </article>
+  </div>
+  <div class="dots" id="dots"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+</section>
+
+<!-- ============ GADGET WALL ============ -->
+<section class="tools" id="tools">
+  <div class="wrap">
+    <div class="rv">
+      <h2 class="display" data-i="tl.h">Every paper job, now a tap.</h2>
+      <p class="lede" data-i="tl.p">Try them. They all work.</p>
+    </div>
+    <div class="gctl" id="gctl"><button class="gplay" aria-label="Pause or play"><i class="ph-fill ph-pause"></i></button></div>
+    <div class="gal">
+      <article class="gt g-pr rv">
+        <h3 data-i="g.pr">Receipts</h3><p data-i="g.prp">Every receipt gets the next number. Print on 58 mm or send it on WhatsApp.</p>
+        <div class="box">
+          <div class="printer"><span class="led"></span><span class="lbl">58 mm</span></div>
+          <div class="slot"><div class="slip" id="slip"></div></div>
+          <button class="gbtn" id="printBtn"><i class="ph ph-printer"></i><span data-i="b.print">Print the next receipt</span></button>
+        </div>
+      </article>
+
+      <article class="gt g-id rv">
+        <h3 data-i="g.id">ID cards</h3><p data-i="g.idp">Design once. Print the whole class, front and back.</p>
+        <div class="box">
+          <div class="idbox" id="idbox"><div class="idslot"></div></div>
+          <div class="hint" id="idHint"></div>
+          <button class="gbtn" id="idBtn"><i class="ph ph-identification-card"></i><span data-i="b.id">Print Class VI A</span></button>
+        </div>
+      </article>
+
+      <article class="gt g-ph rv">
+        <h3 data-i="g.ph">Photo day</h3><p data-i="g.php">Go class by class. Snap, next, snap.</p>
+        <div class="box">
+          <div class="vf"><div class="subj" id="subj"><img src="../../../brand/bookie/mascot.svg" alt=""></div><div class="crn"></div><span class="cnt" id="phCnt">0 / 38</span><span class="tagl" id="phName">Roll 01 · Aarav Banerjee</span><div class="flash" id="flash"></div></div>
+          <div class="shutrow"><button class="shutter" id="shutter" aria-label="Take photo"></button><div class="thumbs" id="thumbs"><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+        </div>
+      </article>
+
+      <article class="gt g-no rv">
+        <h3 data-i="g.no">Due notices</h3><p data-i="g.nop">One tap makes a notice with a UPI QR for everyone who owes.</p>
+        <div class="box nbatch">
+          <div class="pile" id="pile"></div>
+          <div>
+            <div class="ncount"><span id="nNum">0</span><small> / 18</small></div>
+            <div class="nstat" id="nStat">VI A, October fees</div>
+            <button class="gbtn" id="nBtn"><i class="ph ph-files"></i><span data-i="b.no">Make 18 notices</span></button>
+          </div>
+        </div>
+      </article>
+
+      <article class="gt g-qz rv">
+        <h3 data-i="g.qz">Homework quizzes</h3><p data-i="g.qzp">Students answer on the phone. Quizzes check themselves.</p>
+        <div class="box">
+          <div class="quiz">
+            <div class="qh"><span>Maths · Fractions</span><span>Q3 of 5</span></div>
+            <div class="qq">3/4 + 1/8 = ?</div>
+            <div class="opts" id="opts"><button data-ok="1">7/8</button><button>4/12</button><button>1/2</button><button>5/8</button></div>
+            <div class="qres" id="qres"><span data-i="qz.tap">Pick an answer.</span></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="gt g-ca rv">
+        <h3 data-i="g.ca">Attendance calendar</h3><p data-i="g.cap">Every child's month at a glance. Tap a day.</p>
+        <div class="box">
+          <div class="cal">
+            <div class="ch"><b>Ishita Roy · November</b><span class="pc">91.7%</span></div>
+            <div class="cg" id="cal"></div>
+            <div class="cdet" id="cdet"><b>Mon 16 Nov</b> · Present, marked 8:48 am</div>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FAMILY APP ============ -->
+<section class="famsec" id="family">
+  <div class="wrap">
+    <div class="rv">
+      <h2 class="display" data-i="fa.h">And an app families actually open.</h2>
+      <p class="lede" data-i="fa.p">Students and parents share one app and one login, for every child in the family. Tonight's homework, today's attendance, results the moment they're out, fees and receipts.</p>
+      <div class="fam-tabs" id="famTabs" role="tablist" aria-label="Family app screens">
+        <button role="tab" aria-selected="true" data-s="0"><i class="ph-fill ph-house"></i>Home<span class="bar"></span></button>
+        <button role="tab" aria-selected="false" data-s="1"><i class="ph-fill ph-book-open-text"></i>Homework<span class="bar"></span></button>
+        <button role="tab" aria-selected="false" data-s="2"><i class="ph-fill ph-medal"></i>Results<span class="bar"></span></button>
+        <button role="tab" aria-selected="false" data-s="3"><i class="ph-fill ph-currency-inr"></i>Fees<span class="bar"></span></button>
+      </div>
+      <div class="plat"><span><i class="ph-fill ph-android-logo"></i>Android</span><span><i class="ph-fill ph-apple-logo"></i>iPhone</span></div>
+    </div>
+
+    <div class="fstage rv">
+      <div class="fbadge fb1"><i class="ph-fill ph-fire"></i><div>12-day streak<small>Homework every evening</small></div></div>
+      <div class="fbadge fb2"><i class="ph-fill ph-medal"></i><div>Results are out<small>A1 in Mathematics</small></div></div>
+      <div class="fbadge fb3"><i class="ph-fill ph-check-circle"></i><div>Present today<small>Marked 8:48 am</small></div></div>
+      <div class="fbadge fb4"><i class="ph-fill ph-receipt"></i><div>Fees paid<small>Receipt 01482, ₹5,100</small></div></div>
+      <div class="phone"><div class="scr" id="famPhone">
+
+        <div class="fscr on">
+          <div class="fhead"><div class="sb"><span>7:45</span><span><i class="ph-fill ph-wifi-high"></i><i class="ph-fill ph-battery-high"></i></span></div>
+            <div class="kids"><button aria-pressed="true" data-kid="0">Ishita · VI A</button><button aria-pressed="false" data-kid="1">Arnav · II B</button></div>
+            <div class="ttl">Good evening, Ishita</div><div class="fsub">Monday, 16 Nov</div><img src="../../../brand/bookie/mascot.svg" alt=""></div>
+          <div class="fbody">
+            <div class="c"><div class="fl"><span class="tile" style="background:#FFF0D6;color:#D97706"><i class="ph-fill ph-fire"></i></span><div><b>12-day streak</b><span>2 things due tomorrow</span></div><span class="r" style="color:var(--hw)">Start</span></div><div class="prog"><i class="d"></i><i class="d"></i><i class="d"></i><i></i><i></i></div></div>
+            <div class="c"><div class="fl"><span class="tile" style="background:var(--att-bg);color:var(--att)"><i class="ph-fill ph-check-circle"></i></span><div><b>Present today</b><span>94% this term</span></div></div></div>
+            <div class="c"><div class="fl"><span class="tile" style="background:var(--ex-bg);color:var(--ex)"><i class="ph-fill ph-medal"></i></span><div><b>Half-yearly results</b><span>Out today</span></div><span class="r" style="color:var(--ex)">A1</span></div></div>
+            <div class="c"><div class="fl"><span class="tile" style="background:var(--fee-bg);color:var(--fee)"><i class="ph-fill ph-currency-inr"></i></span><div><b>November fees</b><span>₹2,550 due by 20 Nov</span></div></div></div>
+          </div>
+        </div>
+
+        <div class="fscr">
+          <div class="sb"><span>7:46</span><span><i class="ph-fill ph-wifi-high"></i><i class="ph-fill ph-battery-high"></i></span></div>
+          <div class="pad"><div class="sc-head"><div class="ttl">Homework</div><span class="rbtn"><i class="ph ph-calendar-blank"></i></span></div>
+            <div class="mut" style="font-weight:600;margin:2px 2px 6px">Due tomorrow</div>
+            <div class="c">
+              <div class="row"><span class="tile" style="background:var(--hw-bg);color:var(--hw)"><i class="ph ph-check-square"></i></span><span class="t"><b>Fractions quiz</b><span class="s">Maths · 5 questions</span></span><span class="pill" style="background:var(--hw)">Start</span></div>
+              <div class="row"><span class="tile" style="background:var(--stu-bg);color:var(--stu)"><i class="ph ph-flask"></i></span><span class="t"><b>Plant cell diagram</b><span class="s">Science · photo answer</span></span><i class="ph ph-caret-right mut"></i></div>
+            </div>
+            <div class="mut" style="font-weight:600;margin:12px 2px 6px">Done this week</div>
+            <div class="c">
+              <div class="row"><span class="tile" style="background:var(--att-bg);color:var(--att)"><i class="ph-bold ph-check"></i></span><span class="t"><b>Bengali essay</b><span class="s">Checked by Ms. Sharmistha</span></span><span style="color:var(--att);font-weight:600">A</span></div>
+              <div class="row"><span class="tile" style="background:var(--att-bg);color:var(--att)"><i class="ph-bold ph-check"></i></span><span class="t"><b>Decimals quiz</b><span class="s">Auto-checked</span></span><span style="color:var(--att);font-weight:600">4/5</span></div>
+            </div></div>
+        </div>
+
+        <div class="fscr">
+          <div class="sb"><span>7:47</span><span><i class="ph-fill ph-wifi-high"></i><i class="ph-fill ph-battery-high"></i></span></div>
+          <div class="pad"><div class="sc-head"><div><div class="ttl">Half-yearly</div><div class="mut">Published 16 Nov</div></div><span class="rbtn"><i class="ph ph-file-pdf"></i></span></div>
+            <div class="c" style="padding:12px;display:flex;gap:12px;align-items:center">
+              <div class="ring2"><svg width="64" height="64" viewBox="0 0 64 64"><circle cx="32" cy="32" r="26" fill="none" stroke="#FFF0E3" stroke-width="8"/><circle cx="32" cy="32" r="26" fill="none" stroke="#C4520A" stroke-width="8" stroke-linecap="round" stroke-dasharray="138 163"/></svg><b>A2</b></div>
+              <div><b style="font-weight:600;font-size:13px">84.8% overall</b><div class="mut" style="font-size:10.5px">Up from 79% in the unit tests</div></div></div>
+            <div class="c" style="margin-top:8px">
+              <div class="sub"><span>Mathematics</span><span class="m">93</span><span class="g">A1</span></div>
+              <div class="sub"><span>Bengali</span><span class="m">88</span><span class="g">A2</span></div>
+              <div class="sub"><span>English</span><span class="m">84</span><span class="g">A2</span></div>
+              <div class="sub"><span>Social science</span><span class="m">81</span><span class="g">A2</span></div>
+              <div class="sub"><span>Science</span><span class="m">78</span><span class="g">B1</span></div>
+            </div></div>
+        </div>
+
+        <div class="fscr">
+          <div class="sb"><span>7:48</span><span><i class="ph-fill ph-wifi-high"></i><i class="ph-fill ph-battery-high"></i></span></div>
+          <div class="pad"><div class="sc-head"><div class="ttl">Fees</div><span class="rbtn"><i class="ph ph-clock-counter-clockwise"></i></span></div>
+            <div class="c" style="padding:12px"><div class="mut" style="font-weight:600;font-size:10px">2026-27, VI A</div>
+              <div class="feemon"><span>Apr</span><span>May</span><span>Jun</span><span>Jul</span><span>Aug</span><span>Sep</span><span>Oct</span><span class="due">Nov</span></div>
+              <div class="fl" style="margin-top:12px"><div><b style="font-size:16px">₹2,550 due</b><span>November, by 20 Nov</span></div></div>
+              <div class="paybtn">See what's due</div></div>
+            <div class="mut" style="font-weight:600;margin:12px 2px 6px">Receipts</div>
+            <div class="c">
+              <div class="row"><span class="tile" style="background:var(--fee-bg);color:var(--fee)"><i class="ph ph-receipt"></i></span><span class="t"><b>MAIN/26-27/01482</b><span class="s">Aug, Sep · ₹5,100 · UPI</span></span><i class="ph ph-download-simple mut"></i></div>
+              <div class="row"><span class="tile" style="background:var(--fee-bg);color:var(--fee)"><i class="ph ph-receipt"></i></span><span class="t"><b>MAIN/26-27/00961</b><span class="s">Jun, Jul · ₹5,100 · Cash</span></span><i class="ph ph-download-simple mut"></i></div>
+            </div></div>
+        </div>
+
+        <div class="tabs" id="famTabbar"><span class="on"><i class="ph-fill ph-house"></i>Home</span><span><i class="ph ph-book-open"></i>Homework</span><span><i class="ph ph-medal"></i>Results</span><span><i class="ph ph-currency-inr"></i>Fees</span><span><i class="ph ph-user"></i>Me</span></div>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ROLES ============ -->
+<section class="roles" id="roles">
+  <div class="wrap">
+    <div class="rv">
+      <h2 class="display" data-i="rl.h">Every role, its own app.</h2>
+      <p class="lede" data-i="rl.p">One app for the whole school. Each person sees only their part.</p>
+    </div>
+    <div class="rl-grid rv">
+      <div class="rl-tabs" id="rlTabs" role="tablist" aria-label="Roles"></div>
+      <div class="rl-panel" id="rlPanel" role="tabpanel">
+        <div class="who"><i id="rlIcon"></i><div><h3 id="rlName"></h3><div class="line" id="rlLine"></div></div></div>
+        <ul class="rl-list" id="rlList"></ul>
+        <img class="peek" src="../../../brand/bookie/mascot.svg" alt="">
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ASK BOOKIE ============ -->
+<section class="ask2" id="ask">
+  <div class="wrap">
+    <div class="rv">
+      <h2 class="display" data-i="ask2.h">Questions? Ask Bookie.</h2>
+      <p class="lede" data-i="ask2.p">Tap a question in the chat.</p>
+    </div>
+    <div class="phone rv"><div class="scr"><div class="chat">
+      <div class="chat-h"><i class="ph ph-caret-left" style="font-size:16px"></i><img src="../../../brand/bookie/mascot.svg" alt=""><div><b>Bookie</b><span>mSkool help · online</span></div></div>
+      <div class="msgs" id="msgs" aria-live="polite"></div>
+      <div class="chips" id="chips">
+        <button data-q="1" data-i="q1">Do teachers need a computer?</button>
+        <button data-q="2" data-i="q2">Our trust runs four schools.</button>
+        <button data-q="3" data-i="q3">Can we bring our Excel sheets?</button>
+        <button data-q="4" data-i="q4">What about parents?</button>
+        <button data-q="5" data-i="q5">How much does it cost?</button>
+      </div>
+      <div class="compose"><span data-i="chat.type">Type a message</span><i class="ph-fill ph-paper-plane-right"></i></div>
+    </div></div></div>
+  </div>
+</section>
+
+<!-- ============ LETTER ============ -->
+<section class="island apply2" id="apply">
+  <div class="wrap">
+    <h2 class="display rv" data-i="ap.h2" style="max-width:920px">See mSkool with your own school.</h2>
+    <div class="cform-wrap rv">
+      <img class="peek" src="../../../brand/bookie/mascot.svg" alt="">
+      <form class="cform" id="letter" novalidate>
+        <div class="cf-grid">
+          <label class="cf"><span data-i="fm.name">Your name</span><input name="name" autocomplete="name" required></label>
+          <label class="cf"><span data-i="fm.phone">WhatsApp number</span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+91" required></label>
+          <label class="cf"><span data-i="fm.school">School or trust</span><input name="school" autocomplete="organization" required></label>
+          <label class="cf"><span data-i="fm.size">Number of students</span><select name="size"><option>Under 300</option><option>300 to 800</option><option>800 to 2,000</option><option>2,000+, or many branches</option></select></label>
+        </div>
+        <p class="err" data-i="ap.err">Please fill in your name, school and WhatsApp number.</p>
+        <button class="btn cf-send" type="submit"><span data-i="cta">Book a demo</span><span class="arr"><i class="ph-bold ph-arrow-right"></i></span></button>
+        <div class="cf-ok" aria-live="polite"><i class="ph-fill ph-check-circle"></i><div><b data-i="cf.okh">Thanks. We'll be in touch.</b><span data-i="ap.ok">We'll message you on WhatsApp within one working day to fix a time.</span></div></div>
+      </form>
+    </div>
+    <p class="alt"><span data-i="ap.alt">Rather talk now?</span> <a class="link" href="#" data-i="wa">Message us on WhatsApp</a></p>
+  </div>
+</section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="word" aria-hidden="true">m<b>S</b>kool</div>
+    <div class="row">
+      <nav><a href="#day" data-i="f.day">A school day</a><a href="#tools" data-i="f.tools">Features</a><a href="#family">Family app</a><a href="#roles">Roles</a><a href="#ask" data-i="f.ask">Questions</a><a href="#" data-i="f.privacy">Privacy</a><a href="#" data-i="f.terms">Terms</a></nav>
+      <span data-i="ft.plat">Android · iPhone · Web for the office</span>
+    </div>
+  </div>
+</footer>
+
+<a class="wa-fab" href="#" aria-label="Chat on WhatsApp"><i class="ph-fill ph-whatsapp-logo"></i><span>Chat on WhatsApp</span></a>
+<div class="dock" id="dock"><a class="btn" href="#apply"><span data-i="cta">Book a demo</span><span class="arr"><i class="ph-bold ph-arrow-right"></i></span></a></div>
+
+<script>
+if('scrollRestoration' in history)history.scrollRestoration='manual';
+if(!location.hash)window.scrollTo(0,0);
+const T={
+hi:{
+ cta:"डेमो बुक करें",h1:"रजिस्टर को अब छुट्टी दीजिए।",
+ h1sub:"हाज़िरी, फ़ीस, रिज़ल्ट और होमवर्क, पूरे स्कूल का, उन्हीं फ़ोन पर जो आपके शिक्षक पहले से रखते हैं।",
+ seeday:"स्कूल का एक दिन देखें",
+ "day.h":"स्कूल का एक दिन, एक फ़ोन पर।","day.p":"स्वाइप करें। हर स्क्रीन चलती है।",
+ w1:"क्लास टीचर, कमरा 12",w2:"फ़ीस काउंटर",w3:"प्रिंसिपल का दफ़्तर",w4:"घर पर",w5:"ट्रस्ट सचिव",
+ "s1.h":"अड़तीस नाम। एक मिनट से कम।",c1:"गैरहाज़िर पर टैप करें। सेव करें। घंटी से पहले काम खत्म।",try1:"रोल नंबर दबाइए",
+ "s2.h":"रसीद नंबर कभी नहीं छूटता।",c2:"पैसे लें, फिर 58 mm पर छापें या WhatsApp पर भेजें।",try2:"Collect दबाइए",
+ "s3.h":"रिज़ल्ट तभी जाएँ जब आप कहें।",c3:"आपके प्रकाशित करने के बाद ही परिवार नंबर देखते हैं।",try3:"स्विच दबाइए",
+ "s4.h":"अभिभावक ऑफ़िस फ़ोन करना छोड़ देते हैं।",c4:"परिवार के हर बच्चे के लिए एक लॉगिन।",try4:"बच्चा बदलिए",
+ "s5.h":"हर शाखा, सोने से पहले।",c5:"हर शाखा एक अकाउंट में। स्टाफ़ सिर्फ़ अपनी देखता है।",
+ "nv.h":"वो बातें जो mSkool किसी को नहीं करने देता।","nv.p":"कुछ नियम स्टाफ़ हैंडबुक में नहीं, सॉफ़्टवेयर में लिखे हैं।",
+ "nv.1":"किसी छात्र, भुगतान या दिन की हाज़िरी को डिलीट करना।","nv.1p":"रिकॉर्ड हमेशा रहते हैं। गलती सुधारी जाती है, मिटाई नहीं जाती।",
+ "nv.2":"जारी होने के बाद फ़ीस रसीद बदलना।","nv.2p":"रिफ़ंड एक नई एंट्री है, इसलिए हिसाब हमेशा मिलता है और ऑडिटर हर रुपया देख सकता है।",
+ "nv.3":"रसीद नंबर छोड़ना या दोबारा इस्तेमाल करना।","nv.3p":"हर शाखा क्रम से गिनती है, जैसे रसीद बुक हमेशा करती थी।",
+ "nv.4":"प्रकाशित होने से पहले परिवारों को नंबर दिखाना।","nv.4p":"रिज़ल्ट कब जाएँ, यह प्रिंसिपल तय करते हैं।",
+ "nv.5":"स्टाफ़ को उस शाखा में जाने देना जहाँ वे काम नहीं करते।","nv.5p":"विषय शिक्षक अपने सेक्शन देखते हैं। अकाउंटेंट फ़ीस। इससे ज़्यादा कुछ नहीं।",
+ "lg.h":"आपके स्कूल की भाषा में","lg.p":"रसीदें, बकाया नोटिस और प्रमाणपत्र आपके स्कूल के नाम के साथ हिंदी या बांग्ला में, और UPI QR के साथ जिसे स्कैन करके अभिभावक भुगतान कर सकें। यह पेज भी तीनों भाषाएँ बोलता है।",
+ "ask.h":"Bookie से पूछिए।",q1:"क्या शिक्षकों को कंप्यूटर चाहिए?",q2:"हमारा ट्रस्ट चार स्कूल चलाता है।",q3:"क्या हम अपनी Excel शीट ला सकते हैं?",q4:"अभिभावकों का क्या?",q5:"इसकी कीमत कितनी है?",
+ "ap.h":"हमें वैसे लिखिए जैसे आपके छात्र आपको लिखते हैं।","ap.to":"सेवा में,<br>mSkool टीम,",
+ "ap.l1":"महोदय/महोदया, मैं","ap.l2":",","ap.l3":" से हूँ, जिसमें","ap.l4":"छात्र हैं। कृपया मुझे mSkool दिखाएँ। मेरा WhatsApp नंबर है",
+ "ap.sig":"धन्यवाद सहित,<br>भवदीय","ap.err":"कृपया अपना नाम, स्कूल और WhatsApp नंबर भरें।","ap.ok":"हम एक कार्यदिवस में WhatsApp पर समय तय करने के लिए संदेश भेजेंगे।",
+ "ap.alt":"अभी बात करनी है?",wa:"WhatsApp पर संदेश भेजें","ph.name":"आपका नाम","ph.school":"स्कूल या ट्रस्ट",
+ "f.day":"स्कूल का एक दिन","f.never":"सुरक्षा","f.ask":"सवाल","f.privacy":"गोपनीयता","f.terms":"शर्तें"
+},
+bn:{
+ cta:"ডেমো বুক করুন",h1:"রেজিস্টারকে এবার ছুটি দিন।",
+ h1sub:"হাজিরা, ফি, রেজাল্ট আর হোমওয়ার্ক, পুরো স্কুলের, শিক্ষকদের হাতে থাকা ফোনেই।",
+ seeday:"স্কুলের একটা দিন দেখুন",
+ "day.h":"স্কুলের একটা দিন, একটা ফোনে।","day.p":"সোয়াইপ করুন। প্রতিটা স্ক্রিন চলে।",
+ w1:"ক্লাস টিচার, ১২ নম্বর ঘর",w2:"ফি কাউন্টার",w3:"প্রধান শিক্ষকের ঘর",w4:"বাড়িতে",w5:"ট্রাস্টের সম্পাদক",
+ "s1.h":"আটত্রিশটা নাম। এক মিনিটও লাগে না।",c1:"অনুপস্থিতদের ট্যাপ করুন। সেভ। ঘণ্টার আগেই শেষ।",try1:"রোল নম্বরে চাপুন",
+ "s2.h":"রসিদ নম্বর কখনও বাদ পড়ে না।",c2:"টাকা নিন, তারপর ৫৮ mm-এ ছাপুন বা WhatsApp-এ পাঠান।",try2:"Collect টিপুন",
+ "s3.h":"রেজাল্ট যাবে তখনই, যখন আপনি বলবেন।",c3:"আপনি প্রকাশ করার পরেই পরিবার নম্বর দেখে।",try3:"সুইচটা টিপুন",
+ "s4.h":"অভিভাবকরা অফিসে ফোন করা ছেড়ে দেন।",c4:"পরিবারের সব সন্তানের জন্য একটাই লগইন।",try4:"সন্তান বদলান",
+ "s5.h":"সব শাখা, ঘুমোতে যাওয়ার আগে।",c5:"সব শাখা একটা অ্যাকাউন্টে। স্টাফ দেখেন শুধু নিজেরটা।",
+ "nv.h":"যে কাজগুলো mSkool কাউকে করতে দেয় না।","nv.p":"কিছু নিয়ম স্টাফ হ্যান্ডবুকে নয়, সফটওয়্যারেই লেখা।",
+ "nv.1":"কোনো ছাত্র, পেমেন্ট বা একদিনের হাজিরা মুছে ফেলা।","nv.1p":"রেকর্ড চিরকাল থাকে। ভুল শোধরানো হয়, মোছা হয় না।",
+ "nv.2":"রসিদ দেওয়ার পরে তা বদলানো।","nv.2p":"রিফান্ড একটা নতুন এন্ট্রি, তাই হিসাব সবসময় মেলে আর অডিটর প্রতিটা টাকার খোঁজ পান।",
+ "nv.3":"রসিদ নম্বর বাদ দেওয়া বা আবার ব্যবহার করা।","nv.3p":"প্রতিটা শাখা ক্রমানুসারে গোনে, যেমন রসিদ বই বরাবর গুনত।",
+ "nv.4":"প্রকাশের আগে পরিবারকে নম্বর দেখানো।","nv.4p":"রেজাল্ট কখন যাবে, ঠিক করেন প্রধান শিক্ষক।",
+ "nv.5":"যে শাখায় কাজ করেন না, সেখানে স্টাফকে ঢুকতে দেওয়া।","nv.5p":"বিষয় শিক্ষক দেখেন নিজের সেকশন। হিসাবরক্ষক দেখেন ফি। এর বেশি কিছু নয়।",
+ "lg.h":"আপনার স্কুলের ভাষায়","lg.p":"রসিদ, বকেয়া নোটিস আর সার্টিফিকেটে থাকে আপনার স্কুলের নাম, বাংলা বা হিন্দিতে, সঙ্গে UPI QR যা স্ক্যান করে অভিভাবক টাকা দিতে পারেন। এই পেজও তিনটে ভাষাতেই কথা বলে।",
+ "ask.h":"Bookie-কে জিজ্ঞেস করুন।",q1:"শিক্ষকদের কি কম্পিউটার লাগবে?",q2:"আমাদের ট্রাস্ট চারটে স্কুল চালায়।",q3:"আমাদের Excel শিট কি আনা যাবে?",q4:"অভিভাবকদের কী হবে?",q5:"খরচ কত?",
+ "ap.h":"আমাদের লিখুন, যেভাবে আপনার ছাত্ররা আপনাকে লেখে।","ap.to":"মাননীয়,<br>mSkool টিম সমীপেষু,",
+ "ap.l1":"মহাশয়/মহাশয়া, আমি","ap.l2":",","ap.l3":" থেকে বলছি, যেখানে","ap.l4":"ছাত্রছাত্রী আছে। অনুগ্রহ করে আমাকে mSkool দেখান। আমার WhatsApp নম্বর",
+ "ap.sig":"ধন্যবাদান্তে,<br>বিনীত","ap.err":"অনুগ্রহ করে নাম, স্কুল আর WhatsApp নম্বর লিখুন।","ap.ok":"এক কাজের দিনের মধ্যে আমরা WhatsApp-এ মেসেজ করে সময় ঠিক করব।",
+ "ap.alt":"এখনই কথা বলতে চান?",wa:"WhatsApp-এ মেসেজ করুন","ph.name":"আপনার নাম","ph.school":"স্কুল বা ট্রাস্ট",
+ "f.day":"স্কুলের একটা দিন","f.never":"সুরক্ষা","f.ask":"প্রশ্ন","f.privacy":"গোপনীয়তা","f.terms":"শর্তাবলি"
+}};
+const ANS={
+ en:{1:"No. Everything a teacher does works on their own Android phone or iPhone. The office can use a computer too, if it likes.",
+     2:"That's who mSkool is built for. One account covers every branch. Staff only see the branch they work in, and you see all of them.",
+     3:"Yes. Send us your student and fee lists and we'll help you bring them in before your first day.",
+     4:"Parents use the mSkool app with one login for all their children: attendance, homework, fees and results.",
+     5:"It depends on how many students and branches you have. Book a demo and we'll send a clear quote."},
+ hi:{1:"नहीं। शिक्षक का हर काम उनके अपने Android फ़ोन या iPhone पर होता है। ऑफ़िस चाहे तो कंप्यूटर भी इस्तेमाल कर सकता है।",
+     2:"mSkool ठीक इसी के लिए बना है। एक अकाउंट में हर शाखा। स्टाफ़ सिर्फ़ अपनी शाखा देखता है, और आप सब।",
+     3:"हाँ। अपनी छात्र और फ़ीस सूचियाँ भेजें, पहले दिन से पहले हम उन्हें लाने में मदद करेंगे।",
+     4:"अभिभावक mSkool ऐप में एक लॉगिन से सभी बच्चों की हाज़िरी, होमवर्क, फ़ीस और रिज़ल्ट देखते हैं।",
+     5:"यह छात्रों और शाखाओं की संख्या पर निर्भर है। डेमो बुक करें, हम साफ़ कोटेशन भेजेंगे।"},
+ bn:{1:"না। শিক্ষকের সব কাজ তাঁর নিজের Android ফোন বা iPhone-এ হয়। অফিস চাইলে কম্পিউটারও ব্যবহার করতে পারে।",
+     2:"mSkool ঠিক এর জন্যই তৈরি। একটা অ্যাকাউন্টে সব শাখা। স্টাফ দেখেন শুধু নিজের শাখা, আর আপনি সবগুলো।",
+     3:"হ্যাঁ। ছাত্র আর ফি-র তালিকা পাঠান, প্রথম দিনের আগেই আমরা সেগুলো তুলে আনতে সাহায্য করব।",
+     4:"অভিভাবকরা mSkool অ্যাপে একটাই লগইনে সব সন্তানের হাজিরা, হোমওয়ার্ক, ফি আর রেজাল্ট দেখেন।",
+     5:"ছাত্র আর শাখার সংখ্যার উপর নির্ভর করে। ডেমো বুক করুন, আমরা পরিষ্কার কোটেশন পাঠাব।"}};
+
+Object.assign(T.hi,{"lg2.h":"ऐसे नोटिस जो अभिभावक सच में पढ़ सकें।","lg2.p":"हर रसीद और बकाया नोटिस पर अपने स्कूल का नाम और शीर्षक हिंदी या बांग्ला में, साथ में भुगतान के लिए UPI QR। कोई भाषा दबाइए।","ask2.h":"सवाल? Bookie से पूछिए।","ask2.p":"चैट में कोई सवाल दबाइए।","chat.hi":"नमस्ते, मैं Bookie हूँ। नीचे कोई सवाल दबाइए, मैं जवाब दूँगा।","chat.type":"संदेश लिखें","ft.plat":"Android · iPhone · ऑफ़िस के लिए वेब","tag.rec":"रिकॉर्ड","tag.fee":"फ़ीस","tag.rcpt":"रसीदें","tag.res":"रिज़ल्ट","tag.acc":"पहुँच"});
+Object.assign(T.bn,{"lg2.h":"এমন নোটিস যা অভিভাবকরা সত্যিই পড়তে পারেন।","lg2.p":"প্রতিটা রসিদ আর বকেয়া নোটিসে আপনার স্কুলের নাম আর শিরোনাম বাংলা বা হিন্দিতে, সঙ্গে টাকা দেওয়ার UPI QR। একটা ভাষা টিপুন।","ask2.h":"প্রশ্ন আছে? Bookie-কে জিজ্ঞেস করুন।","ask2.p":"চ্যাটে একটা প্রশ্ন টিপুন।","chat.hi":"নমস্কার, আমি Bookie। নিচের একটা প্রশ্ন টিপুন, আমি উত্তর দেব।","chat.type":"মেসেজ লিখুন","ft.plat":"Android · iPhone · অফিসের জন্য ওয়েব","tag.rec":"রেকর্ড","tag.fee":"ফি","tag.rcpt":"রসিদ","tag.res":"রেজাল্ট","tag.acc":"অ্যাক্সেস"});
+const CHAT_HI={en:"Hi, I'm Bookie. Tap a question below and I'll answer.",hi:T.hi["chat.hi"],bn:T.bn["chat.hi"]};
+let lang='en',curQ=1;
+const els=[...document.querySelectorAll('[data-i]')];els.forEach(e=>e.dataset.en=e.innerHTML);
+const phs=[...document.querySelectorAll('[data-ph]')];phs.forEach(e=>e.dataset.enph=e.placeholder);
+function setLang(l){
+  if(l!=='en'&&!T[l])l='en';lang=l;document.documentElement.lang=l;
+  els.forEach(e=>{e.innerHTML=l==='en'?e.dataset.en:(T[l][e.dataset.i]??e.dataset.en)});
+  phs.forEach(e=>e.placeholder=l==='en'?e.dataset.enph:(T[l][e.dataset.ph]||e.dataset.enph));
+  document.querySelectorAll('.lang button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.lang===l));
+  showAnswer(curQ,false);
+  try{localStorage.setItem('mskool.lang',l)}catch(_){}
+}
+document.querySelectorAll('.lang button').forEach(b=>b.onclick=()=>setLang(b.dataset.lang));
+const stampIt=el=>{el.classList.remove('hit');void el.offsetWidth;el.classList.add('hit')};
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* nav + dock */
+const nav=document.getElementById('nav'),dock=document.getElementById('dock');
+new IntersectionObserver(([e])=>nav.classList.toggle('solid',!e.isIntersecting)).observe(document.getElementById('topSentinel'));
+let heroIn=true,applyIn=false;const dockSync=()=>dock.classList.toggle('up',!heroIn&&!applyIn);
+new IntersectionObserver(([e])=>{heroIn=e.isIntersecting;dockSync()},{threshold:.1}).observe(document.getElementById('hero'));
+new IntersectionObserver(([e])=>{applyIn=e.isIntersecting;dockSync()},{threshold:.05}).observe(document.getElementById('apply'));
+
+/* reveals + stamps */
+const io=new IntersectionObserver(es=>es.forEach(e=>{if(!e.isIntersecting)return;const el=e.target;el.classList.add('in');
+  if(el.classList.contains('nv-row'))setTimeout(()=>stampIt(el.querySelector('.stamp')),reduce?0:500);io.unobserve(el)}),{threshold:.2,rootMargin:'0px 0px -60px 0px'});
+document.querySelectorAll('.rv').forEach(e=>io.observe(e));
+
+/* strip: arrows + dots */
+const strip=document.getElementById('strip'),cards=[...strip.children],dots=[...document.querySelectorAll('#dots i')];
+const step=()=>cards[0].getBoundingClientRect().width+16;
+document.getElementById('prev').onclick=()=>strip.scrollBy({left:-step(),behavior:'smooth'});
+document.getElementById('next').onclick=()=>strip.scrollBy({left:step(),behavior:'smooth'});
+const dio=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting&&e.intersectionRatio>.6){const i=cards.indexOf(e.target);dots.forEach((d,j)=>d.classList.toggle('on',i===j))}}),{root:strip,threshold:[.6]});
+cards.forEach(c=>dio.observe(c));
+
+/* attendance */
+const grid=document.getElementById('grid'),attSave=document.getElementById('attSave'),attStamp=document.getElementById('attStamp');
+for(let i=1;i<=38;i++){const b=document.createElement('button');b.textContent=i;b.setAttribute('aria-pressed',i===14?'true':'false');b.setAttribute('aria-label','Roll '+i);grid.appendChild(b)}
+function attCount(){const a=grid.querySelectorAll('[aria-pressed=true]').length;document.getElementById('cP').firstChild.nodeValue=38-a;document.getElementById('cA').firstChild.nodeValue=a;document.getElementById('attLbl').textContent='Save · '+(38-a)+' present'}
+grid.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')!=='true');attCount();attSave.classList.remove('done');attStamp.classList.remove('hit')});
+attSave.onclick=()=>{attSave.classList.add('done');document.getElementById('attLbl').textContent='Saved';stampIt(attStamp)};
+
+/* fees: collect, receipt sheet, next number */
+let rno=1482,pi=0;const payers=[["Ishita Roy","VI A"],["Mohd. Faiz Alam","VI A"],["Riya Saha","IX B"],["Debanjan Pal","XI Sci"]];
+const sheet=document.getElementById('sheet');
+document.getElementById('collect').onclick=()=>{document.getElementById('rno').textContent='MAIN/26-27/0'+rno;sheet.classList.add('open');setTimeout(()=>stampIt(document.getElementById('feeStamp')),reduce?0:450)};
+document.getElementById('nextR').onclick=()=>{sheet.classList.remove('open');rno++;pi=(pi+1)%payers.length;document.getElementById('feeName').textContent=payers[pi][0];document.getElementById('feeStamp').classList.remove('hit')};
+
+/* results */
+const pubSw=document.getElementById('pubSw');
+pubSw.onclick=()=>{const on=pubSw.getAttribute('aria-checked')!=='true';pubSw.setAttribute('aria-checked',on);
+  document.getElementById('pubT').textContent=on?'Published 3:10 pm':'Not published';
+  document.getElementById('pubS').textContent=on?'38 families can see them now':"Families can't see these marks";
+  document.getElementById('famT').innerHTML=on?'Family app: <b>Half-yearly results are out</b>':'Family app: <b>Results not out yet</b>';
+  document.getElementById('fam').classList.toggle('live',on);
+  const s=document.getElementById('pubStamp');on?stampIt(s):s.classList.remove('hit')};
+
+/* family */
+const kids=[
+ {hi:"Hi Ishita",st:"12-day homework streak",rows:[["ph-check-circle","var(--att)","var(--att-bg)","Present today","Marked 8:48 am"],["ph-book-open-text","var(--hw)","var(--hw-bg)","Fractions worksheet","Maths, due tomorrow"],["ph-receipt","var(--fee)","var(--fee-bg)","October fees paid","Receipt 01482"],["ph-medal","var(--ex)","var(--ex-bg)","Half-yearly results","Mathematics A1"]]},
+ {hi:"Hi Arnav",st:"4-day homework streak",rows:[["ph-check-circle","var(--att)","var(--att-bg)","Present today","Marked 8:41 am"],["ph-paint-brush","var(--hw)","var(--hw-bg)","Draw your family","Art, due Friday"],["ph-currency-inr","var(--fee)","var(--fee-bg)","November fees due","₹1,850 by 20 Nov"],["ph-medal","var(--ex)","var(--ex-bg)","Unit test 2","English 31 of 40"]]}];
+const famRows=document.getElementById('famRows');
+function showKid(i){const k=kids[i];document.getElementById('kidHi').textContent=k.hi;document.getElementById('kidStreak').textContent=k.st;
+  famRows.innerHTML=k.rows.map(r=>`<div class="frow"><span class="tile" style="background:${r[2]};color:${r[1]}"><i class="ph ${r[0]}"></i></span><div><b>${r[3]}</b><span>${r[4]}</span></div></div>`).join('');
+  document.querySelectorAll('.kids button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.kid==i))}
+document.querySelectorAll('.kids button').forEach(b=>b.onclick=()=>showKid(+b.dataset.kid));showKid(0);
+
+/* ask bookie: a chat */
+const msgs=document.getElementById('msgs'),chips=[...document.querySelectorAll('#chips button')];
+const now=()=>{const d=new Date();return d.getHours()%12+':'+String(d.getMinutes()).padStart(2,'0')};
+function addMsg(cls,text){const m=document.createElement('div');m.className='msg '+cls;m.innerHTML=text+`<time>${now()}</time>`;msgs.appendChild(m);msgs.scrollTop=msgs.scrollHeight;return m}
+function resetChat(){msgs.innerHTML='';addMsg('b',CHAT_HI[lang]);chips.forEach(c=>c.disabled=false)}
+function showAnswer(){resetChat()}
+let busy=false;
+chips.forEach(c=>c.onclick=()=>{if(busy)return;busy=true;c.disabled=true;addMsg('u',c.textContent);
+  const t=document.createElement('div');t.className='msg b typing';t.innerHTML='<i></i><i></i><i></i>';msgs.appendChild(t);msgs.scrollTop=msgs.scrollHeight;
+  setTimeout(()=>{t.remove();addMsg('b',ANS[lang][c.dataset.q]);busy=false},reduce?0:900)});
+resetChat();
+
+/* letter (mockup: nothing is sent) */
+const letter=document.getElementById('letter');
+letter.addEventListener('submit',e=>{e.preventDefault();const empty=[...letter.querySelectorAll('input[required]')].find(i=>!i.value.trim());
+  letter.classList.toggle('invalid',!!empty);if(empty){empty.focus();return}
+  letter.classList.add('sent')});
+
+/* rule stamps land as each slip arrives */
+const rio=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){setTimeout(()=>stampIt(e.target.querySelector('.stamp')),reduce?0:550);rio.unobserve(e.target)}}),{threshold:.4});
+document.querySelectorAll('.rule').forEach(r=>rio.observe(r));
+
+/* ================= v5 copy ================= */
+Object.assign(T.hi,{"tl.h":"हर कागज़ी काम, अब एक टैप।","tl.p":"आज़माइए। सब चलते हैं।",
+ "g.pr":"रसीदें","g.prp":"हर रसीद को अगला नंबर। 58 mm पर छापें या WhatsApp पर भेजें।",
+ "g.id":"ID कार्ड","g.idp":"एक बार डिज़ाइन करें। पूरी कक्षा के कार्ड, आगे और पीछे दोनों।",
+ "g.ph":"फ़ोटो डे","g.php":"कक्षा-दर-कक्षा। क्लिक, अगला, क्लिक।",
+ "g.no":"बकाया नोटिस","g.nop":"एक टैप में हर बकायेदार के लिए UPI QR वाला नोटिस।",
+ "g.qz":"होमवर्क क्विज़","g.qzp":"छात्र फ़ोन पर जवाब देते हैं। क्विज़ अपने-आप जँचती है।",
+ "g.ca":"हाज़िरी कैलेंडर","g.cap":"हर बच्चे का महीना एक नज़र में। कोई दिन दबाइए।",
+ "b.print":"अगली रसीद छापें","b.id":"कक्षा VI A छापें","b.no":"18 नोटिस बनाएँ","qz.tap":"कोई जवाब चुनिए।","f.tools":"फ़ीचर"});
+Object.assign(T.bn,{"tl.h":"কাগজের প্রতিটা কাজ, এখন এক ট্যাপে।","tl.p":"চালিয়ে দেখুন। সবই চলে।",
+ "g.pr":"রসিদ","g.prp":"প্রতিটা রসিদ পায় পরের নম্বর। ৫৮ mm-এ ছাপুন বা WhatsApp-এ পাঠান।",
+ "g.id":"আইডি কার্ড","g.idp":"একবার ডিজাইন করুন। পুরো ক্লাসের কার্ড, সামনে আর পিছনে।",
+ "g.ph":"ফটো ডে","g.php":"ক্লাস ধরে ধরে। ক্লিক, পরের জন, ক্লিক।",
+ "g.no":"বকেয়া নোটিস","g.nop":"এক ট্যাপে যাদের বাকি, সবার জন্য UPI QR সহ নোটিস।",
+ "g.qz":"হোমওয়ার্ক কুইজ","g.qzp":"ছাত্ররা ফোনে উত্তর দেয়। কুইজ নিজেই মূল্যায়ন হয়।",
+ "g.ca":"হাজিরার ক্যালেন্ডার","g.cap":"প্রতিটা বাচ্চার মাস এক নজরে। একটা দিন টিপুন।",
+ "b.print":"পরের রসিদ ছাপুন","b.id":"ক্লাস VI A ছাপুন","b.no":"১৮টা নোটিস বানান","qz.tap":"একটা উত্তর বাছুন।","f.tools":"ফিচার"});
+
+/* ================= rotating hero line ================= */
+const HERO={
+ en:{pre:"Retire the",words:["register.","receipt book.","mark sheet.","homework diary.","Excel sheet."],suf:"",split:true},
+ hi:{pre:"",words:["रजिस्टर को","रसीद बुक को","मार्क्स की कॉपी को","होमवर्क डायरी को","Excel शीट को"],suf:"अब छुट्टी दीजिए।",split:false},
+ bn:{pre:"",words:["রেজিস্টারকে","রসিদ বইকে","নম্বরের খাতাকে","হোমওয়ার্ক ডায়েরিকে","Excel শিটকে"],suf:"এবার ছুটি দিন।",split:false}};
+const LIT=['.o-reg','.o-rcpt','.o-rc','.o-hw',null];
+const h1=document.getElementById('h1');let hi=0,heroTimer=null,wordEls=[];
+const svgNS='http://www.w3.org/2000/svg';
+function renderHero(){
+  const H=HERO[lang];h1.querySelector('.pre').textContent=H.pre;h1.querySelector('.suf').textContent=H.suf;
+  const rot=h1.querySelector('.rot');rot.innerHTML='';
+  wordEls=H.words.map(w=>{const s=document.createElement('span');s.className='w'+(H.split?'':' whole');
+    if(H.split){[...w].forEach((c,i)=>{const ch=document.createElement('span');ch.className='ch';ch.style.setProperty('--i',i);ch.textContent=c;s.appendChild(ch)})}else s.textContent=w;
+    rot.appendChild(s);return s});
+  const svg=document.createElementNS(svgNS,'svg');svg.setAttribute('viewBox','0 0 100 10');svg.setAttribute('preserveAspectRatio','none');
+  const p=document.createElementNS(svgNS,'path');p.setAttribute('d','M2 6 C 20 2, 35 9, 52 5 S 85 2, 98 6');p.setAttribute('pathLength','1');p.setAttribute('vector-effect','non-scaling-stroke');svg.appendChild(p);rot.appendChild(svg);
+  fitWords();hi=0;showWord(0,true);
+}
+function fitWords(){const rot=h1.querySelector('.rot'),cw=rot.clientWidth;wordEls.forEach(s=>{s.style.fontSize='';const w=s.scrollWidth;if(w>cw)s.style.fontSize=(cw/w)+'em'})}
+function showWord(i,first){
+  const prev=wordEls[hi];
+  if(!first&&prev&&prev!==wordEls[i]){prev.classList.remove('on');prev.classList.add('out');setTimeout(()=>prev.classList.remove('out'),900)}
+  wordEls[i].classList.remove('out');wordEls[i].classList.add('on');
+  const svg=h1.querySelector('.rot svg'),txt=wordEls[i];
+  const w=txt.getBoundingClientRect().width;
+  svg.style.width=Math.max(40,w*.92)+'px';svg.classList.remove('draw');void svg.getBoundingClientRect();svg.classList.add('draw');
+  document.querySelectorAll('.obj').forEach(o=>o.classList.remove('lit'));if(LIT[i])document.querySelector(LIT[i])?.classList.add('lit');
+  hi=i;
+}
+function startHero(){if(reduce||heroTimer)return;heroTimer=setInterval(()=>{if(heroIn)showWord((hi+1)%wordEls.length)},2700)}
+addEventListener('resize',()=>{fitWords()});
+const _sa=showAnswer;showAnswer=function(q,a){_sa(q,a);renderHero()};
+renderHero();startHero();
+
+/* ================= gadgets ================= */
+/* receipt printer: the number only goes up */
+const slip=document.getElementById('slip');let rno2=1481,pi2=0,printedOnce=false;
+const PAY2=[["Ishita Roy","VI A","Aug, Sep",5100,"UPI"],["Mohd. Faiz Alam","VI A","Oct",2550,"Cash"],["Riya Saha","IX B","Oct, Nov",6800,"UPI"],["Arnav Roy","II B","Nov",1850,"Cheque"],["Debanjan Pal","XI Sci","Q3",9450,"UPI"]];
+const inr2=n=>'₹'+n.toLocaleString('en-IN')+'.00';
+function printNext(){printedOnce=true;rno2++;const p=PAY2[pi2++%PAY2.length];
+  slip.classList.remove('out');void slip.offsetWidth;
+  slip.innerHTML=`<div class="bn">রোজউড পাবলিক স্কুল</div><div class="c">ROSEWOOD PUBLIC SCHOOL</div><div class="c">FEE RECEIPT</div><hr><div class="r"><span>No.</span><span class="no">MAIN/26-27/0${rno2}</span></div><div class="r"><span>Date</span><span>16-11-2026 11:20</span></div><hr><div class="r"><span>${p[0]}</span><span>${p[1]}</span></div><div class="r"><span>Tuition (${p[2]})</span><span>${inr2(p[3])}</span></div><hr><div class="r tot"><span>TOTAL</span><span>${inr2(p[3])}</span></div><div class="r"><span>Paid by</span><span>${p[4]}</span></div><hr><div class="c">Thank you</div>`;
+  requestAnimationFrame(()=>requestAnimationFrame(()=>slip.classList.add('out')))}
+document.getElementById('printBtn').onclick=printNext;
+
+/* id cards: deal, then flip */
+const STU=[["Aarav Banerjee","01","#FDE7D3"],["Ishita Roy","02","#DDF1F5"],["Mohd. Faiz Alam","03","#ECE6FB"],["Priya Mondal","04","#FFEBDB"],["Sourav Das","05","#DDF0E5"]];
+const idbox=document.getElementById('idbox'),idBtn=document.getElementById('idBtn'),idHint=document.getElementById('idHint');
+function idCard(s,k){const d=document.createElement('div');d.className='idcard';d.style.setProperty('--x',((k-2)*26)+'px');d.style.setProperty('--r',((k-2)*5)+'deg');d.style.zIndex=k+1;
+  d.innerHTML=`<div class="in"><div class="idf"><div class="sch">ROSEWOOD</div><div class="ph" style="--bg:${s[2]}"></div><b>${s[0]}</b>Class VI A · Roll ${s[1]}<div class="bar"></div></div><div class="idb"><b>Rosewood Public School</b>12 Station Road<br>Barasat 700124<br><br>Blood group: B+<br>Emergency: 98310 47726<br><br>Valid till Mar 2027</div></div>`;
+  d.onclick=()=>d.classList.toggle('flip');return d}
+idBtn.onclick=()=>{idbox.querySelectorAll('.idcard').forEach(c=>c.remove());idBtn.disabled=true;idHint.textContent='';
+  STU.forEach((s,k)=>{const c=idCard(s,k);idbox.appendChild(c);setTimeout(()=>c.classList.add('dealt'),reduce?0:120+k*260)});
+  setTimeout(()=>{idBtn.disabled=false;idHint.textContent=({en:'tap a card to flip it',hi:'कार्ड पलटने के लिए दबाइए',bn:'কার্ড উল্টাতে টিপুন'})[lang]},reduce?0:120+STU.length*260+400)};
+
+/* photo day */
+const NAMES=["Aarav Banerjee","Ishita Roy","Mohd. Faiz Alam","Priya Mondal","Sourav Das","Ananya Ghosh","Kabir Sen","Tanisha Kumari"];
+const BGS=["#FDE7D3","#DDF1F5","#ECE6FB","#FFEBDB","#DDF0E5","#E8F1FD","#FBEAF7","#FFFAEB"];
+let ph=0;const subj=document.getElementById('subj'),thumbs=document.getElementById('thumbs');
+subj.style.setProperty('--bg',BGS[0]);
+document.getElementById('shutter').onclick=()=>{const f=document.getElementById('flash');f.classList.remove('go');void f.offsetWidth;f.classList.add('go');
+  const slots=[...thumbs.children];if(ph>=slots.length){slots.forEach(t=>{t.className='';t.style.removeProperty('--bg')})}
+  const t=slots[ph%slots.length];t.style.setProperty('--bg',BGS[ph%BGS.length]);t.className='t';
+  ph++;document.getElementById('phCnt').textContent=Math.min(ph,38)+' / 38';
+  subj.classList.add('swap');setTimeout(()=>{const n=ph%NAMES.length;subj.style.setProperty('--bg',BGS[n]);document.getElementById('phName').textContent='Roll '+String(ph+1).padStart(2,'0')+' · '+NAMES[n];subj.classList.remove('swap')},reduce?0:320)};
+
+/* due notices */
+const pile=document.getElementById('pile'),nBtn=document.getElementById('nBtn'),nNum=document.getElementById('nNum'),nStat=document.getElementById('nStat');
+let nDone=false;
+nBtn.onclick=()=>{if(nDone){nStat.innerHTML='<b>Sent.</b> 18 PDFs shared to WhatsApp';nBtn.disabled=true;setTimeout(resetNotices,2600);return}
+  nBtn.disabled=true;pile.innerHTML='';let k=0;const amts=[2550,1850,5100,3200,2550,6800,1850,2550];
+  const tick=setInterval(()=>{k++;nNum.textContent=k;if(k<=8){const s=document.createElement('div');s.className='sheetm';s.style.setProperty('--k',k-1);s.innerHTML=`<div class="h">রোজউড পাবলিক স্কুল</div>Fee due notice<div class="a">₹${amts[k-1].toLocaleString('en-IN')}</div>Due by 10 Nov<div class="q"></div>`;pile.appendChild(s)}
+    if(k>=18){clearInterval(tick);nStat.innerHTML='<b>18 notices ready.</b> One PDF each, with a UPI QR.';nBtn.classList.add('wa-btn');nBtn.innerHTML='<i class="ph-fill ph-whatsapp-logo"></i>Share on WhatsApp';nBtn.disabled=false;nDone=true}},reduce?0:110)};
+function resetNotices(){nDone=false;pile.innerHTML='';nNum.textContent='0';nStat.textContent='VI A, October fees';nBtn.classList.remove('wa-btn');nBtn.innerHTML='<i class="ph ph-files"></i><span>'+(lang==='en'?'Make 18 notices':T[lang]['b.no'])+'</span>';nBtn.disabled=false}
+
+/* quiz */
+const opts=[...document.querySelectorAll('#opts button')],qres=document.getElementById('qres');
+opts.forEach(b=>b.onclick=()=>{if(qres.dataset.done)return;qres.dataset.done=1;const ok=b.dataset.ok;
+  b.classList.add(ok?'right':'wrong');if(!ok)opts.find(o=>o.dataset.ok).classList.add('right');
+  qres.innerHTML=(ok?'<span><b>Correct.</b> Checked automatically. 31 of 38 got this right.</span>':'<span><b>Not quite.</b> It is 7/8. Checked automatically.</span>')+'<button id="qAgain">Try again</button>';
+  document.getElementById('qAgain').onclick=()=>{delete qres.dataset.done;opts.forEach(o=>o.className='');qres.innerHTML='<span>'+(lang==='en'?'Pick an answer.':T[lang]['qz.tap'])+'</span>'}});
+
+/* attendance calendar: Nov 2026 starts on a Sunday */
+const cal=document.getElementById('cal'),cdet=document.getElementById('cdet');
+const ST={3:['a','Absent','Fever, note from parent'],11:['a','Absent','No reason given yet'],6:['l','Late','Came in at 9:05 am'],1:['h','Holiday','Sunday'],8:['h','Holiday','Sunday'],15:['h','Holiday','Sunday'],9:['h','Holiday','Kali Puja']};
+const WD=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+cal.innerHTML=['M','T','W','T','F','S','S'].map(d=>`<span class="wd">${d}</span>`).join('')+'<span></span>'.repeat(6);
+for(let d=1;d<=30;d++){const b=document.createElement('button');b.textContent=d;const s=ST[d];
+  if(d>16)b.className='f';else if(s)b.className=s[0];if(d===16)b.classList.add('today');
+  b.onclick=()=>{if(d>16)return;cal.querySelectorAll('.sel').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');const wd=WD[d%7];
+    cdet.innerHTML=s?`<b>${wd} ${d} Nov</b> · ${s[1]}, ${s[2]}`:`<b>${wd} ${d} Nov</b> · Present, marked 8:4${d%10} am`};
+  cal.appendChild(b)}
+
+/* ================= feature chips: two rows that drift, and can be swiped ================= */
+(function(){
+  const C={att:['var(--att)','var(--att-bg)'],fee:['var(--fee)','var(--fee-bg)'],ex:['var(--ex)','var(--ex-bg)'],hw:['var(--hw)','var(--hw-bg)'],stu:['var(--stu)','var(--stu-bg)'],tch:['var(--tch)','var(--tch-bg)'],tr:['var(--trust)','#EFE9F7'],fam:['#1D63C7','#E8F1FD']};
+  const F={
+   att:[['list-checks','Daily attendance'],['clock','Period attendance'],['hourglass','Late and leave'],['calendar-check','Attendance calendar'],['clock-counter-clockwise','Corrections with history'],['chart-bar','Live school totals']],
+   fee:[['squares-four','Fee structures'],['seal-percent','Concessions'],['calendar-blank','Instalments'],['timer','Late fees'],['wallet','Cash, UPI and cheque'],['bank','Cheque clearing'],['printer','58 mm thermal receipts'],['file-text','A4 and half-page receipts'],['qr-code','Due notices with UPI QR'],['book-bookmark','Day book'],['warning-circle','Who owes'],['arrow-u-up-left','Refunds'],['certificate','No-dues certificate'],['receipt','Fee statements']],
+   ex:[['pencil-line','Marks entry'],['medal','Grading'],['file-pdf','Report cards'],['paper-plane-tilt','Publish results']],
+   hw:[['book-open-text','Homework'],['check-square','Auto-checked quizzes'],['fire','Homework streaks']],
+   stu:[['user-plus','Admissions'],['identification-badge','Student profiles'],['users-three','Guardians and siblings'],['camera','Photo day'],['identification-card','ID cards'],['flag','Student status']],
+   tch:[['user-gear','Staff roles'],['chalkboard-teacher','Class teachers'],['chalkboard','Subject teachers'],['graph','Teaching assignments']],
+   tr:[['buildings','Multi-branch trusts'],['swap','Branch switching'],['calendar','Academic sessions'],['sliders','Academic setup']],
+   fam:[['house-line','Family app'],['users','One login for all children'],['whatsapp-logo','WhatsApp sharing'],['translate','Bengali and Hindi headings'],['device-mobile','Android and iPhone'],['desktop','Web for the office']]};
+  // round-robin across areas so colours mix
+  const keys=Object.keys(F),all=[];let k=0;while(all.length<keys.reduce((n,x)=>n+F[x].length,0)){const key=keys[k%keys.length],arr=F[key],idx=Math.floor(k/keys.length);if(arr[idx])all.push([key,...arr[idx]]);k++}
+  const rows=[...document.querySelectorAll('.chiprow')],half=[all.filter((_,i)=>i%2===0),all.filter((_,i)=>i%2===1)];
+  const chip=([a,ic,l])=>`<span class="fc" style="--f:${C[a][0]};--b:${C[a][1]}"><i class="ph ph-${ic}"></i>${l}</span>`;
+  rows.forEach((r,ri)=>{const html=half[ri].map(chip).join('');r.innerHTML=html+html;r.setAttribute('aria-label',half[ri].map(x=>x[2]).join(', '))});
+  if(reduce)return;
+  const state=rows.map((r,ri)=>({r,dir:ri?-1:1,idle:0,pos:0}));
+  requestAnimationFrame(()=>state.forEach(s=>{if(s.dir<0)s.r.scrollLeft=s.r.scrollWidth/4;s.pos=s.r.scrollLeft}));
+  const hold=s=>{s.idle=performance.now()+2500};
+  state.forEach(s=>['pointerdown','touchstart','wheel'].forEach(ev=>s.r.addEventListener(ev,()=>hold(s),{passive:true})));
+  state.forEach(s=>s.r.addEventListener('scroll',()=>{if(performance.now()<s.idle)s.pos=s.r.scrollLeft},{passive:true}));
+  let last=performance.now();
+  function tick(t){const dt=Math.min(50,t-last);last=t;
+    if(heroIn)state.forEach(s=>{if(t<s.idle)return;const half=s.r.scrollWidth/2;s.pos+=s.dir*dt*.035;if(s.pos>=half)s.pos-=half;if(s.pos<=0)s.pos+=half;s.r.scrollLeft=s.pos});
+    requestAnimationFrame(tick)}
+  requestAnimationFrame(tick);
+})();
+
+/* ================= gadget carousel: auto-swipe and play each demo ================= */
+(function(){
+  const gal=document.querySelector('.gal'),tiles=[...gal.children],ctl=document.getElementById('gctl'),DUR=7000;
+  ctl.style.setProperty('--dur',DUR+'ms');
+  let gi=-1,gTimer=null,playT=[],paused=false,manual=false,inView=false,auto=false,resumeT=null;
+  const btns=tiles.map((t,i)=>{const b=document.createElement('button');b.className='gc';b.innerHTML='<span></span><i class="bar"></i>';b.onclick=()=>{userTouch();go(i)};ctl.insertBefore(b,ctl.querySelector('.gplay'));return b});
+  const label=()=>btns.forEach((b,i)=>b.firstChild.textContent=tiles[i].querySelector('h3').textContent);label();
+  const _sa3=showAnswer;showAnswer=function(q,a){_sa3(q,a);label()};
+  const later=(f,ms)=>playT.push(setTimeout(f,reduce?0:ms));
+  const plays=[
+    ()=>printNext(),
+    ()=>{idBtn.click();later(()=>idbox.querySelector('.idcard:last-child')?.classList.add('flip'),2200)},
+    ()=>{[300,1150,2000].forEach(ms=>later(()=>document.getElementById('shutter').click(),ms))},
+    ()=>{if(nDone)resetNotices();later(()=>nBtn.click(),300);later(()=>{if(nDone)nBtn.click()},3600)},
+    ()=>{document.getElementById('qAgain')?.click();later(()=>opts.find(o=>o.dataset.ok).click(),1100)},
+    ()=>{[3,6,9,11,16].forEach((d,k)=>later(()=>cal.querySelectorAll('button')[d-1].click(),500+k*800))}];
+  function center(i){auto=true;const t=tiles[i];gal.scrollTo({left:t.offsetLeft-(gal.clientWidth-t.offsetWidth)/2,behavior:reduce?'auto':'smooth'});clearTimeout(center.t);center.t=setTimeout(()=>auto=false,800)}
+  function activate(i){if(i===gi)return;gi=i;playT.forEach(clearTimeout);playT=[];
+    tiles.forEach((t,j)=>t.classList.toggle('cur',j===i));
+    btns.forEach((b,j)=>{b.classList.remove('cur');if(j===i){void b.offsetWidth;b.classList.add('cur')}});
+    rowTo(btns[i]);
+    plays[i]();schedule()}
+  function go(i){i=(i+tiles.length)%tiles.length;center(i);activate(i)}
+  function schedule(){clearTimeout(gTimer);if(paused||manual||!inView||reduce)return;gTimer=setTimeout(()=>go(gi+1),DUR)}
+  function setPaused(p){paused=p;ctl.classList.toggle('paused',p||manual);const pb=ctl.querySelector('.gplay i');pb.className='ph-fill '+(manual?'ph-play':'ph-pause');if(!p&&!manual){const b=btns[gi];b.classList.remove('cur');void b.offsetWidth;b.classList.add('cur')}schedule()}
+  function userTouch(){setPaused(true);clearTimeout(resumeT);resumeT=setTimeout(()=>setPaused(false),9000)}
+  tiles.forEach(t=>t.addEventListener('pointerdown',userTouch,{passive:true}));
+  gal.addEventListener('touchstart',userTouch,{passive:true});
+  ctl.querySelector('.gplay').onclick=()=>{manual=!manual;clearTimeout(resumeT);setPaused(false)};
+  const tileIO=new IntersectionObserver(es=>es.forEach(e=>{if(auto||!e.isIntersecting||gi<0)return;const i=tiles.indexOf(e.target);if(i!==gi)activate(i)}),{root:gal,threshold:.75});
+  tiles.forEach(t=>tileIO.observe(t));
+  new IntersectionObserver(([e])=>{inView=e.isIntersecting;if(inView&&gi<0){go(0)}else schedule()},{threshold:.12}).observe(gal);
+})();
+/* ================= family app showcase ================= */
+Object.assign(T.hi,{"fa.h":"और एक ऐप जिसे परिवार सच में खोलते हैं।","fa.p":"छात्र और अभिभावक एक ही ऐप और एक लॉगिन इस्तेमाल करते हैं, परिवार के हर बच्चे के लिए। आज रात का होमवर्क, आज की हाज़िरी, आते ही रिज़ल्ट, फ़ीस और रसीदें।","rl.h":"हर भूमिका, उसका अपना ऐप।","rl.p":"पूरे स्कूल के लिए एक ऐप। हर व्यक्ति सिर्फ़ अपना हिस्सा देखता है।"});
+Object.assign(T.bn,{"fa.h":"আর এমন একটা অ্যাপ যা পরিবার সত্যিই খোলে।","fa.p":"ছাত্র আর অভিভাবক একটাই অ্যাপ আর একটাই লগইন ব্যবহার করেন, পরিবারের সব সন্তানের জন্য। আজ রাতের হোমওয়ার্ক, আজকের হাজিরা, বেরোনো মাত্র রেজাল্ট, ফি আর রসিদ।","rl.h":"প্রতিটা ভূমিকার নিজের অ্যাপ।","rl.p":"পুরো স্কুলের জন্য একটাই অ্যাপ। প্রত্যেকে দেখেন শুধু নিজের অংশ।"});
+(function(){
+  const tabs=[...document.querySelectorAll('#famTabs button')],scr=[...document.querySelectorAll('#famPhone .fscr')],bar=[...document.querySelectorAll('#famTabbar span')];
+  const icons=['house','book-open','medal','currency-inr'];let fi=0,ft=null,fpaused=false,fin=false;
+  function show(i){fi=i;tabs.forEach((t,j)=>{t.setAttribute('aria-selected',j===i);if(j===i){const b=t.querySelector('.bar');b.style.animation='none';void b.offsetWidth;b.style.animation=''}});
+    scr.forEach((s,j)=>s.classList.toggle('on',j===i));
+    bar.forEach((b,j)=>{if(j>3)return;b.classList.toggle('on',j===i);b.querySelector('i').className=(j===i?'ph-fill ph-':'ph ph-')+icons[j]});
+    sched()}
+  function sched(){clearTimeout(ft);if(fpaused||!fin||reduce)return;ft=setTimeout(()=>show((fi+1)%4),4500)}
+  tabs.forEach((t,i)=>t.onclick=()=>{fpaused=true;document.getElementById('famTabs').classList.add('paused');show(i)});
+  bar.forEach((b,i)=>{if(i<4){b.style.cursor='pointer';b.onclick=()=>tabs[i].click()}});
+  new IntersectionObserver(([e])=>{fin=e.isIntersecting;sched()},{threshold:.12}).observe(document.getElementById('family'));
+})();
+
+/* ================= roles ================= */
+(function(){
+  const R=[
+   ['Owner','buildings','var(--trust)','#EFE9F7','The whole trust, every branch, one account.',[['chart-bar','All-branch dashboard'],['currency-inr','Fee collection by branch'],['users-three','Students across branches'],['user-gear','Staff roles and access'],['calendar','Academic sessions'],['swap','Switch branch in one tap']]],
+   ['Principal','graduation-cap','var(--ex)','var(--ex-bg)','Approves, publishes, and sees the whole branch.',[['paper-plane-tilt','Publish results'],['seal-percent','Approve concessions'],['clock-counter-clockwise','Attendance corrections'],['chalkboard-teacher','Teaching assignments'],['sliders','Classes, sections, subjects'],['flag','Student status changes'],['file-pdf','Report cards']]],
+   ['Teacher','chalkboard-teacher','var(--att)','var(--att-bg)','Their classes and subjects, nothing else.',[['list-checks','Mark attendance'],['calendar-check','Attendance calendar'],['book-open-text','Homework'],['check-square','Auto-checked quizzes'],['eye','Check answers'],['pencil-line','Marks for their subjects'],['identification-badge','Student profiles'],['camera','Photo day']]],
+   ['Accountant','currency-inr','var(--fee)','var(--fee-bg)','The fee counter, fast and exact.',[['hand-coins','Collect fees'],['wallet','Cash, UPI and cheque'],['printer','58 mm and A4 receipts'],['bank','Cheque clearing'],['qr-code','Due notices with UPI QR'],['book-bookmark','Day book'],['warning-circle','Who owes'],['arrow-u-up-left','Refunds'],['certificate','No-dues certificate'],['receipt','Fee statements']]],
+   ['Front office','identification-card','var(--stu)','var(--stu-bg)','Admissions and student records.',[['user-plus','Admissions'],['users-three','Guardians and siblings'],['identification-card','ID cards'],['camera','Photo day'],['folder-user','Student records'],['flag','Student status']]],
+   ['Parents and students','house-line','var(--hw)','var(--hw-bg)','One login for every child in the family.',[['book-open-text','Homework and quizzes'],['fire','Homework streaks'],['check-circle','Daily attendance'],['medal','Results and report cards'],['receipt','Fees and receipts'],['users','All children, one login']]]];
+  const tabs=document.getElementById('rlTabs'),panel=document.getElementById('rlPanel');
+  const btns=R.map((r,i)=>{const b=document.createElement('button');b.setAttribute('role','tab');b.style.setProperty('--f',r[2]);b.style.setProperty('--b',r[3]);b.innerHTML=`<i class="ph-fill ph-${r[1]}"></i>${r[0]}<small>${r[5].length}</small>`;b.onclick=()=>show(i);tabs.appendChild(b);return b});
+  function show(i){const r=R[i];btns.forEach((b,j)=>b.setAttribute('aria-selected',j===i));
+    panel.style.setProperty('--f',r[2]);panel.style.setProperty('--b',r[3]);
+    document.getElementById('rlIcon').className='ph-fill ph-'+r[1];document.getElementById('rlName').textContent=r[0];document.getElementById('rlLine').textContent=r[4];
+    document.getElementById('rlList').innerHTML=r[5].map((f,k)=>`<li style="--k:${k}"><i class="ph ph-${f[0]}"></i>${f[1]}</li>`).join('');
+    rowTo(btns[i])}
+  show(0);
+  // gently walk through the roles until someone taps one
+  let ri=0,rt=null,rlIn=false,touched=false;
+  btns.forEach(b=>b.addEventListener('click',()=>{touched=true;clearInterval(rt)}));
+  if(!reduce)new IntersectionObserver(([e])=>{rlIn=e.isIntersecting;clearInterval(rt);if(rlIn&&!touched)rt=setInterval(()=>{ri=(ri+1)%R.length;show(ri)},4000)},{threshold:.2}).observe(document.getElementById('roles'));
+})();
+
+Object.assign(T.hi,{"ap.h2":"अपने ही स्कूल के साथ mSkool देखिए।","fm.h":"डेमो बुक करें","fm.s":"हम एक कार्यदिवस में WhatsApp करेंगे।","fm.name":"आपका नाम","fm.school":"स्कूल या ट्रस्ट","fm.role":"आप हैं","fm.size":"छात्रों की संख्या","fm.phone":"WhatsApp नंबर"});
+Object.assign(T.bn,{"ap.h2":"নিজের স্কুল দিয়েই mSkool দেখুন।","fm.h":"ডেমো বুক করুন","fm.s":"এক কাজের দিনের মধ্যে আমরা WhatsApp করব।","fm.name":"আপনার নাম","fm.school":"স্কুল বা ট্রাস্ট","fm.role":"আপনি","fm.size":"ছাত্রসংখ্যা","fm.phone":"WhatsApp নম্বর"});
+function rowTo(b){const r=b.parentElement;if(!r||r.scrollWidth<=r.clientWidth)return;r.scrollTo({left:b.offsetLeft-r.offsetLeft-(r.clientWidth-b.offsetWidth)/2,behavior:'smooth'})}
+Object.assign(T.hi,{"cf.okh":"धन्यवाद। हम जल्द संपर्क करेंगे।"});Object.assign(T.bn,{"cf.okh":"ধন্যবাদ। আমরা শিগগির যোগাযোগ করব।"});
+let start='en';try{start=new URLSearchParams(location.search).get('lang')||localStorage.getItem('mskool.lang')||'en'}catch(_){}
+if(start!=='en')setLang(start);
+</script>
+</body>
+</html>
