@@ -1,0 +1,28 @@
+# Apache / Hostinger rules for the web build (expo export --platform web).
+# Expo copies public/ into the build, so this ships with every export.
+
+Options -MultiViews -Indexes
+RewriteEngine On
+
+# /fees -> fees.html (checked first: /attendance is both a page and a folder).
+RewriteCond %{REQUEST_FILENAME}.html -f
+RewriteRule ^(.+?)/?$ $1.html [L]
+
+# Real files (scripts, images, fonts) as they are.
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule ^ - [L]
+
+# Anything else is an address with an ID in it (/students/<id>): serve the app
+# shell and let the router read the address.
+RewriteRule ^ index.html [L]
+
+# Pages are always re-checked so a new upload shows at once; the scripts have
+# hashed names, so they can be cached for a long time.
+<IfModule mod_headers.c>
+  <FilesMatch "\.html$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+  <If "%{REQUEST_URI} =~ m#^/_expo/#">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </If>
+</IfModule>

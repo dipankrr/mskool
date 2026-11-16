@@ -249,10 +249,19 @@ The Expo app also builds as a static website (`app.json` sets `web.output: "stat
 
 ```bash
 cd apps/mobile
-EXPO_PUBLIC_API_URL=https://api.mskool.in npx expo export --platform web --output-dir dist-web
+rm -rf dist-web
+EXPO_PUBLIC_API_URL=https://api.mskool.in npx expo export --platform web --clear --output-dir dist-web
 ```
 
-Upload `dist-web/` to any static host. Do not reuse `dist/`, which holds the APK builds.
+Always pass `--clear`: Metro caches the inlined `EXPO_PUBLIC_API_URL`, and without it a build
+can silently keep the address from the previous build (seen on 2026-11-17: a "local" build
+still called api.mskool.in).
+
+Upload the **contents** of `dist-web/` (including the hidden `.htaccess`) to the web root of
+the subdomain, e.g. Hostinger `public_html` for `app.mskool.in`. Do not reuse `dist/`,
+which holds the APK builds. `.htaccess` comes from `apps/mobile/public/` and makes a refresh
+on an address with an ID in it (`/students/<id>`) load the app instead of a 404; the same
+rule order was walked locally on 2026-11-17, but not yet on Hostinger's Apache.
 
 Sign-in on the web uses the browser's own cookie jar. On native, the session is kept in
 SecureStore and sent as a manual `Cookie` header; a browser forbids that header, so on web
