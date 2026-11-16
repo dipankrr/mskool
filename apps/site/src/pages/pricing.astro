@@ -14,6 +14,11 @@ const d = DICTS.en;
 const n0 = DEFAULT_STUDENTS;
 const inr = (x: number) => "₹" + x.toLocaleString("en-IN");
 const school = PLANS.find((p) => p.popular)!;
+const office = PLANS[0];
+// School plan per student per day, rounded up to whole paise (the headline).
+const paiseADay = Math.ceil((school.yearly * 12 * 100) / 365);
+// Biggest yearly discount across plans, for the billing switch.
+const savePct = Math.max(...PLANS.map((p) => Math.round((1 - p.yearly / p.monthly) * 100)));
 const pageData = JSON.stringify({ plans: PLANS.map(({ id, name, yearly, monthly }) => ({ id, name, yearly, monthly })), min: MIN_STUDENTS, wa: WHATSAPP_NUMBER });
 
 const FREE: [string, string, string][] = [
@@ -33,12 +38,12 @@ const FAQ: [string, string][] = [
   ["Can we change plans later?", "Yes, any time. Moving up starts today. Moving down starts at your next renewal."],
   ["How do we pay?", "UPI, bank transfer or cheque, with a GST invoice. Prices are in rupees and exclude 18% GST."],
   ["Do we need new computers or printers?", "No. mSkool runs on the phones you already have and in any browser. Receipts are PDFs: print them on any printer or send them on WhatsApp."],
-  [`What if we have fewer than ${MIN_STUDENTS} students?`, `You're billed for ${MIN_STUDENTS}. On Office that is ${inr(4 * MIN_STUDENTS)} a month.`],
+  [`What if we have fewer than ${MIN_STUDENTS} students?`, `You're billed for ${MIN_STUDENTS}. On Office that is ${inr(office.yearly * MIN_STUDENTS)} a month.`],
 ];
 ---
 <Layout lang="en" path="pricing/" alternates={false}
   title="Pricing · mSkool"
-  description={`mSkool costs less than a cup of chai per student, per month. From ₹4 a student. Setup, data import and the parent app are free. Try it free for ${TRIAL_DAYS} days.`}>
+  description={`mSkool costs under ${paiseADay} paise per student, per day. From ₹${office.yearly} a student a month. Setup, data import and the parent app are free. Try it free for ${TRIAL_DAYS} days.`}>
   <InkFilter />
   <Nav d={d} lang="en" pricing />
   <main class="pr">
@@ -47,8 +52,8 @@ const FAQ: [string, string][] = [
       <div class="wrap">
         <div class="pr-copy">
           <p class="eyebrow rv">Pricing</p>
-          <h1 class="display rv">Less than a cup of chai.</h1>
-          <p class="lede rv">That's what mSkool costs per student, per month. No setup fee, nothing extra for parents, and the first {TRIAL_DAYS} days are free.</p>
+          <h1 class="display rv">Under {paiseADay} paise a day.</h1>
+          <p class="lede rv">That's the School plan, per student: ₹{school.yearly} a month, billed yearly. No setup fee, nothing extra for parents, and the first {TRIAL_DAYS} days are free.</p>
           <ul class="pr-ticks rv">
             <li><i class="ph-bold ph-check"></i>Pay for students, not features or logins</li>
             <li><i class="ph-bold ph-check"></i>Excel import and training included</li>
@@ -68,7 +73,7 @@ const FAQ: [string, string][] = [
               {PLANS.map((p) => <button type="button" data-plan={p.id} aria-pressed={p.popular ? "true" : "false"}>{p.name}</button>)}
             </div>
             <div class="pseg bill" role="group" aria-label="Billing">
-              <button type="button" data-bill="y" aria-pressed="true">Yearly <em>save up to 20%</em></button>
+              <button type="button" data-bill="y" aria-pressed="true">Yearly <em>save up to {savePct}%</em></button>
               <button type="button" data-bill="m" aria-pressed="false">Monthly</button>
             </div>
           </div>

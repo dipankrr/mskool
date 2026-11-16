@@ -1,7 +1,7 @@
 // Renders og/og.html to public/og.png (1200 x 630) with a locally installed Edge or Chrome.
 // Needs the internet for the web fonts. Usage: pnpm --filter @repo/site og
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 import os from "node:os";
@@ -25,10 +25,12 @@ if (!browser) {
   process.exit(1);
 }
 
+// A fresh profile each run, so an open or lingering browser cannot serve a cached page.
+const profile = mkdtempSync(path.join(os.tmpdir(), "mskool-og-"));
+try {
 execFileSync(browser, [
   "--headless=new",
-  // Own profile, so a browser that is already open does not swallow the job.
-  `--user-data-dir=${path.join(os.tmpdir(), "mskool-og-profile")}`,
+  `--user-data-dir=${profile}`,
   "--disable-gpu",
   "--hide-scrollbars",
   "--allow-file-access-from-files",
@@ -38,4 +40,7 @@ execFileSync(browser, [
   `--screenshot=${out}`,
   page,
 ], { stdio: "inherit" });
+} finally {
+  rmSync(profile, { recursive: true, force: true, maxRetries: 3 });
+}
 console.log("wrote", path.relative(process.cwd(), out));

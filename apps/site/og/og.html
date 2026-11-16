@@ -8,52 +8,89 @@
 <head>
 <meta charset="utf-8">
 <link href="https://api.fontshare.com/v2/css?f[]=clash-grotesk@500,600&display=block" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=Anek+Devanagari:wght@600&family=Anek+Bangla:wght@600&family=Kalam:wght@700&display=block" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=Anek+Devanagari:wght@600&family=Anek+Bangla:wght@600&display=block" rel="stylesheet">
 <link href="../node_modules/@phosphor-icons/web/src/fill/style.css" rel="stylesheet">
+<link href="../node_modules/@phosphor-icons/web/src/regular/style.css" rel="stylesheet">
 <style>
-  :root{--ink:#101828;--muted:#5D6674;--blue:#2F6BFF;--red:#C8302A;--att:#0B6B3A;--fee:#1D63C7;--ex:#C4520A;--hw:#6941C6;--stu:#0E7490}
+  :root{--ink:#101828;--muted:#5D6674;--line:#E4E7EE;--canvas:#F2F3F7;--blue:#2F6BFF;--red:#C8302A;
+    --att:#0B6B3A;--att-bg:#E8F5EE;--fee:#1D63C7;--fee-bg:#E8F1FD;--ex:#C4520A;--ex-bg:#FFF0E3;--hw:#6941C6;--hw-bg:#F1ECFD;--stu:#0E7490;--stu-bg:#E3F5F8}
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{width:1200px;height:630px;overflow:hidden}
   body{position:relative;font-family:"Clash Grotesk",sans-serif;color:var(--ink);background:
     radial-gradient(48% 60% at 92% 8%,#F4E3F1 0%,rgba(244,227,241,0) 70%),
-    radial-gradient(45% 55% at 0% 100%,#E3ECFD 0%,rgba(227,236,253,0) 70%),#F2F3F7}
+    radial-gradient(45% 55% at 0% 100%,#E3ECFD 0%,rgba(227,236,253,0) 70%),var(--canvas)}
   body::before{content:"";position:absolute;inset:0;background:url(../public/brand/doodles.svg) 0 0/520px repeat;opacity:.05}
 
-  .left{position:absolute;left:72px;top:62px;width:660px}
-  .brand{display:flex;align-items:center;gap:14px;font-weight:600;font-size:40px;letter-spacing:-.03em}
-  .brand img{width:58px;height:58px;border-radius:16px}
+  /* ===== left: words ===== */
+  .left{position:absolute;left:72px;top:60px;width:540px}
+  .brand{display:flex;align-items:center;gap:14px;font-weight:600;font-size:38px;letter-spacing:-.03em}
+  .brand img{width:56px;height:56px;border-radius:16px}
   .brand b{color:var(--blue);font-weight:600}
-  h1{margin-top:44px;font-weight:600;font-size:104px;line-height:.92;letter-spacing:-.045em}
+  h1{margin-top:42px;font-weight:600;font-size:96px;line-height:.92;letter-spacing:-.045em}
   h1 .w{position:relative;color:var(--blue);white-space:nowrap}
-  h1 .w svg{position:absolute;left:-4px;right:-4px;bottom:-16px;width:calc(100% + 8px);height:24px}
-  .sub{margin-top:36px;font-size:29px;line-height:1.3;color:var(--muted);font-weight:500;letter-spacing:-.01em;max-width:540px}
+  h1 .w svg{position:absolute;left:-4px;bottom:-15px;width:calc(100% + 8px);height:22px}
+  .sub{margin-top:34px;font-size:26px;line-height:1.3;color:var(--muted);font-weight:500;letter-spacing:-.01em;max-width:520px}
   .sub b{color:var(--ink);font-weight:600}
-  .langs{display:inline-flex;gap:10px}
-  .langs span:nth-child(2){font-family:"Anek Devanagari"}.langs span:nth-child(3){font-family:"Clash Grotesk"}.langs .bn{font-family:"Anek Bangla"}
-  .foot{position:absolute;left:72px;bottom:52px;display:flex;align-items:center;gap:10px}
+  .hi{font-family:"Anek Devanagari"}.bn{font-family:"Anek Bangla"}
+  .foot{position:absolute;left:72px;bottom:52px;display:flex;gap:10px}
   .chip{display:inline-flex;align-items:center;gap:7px;height:42px;padding:0 15px 0 11px;border-radius:99px;background:#fff;font-weight:600;font-size:19px;box-shadow:0 8px 20px -14px rgba(16,24,40,.45)}
   .chip i{font-size:21px}
-  .url{position:absolute;right:64px;bottom:58px;font-family:"IBM Plex Mono";font-weight:600;font-size:24px;color:var(--ink);letter-spacing:.01em}
+  .url{position:absolute;right:64px;bottom:50px;font-family:"IBM Plex Mono";font-weight:600;font-size:24px;letter-spacing:.01em}
 
-  /* right: a printed fee receipt, stamped, with Bookie in front */
-  .rc{position:absolute;right:120px;top:58px;width:300px;padding:20px 22px 36px;background:#fff;rotate:5deg;font-family:"IBM Plex Mono";font-size:15px;line-height:1.75;color:#222;
-    box-shadow:0 40px 60px -30px rgba(16,24,40,.45),0 10px 20px -12px rgba(16,24,40,.25);
-    -webkit-mask:radial-gradient(circle at 8px 100%,transparent 7px,#000 7.5px) 0 0/16px 100% repeat-x}
-  .rc .c{text-align:center}
-  .rc .bn{font-family:"Clash Grotesk";font-weight:600;font-size:24px;letter-spacing:-.03em;line-height:1.3}
-  .rc .bn b{color:var(--blue);font-weight:600}
-  .rc .m{color:#777;font-size:13px}
-  .rc hr{border:0;border-top:1.5px dashed #aaa;margin:8px 0}
-  .rc .r{display:flex;justify-content:space-between}
-  .rc .t{font-weight:600;font-size:19px}
-  .rc .t b{background:#FFF3B0;padding:0 4px}
-  .rc .bars{height:38px;margin:14px 10px 0;background:repeating-linear-gradient(90deg,#222 0 2px,transparent 2px 4px,#222 4px 5px,transparent 5px 8px,#222 8px 11px,transparent 11px 12px)}
-  .stamp{position:absolute;right:150px;top:296px;rotate:-12deg;background:rgba(255,255,255,.8);font-family:"IBM Plex Mono";font-weight:600;font-size:30px;letter-spacing:.12em;color:var(--att);border:4px solid currentColor;border-radius:8px;padding:6px 14px;line-height:1;filter:url(#ink);box-shadow:inset 0 0 0 2px #fff,inset 0 0 0 4px currentColor;opacity:.92}
-  .att{position:absolute;right:236px;top:372px;width:290px;display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:22px;background:#E8F5EE;color:var(--att);rotate:-4deg;box-shadow:0 24px 40px -24px rgba(16,24,40,.5)}
-  .att i{width:44px;height:44px;border-radius:50%;background:var(--att);color:#fff;display:grid;place-items:center;font-size:24px;flex:none}
-  .att b{display:block;font-weight:600;font-size:19px;letter-spacing:-.02em;color:var(--ink)}
-  .att span{font-size:15px;font-weight:500}
-  .bookie{position:absolute;right:46px;top:330px;width:170px;rotate:10deg;filter:drop-shadow(0 18px 20px rgba(16,24,40,.25))}
+  /* ===== desktop: the office web app ===== */
+  .desk{position:absolute;left:606px;top:92px;width:440px}
+  .mon{background:#0B0D12;border-radius:16px;padding:10px;box-shadow:inset 0 0 0 1.5px #2a2f3a,0 40px 60px -30px rgba(16,24,40,.5)}
+  .ds{display:flex;height:262px;border-radius:8px;overflow:hidden;background:var(--canvas);font-size:9.5px;line-height:1.25}
+  .side{width:92px;background:#fff;border-right:1px solid var(--line);padding:10px 7px;display:flex;flex-direction:column;gap:3px}
+  .side .lg{display:flex;align-items:center;gap:5px;font-weight:600;font-size:12px;letter-spacing:-.02em;margin:0 0 9px 3px}
+  .side .lg img{width:17px;height:17px;border-radius:5px}
+  .side .lg b{color:var(--blue);font-weight:600}
+  .side > span{display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:7px;font-weight:500;color:var(--muted)}
+  .side > span i{font-size:12px}
+  .side .on{background:var(--fee-bg);color:var(--fee);font-weight:600}
+  .main{flex:1;padding:11px 12px;min-width:0}
+  .main h4{font-weight:600;font-size:14px;letter-spacing:-.02em;display:flex;justify-content:space-between;align-items:center}
+  .main h4 em{font-style:normal;font-size:9px;font-weight:600;color:var(--att);background:var(--att-bg);padding:2px 7px;border-radius:99px}
+  .kpis{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:9px 0}
+  .kpi{background:#fff;border-radius:9px;padding:7px 9px}
+  .kpi span{color:var(--muted);font-size:8.5px}
+  .kpi b{display:block;font-weight:600;font-size:17px;letter-spacing:-.03em;margin-top:1px}
+  .kpi.f b{color:var(--fee)}
+  .bars{display:flex;align-items:flex-end;gap:5px;height:28px;margin-top:4px}
+  .bars i{flex:1;border-radius:3px 3px 1px 1px;background:var(--fee-bg)}
+  .bars i:last-child{background:var(--fee)}
+  .tbl{background:#fff;border-radius:9px;padding:2px 9px}
+  .tr{display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid #EEF0F4}
+  .tr:last-child{border:0}
+  .tr .av{width:16px;height:16px;border-radius:50%;flex:none}
+  .tr .n{flex:1;font-weight:600}
+  .tr .c{color:var(--muted);width:34px}
+  .tr .p{font-size:8px;font-weight:600;padding:1px 6px;border-radius:99px;background:var(--att-bg);color:var(--att)}
+  .tr .a{font-family:"IBM Plex Mono";font-weight:600;width:52px;text-align:right}
+  .neck{width:70px;height:38px;margin:0 auto;background:linear-gradient(180deg,#C9CED8,#E3E6EC)}
+  .base{width:170px;height:9px;margin:0 auto;border-radius:6px 6px 3px 3px;background:#D5D9E1;box-shadow:0 10px 18px -8px rgba(16,24,40,.4)}
+
+  /* ===== phone: the staff app ===== */
+  .phone{position:absolute;left:948px;top:118px;width:196px;height:412px;border-radius:32px;background:#0B0D12;padding:7px;rotate:4deg;z-index:3;
+    box-shadow:inset 0 0 0 1.5px #2a2f3a,0 50px 70px -30px rgba(16,24,40,.55),0 20px 30px -20px rgba(16,24,40,.3)}
+  .phone::before{content:"";position:absolute;top:13px;left:50%;width:58px;height:17px;translate:-50% 0;border-radius:99px;background:#000;z-index:2}
+  .ps{position:relative;height:100%;border-radius:26px;overflow:hidden;background:linear-gradient(180deg,#F4E3F1 0%,var(--canvas) 36%);padding:0 10px;font-size:9px;line-height:1.25}
+  .sb{display:flex;justify-content:space-between;height:34px;padding:12px 10px 0;font-weight:600;font-size:10px}
+  .gm{margin-top:8px;color:var(--muted);font-size:9.5px}
+  .nm{font-weight:600;font-size:17px;letter-spacing:-.03em}
+  .ok{display:flex;align-items:center;gap:8px;margin-top:10px;padding:9px;border-radius:14px;background:var(--att-bg);color:var(--att)}
+  .ok i{width:26px;height:26px;border-radius:50%;background:var(--att);color:#fff;display:grid;place-items:center;font-size:14px;flex:none}
+  .ok b{display:block;font-weight:600;font-size:11px;color:var(--ink)}
+  .tiles{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:9px}
+  .tile{background:#fff;border-radius:13px;padding:9px;box-shadow:0 6px 14px -10px rgba(16,24,40,.3)}
+  .tile i{width:24px;height:24px;border-radius:8px;display:grid;place-items:center;font-size:13px;margin-bottom:6px}
+  .tile b{display:block;font-weight:600;font-size:12px;letter-spacing:-.02em}
+  .tile span{color:var(--muted);font-size:8.5px}
+  .tabs{position:absolute;left:7px;right:7px;bottom:7px;height:42px;border-radius:17px;background:rgba(20,24,34,.92);display:flex;justify-content:space-around;align-items:center;color:rgba(255,255,255,.5);font-size:16px}
+  .tabs .on{color:#fff}
+
+  .bookie{position:absolute;left:846px;top:416px;width:128px;rotate:-8deg;z-index:2;filter:drop-shadow(0 16px 18px rgba(16,24,40,.25))}
+  .stamp{position:absolute;left:700px;top:330px;z-index:4;rotate:-10deg;background:#fff;font-family:"IBM Plex Mono";font-weight:600;font-size:22px;letter-spacing:.12em;color:var(--att);border:3.5px solid currentColor;border-radius:7px;padding:5px 11px;line-height:1;filter:url(#ink);box-shadow:inset 0 0 0 2px #fff,inset 0 0 0 3.5px currentColor}
 </style>
 </head>
 <body>
@@ -61,30 +98,58 @@
 
   <div class="left">
     <div class="brand"><img src="../public/brand/app-icon.svg" alt=""><span>m<b>S</b>kool</span></div>
-    <h1>Retire the<br><span class="w">register.<svg viewBox="0 0 300 24" preserveAspectRatio="none"><path d="M4 16 C 70 4, 150 22, 296 8" fill="none" stroke="#C8302A" stroke-width="6" stroke-linecap="round"/></svg></span></h1>
-    <p class="sub">School management on <b>one phone</b>. For Indian schools, in <span class="langs"><span>English,</span><span>हिंदी</span><span>and <span class="bn">বাংলা</span>.</span></span></p>
+    <h1>Retire the<br><span class="w">register.<svg viewBox="0 0 300 22" preserveAspectRatio="none"><path d="M4 15 C 70 4, 150 21, 296 7" fill="none" stroke="#C8302A" stroke-width="6" stroke-linecap="round"/></svg></span></h1>
+    <p class="sub">School management on <b>one phone</b>, office on the web. In English, <span class="hi">हिंदी</span> and <span class="bn">বাংলা</span>.</p>
   </div>
 
-  <div class="rc">
-    <div class="c bn">m<b>S</b>kool</div>
-    <div class="c m">FEE RECEIPT · NO. 2481</div>
-    <hr>
-    <div class="r"><span>Arnav Roy</span><span>II B</span></div>
-    <div class="r"><span>November</span><span>₹1,850</span></div>
-    <div class="r"><span>Paid by</span><span>UPI</span></div>
-    <hr>
-    <div class="r t"><span>Total</span><b>₹1,850</b></div>
-    <div class="bars"></div>
+  <div class="desk">
+    <div class="mon"><div class="ds">
+      <div class="side">
+        <div class="lg"><img src="../public/brand/app-icon.svg" alt=""><span>m<b>S</b>kool</span></div>
+        <span><i class="ph ph-house-line"></i>Home</span>
+        <span><i class="ph ph-student"></i>Students</span>
+        <span class="on"><i class="ph-fill ph-currency-inr"></i>Fees</span>
+        <span><i class="ph ph-check-circle"></i>Attendance</span>
+        <span><i class="ph ph-medal"></i>Exams</span>
+        <span><i class="ph ph-paint-brush"></i>Homework</span>
+      </div>
+      <div class="main">
+        <h4>Fees · November <em>Live</em></h4>
+        <div class="kpis">
+          <div class="kpi f"><span>Collected today</span><b>₹42,600</b><div class="bars"><i style="height:40%"></i><i style="height:62%"></i><i style="height:48%"></i><i style="height:80%"></i><i style="height:55%"></i><i style="height:70%"></i><i style="height:100%"></i></div></div>
+          <div class="kpi"><span>Paid this month</span><b>318 <small style="font-size:10px;color:var(--muted);font-weight:500">of 420</small></b><div class="bars"><i style="height:30%;background:var(--att-bg)"></i><i style="height:45%;background:var(--att-bg)"></i><i style="height:52%;background:var(--att-bg)"></i><i style="height:60%;background:var(--att-bg)"></i><i style="height:68%;background:var(--att-bg)"></i><i style="height:72%;background:var(--att-bg)"></i><i style="height:76%;background:var(--att)"></i></div></div>
+        </div>
+        <div class="tbl">
+          <div class="tr"><span class="av" style="background:#FDE7D3"></span><span class="n">Arnav Roy</span><span class="c">II B</span><span class="p">UPI</span><span class="a">₹1,850</span></div>
+          <div class="tr"><span class="av" style="background:#E3F5F8"></span><span class="n">Ishita Saha</span><span class="c">VI A</span><span class="p">UPI</span><span class="a">₹2,550</span></div>
+          <div class="tr"><span class="av" style="background:#F1ECFD"></span><span class="n">Mohd. Faiz</span><span class="c">IX B</span><span class="p" style="background:var(--fee-bg);color:var(--fee)">Cash</span><span class="a">₹3,400</span></div>
+        </div>
+      </div>
+    </div></div>
+    <div class="neck"></div><div class="base"></div>
   </div>
   <div class="stamp">PAID</div>
-  <div class="att"><i class="ph-fill ph-check-circle"></i><div><b>412 of 420 present</b><span>Class registers done 9:05</span></div></div>
+
   <img class="bookie" src="../public/brand/mascot.svg" alt="">
+
+  <div class="phone"><div class="ps">
+    <div class="sb"><span>9:41</span><span>5G ▮▮</span></div>
+    <div class="gm">Good morning,</div>
+    <div class="nm">Mrs Sen</div>
+    <div class="ok"><i class="ph-fill ph-check"></i><div><b>412 of 420 present</b>All registers done 9:05</div></div>
+    <div class="tiles">
+      <div class="tile"><i class="ph-fill ph-currency-inr" style="background:var(--fee-bg);color:var(--fee)"></i><b>₹42,600</b><span>Fees today</span></div>
+      <div class="tile"><i class="ph-fill ph-paint-brush" style="background:var(--hw-bg);color:var(--hw)"></i><b>6 due</b><span>Homework</span></div>
+      <div class="tile"><i class="ph-fill ph-medal" style="background:var(--ex-bg);color:var(--ex)"></i><b>Unit test 2</b><span>Marks in</span></div>
+      <div class="tile"><i class="ph-fill ph-megaphone" style="background:var(--stu-bg);color:var(--stu)"></i><b>3 new</b><span>Notices</span></div>
+    </div>
+    <div class="tabs"><i class="ph-fill ph-house-line on"></i><i class="ph ph-student"></i><i class="ph ph-currency-inr"></i><i class="ph ph-dots-three-circle"></i></div>
+  </div></div>
 
   <div class="foot">
     <span class="chip"><i class="ph-fill ph-currency-inr" style="color:var(--fee)"></i>Fees</span>
     <span class="chip"><i class="ph-fill ph-check-circle" style="color:var(--att)"></i>Attendance</span>
     <span class="chip"><i class="ph-fill ph-medal" style="color:var(--ex)"></i>Exams</span>
-    <span class="chip"><i class="ph-fill ph-paint-brush" style="color:var(--hw)"></i>Homework</span>
     <span class="chip"><i class="ph-fill ph-house-line" style="color:var(--stu)"></i>Parent app</span>
   </div>
   <div class="url">mskool.in</div>

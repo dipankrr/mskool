@@ -14,17 +14,17 @@ export interface Plan {
 export const PLANS: Plan[] = [
   {
     id: "office", name: "Office", tagline: "Run the office: admissions, fees, attendance.",
-    yearly: 4, monthly: 5,
+    yearly: 12, monthly: 15,
     bullets: ["Students and admissions", "Fees, receipts and UPI QR", "Student and staff attendance", "ID cards", "Notices to WhatsApp"],
   },
   {
     id: "school", name: "School", tagline: "The whole school: office, teachers and parents.",
-    yearly: 6, monthly: 7, popular: true,
+    yearly: 18, monthly: 21, popular: true,
     bullets: ["Everything in Office", "Exams and report cards", "Homework and quizzes", "Timetable", "Parent and student app"],
   },
   {
     id: "group", name: "Group", tagline: "For owners who run more than one branch.",
-    yearly: 8, monthly: 10,
+    yearly: 24, monthly: 30,
     bullets: ["Everything in School", "Many branches, one login", "Owner view across branches", "Same-day priority support", "A named person for your setup"],
   },
 ];
