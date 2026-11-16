@@ -245,7 +245,29 @@ Local verification done on 2026-11-04 against the built bundle:
 
 ## Mobile app on the web
 
-The Expo app also builds as a static website (`app.json` sets `web.output: "static"`):
+The Expo app also builds as a static website (`app.json` sets `web.output: "static"`).
+It is hosted on **Vercel** at `app.mskool.in` and redeploys on every push to `main`.
+
+### Vercel setup (once)
+
+`apps/mobile/vercel.json` holds the build command, output folder, refresh rewrite and cache
+headers, so the dashboard needs little:
+
+1. Vercel → **Add New → Project** → import the GitHub repository.
+2. **Root Directory:** `apps/mobile`. Leave "Include files outside the root directory"
+   on (the build needs the pnpm workspace). Framework preset: **Other**. Leave the build,
+   output and install commands empty; `vercel.json` sets them.
+3. Environment variables: none needed. `EXPO_PUBLIC_API_URL` defaults to
+   `https://api.mskool.in` in the build command; set it in Vercel only to point a
+   deployment somewhere else.
+4. Deploy, then **Settings → Domains** → add `app.mskool.in`. Vercel shows a CNAME record;
+   add it in Hostinger's DNS zone for `mskool.in`.
+5. Add `https://app.mskool.in` to the API's `CORS_ORIGIN` and redeploy the API.
+
+The `*.vercel.app` address loads but **cannot stay signed in** (different site from the
+API; see below). Use `app.mskool.in` for anything past the first page.
+
+### Building by hand
 
 ```bash
 cd apps/mobile
@@ -257,11 +279,12 @@ Always pass `--clear`: Metro caches the inlined `EXPO_PUBLIC_API_URL`, and witho
 can silently keep the address from the previous build (seen on 2026-11-17: a "local" build
 still called api.mskool.in).
 
-Upload the **contents** of `dist-web/` (including the hidden `.htaccess`) to the web root of
-the subdomain, e.g. Hostinger `public_html` for `app.mskool.in`. Do not reuse `dist/`,
-which holds the APK builds. `.htaccess` comes from `apps/mobile/public/` and makes a refresh
-on an address with an ID in it (`/students/<id>`) load the app instead of a 404; the same
-rule order was walked locally on 2026-11-17, but not yet on Hostinger's Apache.
+Do not reuse `dist/`, which holds the APK builds. On Vercel, `vercel.json` serves `/fees`
+as `fees.html` (`cleanUrls`) and any other unknown address, such as `/students/<id>`, as
+`index.html`, so a refresh deep in the app loads instead of a 404. If the build is ever
+moved to an Apache host such as Hostinger, upload the contents of `dist-web/`; the
+`.htaccess` from `apps/mobile/public/` does the same job there. The same rule order was
+walked locally on 2026-11-17, not yet on Vercel or Apache.
 
 Sign-in on the web uses the browser's own cookie jar. On native, the session is kept in
 SecureStore and sent as a manual `Cookie` header; a browser forbids that header, so on web
@@ -272,7 +295,7 @@ SecureStore and sent as a manual `Cookie` header; a browser forbids that header,
   origin);
 - the web app must be on the **same site** as the API, e.g. `app.mskool.in` beside
   `api.mskool.in`. The session cookie is `SameSite=Lax`, so a host on another domain
-  (`*.pages.dev`, `*.netlify.app`) signs in but every later request comes back signed out.
+  (`*.vercel.app`, `*.pages.dev`, `*.netlify.app`) signs in but every later request comes back signed out.
 
 Walked locally on 2026-11-16 (static export on `localhost:8083`, local API): staff phone
 sign-in, Home data, a reload staying signed in, and sign-out. Printing, sharing, the image
