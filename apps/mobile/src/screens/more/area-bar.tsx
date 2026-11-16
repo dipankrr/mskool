@@ -20,6 +20,13 @@ const SLIM_H = 44;
 const SLIM_ON_H = 48;
 const ICON = 44;
 const FLARE = 12;
+/** Outlines, as in the reference: faint round every tab, dark round the chosen one. */
+const LINE = "rgba(16, 24, 40, 0.14)";
+const LINE_ON = "#1E2A44";
+const LINE_W = 1;
+const LINE_ON_W = 1.5;
+/** The small picture beside the name in the slim bar. */
+const MINI = 16;
 // The gap matches the flare, so a chosen tab's curve never covers its neighbour.
 const GAP = FLARE;
 const PAD = 20;
@@ -136,10 +143,11 @@ function Tab({
     marginBottom: interpolate(slim.value, [0, 1], [spacing.sm, 0]),
     transform: [{ scale: interpolate(slim.value, [0, 1], [on ? 1 : 0.86, 0.5]) }],
   }));
-  const dot = useAnimatedStyle(() => ({
-    width: interpolate(slim.value, [0, 1], [0, 7]),
+  // As the big picture folds away, a small one grows in beside the name.
+  const mini = useAnimatedStyle(() => ({
+    width: interpolate(slim.value, [0, 1], [0, MINI]),
     marginRight: interpolate(slim.value, [0, 1], [0, 6]),
-    opacity: slim.value,
+    opacity: interpolate(slim.value, [0.4, 1], [0, 1]),
   }));
 
   return (
@@ -168,7 +176,9 @@ function Tab({
           <AppIcon name={look.icon} size={22} color={colors.onAccent} />
         </Animated.View>
         <View style={styles.labelRow}>
-          <Animated.View style={[styles.dot, { backgroundColor: look.h0 }, dot]} />
+          <Animated.View style={[styles.mini, mini]}>
+            <AppIcon name={look.icon} size={MINI} color={on ? look.h0 : colors.muted} />
+          </Animated.View>
           <ThemedText
             variant={on ? "bodyStrong" : "body"}
             color={on ? look.h0 : colors.muted}
@@ -184,6 +194,7 @@ function Tab({
         <>
           {/* The page's colour, with a quarter of band laid over it: the curve
               where the tab meets the page on each side. */}
+          {/* The curve carries the chosen tab's outline out into the page line. */}
           <View style={[styles.flare, styles.flareLeft]}>
             <View style={[styles.flareCut, styles.flareCutLeft, { backgroundColor: look.band2 }]} />
           </View>
@@ -205,8 +216,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: 1,
-    backgroundColor: "rgba(16, 24, 40, 0.08)",
+    height: LINE_W,
+    backgroundColor: LINE,
   },
   row: {
     flexDirection: "row",
@@ -232,9 +243,15 @@ const styles = StyleSheet.create({
   // one is solid, joined to the page, and named in the area's colour.
   tabOff: {
     backgroundColor: "rgba(255, 255, 255, 0.32)",
+    borderWidth: LINE_W,
+    borderBottomWidth: 0,
+    borderColor: LINE,
   },
   tabOn: {
     backgroundColor: colors.canvas,
+    borderWidth: LINE_ON_W,
+    borderBottomWidth: 0,
+    borderColor: LINE_ON,
     zIndex: 2,
   },
   press: {
@@ -263,9 +280,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
-  dot: {
-    height: 7,
-    borderRadius: 4,
+  mini: {
+    height: MINI,
+    overflow: "hidden",
   },
   label: {
     letterSpacing: -0.1,
@@ -278,10 +295,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.canvas,
   },
   flareLeft: {
-    left: -FLARE,
+    left: -FLARE - LINE_ON_W + LINE_ON_W,
+    marginLeft: -LINE_ON_W,
   },
   flareRight: {
-    right: -FLARE,
+    right: -FLARE - LINE_ON_W + LINE_ON_W,
+    marginRight: -LINE_ON_W,
   },
   flareCut: {
     width: FLARE,
@@ -289,8 +308,14 @@ const styles = StyleSheet.create({
   },
   flareCutLeft: {
     borderBottomRightRadius: FLARE,
+    borderRightWidth: LINE_ON_W,
+    borderBottomWidth: LINE_ON_W,
+    borderColor: LINE_ON,
   },
   flareCutRight: {
     borderBottomLeftRadius: FLARE,
+    borderLeftWidth: LINE_ON_W,
+    borderBottomWidth: LINE_ON_W,
+    borderColor: LINE_ON,
   },
 });
