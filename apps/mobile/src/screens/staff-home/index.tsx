@@ -149,7 +149,7 @@ export function StaffHomeScreen() {
     ),
     staff: d.staff.data || d.teaching.data ? <StaffCard total={staffTotal} notJoined={notJoined} teaching={d.teaching.data ?? null} /> : null,
     fees: d.fees.data ? <FeesCard fees={d.fees.data} canCollect={d.can.collect} /> : null,
-    exams: pairs.length === 0 ? <OpenExamsCard /> : null,
+    exams: papers.length === 0 ? <OpenExamsCard /> : null,
     students: d.roster.data ? <StudentsCard current={d.roster.data.counts.current} noSection={d.roster.data.attention.noSection} /> : null,
     comingUp: <ComingUp items={comingUpItems(att, d.papers.data)} />,
   };

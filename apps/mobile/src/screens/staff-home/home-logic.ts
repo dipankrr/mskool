@@ -16,7 +16,8 @@ export type DayKind = "working" | "holiday" | "half_day" | "weekend" | "exam_day
 /** The caller's own sections (any assignment), in the branch's order. */
 export function ownSections(mine: MyTeaching, days: readonly HomeSectionDay[]): HomeSectionDay[] {
   const ids = new Set(mine.map((row) => row.sectionId));
-  return days.filter((day) => ids.has(day.sectionId));
+  // A section with nobody in it has nothing to mark.
+  return days.filter((day) => ids.has(day.sectionId) && day.students > 0);
 }
 
 export const isMarked = (day: HomeSectionDay) => day.marked > 0;

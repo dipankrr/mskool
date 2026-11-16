@@ -80,13 +80,13 @@ export function TeachingTeacherScreen({ staffId }: { staffId: string }) {
           ...(row.subjectId ? { subjectId: row.subjectId } : {}),
         });
       }
-      await Promise.all([utils.assignment.overview.invalidate(), utils.assignment.teacherDirectory.invalidate()]);
+      await Promise.all([utils.assignment.overview.invalidate(), utils.assignment.teacherDirectory.invalidate(), utils.assignment.mine.invalidate(), utils.home.myPapers.invalidate()]);
       setToggled(new Set());
       setCtChoice(undefined);
       router.back();
     } catch (cause) {
       setError(thrownMessage(cause));
-      await utils.assignment.overview.invalidate();
+      await Promise.all([utils.assignment.overview.invalidate(), utils.assignment.mine.invalidate(), utils.home.myPapers.invalidate()]);
     } finally {
       setSaving(false);
     }

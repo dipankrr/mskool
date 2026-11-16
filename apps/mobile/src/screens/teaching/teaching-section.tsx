@@ -79,7 +79,7 @@ export function TeachingSectionScreen({ sectionId }: { sectionId: string }) {
     } catch (cause) {
       setError(thrownMessage(cause));
     } finally {
-      await Promise.all([utils.assignment.overview.invalidate(), utils.assignment.teacherDirectory.invalidate()]);
+      await Promise.all([utils.assignment.overview.invalidate(), utils.assignment.teacherDirectory.invalidate(), utils.assignment.mine.invalidate(), utils.home.myPapers.invalidate()]);
       setBusy(false);
     }
   }
