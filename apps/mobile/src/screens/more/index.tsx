@@ -1,7 +1,13 @@
-import { useEffect, useRef, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { useEffect, useState } from "react";
+import { StyleSheet, View } from "react-native";
 import type { NativeScrollEvent, NativeSyntheticEvent } from "react-native";
-import { useSharedValue, withTiming } from "react-native-reanimated";
+import Animated, {
+  Extrapolation,
+  interpolate,
+  runOnJS,
+  useAnimatedScrollHandler,
+  useSharedValue,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useHideTabBarOnScroll, useTabBarSpace } from "../../components/tab-bar";
@@ -9,7 +15,7 @@ import { useActiveContext } from "../../hooks/use-active-context";
 import { usePermissions } from "../../hooks/use-permissions";
 import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
-import { motion, spacing } from "../../theme/tokens";
+import { spacing } from "../../theme/tokens";
 import { AcademicsArea } from "./academics-area";
 import { AreaBar } from "./area-bar";
 import { AREAS, areasFor } from "./areas";
@@ -20,8 +26,8 @@ import { SchoolArea } from "./school-area";
 import { StaffArea } from "./staff-area";
 import { TeachingArea } from "./teaching-area";
 
-/** How far the page scrolls before the bar slims. */
-const SLIM_AT = 24;
+/** The scroll distance over which the bar goes from full to slim. */
+const SLIM_OVER = 72;
 
 /**
  * Kept for the life of the app, so coming back to More lands on the area you
@@ -53,29 +59,26 @@ export function MoreScreen() {
   const [area, setArea] = useState<AreaKey>(() => lastArea);
   const shown: AreaKey = areas.includes(area) ? area : "overview";
 
+  // 0 (full) to 1 (slim), following the finger: the bar shrinks over the
+  // first stretch of scroll and opens again the same way.
   const slim = useSharedValue(0);
-  const slimNow = useRef(false);
-  const setSlim = (value: boolean) => {
-    if (slimNow.current === value) return;
-    slimNow.current = value;
-    slim.value = withTiming(value ? 1 : 0, { duration: motion.base });
-  };
 
   // A new area starts at its top, with the bar open.
   useEffect(() => {
-    setSlim(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shown]);
+    slim.value = 0;
+  }, [shown, slim]);
 
   const choose = (next: AreaKey) => {
     lastArea = next;
     setArea(next);
   };
 
-  const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    setSlim(event.nativeEvent.contentOffset.y > SLIM_AT);
-    hideTabBar(event);
-  };
+  const hideTabBarAt = (y: number) =>
+    hideTabBar({ nativeEvent: { contentOffset: { x: 0, y } } } as NativeSyntheticEvent<NativeScrollEvent>);
+  const onScroll = useAnimatedScrollHandler((event) => {
+    slim.set(interpolate(event.contentOffset.y, [0, SLIM_OVER], [0, 1], Extrapolation.CLAMP));
+    runOnJS(hideTabBarAt)(event.contentOffset.y);
+  });
 
   return (
     <View style={styles.screen}>
@@ -84,7 +87,7 @@ export function MoreScreen() {
       ) : (
         <View style={{ height: insets.top, backgroundColor: AREAS[shown].band2 }} />
       )}
-      <ScrollView
+      <Animated.ScrollView
         key={shown}
         onScroll={onScroll}
         scrollEventThrottle={16}
@@ -97,7 +100,7 @@ export function MoreScreen() {
         {shown === "staff" ? <StaffArea /> : null}
         {shown === "teaching" ? <TeachingArea /> : null}
         {shown === "school" ? <SchoolArea /> : null}
-      </ScrollView>
+      </Animated.ScrollView>
     </View>
   );
 }

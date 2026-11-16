@@ -7,7 +7,6 @@ import type { AppIconName } from "../../components/app-icon";
 import { ThemedText } from "../../components/themed-text";
 import { colors } from "../../theme/brand-admin";
 import { radius, spacing, touch } from "../../theme/tokens";
-import { withAlpha } from "./areas";
 
 /**
  * The pieces every area screen in More is built from (v3): a hero in the
@@ -53,7 +52,6 @@ export function Hero({
         styles.hero,
         {
           experimental_backgroundImage: `linear-gradient(135deg, ${h0}, ${h1})`,
-          boxShadow: `0 14px 30px ${withAlpha(h0, 0.26)}`,
         },
       ]}
     >

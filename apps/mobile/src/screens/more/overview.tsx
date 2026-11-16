@@ -18,7 +18,7 @@ import { firstName, greetingFor, istHour, percent } from "../staff-home/home-log
 import { useHomeData } from "../staff-home/use-home-data";
 import { staffCounts } from "../staff/staff-list-logic";
 import { teachingLine } from "../staff/teaching-logic";
-import { AREAS, withAlpha } from "./areas";
+import { AREAS } from "./areas";
 import type { AreaKey } from "./areas";
 import { Head, Hero, HeroStats, Panel, Row, Shortcuts, caution, neutral } from "./parts";
 import type { Hue, Shortcut } from "./parts";
@@ -309,7 +309,6 @@ export function OverviewArea({ areas, onOpen }: { areas: AreaKey[]; onOpen: (are
                       styles.tileIcon,
                       {
                         experimental_backgroundImage: `linear-gradient(150deg, ${look.h1}, ${look.h0})`,
-                        boxShadow: `0 5px 12px ${withAlpha(look.h0, 0.3)}`,
                       },
                     ]}
                   >

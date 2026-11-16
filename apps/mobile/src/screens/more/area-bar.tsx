@@ -10,7 +10,7 @@ import { AppIcon } from "../../components/app-icon";
 import { ThemedText } from "../../components/themed-text";
 import { colors } from "../../theme/brand-admin";
 import { spacing } from "../../theme/tokens";
-import { AREAS, withAlpha } from "./areas";
+import { AREAS } from "./areas";
 import type { AreaKey } from "./areas";
 
 const TAB_W = 80;
@@ -131,9 +131,10 @@ function Tab({
   }));
   const picture = useAnimatedStyle(() => ({
     height: interpolate(slim.value, [0, 1], [ICON, 0]),
-    opacity: interpolate(slim.value, [0, 0.6], [1, 0]),
+    // Unchosen pictures are dimmed, so the chosen one stands out.
+    opacity: interpolate(slim.value, [0, 0.6], [on ? 1 : 0.55, 0]),
     marginBottom: interpolate(slim.value, [0, 1], [spacing.sm, 0]),
-    transform: [{ scale: interpolate(slim.value, [0, 1], [on ? 1.06 : 0.92, 0.6]) }],
+    transform: [{ scale: interpolate(slim.value, [0, 1], [on ? 1 : 0.86, 0.5]) }],
   }));
   const dot = useAnimatedStyle(() => ({
     width: interpolate(slim.value, [0, 1], [0, 7]),
@@ -159,9 +160,7 @@ function Tab({
             styles.icon,
             {
               experimental_backgroundImage: `linear-gradient(150deg, ${look.h1}, ${look.h0})`,
-              boxShadow: `0 6px 14px ${withAlpha(look.h0, on ? 0.36 : 0.24)}`,
             },
-            on ? null : styles.iconOff,
             picture,
           ]}
         >
@@ -172,7 +171,7 @@ function Tab({
           <Animated.View style={[styles.dot, { backgroundColor: look.h0 }, dot]} />
           <ThemedText
             variant={on ? "bodyStrong" : "body"}
-            color={on ? colors.ink : colors.muted}
+            color={on ? look.h0 : colors.muted}
             numberOfLines={1}
             maxFontSizeMultiplier={1.2}
             style={styles.label}
@@ -229,15 +228,13 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  // Unchosen tabs recede: a faint wash and a quieter picture. The chosen
+  // one is solid, joined to the page, and named in the area's colour.
   tabOff: {
-    backgroundColor: "rgba(255, 255, 255, 0.5)",
-    borderWidth: 1,
-    borderBottomWidth: 0,
-    borderColor: "rgba(255, 255, 255, 0.95)",
+    backgroundColor: "rgba(255, 255, 255, 0.32)",
   },
   tabOn: {
     backgroundColor: colors.canvas,
-    boxShadow: "0 -6px 18px rgba(16, 24, 40, 0.07)",
     zIndex: 2,
   },
   press: {
@@ -253,9 +250,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
-  },
-  iconOff: {
-    opacity: 0.92,
   },
   gloss: {
     position: "absolute",
