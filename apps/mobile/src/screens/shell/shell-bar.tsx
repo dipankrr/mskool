@@ -2,12 +2,12 @@ import { Pressable, StyleSheet, View } from "react-native";
 import type { ReactNode } from "react";
 
 import { AppIcon } from "../../components/app-icon";
-import { Avatar } from "../../components/avatar";
 import { useActiveContext } from "../../hooks/use-active-context";
 import { useMe } from "../../hooks/use-me";
 import { copy } from "../../lib/copy";
 import { colors } from "../../theme/brand-admin";
 import { radius, spacing, touch } from "../../theme/tokens";
+import { StaffAvatar, useMyPhoto } from "../staff/staff-photo";
 import { useShell } from "./shell";
 
 /**
@@ -21,7 +21,8 @@ import { useShell } from "./shell";
 export function ShellBar({ children }: { children?: ReactNode }) {
   const { openMenu, openAccount } = useShell();
   const { me } = useMe();
-  const { academicYear, currentYear } = useActiveContext();
+  const { organizationId, academicYear, currentYear } = useActiveContext();
+  const photo = useMyPhoto(organizationId);
   const viewingPast = Boolean(academicYear && academicYear.id !== currentYear?.id);
 
   return (
@@ -53,7 +54,7 @@ export function ShellBar({ children }: { children?: ReactNode }) {
         ]}
         testID="shell-account"
       >
-        <Avatar name={me?.user.name ?? ""} />
+        <StaffAvatar name={me?.user.name ?? ""} uri={photo.uri} cacheKey={photo.cacheKey} />
       </Pressable>
     </View>
   );
