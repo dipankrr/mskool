@@ -3460,3 +3460,18 @@ page (unchanged, but bound by the same server rules).
 7. **Both are mounted once**, in `(staff)/_layout.tsx` through `ShellProvider`; a tab shows `ShellBar` (menu left, avatar right) to reach them.
 
 **Consequences.** Mobile only; no API, contract or schema change. Branch and session switching moved from More to the account popup. `ShellBar` is on Home and More only: Attendance, Students, Homework and Fees have their own headers and are not done. Screens web has and the phone lacks are not listed in the sidebar. Several sidebar lines open the same screen by design. Timetable shows as "Soon" on More and in the sidebar. The sidebar and the account popup were not walked on a device before the merge, and iOS and TalkBack are unchecked.
+
+## ADR-075 - The public site is a separate Astro static app, one real page per language
+
+**Date:** 2026-11-16. **Status:** accepted (owner). Mockup `docs/design/landing/landing-v5.html`.
+
+**Context.** The mskool.in landing page was designed as a single HTML file that swapped Hindi and Bengali in with a script. Search engines only saw English, and the repeated phone and gadget markup was being patched by hand. Most visitors are on phones, often cheap ones.
+
+**Decision.**
+1. The public site lives in `apps/site`, an Astro static site, separate from the staff web app (`apps/web`) and the API. It imports nothing from `@repo/*` and calls no API.
+2. Each language is a real page: English at `/`, Hindi at `/hi/`, Bengali at `/bn/`, linked to each other with `hreflang`. Copy lives in `src/i18n/{en,hi,bn}.ts`; the type check fails if a key is missing in any language.
+3. Markup is split into components; the page behaviour (carousel, chips, gadgets, chat, form) is one module, `src/scripts/landing.js`, fed by a small JSON block per page.
+4. Icons come from the `@phosphor-icons/web` package (three weights only) and are served by the site itself.
+5. Astro 6.4, because Astro 7 needs Node 22.23.4 or newer and the dev machine runs 22.14.
+
+**Consequences.** `pnpm dev` and `pnpm check-types` now include the site. The root `package.json` gains a `pnpm.packageExtensions` entry so `@napi-rs/wasm-runtime` gets its `@emnapi` packages, which the Astro type checker needs under this repo's short store paths. Adding Astro moved a few shared tools up a patch version in the lockfile (lightningcss, postcss, yaml); the repo type check stays green. Fonts still load from Fontshare and Google. The demo form sends nothing and the WhatsApp links stay inert until `src/config.ts` has a number. No hosting is chosen yet.

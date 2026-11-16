@@ -23,6 +23,7 @@ under an org. Most important architectural fact in the codebase — see `docs/DE
 | API | Express + tRPC v11 (`apps/api`) |
 | Web | Next.js 16 App Router (`apps/web`) |
 | Mobile | Expo + React Native + Expo Router (`apps/mobile`; native iOS/Android app) |
+| Public site | Astro 6, static (`apps/site`; the mskool.in landing page, ADR-075) |
 | DB | PostgreSQL 15+ via Drizzle ORM (`packages/db`) |
 | Validation | **Zod 4** (`z.email()`, not `z.string().email()`) |
 | Auth | better-auth (`packages/auth`) — authentication only |
@@ -61,6 +62,7 @@ apps/
   api/          Express host: better-auth, tRPC /trpc, REST /api/*, docs /docs
   web/          Next.js. Imports ONLY `type AppRouter` from @repo/trpc.
   mobile/       Expo Router app. Native React Native UI; imports ONLY `type AppRouter` from @repo/trpc.
+  site/         Astro static site for mskool.in (landing page in en, hi, bn). No API, no @repo imports.
 packages/
   db/           Drizzle schema + client. schema/ split one file per domain.
   contracts/    Zod schemas derived from db via drizzle-zod. Shared vocabulary.
