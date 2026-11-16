@@ -20,17 +20,20 @@ export function ScopeSwitch({
   branchName,
   all,
   onChange,
+  onPickBranch,
 }: {
   branchName: string;
   all: boolean;
   onChange: (all: boolean) => void;
+  /** The branch half opens the branch list instead of just selecting itself. */
+  onPickBranch?: () => void;
 }) {
   return (
     <View style={styles.switch} accessibilityRole="tablist">
       {[false, true].map((value) => (
         <Pressable
           key={String(value)}
-          onPress={() => onChange(value)}
+          onPress={() => (!value && onPickBranch ? onPickBranch() : onChange(value))}
           accessibilityRole="tab"
           accessibilityState={{ selected: all === value }}
           style={[styles.switchItem, all === value ? styles.switchOn : null]}
@@ -40,6 +43,7 @@ export function ScopeSwitch({
           <ThemedText style={[styles.switchText, all === value ? styles.switchTextOn : null]} numberOfLines={1}>
             {value ? c.allBranches : branchName}
           </ThemedText>
+          {!value && onPickBranch ? <AppIcon name="chevronDown" size={16} color={all ? colors.muted : colors.ink} /> : null}
         </Pressable>
       ))}
     </View>

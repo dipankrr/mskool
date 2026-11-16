@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppIcon } from "../../components/app-icon";
 import { Card } from "../../components/card";
 import { Skeleton } from "../../components/skeleton";
-import { useTabBarSpace } from "../../components/tab-bar";
+import { useHideTabBarOnScroll, useTabBarSpace } from "../../components/tab-bar";
 import { ThemedText } from "../../components/themed-text";
 import { useActiveBranchName, useActiveContext } from "../../hooks/use-active-context";
 import { useMe } from "../../hooks/use-me";
@@ -44,6 +44,7 @@ import {
 } from "./school-parts";
 import { SetupCard } from "./setup-card";
 import { MyAttendance, YouTeach } from "./teaching-parts";
+import { BranchSheet } from "./branch-sheet";
 import { ScopeSwitch, TrustView } from "./trust-parts";
 import { Band, HOME_GUTTER } from "./ui";
 import { useHomeData } from "./use-home-data";
@@ -71,6 +72,8 @@ export function StaffHomeScreen() {
   const [allBranches, setAllBranches] = useState(false);
   // Once the page moves, a plain strip sits behind the status bar so cards never run under the clock.
   const [scrolled, setScrolled] = useState(false);
+  const [branchSheet, setBranchSheet] = useState(false);
+  const hideTabBar = useHideTabBarOnScroll();
 
   const d = useHomeData({ allBranches });
   const offerAll = Boolean(d.membership?.scopeTypes.includes("org") && (d.membership?.schools.length ?? 0) >= 2);
@@ -188,6 +191,7 @@ export function StaffHomeScreen() {
         onScroll={(e) => {
           const next = e.nativeEvent.contentOffset.y > 8;
           if (next !== scrolled) setScrolled(next);
+          hideTabBar(e);
         }}
       >
         <Band tint={tint} />
@@ -212,7 +216,7 @@ export function StaffHomeScreen() {
             </ThemedText>
           </View>
 
-          {offerAll && d.running ? <ScopeSwitch branchName={branchName ?? c.thisBranch} all={showAll} onChange={setAllBranches} /> : null}
+          {offerAll && d.running ? <ScopeSwitch branchName={branchName ?? c.thisBranch} all={showAll} onChange={setAllBranches} onPickBranch={() => setBranchSheet(true)} /> : null}
         </View>
 
         <View style={styles.body}>
@@ -263,6 +267,7 @@ export function StaffHomeScreen() {
           ) : null}
         </View>
       </ScrollView>
+      <BranchSheet visible={branchSheet} onDismiss={() => setBranchSheet(false)} onPicked={() => setAllBranches(false)} />
       {scrolled ? <View style={[styles.statusStrip, { height: insets.top }]} pointerEvents="none" /> : null}
     </View>
   );
