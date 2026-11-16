@@ -1,4 +1,5 @@
-import { StyleSheet, View } from "react-native";
+import { useState } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
 import { router, type Href } from "expo-router";
 import type { FeeDashboardOutput, HomeAttendanceToday, HomeMyPapers, TeachingOverview } from "@repo/contracts";
 
@@ -329,14 +330,18 @@ export function StaffCard({
 // Exams (your marks)
 // ---------------------------------------------------------------------------
 
+const MARKS_FOLD = 4;
+
 export function MarksCard({ papers, today }: { papers: HomeMyPapers["open"]; today: string }) {
+  const [open, setOpen] = useState(false);
   if (papers.length === 0) return null;
   const done = papers.filter((p) => p.students > 0 && p.entered >= p.students);
   const left = papers.filter((p) => !done.includes(p)).sort((a, b) => a.examDate.localeCompare(b.examDate));
-  const examName = papers[0]?.examName ?? "";
+  const oneExam = new Set(papers.map((p) => p.examId)).size === 1;
+  const shown = open ? left : left.slice(0, MARKS_FOLD);
   return (
     <View>
-      <SectionHead title={examName} area="exams" icon="marks" link={c.examsLink} onLink={() => go("/exams")} />
+      <SectionHead title={oneExam ? papers[0]!.examName : c.marksTitle} area="exams" icon="marks" link={c.examsLink} onLink={() => go("/exams")} />
       <HomeCard testID="home-marks">
         <View style={styles.ringRow}>
           <Ring value={percent(done.length, papers.length) ?? 0} size={84} stroke={8} color={colors.area.exams.fg}>
@@ -349,7 +354,7 @@ export function MarksCard({ papers, today }: { papers: HomeMyPapers["open"]; tod
             </ThemedText>
           </View>
         </View>
-        {left.map((p) => {
+        {shown.map((p) => {
           const notSat = p.examDate > today;
           return (
             <View key={`${p.scheduleId}:${p.sectionId}`} style={styles.paperRow}>
@@ -358,7 +363,7 @@ export function MarksCard({ papers, today }: { papers: HomeMyPapers["open"]; tod
               </View>
               <View style={styles.grow}>
                 <ThemedText style={homeStyles.rowTitle}>{p.subjectName}</ThemedText>
-                <ThemedText variant="meta">{notSat ? `Paper on ${p.examDate.slice(8)}/${p.examDate.slice(5, 7)}` : `${p.entered} of ${p.students} in`}</ThemedText>
+                <ThemedText variant="meta" numberOfLines={1}>{`${oneExam ? "" : `${p.examName} · `}${notSat ? `Paper on ${p.examDate.slice(8)}/${p.examDate.slice(5, 7)}` : `${p.entered} of ${p.students} in`}`}</ThemedText>
                 {notSat ? null : <Progress value={percent(p.entered, p.students) ?? 0} color={colors.area.exams.fg} />}
               </View>
               {notSat ? null : (
@@ -371,6 +376,11 @@ export function MarksCard({ papers, today }: { papers: HomeMyPapers["open"]; tod
             </View>
           );
         })}
+        {left.length > MARKS_FOLD && !open ? (
+          <Pressable onPress={() => setOpen(true)} accessibilityRole="button" style={styles.moreRow} testID="home-marks-more">
+            <ThemedText style={styles.moreText}>{c.morePapers(left.length - MARKS_FOLD)}</ThemedText>
+          </Pressable>
+        ) : null}
       </HomeCard>
     </View>
   );
@@ -467,6 +477,8 @@ export function SectionError({ onRetry }: { onRetry: () => void }) {
 export { Badge };
 
 const styles = StyleSheet.create({
+  moreRow: { paddingTop: spacing.md, alignItems: "center" },
+  moreText: { fontFamily: fontFamily.semibold, fontSize: fontSize.small, color: colors.area.exams.fg },
   grow: { flex: 1, minWidth: 0 },
   flat: { boxShadow: "none", borderRadius: 0 },
   titleLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm },

@@ -142,6 +142,8 @@ export const copy = {
     toCheck: "To check",
     toCheckCap: (n: number) => (n === 1 ? "1 homework" : `${n} homework`),
     marksToEnter: "Marks to enter",
+    marksTitle: "Marks to enter",
+    morePapers: (n: number) => (n === 1 ? "1 more paper" : `${n} more papers`),
     marksLeft: (n: number) => (n === 1 ? "1 paper left" : `${n} papers left`),
     homeworkToCheck: "Homework to check",
     teachingGaps: (n: number) => (n === 1 ? "1 teaching gap" : `${n} teaching gaps`),

@@ -207,14 +207,14 @@ export function StaffHomeScreen() {
         </View>
 
         <View style={styles.body}>
-          {!d.running ? (
+          {d.past ? (
             <Card style={styles.past} testID="home-past-session">
               <ThemedText variant="bodyStrong">{c.pastTitle(academicYear?.name ?? "")}</ThemedText>
               <ThemedText variant="meta" style={styles.pastBody}>
                 {c.pastBody}
               </ThemedText>
             </Card>
-          ) : showAll ? (
+          ) : !d.running ? null : showAll ? (
             d.org.data ? (
               <TrustView
                 org={d.org.data}
@@ -247,9 +247,11 @@ export function StaffHomeScreen() {
               ) : null;
             })
           )}
-          <ThemedText variant="meta" style={styles.end}>
-            {c.caughtUp}
-          </ThemedText>
+          {d.running ? (
+            <ThemedText variant="meta" style={styles.end}>
+              {c.caughtUp}
+            </ThemedText>
+          ) : null}
         </View>
       </ScrollView>
     </SafeAreaView>

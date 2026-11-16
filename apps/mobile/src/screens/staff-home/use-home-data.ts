@@ -20,6 +20,8 @@ export function useHomeData({ allBranches }: { allBranches: boolean }) {
   const branch = schoolId ?? "";
   // Today's cards belong to the running session; a past session hides them.
   const running = Boolean(academicYear && currentYear && academicYear.id === currentYear.id);
+  // Only a known, different year is "past"; while the years load, show nothing yet.
+  const past = Boolean(academicYear && currentYear && academicYear.id !== currentYear.id);
   const yearId = currentYear?.id ?? "";
   const branchReady = Boolean(organizationId && schoolId && currentYear) && running && !allBranches;
 
@@ -92,6 +94,7 @@ export function useHomeData({ allBranches }: { allBranches: boolean }) {
   return {
     today,
     running,
+    past,
     membership,
     can,
     mine,
