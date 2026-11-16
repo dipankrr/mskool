@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppIcon } from "../../components/app-icon";
 import { Card } from "../../components/card";
@@ -66,7 +66,11 @@ export function StaffHomeScreen() {
   const { organizationId, select, academicYear } = useActiveContext();
   const branchName = useActiveBranchName();
   const tabSpace = useTabBarSpace();
+  // The band runs up under the status bar, so the colour reaches the top edge.
+  const insets = useSafeAreaInsets();
   const [allBranches, setAllBranches] = useState(false);
+  // Once the page moves, a plain strip sits behind the status bar so cards never run under the clock.
+  const [scrolled, setScrolled] = useState(false);
 
   const d = useHomeData({ allBranches });
   const offerAll = Boolean(d.membership?.scopeTypes.includes("org") && (d.membership?.schools.length ?? 0) >= 2);
@@ -176,10 +180,15 @@ export function StaffHomeScreen() {
           : "#DFE9F7";
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
+    <View style={styles.safe}>
       <ScrollView
-        contentContainerStyle={{ paddingBottom: tabSpace + spacing.lg }}
+        contentContainerStyle={{ paddingTop: insets.top, paddingBottom: tabSpace + spacing.lg }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refetchAll} tintColor={colors.accent} />}
+        scrollEventThrottle={32}
+        onScroll={(e) => {
+          const next = e.nativeEvent.contentOffset.y > 8;
+          if (next !== scrolled) setScrolled(next);
+        }}
       >
         <Band tint={tint} />
         <View style={styles.top}>
@@ -254,12 +263,14 @@ export function StaffHomeScreen() {
           ) : null}
         </View>
       </ScrollView>
-    </SafeAreaView>
+      {scrolled ? <View style={[styles.statusStrip, { height: insets.top }]} pointerEvents="none" /> : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.canvas },
+  statusStrip: { position: "absolute", top: 0, left: 0, right: 0, backgroundColor: colors.canvas },
   top: { paddingHorizontal: spacing.xl, paddingTop: spacing.sm },
   chip: {
     flexDirection: "row",
