@@ -194,7 +194,7 @@ export function YouTeach({
       />
       <HomeCard padless>
         {classTeacherLabels.length > 0 ? (
-          <View style={styles.ctLine}>
+          <View style={[styles.ctLine, pairs.length === 0 ? styles.ctOnly : null]}>
             <Pill text={c.classTeacherOf(classTeacherLabels.join(", "))} tone="teaching" />
           </View>
         ) : null}
@@ -347,7 +347,8 @@ const styles = StyleSheet.create({
   doneOk: { width: 34, height: 34, borderRadius: radius.full, backgroundColor: colors.accent, alignItems: "center", justifyContent: "center" },
   doneTitle: { fontFamily: fontFamily.semibold, fontSize: fontSize.body, color: colors.accentDeep },
   doneSub: { fontSize: fontSize.fine, color: colors.accentDeep, opacity: 0.85, fontVariant: ["tabular-nums"] },
-  ctLine: { paddingHorizontal: spacing.lg, paddingTop: 14 },
+  ctLine: { paddingHorizontal: spacing.lg, paddingTop: 14, alignItems: "flex-start" },
+  ctOnly: { paddingBottom: 14 },
   subj: { paddingHorizontal: spacing.lg, paddingVertical: 14 },
   subjLine: { borderTopWidth: StyleSheet.hairlineWidth * 2, borderTopColor: colors.hairline },
   subjHead: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
