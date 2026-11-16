@@ -243,6 +243,34 @@ Local verification done on 2026-11-04 against the built bundle:
 
 ---
 
+## Mobile app on the web
+
+The Expo app also builds as a static website (`app.json` sets `web.output: "static"`):
+
+```bash
+cd apps/mobile
+EXPO_PUBLIC_API_URL=https://api.mskool.in npx expo export --platform web --output-dir dist-web
+```
+
+Upload `dist-web/` to any static host. Do not reuse `dist/`, which holds the APK builds.
+
+Sign-in on the web uses the browser's own cookie jar. On native, the session is kept in
+SecureStore and sent as a manual `Cookie` header; a browser forbids that header, so on web
+`lib/auth.ts` (`isWeb`) skips SecureStore and both the auth client and tRPC send
+`credentials: "include"`. For that to work:
+
+- the web address must be in the API's `CORS_ORIGIN` (it also becomes a better-auth trusted
+  origin);
+- the web app must be on the **same site** as the API, e.g. `app.mskool.in` beside
+  `api.mskool.in`. The session cookie is `SameSite=Lax`, so a host on another domain
+  (`*.pages.dev`, `*.netlify.app`) signs in but every later request comes back signed out.
+
+Walked locally on 2026-11-16 (static export on `localhost:8083`, local API): staff phone
+sign-in, Home data, a reload staying signed in, and sign-out. Printing, sharing, the image
+picker, file downloads and the blurred tab bar have not been checked on the web.
+
+---
+
 ## Web
 
 `apps/web` is not part of this deploy. It assumes the API is on the same origin

@@ -2,6 +2,7 @@ import { Image } from "expo-image";
 import { createAuthClient } from "better-auth/react";
 import { usernameClient } from "better-auth/client/plugins";
 import { expoClient } from "@better-auth/expo/client";
+import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 
 import { env } from "../env";
@@ -25,6 +26,25 @@ import { withTimeout } from "./with-timeout";
  * plugin splits values past ~1.8 KB into `<key>.0..N`.
  */
 const AUTH_STORAGE_PREFIX = "mskool";
+
+/**
+ * The web build (react-native-web) has a real cookie jar and no SecureStore:
+ * expo-secure-store's web module is empty, so any call throws. In a browser
+ * the session is the API's own httpOnly cookie, sent by the browser with
+ * `credentials: "include"` (a script may not set a Cookie header at all).
+ * The expo plugin already steps aside on web; this keeps our own sweeps off
+ * SecureStore. The API must list the web origin in CORS_ORIGIN, and the web
+ * app must sit on the same site as the API (app.mskool.in beside
+ * api.mskool.in) so the SameSite=Lax session cookie rides along.
+ */
+export const isWeb = Platform.OS === "web";
+
+const noStorage = {
+  getItem: (_key: string): string | null => null,
+  setItem: async (_key: string, _value: string) => undefined,
+  deleteItemAsync: async (_key: string) => undefined,
+};
+const authStorage = isWeb ? noStorage : SecureStore;
 const AUTH_STORAGE_BASE_KEYS = [
   `${AUTH_STORAGE_PREFIX}_cookie`,
   `${AUTH_STORAGE_PREFIX}_session_data`,
@@ -55,7 +75,7 @@ async function purgeSessionCache() {
   try {
     await Promise.all(
       storageKeysFor([`${AUTH_STORAGE_PREFIX}_session_data`]).map((key) =>
-        SecureStore.deleteItemAsync(key),
+        authStorage.deleteItemAsync(key),
       ),
     );
   } catch {
@@ -71,11 +91,11 @@ export const authClient = createAuthClient({
     expoClient({
       scheme: "mskool",
       storagePrefix: AUTH_STORAGE_PREFIX,
-      storage: SecureStore,
+      storage: authStorage,
     }),
   ],
   fetchOptions: {
-    credentials: "omit",
+    credentials: isWeb ? "include" : "omit",
   },
 });
 
@@ -126,7 +146,7 @@ export async function logout() {
   // than the plugin's "{}" reset — nothing left to hydrate from.
   const keys = storageKeysFor(AUTH_STORAGE_BASE_KEYS);
   try {
-    await Promise.all(keys.map((key) => SecureStore.deleteItemAsync(key)));
+    await Promise.all(keys.map((key) => authStorage.deleteItemAsync(key)));
   } catch {
     // Best-effort: the server session is already dead; a failed native
     // delete must not read as a failed sign-out.
@@ -157,7 +177,7 @@ export async function discardDeadSession() {
   }
   const keys = storageKeysFor(AUTH_STORAGE_BASE_KEYS);
   try {
-    await Promise.all(keys.map((key) => SecureStore.deleteItemAsync(key)));
+    await Promise.all(keys.map((key) => authStorage.deleteItemAsync(key)));
   } catch {
     // Best-effort, as in logout.
   }
