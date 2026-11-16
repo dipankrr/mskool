@@ -1,0 +1,41 @@
+---
+// The whole landing page for one language.
+import Layout from "../layouts/Layout.astro";
+import InkFilter from "./InkFilter.astro";
+import Nav from "./Nav.astro";
+import Hero from "./Hero.astro";
+import SchoolDay from "./SchoolDay.astro";
+import Gadgets from "./Gadgets.astro";
+import FamilyApp from "./FamilyApp.astro";
+import Roles from "./Roles.astro";
+import AskBookie from "./AskBookie.astro";
+import Contact from "./Contact.astro";
+import Footer from "./Footer.astro";
+import FloatingActions from "./FloatingActions.astro";
+import { DICTS, type Lang } from "../i18n";
+
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const d = DICTS[lang];
+// What the page script needs to know about this language.
+const pageData = JSON.stringify({ hero: d.hero, chatHi: d.chatHi, ans: d.ans });
+---
+<Layout lang={lang} title={d.t["meta.title"]} description={d.t["meta.desc"]}>
+  <InkFilter />
+  <Nav d={d} lang={lang} />
+  <main>
+    <Hero d={d} />
+    <SchoolDay d={d} />
+    <Gadgets d={d} />
+    <FamilyApp d={d} />
+    <Roles d={d} />
+    <AskBookie d={d} />
+    <Contact d={d} />
+  </main>
+  <Footer d={d} />
+  <FloatingActions d={d} />
+  <script type="application/json" id="page-data" set:html={pageData} />
+  <script>
+    import "../scripts/landing.js";
+  </script>
+</Layout>

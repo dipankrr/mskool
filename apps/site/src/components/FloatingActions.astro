@@ -1,0 +1,8 @@
+---
+import type { Dict } from "../i18n/en";
+import { whatsappHref } from "../config";
+interface Props { d: Dict }
+const { t } = Astro.props.d;
+---
+<a class="wa-fab" href={whatsappHref()} target="_blank" rel="noopener" aria-label={t["wa.fab"]}><i class="ph-fill ph-whatsapp-logo"></i><span>{t["wa.fab"]}</span></a>
+<div class="dock" id="dock"><a class="btn" href="#apply"><span>{t["cta"]}</span><span class="arr"><i class="ph-bold ph-arrow-right"></i></span></a></div>

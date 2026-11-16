@@ -1,0 +1,26 @@
+---
+import type { Dict } from "../i18n/en";
+import { whatsappHref } from "../config";
+interface Props { d: Dict }
+const { t } = Astro.props.d;
+---
+<section class="island apply2" id="apply">
+  <div class="wrap">
+    <h2 class="display rv" style="max-width:920px">{t["ap.h2"]}</h2>
+    <div class="cform-wrap rv">
+      <img class="peek" src="/brand/mascot.svg" alt="">
+      <form class="cform" id="letter" novalidate>
+        <div class="cf-grid">
+          <label class="cf"><span>{t["fm.name"]}</span><input name="name" autocomplete="name" required></label>
+          <label class="cf"><span>{t["fm.phone"]}</span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+91" required></label>
+          <label class="cf"><span>{t["fm.school"]}</span><input name="school" autocomplete="organization" required></label>
+          <label class="cf"><span>{t["fm.size"]}</span><select name="size"><option>Under 300</option><option>300 to 800</option><option>800 to 2,000</option><option>2,000+, or many branches</option></select></label>
+        </div>
+        <p class="err">{t["ap.err"]}</p>
+        <button class="btn cf-send" type="submit"><span>{t["cta"]}</span><span class="arr"><i class="ph-bold ph-arrow-right"></i></span></button>
+        <div class="cf-ok" aria-live="polite"><i class="ph-fill ph-check-circle"></i><div><b>{t["cf.okh"]}</b><span>{t["ap.ok"]}</span></div></div>
+      </form>
+    </div>
+    <p class="alt"><span>{t["ap.alt"]}</span> <a class="link" href={whatsappHref()} target="_blank" rel="noopener">{t["wa"]}</a></p>
+  </div>
+</section>

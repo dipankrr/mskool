@@ -44,5 +44,15 @@
     "prettier": "^3.3.3",
     "turbo": "^2.10.0",
     "typescript": "^6.0.3"
+  },
+  "pnpm": {
+    "packageExtensions": {
+      "@napi-rs/wasm-runtime@1": {
+        "dependencies": {
+          "@emnapi/core": "^1.7.1",
+          "@emnapi/runtime": "^1.7.1"
+        }
+      }
+    }
   }
 }

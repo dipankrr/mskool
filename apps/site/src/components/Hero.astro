@@ -1,0 +1,47 @@
+---
+import type { Dict } from "../i18n/en";
+interface Props { d: Dict }
+const { t, hero } = Astro.props.d;
+---
+<section class="hero" id="hero">
+  <div class="wrap">
+    <div>
+      <h1 class="display" id="h1" aria-label={t["hero.aria"]}><span class="pre">{hero.pre}</span><span class="rot"><span class="w whole on">{hero.words[0]}</span></span><span class="suf">{hero.suf}</span></h1>
+      <div class="feat" aria-label="Features"><div class="chiprow"></div><div class="chiprow"></div></div>
+      <div class="cta">
+        <a class="btn" href="#apply"><span>{t["cta"]}</span><span class="arr"><i class="ph-bold ph-arrow-right"></i></span></a>
+        <a class="link" href="#day">{t["seeday"]}</a>
+      </div>
+    </div>
+
+    <div class="stage" aria-hidden="true">
+      <div class="obj o-reg">Class VI A &nbsp;Nov<br>01 Aarav &nbsp;<b>P P P</b><br>02 Ishita &nbsp;<b>P P P</b><br>03 Faiz &nbsp;&nbsp;<u>A</u> <b>P P</b><br>04 Priya &nbsp;<b>P P</b> <u>A</u></div>
+      <div class="obj o-rcpt"><div style="text-align:center;font-weight:600">FEE RECEIPT</div><hr>No. 01482<br>Ishita Roy VI A<br>Tuition Aug-Sep<hr><b>TOTAL ₹5,100</b></div>
+      <div class="obj o-rc"><header>REPORT CARD</header><div>English<b>A2</b></div><div>Maths<b>A1</b></div><div>Science<b>B1</b></div></div>
+      <div class="obj o-id"><div class="p"></div><b>Ishita Roy</b>Class VI A<br>Roll 02</div>
+      <div class="obj o-chq">ROSEWOOD PUBLIC SCHOOL<div class="l">Two hundred fifty only</div><span style="float:right;font-weight:600">₹250.00</span>Cheque 000731</div>
+      <div class="obj o-hw"><b>Homework</b><span>Fractions, page 42, Q1 to Q8</span></div>
+
+      <div class="phone">
+        <div class="scr home">
+          <div class="sb"><span>8:52</span><span><i class="ph-fill ph-cell-signal-full"></i><i class="ph-fill ph-wifi-high"></i><i class="ph-fill ph-battery-high"></i></span></div>
+          <div class="pad">
+            <div class="h-top"><span class="rbtn"><i class="ph ph-list"></i></span><span class="ava">RS</span></div>
+            <div class="mut" style="font-weight:500">Monday, 16 Nov</div>
+            <div class="ttl" style="font-size:25px;margin-top:2px">Good morning, Ritu</div>
+            <div class="seg"><span class="on"><i class="ph-fill ph-graduation-cap"></i>Rosewood Main</span><span><i class="ph ph-stack"></i>All branches</span></div>
+            <div class="ok"><span class="dot"><i class="ph-bold ph-check"></i></span><div><b style="font-weight:600;font-size:13px">Your section is marked</b><br><span style="font-size:11px">37 of 38 present</span></div></div>
+            <div class="wait ttl">Waiting on you <em>3</em></div>
+            <div class="c">
+              <div class="row"><span class="tile" style="background:var(--ex-bg);color:var(--ex)"><i class="ph ph-note-pencil"></i></span><span class="t"><b>Marks to enter</b> <span class="chip" style="background:var(--tch-bg);color:var(--tch)">Teaching</span><span class="s">0/7 papers · VI A Mathematics</span></span><span class="pill" style="background:var(--ex)">Enter</span></div>
+              <div class="row"><span class="tile" style="background:var(--fee-bg);color:var(--fee)"><i class="ph ph-money"></i></span><span class="t"><b>1 cheque to clear</b> <span class="chip" style="background:#EEF0F4;color:#475467">Admin</span><span class="s">₹250</span></span><i class="ph ph-caret-right mut"></i></div>
+              <div class="row"><span class="tile" style="background:var(--hw-bg);color:var(--hw)"><i class="ph ph-book-open-text"></i></span><span class="t"><b>Homework to check</b> <span class="chip" style="background:var(--tch-bg);color:var(--tch)">Teaching</span><span class="s">12 new answers</span></span><i class="ph ph-caret-right mut"></i></div>
+            </div>
+          </div>
+          <div class="tabs"><span class="on"><i class="ph-fill ph-house"></i>Home</span><span><i class="ph ph-list-checks"></i>Attendance</span><span><i class="ph ph-users-three"></i>Students</span><span><i class="ph ph-book-open"></i>Homework</span><span><i class="ph ph-currency-inr"></i>Fees</span><span><i class="ph ph-dots-three"></i>More</span></div>
+        </div>
+      </div>
+      <img class="bookie" src="/brand/mascot.svg" alt="">
+    </div>
+  </div>
+</section>

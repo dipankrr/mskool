@@ -1,0 +1,76 @@
+---
+import type { Dict } from "../i18n/en";
+interface Props { d: Dict }
+const { t } = Astro.props.d;
+---
+<section class="tools" id="tools">
+  <div class="wrap">
+    <div class="rv">
+      <h2 class="display">{t["tl.h"]}</h2>
+      <p class="lede">{t["tl.p"]}</p>
+    </div>
+    <div class="gctl" id="gctl"><button class="gplay" aria-label="Pause or play"><i class="ph-fill ph-pause"></i></button></div>
+    <div class="gal">
+      <article class="gt g-pr rv">
+        <h3>{t["g.pr"]}</h3><p>{t["g.prp"]}</p>
+        <div class="box">
+          <div class="printer"><span class="led"></span><span class="lbl">58 mm</span></div>
+          <div class="slot"><div class="slip" id="slip"></div></div>
+          <button class="gbtn" id="printBtn"><i class="ph ph-printer"></i><span>{t["b.print"]}</span></button>
+        </div>
+      </article>
+
+      <article class="gt g-id rv">
+        <h3>{t["g.id"]}</h3><p>{t["g.idp"]}</p>
+        <div class="box">
+          <div class="idbox" id="idbox"><div class="idslot"></div></div>
+          <div class="hint" id="idHint"></div>
+          <button class="gbtn" id="idBtn"><i class="ph ph-identification-card"></i><span>{t["b.id"]}</span></button>
+        </div>
+      </article>
+
+      <article class="gt g-ph rv">
+        <h3>{t["g.ph"]}</h3><p>{t["g.php"]}</p>
+        <div class="box">
+          <div class="vf"><div class="subj" id="subj"><img src="/brand/mascot.svg" alt=""></div><div class="crn"></div><span class="cnt" id="phCnt">0 / 38</span><span class="tagl" id="phName">Roll 01 · Aarav Banerjee</span><div class="flash" id="flash"></div></div>
+          <div class="shutrow"><button class="shutter" id="shutter" aria-label="Take photo"></button><div class="thumbs" id="thumbs"><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+        </div>
+      </article>
+
+      <article class="gt g-no rv">
+        <h3>{t["g.no"]}</h3><p>{t["g.nop"]}</p>
+        <div class="box nbatch">
+          <div class="pile" id="pile"></div>
+          <div>
+            <div class="ncount"><span id="nNum">0</span><small> / 18</small></div>
+            <div class="nstat" id="nStat">VI A, October fees</div>
+            <button class="gbtn" id="nBtn"><i class="ph ph-files"></i><span>{t["b.no"]}</span></button>
+          </div>
+        </div>
+      </article>
+
+      <article class="gt g-qz rv">
+        <h3>{t["g.qz"]}</h3><p>{t["g.qzp"]}</p>
+        <div class="box">
+          <div class="quiz">
+            <div class="qh"><span>Maths · Fractions</span><span>Q3 of 5</span></div>
+            <div class="qq">3/4 + 1/8 = ?</div>
+            <div class="opts" id="opts"><button data-ok="1">7/8</button><button>4/12</button><button>1/2</button><button>5/8</button></div>
+            <div class="qres" id="qres"><span>{t["qz.tap"]}</span></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="gt g-ca rv">
+        <h3>{t["g.ca"]}</h3><p>{t["g.cap"]}</p>
+        <div class="box">
+          <div class="cal">
+            <div class="ch"><b>Ishita Roy · November</b><span class="pc">91.7%</span></div>
+            <div class="cg" id="cal"></div>
+            <div class="cdet" id="cdet"><b>Mon 16 Nov</b> · Present, marked 8:48 am</div>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>

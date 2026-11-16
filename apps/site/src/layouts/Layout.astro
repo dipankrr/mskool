@@ -1,0 +1,42 @@
+---
+import "@phosphor-icons/web/regular";
+import "@phosphor-icons/web/fill";
+import "@phosphor-icons/web/bold";
+import "../styles/site.css";
+import { LANGS, PATH, type Lang } from "../i18n";
+import { SITE_URL } from "../config";
+
+interface Props { lang: Lang; title: string; description: string }
+const { lang, title, description } = Astro.props;
+const url = (l: Lang) => new URL(PATH[l], SITE_URL).href;
+const OG_LOCALE: Record<Lang, string> = { en: "en_IN", hi: "hi_IN", bn: "bn_IN" };
+---
+<!doctype html>
+<html lang={lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#F2F3F7" />
+    <link rel="canonical" href={url(lang)} />
+    {LANGS.map((l) => <link rel="alternate" hreflang={l} href={url(l)} />)}
+    <link rel="alternate" hreflang="x-default" href={url("en")} />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="mSkool" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={url(lang)} />
+    <meta property="og:locale" content={OG_LOCALE[lang]} />
+    <meta name="twitter:card" content="summary" />
+    <link rel="icon" href="/brand/app-icon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+    <link href="https://api.fontshare.com/v2/css?f[]=clash-grotesk@400,500,600,700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Anek+Devanagari:wdth,wght@75..125,400..800&family=Anek+Bangla:wdth,wght@75..125,400..800&family=Kalam:wght@400;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

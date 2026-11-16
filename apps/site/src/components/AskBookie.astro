@@ -1,0 +1,25 @@
+---
+import type { Dict } from "../i18n/en";
+interface Props { d: Dict }
+const { t } = Astro.props.d;
+---
+<section class="ask2" id="ask">
+  <div class="wrap">
+    <div class="rv">
+      <h2 class="display">{t["ask2.h"]}</h2>
+      <p class="lede">{t["ask2.p"]}</p>
+    </div>
+    <div class="phone rv"><div class="scr"><div class="chat">
+      <div class="chat-h"><i class="ph ph-caret-left" style="font-size:16px"></i><img src="/brand/mascot.svg" alt=""><div><b>Bookie</b><span>mSkool help · online</span></div></div>
+      <div class="msgs" id="msgs" aria-live="polite"></div>
+      <div class="chips" id="chips">
+        <button data-q="1">{t["q1"]}</button>
+        <button data-q="2">{t["q2"]}</button>
+        <button data-q="3">{t["q3"]}</button>
+        <button data-q="4">{t["q4"]}</button>
+        <button data-q="5">{t["q5"]}</button>
+      </div>
+      <div class="compose"><span>{t["chat.type"]}</span><i class="ph-fill ph-paper-plane-right"></i></div>
+    </div></div></div>
+  </div>
+</section>

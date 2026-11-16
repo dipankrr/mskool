@@ -1,0 +1,20 @@
+---
+import type { Dict } from "../i18n/en";
+import { LANGS, LANG_LABEL, PATH, type Lang } from "../i18n";
+interface Props { d: Dict; lang: Lang }
+const { d, lang } = Astro.props;
+const { t } = d;
+---
+<span id="topSentinel" style="position:absolute;top:0;height:24px;width:1px"></span>
+<header class="nav" id="nav">
+  <div class="bar">
+    <a class="brand" href={PATH[lang]} aria-label="mSkool home"><img src="/brand/app-icon.svg" alt="" width="38" height="38"><span>m<b>S</b>kool</span></a>
+    <span class="sp"></span>
+    <nav class="lang" aria-label={t["nav.lang"]}>
+      {LANGS.map((l) => (
+        <a href={PATH[l]} hreflang={l} lang={l} aria-current={l === lang ? "page" : undefined}>{LANG_LABEL[l]}</a>
+      ))}
+    </nav>
+    <a class="btn" href="#apply"><span>{t["cta"]}</span><span class="arr"><i class="ph-bold ph-arrow-right"></i></span></a>
+  </div>
+</header>

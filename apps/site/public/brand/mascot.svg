@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="744" height="680" viewBox="140 300 744 680">
+<title>Bookie mascot, transparent</title>
+<defs>
+  <linearGradient id="backgroundFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#EAF0FB"/></linearGradient>
+  <linearGradient id="bodyShade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.28"/><stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0"/><stop offset="1" stop-color="#0E1A4F" stop-opacity="0.22"/></linearGradient>
+  <radialGradient id="sclera" cx="0.5" cy="0.65" r="0.6"><stop offset="0" stop-color="#FFFFFF"/><stop offset="0.7" stop-color="#FFFFFF"/><stop offset="1" stop-color="#2F6BFF" stop-opacity="0.25"/></radialGradient>
+  <radialGradient id="irisShade" cx="0.45" cy="0.7" r="0.7"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.4"/><stop offset="0.6" stop-color="#FFFFFF" stop-opacity="0"/><stop offset="1" stop-color="#0E1A4F" stop-opacity="0.7"/></radialGradient>
+  <clipPath id="bodyClip"><path d="M512 744 C560 800 690 818 806 818 C822 818 828 808 828 792 V500 C828 400 754 330 664 330 C584 330 529 390 516 450 Q512 468 508 450 C495 390 440 330 360 330 C270 330 196 400 196 500 V792 C196 808 202 818 218 818 C334 818 464 800 512 744 Z"/></clipPath>
+  <filter id="blur26" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="26"/></filter>
+  <filter id="blur18" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="18"/></filter>
+  <filter id="blur10" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="10"/></filter>
+  <filter id="blur8" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="8"/></filter>
+</defs>
+  <g id="shadow"><ellipse cx="512" cy="870" rx="300" ry="40" fill="#2F6BFF" opacity="0.3" filter="url(#blur18)"/></g>
+  <g id="body-depth"><path d="M 512 774 C 560 830 690 848 806 848 C 822 848 828 838 828 822 V 530 C 828 430 754 360 664 360 C 584 360 529 420 516 480 Q 512 498 508 480 C 495 420 440 360 360 360 C 270 360 196 430 196 530 V 822 C 196 838 202 848 218 848 C 334 848 464 830 512 774 Z" fill="#2F6BFF"/><path d="M 512 774 C 560 830 690 848 806 848 C 822 848 828 838 828 822 V 530 C 828 430 754 360 664 360 C 584 360 529 420 516 480 Q 512 498 508 480 C 495 420 440 360 360 360 C 270 360 196 430 196 530 V 822 C 196 838 202 848 218 848 C 334 848 464 830 512 774 Z" fill="#0E1A4F" opacity="0.45"/></g>
+  <g id="body"><path d="M512 744 C560 800 690 818 806 818 C822 818 828 808 828 792 V500 C828 400 754 330 664 330 C584 330 529 390 516 450 Q512 468 508 450 C495 390 440 330 360 330 C270 330 196 400 196 500 V792 C196 808 202 818 218 818 C334 818 464 800 512 744 Z" fill="#2F6BFF"/><path d="M512 744 C560 800 690 818 806 818 C822 818 828 808 828 792 V500 C828 400 754 330 664 330 C584 330 529 390 516 450 Q512 468 508 450 C495 390 440 330 360 330 C270 330 196 400 196 500 V792 C196 808 202 818 218 818 C334 818 464 800 512 744 Z" fill="url(#bodyShade)"/></g>
+  <g id="body-edges" clip-path="url(#bodyClip)">
+    <path id="edge-dark" d="M-200 -200 H1224 V1224 H-200 Z M 486 706 C 534 762 664 780 780 780 C 796 780 802 770 802 754 V 462 C 802 362 728 292 638 292 C 558 292 503 352 490 412 Q 486 430 482 412 C 469 352 414 292 334 292 C 244 292 170 362 170 462 V 754 C 170 770 176 780 192 780 C 308 780 438 762 486 706 Z" fill-rule="evenodd" fill="#0E1A4F" opacity="0.55" filter="url(#blur26)"/>
+    <path id="edge-light" d="M-200 -200 H1224 V1224 H-200 Z M 526 764 C 574 820 704 838 820 838 C 836 838 842 828 842 812 V 520 C 842 420 768 350 678 350 C 598 350 543 410 530 470 Q 526 488 522 470 C 509 410 454 350 374 350 C 284 350 210 420 210 520 V 812 C 210 828 216 838 232 838 C 348 838 478 820 526 764 Z" fill-rule="evenodd" fill="#FFFFFF" opacity="0.7" filter="url(#blur10)"/>
+  </g>
+  <g id="spine"><path d="M512 470 V736" stroke="#0E1A4F" stroke-width="12" stroke-linecap="round" opacity="0.35" filter="url(#blur8)"/></g>
+  <g id="shine"><ellipse cx="300" cy="420" rx="60" ry="26" fill="#FFFFFF" opacity="0.7" filter="url(#blur8)" transform="rotate(-30 300 420)"/></g>
+  <g id="eye-left"><circle cx="341.2" cy="573.9" r="80.5" fill="url(#sclera)"/><circle cx="353.4" cy="565.4" r="46.4" fill="#0E1A4F"/><circle cx="372.9" cy="543.4" r="15.9" fill="#FFFFFF"/><circle cx="338.8" cy="587.3" r="7.3" fill="#FFFFFF" opacity="0.8"/></g>
+  <g id="eye-right"><circle cx="682.8" cy="573.9" r="80.5" fill="url(#sclera)"/><circle cx="695" cy="565.4" r="46.4" fill="#0E1A4F"/><circle cx="714.5" cy="543.4" r="15.9" fill="#FFFFFF"/><circle cx="680.4" cy="587.3" r="7.3" fill="#FFFFFF" opacity="0.8"/></g>
+</svg>

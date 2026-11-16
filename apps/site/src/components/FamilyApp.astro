@@ -1,0 +1,87 @@
+---
+import type { Dict } from "../i18n/en";
+interface Props { d: Dict }
+const { t } = Astro.props.d;
+---
+<section class="famsec" id="family">
+  <div class="wrap">
+    <div class="rv">
+      <h2 class="display">{t["fa.h"]}</h2>
+      <p class="lede">{t["fa.p"]}</p>
+      <div class="fam-tabs" id="famTabs" role="tablist" aria-label="Family app screens">
+        <button role="tab" aria-selected="true" data-s="0"><i class="ph-fill ph-house"></i>Home<span class="bar"></span></button>
+        <button role="tab" aria-selected="false" data-s="1"><i class="ph-fill ph-book-open-text"></i>Homework<span class="bar"></span></button>
+        <button role="tab" aria-selected="false" data-s="2"><i class="ph-fill ph-medal"></i>Results<span class="bar"></span></button>
+        <button role="tab" aria-selected="false" data-s="3"><i class="ph-fill ph-currency-inr"></i>Fees<span class="bar"></span></button>
+      </div>
+      <div class="plat"><span><i class="ph-fill ph-android-logo"></i>Android</span><span><i class="ph-fill ph-apple-logo"></i>iPhone</span></div>
+    </div>
+
+    <div class="fstage rv">
+      <div class="fbadge fb1"><i class="ph-fill ph-fire"></i><div>12-day streak<small>Homework every evening</small></div></div>
+      <div class="fbadge fb2"><i class="ph-fill ph-medal"></i><div>Results are out<small>A1 in Mathematics</small></div></div>
+      <div class="fbadge fb3"><i class="ph-fill ph-check-circle"></i><div>Present today<small>Marked 8:48 am</small></div></div>
+      <div class="fbadge fb4"><i class="ph-fill ph-receipt"></i><div>Fees paid<small>Receipt 01482, ₹5,100</small></div></div>
+      <div class="phone"><div class="scr" id="famPhone">
+
+        <div class="fscr on">
+          <div class="fhead"><div class="sb"><span>7:45</span><span><i class="ph-fill ph-wifi-high"></i><i class="ph-fill ph-battery-high"></i></span></div>
+            <div class="kids"><button aria-pressed="true" data-kid="0">Ishita · VI A</button><button aria-pressed="false" data-kid="1">Arnav · II B</button></div>
+            <div class="ttl">Good evening, Ishita</div><div class="fsub">Monday, 16 Nov</div><img src="/brand/mascot.svg" alt=""></div>
+          <div class="fbody">
+            <div class="c"><div class="fl"><span class="tile" style="background:#FFF0D6;color:#D97706"><i class="ph-fill ph-fire"></i></span><div><b>12-day streak</b><span>2 things due tomorrow</span></div><span class="r" style="color:var(--hw)">Start</span></div><div class="prog"><i class="d"></i><i class="d"></i><i class="d"></i><i></i><i></i></div></div>
+            <div class="c"><div class="fl"><span class="tile" style="background:var(--att-bg);color:var(--att)"><i class="ph-fill ph-check-circle"></i></span><div><b>Present today</b><span>94% this term</span></div></div></div>
+            <div class="c"><div class="fl"><span class="tile" style="background:var(--ex-bg);color:var(--ex)"><i class="ph-fill ph-medal"></i></span><div><b>Half-yearly results</b><span>Out today</span></div><span class="r" style="color:var(--ex)">A1</span></div></div>
+            <div class="c"><div class="fl"><span class="tile" style="background:var(--fee-bg);color:var(--fee)"><i class="ph-fill ph-currency-inr"></i></span><div><b>November fees</b><span>₹2,550 due by 20 Nov</span></div></div></div>
+          </div>
+        </div>
+
+        <div class="fscr">
+          <div class="sb"><span>7:46</span><span><i class="ph-fill ph-wifi-high"></i><i class="ph-fill ph-battery-high"></i></span></div>
+          <div class="pad"><div class="sc-head"><div class="ttl">Homework</div><span class="rbtn"><i class="ph ph-calendar-blank"></i></span></div>
+            <div class="mut" style="font-weight:600;margin:2px 2px 6px">Due tomorrow</div>
+            <div class="c">
+              <div class="row"><span class="tile" style="background:var(--hw-bg);color:var(--hw)"><i class="ph ph-check-square"></i></span><span class="t"><b>Fractions quiz</b><span class="s">Maths · 5 questions</span></span><span class="pill" style="background:var(--hw)">Start</span></div>
+              <div class="row"><span class="tile" style="background:var(--stu-bg);color:var(--stu)"><i class="ph ph-flask"></i></span><span class="t"><b>Plant cell diagram</b><span class="s">Science · photo answer</span></span><i class="ph ph-caret-right mut"></i></div>
+            </div>
+            <div class="mut" style="font-weight:600;margin:12px 2px 6px">Done this week</div>
+            <div class="c">
+              <div class="row"><span class="tile" style="background:var(--att-bg);color:var(--att)"><i class="ph-bold ph-check"></i></span><span class="t"><b>Bengali essay</b><span class="s">Checked by Ms. Sharmistha</span></span><span style="color:var(--att);font-weight:600">A</span></div>
+              <div class="row"><span class="tile" style="background:var(--att-bg);color:var(--att)"><i class="ph-bold ph-check"></i></span><span class="t"><b>Decimals quiz</b><span class="s">Auto-checked</span></span><span style="color:var(--att);font-weight:600">4/5</span></div>
+            </div></div>
+        </div>
+
+        <div class="fscr">
+          <div class="sb"><span>7:47</span><span><i class="ph-fill ph-wifi-high"></i><i class="ph-fill ph-battery-high"></i></span></div>
+          <div class="pad"><div class="sc-head"><div><div class="ttl">Half-yearly</div><div class="mut">Published 16 Nov</div></div><span class="rbtn"><i class="ph ph-file-pdf"></i></span></div>
+            <div class="c" style="padding:12px;display:flex;gap:12px;align-items:center">
+              <div class="ring2"><svg width="64" height="64" viewBox="0 0 64 64"><circle cx="32" cy="32" r="26" fill="none" stroke="#FFF0E3" stroke-width="8"/><circle cx="32" cy="32" r="26" fill="none" stroke="#C4520A" stroke-width="8" stroke-linecap="round" stroke-dasharray="138 163"/></svg><b>A2</b></div>
+              <div><b style="font-weight:600;font-size:13px">84.8% overall</b><div class="mut" style="font-size:10.5px">Up from 79% in the unit tests</div></div></div>
+            <div class="c" style="margin-top:8px">
+              <div class="sub"><span>Mathematics</span><span class="m">93</span><span class="g">A1</span></div>
+              <div class="sub"><span>Bengali</span><span class="m">88</span><span class="g">A2</span></div>
+              <div class="sub"><span>English</span><span class="m">84</span><span class="g">A2</span></div>
+              <div class="sub"><span>Social science</span><span class="m">81</span><span class="g">A2</span></div>
+              <div class="sub"><span>Science</span><span class="m">78</span><span class="g">B1</span></div>
+            </div></div>
+        </div>
+
+        <div class="fscr">
+          <div class="sb"><span>7:48</span><span><i class="ph-fill ph-wifi-high"></i><i class="ph-fill ph-battery-high"></i></span></div>
+          <div class="pad"><div class="sc-head"><div class="ttl">Fees</div><span class="rbtn"><i class="ph ph-clock-counter-clockwise"></i></span></div>
+            <div class="c" style="padding:12px"><div class="mut" style="font-weight:600;font-size:10px">2026-27, VI A</div>
+              <div class="feemon"><span>Apr</span><span>May</span><span>Jun</span><span>Jul</span><span>Aug</span><span>Sep</span><span>Oct</span><span class="due">Nov</span></div>
+              <div class="fl" style="margin-top:12px"><div><b style="font-size:16px">₹2,550 due</b><span>November, by 20 Nov</span></div></div>
+              <div class="paybtn">See what's due</div></div>
+            <div class="mut" style="font-weight:600;margin:12px 2px 6px">Receipts</div>
+            <div class="c">
+              <div class="row"><span class="tile" style="background:var(--fee-bg);color:var(--fee)"><i class="ph ph-receipt"></i></span><span class="t"><b>MAIN/26-27/01482</b><span class="s">Aug, Sep · ₹5,100 · UPI</span></span><i class="ph ph-download-simple mut"></i></div>
+              <div class="row"><span class="tile" style="background:var(--fee-bg);color:var(--fee)"><i class="ph ph-receipt"></i></span><span class="t"><b>MAIN/26-27/00961</b><span class="s">Jun, Jul · ₹5,100 · Cash</span></span><i class="ph ph-download-simple mut"></i></div>
+            </div></div>
+        </div>
+
+        <div class="tabs" id="famTabbar"><span class="on"><i class="ph-fill ph-house"></i>Home</span><span><i class="ph ph-book-open"></i>Homework</span><span><i class="ph ph-medal"></i>Results</span><span><i class="ph ph-currency-inr"></i>Fees</span><span><i class="ph ph-user"></i>Me</span></div>
+      </div></div>
+    </div>
+  </div>
+</section>

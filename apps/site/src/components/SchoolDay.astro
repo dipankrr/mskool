@@ -1,0 +1,135 @@
+---
+import type { Dict } from "../i18n/en";
+interface Props { d: Dict }
+const { t } = Astro.props.d;
+---
+<section class="day" id="day">
+  <div class="wrap day-head rv">
+    <div>
+      <h2 class="display">{t["day.h"]}</h2>
+      <p class="lede">{t["day.p"]}</p>
+    </div>
+    <div class="arrows"><button id="prev" aria-label="Previous"><i class="ph ph-arrow-left"></i></button><button id="next" aria-label="Next"><i class="ph ph-arrow-right"></i></button></div>
+  </div>
+
+  <div class="strip" id="strip">
+    <!-- attendance -->
+    <article class="card k-att">
+      <div class="when"><b>8:47</b>am <span class="hand">{t["w1"]}</span></div>
+      <h3 class="display">{t["s1.h"]}</h3>
+      <p>{t["c1"]}</p>
+      <span class="try" style="top:250px">{t["try1"]}</span>
+      <div class="phone"><div class="scr" id="s-att">
+        <div class="sb"><span>8:47</span><span><i class="ph-fill ph-wifi-high"></i><i class="ph-fill ph-battery-high"></i></span></div>
+        <div class="pad">
+          <div class="sc-head"><div><div class="ttl">Class VI A</div><div class="mut">Mon, 16 Nov · Period 1</div></div><span class="rbtn"><i class="ph ph-calendar-blank"></i></span></div>
+          <div class="cnt"><span style="--b:var(--att-bg);--f:var(--att)" id="cP">37<small>Present</small></span><span style="--b:#FEE4E2;--f:#B42318" id="cA">1<small>Absent</small></span><span style="--b:#FFFAEB;--f:#B54708">0<small>Late</small></span><span style="--b:#EEEDFD;--f:#4F46E5">0<small>Leave</small></span></div>
+          <div class="grid" id="grid"></div>
+        </div>
+        <button class="savebar" id="attSave"><i class="ph-bold ph-check"></i><span id="attLbl">Save · 37 present</span></button>
+        <span class="stamp will-stamp" id="attStamp">Saved 8:48</span>
+        <div class="tabs"><span><i class="ph ph-house"></i>Home</span><span class="on"><i class="ph-fill ph-list-checks"></i>Attendance</span><span><i class="ph ph-users-three"></i>Students</span><span><i class="ph ph-book-open"></i>Homework</span><span><i class="ph ph-currency-inr"></i>Fees</span><span><i class="ph ph-dots-three"></i>More</span></div>
+      </div></div>
+    </article>
+
+    <!-- fees -->
+    <article class="card k-fee">
+      <div class="when"><b>11:20</b>am <span class="hand">{t["w2"]}</span></div>
+      <h3 class="display">{t["s2.h"]}</h3>
+      <p>{t["c2"]}</p>
+      <span class="try" style="top:250px">{t["try2"]}</span>
+      <div class="phone"><div class="scr" id="s-fee">
+        <div class="sb"><span>11:20</span><span><i class="ph-fill ph-wifi-high"></i><i class="ph-fill ph-battery-high"></i></span></div>
+        <div class="pad">
+          <div class="sc-head"><div class="ttl">Collect fee</div><span class="rbtn"><i class="ph ph-magnifying-glass"></i></span></div>
+          <div class="c">
+            <div class="stu"><span class="ph"></span><div><b style="font-weight:600;font-size:13px" id="feeName">Ishita Roy</b><div class="mut" style="font-size:10px">VI A · Roll 02 · Sibling of Arnav</div></div></div>
+            <div class="mon"><span class="pd">Apr</span><span class="pd">May</span><span class="pd">Jun</span><span class="pd">Jul</span><span class="sel">Aug</span><span class="sel">Sep</span></div>
+          </div>
+          <div class="c" style="margin-top:8px">
+            <div class="ln"><span>Tuition × 2</span><span>₹5,000</span></div>
+            <div class="ln"><span>Computer lab</span><span>₹600</span></div>
+            <div class="ln"><span class="mut">Sibling concession</span><span style="color:var(--att)">−₹500</span></div>
+            <div class="ln tot"><span>Total</span><span>₹5,100</span></div>
+            <div class="modes"><span>Cash</span><span class="on">UPI</span><span>Cheque</span></div>
+          </div>
+        </div>
+        <button class="collect" id="collect">Collect ₹5,100</button>
+        <div class="sheet" id="sheet">
+          <div class="grab"></div>
+          <div class="slipx"><div class="bn">রোজউড পাবলিক স্কুল</div><div style="text-align:center">ROSEWOOD PUBLIC SCHOOL · FEE RECEIPT</div><hr><div class="r"><span>No.</span><span class="no" id="rno">MAIN/26-27/01482</span></div><div class="r"><span>Ishita Roy, VI A</span><span>16-11-2026</span></div><div class="r"><span>Tuition Aug-Sep</span><span>₹5,100.00</span></div><hr><div class="r" style="font-weight:600"><span>PAID BY UPI</span><span>₹5,100.00</span></div></div>
+          <div class="acts"><button class="pr"><i class="ph ph-printer"></i>58 mm</button><button class="wa"><i class="ph ph-whatsapp-logo"></i>WhatsApp</button><button class="nx" id="nextR">Next</button></div>
+          <span class="stamp will-stamp" id="feeStamp">Paid</span>
+        </div>
+        <div class="tabs"><span><i class="ph ph-house"></i>Home</span><span><i class="ph ph-list-checks"></i>Attendance</span><span><i class="ph ph-users-three"></i>Students</span><span><i class="ph ph-book-open"></i>Homework</span><span class="on"><i class="ph-fill ph-currency-inr"></i>Fees</span><span><i class="ph ph-dots-three"></i>More</span></div>
+      </div></div>
+    </article>
+
+    <!-- results -->
+    <article class="card k-ex">
+      <div class="when"><b>3:10</b>pm <span class="hand">{t["w3"]}</span></div>
+      <h3 class="display">{t["s3.h"]}</h3>
+      <p>{t["c3"]}</p>
+      <span class="try" style="top:250px">{t["try3"]}</span>
+      <div class="phone"><div class="scr" id="s-ex">
+        <div class="sb"><span>3:10</span><span><i class="ph-fill ph-wifi-high"></i><i class="ph-fill ph-battery-high"></i></span></div>
+        <div class="pad">
+          <div class="sc-head"><div><div class="ttl">Half-yearly</div><div class="mut">Ishita Roy · VI A</div></div><span class="rbtn"><i class="ph ph-file-pdf"></i></span></div>
+          <div class="c">
+            <div class="sub"><span>English</span><span class="m">84</span><span class="g">A2</span></div>
+            <div class="sub"><span>Mathematics</span><span class="m">93</span><span class="g">A1</span></div>
+            <div class="sub"><span>Science</span><span class="m">78</span><span class="g">B1</span></div>
+            <div class="sub"><span>Bengali</span><span class="m">88</span><span class="g">A2</span></div>
+            <div class="sub"><span>Social science</span><span class="m">81</span><span class="g">A2</span></div>
+          </div>
+          <div class="c pubc"><div><b id="pubT">Not published</b><span id="pubS">Families can't see these marks</span></div><button class="sw" id="pubSw" role="switch" aria-checked="false" aria-label="Publish results"></button></div>
+          <div class="famline" id="fam"><img src="/brand/mascot.svg" alt=""><span id="famT">Family app: <b>Results not out yet</b></span></div>
+        </div>
+        <span class="stamp will-stamp" id="pubStamp">Published</span>
+        <div class="tabs"><span><i class="ph ph-house"></i>Home</span><span><i class="ph ph-list-checks"></i>Attendance</span><span><i class="ph ph-users-three"></i>Students</span><span><i class="ph ph-book-open"></i>Homework</span><span><i class="ph ph-currency-inr"></i>Fees</span><span class="on"><i class="ph-fill ph-dots-three"></i>More</span></div>
+      </div></div>
+    </article>
+
+    <!-- family -->
+    <article class="card k-fam">
+      <div class="when"><b>7:45</b>pm <span class="hand">{t["w4"]}</span></div>
+      <h3 class="display">{t["s4.h"]}</h3>
+      <p>{t["c4"]}</p>
+      <span class="try" style="top:250px">{t["try4"]}</span>
+      <div class="phone"><div class="scr">
+        <div class="fam-top">
+          <div class="sb"><span>7:45</span><span><i class="ph-fill ph-wifi-high"></i><i class="ph-fill ph-battery-high"></i></span></div>
+          <div class="kids" role="group" aria-label="Child"><button aria-pressed="true" data-kid="0">Ishita · VI A</button><button aria-pressed="false" data-kid="1">Arnav · II B</button></div>
+          <div class="ttl" id="kidHi">Hi Ishita</div>
+          <div class="streak"><i class="ph-fill ph-fire"></i><span id="kidStreak">12-day homework streak</span></div>
+          <img src="/brand/mascot.svg" alt="">
+        </div>
+        <div class="pad frows"><div class="c" id="famRows"></div></div>
+        <div class="tabs"><span class="on"><i class="ph-fill ph-house"></i>Home</span><span><i class="ph ph-book-open"></i>Homework</span><span><i class="ph ph-medal"></i>Results</span><span><i class="ph ph-currency-inr"></i>Fees</span><span><i class="ph ph-user"></i>Me</span></div>
+      </div></div>
+    </article>
+
+    <!-- trust -->
+    <article class="card k-tr">
+      <div class="when"><b>9:30</b>pm <span class="hand">{t["w5"]}</span></div>
+      <h3 class="display">{t["s5.h"]}</h3>
+      <p>{t["c5"]}</p>
+      <div class="phone"><div class="scr home">
+        <div class="sb"><span>9:30</span><span><i class="ph-fill ph-wifi-high"></i><i class="ph-fill ph-battery-high"></i></span></div>
+        <div class="pad">
+          <div class="h-top"><span class="rbtn"><i class="ph ph-list"></i></span><span class="ava" style="background:linear-gradient(140deg,#8B6CC9,#5B3E86)">SB</span></div>
+          <div class="ttl" style="font-size:22px">Rosewood Trust</div>
+          <div class="seg"><span><i class="ph ph-graduation-cap"></i>One branch</span><span class="on"><i class="ph-fill ph-stack"></i>All branches</span></div>
+          <div class="kp"><div><b>1,284</b><small>Students</small></div><div><b>₹2.68L</b><small>Today</small></div><div><b>95.6%</b><small>Present</small></div></div>
+          <div class="c">
+            <div class="brn"><b>Main campus</b><span class="a">₹1,84,250</span><span>742 students</span><span class="p">96.1%</span></div>
+            <div class="brn"><b>Barasat</b><span class="a">₹62,900</span><span>398 students</span><span class="p">93.4%</span></div>
+            <div class="brn"><b>Primary wing</b><span class="a">₹21,400</span><span>144 students</span><span class="p">97.9%</span></div>
+          </div>
+        </div>
+        <div class="tabs"><span class="on"><i class="ph-fill ph-house"></i>Home</span><span><i class="ph ph-list-checks"></i>Attendance</span><span><i class="ph ph-users-three"></i>Students</span><span><i class="ph ph-book-open"></i>Homework</span><span><i class="ph ph-currency-inr"></i>Fees</span><span><i class="ph ph-dots-three"></i>More</span></div>
+      </div></div>
+    </article>
+  </div>
+  <div class="dots" id="dots"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+</section>

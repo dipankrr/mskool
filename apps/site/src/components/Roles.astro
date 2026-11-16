@@ -1,0 +1,21 @@
+---
+import type { Dict } from "../i18n/en";
+interface Props { d: Dict }
+const { t } = Astro.props.d;
+---
+<section class="roles" id="roles">
+  <div class="wrap">
+    <div class="rv">
+      <h2 class="display">{t["rl.h"]}</h2>
+      <p class="lede">{t["rl.p"]}</p>
+    </div>
+    <div class="rl-grid rv">
+      <div class="rl-tabs" id="rlTabs" role="tablist" aria-label="Roles"></div>
+      <div class="rl-panel" id="rlPanel" role="tabpanel">
+        <div class="who"><i id="rlIcon"></i><div><h3 id="rlName"></h3><div class="line" id="rlLine"></div></div></div>
+        <ul class="rl-list" id="rlList"></ul>
+        <img class="peek" src="/brand/mascot.svg" alt="">
+      </div>
+    </div>
+  </div>
+</section>
