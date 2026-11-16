@@ -107,6 +107,12 @@ export const staff = pgTable(
     uniqueIndex("staff_org_phone_current_uq")
       .on(t.organizationId, t.phone)
       .where(sql`${t.phone} IS NOT NULL AND ${t.status} IN ('active', 'on_leave', 'suspended')`),
+    // ADR-074: one login is one current staff record in an organisation, so
+    // "my staff record" (photo, assignments) has exactly one answer. People
+    // who have left keep their old record, which no longer counts.
+    uniqueIndex("staff_org_user_current_uq")
+      .on(t.organizationId, t.userId)
+      .where(sql`${t.userId} IS NOT NULL AND ${t.status} IN ('active', 'on_leave', 'suspended')`),
     index("staff_phone_idx").on(t.phone),
     index("staff_school_idx").on(t.schoolId),
     index("staff_user_idx").on(t.userId),

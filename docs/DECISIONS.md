@@ -3494,3 +3494,17 @@ Date: 2026-11-16. Status: accepted (owner: "implement it, keep it the same as th
 6. Every figure comes from a read that already exists (Home's ADR-072 reads included). Marks progress across classes and papers waiting for verification are not shown.
 
 **Consequences.** Mobile only; no API change. Exams, Academic setup and the staff list also remain as pushed screens, reached from Home and the sidebar. Not seen running on a device or on web before commit (see TASKS).
+
+## ADR-074 - One login is one current staff record in an organisation
+
+**Date:** 2026-11-16. **Status:** accepted (owner: "do whatever is better"). Tightens ADR-068.
+
+**Context.** The demo admin's photo did not show in the top bar. The login had two current staff records in one organisation (seed blocks EMP-ADMIN and DEMO-001), the photo was on one, and "my staff record" picked a row with no order. Nothing in the database forbade it; the app's own flows never create it, but the seed and a test wrote rows directly. Ninety-odd test leftovers had the same shape.
+
+**Decision.**
+1. A unique index `staff_org_user_current_uq` on (organisation, user) for current records (active, on leave, suspended). Records of people who have left keep their user and no longer count. Migration 0060.
+2. Every lookup from a login to its staff record asks for the current one: the own-photo read, role holders, and the "is staff here" check before a role is given.
+3. A second record in another organisation stays possible in the database (the M8 holder test relies on it); ADR-068's refusal of a number that is current staff elsewhere still applies in the app.
+4. The seed reuses a login's current record when a later block names it under another code. The staff integration test marks its previous run's record as resigned before making the next.
+
+**Consequences.** Dev data merged on 2026-11-16: the admin keeps EMP-ADMIN (sign-in 9000000007) with the photo and two teaching assignments moved onto it; DEMO-001, DEMO-002 and 91 test leftovers marked resigned, none deleted.
