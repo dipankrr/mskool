@@ -80,7 +80,7 @@ import {
   studentFeeAssignments,
 } from "@repo/db/schema";
 import { revokeUserSessions, setUserPassword } from "@repo/auth/credentials";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 
 // Stable identifiers. The seed finds rows by these, which is what makes
 // re-running it a no-op rather than a duplicate-key error.
@@ -338,6 +338,25 @@ async function findOrCreateStaff(
   if (existing) {
     console.log(`  = staff ${employeeCode} (exists)`);
     return existing;
+  }
+
+  // One login is one current staff record (ADR-068, ADR-074). A later block
+  // that names the same login under another code gets the existing record,
+  // never a second one.
+  const [mine] = await db
+    .select()
+    .from(staff)
+    .where(
+      and(
+        eq(staff.organizationId, organizationId),
+        eq(staff.userId, userId),
+        inArray(staff.status, ["active", "on_leave", "suspended"]),
+      ),
+    );
+
+  if (mine) {
+    console.log(`  = staff ${employeeCode} (this login already has ${mine.employeeCode})`);
+    return mine;
   }
 
   const [created] = await db

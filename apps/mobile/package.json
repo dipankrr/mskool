@@ -16,6 +16,7 @@
     "@trpc/server": "11.18.0",
     "better-auth": "1.6.23",
     "expo": "~57.0.28",
+    "expo-blur": "~57.0.3",
     "expo-constants": "~57.0.21",
     "expo-dev-client": "~57.0.20",
     "expo-device": "~57.0.2",

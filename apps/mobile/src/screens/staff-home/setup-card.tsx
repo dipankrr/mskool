@@ -308,6 +308,7 @@ const styles = StyleSheet.create({
   },
   card: {
     marginTop: spacing.lg,
+    marginBottom: spacing.md,
     overflow: "hidden",
   },
   head: {

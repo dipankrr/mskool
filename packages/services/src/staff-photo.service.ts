@@ -32,7 +32,14 @@ export class StaffPhotoService {
     const [row] = await db
       .select({ id: staff.id })
       .from(staff)
-      .where(and(eq(staff.organizationId, organizationId), eq(staff.userId, userId)))
+      .where(
+        and(
+          eq(staff.organizationId, organizationId),
+          eq(staff.userId, userId),
+          // ADR-074: exactly one current record per login; a leaver's old one never answers.
+          inArray(staff.status, ["active", "on_leave", "suspended"]),
+        ),
+      )
       .limit(1);
     return row?.id ?? null;
   }

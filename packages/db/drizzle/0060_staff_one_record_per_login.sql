@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "staff_org_user_current_uq" ON "staff" USING btree ("organization_id","user_id") WHERE "staff"."user_id" IS NOT NULL AND "staff"."status" IN ('active', 'on_leave', 'suspended');

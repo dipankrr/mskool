@@ -3461,6 +3461,54 @@ page (unchanged, but bound by the same server rules).
 
 **Consequences.** Mobile only; no API, contract or schema change. Branch and session switching moved from More to the account popup. `ShellBar` is on Home and More only: Attendance, Students, Homework and Fees have their own headers and are not done. Screens web has and the phone lacks are not listed in the sidebar. Several sidebar lines open the same screen by design. Timetable shows as "Soon" on More and in the sidebar. The sidebar and the account popup were not walked on a device before the merge, and iOS and TalkBack are unchecked.
 
+## ADR-072 - Staff Home is assembled from assignments, permissions and scope, never from a role's name
+
+Date: 2026-11-16. Status: accepted (owner: "implement it, keep it the same as the mockup"). Design: `docs/design/mobile/prototype/staff-home-v5.html`; plan `.kilo/plans/2026-11-16-staff-home.md`.
+
+**Context.** The old Home listed every visible section with its attendance, so a principal scrolled past every class and an accountant saw sections she could do nothing with; fees, approvals and homework never appeared. Roles are fixed in code but each school edits what they may do (ADR-011, ADR-070), and one person often holds several (the org admin who also teaches, a vice principal set up anywhere from teacher to owner). A Home per role name would be wrong for many real accounts. The owner named the two people who are most staff: the teacher with several subjects across several sections, and the org admin who also teaches.
+
+**Decision.**
+
+1. **Three inputs decide every card.** Assignments decide personal work (own sections bring attendance, own subject pairs bring marks and homework, a class-teacher assignment brings "your class"). Permissions decide school-wide areas (approvals, fees, staff, admissions). Scope decides how wide a card looks. No card reads a role type; the old class-card role word (`role-word.ts`) is gone.
+2. **A fixed order, where missing parts drop out:** day card (holiday/weekend from the calendar, else the set-up card) → your attendance → waiting on you → school today → you teach → staff → fees → exams → students → coming up. **One time rule:** once the caller's own sections are all marked, "you teach" moves below the school's cards.
+3. **Your attendance:** one section is a big card; several are a list, unmarked first with Mark, marked with who marked and when; from six sections the marked ones fold; all marked is one green line. A holiday or weekend replaces it with the day card.
+4. **Waiting on you is one list across roles,** most urgent first, tagged Teaching or Admin only for people with both kinds.
+5. **All branches is a Home-only switch** for org-scoped staff with two or more branches. It shows dashboard figures only and never changes the active branch; the context stays one branch (about 136 call sites assume it). Tapping a branch card switches the normal branch.
+6. **Three new reads, everything else reused.** `home.attendanceToday` (staffListProcedure `attendance:read`): every visible section's day from `daily_attendance_status`, the first marker from `attendance_records.markedBy` (one row per section, provenance only, not the reporting read hard rule 5 forbids), whether a grant covers the whole branch, and the calendar's next days off. `home.myPapers` (protected, like `assignment.mine`): the caller's own subject pairs against open exams. `home.org` (`orgListProcedure("school:read")`, the summary ADR-067 point 2 foresaw): per branch, each figure read only under the caller's grant for it at that branch, null without one; each branch uses its own running session.
+7. **Area hues on Home only** (attendance green, homework violet, exams orange, fees blue, students teal, teaching plum, calendar indigo) as labels; red, amber and the tones keep meaning status.
+
+**Consequences.** No schema change. Not in the data, so left out of the mockup's cards: a concession approval queue (concessions are added directly), marks-entry deadlines, the payment-mode split, week trends, absent streaks, birthdays and family sign-ins. Period-wise schools still see daily status. The past-session Home keeps the existing notice. Seen on the Android emulator as an org admin with two branches (branch view and All branches); the teacher views are covered by render tests only.
+
+## ADR-073 - More is a set of area screens behind a pinned top bar
+
+**Date:** 2026-11-16. **Status:** accepted (owner, mockup `prototype/more-v3.html`). Supersedes ADR-071 point 1 (More as showcase cards); the sidebar and the account popup are unchanged.
+
+**Context.** The v2 More was a page of cards, each pushing another screen. The owner wanted the areas without a bottom tab to have "kind of a dedicated screen", with a top menu like Swiggy's.
+
+**Decision.**
+1. More shows a pinned bar of areas: Overview, Exams, Academics, Staff (Teaching for someone who teaches but cannot read staff), School. Each is offered only when its read is allowed (`areasFor` in `screens/more/areas.ts`); with one area there is no bar.
+2. Overview opens first on a fresh start; within one run of the app More returns to the area last chosen.
+3. Each area is a dashboard: a hero in the area's colour, Needs you rows with their own button, up to four doors, then the area's list. Deeper screens still push on top.
+4. The bar is tap-only (no pager library). It stays pinned and slims as the page scrolls: pictures fold, names stay.
+5. More has no heading row, menu button or avatar; the sidebar and the account popup are reached from Home.
+6. Every figure comes from a read that already exists (Home's ADR-072 reads included). Marks progress across classes and papers waiting for verification are not shown.
+
+**Consequences.** Mobile only; no API change. Exams, Academic setup and the staff list also remain as pushed screens, reached from Home and the sidebar. Not seen running on a device or on web before commit (see TASKS).
+
+## ADR-074 - One login is one current staff record in an organisation
+
+**Date:** 2026-11-16. **Status:** accepted (owner: "do whatever is better"). Tightens ADR-068.
+
+**Context.** The demo admin's photo did not show in the top bar. The login had two current staff records in one organisation (seed blocks EMP-ADMIN and DEMO-001), the photo was on one, and "my staff record" picked a row with no order. Nothing in the database forbade it; the app's own flows never create it, but the seed and a test wrote rows directly. Ninety-odd test leftovers had the same shape.
+
+**Decision.**
+1. A unique index `staff_org_user_current_uq` on (organisation, user) for current records (active, on leave, suspended). Records of people who have left keep their user and no longer count. Migration 0060.
+2. Every lookup from a login to its staff record asks for the current one: the own-photo read, role holders, and the "is staff here" check before a role is given.
+3. A second record in another organisation stays possible in the database (the M8 holder test relies on it); ADR-068's refusal of a number that is current staff elsewhere still applies in the app.
+4. The seed reuses a login's current record when a later block names it under another code. The staff integration test marks its previous run's record as resigned before making the next.
+
+**Consequences.** Dev data merged on 2026-11-16: the admin keeps EMP-ADMIN (sign-in 9000000007) with the photo and two teaching assignments moved onto it; DEMO-001, DEMO-002 and 91 test leftovers marked resigned, none deleted.
+
 ## ADR-075 - The public site is a separate Astro static app, one real page per language
 
 **Date:** 2026-11-16. **Status:** accepted (owner). Mockup `docs/design/landing/landing-v5.html`.

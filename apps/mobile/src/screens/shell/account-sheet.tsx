@@ -8,7 +8,6 @@ import {
 } from "@expo/ui/community/bottom-sheet";
 
 import { AppIcon } from "../../components/app-icon";
-import { Avatar } from "../../components/avatar";
 import { Card } from "../../components/card";
 import { FactRow } from "../../components/fact-row";
 import { IconTile } from "../../components/icon-tile";
@@ -25,6 +24,7 @@ import { thrownMessage } from "../../lib/errors";
 import { roleLabel } from "../../lib/labels";
 import { colors } from "../../theme/brand-admin";
 import { radius, spacing, touch } from "../../theme/tokens";
+import { StaffAvatar, useMyPhoto } from "../staff/staff-photo";
 
 /**
  * The account popup: who you are and where you are, from the avatar on a tab.
@@ -70,6 +70,7 @@ export function AccountSheet({
     select,
   } = useActiveContext();
   const branchName = useActiveBranchName();
+  const photo = useMyPhoto(organizationId);
   const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
@@ -225,7 +226,7 @@ export function AccountSheet({
           contentContainerStyle={styles.content}
         >
           <View style={styles.who}>
-            <Avatar name={me?.user.name ?? ""} size="lg" />
+            <StaffAvatar name={me?.user.name ?? ""} uri={photo.uri} cacheKey={photo.cacheKey} size={44} />
             <View style={styles.whoText}>
               <ThemedText variant="name" numberOfLines={1}>
                 {me?.user.name ?? ""}

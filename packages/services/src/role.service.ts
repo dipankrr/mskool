@@ -108,6 +108,8 @@ export class RoleService {
         and(
           eq(staff.organizationId, organizationId),
           eq(staff.userId, input.userId),
+          // A leaver keeps their old record; it is not staff here any more.
+          inArray(staff.status, ["active", "on_leave", "suspended"]),
         ),
       );
     if (!member) {
@@ -306,6 +308,8 @@ export class RoleService {
         and(
           eq(staff.userId, roleAssignments.userId),
           eq(staff.organizationId, organizationId),
+          // One current record per login (ADR-074); old ones would repeat the row.
+          inArray(staff.status, ["active", "on_leave", "suspended"]),
         ),
       )
       .where(
@@ -849,7 +853,11 @@ export class RoleService {
       .from(roleAssignments)
       .innerJoin(
         staff,
-        and(eq(staff.userId, roleAssignments.userId), eq(staff.organizationId, organizationId)),
+        and(
+          eq(staff.userId, roleAssignments.userId),
+          eq(staff.organizationId, organizationId),
+          inArray(staff.status, ["active", "on_leave", "suspended"]),
+        ),
       )
       .where(
         and(

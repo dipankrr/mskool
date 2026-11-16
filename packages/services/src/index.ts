@@ -134,3 +134,6 @@ export * from "./attendance-ranking";
 export * from "./portal-attendance.service";
 export * from "./portal-fees.service";
 export * from "./portal-exam-schedule.service";
+
+// Staff Home's own reads (ADR-072): sections' day, my papers, All branches.
+export * from "./home.service";

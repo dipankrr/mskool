@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tab bar: smoked glass</title>
+<style>
+@font-face { font-family: Clash; font-weight: 400; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Regular.ttf); }
+@font-face { font-family: Clash; font-weight: 500; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Medium.ttf); }
+@font-face { font-family: Clash; font-weight: 600; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Semibold.ttf); }
+@font-face { font-family: Clash; font-weight: 700; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Bold.ttf); }
+:root {
+  --canvas: #F3F4F8; --surface: #FFFFFF; --ink: #101828; --muted: #5D6674; --hair: rgba(16,24,40,.07);
+  --field: #ECEEF3;
+  --att: #0F7A44;  --att-t: #E6F4EC;
+  --hw: #6941C6;   --hw-t: #F1ECFD;
+  --ex: #C4520A;   --ex-t: #FFF0E3;
+  --fee: #1D63C7;  --fee-t: #E8F1FD;
+  --stu: #0E7490;  --stu-t: #E3F5F8;
+  --tea: #9E3C8E;  --tea-t: #FBEAF7;
+  --slate: #475467; --slate-t: #EEF1F5;
+  --red: #B42318; --red-t: #FEF0EE; --amb: #B54708; --amb-t: #FFF6E0;
+  --shadow: 0 1px 2px rgba(16,24,40,.04), 0 6px 18px rgba(16,24,40,.06);
+  --spring: cubic-bezier(.34, 1.36, .5, 1);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #E3E1DA; color: var(--ink); font-family: Clash, system-ui, sans-serif; font-size: 15px; padding: 40px 16px 96px; }
+svg.g { width: 24px; height: 24px; fill: currentColor; flex: none; display: block; }
+.tnum { font-variant-numeric: tabular-nums; }
+.wrap { max-width: 1480px; margin: 0 auto; }
+
+/* ---------- Page ---------- */
+.kicker { font-size: 13px; font-weight: 600; letter-spacing: 1.4px; text-transform: uppercase; color: #6B6A63; }
+h1 { font-size: clamp(34px, 5vw, 56px); font-weight: 700; letter-spacing: -1.6px; line-height: 1; margin-top: 10px; }
+.lede { margin-top: 14px; max-width: 760px; font-size: 17px; line-height: 1.5; color: #3C4450; }
+.lede b { color: var(--ink); font-weight: 600; }
+
+.hero { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 48px; margin-top: 44px; align-items: start; }
+@media (max-width: 900px) { .hero { grid-template-columns: 1fr; } .stage { justify-self: center; } }
+.picks { display: grid; gap: 12px; }
+.pick {
+  text-align: left; font: inherit; color: inherit; cursor: pointer; border: 0;
+  background: rgba(255,255,255,.55); border-radius: 22px; padding: 18px 20px 18px 18px;
+  display: grid; grid-template-columns: 52px 1fr; gap: 14px; align-items: start;
+  transition: background .2s, box-shadow .2s, transform .2s;
+}
+.pick:hover { background: rgba(255,255,255,.8); }
+.pick[aria-pressed="true"] { background: #fff; box-shadow: 0 10px 30px rgba(16,24,40,.10); transform: translateX(6px); }
+.pick .num { width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; font-size: 22px; font-weight: 700; background: var(--ink); color: #fff; }
+.pick[aria-pressed="true"] .num { background: var(--pc, var(--ink)); }
+.pick h3 { font-size: 20px; font-weight: 700; letter-spacing: -0.4px; }
+.pick p { font-size: 14.5px; color: #3C4450; line-height: 1.45; margin-top: 4px; }
+.pick .meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.pick .meta span { font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 999px; background: var(--field); color: #3C4450; }
+.pick .meta span.yes { background: var(--att-t); color: var(--att); }
+.pick .meta span.no { background: var(--amb-t); color: var(--amb); }
+.stage .hint { text-align: center; font-size: 13px; color: #6B6A63; margin-top: 14px; }
+
+.row-head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 16px; margin: 80px 0 22px; }
+.row-head h2 { font-size: 30px; font-weight: 700; letter-spacing: -0.8px; }
+.row-head p { color: #3C4450; font-size: 15px; margin-top: 6px; max-width: 620px; line-height: 1.45; }
+.seg { display: inline-flex; background: rgba(255,255,255,.6); border-radius: 999px; padding: 4px; gap: 2px; flex-wrap: wrap; }
+.seg button { font: inherit; font-size: 14px; font-weight: 600; border: 0; background: transparent; color: #3C4450; height: 36px; padding: 0 14px; border-radius: 999px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+.strip { display: flex; gap: 28px; overflow-x: auto; padding: 4px 4px 24px; scrollbar-width: thin; }
+.strip figure { flex: none; width: 392px; }
+.strip figcaption { margin-bottom: 12px; display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 700; letter-spacing: -0.2px; }
+.strip figcaption i { font-style: normal; width: 28px; height: 28px; border-radius: 9px; background: var(--ink); color: #fff; display: grid; place-items: center; font-size: 14px; }
+
+.take { margin-top: 64px; background: var(--ink); color: #fff; border-radius: 28px; padding: 30px 32px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 28px; }
+.take h2 { font-size: 26px; font-weight: 700; letter-spacing: -0.6px; line-height: 1.1; }
+.take p, .take li { font-size: 15px; line-height: 1.5; color: rgba(255,255,255,.78); }
+.take b { color: #fff; font-weight: 600; }
+.take ul { padding-left: 18px; } .take li + li { margin-top: 6px; }
+
+/* ---------- Phone ---------- */
+.phone {
+  position: relative; width: 392px; height: 780px; border-radius: 40px; overflow: hidden;
+  background: var(--bg, var(--canvas)); isolation: isolate;
+  box-shadow: 0 0 0 8px #14171E, 0 0 0 9px #2A2F3A, 0 30px 60px rgba(16,24,40,.28);
+  transition: background .35s;
+}
+.stage .phone { width: 400px; height: 820px; max-width: calc(100vw - 48px); }
+.scr { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
+.scr::-webkit-scrollbar { display: none; }
+.content { position: relative; z-index: 1; padding-bottom: 130px; animation: in .35s ease; }
+@keyframes in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.status { height: 34px; padding: 0 26px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 600; }
+.status i { width: 42px; height: 9px; border-radius: 999px; background: var(--ink); opacity: .7; }
+.band { position: absolute; left: 0; right: 0; top: 0; height: 330px; background: linear-gradient(180deg, var(--bt, #DDF0E5), rgba(243,244,248,0)); }
+.band::before { content: ""; position: absolute; right: -70px; top: -90px; width: 260px; height: 260px; border-radius: 999px; background: radial-gradient(circle, rgba(255,255,255,.75), rgba(255,255,255,0) 70%); }
+.shell { padding: 6px 20px 0; display: flex; align-items: center; gap: 8px; }
+.menu { width: 44px; height: 44px; border-radius: 999px; background: #fff; border: 1px solid var(--hair); display: grid; place-items: center; }
+.menu b { width: 16px; height: 2px; background: var(--ink); border-radius: 2px; box-shadow: 0 -5px 0 var(--ink), 0 5px 0 var(--ink); }
+.ctx { height: 34px; padding: 0 12px; border-radius: 999px; background: rgba(255,255,255,.85); display: inline-flex; align-items: center; font-size: 13px; font-weight: 600; }
+.avt { margin-left: auto; width: 40px; height: 40px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 14px; font-weight: 700; display: grid; place-items: center; }
+.hello { padding: 18px 20px 0; }
+.hello .d { font-size: 13px; font-weight: 600; color: var(--muted); }
+.hello h2 { margin-top: 2px; font-size: 30px; font-weight: 700; letter-spacing: -0.8px; line-height: 1.08; }
+.title { padding: 10px 20px 4px; display: flex; align-items: center; gap: 10px; }
+.title h2 { font-size: 30px; font-weight: 700; letter-spacing: -0.8px; }
+.title .sub { font-size: 13px; font-weight: 600; color: var(--muted); }
+.title .act { margin-left: auto; width: 42px; height: 42px; border-radius: 999px; display: grid; place-items: center; font-size: 24px; font-weight: 500; }
+.pad { padding: 0 16px; }
+.sec { margin: 24px 20px 10px; font-size: 19px; font-weight: 700; letter-spacing: -0.4px; display: flex; align-items: center; }
+.sec span { margin-left: auto; font-size: 13px; color: var(--muted); font-weight: 600; letter-spacing: 0; }
+.card { background: #fff; border-radius: 24px; box-shadow: var(--shadow); }
+.cp { padding: 16px; }
+.k { font-size: 13px; font-weight: 600; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.ic { width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; flex: none; }
+.ic svg.g { width: 18px; height: 18px; }
+.fig { font-size: 36px; font-weight: 700; letter-spacing: -1px; line-height: 1; margin-top: 12px; }
+.fig small { font-size: 16px; font-weight: 600; color: var(--muted); letter-spacing: 0; }
+.cap { margin-top: 8px; font-size: 13px; color: var(--muted); }
+.cap b { color: var(--ink); font-weight: 600; }
+.prog { margin-top: 12px; height: 7px; border-radius: 999px; background: var(--field); overflow: hidden; }
+.prog i { display: block; height: 100%; border-radius: 999px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tile { background: #fff; border-radius: 22px; box-shadow: var(--shadow); padding: 14px; min-height: 120px; display: flex; flex-direction: column; }
+.tile .fig { margin-top: auto; font-size: 28px; }
+.tile .cap { margin-top: 4px; }
+.rl .r { display: flex; align-items: center; gap: 12px; padding: 12px 16px; position: relative; }
+.rl .r + .r::before { content: ""; position: absolute; top: 0; left: 68px; right: 16px; height: 1px; background: var(--hair); }
+.rl .ic { width: 40px; height: 40px; border-radius: 13px; }
+.rl .t { font-size: 15px; font-weight: 600; flex: 1; min-width: 0; }
+.rl .t small { display: block; font-size: 13px; font-weight: 500; color: var(--muted); margin-top: 2px; }
+.rl .v { font-size: 15px; font-weight: 700; text-align: right; }
+.pill { height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; white-space: nowrap; }
+.chips { display: flex; gap: 8px; padding: 10px 16px 4px; overflow: hidden; }
+.chip { height: 36px; padding: 0 14px; border-radius: 999px; background: #fff; box-shadow: var(--shadow); font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; white-space: nowrap; }
+.chip.on { background: var(--ink); color: #fff; }
+.search { margin: 8px 16px 6px; height: 46px; border-radius: 16px; background: var(--field); color: var(--muted); font-size: 15px; display: flex; align-items: center; padding: 0 16px; }
+.person { display: flex; align-items: center; gap: 12px; padding: 11px 20px; position: relative; }
+.person + .person::before { content: ""; position: absolute; top: 0; left: 72px; right: 0; height: 1px; background: var(--hair); }
+.person .ph { width: 42px; height: 42px; border-radius: 999px; display: grid; place-items: center; font-size: 14px; font-weight: 700; flex: none; }
+.person .t { flex: 1; min-width: 0; font-size: 15.5px; font-weight: 600; }
+.person .t small { display: block; font-size: 13px; color: var(--muted); font-weight: 500; margin-top: 1px; }
+.pa { display: flex; gap: 6px; }
+.pa i { font-style: normal; width: 38px; height: 34px; border-radius: 11px; display: grid; place-items: center; font-size: 14px; font-weight: 700; background: var(--field); color: var(--muted); }
+.pa i.p { background: var(--att); color: #fff; }
+.pa i.a { background: var(--red); color: #fff; }
+.save {
+  position: absolute; left: 16px; right: 16px; bottom: 100px; z-index: 15; height: 54px; border-radius: 999px;
+  background: var(--att); color: #fff; font-size: 16px; font-weight: 600; display: grid; place-items: center;
+  box-shadow: 0 10px 24px rgba(15,122,68,.32); transition: transform .35s var(--spring), opacity .25s;
+}
+.phone:not([data-tab="attendance"]) .save { opacity: 0; pointer-events: none; transform: translateY(20px); }
+.phone.compact .save { transform: translateY(16px); }
+.hwc { padding: 16px; }
+.hwc .tag { display: inline-flex; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600; align-items: center; background: var(--hw-t); color: var(--hw); }
+.hwc h4 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; margin-top: 10px; }
+.hwc .cap { margin-top: 4px; }
+.show { border-radius: 24px; padding: 16px; min-height: 150px; display: flex; flex-direction: column; color: #fff; position: relative; overflow: hidden; }
+.show h4 { font-size: 20px; font-weight: 700; letter-spacing: -0.4px; margin-top: auto; }
+.show p { font-size: 13px; opacity: .85; margin-top: 2px; }
+.show .ic { background: rgba(255,255,255,.2); color: #fff; }
+.show::after { content: ""; position: absolute; right: -30px; top: -30px; width: 110px; height: 110px; border-radius: 999px; background: rgba(255,255,255,.12); }
+.gesture { position: absolute; bottom: 7px; left: 50%; width: 124px; height: 5px; margin-left: -62px; border-radius: 5px; background: rgba(16,24,40,.32); z-index: 40; pointer-events: none; }
+.c-night .gesture { background: rgba(16,24,40,.4); }
+
+/* ---------- Tab bar: shared ---------- */
+.floor { position: absolute; left: 0; right: 0; bottom: 0; height: 190px; z-index: 10; pointer-events: none; opacity: 0; transition: opacity .3s; }
+.bar {
+  position: absolute; left: 14px; right: 14px; bottom: 22px; height: 66px; z-index: 20;
+  border-radius: 999px; padding: 6px; display: flex; gap: 2px;
+  transition: left .45s var(--spring), right .45s var(--spring), box-shadow .35s, background .35s;
+}
+.ind { position: absolute; top: 6px; bottom: 6px; left: 6px; width: 50px; border-radius: 999px; z-index: 0;
+  transition: left .45s var(--spring), width .45s var(--spring), background .35s, box-shadow .35s; }
+.tab {
+  flex: 1 1 0; min-width: 0; position: relative; z-index: 1; border-radius: 999px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  font-size: 11px; font-weight: 600; letter-spacing: -0.2px; white-space: nowrap; color: var(--off);
+  transition: color .3s, opacity .25s;
+}
+.tab .l { transition: font-size .3s; }
+.tab.on { color: var(--on); flex-grow: 1.4; }
+
+.tab svg { transition: transform .35s var(--spring), filter .3s; }
+.tab:active svg { transform: scale(.86); }
+
+
+
+/* ---------- Smoked glass, every detail on a variable ---------- */
+.c-tune {
+  --t1: 28,34,48; --t2: 10,14,22; --op1: .74; --op2: .84; --angle: 180deg; --blur: 22px; --sat: 1.9;
+  --hl: .22; --base: .25; --rim: .08; --gloss: 0; --sh: .38; --shy: 16px;
+  --p1: .30; --p2: .10; --phl: .45; --prim: .14; --pdrop: .25; --glow: .35; --offa: .60; --onlbl: 1;
+}
+.c-tune .bar {
+  background: linear-gradient(var(--angle), rgba(var(--t1), var(--op1)), rgba(var(--t2), var(--op2)));
+  backdrop-filter: blur(var(--blur)) saturate(var(--sat)); -webkit-backdrop-filter: blur(var(--blur)) saturate(var(--sat));
+  --off: rgba(255,255,255,var(--offa)); --on: rgba(255,255,255,var(--onlbl));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,var(--hl)), inset 0 -1px 0 rgba(0,0,0,var(--base)), inset 0 0 0 1px rgba(255,255,255,var(--rim)),
+              0 var(--shy) calc(var(--shy) * 2.1) -6px rgba(10,14,21,var(--sh));
+}
+.c-tune .bar::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,255,255,var(--gloss)) 0%, rgba(255,255,255,0) 52%);
+}
+.c-tune .ind {
+  background: linear-gradient(180deg, rgba(255,255,255,var(--p1)), rgba(255,255,255,var(--p2)));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,var(--phl)), inset 0 0 0 1px rgba(255,255,255,var(--prim)), 0 4px 10px rgba(0,0,0,var(--pdrop));
+}
+.c-tune .tab.on svg { filter: drop-shadow(0 0 6px rgba(255,255,255,var(--glow))); }
+
+/* ---------- Tuning panel ---------- */
+.panel { background: rgba(255,255,255,.72); border-radius: 26px; padding: 22px 22px 18px; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
+.presets button { font: inherit; font-size: 13px; font-weight: 600; height: 34px; padding: 0 13px; border-radius: 999px; border: 0; background: #fff; color: var(--ink); cursor: pointer; box-shadow: 0 1px 2px rgba(16,24,40,.06); }
+.presets button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+.groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 18px 26px; }
+.group h3 { font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #6B6A63; margin-bottom: 8px; }
+.ctl { display: grid; grid-template-columns: 112px 1fr 46px; align-items: center; gap: 10px; min-height: 34px; font-size: 14px; }
+.ctl label { font-weight: 600; color: #2B323C; }
+.ctl output { font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--muted); text-align: right; }
+.ctl input[type=range] { width: 100%; accent-color: #1D2331; }
+.ctl input[type=color] { width: 100%; height: 30px; border: 0; padding: 0; background: none; cursor: pointer; }
+.ctl.changed label::after { content: " •"; color: #C4520A; }
+.out { margin-top: 18px; display: flex; gap: 10px; align-items: stretch; }
+.out pre { flex: 1; min-width: 0; background: #0E131C; color: #D7DEE9; border-radius: 16px; padding: 14px 16px; font: 12px/1.55 ui-monospace, Consolas, monospace; overflow-x: auto; white-space: pre; }
+.out .btns { display: flex; flex-direction: column; gap: 8px; }
+.out button { font: inherit; font-size: 13px; font-weight: 600; border: 0; border-radius: 12px; padding: 10px 14px; cursor: pointer; background: var(--ink); color: #fff; white-space: nowrap; }
+.out button.ghost { background: #fff; color: var(--ink); }
+.strip figure { cursor: pointer; }
+.strip figcaption .use { margin-left: auto; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.strip figure:hover figcaption .use { color: var(--ink); }
+
+.phone.compact .bar { left: calc(50% - 82px); right: calc(50% - 82px); }
+.phone.compact .tab:not(.on) { flex: 0 0 0; opacity: 0; pointer-events: none; overflow: hidden; }
+.phone.compact .tab.on { flex-direction: row; gap: 8px; }
+.phone.compact .tab.on .l { font-size: 14px; }
+.phone.compact .ind { left: 6px !important; width: calc(100% - 12px) !important; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="home" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></symbol>
+  <symbol id="attendance" viewBox="0 0 24 24"><path d="M22 7h-9v2h9V7zm0 8h-9v2h9v-2zM5.54 11 2 7.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L5.54 11zm0 8L2 15.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L5.54 19z"/></symbol>
+  <symbol id="students" viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></symbol>
+  <symbol id="homework" viewBox="0 0 24 24"><path d="M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z"/></symbol>
+  <symbol id="fees" viewBox="0 0 24 24"><path d="M13.66 7c-.56-1.18-1.76-2-3.16-2H6V3h12v2h-3.26c.48.58.84 1.26 1.05 2H18v2h-2.02c-.25 2.8-2.61 5-5.48 5h-.73l6.73 7h-2.77L7 14v-2h3.5c1.76 0 3.22-1.3 3.46-3H6V7h7.66z"/></symbol>
+  <symbol id="more" viewBox="0 0 24 24"><path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></symbol>
+  <symbol id="exam" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14H7v-2h3v2zm0-4H7v-2h3v2zm0-4H7V7h3v2zm7 8h-5v-2h5v2zm0-4h-5v-2h5v2zm0-4h-5V7h5v2z"/></symbol>
+  <symbol id="warn" viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></symbol>
+</svg>
+
+<div class="wrap">
+  <div class="kicker">Staff app · bottom navigation · v6</div>
+  <h1>Smoked glass, fine tuning</h1>
+  <p class="lede">The original Smoked glass bar with every detail on a slider: the two colours of the gradient and how see-through each is, its direction, the blur, the edges, the shadow and the selected pill. Start from a preset or from the original, move anything, and the phone updates live. Changed sliders get a dot. When it looks right, <b>copy the values</b> and send them to me.</p>
+
+  <section class="hero">
+    <div class="panel" id="panel"></div>
+    <div class="stage">
+      <div id="hero"></div>
+      <div class="hint">Tap the tabs · scroll the screen</div>
+      <div style="text-align:center;margin-top:12px"><div class="seg" id="fold"><button data-f="off" aria-pressed="true">Bar stays</button><button data-f="on" aria-pressed="false">Bar folds while scrolling</button></div></div>
+    </div>
+  </section>
+
+  <div class="row-head">
+    <div>
+      <h2>The presets, same screen</h2>
+      <p>Small moves away from the original, side by side. Click a phone's title to load it into the panel above and keep tuning from there.</p>
+    </div>
+    <div class="seg" id="screens"></div>
+  </div>
+  <div class="strip" id="strip"></div>
+
+  <section class="take">
+    <div><h2>Where I'd go</h2></div>
+    <div><p>If I had to move only two things: <b>Top colour a touch lighter</b> than today (it reads as glass, not as a hole) and <b>a little gloss</b> on the top half, which catches light like a real pane. That is the "Lit" preset.</p></div>
+    <div><ul>
+      <li><b>Check Matte too:</b> it is what the bar looks like with no blur, which is what a slow Android phone will get. If Matte looks fine, the glass is a bonus, not a risk.</li>
+      <li><b>Keep top opacity above about 0.65</b> on the Students screen, or the white list starts to wash the bar out.</li>
+      <li><b>Everything here maps to the app:</b> the gradient to <code>expo-linear-gradient</code>, the blur to <code>expo-blur</code>, the edges to <code>boxShadow</code>.</li>
+    </ul></div>
+  </section>
+</div>
+
+<script>
+const AREAS = {
+  home:       { label: "Home",       a: "#101828" },
+  attendance: { label: "Attendance", a: "#0F7A44" },
+  students:   { label: "Students",   a: "#0E7490" },
+  homework:   { label: "Homework",   a: "#6941C6" },
+  fees:       { label: "Fees",       a: "#1D63C7" },
+  more:       { label: "More",       a: "#475467" },
+};
+const ORDER = Object.keys(AREAS);
+
+const GROUPS = ["Glass", "Edges and shadow", "Selected tab"];
+const CONTROLS = [
+  { g: "Glass", k: "t1", label: "Top colour", type: "color" },
+  { g: "Glass", k: "t2", label: "Bottom colour", type: "color" },
+  { g: "Glass", k: "op1", label: "Top opacity", min: .3, max: 1, step: .01 },
+  { g: "Glass", k: "op2", label: "Bottom opacity", min: .3, max: 1, step: .01 },
+  { g: "Glass", k: "angle", label: "Direction", min: 90, max: 270, step: 5, unit: "deg" },
+  { g: "Glass", k: "blur", label: "Blur", min: 0, max: 40, step: 1, unit: "px" },
+  { g: "Glass", k: "sat", label: "Saturation", min: 1, max: 2.6, step: .05 },
+  { g: "Edges and shadow", k: "hl", label: "Top light", min: 0, max: .7, step: .01 },
+  { g: "Edges and shadow", k: "base", label: "Bottom shade", min: 0, max: .5, step: .01 },
+  { g: "Edges and shadow", k: "rim", label: "Rim", min: 0, max: .3, step: .01 },
+  { g: "Edges and shadow", k: "gloss", label: "Gloss", min: 0, max: .3, step: .01 },
+  { g: "Edges and shadow", k: "sh", label: "Shadow", min: 0, max: .7, step: .01 },
+  { g: "Edges and shadow", k: "shy", label: "Shadow depth", min: 4, max: 30, step: 1, unit: "px" },
+  { g: "Selected tab", k: "p1", label: "Pill top", min: 0, max: .7, step: .01 },
+  { g: "Selected tab", k: "p2", label: "Pill bottom", min: 0, max: .5, step: .01 },
+  { g: "Selected tab", k: "phl", label: "Pill top edge", min: 0, max: .9, step: .01 },
+  { g: "Selected tab", k: "prim", label: "Pill rim", min: 0, max: .4, step: .01 },
+  { g: "Selected tab", k: "pdrop", label: "Pill shadow", min: 0, max: .6, step: .01 },
+  { g: "Selected tab", k: "glow", label: "Icon glow", min: 0, max: .9, step: .01 },
+  { g: "Selected tab", k: "offa", label: "Other icons", min: .3, max: .95, step: .01 },
+];
+// The original Smoked glass, exactly as v4/v5 drew it.
+const DEFAULTS = {
+  t1: "#1c2230", t2: "#0a0e16", op1: .74, op2: .84, angle: 180, blur: 22, sat: 1.9,
+  hl: .22, base: .25, rim: .08, gloss: 0, sh: .38, shy: 16,
+  p1: .30, p2: .10, phl: .45, prim: .14, pdrop: .25, glow: .35, offa: .60,
+};
+const PRESETS = [
+  { n: "Original", v: {} },
+  { n: "Lit", v: { t1: "#262d3d", gloss: .10, hl: .32, p1: .34 } },
+  { n: "Deeper", v: { op1: .86, op2: .94, hl: .16, rim: .06, sh: .45 } },
+  { n: "Airy", v: { op1: .58, op2: .72, blur: 30, sat: 2.2, hl: .30, rim: .12 } },
+  { n: "Graphite", v: { t1: "#2a2d33", t2: "#0e0f12" } },
+  { n: "Ink blue", v: { t1: "#1c2640", t2: "#0a1022" } },
+  { n: "Side light", v: { angle: 135, t1: "#323a4c", t2: "#080b11", hl: .28 } },
+  { n: "Soft pill", v: { p1: .20, p2: .14, phl: .30, prim: .20, pdrop: .12, glow: .20 } },
+  { n: "Matte (no blur)", v: { op1: .94, op2: .96, blur: 0, sat: 1, hl: .14, rim: .06 } },
+];
+
+const ic = (id, c, t) => `<div class="ic" style="background:${t};color:${c}"><svg class="g"><use href="#${id}"/></svg></div>`;
+const kids = ["Aditi Sharma","Aarav Mehta","Diya Patel","Ishaan Roy","Kabir Singh","Meera Nair","Neha Gupta","Rohan Das","Sara Khan","Tanvi Rao","Vivaan Joshi","Zoya Ali","Arjun Bose","Kavya Iyer"];
+const ini = (n) => n.split(" ").map(w => w[0]).join("");
+
+const SCREENS = {
+  home: { bg: "#F3F4F8", html: `
+    <div class="band"></div><div class="content">
+      <div class="status"><span>9:41</span><i></i></div>
+      <div class="shell"><div class="menu"><b></b></div><div class="ctx">Main campus · 2026-27</div><div class="avt">DS</div></div>
+      <div class="hello"><div class="d">Monday, 16 November</div><h2>Good morning,<br>Deepa</h2></div>
+      <div class="pad" style="margin-top:18px"><div class="card cp">
+        <div class="k">${ic("attendance","var(--att)","var(--att-t)")}School today</div>
+        <div class="fig tnum">417 <small>/ 448 present</small></div>
+        <div class="prog"><i style="width:93%;background:var(--att)"></i></div>
+        <div class="cap"><b>12 sections</b> marked · 2 not yet</div></div></div>
+      <div class="sec">Today</div>
+      <div class="pad grid2">
+        <div class="tile"><div class="k">${ic("fees","var(--fee)","var(--fee-t)")}Collected</div><div class="fig tnum">₹42,300</div><div class="cap">18 receipts</div></div>
+        <div class="tile"><div class="k">${ic("homework","var(--hw)","var(--hw-t)")}To check</div><div class="fig tnum">6</div><div class="cap">homework sets</div></div>
+        <div class="tile"><div class="k">${ic("exam","var(--ex)","var(--ex-t)")}Marks due</div><div class="fig tnum">3</div><div class="cap">classes, Term 1</div></div>
+        <div class="tile"><div class="k">${ic("students","var(--stu)","var(--stu-t)")}Admitted</div><div class="fig tnum">4</div><div class="cap">this week</div></div>
+      </div>
+      <div class="sec">Needs you <span>3</span></div>
+      <div class="pad"><div class="card rl">
+        <div class="r">${ic("warn","var(--amb)","var(--amb-t)")}<div class="t">Class 7 B not marked<small>Mrs. Kapoor · since 9:10</small></div></div>
+        <div class="r">${ic("fees","var(--fee)","var(--fee-t)")}<div class="t">31 fees overdue<small>₹1,86,400 in total</small></div></div>
+        <div class="r">${ic("exam","var(--ex)","var(--ex-t)")}<div class="t">Half-yearly in 12 days<small>2 classes missing a paper date</small></div></div>
+      </div></div>
+    </div>` },
+  attendance: { bg: "#F3F4F8", html: `
+    <div class="content">
+      <div class="status"><span>9:41</span><i></i></div>
+      <div class="title"><div><div class="sub">Mon, 16 Nov</div><h2>Attendance</h2></div></div>
+      <div class="chips"><span class="chip on">6 A</span><span class="chip">6 B</span><span class="chip">7 A</span><span class="chip">7 B</span></div>
+      <div class="pad" style="margin-top:10px"><div class="card cp" style="display:flex;gap:18px">
+        <div><div class="fig tnum" style="margin:0;color:var(--att)">36</div><div class="cap" style="margin-top:4px">present</div></div>
+        <div><div class="fig tnum" style="margin:0;color:var(--red)">2</div><div class="cap" style="margin-top:4px">absent</div></div>
+        <div><div class="fig tnum" style="margin:0;color:var(--muted)">0</div><div class="cap" style="margin-top:4px">on leave</div></div>
+      </div></div>
+      <div class="pad" style="margin-top:12px"><div class="card" style="padding:4px 0">
+        ${kids.map((n, i) => `<div class="person"><div class="ph" style="background:var(--att-t);color:var(--att)">${ini(n)}</div><div class="t">${n}<small>Roll ${i + 1}</small></div><div class="pa"><i class="${i === 3 || i === 9 ? "" : "p"}">P</i><i class="${i === 3 || i === 9 ? "a" : ""}">A</i></div></div>`).join("")}
+      </div></div>
+    </div>` },
+  students: { bg: "#FFFFFF", html: `
+    <div class="content">
+      <div class="status"><span>9:41</span><i></i></div>
+      <div class="title"><div><div class="sub">Class 6 A · 38 students</div><h2>Students</h2></div><div class="act" style="background:var(--stu-t);color:var(--stu)">+</div></div>
+      <div class="search">Search name, roll or admission no.</div>
+      ${kids.map((n, i) => `<div class="person"><div class="ph" style="background:var(--stu-t);color:var(--stu)">${ini(n)}</div><div class="t">${n}<small>Roll ${i + 1} · DEMO-00${String(i + 1).padStart(2, "0")}</small></div>${i % 4 === 1 ? '<span class="pill" style="background:var(--amb-t);color:var(--amb)">Fees due</span>' : ""}</div>`).join("")}
+    </div>` },
+  homework: { bg: "#F3F4F8", html: `
+    <div class="content">
+      <div class="status"><span>9:41</span><i></i></div>
+      <div class="title"><div><div class="sub">This week</div><h2>Homework</h2></div><div class="act" style="background:var(--hw-t);color:var(--hw)">+</div></div>
+      <div class="chips"><span class="chip on">To check · 6</span><span class="chip">Set</span><span class="chip">Done</span></div>
+      ${[["Maths · 6 A","Fractions worksheet","Due today",24],["Science · 7 B","Label the plant cell","Due tomorrow",11],["English · 6 B","Letter to the editor","Due Wed",30],["Maths · 7 A","Ratio word problems","Due Thu",5],["Hindi · 6 A","कविता याद करो","Due Fri",0]]
+        .map(([t, h, d, s]) => `<div class="pad" style="margin-top:12px"><div class="card hwc"><span class="tag">${t}</span><h4>${h}</h4><div class="cap">${d} · <b class="tnum">${s} / 38</b> handed in</div><div class="prog"><i style="width:${s / 38 * 100}%;background:var(--hw)"></i></div></div></div>`).join("")}
+    </div>` },
+  fees: { bg: "#F3F4F8", html: `
+    <div class="content">
+      <div class="status"><span>9:41</span><i></i></div>
+      <div class="title"><div><div class="sub">November</div><h2>Fees</h2></div><div class="act" style="background:var(--fee-t);color:var(--fee)">+</div></div>
+      <div class="pad" style="margin-top:8px"><div class="card cp">
+        <div class="k">${ic("fees","var(--fee)","var(--fee-t)")}Collected this month</div>
+        <div class="fig tnum">₹3,42,000</div>
+        <div class="prog"><i style="width:68%;background:var(--fee)"></i></div>
+        <div class="cap"><b>68%</b> of ₹5,03,000 due</div></div></div>
+      <div class="sec">Overdue <span>31</span></div>
+      <div class="pad"><div class="card rl">
+        ${kids.slice(0, 9).map((n, i) => `<div class="r"><div class="ph" style="width:40px;height:40px;border-radius:999px;display:grid;place-items:center;font-size:14px;font-weight:700;background:var(--fee-t);color:var(--fee);flex:none">${ini(n)}</div><div class="t">${n}<small>Class ${6 + (i % 3)} A · ${1 + (i % 3)} months</small></div><div class="v tnum">₹${(4200 * (1 + (i % 3))).toLocaleString("en-IN")}</div></div>`).join("")}
+      </div></div>
+    </div>` },
+  more: { bg: "#F3F4F8", html: `
+    <div class="content">
+      <div class="status"><span>9:41</span><i></i></div>
+      <div class="title"><div><div class="sub">Main campus · 2026-27</div><h2>More</h2></div></div>
+      <div class="pad grid2" style="margin-top:10px">
+        <div class="show" style="background:var(--ex)">${ic("exam","","")}<h4>Exams</h4><p>Half-yearly in 12 days</p></div>
+        <div class="show" style="background:var(--stu)">${ic("homework","","")}<h4>Academics</h4><p>14 classes · 9 subjects</p></div>
+        <div class="show" style="background:var(--tea)">${ic("students","","")}<h4>Staff</h4><p>42 people</p></div>
+        <div class="show" style="background:var(--fee)">${ic("home","","")}<h4>School</h4><p>2 campuses</p></div>
+      </div>
+      <div class="pad" style="margin-top:12px"><div class="card rl">
+        <div class="r">${ic("attendance","var(--slate)","var(--slate-t)")}<div class="t">Timetable<small>Coming soon</small></div></div>
+        <div class="r">${ic("fees","var(--slate)","var(--slate-t)")}<div class="t">Fee structures<small>6 heads</small></div></div>
+        <div class="r">${ic("exam","var(--slate)","var(--slate-t)")}<div class="t">Grading scales<small>CBSE 9-point</small></div></div>
+      </div></div>
+    </div>` },
+};
+
+function phone(concept, tab) {
+  const el = document.createElement("div");
+  el.className = `phone c-${concept}`;
+  el.innerHTML = `<div class="scr"></div><div class="floor"></div><div class="save">Save · 36 present</div>
+    <div class="bar" role="tablist"><div class="ind"></div>${ORDER.map(t =>
+      `<div class="tab" role="tab" data-t="${t}"><svg class="g"><use href="#${t}"/></svg><span class="l">${AREAS[t].label}</span></div>`).join("")}</div>
+    <div class="gesture"></div>`;
+  const scr = el.querySelector(".scr");
+  let last = 0;
+  scr.addEventListener("scroll", () => {
+    if (document.body.dataset.fold !== "on") return;
+    const y = scr.scrollTop;
+    if (y > 40 && y > last + 4) el.classList.add("compact");
+    else if (y < last - 4 || y < 20) el.classList.remove("compact");
+    last = y;
+  });
+  el.querySelector(".bar").addEventListener("click", (e) => {
+    const t = e.target.closest(".tab"); if (!t) return;
+    if (el.classList.contains("compact")) { el.classList.remove("compact"); return; }
+    go(el, t.dataset.t);
+  });
+  el._concept = concept;
+  go(el, tab, true);
+  return el;
+}
+
+function go(el, tab, first) {
+  const s = SCREENS[tab];
+  el.dataset.tab = tab;
+  el.style.setProperty("--a", AREAS[tab].a);
+  el.style.setProperty("--bg", s.bg);
+  const scr = el.querySelector(".scr");
+  scr.innerHTML = s.html; scr.scrollTop = 0; el.classList.remove("compact");
+  for (const t of el.querySelectorAll(".tab")) t.classList.toggle("on", t.dataset.t === tab);
+  place(el, first);
+}
+
+function place(el, instant) {
+  const ind = el.querySelector(".ind");
+  const on = el.querySelector(".tab.on");
+  if (!on) return;
+  const L = on.offsetLeft, W = on.offsetWidth;
+  clearTimeout(ind._t);
+  if (instant) {
+    ind.style.transition = "none";
+    ind.style.left = L + "px"; ind.style.width = W + "px";
+    requestAnimationFrame(() => (ind.style.transition = ""));
+    return;
+  }
+  // Liquid travel: the pill first stretches over both tabs, then lets go of the old one.
+  const cl = parseFloat(ind.style.left) || L, cw = parseFloat(ind.style.width) || W;
+  const a = Math.min(cl, L), b = Math.max(cl + cw, L + W);
+  ind.style.transition = "left .2s cubic-bezier(.3,0,.2,1), width .2s cubic-bezier(.3,0,.2,1), background .35s";
+  ind.style.left = a + "px"; ind.style.width = (b - a) + "px";
+  ind._t = setTimeout(() => {
+    ind.style.transition = "";
+    ind.style.left = L + "px"; ind.style.width = W + "px";
+  }, 190);
+}
+
+function setConcept(el, concept) {
+  el.classList.remove(`c-${el._concept}`, "compact");
+  el.classList.add(`c-${concept}`);
+  el._concept = concept;
+  place(el, true);
+}
+
+// Hero
+let heroPhone = phone("tune", "home");
+document.getElementById("fold").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  document.body.dataset.fold = b.dataset.f;
+  for (const x of e.currentTarget.children) x.setAttribute("aria-pressed", x === b);
+  for (const p of document.querySelectorAll(".phone")) p.classList.remove("compact");
+});
+document.getElementById("hero").appendChild(heroPhone);
+// ---------- Tuning ----------
+const hex = (rgb) => "#" + rgb.split(",").map(n => (+n).toString(16).padStart(2, "0")).join("");
+const rgb = (h) => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)).join(",");
+function apply(el, v) {
+  for (const c of CONTROLS) {
+    const val = v[c.k];
+    el.style.setProperty(`--${c.k}`, c.type === "color" ? rgb(val) : val + (c.unit || ""));
+  }
+}
+
+const panel = document.getElementById("panel");
+let current = { ...DEFAULTS };
+let activePreset = "Original";
+panel.innerHTML = `
+  <div class="presets" id="presets">${PRESETS.map(p => `<button data-p="${p.n}" aria-pressed="${p.n === activePreset}">${p.n}</button>`).join("")}</div>
+  <div class="groups">${GROUPS.map(g => `<div class="group"><h3>${g}</h3>${CONTROLS.filter(c => c.g === g).map(c => `
+    <div class="ctl" data-k="${c.k}"><label for="in-${c.k}">${c.label}</label>
+      ${c.type === "color"
+        ? `<input id="in-${c.k}" type="color">`
+        : `<input id="in-${c.k}" type="range" min="${c.min}" max="${c.max}" step="${c.step}">`}
+      <output></output></div>`).join("")}</div>`).join("")}</div>
+  <div class="out"><pre id="code"></pre><div class="btns"><button id="copy">Copy values</button><button class="ghost" id="reset">Back to original</button></div></div>`;
+
+function sync() {
+  for (const c of CONTROLS) {
+    const row = panel.querySelector(`.ctl[data-k="${c.k}"]`);
+    row.querySelector("input").value = current[c.k];
+    row.querySelector("output").textContent = c.type === "color" ? current[c.k].toUpperCase() : current[c.k] + (c.unit || "");
+    row.classList.toggle("changed", String(current[c.k]).toLowerCase() !== String(DEFAULTS[c.k]).toLowerCase());
+  }
+  for (const b of panel.querySelectorAll("#presets button")) b.setAttribute("aria-pressed", b.dataset.p === activePreset);
+  apply(heroPhone, current);
+  const a = (n) => Number(n).toFixed(2).replace(/0$/, "");
+  const [r1, g1, b1] = rgb(current.t1).split(","), [r2, g2, b2] = rgb(current.t2).split(",");
+  document.getElementById("code").textContent =
+`// Tab bar, smoked glass${activePreset ? ` (from "${activePreset}")` : ""}
+glass: {
+  top:    "rgba(${r1}, ${g1}, ${b1}, ${a(current.op1)})",
+  bottom: "rgba(${r2}, ${g2}, ${b2}, ${a(current.op2)})",
+  angle: ${current.angle}, blur: ${current.blur}, saturation: ${current.sat},
+},
+edges: { topLight: ${current.hl}, bottomShade: ${current.base}, rim: ${current.rim}, gloss: ${current.gloss} },
+shadow: { opacity: ${current.sh}, depth: ${current.shy} },
+pill: { top: ${current.p1}, bottom: ${current.p2}, topEdge: ${current.phl}, rim: ${current.prim}, drop: ${current.pdrop} },
+icons: { unselected: ${current.offa}, selectedGlow: ${current.glow} },`;
+}
+panel.addEventListener("input", (e) => {
+  const row = e.target.closest(".ctl"); if (!row) return;
+  current[row.dataset.k] = e.target.value;
+  activePreset = null;
+  sync();
+});
+function loadPreset(name) {
+  const p = PRESETS.find(x => x.n === name);
+  current = { ...DEFAULTS, ...p.v };
+  activePreset = name;
+  sync();
+}
+panel.querySelector("#presets").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (b) loadPreset(b.dataset.p);
+});
+panel.querySelector("#reset").addEventListener("click", () => loadPreset("Original"));
+panel.querySelector("#copy").addEventListener("click", async (e) => {
+  try { await navigator.clipboard.writeText(document.getElementById("code").textContent); e.target.textContent = "Copied"; }
+  catch { e.target.textContent = "Select and copy"; }
+  setTimeout(() => (e.target.textContent = "Copy values"), 1600);
+});
+sync();
+
+// Strip
+const strip = document.getElementById("strip");
+let stripTab = "students";
+const stripPhones = PRESETS.map((pr, i) => {
+  const f = document.createElement("figure");
+  f.innerHTML = `<figcaption><i>${i + 1}</i>${pr.n}<span class="use">Tune this ↑</span></figcaption>`;
+  f.querySelector("figcaption").addEventListener("click", () => {
+    loadPreset(pr.n);
+    document.getElementById("panel").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  strip.appendChild(f);
+  const p = phone("tune", stripTab);
+  apply(p, { ...DEFAULTS, ...pr.v });
+  f.appendChild(p);
+  return p;
+});
+const seg = document.getElementById("screens");
+seg.innerHTML = ORDER.map(t => `<button data-t="${t}" aria-pressed="${t === stripTab}">${AREAS[t].label}</button>`).join("");
+seg.addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  for (const x of seg.children) x.setAttribute("aria-pressed", x === b);
+  for (const p of stripPhones) go(p, b.dataset.t);
+});
+
+// Fonts change label widths; re-measure once they land.
+document.fonts && document.fonts.ready.then(() => {
+  for (const p of [heroPhone, ...stripPhones]) place(p, true);
+});
+// Steps aside animates the bar's width; keep the pill in step after it settles.
+document.addEventListener("transitionend", (e) => {
+  if (e.target.classList && e.target.classList.contains("bar")) place(e.target.closest(".phone"));
+});
+</script>
+</body>
+</html>

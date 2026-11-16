@@ -9,7 +9,7 @@ import { httpBatchLink } from "@trpc/client";
 // from inferRouterOutputs.
 import type { AppRouter } from "@repo/trpc";
 
-import { authClient } from "./auth";
+import { authClient, isWeb } from "./auth";
 import { queryClient } from "./query";
 import { withDeadline, API_MUTATION_TIMEOUT_MS } from "./with-timeout";
 import { env } from "../env";
@@ -20,7 +20,8 @@ export const trpc = createTRPCReact<AppRouter>();
  * tRPC-over-HTTP is the only transport. Auth rides a `Cookie` header built
  * from SecureStore (`await authClient.getCookie()`), NOT
  * `credentials: "include"` — include interferes with the manually-set
- * cookies on native. Wire carries no superjson: timestamps arrive as
+ * cookies on native. On web the browser owns the cookie: no header, and
+ * `credentials: "include"` instead (see isWeb in ./auth). Wire carries no superjson: timestamps arrive as
  * strings, money as decimal strings — identical to web.
  */
 export function TrpcProvider({ children }: { children: ReactNode }) {
@@ -30,7 +31,7 @@ export function TrpcProvider({ children }: { children: ReactNode }) {
         httpBatchLink({
           url: `${env.EXPO_PUBLIC_API_URL}/trpc`,
           async headers() {
-            const cookies = await authClient.getCookie();
+            const cookies = isWeb ? "" : await authClient.getCookie();
             // Queries are GETs and React Query invalidates them on every
             // mutation. The native HTTP layer has a disk cache; without this
             // a refetch is answered from the stored body and the screen keeps
@@ -53,7 +54,7 @@ export function TrpcProvider({ children }: { children: ReactNode }) {
               options?.signal,
               options?.method === "POST" ? API_MUTATION_TIMEOUT_MS : undefined,
             );
-            return fetch(url, { ...options, credentials: "omit", signal }).finally(
+            return fetch(url, { ...options, credentials: isWeb ? "include" : "omit", signal }).finally(
               release,
             );
           },

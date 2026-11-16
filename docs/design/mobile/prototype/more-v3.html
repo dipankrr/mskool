@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>More v3</title>
+<style>
+/* ============================================================
+   More v3 (2026-11-16). Mockup for owner review.
+   More becomes a set of area screens behind a pinned top bar:
+   Overview (the default), Exams, Academics, Staff, School.
+   v2 (more-and-sidebar-v2.html) is kept. Phones are 360 wide.
+   Names and figures are made up.
+   ============================================================ */
+@font-face { font-family: Clash; font-weight: 400; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Regular.ttf); }
+@font-face { font-family: Clash; font-weight: 500; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Medium.ttf); }
+@font-face { font-family: Clash; font-weight: 600; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Semibold.ttf); }
+@font-face { font-family: Clash; font-weight: 700; src: url(../../../../apps/mobile/assets/fonts/ClashGrotesk-Bold.ttf); }
+:root {
+  --canvas: #F3F4F8; --surface: #FFFFFF; --ink: #101828; --muted: #5D6674; --hair: rgba(16,24,40,.07);
+  --chev: #98A2B3; --field: #ECEEF3; --rule: rgba(16,24,40,.08);
+  --att: #0F7A44; --att-t: #E6F4EC;
+  --ex: #C4520A; --ex-t: #FFF0E3;
+  --ac: #5B34B8; --ac-t: #F1ECFD;
+  --st: #0E6E86; --st-t: #E3F5F8;
+  --sc: #1D58B8; --sc-t: #E8F1FD;
+  --sl: #475467; --sl-t: #EEF0F4;
+  --red: #B42318; --red-t: #FEF0EE; --amb: #B54708; --amb-t: #FFF6E0;
+  --shadow: 0 1px 2px rgba(16,24,40,.04), 0 6px 18px rgba(16,24,40,.06);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #DADBD6; color: var(--ink); font-family: Clash, system-ui, sans-serif; font-size: 15px; padding: 32px 16px 80px; }
+svg.i { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; flex: none; display: block; }
+svg.i.s { width: 16px; height: 16px; } svg.i.xs { width: 13px; height: 13px; } svg.i.l { width: 24px; height: 24px; }
+.tnum { font-variant-numeric: tabular-nums; }
+.grow { flex: 1; min-width: 0; }
+.clip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- page ---------- */
+.wrap { max-width: 1600px; margin: 0 auto; }
+.intro h1 { font-size: 34px; font-weight: 700; letter-spacing: -0.8px; }
+.lede { margin-top: 8px; color: #3C4450; max-width: 860px; line-height: 1.5; font-size: 16px; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 22px; }
+.note { background: rgba(255,255,255,.62); border-radius: 18px; padding: 18px 20px; line-height: 1.5; font-size: 14px; color: #2B323C; }
+.note h3 { font-size: 13px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase; color: var(--ink); margin-bottom: 10px; }
+.note ul { padding-left: 18px; } .note li + li { margin-top: 6px; } .note b { font-weight: 600; color: var(--ink); }
+.note table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.note td { padding: 6px 0; border-top: 1px solid var(--hair); vertical-align: top; }
+.note tr:first-child td { border-top: 0; }
+.note td:last-child { text-align: right; white-space: nowrap; padding-left: 12px; font-weight: 600; }
+.ok { color: var(--att); } .new { color: var(--amb); } .unk { color: var(--sl); }
+.frames { display: flex; flex-wrap: wrap; gap: 44px 28px; align-items: flex-start; margin-top: 34px; }
+figure { width: 360px; max-width: 100%; }
+figure .who { margin-bottom: 10px; }
+figure .who b { display: block; font-size: 17px; font-weight: 700; letter-spacing: -0.2px; }
+figure .who span { font-size: 13px; color: #3C4450; }
+figcaption { margin-top: 12px; font-size: 13px; color: #3C4450; line-height: 1.5; }
+figcaption b { font-weight: 600; color: var(--ink); }
+
+/* ---------- phone ---------- */
+.phone { position: relative; width: 360px; height: 780px; max-width: 100%; background: var(--canvas); border-radius: 34px; overflow: hidden; box-shadow: 0 0 0 1px rgba(16,24,40,.1), 0 14px 34px rgba(16,24,40,.12); display: flex; flex-direction: column; }
+.head { position: relative; z-index: 3; flex: none; background: linear-gradient(180deg, var(--band) 0%, var(--band2) 100%); transition: background .35s ease; }
+.status { height: 32px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 600; }
+.status i { width: 40px; height: 8px; border-radius: 999px; background: var(--ink); opacity: .75; }
+
+/* the top bar: area tabs that sit on the band; the chosen one is cut from the page below */
+.tbar { position: relative; }
+.tbar::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: rgba(16,24,40,.08); z-index: 0; }
+.tabs { display: flex; align-items: flex-end; gap: 8px; padding: 8px 20px 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; position: relative; z-index: 1; }
+.tabs::-webkit-scrollbar { display: none; }
+.t { position: relative; flex: none; width: 80px; height: 90px; border-radius: 22px 22px 0 0; background: rgba(255,255,255,.5); border: 1px solid rgba(255,255,255,.95); border-bottom: 0; box-shadow: inset 0 1px 0 #fff; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 7px; padding-bottom: 11px; cursor: pointer; transition: height .25s ease, background .25s ease; font-size: 13px; font-weight: 500; color: #3C4450; letter-spacing: -0.1px; }
+.t.on { height: 100px; background: var(--canvas); border-color: transparent; box-shadow: 0 -6px 18px rgba(16,24,40,.07); color: var(--ink); font-weight: 700; z-index: 2; }
+.t.on::before, .t.on::after { content: ""; position: absolute; bottom: 0; width: 18px; height: 18px; pointer-events: none; }
+.t.on::before { left: -18px; background: radial-gradient(circle at 0 0, transparent 17.5px, var(--canvas) 18px); }
+.t.on::after { right: -18px; background: radial-gradient(circle at 100% 0, transparent 17.5px, var(--canvas) 18px); }
+.t .ti { position: relative; width: 44px; height: 44px; border-radius: 15px; display: flex; align-items: center; justify-content: center; color: #fff; background: linear-gradient(150deg, var(--h1), var(--h0)); box-shadow: 0 6px 14px color-mix(in srgb, var(--h0) 32%, transparent); transition: transform .25s ease, width .25s, height .25s, opacity .2s; }
+.t .ti::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(180deg, rgba(255,255,255,.42) 0%, rgba(255,255,255,0) 52%); }
+.t .ti svg { position: relative; z-index: 1; }
+.t:not(.on) .ti { opacity: .92; transform: scale(.92); }
+.t.on .ti { transform: scale(1.06); }
+.t .dot { display: none; width: 8px; height: 8px; border-radius: 999px; background: var(--h0); }
+
+/* pinned, slimmed once the page scrolls: names stay, pictures fold away */
+.phone.slim .t { height: 44px; flex-direction: row; justify-content: center; gap: 6px; padding-bottom: 0; width: auto; padding: 0 14px; border-radius: 16px 16px 0 0; }
+.phone.slim .t.on { height: 48px; }
+.phone.slim .t .ti { width: 0; height: 0; opacity: 0; box-shadow: none; }
+.phone.slim .t .dot { display: block; }
+.phone.slim .t.on::before, .phone.slim .t.on::after { width: 14px; height: 14px; }
+.phone.slim .t.on::before { left: -14px; background: radial-gradient(circle at 0 0, transparent 13.5px, var(--canvas) 14px); }
+.phone.slim .t.on::after { right: -14px; background: radial-gradient(circle at 100% 0, transparent 13.5px, var(--canvas) 14px); }
+
+.scr { flex: 1; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; position: relative; }
+.scr::-webkit-scrollbar { display: none; }
+.pane { padding: 14px 16px 112px; animation: in .28s ease; }
+@keyframes in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* bottom tabs */
+.nav { position: absolute; left: 12px; right: 12px; bottom: 12px; height: 64px; border-radius: 32px; background: rgba(255,255,255,.96); box-shadow: 0 10px 30px rgba(16,24,40,.14); display: flex; align-items: center; justify-content: space-around; font-size: 10px; font-weight: 600; color: var(--muted); z-index: 5; padding: 0 6px; }
+.nav span { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 2px; min-width: 46px; border-radius: 999px; flex: 1; }
+.nav span.on { color: var(--att); background: rgba(15,122,68,.12); }
+
+/* ---------- content pieces ---------- */
+.hero { position: relative; overflow: hidden; border-radius: 26px; padding: 18px; color: #fff; background: linear-gradient(135deg, var(--h0) 0%, var(--h1) 100%); box-shadow: 0 14px 30px color-mix(in srgb, var(--h0) 28%, transparent); }
+.hero::before { content: ""; position: absolute; right: -60px; top: -70px; width: 200px; height: 200px; border-radius: 999px; background: rgba(255,255,255,.12); }
+.hero::after { content: ""; position: absolute; right: 40px; bottom: -90px; width: 160px; height: 160px; border-radius: 999px; background: rgba(255,255,255,.07); }
+.hero > * { position: relative; z-index: 1; }
+.kick { font-size: 11.5px; font-weight: 600; letter-spacing: .7px; text-transform: uppercase; opacity: .78; }
+.hero h3 { margin-top: 4px; font-size: 25px; font-weight: 700; letter-spacing: -0.6px; line-height: 1.1; }
+.hero .sub { margin-top: 4px; font-size: 13.5px; opacity: .88; }
+.hstats { margin-top: 16px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.hstats b { display: block; font-size: 22px; font-weight: 700; letter-spacing: -0.5px; line-height: 1.1; }
+.hstats span { font-size: 11.5px; opacity: .8; font-weight: 500; }
+.hrow { display: flex; align-items: center; gap: 14px; }
+.ring { position: relative; width: 78px; height: 78px; flex: none; }
+.ring svg { width: 78px; height: 78px; transform: rotate(-90deg); }
+.ring b { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 19px; font-weight: 700; letter-spacing: -0.4px; }
+.ring b small { font-size: 10px; font-weight: 500; opacity: .8; letter-spacing: 0; }
+.hbtns { margin-top: 16px; display: flex; gap: 8px; }
+.hb { height: 42px; padding: 0 16px; border-radius: 999px; background: #fff; color: var(--h0); font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: 1; }
+.hb.ghost { background: rgba(255,255,255,.18); color: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.3); }
+.hbar { margin-top: 14px; height: 6px; border-radius: 999px; background: rgba(255,255,255,.22); overflow: hidden; }
+.hbar i { display: block; height: 100%; border-radius: 999px; background: #fff; }
+.hfoot { margin-top: 7px; display: flex; justify-content: space-between; font-size: 12px; opacity: .85; }
+
+.sec { margin: 24px 4px 10px; display: flex; align-items: center; gap: 8px; }
+.sec .t2 { font-size: 18px; font-weight: 700; letter-spacing: -0.4px; }
+.sec .n { min-width: 22px; height: 22px; padding: 0 7px; border-radius: 999px; background: var(--amb); color: #fff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.sec .link { margin-left: auto; color: var(--muted); font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 2px; }
+.card { background: var(--surface); border-radius: 22px; box-shadow: var(--shadow); overflow: hidden; }
+.row { display: flex; align-items: center; gap: 12px; padding: 13px 14px; min-height: 60px; }
+.row + .row { border-top: 1px solid var(--rule); }
+.row .ic { width: 38px; height: 38px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex: none; }
+.row b { display: block; font-size: 15px; font-weight: 600; letter-spacing: -0.1px; }
+.row .m { display: block; margin-top: 1px; font-size: 13px; color: var(--muted); }
+.row .m em { font-style: normal; font-weight: 600; }
+.row > svg { color: var(--chev); }
+.row .go { height: 32px; padding: 0 12px; border-radius: 999px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; flex: none; }
+.pill { height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; flex: none; }
+.p-ok { background: var(--att-t); color: var(--att); } .p-amb { background: var(--amb-t); color: var(--amb); } .p-sl { background: var(--sl-t); color: var(--sl); } .p-ex { background: var(--ex-t); color: var(--ex); } .p-red { background: var(--red-t); color: var(--red); }
+.av { width: 40px; height: 40px; border-radius: 999px; color: #fff; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: none; }
+
+/* shortcuts: four doors, the ones that start something carry a plus */
+.short { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.sh { background: var(--surface); border-radius: 20px; box-shadow: var(--shadow); padding: 14px 4px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; font-size: 12px; font-weight: 600; line-height: 1.2; position: relative; min-height: 96px; }
+.sh .sic { position: relative; width: 42px; height: 42px; border-radius: 14px; display: flex; align-items: center; justify-content: center; }
+.sh .plus { position: absolute; right: -5px; bottom: -5px; width: 18px; height: 18px; border-radius: 999px; background: var(--att); color: #fff; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; }
+.sh .plus svg { width: 10px; height: 10px; stroke-width: 3; }
+
+/* area tiles on Overview: each one opens its tab */
+.areas { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.area { position: relative; overflow: hidden; border-radius: 22px; padding: 14px; min-height: 120px; background: linear-gradient(160deg, var(--surface) 30%, var(--at) 100%); box-shadow: var(--shadow); cursor: pointer; display: flex; flex-direction: column; }
+.area .aic { width: 38px; height: 38px; border-radius: 13px; color: #fff; display: flex; align-items: center; justify-content: center; background: linear-gradient(150deg, var(--h1), var(--h0)); box-shadow: 0 5px 12px color-mix(in srgb, var(--h0) 30%, transparent); }
+.area b { margin-top: auto; padding-top: 12px; font-size: 16px; font-weight: 700; letter-spacing: -0.2px; display: flex; align-items: center; gap: 4px; }
+.area b svg { color: var(--h0); }
+.area span { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
+.area span em { font-style: normal; font-weight: 600; color: var(--amb); }
+
+/* exam stages */
+.stages { padding: 16px 14px 14px; }
+.sbar { display: flex; gap: 4px; height: 10px; }
+.sbar i { border-radius: 999px; display: block; }
+.slabs { margin-top: 12px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.slabs div { font-size: 11.5px; color: var(--muted); line-height: 1.25; }
+.slabs b { display: flex; align-items: center; gap: 5px; font-size: 17px; font-weight: 700; color: var(--ink); }
+.slabs b i { width: 8px; height: 8px; border-radius: 999px; display: block; }
+
+/* term line */
+.tline { position: relative; margin-top: 16px; height: 34px; }
+.tline .seg { position: absolute; top: 0; height: 8px; border-radius: 999px; background: rgba(255,255,255,.28); }
+.tline .seg.done { background: rgba(255,255,255,.62); }
+.tline .seg.now { background: rgba(255,255,255,.4); overflow: hidden; }
+.tline .seg.now i { display: block; height: 100%; width: 45%; background: #fff; border-radius: 999px; }
+.tline .today { position: absolute; top: -4px; width: 3px; height: 16px; border-radius: 2px; background: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,.25); }
+.tline .lb { position: absolute; top: 14px; font-size: 11px; opacity: .85; font-weight: 500; }
+
+/* setup health */
+.health .row .ck { width: 30px; height: 30px; border-radius: 999px; display: flex; align-items: center; justify-content: center; flex: none; }
+.chips { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
+.chip { height: 24px; min-width: 28px; padding: 0 8px; border-radius: 8px; background: var(--field); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+.chip.w { background: var(--amb-t); color: var(--amb); }
+
+.seg3 { display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: #E6E8EE; margin-bottom: 10px; }
+.seg3 span { flex: 1; height: 34px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: var(--muted); gap: 5px; }
+.seg3 span.on { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(16,24,40,.1); }
+.seg3 span em { font-style: normal; font-weight: 500; opacity: .7; }
+.tags { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+.tag { height: 20px; padding: 0 7px; border-radius: 6px; background: var(--field); color: #3C4450; font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 3px; }
+
+.branches { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 2px 16px 6px; }
+.branches::-webkit-scrollbar { display: none; }
+.br { flex: none; width: 214px; background: var(--surface); border-radius: 22px; box-shadow: var(--shadow); padding: 16px; position: relative; }
+.br.here { box-shadow: 0 0 0 2px var(--sc), var(--shadow); }
+.br .bic { width: 40px; height: 40px; border-radius: 13px; background: var(--sc-t); color: var(--sc); display: flex; align-items: center; justify-content: center; }
+.br h4 { margin-top: 12px; font-size: 16px; font-weight: 700; letter-spacing: -0.2px; }
+.br .bm { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
+.br .bs { margin-top: 12px; display: flex; gap: 14px; }
+.br .bs b { display: block; font-size: 18px; font-weight: 700; }
+.br .bs span { font-size: 11.5px; color: var(--muted); }
+.br .here-p { position: absolute; right: 14px; top: 14px; }
+.months { display: grid; grid-template-columns: repeat(12, 1fr); margin-top: 6px; font-size: 10px; opacity: .8; text-align: center; font-weight: 500; }
+.callout { margin-top: 14px; padding: 12px 14px; border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+.callout b { color: var(--ink); font-weight: 600; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-att" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.870M16 3.130a4 4 0 0 1 0 7.750"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h14a2 2 0 0 1 2 2v3m0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5"/><path d="M21 12h-4a2 2 0 0 0 0 4h4z"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.600 5.600l2.800 2.800M15.600 15.600l2.800 2.800M5.600 18.400l2.800-2.800M15.600 8.400l2.800-2.800"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-award" viewBox="0 0 24 24"><circle cx="12" cy="8" r="6"/><path d="M15.500 13 17 22l-5-3-5 3 1.500-9"/></symbol>
+    <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+    <symbol id="i-building" viewBox="0 0 24 24"><path d="M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M16 9h2a2 2 0 0 1 2 2v10M2 21h20"/><path d="M8 7h4M8 11h4M8 15h4"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 2 10 5-10 5L2 7z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-board" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M12 16v4M8 20h8M7 9h6M7 12h3"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-verify" viewBox="0 0 24 24"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></symbol>
+    <symbol id="i-pen" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.500 3.500a2.120 2.120 0 0 1 3 3L7 19l-4 1 1-4z"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+    <symbol id="i-rules" viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7"/><circle cx="18" cy="17" r="3"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 22s7-6.200 7-12a7 7 0 0 0-14 0c0 5.800 7 12 7 12z"/><circle cx="12" cy="10" r="2.500"/></symbol>
+    <symbol id="i-map" viewBox="0 0 24 24"><path d="M3 6h7M3 12h7M3 18h7M14 6h7M14 12h7M14 18h7"/><path d="m10 6 4 6-4 6"/></symbol>
+    <symbol id="i-leave" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M9 15h6"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.700 5.600 6.100.9-4.400 4.300 1 6.100L12 17l-5.400 2.900 1-6.100-4.400-4.300 6.100-.9z"/></symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <div class="intro">
+    <h1>More, v3: a screen for every area</h1>
+    <p class="lede">More stops being one page of cards. A pinned bar across the top holds the areas that have no bottom tab: <b>Overview</b>, Exams, Academics, Staff, School. Each one is a real screen built the same way: <b>what is happening, what needs you, four doors, then the list itself</b>. Tap the bar on any phone to switch; scroll a long list and the bar slims down but stays.</p>
+    <div class="cols">
+      <div class="note">
+        <h3>Decided with you</h3>
+        <ul>
+          <li><b>A dashboard for each area</b>, not the old screens dropped in.</li>
+          <li><b>Overview opens first</b>: every area at a glance, and everything that needs you in one list.</li>
+          <li><b>The bar stays pinned.</b> Tap to switch; no swiping (no new native library).</li>
+          <li><b>The More heading row is gone</b>: no title, no menu button, no avatar. The bar starts under the status bar.</li>
+        </ul>
+      </div>
+      <div class="note">
+        <h3>How each area screen is built</h3>
+        <ul>
+          <li><b>Hero</b> in the area's colour: the one thing that matters now (the running exam, the term, who is in today).</li>
+          <li><b>Needs you</b>: only rows with something to do, each with its own button. Gone when all is fine.</li>
+          <li><b>Four doors</b>: the area's main places and actions. A plus marks an action.</li>
+          <li><b>The list</b>: exams, classes, people, branches. Deeper screens still push on top, with back.</li>
+        </ul>
+      </div>
+      <div class="note">
+        <h3>Choices I made, for you to check</h3>
+        <ul>
+          <li><b>The bar slims when you scroll</b> (frame 5): pictures fold, names stay. It is still pinned; say if you want it full size always.</li>
+          <li><b>Overview each time More opens fresh</b>; inside one session it keeps the area you were on.</li>
+          <li><b>A teacher gets fewer tabs</b> (Overview, Exams, Teaching). With only one area the bar is not shown.</li>
+          <li><b>Every tab is a different colour band</b>; the band follows the chosen tab.</li>
+        </ul>
+      </div>
+      <div class="note">
+        <h3>Open</h3>
+        <ul>
+          <li><b>Sidebar and account popup from More.</b> With the heading row gone, More has no menu button or avatar. Today only Home has them; once the other tabs get them, More is the one tab without. OK, or a small avatar in the Overview hero?</li>
+          <li><b>Exams, Staff and Academics also exist as pushed screens</b> (from Home cards and the sidebar). Should those links open More on that tab instead, so there is one place per area?</li>
+        </ul>
+      </div>
+      <div class="note">
+        <h3>Where the numbers come from</h3>
+        <table>
+          <tr><td>Classes, sections, subjects, terms, mapping coverage</td><td class="ok">exists</td></tr>
+          <tr><td>Class teachers and subject gaps</td><td class="ok">exists</td></tr>
+          <tr><td>Staff on roll, on leave, not joined; roles ending</td><td class="ok">exists</td></tr>
+          <tr><td>Exams by stage this session</td><td class="ok">exists</td></tr>
+          <tr><td>Papers waiting to be verified</td><td class="unk">not checked</td></tr>
+          <tr><td>Marks in for X of Y classes; your papers' progress</td><td class="new">new read</td></tr>
+          <tr><td>Present today, school-wide; per-branch counts</td><td class="new">new read</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="frames">
+    <figure data-role="principal" data-tab="overview">
+      <div class="who"><b>1. Overview, principal</b><span>Opens first. Tap any tab, or an area tile.</span></div>
+      <div class="slot"></div>
+      <figcaption><b>One look, one list.</b> The hero says how the school is today; Needs you collects every area's to-dos with a button each; the area tiles open their tab.</figcaption>
+    </figure>
+    <figure data-role="principal" data-tab="exams">
+      <div class="who"><b>2. Exams</b><span>The running exam leads.</span></div>
+      <div class="slot"></div>
+      <figcaption><b>The exam in progress is the hero</b>, with its two jobs as buttons. The stage bar shows the whole session's exams at once; the list comes last.</figcaption>
+    </figure>
+    <figure data-role="principal" data-tab="academics">
+      <div class="who"><b>3. Academics</b><span>Where the term stands, and what is not set up.</span></div>
+      <div class="slot"></div>
+      <figcaption><b>The term line shows where the year is.</b> Setup health turns the setup checklist into a standing report; a section without a class teacher is an amber chip in the class list.</figcaption>
+    </figure>
+    <figure data-role="principal" data-tab="staff">
+      <div class="who"><b>4. Staff</b><span>Who is in, who needs something.</span></div>
+      <div class="slot"></div>
+      <figcaption><b>Today first</b>: who is away and until when. Needs you holds the gaps, the invites and the roles that are about to end, each with its own button.</figcaption>
+    </figure>
+    <figure data-role="principal" data-tab="staff" data-scroll="560">
+      <div class="who"><b>5. Staff, scrolled</b><span>The bar stays pinned and slims down.</span></div>
+      <div class="slot"></div>
+      <figcaption><b>Pinned, but out of the way.</b> Pictures fold and the names stay, so switching area is still one tap. Scroll back to the top and it opens up again.</figcaption>
+    </figure>
+    <figure data-role="principal" data-tab="school">
+      <div class="who"><b>6. School</b><span>Branches and the year.</span></div>
+      <div class="slot"></div>
+      <figcaption><b>Branches are cards you swipe across</b>, the one you are in outlined. Switching branch stays in the account popup; this screen is for the branches themselves.</figcaption>
+    </figure>
+    <figure data-role="teacher" data-tab="overview">
+      <div class="who"><b>7. Overview, class teacher</b><span>Three tabs, sized to fit.</span></div>
+      <div class="slot"></div>
+      <figcaption><b>The same screen, about their own work.</b> Three tabs fill the bar's width, so nothing scrolls sideways.</figcaption>
+    </figure>
+    <figure data-role="teacher" data-tab="exams">
+      <div class="who"><b>8. Exams, class teacher</b><span>Their papers, not the school's.</span></div>
+      <div class="slot"></div>
+      <figcaption><b>Their own papers lead</b>, each with how far marks have got. Their class's results sit below, because a class teacher reviews them.</figcaption>
+    </figure>
+  </div>
+</div>
+
+<script>
+var TABS = {
+  overview:  { label: 'Overview',  icon: 'spark',    h0: '#0F7A44', h1: '#3DBE84', band: '#D3EEDF', band2: '#E3F2EA' },
+  exams:     { label: 'Exams',     icon: 'award',    h0: '#C4520A', h1: '#F2934A', band: '#FFE2CA', band2: '#FCEDE1' },
+  academics: { label: 'Academics', icon: 'layers',   h0: '#5B34B8', h1: '#9C7BF0', band: '#E4DBFB', band2: '#EEE9FA' },
+  staff:     { label: 'Staff',     icon: 'users',    h0: '#0E6E86', h1: '#33B4CF', band: '#CFEBF2', band2: '#E2F1F5' },
+  school:    { label: 'School',    icon: 'building', h0: '#1D58B8', h1: '#5B96F2', band: '#D6E4FB', band2: '#E5EDFA' },
+  teaching:  { label: 'Teaching',  icon: 'board',    h0: '#0E6E86', h1: '#33B4CF', band: '#CFEBF2', band2: '#E2F1F5' }
+};
+var ROLES = {
+  principal: { tabs: ['overview', 'exams', 'academics', 'staff', 'school'],
+               nav: [['home','Home'],['att','Attend.'],['users','Students'],['book','Homework'],['wallet','Fees'],['grid','More']] },
+  teacher:   { tabs: ['overview', 'exams', 'teaching'],
+               nav: [['home','Home'],['att','Attendance'],['users','Students'],['book','Homework'],['grid','More']] }
+};
+function ic(id, cls) { return '<svg class="i ' + (cls || '') + '"><use href="#i-' + id + '"/></svg>'; }
+function hue(k) { var t = TABS[k]; return '--h0:' + t.h0 + ';--h1:' + t.h1 + ';'; }
+function sec(title, extra) { return '<div class="sec"><span class="t2">' + title + '</span>' + (extra || '') + '</div>'; }
+function count(n) { return '<span class="n">' + n + '</span>'; }
+function link(s) { return '<span class="link">' + s + ic('chev', 'xs') + '</span>'; }
+function row(icon, tone, title, meta, tail) {
+  return '<div class="row"><div class="ic" style="background:var(--' + tone + '-t);color:var(--' + tone + ')">' + ic(icon) + '</div>' +
+    '<div class="grow"><b class="clip">' + title + '</b><span class="m clip">' + meta + '</span></div>' + (tail || ic('chev', 's')) + '</div>';
+}
+function go(label, tone) { return '<span class="go" style="background:var(--' + tone + '-t);color:var(--' + tone + ')">' + label + '</span>'; }
+function shorts(list) {
+  return '<div class="short">' + list.map(function (s) {
+    return '<div class="sh"><div class="sic" style="background:var(--' + s[2] + '-t);color:var(--' + s[2] + ')">' + ic(s[0]) +
+      (s[3] ? '<span class="plus">' + ic('plus') + '</span>' : '') + '</div>' + s[1] + '</div>';
+  }).join('') + '</div>';
+}
+function ring(pct, label) {
+  var c = 2 * Math.PI * 32, d = c * pct / 100;
+  return '<div class="ring"><svg viewBox="0 0 78 78"><circle cx="39" cy="39" r="32" fill="none" stroke="rgba(255,255,255,.25)" stroke-width="8"/>' +
+    '<circle cx="39" cy="39" r="32" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-dasharray="' + d + ' ' + c + '"/></svg>' +
+    '<b>' + pct + '%<small>' + label + '</small></b></div>';
+}
+function av(initials, color) { return '<div class="av" style="background:' + color + '">' + initials + '</div>'; }
+
+/* ---------------- principal ---------------- */
+var P = {};
+P.overview = function () {
+  return '<div class="hero" style="' + hue('overview') + '--h0:#101828;--h1:#2C3A52;">' +
+      '<div class="kick">Main Campus · 2026-27 · Term 2</div>' +
+      '<h3>Good morning, Sunita</h3><div class="sub">Monday 16 Nov. Attendance is in for 13 of 14 classes.</div>' +
+      '<div class="hstats"><div><b class="tnum">612</b><span>students</span></div><div><b class="tnum">94%</b><span>present</span></div>' +
+      '<div><b class="tnum">28</b><span>staff</span></div><div><b class="tnum">14</b><span>classes</span></div></div>' +
+    '</div>' +
+    sec('Needs you', count(4)) +
+    '<div class="card">' +
+      row('verify', 'ex', '5 papers to verify', '<em>Exams</em> · Half-yearly, Class 6 and 7', go('Review', 'ex')) +
+      row('board', 'st', '7 teaching gaps', '<em>Staff</em> · 2 class teachers, 5 subjects', go('Fill', 'st')) +
+      row('map', 'ac', '2 classes have no subjects', '<em>Academics</em> · Class 9, Class 10', go('Map', 'ac')) +
+      row('mail', 'sl', '2 staff have not joined', '<em>Staff</em> · invited 9 Nov', go('Invite', 'sl')) +
+    '</div>' +
+    sec('Areas') +
+    '<div class="areas">' +
+      area('exams', 'Exams', 'Half-yearly · <em>64%</em> marked') +
+      area('academics', 'Academics', '38 sections · <em>2 unmapped</em>') +
+      area('staff', 'Staff', '28 on roll · 1 away') +
+      area('school', 'School', '3 branches · Term 2') +
+    '</div>' +
+    sec('Start something') +
+    shorts([['award', 'Create an exam', 'ex', 1], ['user', 'Add staff', 'st', 1], ['layers', 'Add a class', 'ac', 1], ['board', 'Assign a teacher', 'st', 1]]);
+};
+function area(k, name, line) {
+  var t = TABS[k];
+  return '<div class="area" data-go="' + k + '" style="' + hue(k) + '--at:' + t.band + '"><div class="aic">' + ic(t.icon) + '</div>' +
+    '<b>' + name + ic('chev', 's') + '</b><span>' + line + '</span></div>';
+}
+P.exams = function () {
+  return '<div class="hero" style="' + hue('exams') + '">' +
+      '<div class="hrow"><div class="grow"><div class="kick">Running now · Term 2</div><h3>Half-yearly</h3>' +
+      '<div class="sub">Marks close Friday 22 Nov</div></div>' + ring(64, '9 of 14') + '</div>' +
+      '<div class="hbtns"><span class="hb">' + ic('pen', 's') + 'Enter marks</span><span class="hb ghost">' + ic('verify', 's') + 'Verify 5</span></div>' +
+    '</div>' +
+    sec('This session', link('12 exams')) +
+    '<div class="card stages"><div class="sbar">' +
+      '<i style="flex:2;background:#D0D5DD"></i><i style="flex:3;background:#7EA6E8"></i><i style="flex:1;background:var(--ex)"></i><i style="flex:1;background:#E8A43A"></i><i style="flex:5;background:var(--att)"></i></div>' +
+      '<div class="slabs"><div><b><i style="background:#D0D5DD"></i>2</b>Draft</div><div><b><i style="background:#7EA6E8"></i>3</b>Scheduled</div>' +
+      '<div><b><i style="background:var(--ex)"></i>1</b>Marks</div><div><b><i style="background:#E8A43A"></i>1</b>Review</div><div><b><i style="background:var(--att)"></i>5</b>Published</div></div>' +
+    '</div>' +
+    sec('Needs you', count(3)) +
+    '<div class="card">' +
+      row('verify', 'ex', '5 papers to verify', 'Half-yearly · Class 6 and 7', go('Verify', 'ex')) +
+      row('chart', 'amb', 'Class 8 results not generated', 'Annual · all marks are in', go('Generate', 'amb')) +
+      row('cal', 'sl', '3 papers have no date', 'Unit test 2 · starts Mon 25 Nov', go('Set', 'sl')) +
+    '</div>' +
+    sec('Go to') +
+    shorts([['plus', 'Create an exam', 'ex', 1], ['star', 'Term grades', 'ex'], ['chart', 'Final results', 'ex'], ['rules', 'Rules', 'ex']]) +
+    sec('All exams', link('See all')) +
+    '<div class="card">' +
+      row('award', 'ex', 'Half-yearly', 'Term 2 · 18 Nov to 22 Nov', '<span class="pill p-ex">Marks</span>') +
+      row('award', 'sl', 'Unit test 2', 'Term 2 · from 25 Nov', '<span class="pill p-sl">Scheduled</span>') +
+      row('award', 'ok', 'Unit test 1', 'Term 2 · results out 2 Oct', '<span class="pill p-ok">Published</span>').replace('var(--ok-t)', 'var(--att-t)').replace('var(--ok)', 'var(--att)') +
+      row('award', 'att', 'Term 1 final', 'Term 1 · results out 20 Sep', '<span class="pill p-ok">Published</span>') +
+    '</div>';
+};
+P.academics = function () {
+  return '<div class="hero" style="' + hue('academics') + '">' +
+      '<div class="kick">2026-27 · Term 2 of 3</div><h3>Week 6 of 14</h3><div class="sub">Term 2 runs to 20 Dec; Term 3 starts 6 Jan</div>' +
+      '<div class="tline">' +
+        '<span class="seg done" style="left:0;width:39%"></span><span class="seg now" style="left:40.5%;width:30%"><i></i></span><span class="seg" style="left:72%;width:28%"></span>' +
+        '<span class="today" style="left:54%"></span>' +
+        '<span class="lb" style="left:0">Term 1</span><span class="lb" style="left:40.5%">Term 2</span><span class="lb" style="left:72%">Term 3</span>' +
+      '</div>' +
+      '<div class="hstats" style="margin-top:6px"><div><b class="tnum">14</b><span>classes</span></div><div><b class="tnum">38</b><span>sections</span></div>' +
+      '<div><b class="tnum">22</b><span>subjects</span></div><div><b class="tnum">612</b><span>students</span></div></div>' +
+    '</div>' +
+    sec('Setup health', '<span class="pill p-amb" style="margin-left:auto">2 to fix</span>') +
+    '<div class="card health">' +
+      '<div class="row"><div class="ck" style="background:var(--att-t);color:var(--att)">' + ic('check', 's') + '</div><div class="grow"><b>Sections</b><span class="m">Every class has at least one</span></div></div>' +
+      '<div class="row"><div class="ck" style="background:var(--amb-t);color:var(--amb)">' + ic('map', 's') + '</div><div class="grow"><b>Subjects mapped</b><span class="m">12 of 14 classes</span></div>' + go('Map 2', 'amb') + '</div>' +
+      '<div class="row"><div class="ck" style="background:var(--amb-t);color:var(--amb)">' + ic('star', 's') + '</div><div class="grow"><b>Class teachers</b><span class="m">36 of 38 sections</span></div>' + go('Assign', 'amb') + '</div>' +
+      '<div class="row"><div class="ck" style="background:var(--att-t);color:var(--att)">' + ic('check', 's') + '</div><div class="grow"><b>Terms</b><span class="m">3 terms cover the session</span></div></div>' +
+    '</div>' +
+    sec('Go to') +
+    shorts([['layers', 'Add a class', 'ac', 1], ['grid', 'Add a section', 'ac', 1], ['book', 'Add a subject', 'ac', 1], ['map', 'Map subjects', 'ac']]) +
+    sec('Classes', link('14')) +
+    '<div class="card">' +
+      cls('Nursery', ['A', 'B'], 48, []) + cls('Class 1', ['A', 'B', 'C'], 92, []) + cls('Class 6', ['A', 'B', 'C'], 104, ['C']) +
+      cls('Class 7', ['A', 'B', 'C'], 98, ['B']) + cls('Class 9', ['A', 'B'], 66, [], true) +
+    '</div>';
+};
+function cls(name, secs, n, warn, unmapped) {
+  return '<div class="row"><div class="grow"><b>' + name + '</b><div class="chips">' +
+    secs.map(function (s) { return '<span class="chip' + (warn.indexOf(s) >= 0 ? ' w' : '') + '">' + s + '</span>'; }).join('') +
+    (unmapped ? '<span class="pill p-amb" style="height:24px">No subjects</span>' : '') +
+    '</div></div><span class="m tnum" style="margin:0 2px 0 0">' + n + '</span>' + ic('chev', 's') + '</div>';
+}
+P.staff = function () {
+  return '<div class="hero" style="' + hue('staff') + '">' +
+      '<div class="hrow"><div class="grow"><div class="kick">Main Campus · today</div><h3>26 of 28 in</h3>' +
+      '<div class="sub">18 teaching · 10 office</div></div>' +
+      '<div style="display:flex">' + ['#F2934A,AK', '#9C7BF0,MD', '#3DBE84,PS', '#5B96F2,RV'].map(function (x, i) {
+        x = x.split(','); return '<div class="av" style="background:' + x[0] + ';border:2px solid rgba(255,255,255,.9);margin-left:' + (i ? -12 : 0) + 'px;width:38px;height:38px">' + x[1] + '</div>';
+      }).join('') + '</div></div>' +
+      '<div class="callout" style="background:rgba(255,255,255,.16);box-shadow:none;color:#fff;margin-top:14px">' + ic('leave', 's') +
+      '<span><b style="color:#fff">Priya Sen</b> on leave, back Thu · <b style="color:#fff">Rahul Verma</b> suspended</span></div>' +
+    '</div>' +
+    sec('Needs you', count(3)) +
+    '<div class="card">' +
+      row('board', 'amb', '7 teaching gaps', '2 class teachers, 5 subjects', go('Fill', 'amb')) +
+      row('mail', 'sl', '2 have not joined', 'Meena Das, Arjun Rao · invited 9 Nov', go('Invite', 'sl')) +
+      row('shield', 'st', 'A role ends in 3 days', 'Exam coordinator · Neha Iyer', go('Extend', 'st')) +
+    '</div>' +
+    sec('Go to') +
+    shorts([['user', 'Add staff', 'st', 1], ['board', 'Assign a teacher', 'st', 1], ['shield', 'Give a role', 'st', 1], ['leave', 'Record leave', 'st', 1]]) +
+    sec('People') +
+    '<div class="seg3"><span class="on">All <em>28</em></span><span>Teaching <em>18</em></span><span>Office <em>10</em></span></div>' +
+    '<div class="card">' + [
+      ['AK', '#F2934A', 'Anil Kumar', ['★ 7-A', 'Maths · 7-A 7-B 8-A']],
+      ['MD', '#9C7BF0', 'Meena Das', ['Science · 6-A 6-B'], 'Not joined'],
+      ['NI', '#3DBE84', 'Neha Iyer', ['★ 8-A', 'English · 8-A 8-B']],
+      ['PS', '#5B96F2', 'Priya Sen', ['Hindi · 6-C 7-C'], 'On leave'],
+      ['RV', '#E46A6A', 'Rahul Verma', ['Accountant'], 'Suspended'],
+      ['SG', '#0E6E86', 'Sunil Gupta', ['★ 9-A', 'Physics · 9-A 10-A']],
+      ['TR', '#C4520A', 'Tara Rao', ['Librarian']],
+      ['VJ', '#5B34B8', 'Vikram Joshi', ['Sports · all classes']],
+      ['AB', '#1D58B8', 'Asha Bose', ['★ 1-A', 'English · 1-A 1-B']],
+      ['KM', '#B54708', 'Kavita Mehta', ['Front office']],
+      ['DP', '#0F7A44', 'Deepak Pal', ['Computer · 8-A 9-A']],
+      ['LN', '#475467', 'Lata Nair', ['★ 2-B', 'Maths · 2-A 2-B']]
+    ].map(function (p) {
+      var pill = p[4] ? '<span class="pill ' + (p[4] === 'On leave' ? 'p-amb' : p[4] === 'Suspended' ? 'p-red' : 'p-sl') + '">' + p[4] + '</span>' : ic('chev', 's');
+      return '<div class="row">' + av(p[0], p[1]) + '<div class="grow"><b class="clip">' + p[2] + '</b><div class="tags">' +
+        p[3].map(function (t) { return '<span class="tag">' + t + '</span>'; }).join('') + '</div></div>' + pill + '</div>';
+    }).join('') + '</div>';
+};
+P.school = function () {
+  return '<div class="hero" style="' + hue('school') + '">' +
+      '<div class="kick">Greenfield Education Trust</div><h3>2026-27 is running</h3><div class="sub">1 Apr 2026 to 31 Mar 2027 · Term 2 of 3</div>' +
+      '<div class="tline" style="height:12px"><span class="seg done" style="left:0;width:62%"></span><span class="seg" style="left:62%;width:38%"></span><span class="today" style="left:62%"></span></div>' +
+      '<div class="months"><span>A</span><span>M</span><span>J</span><span>J</span><span>A</span><span>S</span><span>O</span><span>N</span><span>D</span><span>J</span><span>F</span><span>M</span></div>' +
+    '</div>' +
+    sec('Branches', link('3')) +
+    '<div class="branches">' +
+      br('Main Campus', 'MC · Sector 14', 612, 28, true) + br('North Campus', 'NC · Model Town', 341, 19) + br('City Branch', 'CB · Civil Lines', 208, 14) +
+    '</div>' +
+    sec('Go to') +
+    shorts([['building', 'Add a branch', 'sc', 1], ['cal', 'Create a session', 'sc', 1], ['leave', 'Holidays', 'sc'], ['globe', 'Website', 'sc']]) +
+    sec('Sessions') +
+    '<div class="card">' +
+      row('cal', 'sc', '2026-27', 'Apr 2026 to Mar 2027 · 3 terms', '<span class="pill p-ok">Running</span>') +
+      row('cal', 'sl', '2025-26', 'Apr 2025 to Mar 2026', '<span class="pill p-sl">Ended</span>') +
+      row('cal', 'sl', '2024-25', 'Apr 2024 to Mar 2025', '<span class="pill p-sl">Ended</span>') +
+    '</div>' +
+    '<div class="callout">' + ic('pin', 's') + '<span><b>Switching branch or session</b> is in your account, from the avatar on Home.</span></div>';
+};
+function br(name, meta, students, staff, here) {
+  return '<div class="br' + (here ? ' here' : '') + '"><div class="bic">' + ic('building') + '</div>' +
+    (here ? '<span class="pill here-p" style="background:var(--sc-t);color:var(--sc)">You are here</span>' : '') +
+    '<h4>' + name + '</h4><div class="bm">' + meta + '</div>' +
+    '<div class="bs"><div><b class="tnum">' + students + '</b><span>students</span></div><div><b class="tnum">' + staff + '</b><span>staff</span></div></div></div>';
+}
+
+/* ---------------- teacher ---------------- */
+var T = {};
+T.overview = function () {
+  return '<div class="hero" style="' + hue('overview') + '--h0:#101828;--h1:#2C3A52;">' +
+      '<div class="kick">Main Campus · 2026-27 · Term 2</div><h3>Good morning, Anil</h3><div class="sub">Class teacher of 7-A · Maths in 4 classes</div>' +
+      '<div class="hstats"><div><b class="tnum">42</b><span>in 7-A</span></div><div><b class="tnum">40</b><span>present</span></div>' +
+      '<div><b class="tnum">4</b><span>classes</span></div><div><b class="tnum">2</b><span>papers left</span></div></div>' +
+    '</div>' +
+    sec('Needs you', count(2)) +
+    '<div class="card">' +
+      row('pen', 'ex', 'Enter Half-yearly marks', '<em>Exams</em> · Maths 7-B, 8-A', go('Enter', 'ex')) +
+      row('star', 'st', 'Term grades for 7-A', '<em>Exams</em> · co-scholastic, due Fri', go('Open', 'st')) +
+    '</div>' +
+    sec('Areas') +
+    '<div class="areas">' + area('exams', 'Exams', '1 of 3 papers <em>entered</em>') + area('teaching', 'Teaching', '7-A · Maths ×4') + '</div>' +
+    sec('Start something') +
+    shorts([['pen', 'Enter marks', 'ex', 1], ['book', 'Give homework', 'ac', 1], ['att', 'Mark 7-A', 'att', 1], ['star', 'Term grades', 'st']]);
+};
+T.exams = function () {
+  return '<div class="hero" style="' + hue('exams') + '">' +
+      '<div class="hrow"><div class="grow"><div class="kick">Your papers · Half-yearly</div><h3>1 of 3 entered</h3><div class="sub">Marks close Friday 22 Nov</div></div>' + ring(33, '1 of 3') + '</div>' +
+      '<div class="hbtns"><span class="hb">' + ic('pen', 's') + 'Continue: Maths 7-B</span></div>' +
+    '</div>' +
+    sec('Your papers') +
+    '<div class="card">' +
+      row('check', 'att', 'Maths · 7-A', '42 of 42 entered', '<span class="pill p-ok">Done</span>') +
+      row('pen', 'ex', 'Maths · 7-B', '18 of 40 entered', '<span class="pill p-ex">45%</span>') +
+      row('pen', 'sl', 'Maths · 8-A', 'Not started · 38 students', '<span class="pill p-sl">0%</span>') +
+    '</div>' +
+    sec('Your class, 7-A') +
+    '<div class="card">' +
+      row('chart', 'st', 'Results', 'Half-yearly · 6 of 8 subjects in', ic('chev', 's')) +
+      row('star', 'st', 'Term grades', 'Co-scholastic · due Fri', go('Open', 'st')) +
+    '</div>' +
+    sec('Other exams') +
+    '<div class="card">' +
+      row('award', 'sl', 'Unit test 2', 'From 25 Nov · Maths in 4 classes', '<span class="pill p-sl">Scheduled</span>') +
+      row('award', 'att', 'Unit test 1', 'Results out 2 Oct', '<span class="pill p-ok">Published</span>') +
+    '</div>';
+};
+T.teaching = function () {
+  return '<div class="hero" style="' + hue('teaching') + '"><div class="kick">2026-27</div><h3>Class teacher of 7-A</h3><div class="sub">Maths in 7-A, 7-B, 8-A, 8-B</div></div>' +
+    sec('Your classes') +
+    '<div class="card">' + row('star', 'st', '7-A', 'Class teacher · Maths', ic('chev', 's')) + row('book', 'st', '7-B', 'Maths', ic('chev', 's')) +
+      row('book', 'st', '8-A', 'Maths', ic('chev', 's')) + row('book', 'st', '8-B', 'Maths', ic('chev', 's')) + '</div>';
+};
+
+/* ---------------- phone ---------------- */
+function render(fig) {
+  var role = fig.dataset.role, tab = fig.dataset.tab, R = ROLES[role], t = TABS[tab];
+  var few = R.tabs.length <= 3;
+  var tabs = R.tabs.map(function (k) {
+    var x = TABS[k];
+    return '<div class="t' + (k === tab ? ' on' : '') + '" data-go="' + k + '" role="tab" style="' + hue(k) + (few ? 'flex:1;width:auto' : '') + '">' +
+      '<div class="ti">' + ic(x.icon) + '</div><i class="dot"></i>' + x.label + '</div>';
+  }).join('');
+  var nav = R.nav.map(function (n, i) { return '<span' + (i === R.nav.length - 1 ? ' class="on"' : '') + '>' + ic(n[0]) + n[1] + '</span>'; }).join('');
+  var body = (role === 'principal' ? P : T)[tab]();
+  var slot = fig.querySelector('.slot');
+  var wasSlim = fig.querySelector('.phone.slim');
+  slot.innerHTML = '<div class="phone">' +
+    '<div class="head" style="--band:' + t.band + ';--band2:' + t.band2 + '"><div class="status"><span>9:41</span><i></i></div>' +
+    '<div class="tbar"><div class="tabs" role="tablist">' + tabs + '</div></div></div>' +
+    '<div class="scr"><div class="pane">' + body + '</div></div>' +
+    '<div class="nav">' + nav + '</div></div>';
+  var phone = slot.querySelector('.phone'), scr = phone.querySelector('.scr');
+  scr.addEventListener('scroll', function () { phone.classList.toggle('slim', scr.scrollTop > 24); });
+  phone.querySelectorAll('[data-go]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      fig.dataset.tab = el.dataset.go; delete fig.dataset.scroll; render(fig);
+      var on = fig.querySelector('.t.on'), bar = fig.querySelector('.tabs');
+      bar.scrollLeft = on.offsetLeft - (bar.clientWidth - on.offsetWidth) / 2;
+    });
+  });
+  if (fig.dataset.scroll) { scr.scrollTop = +fig.dataset.scroll; phone.classList.add('slim'); }
+  var on = phone.querySelector('.t.on'), bar = phone.querySelector('.tabs');
+  if (on.offsetLeft + on.offsetWidth > bar.clientWidth) bar.scrollLeft = on.offsetLeft - 40;
+}
+document.querySelectorAll('figure[data-role]').forEach(render);
+</script>
+</body>
+</html>

@@ -34,13 +34,30 @@ import {
 import { buildWorld } from "./world";
 import { roleService, staffService } from "@repo/services";
 import { invalidateUserAuthCache, type DataScope } from "@repo/authz";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 
 const RUN = Date.now();
 const code = (suffix: string) => `ITG-${RUN}-${suffix}`;
 // ADR-068: a staff record needs a phone, unique among current staff.
 const phone = (suffix: string) =>
   `${String(RUN).slice(-8)}${String([...suffix].reduce((n, ch) => n * 31 + ch.charCodeAt(0), 7) % 100).padStart(2, "0")}`;
+
+/**
+ * One login is one current staff record (ADR-074). Re-runs keep their rows as
+ * history: the previous run's record for this login is marked resigned before
+ * the next one is made.
+ */
+const retireEarlierRecords = (organizationId: string, userId: string) =>
+  db
+    .update(staffTable)
+    .set({ status: "resigned" })
+    .where(
+      and(
+        eq(staffTable.organizationId, organizationId),
+        eq(staffTable.userId, userId),
+        inArray(staffTable.status, ["active", "on_leave", "suspended"]),
+      ),
+    );
 
 const schoolScope = (organizationId: string, schoolId: string): DataScope => ({
   organizationId,
@@ -345,6 +362,7 @@ describe("staff & roles (ADR-035)", () => {
     it("grants, refuses duplicates, revokes once, and audits both acts", async () => {
       // The grant target needs a staff record of her own (the service's
       // guard). Per-run employee code — re-runs accumulate rows by design.
+      await retireEarlierRecords(orgAId, principalA1Id);
       const [staffRow] = await db
         .insert(staffTable)
         .values({
@@ -490,6 +508,7 @@ describe("staff & roles (ADR-035)", () => {
     it("holders resolve to this org's staff record, never another org's (M8)", async () => {
       // principalA1 holds a staff row in orgA (P1, above). Give the SAME
       // login a staff row in orgB: the join must still resolve orgA's row.
+      await retireEarlierRecords(orgBId, principalA1Id);
       const [foreignRow] = await db
         .insert(staffTable)
         .values({
