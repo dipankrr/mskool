@@ -1,0 +1,189 @@
+---
+// Pricing page. English only (owner's call), so no /hi/ or /bn/ copy.
+import Layout from "../layouts/Layout.astro";
+import InkFilter from "../components/InkFilter.astro";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+import FloatingActions from "../components/FloatingActions.astro";
+import { DICTS } from "../i18n";
+import { WHATSAPP_NUMBER, whatsappHref } from "../config";
+import { PLANS, COMPARE, MIN_STUDENTS, TRIAL_DAYS, DEFAULT_STUDENTS } from "../pricing";
+import "../styles/pricing.css";
+
+const d = DICTS.en;
+const n0 = DEFAULT_STUDENTS;
+const inr = (x: number) => "₹" + x.toLocaleString("en-IN");
+const school = PLANS.find((p) => p.popular)!;
+const pageData = JSON.stringify({ plans: PLANS.map(({ id, name, yearly, monthly }) => ({ id, name, yearly, monthly })), min: MIN_STUDENTS, wa: WHATSAPP_NUMBER });
+
+const FREE: [string, string, string][] = [
+  ["ph-upload-simple", "Setup and Excel import", "We bring in your students and fee records for you."],
+  ["ph-chalkboard-teacher", "Training for your office", "On a call, in Bengali, Hindi or English."],
+  ["ph-users-three", "Unlimited staff logins", "Every teacher gets their own login."],
+  ["ph-whatsapp-logo", "WhatsApp support", "A person answers, not a bot."],
+  ["ph-sparkle", "Every update", "New features at no extra cost."],
+  ["ph-download-simple", "Your data stays yours", "Download it to Excel whenever you like."],
+];
+
+const FAQ: [string, string][] = [
+  ["Who counts as a student?", "Students enrolled in the current session. If the number changes during the year, we settle it at renewal, not every month."],
+  ["Do parents pay anything?", "No. On School and Group, the parent and student app is free for families. We never charge parents and never show them ads."],
+  ["Is there a setup fee?", "No. We import your students and fee records from Excel and train your office staff on a call, free."],
+  [`What happens after the ${TRIAL_DAYS} days?`, "You pick a plan and pay. If you don't, the account pauses and you can still download all your data."],
+  ["Can we change plans later?", "Yes, any time. Moving up starts today. Moving down starts at your next renewal."],
+  ["How do we pay?", "UPI, bank transfer or cheque, with a GST invoice. Prices are in rupees and exclude 18% GST."],
+  ["Do we need new computers or printers?", "No. mSkool runs on the phones you already have and in any browser. Receipts are PDFs: print them on any printer or send them on WhatsApp."],
+  [`What if we have fewer than ${MIN_STUDENTS} students?`, `You're billed for ${MIN_STUDENTS}. On Office that is ${inr(4 * MIN_STUDENTS)} a month.`],
+];
+---
+<Layout lang="en" path="pricing/" alternates={false}
+  title="Pricing · mSkool"
+  description={`mSkool costs less than a cup of chai per student, per month. From ₹4 a student. Setup, data import and the parent app are free. Try it free for ${TRIAL_DAYS} days.`}>
+  <InkFilter />
+  <Nav d={d} lang="en" pricing />
+  <main class="pr">
+
+    <section class="pr-hero" id="top">
+      <div class="wrap">
+        <div class="pr-copy">
+          <p class="eyebrow rv">Pricing</p>
+          <h1 class="display rv">Less than a cup of chai.</h1>
+          <p class="lede rv">That's what mSkool costs per student, per month. No setup fee, nothing extra for parents, and the first {TRIAL_DAYS} days are free.</p>
+          <ul class="pr-ticks rv">
+            <li><i class="ph-bold ph-check"></i>Pay for students, not features or logins</li>
+            <li><i class="ph-bold ph-check"></i>Excel import and training included</li>
+            <li><i class="ph-bold ph-check"></i>Cancel any time, keep your data</li>
+          </ul>
+        </div>
+
+        <div class="machine rv" id="machine">
+          <div class="ctrl">
+            <label class="ctrl-n" for="nRange">
+              <span>Students in your school</span>
+              <input class="n-in" id="nIn" type="number" inputmode="numeric" min="1" max="20000" value={n0} aria-label="Number of students" />
+            </label>
+            <input class="n-range" id="nRange" type="range" min="50" max="3000" step="10" value={n0} style={`--p:${((n0 - 50) / 2950) * 100}%`} />
+            <div class="n-scale" aria-hidden="true"><span>50</span><span>1,000</span><span>2,000</span><span>3,000+</span></div>
+            <div class="pseg" role="group" aria-label="Plan">
+              {PLANS.map((p) => <button type="button" data-plan={p.id} aria-pressed={p.popular ? "true" : "false"}>{p.name}</button>)}
+            </div>
+            <div class="pseg bill" role="group" aria-label="Billing">
+              <button type="button" data-bill="y" aria-pressed="true">Yearly <em>save up to 20%</em></button>
+              <button type="button" data-bill="m" aria-pressed="false">Monthly</button>
+            </div>
+          </div>
+
+          <div class="rcpt">
+          <div class="printer"><span class="led"></span><span class="lbl">mSkool · quote</span></div>
+          <div class="q-slot">
+            <div class="q-slip print" id="slip" aria-live="polite">
+              <div class="q-c q-brand">m<b>S</b>kool</div>
+              <div class="q-c q-mut">QUOTE · <span id="qDate">today</span></div>
+              <hr />
+              <div class="q-r"><span>Plan</span><b id="qPlan">{school.name}</b></div>
+              <div class="q-r"><span>Students</span><b id="qN">{n0}</b></div>
+              <div class="q-r q-mut q-min" id="qMin" hidden><span>Billed as</span><b>{MIN_STUDENTS} (minimum)</b></div>
+              <div class="q-r"><span id="qRate">₹{school.yearly} × {n0} × 12</span><b id="qSub">{inr(school.yearly * n0 * 12)}</b></div>
+              <div class="q-r"><span>Setup</span><b>₹0</b></div>
+              <div class="q-r"><span>Excel import</span><b>₹0</b></div>
+              <div class="q-r"><span>Training</span><b>₹0</b></div>
+              <div class="q-r" id="qParent"><span>Parent app</span><b>₹0</b></div>
+              <hr />
+              <div class="q-r q-tot"><span id="qTotL">Total a year</span><b id="qTot">{inr(school.yearly * n0 * 12)}</b></div>
+              <div class="q-r q-mut"><span id="qAltL">That is, a month</span><b id="qAlt">{inr(school.yearly * n0)}</b></div>
+              <div class="q-c q-mut q-gst">+ 18% GST</div>
+              <div class="q-bars" aria-hidden="true"></div>
+              <div class="q-c q-mut">Thank you!</div>
+              <span class="stamp q-stamp" aria-hidden="true">{TRIAL_DAYS} days free</span>
+            </div>
+          </div>
+          <a class="btn q-go" id="qGo" href={whatsappHref()} target="_blank" rel="noopener"><span>Send me this quote</span><span class="arr"><i class="ph-fill ph-whatsapp-logo"></i></span></a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="pr-plans" id="plans">
+      <div class="wrap">
+        <h2 class="display rv">Three plans. One price per student.</h2>
+        <div class="cards" data-bill="y">
+          {PLANS.map((p) => (
+            <article class:list={["plan", "rv", p.id, { pop: p.popular, sel: p.popular }]} data-card={p.id}>
+              {p.popular && <span class="badge">Most schools pick this</span>}
+              <h3>{p.name}</h3>
+              <p class="tag">{p.tagline}</p>
+              <div class="price">
+                <b class="amt"><span class="y">₹{p.yearly}</span><span class="m">₹{p.monthly}</span></b>
+                <span class="unit">per student<br />per month</span>
+              </div>
+              <p class="billed"><span class="y">Billed yearly</span><span class="m">Billed monthly</span> · <span class="for" data-for={p.id}>{n0} students: {inr(p.yearly * n0 * 12)} a year</span></p>
+              <ul>{p.bullets.map((b, i) => <li class:list={{ every: i === 0 && p.id !== "office" }}><i class:list={["ph-bold", i === 0 && p.id !== "office" ? "ph-stack" : "ph-check"]}></i>{b}</li>)}</ul>
+              <a class="btn choose" data-choose={p.id} href={whatsappHref()} target="_blank" rel="noopener"><span>Choose {p.name}</span><span class="arr"><i class="ph-bold ph-arrow-right"></i></span></a>
+            </article>
+          ))}
+        </div>
+        <p class="gst rv">Prices in rupees, per student enrolled, plus 18% GST. Schools under {MIN_STUDENTS} students are billed for {MIN_STUDENTS}.</p>
+      </div>
+    </section>
+
+    <section class="pr-cmp" id="compare">
+      <div class="wrap">
+        <h2 class="display rv">Compare the plans</h2>
+        <div class="tbl rv">
+          <table data-sel="school">
+            <thead>
+              <tr><th scope="col"><span class="sr">Feature</span></th>{PLANS.map((p) => <th scope="col" data-col={p.id}>{p.name}<small>₹{p.yearly}</small></th>)}</tr>
+            </thead>
+            {COMPARE.map((g) => (
+              <tbody>
+                <tr class="grp"><th scope="colgroup" colspan={4}>{g.group}</th></tr>
+                {g.rows.map(([label, has]) => (
+                  <tr>
+                    <th scope="row">{label}</th>
+                    {PLANS.map((p) => <td data-col={p.id}>{has.includes(p.id) ? <i class="ph-fill ph-check-circle yes" aria-label="Included"></i> : <i class="ph ph-minus no" aria-label="Not included"></i>}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            ))}
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="pr-free">
+      <div class="wrap">
+        <h2 class="display rv">Free on every plan</h2>
+        <ul class="free">
+          {FREE.map(([icon, b, s], k) => <li class="rv" style={`--k:${k}`}><i class={`ph ${icon}`}></i><div><b>{b}</b><span>{s}</span></div></li>)}
+        </ul>
+      </div>
+    </section>
+
+    <section class="pr-faq">
+      <div class="wrap">
+        <h2 class="display rv">Questions schools ask</h2>
+        <div class="faq rv">
+          {FAQ.map(([q, a]) => <details><summary>{q}<i class="ph-bold ph-plus"></i></summary><p>{a}</p></details>)}
+        </div>
+      </div>
+    </section>
+
+    <section class="island apply2 pr-cta" id="apply">
+      <div class="wrap">
+        <img class="peek" src="/brand/mascot.svg" alt="" />
+        <h2 class="display rv">Try it free for {TRIAL_DAYS} days.</h2>
+        <p class="lede rv">No card, no contract. We set it up with you on a call and bring your students in from Excel.</p>
+        <div class="cta-row rv">
+          <a class="btn wa" href={whatsappHref("Hi mSkool, I'd like to start the free trial.")} target="_blank" rel="noopener"><span>Start on WhatsApp</span><span class="arr"><i class="ph-fill ph-whatsapp-logo"></i></span></a>
+          <a class="link" href="/#apply">Or book a demo</a>
+        </div>
+      </div>
+    </section>
+  </main>
+  <Footer d={d} lang="en" away />
+  <FloatingActions d={d} />
+  <script type="application/json" id="page-data" set:html={pageData} />
+  <script>
+    import "../scripts/pricing.js";
+  </script>
+</Layout>

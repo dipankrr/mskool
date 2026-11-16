@@ -70,6 +70,7 @@ export const hi: Dict = {
     "f.tools": "फ़ीचर",
     "f.ask": "सवाल",
     "f.privacy": "गोपनीयता",
+    "nav.pricing": "मूल्य",
     "f.terms": "शर्तें",
     "ft.plat": "Android · iPhone · ऑफ़िस के लिए वेब",
     "f.family": "परिवार ऐप",

@@ -70,6 +70,7 @@ export const bn: Dict = {
     "f.tools": "ফিচার",
     "f.ask": "প্রশ্ন",
     "f.privacy": "গোপনীয়তা",
+    "nav.pricing": "দাম",
     "f.terms": "শর্তাবলি",
     "ft.plat": "Android · iPhone · অফিসের জন্য ওয়েব",
     "f.family": "পরিবারের অ্যাপ",

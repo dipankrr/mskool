@@ -68,6 +68,7 @@ export const en = {
     "f.tools": "Features",
     "f.ask": "Questions",
     "f.privacy": "Privacy",
+    "nav.pricing": "Pricing",
     "f.terms": "Terms",
     "ft.plat": "Android · iPhone · Web for the office",
     "f.family": "Family app",
