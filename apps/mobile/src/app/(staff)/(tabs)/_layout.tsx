@@ -1,7 +1,7 @@
 import { Tabs } from "expo-router/js-tabs";
 
 import { AppIcon } from "../../../components/app-icon";
-import { TabBar } from "../../../components/tab-bar";
+import { TabBar, TabScreenLayout } from "../../../components/tab-bar";
 import { usePermissions } from "../../../hooks/use-permissions";
 import { copy } from "../../../lib/copy";
 import { colors } from "../../../theme/brand-admin";
@@ -31,6 +31,7 @@ export default function StaffTabsLayout() {
   return (
     <Tabs
       tabBar={(props) => <TabBar {...props} />}
+      screenLayout={TabScreenLayout}
       screenOptions={{
         headerShown: false,
         sceneStyle: { backgroundColor: colors.canvas },
