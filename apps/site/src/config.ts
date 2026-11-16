@@ -1,7 +1,7 @@
 // Site-wide settings that are still open. Fill these in before launch.
 
 /** WhatsApp number in international form, digits only (e.g. "9198XXXXXXXX"). Empty = links stay inert. */
-export const WHATSAPP_NUMBER = "";
+export const WHATSAPP_NUMBER = "919735868805";
 
 /** Public address of the site, used for canonical and language links. */
 export const SITE_URL = "https://mskool.in";

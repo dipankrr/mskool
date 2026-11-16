@@ -76,10 +76,14 @@ chips.forEach(c=>c.onclick=()=>{if(busy)return;busy=true;c.disabled=true;addMsg(
   setTimeout(()=>{t.remove();addMsg('b',ANS[lang][c.dataset.q]);busy=false},reduce?0:900)});
 resetChat();
 
-/* demo form (not wired yet: nothing is sent) */
+/* demo form: opens WhatsApp with the details filled in; the visitor presses send */
 const letter=document.getElementById('letter');
 letter.addEventListener('submit',e=>{e.preventDefault();const empty=[...letter.querySelectorAll('input[required]')].find(i=>!i.value.trim());
   letter.classList.toggle('invalid',!!empty);if(empty){empty.focus();return}
+  const f=new FormData(letter),v=k=>String(f.get(k)||'').trim();
+  const msg=['Hi mSkool, I would like a demo.','','Name: '+v('name'),'Phone: '+v('phone'),'School: '+v('school'),'Students: '+v('size'),'Language: '+lang].join('\n');
+  const num=letter.dataset.wa;
+  if(num){const go=document.createElement('a');go.href='https://wa.me/'+num+'?text='+encodeURIComponent(msg);go.target='_blank';go.rel='noopener';document.body.append(go);go.click();go.remove()}
   letter.classList.add('sent')});
 
 /* ================= rotating hero line ================= */
