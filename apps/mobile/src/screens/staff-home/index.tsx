@@ -247,7 +247,7 @@ export function StaffHomeScreen() {
               ) : null;
             })
           )}
-          {d.running ? (
+          {d.running && !loading && !(showAll && !d.org.data) ? (
             <ThemedText variant="meta" style={styles.end}>
               {c.caughtUp}
             </ThemedText>
