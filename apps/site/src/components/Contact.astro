@@ -1,6 +1,6 @@
 ---
 import type { Dict } from "../i18n/en";
-import { whatsappHref } from "../config";
+import { whatsappHref, WHATSAPP_NUMBER } from "../config";
 interface Props { d: Dict }
 const { t } = Astro.props.d;
 ---
@@ -9,7 +9,7 @@ const { t } = Astro.props.d;
     <h2 class="display rv" style="max-width:920px">{t["ap.h2"]}</h2>
     <div class="cform-wrap rv">
       <img class="peek" src="/brand/mascot.svg" alt="">
-      <form class="cform" id="letter" novalidate>
+      <form class="cform" id="letter" novalidate data-wa={WHATSAPP_NUMBER}>
         <div class="cf-grid">
           <label class="cf"><span>{t["fm.name"]}</span><input name="name" autocomplete="name" required></label>
           <label class="cf"><span>{t["fm.phone"]}</span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+91" required></label>

@@ -6,9 +6,15 @@ import "../styles/site.css";
 import { LANGS, PATH, type Lang } from "../i18n";
 import { SITE_URL } from "../config";
 
-interface Props { lang: Lang; title: string; description: string }
-const { lang, title, description } = Astro.props;
-const url = (l: Lang) => new URL(PATH[l], SITE_URL).href;
+interface Props {
+  lang: Lang; title: string; description: string;
+  /** Page path under the language root, e.g. "pricing/". */
+  path?: string;
+  /** False for pages that exist in one language only. */
+  alternates?: boolean;
+}
+const { lang, title, description, path = "", alternates = true } = Astro.props;
+const url = (l: Lang) => new URL(PATH[l] + path, SITE_URL).href;
 const OG_LOCALE: Record<Lang, string> = { en: "en_IN", hi: "hi_IN", bn: "bn_IN" };
 ---
 <!doctype html>
@@ -20,15 +26,19 @@ const OG_LOCALE: Record<Lang, string> = { en: "en_IN", hi: "hi_IN", bn: "bn_IN" 
     <meta name="description" content={description} />
     <meta name="theme-color" content="#F2F3F7" />
     <link rel="canonical" href={url(lang)} />
-    {LANGS.map((l) => <link rel="alternate" hreflang={l} href={url(l)} />)}
-    <link rel="alternate" hreflang="x-default" href={url("en")} />
+    {alternates && LANGS.map((l) => <link rel="alternate" hreflang={l} href={url(l)} />)}
+    {alternates && <link rel="alternate" hreflang="x-default" href={url("en")} />}
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="mSkool" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={url(lang)} />
     <meta property="og:locale" content={OG_LOCALE[lang]} />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:image" content={new URL("/og.png", SITE_URL).href} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="mSkool: retire the register. School management on one phone." />
+    <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href="/brand/app-icon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

@@ -652,3 +652,9 @@ body::before{content:"";position:fixed;inset:0;background:url(/brand/doodles.svg
 .apply2 .alt{margin-top:22px}
 
 .lang a{display:grid;place-items:center;text-decoration:none}
+
+/* nav: text link (Pricing) */
+.nav .nl{display:grid;place-items:center;height:42px;padding:0 12px;border-radius:999px;font-size:15px;font-weight:600;color:var(--ink);text-decoration:none;transition:background .25s}
+.nav .nl:hover{background:rgba(16,24,40,.06)}
+.nav .nl[aria-current=page]{background:#fff;box-shadow:0 2px 8px -3px rgba(16,24,40,.3)}
+@media(max-width:379px){.nav .nl{padding:0 8px;font-size:14px}.brand{font-size:20px}.brand img{width:34px;height:34px}}

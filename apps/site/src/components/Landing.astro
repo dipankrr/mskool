@@ -32,7 +32,7 @@ const pageData = JSON.stringify({ hero: d.hero, chatHi: d.chatHi, ans: d.ans });
     <AskBookie d={d} />
     <Contact d={d} />
   </main>
-  <Footer d={d} />
+  <Footer d={d} lang={lang} />
   <FloatingActions d={d} />
   <script type="application/json" id="page-data" set:html={pageData} />
   <script>

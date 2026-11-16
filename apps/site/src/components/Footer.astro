@@ -1,13 +1,16 @@
 ---
 import type { Dict } from "../i18n/en";
-interface Props { d: Dict }
-const { t } = Astro.props.d;
+import { PATH, type Lang } from "../i18n";
+interface Props { d: Dict; lang: Lang; /** True on pages other than the landing page, so section links go back to it. */ away?: boolean }
+const { d, lang, away = false } = Astro.props;
+const { t } = d;
+const h = (id: string) => (away ? PATH[lang] : "") + "#" + id;
 ---
 <footer class="foot">
   <div class="wrap">
     <div class="word" aria-hidden="true">m<b>S</b>kool</div>
     <div class="row">
-      <nav><a href="#day">{t["f.day"]}</a><a href="#tools">{t["f.tools"]}</a><a href="#family">{t["f.family"]}</a><a href="#roles">{t["f.roles"]}</a><a href="#ask">{t["f.ask"]}</a><a href="#">{t["f.privacy"]}</a><a href="#">{t["f.terms"]}</a></nav>
+      <nav><a href={h("day")}>{t["f.day"]}</a><a href={h("tools")}>{t["f.tools"]}</a><a href={h("family")}>{t["f.family"]}</a><a href={h("roles")}>{t["f.roles"]}</a><a href="/pricing/">{t["nav.pricing"]}</a><a href={h("ask")}>{t["f.ask"]}</a><a href="#">{t["f.privacy"]}</a><a href="#">{t["f.terms"]}</a></nav>
       <span>{t["ft.plat"]}</span>
     </div>
   </div>
