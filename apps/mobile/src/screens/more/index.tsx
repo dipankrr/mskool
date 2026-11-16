@@ -5,6 +5,8 @@ import Animated, {
   Extrapolation,
   interpolate,
   runOnJS,
+  scrollTo,
+  useAnimatedRef,
   useAnimatedScrollHandler,
   useSharedValue,
 } from "react-native-reanimated";
@@ -17,7 +19,7 @@ import { trpc } from "../../lib/trpc";
 import { colors } from "../../theme/brand-admin";
 import { spacing } from "../../theme/tokens";
 import { AcademicsArea } from "./academics-area";
-import { AreaBar } from "./area-bar";
+import { AreaBar, BAR_FULL, BAR_SLIM } from "./area-bar";
 import { AREAS, areasFor } from "./areas";
 import type { AreaKey } from "./areas";
 import { ExamsArea } from "./exams-area";
@@ -26,8 +28,11 @@ import { SchoolArea } from "./school-area";
 import { StaffArea } from "./staff-area";
 import { TeachingArea } from "./teaching-area";
 
-/** The scroll distance over which the bar goes from full to slim. */
-const SLIM_OVER = 72;
+/**
+ * The bar slims over exactly the distance it gives up, so its bottom edge and
+ * the page move together, as if the page were pushing it.
+ */
+const SLIM_OVER = BAR_FULL - BAR_SLIM;
 
 /**
  * Kept for the life of the app, so coming back to More lands on the area you
@@ -65,7 +70,7 @@ export function MoreScreen() {
 
   // A new area starts at its top, with the bar open.
   useEffect(() => {
-    slim.value = 0;
+    slim.set(0);
   }, [shown, slim]);
 
   const choose = (next: AreaKey) => {
@@ -75,23 +80,41 @@ export function MoreScreen() {
 
   const hideTabBarAt = (y: number) =>
     hideTabBar({ nativeEvent: { contentOffset: { x: 0, y } } } as NativeSyntheticEvent<NativeScrollEvent>);
-  const onScroll = useAnimatedScrollHandler((event) => {
-    slim.set(interpolate(event.contentOffset.y, [0, SLIM_OVER], [0, 1], Extrapolation.CLAMP));
-    runOnJS(hideTabBarAt)(event.contentOffset.y);
+  const scroller = useAnimatedRef<Animated.ScrollView>();
+  // Letting go part-way never leaves the bar half-slim: it settles to
+  // whichever end is nearer.
+  const settle = (y: number) => {
+    "worklet";
+    if (y > 0 && y < SLIM_OVER) scrollTo(scroller, 0, y < SLIM_OVER / 2 ? 0 : SLIM_OVER, true);
+  };
+  const onScroll = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      slim.set(interpolate(event.contentOffset.y, [0, SLIM_OVER], [0, 1], Extrapolation.CLAMP));
+      runOnJS(hideTabBarAt)(event.contentOffset.y);
+    },
+    onEndDrag: (event) => {
+      // A flick carries on by itself; only a slow release settles here.
+      if (Math.abs(event.velocity?.y ?? 0) < 0.2) settle(event.contentOffset.y);
+    },
+    onMomentumEnd: (event) => settle(event.contentOffset.y),
   });
 
+  const withBar = areas.length > 1;
+
+  // The bar floats over the page and only ever changes its own size; the page
+  // scrolls beneath it and never reflows, which is what made the slim jumpy.
   return (
     <View style={styles.screen}>
-      {areas.length > 1 ? (
-        <AreaBar areas={areas} active={shown} onChange={choose} slim={slim} />
-      ) : (
-        <View style={{ height: insets.top, backgroundColor: AREAS[shown].band2 }} />
-      )}
+      {withBar ? null : <View style={{ height: insets.top, backgroundColor: AREAS[shown].band2 }} />}
       <Animated.ScrollView
+        ref={scroller}
         key={shown}
         onScroll={onScroll}
         scrollEventThrottle={16}
-        contentContainerStyle={[styles.content, { paddingBottom: tabSpace + spacing.lg }]}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: (withBar ? insets.top + BAR_FULL : 0) + spacing.md + 2, paddingBottom: tabSpace + spacing.lg },
+        ]}
         testID={`more-${shown}`}
       >
         {shown === "overview" ? <OverviewArea areas={areas} onOpen={choose} /> : null}
@@ -101,6 +124,7 @@ export function MoreScreen() {
         {shown === "teaching" ? <TeachingArea /> : null}
         {shown === "school" ? <SchoolArea /> : null}
       </Animated.ScrollView>
+      {withBar ? <AreaBar areas={areas} active={shown} onChange={choose} slim={slim} style={styles.bar} /> : null}
     </View>
   );
 }
@@ -112,6 +136,12 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md + 2,
+  },
+  bar: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
   },
 });

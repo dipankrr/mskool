@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
-import type { LayoutChangeEvent } from "react-native";
+import type { LayoutChangeEvent, StyleProp, ViewStyle } from "react-native";
 import * as Haptics from "expo-haptics";
 import Animated, { interpolate, useAnimatedStyle } from "react-native-reanimated";
 import type { SharedValue } from "react-native-reanimated";
@@ -27,9 +27,17 @@ const LINE_W = 1;
 const LINE_ON_W = 1.5;
 /** The small picture beside the name in the slim bar. */
 const MINI = 16;
+const MINI_GAP = 6;
+/** Half the small picture and its gap: how far the name slides right. */
+const MINI_SHIFT = (MINI + MINI_GAP) / 2;
 // The gap matches the flare, so a chosen tab's curve never covers its neighbour.
 const GAP = FLARE;
 const PAD = 20;
+
+/** The bar's height under the status bar, full and slim. The page scrolls
+ * beneath it, so More pads its content by the full height. */
+export const BAR_FULL = spacing.sm + TAB_ON_H;
+export const BAR_SLIM = spacing.sm + SLIM_ON_H;
 
 /**
  * The pinned bar at the top of More: one tab per area, sitting on a band in
@@ -48,11 +56,13 @@ export function AreaBar({
   active,
   onChange,
   slim,
+  style,
 }: {
   areas: AreaKey[];
   active: AreaKey;
   onChange: (key: AreaKey) => void;
   slim: SharedValue<number>;
+  style?: StyleProp<ViewStyle>;
 }) {
   const insets = useSafeAreaInsets();
   const look = AREAS[active];
@@ -91,6 +101,7 @@ export function AreaBar({
     <View
       style={[
         styles.band,
+        style,
         { paddingTop: insets.top, experimental_backgroundImage: `linear-gradient(180deg, ${look.band}, ${look.band2})` },
       ]}
     >
@@ -139,15 +150,18 @@ function Tab({
   const picture = useAnimatedStyle(() => ({
     height: interpolate(slim.value, [0, 1], [ICON, 0]),
     // Unchosen pictures are dimmed, so the chosen one stands out.
-    opacity: interpolate(slim.value, [0, 0.6], [on ? 1 : 0.55, 0]),
+    opacity: interpolate(slim.value, [0, 0.5], [on ? 1 : 0.55, 0], "clamp"),
     marginBottom: interpolate(slim.value, [0, 1], [spacing.sm, 0]),
     transform: [{ scale: interpolate(slim.value, [0, 1], [on ? 1 : 0.86, 0.5]) }],
   }));
-  // As the big picture folds away, a small one grows in beside the name.
+  // As the big picture folds away, a small one fades in beside the name at
+  // its full size (never cropped), and the pair slides to stay centred.
   const mini = useAnimatedStyle(() => ({
-    width: interpolate(slim.value, [0, 1], [0, MINI]),
-    marginRight: interpolate(slim.value, [0, 1], [0, 6]),
-    opacity: interpolate(slim.value, [0.4, 1], [0, 1]),
+    opacity: interpolate(slim.value, [0.5, 1], [0, 1], "clamp"),
+    transform: [{ scale: interpolate(slim.value, [0.5, 1], [0.6, 1], "clamp") }],
+  }));
+  const name = useAnimatedStyle(() => ({
+    transform: [{ translateX: interpolate(slim.value, [0, 1], [0, MINI_SHIFT]) }],
   }));
 
   return (
@@ -175,7 +189,7 @@ function Tab({
           <View style={styles.gloss} />
           <AppIcon name={look.icon} size={22} color={colors.onAccent} />
         </Animated.View>
-        <View style={styles.labelRow}>
+        <Animated.View style={[styles.labelRow, name]}>
           <Animated.View style={[styles.mini, mini]}>
             <AppIcon name={look.icon} size={MINI} color={on ? look.h0 : colors.muted} />
           </Animated.View>
@@ -188,7 +202,7 @@ function Tab({
           >
             {look.label}
           </ThemedText>
-        </View>
+        </Animated.View>
       </Pressable>
       {on ? (
         <>
@@ -259,7 +273,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "flex-end",
     paddingBottom: spacing.md,
-    paddingHorizontal: spacing.md,
+    // Room for the small picture once the name has slid over.
+    paddingHorizontal: spacing.lg + 2,
   },
   icon: {
     width: ICON,
@@ -281,8 +296,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   mini: {
+    position: "absolute",
+    left: -(MINI + MINI_GAP),
+    width: MINI,
     height: MINI,
-    overflow: "hidden",
   },
   label: {
     letterSpacing: -0.1,
